@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { provisionAndConfigure, type ProvisionOutcome } from '../../plugins/task-provider-kaneo/provision.js'
 import { isAuthorizedGroup } from '../authorized-groups.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
 import { getNativeContextId, toScopedContextId } from '../chat/scoped-context.js'
@@ -16,6 +15,7 @@ import { getTaskInstance } from '../instances/task-store.js'
 import { isBuiltinTaskType } from '../instances/types.js'
 import type { TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
+import { maybeAutoProvisionProvider } from '../providers/auto-provision.js'
 import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
 import { KANEO_PLUGIN_CREDENTIAL_KEY, KANEO_PLUGIN_WORKSPACE_KEY } from '../types/config.js'
 import { createWizard } from '../wizard/engine.js'
@@ -45,7 +45,12 @@ function isKaneoAutoProvisionEnabled(): boolean {
 export interface SetupCommandDeps {
   isAuthorizedGroup: (groupId: string) => boolean
   getConfigValue: (contextId: string, key: string) => string | null
-  provisionAndConfigure: typeof provisionAndConfigure
+  maybeAutoProvision: (
+    reply: ReplyFn,
+    contextId: string,
+    chatUserId: string,
+    username: string | null,
+  ) => Promise<boolean>
   createWizard: typeof createWizard
   getContextSettings: typeof getContextSettings
   getTaskInstance: typeof getTaskInstance
@@ -55,7 +60,7 @@ export interface SetupCommandDeps {
 const defaultDeps: SetupCommandDeps = {
   isAuthorizedGroup,
   getConfigValue,
-  provisionAndConfigure,
+  maybeAutoProvision: maybeAutoProvisionProvider,
   createWizard,
   getContextSettings,
   getTaskInstance,
@@ -70,46 +75,7 @@ function isFirstTimeKaneoGroupSetup(targetContextId: string, deps: SetupCommandD
   return deps.getConfigValue(targetContextId, KANEO_PLUGIN_WORKSPACE_KEY) === null
 }
 
-function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {
-  return config['baseUrl']
-}
-
-function getKaneoProvisionConfig(
-  targetContextId: string,
-  deps: SetupCommandDeps,
-): { publicUrl: string | undefined; internalUrl: string | undefined } | null {
-  const settings = deps.getContextSettings(targetContextId)
-  if (settings === null) return null
-  const taskInstance = deps.getTaskInstance(settings.taskInstanceId)
-  if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return null
-  const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
-  return { publicUrl, internalUrl: taskInstance.config['internalUrl'] }
-}
-
-async function replyForProvisionOutcome(reply: ReplyFn, outcome: ProvisionOutcome): Promise<boolean> {
-  if (outcome.status === 'provisioned') {
-    const shouldStop = isKaneoAutoProvisionEnabled()
-    const nextStep = shouldStop
-      ? 'Run /setup again when you are ready to continue the setup process.'
-      : 'Continuing with the setup process now.'
-    await reply.text(
-      `✅ The group Kaneo account has been created.\n🌐 ${outcome.kaneoUrl}\n📧 Email: ${outcome.email}\n🔑 Password: ${outcome.password}\n\n${nextStep}`,
-    )
-    return shouldStop
-  }
-
-  if (outcome.status === 'registration_disabled') {
-    await reply.text(
-      'Kaneo account could not be created for this group because registration is disabled on this instance.',
-    )
-    return true
-  }
-
-  await reply.text(`Kaneo account could not be created for this group: ${outcome.error}`)
-  return true
-}
-
-async function maybeProvisionKaneoGroup(
+async function maybeAutoProvisionGroup(
   reply: ReplyFn,
   targetContextId: string,
   taskProvider: TaskInstanceType,
@@ -117,9 +83,9 @@ async function maybeProvisionKaneoGroup(
   deps: SetupCommandDeps,
 ): Promise<boolean> {
   if (!isGroupTarget || taskProvider !== 'kaneo' || !isFirstTimeKaneoGroupSetup(targetContextId, deps)) return false
-  const config = getKaneoProvisionConfig(targetContextId, deps)
-  if (config === null) return false
-  return replyForProvisionOutcome(reply, await deps.provisionAndConfigure(targetContextId, null, config))
+  const autoProvisioned = await deps.maybeAutoProvision(reply, targetContextId, targetContextId, null)
+  if (!autoProvisioned) return false
+  return isKaneoAutoProvisionEnabled()
 }
 
 export async function startWizardForAssignedTask(
@@ -133,7 +99,7 @@ export async function startWizardForAssignedTask(
   // Contributed provider types have no wizard-managed credentials; instance config is used directly
   if (!isBuiltinTaskType(taskProvider)) return
   const deps = rest.length === 0 ? defaultDeps : rest[0]
-  if (await maybeProvisionKaneoGroup(reply, targetContextId, taskProvider, isGroupTarget, deps)) return
+  if (await maybeAutoProvisionGroup(reply, targetContextId, taskProvider, isGroupTarget, deps)) return
   const result = deps.createWizard(userId, targetContextId, taskProvider)
   await reply.text(result.prompt)
 }

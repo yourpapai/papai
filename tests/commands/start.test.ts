@@ -7,8 +7,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { CommandHandler } from '../../src/chat/types.js'
 import { registerStartCommand } from '../../src/commands/start.js'
+import type { StartCommandDeps } from '../../src/commands/start.js'
 import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped } from '../../src/users.js'
 import {
+  createMockReply,
   createMockChatWithCommandHandlers,
   mockLogger,
   seedCommonTestPlatformInstances,
@@ -123,5 +125,43 @@ describe('start command — demo mode auto-add', () => {
 
     expect(isAuthorized('existing-1')).toBe(true)
     expect(capturedFormatted).toContain('Welcome')
+  })
+
+  test('demo mode auto-add routes through generic auto-provision hook', async () => {
+    process.env['DEMO_MODE'] = 'true'
+    const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
+    const deps: StartCommandDeps = {
+      maybeAutoProvision: (_reply, contextId, chatUserId, username) => {
+        autoProvisionCalls.push({ contextId, chatUserId, username })
+        return Promise.resolve(true)
+      },
+    }
+    const { provider, commandHandlers: localCommandHandlers } = createMockChatWithCommandHandlers()
+    registerStartCommand(provider, deps)
+    const handler = localCommandHandlers.get('start')
+    const { reply } = createMockReply()
+
+    await handler!(
+      {
+        user: { id: 'demo-start-generic', username: 'generic-user', isAdmin: false },
+        contextId: 'demo-start-generic',
+        contextType: 'dm',
+        text: '/start',
+        platformInstanceId: TEST_PLATFORM_ID,
+        commandMatch: 'start',
+        isMentioned: false,
+      },
+      reply,
+      {
+        allowed: true,
+        isBotAdmin: false,
+        isGroupAdmin: false,
+        storageContextId: 'demo-start-generic',
+      },
+    )
+
+    expect(autoProvisionCalls).toEqual([
+      { contextId: 'demo-start-generic', chatUserId: 'demo-start-generic', username: 'generic-user' },
+    ])
   })
 })

@@ -11,6 +11,7 @@ import { getConfigValue, setConfigValue } from '../../src/config.js'
 import { getContextSettings } from '../../src/instances/context-store.js'
 import { getTaskInstance } from '../../src/instances/task-store.js'
 import { logger } from '../../src/logger.js'
+import type { TaskProviderAutoProvision } from '../../src/providers/registry.js'
 import { KANEO_PLUGIN_CREDENTIAL_KEY, KANEO_PLUGIN_WORKSPACE_KEY } from '../../src/types/config.js'
 
 const log = logger.child({ scope: 'kaneo:provision' })
@@ -31,10 +32,7 @@ type ProvisionResult = {
   workspaceId: string
 }
 
-type NormalizedProvisionConfig = Readonly<{
-  publicUrl: string
-  internalUrl: string | undefined
-}>
+type NormalizedProvisionConfig = Readonly<{ publicUrl: string; internalUrl: string | undefined }>
 
 const REGISTRATION_DISABLED_MARKERS = ['signup_disabled', 'registration disabled', 'sign up is disabled'] as const
 
@@ -253,17 +251,21 @@ const provLog = logger.child({ scope: 'kaneo:auto-provision' })
  * Auto-provisions a Kaneo account for a context assigned to an active Kaneo task instance.
  * Unassigned contexts return without provisioning; /setup owns task-instance assignment.
  */
-export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, username: string | null): Promise<void> {
+export async function maybeProvisionKaneo(
+  reply: ReplyFn,
+  contextId: string,
+  username: string | null,
+): Promise<boolean> {
   const settings = getContextSettings(contextId)
-  if (settings === null) return
+  if (settings === null) return false
   const taskInstance = getTaskInstance(settings.taskInstanceId)
-  if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return
+  if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return false
 
   if (
     getConfigValue(contextId, KANEO_PLUGIN_WORKSPACE_KEY) !== null &&
     getConfigValue(contextId, KANEO_PLUGIN_CREDENTIAL_KEY) !== null
   ) {
-    return
+    return false
   }
 
   const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
@@ -277,13 +279,20 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
       `✅ Your Kaneo account has been created!\n🌐 ${outcome.kaneoUrl}\n📧 Email: ${outcome.email}\n🔑 Password: ${outcome.password}\n\nThe bot is already configured and ready to use.`,
     )
     provLog.info({ contextId, workspaceId: outcome.workspaceId }, 'Kaneo account auto-provisioned')
-  } else if (outcome.status === 'registration_disabled') {
+    return true
+  }
+
+  if (outcome.status === 'registration_disabled') {
     await reply.text(
       'Kaneo account could not be created — registration is currently disabled on this instance.\n\nPlease ask the admin to provision your account.',
     )
     provLog.warn({ contextId }, 'Kaneo auto-provisioning failed: registration disabled')
-  } else {
-    await reply.text(`Kaneo account could not be created — ${outcome.error}. Please ask the admin to check setup.`)
-    provLog.error({ contextId, error: outcome.error }, 'Kaneo auto-provisioning failed')
+    return true
   }
+
+  await reply.text(`Kaneo account could not be created — ${outcome.error}. Please ask the admin to check setup.`)
+  provLog.error({ contextId, error: outcome.error }, 'Kaneo auto-provisioning failed')
+  return true
 }
+export const kaneoAutoProvision: TaskProviderAutoProvision = ({ reply, contextId, username }) =>
+  maybeProvisionKaneo(reply, contextId, username)

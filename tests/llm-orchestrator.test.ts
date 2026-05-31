@@ -28,8 +28,6 @@ import {
 // Capture real modules before mocking (file-level, stays at top)
 const realAi = await import('ai')
 const realOpenAICompatible = await import('@ai-sdk/openai-compatible')
-const realProvisionMod = await import('../plugins/task-provider-kaneo/provision.js')
-
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const getToolNames = (tools: GenerateTextArgs['tools']): string[] => (tools === undefined ? [] : Object.keys(tools))
 
@@ -206,7 +204,7 @@ const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
 /** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
 const seedConfigForContext = (ctxId: string): void => {
   assignKaneoContext(ctxId)
-  // kaneo is now plugin-contributed; resolver and maybeProvisionKaneo both use plugin-namespaced keys
+  // kaneo is now plugin-contributed; resolver and auto-provision both use plugin-namespaced keys
   setConfigValue(ctxId, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
   setCachedConfig(ctxId, 'timezone', 'UTC')
   setConfigValue(ctxId, KANEO_PLUGIN_WORKSPACE_KEY, 'workspace-1')
@@ -297,11 +295,6 @@ describe('processMessage', () => {
       traits: new Set(),
     })
 
-    void mock.module('../plugins/task-provider-kaneo/provision.js', () => ({
-      provisionAndConfigure: (): Promise<{ status: string }> => Promise.resolve({ status: 'already_configured' }),
-      maybeProvisionKaneo: realProvisionMod.maybeProvisionKaneo,
-    }))
-
     // AI SDK mocks — generateText and stepCountIs replaced for test control.
     // Preserves the real `tool` export so makeTools() works with unmocked tool creation.
     void mock.module('ai', () => ({
@@ -351,7 +344,7 @@ describe('processMessage', () => {
   // ---------------------------------------------------------------------------
 
   describe('missing configuration', () => {
-    test('group context does not call maybeProvisionKaneo before missing-provider-config handling', async () => {
+    test('group context does not call maybeAutoProvision before missing-provider-config handling', async () => {
       // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its token key.
       // Simulate missing config by having resolve return null → orchestrator sends /setup guidance.
       let maybeProvisionCalls = 0
@@ -362,9 +355,9 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: () => null,
-        maybeProvisionKaneo: () => {
+        maybeAutoProvision: () => {
           maybeProvisionCalls++
-          return Promise.resolve()
+          return Promise.resolve(false)
         },
       }
 
@@ -408,7 +401,7 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: () => null,
-        maybeProvisionKaneo: () => Promise.resolve(),
+        maybeAutoProvision: () => Promise.resolve(false),
       }
 
       const { reply, textCalls } = createMockReply()
@@ -431,7 +424,7 @@ describe('processMessage', () => {
           resolverCalls++
           return null
         },
-        maybeProvisionKaneo: () => Promise.resolve(),
+        maybeAutoProvision: () => Promise.resolve(false),
       }
 
       const { reply, textCalls } = createMockReply()
@@ -451,7 +444,7 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: () => null,
-        maybeProvisionKaneo: () => Promise.resolve(),
+        maybeAutoProvision: () => Promise.resolve(false),
       }
 
       const { reply, textCalls } = createMockReply()
@@ -479,12 +472,32 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: () => null,
-        maybeProvisionKaneo: () => Promise.resolve(),
+        maybeAutoProvision: () => Promise.resolve(false),
       }
 
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
+      expect(textCalls).toContain('I need /setup before I can do that.')
+    })
+
+    test('dm context calls maybeAutoProvision with generic provider context', async () => {
+      const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: (_reply, contextId, chatUserId, username) => {
+          autoProvisionCalls.push({ contextId, chatUserId, username })
+          return Promise.resolve(false)
+        },
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', 'alice', 'hello', 'dm', undefined, deps)
+
+      expect(autoProvisionCalls).toEqual([{ contextId: CTX_ID, chatUserId: 'user-1', username: 'alice' }])
       expect(textCalls).toContain('I need /setup before I can do that.')
     })
   })

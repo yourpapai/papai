@@ -16,8 +16,14 @@ import type {
   PluginRegistration,
 } from '../../../src/plugins/context.js'
 import { pluginManifestSchema, type PluginPermission } from '../../../src/plugins/types.js'
-import type { TaskProviderFactory } from '../../../src/providers/registry.js'
+import type { TaskProviderAutoProvision, TaskProviderFactory } from '../../../src/providers/registry.js'
 import { mockLogger } from '../../utils/test-helpers.js'
+
+function getRegistrationFactory(
+  input: TaskProviderFactory | { factory: TaskProviderFactory; autoProvision?: TaskProviderAutoProvision },
+): TaskProviderFactory {
+  return typeof input === 'function' ? input : input.factory
+}
 
 describe('task-provider-youtrack activation', () => {
   test('factory produces a YouTrackProvider with name youtrack', () => {
@@ -67,9 +73,12 @@ describe('task-provider-youtrack activation', () => {
     }
 
     const stubRegistration: PluginRegistration = {
-      registerTaskProviderType(type: string, providerFactory: TaskProviderFactory): void {
+      registerTaskProviderType(
+        type: string,
+        input: TaskProviderFactory | { factory: TaskProviderFactory; autoProvision?: TaskProviderAutoProvision },
+      ): void {
         expect(type).toBe('youtrack')
-        capturedFactory = providerFactory
+        capturedFactory = getRegistrationFactory(input)
       },
       registerTool(): void {},
       registerPromptFragment(): void {},
@@ -87,7 +96,7 @@ describe('task-provider-youtrack activation', () => {
       registration: stubRegistration,
     }
 
-    void factory().activate(mockCtx)
+    factory().activate(mockCtx)
 
     expect(capturedFactory).toBeDefined()
 

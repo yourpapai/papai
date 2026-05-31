@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ReplyFn } from '../chat/types.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { builtinDescriptorSeeds } from './builtin-descriptors.js'
@@ -12,6 +13,15 @@ import type { ProviderConfigField, TaskProvider, TaskProviderTrait } from './typ
 const log = logger.child({ scope: 'provider:registry' })
 
 export type TaskProviderFactory = (config: Record<string, string>) => TaskProvider
+
+export type TaskProviderAutoProvisionContext = {
+  contextId: string
+  chatUserId: string
+  username: string | null
+  reply: ReplyFn
+}
+
+export type TaskProviderAutoProvision = (context: TaskProviderAutoProvisionContext) => Promise<boolean> | boolean
 
 export type TaskProviderConfigValidator = (
   config: Record<string, string>,
@@ -31,6 +41,7 @@ const providers = new Map<string, TaskProviderFactory>()
 export type ContributedTaskProviderEntry = {
   pluginId: string
   factory: TaskProviderFactory
+  autoProvision?: TaskProviderAutoProvision
   capabilities: ReadonlySet<TaskCapability>
   displayName: string
   validateConfig?: TaskProviderConfigValidator
@@ -162,6 +173,7 @@ export type TaskProviderTypeDescriptor = {
   type: string
   displayName: string
   source: 'builtin' | { plugin: string }
+  autoProvision?: TaskProviderAutoProvision
   instanceConfigSchema: readonly ProviderConfigField[]
   contextConfigSchema: readonly ProviderConfigField[]
   capabilities: ReadonlySet<TaskCapability>
@@ -211,6 +223,7 @@ export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
         type,
         displayName: entry.displayName,
         source: { plugin: entry.pluginId },
+        autoProvision: entry.autoProvision,
         instanceConfigSchema,
         contextConfigSchema,
         capabilities: entry.capabilities,

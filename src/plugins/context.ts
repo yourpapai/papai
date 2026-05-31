@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import type { TaskProviderFactory } from '../providers/registry.js'
+import type { TaskProviderAutoProvision, TaskProviderFactory } from '../providers/registry.js'
 import type { ProviderConfigField } from '../providers/types.js'
 import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
@@ -36,6 +36,13 @@ export type PluginAdminConfig = {
 }
 
 /** Registration API given to a plugin's activate() function. */
+type TaskProviderRegistrationInput =
+  | TaskProviderFactory
+  | {
+      factory: TaskProviderFactory
+      autoProvision?: TaskProviderAutoProvision
+    }
+
 export type PluginRegistration = {
   /** Register a tool contribution. The name must match a declared contributes.tools entry. */
   registerTool(tool: PluginTool): void
@@ -46,7 +53,7 @@ export type PluginRegistration = {
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
   /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
-  registerTaskProviderType(type: string, factory: TaskProviderFactory): void
+  registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void
 }
 
 /** Full context passed to a plugin's activate() function. */
@@ -125,8 +132,8 @@ function buildRegisterTaskProviderType(
   manifest: PluginManifest,
   collected: PluginContributions,
   activationGuard: ActivationGuard,
-): (type: string, factory: TaskProviderFactory) => void {
-  return function registerTaskProviderType(type: string, factory: TaskProviderFactory): void {
+): (type: string, input: TaskProviderRegistrationInput) => void {
+  return function registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void {
     activationGuard.assertOpen()
     if (!manifest.permissions.includes('provider.task')) {
       throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
@@ -140,9 +147,11 @@ function buildRegisterTaskProviderType(
     if (collected.taskProviderRegistration !== undefined) {
       throw new Error(`Task provider type '${type}' was registered more than once`)
     }
+    const registration = typeof input === 'function' ? { factory: input } : input
     collected.taskProviderRegistration = {
       type,
-      factory,
+      factory: registration.factory,
+      autoProvision: registration.autoProvision,
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
       instanceConfigSchema: manifest.providerConfigSchema.map((field) => toProviderConfigField(field, 'instance')),

@@ -3,30 +3,22 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-type TaskProviderLike = {
-  readonly name: string
-}
-
-type PluginContextLike = {
-  registration: {
-    registerTaskProviderType(type: string, factory: (config: Record<string, string>) => TaskProviderLike): void
-  }
-}
+import type { PluginContext } from '../../src/plugins/context.js'
+import type { TaskProvider } from '../../src/providers/types.js'
+import { createYouTrackProvider } from './entry-runtime'
 
 type PluginInstanceLike = {
-  activate(ctx: PluginContextLike): void
+  activate(ctx: PluginContext): void
 }
 
 type PluginFactoryLike = () => PluginInstanceLike
-
-import { createYouTrackProvider } from './entry-runtime'
 
 // Named export resolved by the plugin loader from the manifest's `providerConfigValidator`.
 export { validateConfig } from './validate-config'
 
 const factory: PluginFactoryLike = () => ({
-  activate(ctx: PluginContextLike): void {
-    ctx.registration.registerTaskProviderType('youtrack', (config): TaskProviderLike => createYouTrackProvider(config))
+  activate(ctx: PluginContext): void {
+    ctx.registration.registerTaskProviderType('youtrack', (config): TaskProvider => createYouTrackProvider(config))
   },
 })
 

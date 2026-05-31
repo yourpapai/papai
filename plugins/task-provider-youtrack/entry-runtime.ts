@@ -3,9 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-type TaskProviderLike = {
-  readonly name: string
-}
+import type { TaskProvider } from '../../src/providers/types.js'
+
 type YouTrackProviderModule = typeof import('./provider.js')
 
 const requireModule = import.meta.require
@@ -26,7 +25,7 @@ function getYouTrackProviderModule(): YouTrackProviderModule {
   return moduleValue
 }
 
-export function createYouTrackProvider(config: Record<string, string>): TaskProviderLike {
+export function createYouTrackProvider(config: Record<string, string>): TaskProvider {
   const { YouTrackProvider } = getYouTrackProviderModule()
   return new YouTrackProvider({ baseUrl: config['baseUrl'] ?? '', token: config['token'] ?? '' })
 }

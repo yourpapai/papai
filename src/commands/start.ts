@@ -3,14 +3,27 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { maybeProvisionKaneo } from '../../plugins/task-provider-kaneo/provision.js'
 import type { ChatProvider, CommandHandler, IncomingMessage, ReplyFn } from '../chat/types.js'
 import { logger } from '../logger.js'
+import { maybeAutoProvisionProvider } from '../providers/auto-provision.js'
 import { addUser, isAuthorized } from '../users.js'
 
 const log = logger.child({ scope: 'commands:start' })
 
-const maybeAddDemoUser = async (msg: IncomingMessage, reply: ReplyFn): Promise<void> => {
+export type StartCommandDeps = {
+  maybeAutoProvision: (
+    reply: ReplyFn,
+    contextId: string,
+    chatUserId: string,
+    username: string | null,
+  ) => Promise<boolean>
+}
+
+const defaultDeps: StartCommandDeps = {
+  maybeAutoProvision: maybeAutoProvisionProvider,
+}
+
+const maybeAddDemoUser = async (msg: IncomingMessage, reply: ReplyFn, deps: StartCommandDeps): Promise<void> => {
   if (process.env['DEMO_MODE'] !== 'true') return
   if (msg.contextType !== 'dm') return
   if (isAuthorized(msg.user.id, msg.platformInstanceId)) return
@@ -26,12 +39,12 @@ const maybeAddDemoUser = async (msg: IncomingMessage, reply: ReplyFn): Promise<v
     })
   }
   log.info({ userId: msg.user.id }, 'Demo mode: auto-added user via /start')
-  await maybeProvisionKaneo(reply, msg.user.id, msg.user.username)
+  await deps.maybeAutoProvision(reply, msg.user.id, msg.user.id, msg.user.username)
 }
 
-export function registerStartCommand(chat: ChatProvider): void {
+export function registerStartCommand(chat: ChatProvider, deps: StartCommandDeps = defaultDeps): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
-    await maybeAddDemoUser(msg, reply)
+    await maybeAddDemoUser(msg, reply, deps)
 
     if (!auth.allowed) {
       await reply.text('You are not authorized to use this bot.')

@@ -69,6 +69,7 @@ describe('contributed task provider registry', () => {
     unregisterContributedTaskProviderType('task-provider-kaneo')
     unregisterContributedTaskProviderType('other-plugin')
     unregisterContributedTaskProviderType('task-provider-demo')
+    unregisterContributedTaskProviderType('auto-plugin')
   })
 
   test('registers and resolves a contributed type', () => {
@@ -170,6 +171,26 @@ describe('contributed task provider registry', () => {
     expect(descriptor).toBeDefined()
     expect(provider.traits).toEqual(descriptor!.traits)
     expect(provider.traits).toEqual(traits)
+  })
+
+  test('contributed provider descriptor can expose autoProvision hook', () => {
+    mockLogger()
+    const autoProvision = mock(() => Promise.resolve(false))
+
+    registerContributedTaskProviderType('auto-provider', {
+      pluginId: 'auto-plugin',
+      factory: () => createMockProvider({ name: 'auto-provider' }),
+      capabilities: new Set(),
+      displayName: 'Auto Provider',
+      autoProvision,
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
+    })
+
+    const descriptor = getTaskProviderDescriptor('auto-provider')
+
+    expect(descriptor?.source).toEqual({ plugin: 'auto-plugin' })
+    expect(typeof descriptor?.autoProvision).toBe('function')
   })
 })
 

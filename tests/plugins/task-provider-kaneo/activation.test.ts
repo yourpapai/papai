@@ -16,8 +16,20 @@ import type {
   PluginRegistration,
 } from '../../../src/plugins/context.js'
 import { pluginManifestSchema, type PluginPermission } from '../../../src/plugins/types.js'
-import type { TaskProviderFactory } from '../../../src/providers/registry.js'
+import type { TaskProviderAutoProvision, TaskProviderFactory } from '../../../src/providers/registry.js'
 import { mockLogger } from '../../utils/test-helpers.js'
+
+function getRegistrationFactory(
+  input: TaskProviderFactory | { factory: TaskProviderFactory; autoProvision?: TaskProviderAutoProvision },
+): TaskProviderFactory {
+  return typeof input === 'function' ? input : input.factory
+}
+
+function getRegistrationAutoProvision(
+  input: TaskProviderFactory | { factory: TaskProviderFactory; autoProvision?: TaskProviderAutoProvision },
+): TaskProviderAutoProvision | undefined {
+  return typeof input === 'function' ? undefined : input.autoProvision
+}
 
 describe('task-provider-kaneo activation', () => {
   // NOTE: full registry registration (activate() → registerContributedTaskProviderType) will only work
@@ -59,6 +71,7 @@ describe('task-provider-kaneo activation', () => {
   test('activate() registers a factory that builds a kaneo provider from raw config (both credential shapes)', () => {
     mockLogger()
     let capturedFactory: TaskProviderFactory | undefined
+    let capturedAutoProvision: TaskProviderAutoProvision | undefined
 
     const stubKv: PluginKvStore = {
       get(_key: string): string | undefined {
@@ -85,9 +98,13 @@ describe('task-provider-kaneo activation', () => {
     }
 
     const stubRegistration: PluginRegistration = {
-      registerTaskProviderType(type: string, providerFactory: TaskProviderFactory): void {
+      registerTaskProviderType(
+        type: string,
+        input: TaskProviderFactory | { factory: TaskProviderFactory; autoProvision?: TaskProviderAutoProvision },
+      ): void {
         expect(type).toBe('kaneo')
-        capturedFactory = providerFactory
+        capturedFactory = getRegistrationFactory(input)
+        capturedAutoProvision = getRegistrationAutoProvision(input)
       },
       registerTool(): void {},
       registerPromptFragment(): void {},
@@ -105,9 +122,10 @@ describe('task-provider-kaneo activation', () => {
       registration: stubRegistration,
     }
 
-    void factory().activate(mockCtx)
+    factory().activate(mockCtx)
 
     expect(capturedFactory).toBeDefined()
+    expect(capturedAutoProvision).toBeDefined()
 
     // Plain api-key credential → Authorization: Bearer path (isKaneoSessionCookie returns false)
     const apiKeyProvider = capturedFactory?.({

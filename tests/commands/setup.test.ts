@@ -164,19 +164,13 @@ describe('/setup command', () => {
     addAuthorizedGroup('group-1', 'admin-1')
 
     const { reply, textCalls } = createMockReply()
-    const provisionConfigs: Array<{ publicUrl: string | undefined; internalUrl: string | undefined }> = []
+    const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: (_userId, _username, config) => {
-        provisionConfigs.push(config)
-        return Promise.resolve({
-          status: 'provisioned',
-          email: 'group-1-a1b2c3d4@pap.ai',
-          password: 'pw-1',
-          kaneoUrl: 'https://kaneo.test',
-          apiKey: 'key-1',
-          workspaceId: 'ws-1',
-        })
+      maybeAutoProvision: async (provisionReply, contextId, chatUserId, username) => {
+        autoProvisionCalls.push({ contextId, chatUserId, username })
+        await provisionReply.text('generic auto provisioning reply')
+        return true
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => null,
@@ -197,29 +191,22 @@ describe('/setup command', () => {
 
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
-    expect(textCalls.some((text) => text.includes('group Kaneo account has been created'))).toBe(true)
-    expect(textCalls.some((text) => text.includes('Run /setup again when you are ready to continue'))).toBe(true)
+    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'group-1', username: null }])
+    expect(textCalls).toContain('generic auto provisioning reply')
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(false)
-    expect(provisionConfigs).toEqual([{ publicUrl: 'https://kaneo.invalid', internalUrl: undefined }])
   })
 
   test('first-time allowlisted group setup with auto-provision disabled continues into wizard', async () => {
     process.env['KANEO_AUTO_PROVISION'] = 'false'
 
     const { reply, textCalls } = createMockReply()
-    const provisionConfigs: Array<{ publicUrl: string | undefined; internalUrl: string | undefined }> = []
+    const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: (_userId, _username, config) => {
-        provisionConfigs.push(config)
-        return Promise.resolve({
-          status: 'provisioned',
-          email: 'group-1-a1b2c3d4@pap.ai',
-          password: 'pw-1',
-          kaneoUrl: 'https://kaneo.test',
-          apiKey: 'key-1',
-          workspaceId: 'ws-1',
-        })
+      maybeAutoProvision: async (provisionReply, contextId, chatUserId, username) => {
+        autoProvisionCalls.push({ contextId, chatUserId, username })
+        await provisionReply.text('generic auto provisioning reply')
+        return true
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => null,
@@ -240,9 +227,9 @@ describe('/setup command', () => {
 
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
-    expect(textCalls.some((text) => text.includes('Continuing with the setup process now.'))).toBe(true)
+    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'group-1', username: null }])
+    expect(textCalls).toContain('generic auto provisioning reply')
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(true)
-    expect(provisionConfigs).toEqual([{ publicUrl: 'https://kaneo.invalid', internalUrl: undefined }])
   })
 
   test('subsequent allowlisted group setup skips provisioning and starts the wizard', async () => {
@@ -254,9 +241,9 @@ describe('/setup command', () => {
     let provisionCalls = 0
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: () => {
+      maybeAutoProvision: () => {
         provisionCalls++
-        return Promise.resolve({ status: 'failed', error: 'should not be called' })
+        return Promise.resolve(true)
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: getConfigWithExistingApiKey,
@@ -285,7 +272,7 @@ describe('/setup command', () => {
     const { reply, textCalls } = createMockReply()
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => false,
-      provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
+      maybeAutoProvision: () => Promise.resolve(true),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => null,
       getContextSettings: () => ({
@@ -316,7 +303,7 @@ describe('/setup command', () => {
         authorizedLookups.push(groupId)
         return groupId === SCOPED_GROUP_1
       },
-      provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
+      maybeAutoProvision: () => Promise.resolve(true),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => 'existing-key',
       getContextSettings: () => ({
@@ -348,7 +335,7 @@ describe('/setup command', () => {
         authorizedLookups.push(groupId)
         return false
       },
-      provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
+      maybeAutoProvision: () => Promise.resolve(true),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => 'existing-key',
       getContextSettings: () => ({
@@ -376,7 +363,7 @@ describe('/setup command', () => {
     const { reply, textCalls } = createMockReply()
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
+      maybeAutoProvision: () => Promise.resolve(true),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => null,
       getContextSettings: () => null,
@@ -396,21 +383,15 @@ describe('/setup command', () => {
     process.env['KANEO_AUTO_PROVISION'] = 'false'
     const { reply, textCalls } = createMockReply()
     let provisionCalls = 0
-    const provisionConfigs: Array<{ publicUrl: string | undefined; internalUrl: string | undefined }> = []
+    const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
     let getContextSettingsImpl: SetupCommandDeps['getContextSettings'] = noContextSettings
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: (_userId, _username, config) => {
+      maybeAutoProvision: async (provisionReply, contextId, chatUserId, username) => {
         provisionCalls++
-        provisionConfigs.push(config)
-        return Promise.resolve({
-          status: 'provisioned',
-          email: 'group-1-a1b2c3d4@pap.ai',
-          password: 'pw-1',
-          kaneoUrl: 'https://kaneo.test',
-          apiKey: 'key-1',
-          workspaceId: 'ws-1',
-        })
+        autoProvisionCalls.push({ contextId, chatUserId, username })
+        await provisionReply.text('generic auto provisioning reply')
+        return true
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => null,
@@ -435,25 +416,24 @@ describe('/setup command', () => {
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(provisionCalls).toBe(1)
-    expect(provisionConfigs).toEqual([
-      {
-        publicUrl: 'https://kaneo.public.invalid',
-        internalUrl: 'https://kaneo.internal.invalid',
-      },
-    ])
-    expect(textCalls.some((text) => text.includes('Continuing with the setup process now.'))).toBe(true)
+    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'group-1', username: null }])
+    expect(textCalls).toContain('generic auto provisioning reply')
     expect(textCalls).toContain('wizard-started')
   })
 
-  test('reports missing assigned Kaneo task instance URL before starting wizard', async () => {
+  test('continues to wizard when generic auto-provision hook does not provision the group', async () => {
     const { reply, textCalls } = createMockReply()
     let provisionCalls = 0
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: (_userId, _username, config) => {
+      maybeAutoProvision: (_reply, contextId, chatUserId, username) => {
         provisionCalls++
-        expect(config).toEqual({ publicUrl: ' ', internalUrl: undefined })
-        return Promise.resolve({ status: 'failed', error: 'Kaneo task instance public URL is missing' })
+        expect({ contextId, chatUserId, username }).toEqual({
+          contextId: 'group-1',
+          chatUserId: 'group-1',
+          username: null,
+        })
+        return Promise.resolve(false)
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => null,
@@ -475,8 +455,6 @@ describe('/setup command', () => {
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(provisionCalls).toBe(1)
-    expect(textCalls).toEqual([
-      'Kaneo account could not be created for this group: Kaneo task instance public URL is missing',
-    ])
+    expect(textCalls).toEqual(['wizard-started'])
   })
 })

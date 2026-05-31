@@ -7,7 +7,11 @@ import type { ToolExecutionOptions } from 'ai'
 import type { z } from 'zod'
 
 import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../chat/types.js'
-import type { TaskProviderConfigValidator, TaskProviderFactory } from '../providers/registry.js'
+import type {
+  TaskProviderAutoProvision,
+  TaskProviderConfigValidator,
+  TaskProviderFactory,
+} from '../providers/registry.js'
 import type { TaskCapability, ProviderConfigField, TaskProvider, TaskProviderTrait } from '../providers/types.js'
 import type { PluginAdminConfig } from './context.js'
 import type { PluginContext } from './context.js'
@@ -76,6 +80,7 @@ export type PluginContributions = {
   taskProviderRegistration?: {
     type: string
     factory: TaskProviderFactory
+    autoProvision?: TaskProviderAutoProvision
     validateConfig?: TaskProviderConfigValidator
     capabilities: ReadonlySet<TaskCapability>
     displayName: string
