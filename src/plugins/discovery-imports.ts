@@ -8,6 +8,7 @@ import ts from 'typescript'
 type ImportScanResult = {
   staticSpecifiers: string[]
   dynamicSpecifiers: string[]
+  importMetaRequireSpecifiers: string[]
   hasNonDeterministicDynamicImport: boolean
 }
 
@@ -19,24 +20,42 @@ function readDynamicImportSpecifier(node: ts.CallExpression): string | null {
   return null
 }
 
+function readImportDeclarationSpecifier(node: ts.ImportDeclaration): string | null {
+  return ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : null
+}
+
+function readExportDeclarationSpecifier(node: ts.ExportDeclaration): string | null {
+  return node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier)
+    ? node.moduleSpecifier.text
+    : null
+}
+
+function isImportMetaRequireCall(node: ts.Node): node is ts.CallExpression {
+  return (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === 'require' &&
+    ts.isMetaProperty(node.expression.expression) &&
+    node.expression.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+    node.expression.expression.name.text === 'meta'
+  )
+}
+
 function collectImports(sourceFile: ts.SourceFile): ImportScanResult {
   const staticSpecifiers: string[] = []
   const dynamicSpecifiers: string[] = []
+  const importMetaRequireSpecifiers: string[] = []
   let hasNonDeterministicDynamicImport = false
 
   function visit(node: ts.Node): void {
     if (ts.isImportDeclaration(node)) {
-      const specifier = node.moduleSpecifier
-      if (ts.isStringLiteral(specifier)) {
-        staticSpecifiers.push(specifier.text)
-      }
+      const specifier = readImportDeclarationSpecifier(node)
+      if (specifier !== null) staticSpecifiers.push(specifier)
     }
 
     if (ts.isExportDeclaration(node)) {
-      const specifier = node.moduleSpecifier
-      if (specifier !== undefined && ts.isStringLiteral(specifier)) {
-        staticSpecifiers.push(specifier.text)
-      }
+      const specifier = readExportDeclarationSpecifier(node)
+      if (specifier !== null) staticSpecifiers.push(specifier)
     }
 
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
@@ -48,12 +67,17 @@ function collectImports(sourceFile: ts.SourceFile): ImportScanResult {
       }
     }
 
+    if (isImportMetaRequireCall(node)) {
+      const specifier = readDynamicImportSpecifier(node)
+      if (specifier !== null) importMetaRequireSpecifiers.push(specifier)
+    }
+
     ts.forEachChild(node, visit)
   }
 
   visit(sourceFile)
 
-  return { staticSpecifiers, dynamicSpecifiers, hasNonDeterministicDynamicImport }
+  return { staticSpecifiers, dynamicSpecifiers, importMetaRequireSpecifiers, hasNonDeterministicDynamicImport }
 }
 
 function parseSource(source: string): ts.SourceFile {
@@ -71,4 +95,8 @@ export function readLiteralDynamicImports(source: string): string[] {
   }
 
   return result.dynamicSpecifiers
+}
+
+export function readLiteralImportMetaRequires(source: string): string[] {
+  return collectImports(parseSource(source)).importMetaRequireSpecifiers
 }

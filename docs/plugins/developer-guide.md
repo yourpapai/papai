@@ -80,7 +80,7 @@ Supported optional fields:
 
 The manifest `id` must match the directory name. The entry point must stay inside the plugin directory and must be a relative `.ts` or `.js` path without `..` components.
 
-Plugin entry graphs must use relative imports only. Static and deterministic literal dynamic imports must start with `./` or `../`; bare-module imports such as `import 'left-pad'` or `await import('left-pad')` are rejected during discovery.
+Plugin entry graphs must use relative imports only. Static imports, deterministic literal dynamic imports, and plugin-local `import.meta.require(...)` calls must start with `./` or `../`; bare-module imports such as `import 'left-pad'`, `await import('left-pad')`, or `import.meta.require('left-pad')` are rejected during discovery when they appear in the discovered plugin-owned graph.
 
 ## Entry Contract
 
@@ -215,7 +215,7 @@ Capability requirements are evaluated in two layers. At startup, Papai checks ap
 
 Discovery and approval are startup-oriented. Approving or rejecting a plugin affects the next startup. Manifest hash changes clear approval and require reapproval.
 
-Approval coverage includes the plugin manifest and all plugin-owned local source files reachable from the entry point through relative static imports and deterministic literal dynamic imports. Discovery fails closed if path verification cannot be completed for any imported file.
+Approval coverage includes the plugin manifest and all plugin-owned local source files reachable from the entry point through relative static imports, deterministic literal dynamic imports, and plugin-local relative `import.meta.require(...)` calls. Discovery fails closed if path verification cannot be completed for any imported file.
 
 Per-context enable/disable takes effect the next time tools or prompt fragments are assembled.
 

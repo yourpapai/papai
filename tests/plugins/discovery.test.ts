@@ -335,6 +335,46 @@ describe('discoverPlugins', () => {
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
+  test('manifest hash changes when an import.meta.require local target changes', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'hash-import-meta-require')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'hash-import-meta-require',
+        name: 'Hash Import Meta Require',
+        version: '1.0.0',
+        description: 'hash import.meta.require helpers',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "export const bridge = import.meta.require('./helper.ts')\n",
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { bridge } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return bridge.value } } }\n",
+      'utf-8',
+    )
+
+    const first = discoverPlugins(root)
+    expect(first.errors).toEqual([])
+    const firstHash = first.plugins[0]?.manifestHash
+    expect(typeof firstHash).toBe('string')
+
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
+
+    const second = discoverPlugins(root)
+    expect(second.errors).toEqual([])
+    expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
+  })
+
   test('manifest hash is stable across different plugin root paths', () => {
     const firstRoot = makeTempDir()
     const secondRoot = makeTempDir()

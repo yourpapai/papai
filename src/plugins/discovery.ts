@@ -8,7 +8,7 @@ import * as fs from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { logger } from '../logger.js'
-import { readLiteralDynamicImports, readStaticImportSpecifiers } from './discovery-imports.js'
+import { readPluginSourceGraph } from './discovery-graph.js'
 import { pluginManifestSchema } from './types.js'
 import type { DiscoveredPlugin } from './types.js'
 
@@ -99,45 +99,6 @@ function resolveEntryImport(fromFile: string, pluginDir: string, specifier: stri
   return resolvedPath
 }
 
-function readPluginSourceGraph(entryPoint: string, pluginDir: string): string[] {
-  const pending = [entryPoint]
-  const visited = new Set<string>()
-  const ordered: string[] = []
-
-  while (pending.length > 0) {
-    const current = pending.pop()
-    if (current === undefined || visited.has(current)) continue
-
-    visited.add(current)
-    ordered.push(current)
-
-    const source = fs.readFileSync(current, 'utf-8')
-
-    let dynamicImports: string[]
-    try {
-      dynamicImports = readLiteralDynamicImports(source)
-    } catch {
-      throw new Error(`Unresolvable plugin dynamic import in ${current}`)
-    }
-
-    for (const specifier of dynamicImports) {
-      if (!isRelativePluginImport(specifier)) {
-        throw new Error(`Bare-module imports are not allowed in plugin entry graphs: ${specifier}`)
-      }
-      pending.push(resolveEntryImport(current, pluginDir, specifier))
-    }
-
-    for (const specifier of readStaticImportSpecifiers(source)) {
-      if (!isRelativePluginImport(specifier)) {
-        throw new Error(`Bare-module imports are not allowed in plugin entry graphs: ${specifier}`)
-      }
-      pending.push(resolveEntryImport(current, pluginDir, specifier))
-    }
-  }
-
-  return ordered.sort()
-}
-
 function computePluginManifestHash(manifestContent: string, sourceFiles: readonly string[]): string {
   const hash = createHash('sha256')
   hash.update(`${manifestContent.length}:`).update(manifestContent)
@@ -211,7 +172,10 @@ function resolveEntrypointForDiscovery(
   if (entryPoint === null) return makeDiscoveryError('', `Entry point "${main}" resolves outside the plugin directory`)
 
   try {
-    const sourceFiles = readPluginSourceGraph(entryPoint, pluginDir)
+    const sourceFiles = readPluginSourceGraph(entryPoint, pluginDir, {
+      isRelativePluginImport,
+      resolveEntryImport,
+    })
     return { entryPoint, sourceFiles }
   } catch (error) {
     return makeDiscoveryError('', error instanceof Error ? error.message : String(error))
