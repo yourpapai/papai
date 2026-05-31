@@ -12,6 +12,7 @@ import type { ChatCapability, ChatProvider, CommandHandler, ReplyFn } from '../.
 import { registerSetupCommand } from '../../src/commands/setup.js'
 import type { SetupCommandDeps } from '../../src/commands/setup.js'
 import { setConfigValue } from '../../src/config.js'
+import type { TaskProviderTypeDescriptor } from '../../src/providers/registry.js'
 import { KANEO_PLUGIN_CREDENTIAL_KEY, KANEO_PLUGIN_WORKSPACE_KEY } from '../../src/types/config.js'
 import {
   createAuth,
@@ -43,9 +44,30 @@ const getConfigWithExistingApiKey = (_contextId: string, key: string): string | 
 }
 
 const noContextSettings: SetupCommandDeps['getContextSettings'] = () => null
+const noTaskProviderDescriptor: SetupCommandDeps['getTaskProviderDescriptor'] = () => {}
+const genericAutoProvisionDescriptorForType = (_type: string): TaskProviderTypeDescriptor =>
+  GENERIC_AUTO_PROVISION_DESCRIPTOR
 
 const SCOPED_GROUP_1 = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
 const SCOPED_ADMIN_1 = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'admin-1' })
+const GENERIC_AUTO_PROVISION_DESCRIPTOR: TaskProviderTypeDescriptor = {
+  type: 'youtrack',
+  displayName: 'Generic Auto-Provisioned Provider',
+  source: { plugin: 'task-provider-generic' },
+  autoProvision: () => true,
+  instanceConfigSchema: [],
+  contextConfigSchema: [
+    {
+      key: 'token',
+      label: 'Access Token',
+      required: true,
+      sensitive: true,
+      scope: 'context',
+    },
+  ],
+  capabilities: new Set(),
+  traits: new Set(),
+}
 
 function createRouterLikeSetupChat(
   sourceProvider: ChatProvider,
@@ -71,7 +93,6 @@ function createRouterLikeSetupChat(
 
 describe('/setup command', () => {
   let setupHandler: CommandHandler | null = null
-  const originalKaneoAutoProvision = process.env['KANEO_AUTO_PROVISION']
 
   const requireSetupHandler = (): CommandHandler => {
     if (setupHandler === null) {
@@ -90,11 +111,6 @@ describe('/setup command', () => {
       throw new Error('setup handler was not registered')
     }
     setupHandler = registeredSetupHandler
-    if (originalKaneoAutoProvision === undefined) {
-      delete process.env['KANEO_AUTO_PROVISION']
-    } else {
-      process.env['KANEO_AUTO_PROVISION'] = originalKaneoAutoProvision
-    }
   })
 
   test('starts with a personal/group selector in DM', async () => {
@@ -159,12 +175,12 @@ describe('/setup command', () => {
     )
   })
 
-  test('first-time allowlisted group setup provisions and stops before wizard', async () => {
-    process.env['KANEO_AUTO_PROVISION'] = 'true'
+  test('first-time allowlisted group setup dispatches through the assigned provider descriptor', async () => {
     addAuthorizedGroup('group-1', 'admin-1')
 
     const { reply, textCalls } = createMockReply()
     const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
+    const configLookups: string[] = []
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
       maybeAutoProvision: async (provisionReply, contextId, chatUserId, username) => {
@@ -173,32 +189,35 @@ describe('/setup command', () => {
         return true
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
-      getConfigValue: () => null,
+      getConfigValue: (_contextId, key) => {
+        configLookups.push(key)
+        return null
+      },
       getContextSettings: () => ({
         contextId: 'group-1',
-        taskInstanceId: 'kaneo-prod',
+        taskInstanceId: 'youtrack-prod',
         platformInstanceId: 'telegram-default',
       }),
       getTaskInstance: () => ({
-        id: 'kaneo-prod',
-        type: 'kaneo',
-        config: { baseUrl: 'https://kaneo.invalid' },
+        id: 'youtrack-prod',
+        type: 'youtrack',
+        config: { baseUrl: 'https://youtrack.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
-      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
+      getTaskProviderDescriptor: genericAutoProvisionDescriptorForType,
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'youtrack' }),
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
+    expect(configLookups).toEqual(['plugin:task-provider-generic:provider:token'])
     expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'group-1', username: null }])
     expect(textCalls).toContain('generic auto provisioning reply')
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(false)
   })
 
-  test('first-time allowlisted group setup with auto-provision disabled continues into wizard', async () => {
-    process.env['KANEO_AUTO_PROVISION'] = 'false'
-
+  test('first-time allowlisted group setup continues into wizard when generic auto-provision does not provision', async () => {
     const { reply, textCalls } = createMockReply()
     const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
     const deps: SetupCommandDeps = {
@@ -206,23 +225,24 @@ describe('/setup command', () => {
       maybeAutoProvision: async (provisionReply, contextId, chatUserId, username) => {
         autoProvisionCalls.push({ contextId, chatUserId, username })
         await provisionReply.text('generic auto provisioning reply')
-        return true
+        return false
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfigValue: () => null,
       getContextSettings: () => ({
         contextId: 'group-1',
-        taskInstanceId: 'kaneo-prod',
+        taskInstanceId: 'youtrack-prod',
         platformInstanceId: 'telegram-default',
       }),
       getTaskInstance: () => ({
-        id: 'kaneo-prod',
-        type: 'kaneo',
-        config: { baseUrl: 'https://kaneo.invalid' },
+        id: 'youtrack-prod',
+        type: 'youtrack',
+        config: { baseUrl: 'https://youtrack.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
-      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
+      getTaskProviderDescriptor: genericAutoProvisionDescriptorForType,
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'youtrack' }),
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
@@ -259,6 +279,7 @@ describe('/setup command', () => {
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
+      getTaskProviderDescriptor: noTaskProviderDescriptor,
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
@@ -287,6 +308,7 @@ describe('/setup command', () => {
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
+      getTaskProviderDescriptor: noTaskProviderDescriptor,
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
@@ -318,6 +340,7 @@ describe('/setup command', () => {
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
+      getTaskProviderDescriptor: noTaskProviderDescriptor,
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
@@ -350,6 +373,7 @@ describe('/setup command', () => {
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
+      getTaskProviderDescriptor: noTaskProviderDescriptor,
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
@@ -368,6 +392,7 @@ describe('/setup command', () => {
       getConfigValue: () => null,
       getContextSettings: () => null,
       getTaskInstance: () => null,
+      getTaskProviderDescriptor: noTaskProviderDescriptor,
       startTaskInstanceSelection: (_userId, _targetContextId, platformInstanceId) => {
         expect(platformInstanceId).toBe('mattermost-source')
         return { status: 'pending', response: 'choose a task tracker' }
@@ -379,8 +404,7 @@ describe('/setup command', () => {
     expect(textCalls).toEqual(['choose a task tracker'])
   })
 
-  test('provisions newly assigned group Kaneo task instance before starting wizard', async () => {
-    process.env['KANEO_AUTO_PROVISION'] = 'false'
+  test('newly assigned group task instance stops at successful provider-descriptor auto-provision', async () => {
     const { reply, textCalls } = createMockReply()
     let provisionCalls = 0
     const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
@@ -397,19 +421,20 @@ describe('/setup command', () => {
       getConfigValue: () => null,
       getContextSettings: (...args) => getContextSettingsImpl(...args),
       getTaskInstance: () => ({
-        id: 'kaneo-prod',
-        type: 'kaneo',
-        config: { baseUrl: 'https://kaneo.public.invalid', internalUrl: 'https://kaneo.internal.invalid' },
+        id: 'youtrack-prod',
+        type: 'youtrack',
+        config: { baseUrl: 'https://youtrack.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
+      getTaskProviderDescriptor: genericAutoProvisionDescriptorForType,
       startTaskInstanceSelection: () => {
         getContextSettingsImpl = (): ReturnType<SetupCommandDeps['getContextSettings']> => ({
           contextId: 'group-1',
-          taskInstanceId: 'kaneo-prod',
+          taskInstanceId: 'youtrack-prod',
           platformInstanceId: 'telegram-default',
         })
-        return { status: 'assigned', taskProvider: 'kaneo' }
+        return { status: 'assigned', taskProvider: 'youtrack' }
       },
     }
 
@@ -418,7 +443,7 @@ describe('/setup command', () => {
     expect(provisionCalls).toBe(1)
     expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'group-1', username: null }])
     expect(textCalls).toContain('generic auto provisioning reply')
-    expect(textCalls).toContain('wizard-started')
+    expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(false)
   })
 
   test('continues to wizard when generic auto-provision hook does not provision the group', async () => {
@@ -439,17 +464,18 @@ describe('/setup command', () => {
       getConfigValue: () => null,
       getContextSettings: () => ({
         contextId: 'group-1',
-        taskInstanceId: 'kaneo-prod',
+        taskInstanceId: 'youtrack-prod',
         platformInstanceId: 'telegram-default',
       }),
       getTaskInstance: () => ({
-        id: 'kaneo-prod',
-        type: 'kaneo',
+        id: 'youtrack-prod',
+        type: 'youtrack',
         config: { baseUrl: ' ' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
-      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
+      getTaskProviderDescriptor: genericAutoProvisionDescriptorForType,
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'youtrack' }),
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)

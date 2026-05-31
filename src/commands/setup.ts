@@ -16,8 +16,8 @@ import { isBuiltinTaskType } from '../instances/types.js'
 import type { TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { maybeAutoProvisionProvider } from '../providers/auto-provision.js'
+import { getTaskProviderDescriptor, type TaskProviderTypeDescriptor } from '../providers/registry.js'
 import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
-import { KANEO_PLUGIN_CREDENTIAL_KEY, KANEO_PLUGIN_WORKSPACE_KEY } from '../types/config.js'
 import { createWizard } from '../wizard/engine.js'
 
 const log = logger.child({ scope: 'commands:setup' })
@@ -38,10 +38,6 @@ function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): s
   return 'You are not authorized to use this bot.'
 }
 
-function isKaneoAutoProvisionEnabled(): boolean {
-  return process.env['KANEO_AUTO_PROVISION'] !== 'false'
-}
-
 export interface SetupCommandDeps {
   isAuthorizedGroup: (groupId: string) => boolean
   getConfigValue: (contextId: string, key: string) => string | null
@@ -54,6 +50,7 @@ export interface SetupCommandDeps {
   createWizard: typeof createWizard
   getContextSettings: typeof getContextSettings
   getTaskInstance: typeof getTaskInstance
+  getTaskProviderDescriptor: typeof getTaskProviderDescriptor
   startTaskInstanceSelection: typeof startTaskInstanceSelection
 }
 
@@ -64,28 +61,51 @@ const defaultDeps: SetupCommandDeps = {
   createWizard,
   getContextSettings,
   getTaskInstance,
+  getTaskProviderDescriptor,
   startTaskInstanceSelection,
 }
 
-function isFirstTimeKaneoGroupSetup(targetContextId: string, deps: SetupCommandDeps): boolean {
-  if (deps.getConfigValue(targetContextId, KANEO_PLUGIN_CREDENTIAL_KEY) === null) {
-    return true
+function storageKeyForProviderField(
+  descriptor: TaskProviderTypeDescriptor,
+  field: TaskProviderTypeDescriptor['contextConfigSchema'][number],
+): string {
+  if (descriptor.source !== 'builtin') {
+    if (field.storageKey === undefined) {
+      return `plugin:${descriptor.source.plugin}:provider:${field.key}`
+    }
+    return `plugin:${descriptor.source.plugin}:provider:${field.storageKey}`
   }
-
-  return deps.getConfigValue(targetContextId, KANEO_PLUGIN_WORKSPACE_KEY) === null
+  if (field.storageKey === undefined) return field.key
+  return field.storageKey
 }
 
-async function maybeAutoProvisionGroup(
+function isFirstTimeAutoProvisionableGroupSetup(
+  targetContextId: string,
+  taskProvider: TaskInstanceType,
+  deps: SetupCommandDeps,
+): boolean {
+  const descriptor = deps.getTaskProviderDescriptor(taskProvider)
+  if (descriptor === undefined || descriptor.autoProvision === undefined) return false
+
+  const requiredFields = descriptor.contextConfigSchema.filter((field) => field.required)
+  if (requiredFields.length === 0) return true
+
+  return requiredFields.some(
+    (field) => deps.getConfigValue(targetContextId, storageKeyForProviderField(descriptor, field)) === null,
+  )
+}
+
+function maybeAutoProvisionGroup(
   reply: ReplyFn,
   targetContextId: string,
   taskProvider: TaskInstanceType,
   isGroupTarget: boolean,
   deps: SetupCommandDeps,
 ): Promise<boolean> {
-  if (!isGroupTarget || taskProvider !== 'kaneo' || !isFirstTimeKaneoGroupSetup(targetContextId, deps)) return false
-  const autoProvisioned = await deps.maybeAutoProvision(reply, targetContextId, targetContextId, null)
-  if (!autoProvisioned) return false
-  return isKaneoAutoProvisionEnabled()
+  if (!isGroupTarget || !isFirstTimeAutoProvisionableGroupSetup(targetContextId, taskProvider, deps)) {
+    return Promise.resolve(false)
+  }
+  return deps.maybeAutoProvision(reply, targetContextId, targetContextId, null)
 }
 
 export async function startWizardForAssignedTask(
