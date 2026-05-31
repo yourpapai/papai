@@ -136,7 +136,7 @@ import {
 } from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
-import { setConfig, setConfigValue } from '../src/config.js'
+import { setConfigValue } from '../src/config.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
@@ -473,7 +473,7 @@ describe('processMessage', () => {
         taskInstanceId: 'yt-prod-null',
         platformInstanceId: 'telegram-default',
       })
-      setConfig(freshCtx, 'youtrack_token', 'perm:abc')
+      setConfigValue(freshCtx, 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
