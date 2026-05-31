@@ -8,7 +8,7 @@ import * as fs from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { logger } from '../logger.js'
-import { readPluginSourceGraph } from './discovery-graph.js'
+import { readPluginSourceGraph } from './discovery-imports.js'
 import { pluginManifestSchema } from './types.js'
 import type { DiscoveredPlugin } from './types.js'
 
@@ -172,10 +172,15 @@ function resolveEntrypointForDiscovery(
   if (entryPoint === null) return makeDiscoveryError('', `Entry point "${main}" resolves outside the plugin directory`)
 
   try {
-    const sourceFiles = readPluginSourceGraph(entryPoint, pluginDir, {
-      isRelativePluginImport,
-      resolveEntryImport,
-    })
+    const sourceFiles = readPluginSourceGraph(
+      entryPoint,
+      pluginDir,
+      {
+        isRelativePluginImport,
+        resolveEntryImport,
+      },
+      fs.readFileSync,
+    )
     return { entryPoint, sourceFiles }
   } catch (error) {
     return makeDiscoveryError('', error instanceof Error ? error.message : String(error))
