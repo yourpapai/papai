@@ -9,18 +9,13 @@ import { logger } from '../logger.js'
 import { listRecentRequests } from '../usage/recent-requests.js'
 import { RecentRequestsResponseSchema } from './admin-schemas.js'
 
-const TASK_PROVIDERS = ['kaneo', 'youtrack'] as const
-
 type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'kontur-talk' | 'unknown'
-type AdminTaskProvider = (typeof TASK_PROVIDERS)[number] | 'unknown'
+type AdminTaskProvider = string
 
 const singleKnownProvider = <T extends string>(values: readonly T[]): T | 'unknown' => {
   const unique = [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
   return unique.length === 1 ? unique[0]! : 'unknown'
 }
-
-const isTaskProvider = (type: string): type is (typeof TASK_PROVIDERS)[number] =>
-  TASK_PROVIDERS.some((knownType) => knownType === type)
 
 const safeChatProvider = (): AdminChatProvider =>
   singleKnownProvider(listActivePlatformInstancesSafe().instances.map((instance) => instance.type))
@@ -29,7 +24,6 @@ const safeTaskProvider = (): AdminTaskProvider => {
   const activeTypes = listTaskInstancesSafe()
     .instances.filter((instance) => instance.status === 'active')
     .map((instance) => instance.type)
-  if (!activeTypes.every((type) => isTaskProvider(type))) return 'unknown'
   return singleKnownProvider(activeTypes)
 }
 

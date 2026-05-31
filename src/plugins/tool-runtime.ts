@@ -6,6 +6,7 @@
 import type { TaskProvider } from '../providers/types.js'
 import { consumeWebFetchQuota } from '../web/rate-limit.js'
 import { buildIdentityFacade } from './identity-facade.js'
+import type { PluginScheduledJobRuntimeContext } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type { PluginManifest, PluginTaskProviderFacade, PluginToolRuntimeContext } from './types.js'
 
@@ -45,7 +46,8 @@ function buildRuntimeKv(
       kvDelete(pluginId, contextId, key)
     },
     list(prefix?: string): Array<{ key: string; value: string }> {
-      return kvList(pluginId, contextId, prefix).map((row) => ({ key: row.key, value: row.value }))
+      const rows = prefix === undefined ? kvList(pluginId, contextId) : kvList(pluginId, contextId, prefix)
+      return rows.map((row) => ({ key: row.key, value: row.value }))
     },
   })
 }
@@ -61,7 +63,7 @@ function buildRuntimeAdminConfig(pluginId: string, manifest: PluginManifest): Pl
   })
 }
 
-function buildTaskProviderFacade(
+export function buildPluginTaskProviderFacade(
   pluginId: string,
   provider: TaskProvider,
   canRead: boolean,
@@ -91,6 +93,26 @@ function buildTaskProviderFacade(
   }) satisfies PluginTaskProviderFacade
 }
 
+export function buildPluginScheduledJobRuntimeContext(
+  pluginId: string,
+  contextId: string,
+  manifest: PluginManifest,
+  provider: TaskProvider | undefined,
+): PluginScheduledJobRuntimeContext {
+  if (provider === undefined) return { pluginId, contextId }
+
+  return {
+    pluginId,
+    contextId,
+    taskProvider: buildPluginTaskProviderFacade(
+      pluginId,
+      provider,
+      manifest.permissions.includes('tasks.read'),
+      manifest.permissions.includes('tasks.write'),
+    ),
+  }
+}
+
 // Intentionally shares the web_fetch rate-limit bucket (20 req / 5 min per actor).
 // Ungated: rate limiting is a safety mechanism, not a capability — any plugin may self-throttle.
 function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
@@ -103,11 +125,11 @@ function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
   })
 }
 
-const buildRuntimeIdentity = (manifest: PluginManifest): PluginToolRuntimeContext['identity'] => {
+const buildRuntimeIdentity = (manifest: PluginManifest, chatUserId: string): PluginToolRuntimeContext['identity'] => {
   const [providerType] = manifest.contributes.taskProviderTypes
   if (!manifest.permissions.includes('identity')) return undefined
   if (manifest.contributes.taskProviderTypes.length !== 1 || providerType === undefined) return undefined
-  return buildIdentityFacade(providerType)
+  return buildIdentityFacade(providerType, chatUserId)
 }
 
 export function buildPluginToolRuntimeContext(
@@ -116,12 +138,12 @@ export function buildPluginToolRuntimeContext(
   runtime: PluginToolSetRuntime,
 ): PluginToolRuntimeContext {
   const permissions = new Set(manifest.permissions)
-  const identity = buildRuntimeIdentity(manifest)
+  const identity = buildRuntimeIdentity(manifest, runtime.chatUserId)
   return Object.freeze({
     pluginId,
     storageContextId: runtime.storageContextId,
     chatUserId: runtime.chatUserId,
-    taskProvider: buildTaskProviderFacade(
+    taskProvider: buildPluginTaskProviderFacade(
       pluginId,
       runtime.provider,
       permissions.has('tasks.read'),

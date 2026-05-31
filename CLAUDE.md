@@ -345,7 +345,7 @@ Optional: debug server + debug/admin clients
 
 ## Plugin System
 
-Trusted, repository-local first-party plugins only — no sandbox, no marketplace, no npm install, no hot reload, no plugin secret store, and no raw provider/DB/env/network access.
+Trusted, repository-local first-party plugins only — no sandbox, no marketplace, no npm install, no hot reload, no plugin secret store, and no raw provider/DB/env/network access. The framework exposes a restricted runtime API, but this is not a sandbox guarantee because plugin code runs in-process.
 
 ### Layout
 
@@ -373,7 +373,7 @@ Migration `039_plugins` creates four SQLite tables:
 | `plugin_kv`             | Per-(plugin, context, key) string KV, gated by the `storage` permission.                                 |
 | `plugin_runtime_events` | Recent runtime events (activation, deactivation, error) for diagnostics in the settings web UI.          |
 
-Runtime state values (`active`, `incompatible`, `config_missing`, `error`) are recomputed in memory; only approval-related state is persisted.
+Runtime state values (`active`, `incompatible`, `error`) are recomputed in memory; only approval-related state is persisted.
 
 ### Plugin Context Facade
 
@@ -385,7 +385,7 @@ Activation receives a frozen `PluginContext` exposing only:
 - `ctx.adminConfig.get(key)` — read-only admin-scoped plugin config declared in `configRequirements`.
 - `ctx.providerRuntime` — HTTP helper for provider plugins when `provider.task` or `http` is declared; every hop must match `providerAllowedHosts` and pass public URL checks.
 - `ctx.identity` — available when `identity` is declared and the plugin declares exactly one task provider type.
-- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob,registerTaskProviderType}` — registrations are rejected unless declared in `contributes.{tools,promptFragments,commands,jobs,taskProviderTypes}`.
+- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob,registerTaskProviderType}` — registrations are rejected unless declared in `contributes.{tools,promptFragments,commands,jobs,taskProviderTypes}`. Commands also require `commands`; scheduled jobs also require `scheduler`.
 
 Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `process.env`. Tool executions receive a request-scoped `PluginToolRuntimeContext` with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated task-provider facade, optional `identity`, rate-limit helper, and plugin/context KV.
 
@@ -394,11 +394,12 @@ Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `proce
 - LLM-facing tool name: `plugin_<sanitized-plugin-id>__<tool-name>` (e.g., `plugin_hello_world__greet`).
 - Command name: `plugin_<sanitized-plugin-id>_<command-name>`, registered through the same `ChatProvider.registerCommand` path as core commands.
 - Scheduled job owner: `plugin:<pluginId>:<jobName>`, executed only for contexts where the plugin is enabled and eligible.
+- Scheduled jobs execute with a framework-owned runtime context, not bare `contextId` alone.
 - Prompt fragments are synchronous strings or sync functions; appended to the system prompt with a 2,000-char-per-fragment / 8,000-char-total budget.
 
 ### Permissions (MVP)
 
-`storage`, `scheduler`, `commands`, `chat.send`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, and `http`. Runtime gating exists for storage, task reads/writes, provider HTTP runtime, contributed task-provider registration, and identity facade exposure. Raw chat sending, raw provider access, raw DB access, and arbitrary unallowlisted network access are not exposed.
+`storage`, `scheduler`, `commands`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, and `http`. Runtime gating exists for storage, command registration, scheduled-job registration, task reads/writes, provider HTTP runtime, contributed task-provider registration, and identity facade exposure. Raw chat sending, raw provider access, raw DB access, and arbitrary unallowlisted network access are not exposed.
 
 ### Admin Interface
 

@@ -12,8 +12,10 @@ export type PluginIdentityFacade = {
   /** Resolve the recorded provider account for a chat context, or null. */
   lookupForChatUser(chatUserId: string): { providerUserId: string; providerLogin: string; verified: boolean } | null
   /** Record an unverified ('manual_nl') claim. Never marks the mapping verified. */
-  recordClaim(chatUserId: string, providerUserId: string, providerLogin: string, displayName?: string): void
+  recordClaim(providerUserId: string, providerLogin: string, displayName?: string): void
 }
+
+export type PluginIdentityLookupFacade = Pick<PluginIdentityFacade, 'lookupForChatUser'>
 
 export interface IdentityFacadeDeps {
   getIdentityMapping: typeof defaultGetIdentityMapping
@@ -27,11 +29,14 @@ const defaultDeps: IdentityFacadeDeps = {
 
 export function buildIdentityFacade(
   providerName: string,
+  chatUserId: string,
   deps: IdentityFacadeDeps = defaultDeps,
 ): PluginIdentityFacade {
   return Object.freeze({
-    lookupForChatUser(chatUserId: string): { providerUserId: string; providerLogin: string; verified: boolean } | null {
-      const mapping = deps.getIdentityMapping(chatUserId, providerName)
+    lookupForChatUser(
+      targetChatUserId: string,
+    ): { providerUserId: string; providerLogin: string; verified: boolean } | null {
+      const mapping = deps.getIdentityMapping(targetChatUserId, providerName)
       if (mapping === null || mapping.providerUserId === null || mapping.providerUserLogin === null) {
         return null
       }
@@ -41,7 +46,7 @@ export function buildIdentityFacade(
         verified: mapping.matchMethod === 'auto',
       }
     },
-    recordClaim(chatUserId: string, providerUserId: string, providerLogin: string, displayName?: string): void {
+    recordClaim(providerUserId: string, providerLogin: string, displayName?: string): void {
       deps.setIdentityMapping({
         contextId: chatUserId,
         providerName,
@@ -51,6 +56,27 @@ export function buildIdentityFacade(
         matchMethod: 'manual_nl',
         confidence: 100,
       })
+    },
+  })
+}
+
+export function buildIdentityLookupFacade(
+  providerName: string,
+  deps: IdentityFacadeDeps = defaultDeps,
+): PluginIdentityLookupFacade {
+  return Object.freeze({
+    lookupForChatUser(
+      targetChatUserId: string,
+    ): { providerUserId: string; providerLogin: string; verified: boolean } | null {
+      const mapping = deps.getIdentityMapping(targetChatUserId, providerName)
+      if (mapping === null || mapping.providerUserId === null || mapping.providerUserLogin === null) {
+        return null
+      }
+      return {
+        providerUserId: mapping.providerUserId,
+        providerLogin: mapping.providerUserLogin,
+        verified: mapping.matchMethod === 'auto',
+      }
     },
   })
 }

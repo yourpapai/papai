@@ -8,15 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import factory from '../../../plugins/task-provider-youtrack/index.js'
 import manifestJson from '../../../plugins/task-provider-youtrack/plugin.json' with { type: 'json' }
 import { YouTrackProvider } from '../../../plugins/task-provider-youtrack/provider.js'
-import type {
-  PluginAdminConfig,
-  PluginContext,
-  PluginKvStore,
-  PluginLogger,
-  PluginRegistration,
-} from '../../../src/plugins/context.js'
-import { pluginManifestSchema, type PluginPermission } from '../../../src/plugins/types.js'
-import type { TaskProviderFactory } from '../../../src/providers/registry.js'
+import { pluginManifestSchema } from '../../../src/plugins/types.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 describe('task-provider-youtrack activation', () => {
@@ -40,58 +32,32 @@ describe('task-provider-youtrack activation', () => {
 
   test('activate() registers a factory that builds a youtrack provider from raw config', () => {
     mockLogger()
-    let capturedFactory: TaskProviderFactory | undefined
+    type RegisterTaskProviderType = Parameters<
+      ReturnType<typeof factory>['activate']
+    >[0]['registration']['registerTaskProviderType']
+    type RegistrationContext = Parameters<ReturnType<typeof factory>['activate']>[0]
 
-    const stubKv: PluginKvStore = {
-      get(_key: string): string | undefined {
-        return undefined
-      },
-      set(_key: string, _value: string): void {},
-      delete(_key: string): void {},
-      list(_prefix?: string): Array<{ key: string; value: string }> {
-        return []
-      },
-    }
+    let capturedFactory: Parameters<RegisterTaskProviderType>[1] | undefined
 
-    const stubLog: PluginLogger = {
-      debug(_data: Record<string, unknown>, _msg: string): void {},
-      info(_data: Record<string, unknown>, _msg: string): void {},
-      warn(_data: Record<string, unknown>, _msg: string): void {},
-      error(_data: Record<string, unknown>, _msg: string): void {},
-    }
-
-    const stubAdminConfig: PluginAdminConfig = {
-      get(_key: string): string | undefined {
-        return undefined
-      },
-    }
-
-    const stubRegistration: PluginRegistration = {
-      registerTaskProviderType(type: string, providerFactory: TaskProviderFactory): void {
+    const stubRegistration: RegistrationContext['registration'] = {
+      registerTaskProviderType(...args: Parameters<RegisterTaskProviderType>): void {
+        const [type, input] = args
         expect(type).toBe('youtrack')
-        capturedFactory = providerFactory
+        capturedFactory = input
       },
-      registerTool(): void {},
-      registerPromptFragment(): void {},
-      registerCommand(): void {},
-      registerScheduledJob(): void {},
     }
 
-    const mockCtx: PluginContext = {
-      pluginId: 'task-provider-youtrack',
-      contextId: '__system__',
-      permissions: new Set<PluginPermission>(),
-      kv: stubKv,
-      log: stubLog,
-      adminConfig: stubAdminConfig,
+    const mockCtx: RegistrationContext = {
       registration: stubRegistration,
     }
 
-    void factory().activate(mockCtx)
+    factory().activate(mockCtx)
 
     expect(capturedFactory).toBeDefined()
 
-    const provider = capturedFactory?.({
+    const providerFactory = capturedFactory!
+
+    const provider = providerFactory({
       baseUrl: 'https://yt.invalid',
       token: 'tkn',
     })

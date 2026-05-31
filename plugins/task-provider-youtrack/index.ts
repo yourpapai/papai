@@ -3,25 +3,32 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { PluginContext, TaskProvider } from 'papai/plugin-types'
+import { createYouTrackProvider } from './entry-runtime.js'
 
-import type { PluginFactory, PluginInstance } from '../../src/plugins/types.js'
-import { YouTrackProvider } from './provider.js'
+type TaskProviderLike = {
+  readonly name: string
+}
+
+type PluginContextLike = {
+  registration: {
+    registerTaskProviderType(type: string, factory: (config: Record<string, string>) => TaskProviderLike): void
+  }
+}
+
+type PluginInstanceLike = {
+  activate(ctx: PluginContextLike): void
+}
+
+type PluginFactoryLike = () => PluginInstanceLike
 
 // Named export resolved by the plugin loader from the manifest's `providerConfigValidator`.
 export { validateConfig } from './validate-config.js'
 
-const factory: PluginFactory = (): PluginInstance => ({
-  activate(ctx: PluginContext): void {
-    // KNOWN GAP (#15): YouTrackProvider's client.ts uses global fetch, not ctx.providerRuntime,
-    // so the manifest's providerAllowedHosts ([]) is declared but NOT enforced. The factory
-    // signature is (config) => TaskProvider and never receives ctx, so providerRuntime is
-    // unreachable here today. See docs/plugins/developer-guide.md "Known limitation".
-    ctx.registration.registerTaskProviderType(
-      'youtrack',
-      (config): TaskProvider =>
-        new YouTrackProvider({ baseUrl: config['baseUrl'] ?? '', token: config['token'] ?? '' }),
-    )
+const factory: PluginFactoryLike = () => ({
+  activate(ctx: PluginContextLike): void {
+    // KNOWN GAP (#15): provider clients still use global fetch instead of ctx.providerRuntime.
+    // Provider runtime enforcement needs factory/client plumbing plus dynamic-host admission.
+    ctx.registration.registerTaskProviderType('youtrack', (config): TaskProviderLike => createYouTrackProvider(config))
   },
 })
 

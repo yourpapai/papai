@@ -27,7 +27,6 @@ const VALID_PLUGIN_STATES: ReadonlySet<PluginState> = new Set<PluginState>([
   'approved',
   'rejected',
   'incompatible',
-  'config_missing',
   'active',
   'error',
 ])
@@ -36,18 +35,25 @@ function hasApprovedManifestHash(value: string | null | undefined): boolean {
   return value !== null && value !== undefined && value !== ''
 }
 
-function resolveStartupState(state: PluginState, approvedManifestHash: string | null | undefined): PluginState {
-  if (state === 'rejected') return 'rejected'
-  if (state === 'discovered') return 'discovered'
-  if (hasApprovedManifestHash(approvedManifestHash)) return 'approved'
-  return 'discovered'
+function isKnownPluginState(value: string): value is PluginState {
+  for (const state of VALID_PLUGIN_STATES) {
+    if (state === value) return true
+  }
+  return false
 }
 
-function toPluginState(value: string): PluginState {
-  for (const state of VALID_PLUGIN_STATES) {
-    if (state === value) return state
+function resolveStartupState(state: string, approvedManifestHash: string | null | undefined): PluginState {
+  if (state === 'rejected') return 'rejected'
+  if (state === 'discovered') return 'discovered'
+  if (hasApprovedManifestHash(approvedManifestHash)) {
+    if (!isKnownPluginState(state)) {
+      log.warn({ state }, 'Unknown legacy plugin state in DB — preserving approval from manifest hash')
+    }
+    return 'approved'
   }
-  log.warn({ value }, 'Unknown plugin state in DB — defaulting to discovered')
+  if (!isKnownPluginState(state)) {
+    log.warn({ state }, 'Unknown plugin state in DB — defaulting to discovered')
+  }
   return 'discovered'
 }
 
@@ -102,7 +108,7 @@ export class PluginRegistry {
       return
     }
 
-    const normalizedState = resolveStartupState(toPluginState(existing.state), existing.approvedManifestHash)
+    const normalizedState = resolveStartupState(existing.state, existing.approvedManifestHash)
     const compatibilityReason =
       normalizedState === 'approved' ? undefined : toOptionalReason(existing.compatibilityReason)
     updatePluginAdminStateField(manifest.id, {
@@ -176,6 +182,7 @@ export class PluginRegistry {
     const entry = this.entries.get(pluginId)
     if (entry !== undefined) {
       entry.state = 'active'
+      updatePluginAdminStateField(pluginId, { state: 'active', compatibilityReason: null })
     }
     log.info({ pluginId }, 'Plugin marked active')
   }
@@ -185,6 +192,7 @@ export class PluginRegistry {
     if (entry !== undefined) {
       entry.state = 'error'
       entry.compatibilityReason = reason
+      updatePluginAdminStateField(pluginId, { state: 'error', compatibilityReason: reason })
     }
     log.error({ pluginId, reason }, 'Plugin marked as error')
   }
@@ -193,6 +201,7 @@ export class PluginRegistry {
     const entry = this.entries.get(pluginId)
     if (entry !== undefined && entry.state === 'active') {
       entry.state = 'approved'
+      updatePluginAdminStateField(pluginId, { state: 'approved', compatibilityReason: null })
     }
   }
 

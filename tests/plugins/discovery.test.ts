@@ -3,14 +3,24 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, win32 } from 'node:path'
 
-import { discoverPlugins, isPathInsideDirectory } from '../../src/plugins/discovery.js'
+import { discoverPlugins, discoveryPathOps, isPathInsideDirectory } from '../../src/plugins/discovery.js'
 
 const tempDirs: string[] = []
+
+function realpathWithInjectedLoop(
+  path: Parameters<typeof discoveryPathOps.realpathSync>[0],
+  originalRealpathSync: typeof discoveryPathOps.realpathSync,
+  error: Error,
+): string {
+  const pathText = typeof path === 'string' ? path : path.toString()
+  if (pathText.endsWith('helper.ts')) throw error
+  return originalRealpathSync(path)
+}
 
 function makeTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'papai-plugin-discovery-'))
@@ -69,6 +79,37 @@ describe('discoverPlugins', () => {
 
     expect(result.errors).toEqual([])
     expect(result.plugins.map((plugin) => plugin.manifest.id)).toEqual(['alpha', 'zeta'])
+  })
+
+  test('discovers built-in plugins under strict relative-only entry-graph rules', () => {
+    const result = discoverPlugins(join(process.cwd(), 'plugins'))
+    const pluginIds = result.plugins.map((plugin) => plugin.manifest.id)
+    const errorDirectoryNames = new Set(result.errors.map((error) => error.directoryName))
+
+    expect(errorDirectoryNames.has('task-provider-kaneo')).toBe(false)
+    expect(errorDirectoryNames.has('task-provider-youtrack')).toBe(false)
+    expect(errorDirectoryNames.has('synthetic-web-search')).toBe(false)
+    expect(pluginIds.includes('task-provider-kaneo')).toBe(true)
+    expect(pluginIds.includes('task-provider-youtrack')).toBe(true)
+    expect(pluginIds.includes('synthetic-web-search')).toBe(true)
+  })
+
+  test('built-in strict entry files do not reference src framework types directly', () => {
+    const repoRoot = process.cwd()
+    const files = [
+      'plugins/task-provider-kaneo/index.ts',
+      'plugins/task-provider-kaneo/entry-runtime.ts',
+      'plugins/task-provider-youtrack/index.ts',
+      'plugins/task-provider-youtrack/entry-runtime.ts',
+      'plugins/synthetic-web-search/index.ts',
+    ]
+
+    for (const relativePath of files) {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf-8')
+      expect(source.includes('src/')).toBe(false)
+      expect(source.includes("import('../../src/")).toBe(false)
+      expect(source.includes('import("../../src/')).toBe(false)
+    }
   })
 
   test('reports invalid plugin.json as discovery error without throwing', () => {
@@ -294,6 +335,121 @@ describe('discoverPlugins', () => {
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
+  test('manifest hash changes when an import.meta.require local target changes', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'hash-import-meta-require')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'hash-import-meta-require',
+        name: 'Hash Import Meta Require',
+        version: '1.0.0',
+        description: 'hash import.meta.require helpers',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "export const bridge = import.meta.require('./helper.ts')\n",
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { bridge } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return bridge.value } } }\n",
+      'utf-8',
+    )
+
+    const first = discoverPlugins(root)
+    expect(first.errors).toEqual([])
+    const firstHash = first.plugins[0]?.manifestHash
+    expect(typeof firstHash).toBe('string')
+
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
+
+    const second = discoverPlugins(root)
+    expect(second.errors).toEqual([])
+    expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
+  })
+
+  test('manifest hash changes when an aliased import.meta.require local target changes', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'hash-aliased-import-meta-require')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'hash-aliased-import-meta-require',
+        name: 'Hash Aliased Import Meta Require',
+        version: '1.0.0',
+        description: 'hash aliased import.meta.require helpers',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "const requireModule = import.meta.require\nexport const bridge = requireModule('./helper.ts')\n",
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { bridge } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return bridge.value } } }\n",
+      'utf-8',
+    )
+
+    const first = discoverPlugins(root)
+    expect(first.errors).toEqual([])
+    const firstHash = first.plugins[0]?.manifestHash
+    expect(typeof firstHash).toBe('string')
+
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
+
+    const second = discoverPlugins(root)
+    expect(second.errors).toEqual([])
+    expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
+  })
+
+  test('aliased import.meta.require resolves .js specifiers to plugin-local .ts source files', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'aliased-import-meta-require-js-specifier')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'aliased-import-meta-require-js-specifier',
+        name: 'Aliased Import Meta Require Js Specifier',
+        version: '1.0.0',
+        description: 'resolve js specifier to ts source',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "const requireModule = import.meta.require\nexport const bridge = requireModule('./helper.js')\n",
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { bridge } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return bridge.value } } }\n",
+      'utf-8',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.errors).toEqual([])
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]?.manifest.id).toBe('aliased-import-meta-require-js-specifier')
+  })
+
   test('manifest hash is stable across different plugin root paths', () => {
     const firstRoot = makeTempDir()
     const secondRoot = makeTempDir()
@@ -319,6 +475,156 @@ describe('discoverPlugins', () => {
     expect(first.errors).toEqual([])
     expect(second.errors).toEqual([])
     expect(first.plugins[0]?.manifestHash).toBe(second.plugins[0]?.manifestHash)
+  })
+
+  test('rejects plugin when imported path realpath throws', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'realpath-fails')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'realpath-fails',
+        name: 'Realpath Fails',
+        version: '1.0.0',
+        description: 'test',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { value } from './helper.ts'\nexport default function createPlugin(){ return { activate(){ return value } } }\n",
+      'utf-8',
+    )
+
+    const originalRealpathSync = discoveryPathOps.realpathSync
+    const helperLoopError = Object.assign(new Error('loop'), { code: 'ELOOP' })
+    const realpathSpy = spyOn(discoveryPathOps, 'realpathSync').mockImplementation((path) =>
+      realpathWithInjectedLoop(path, originalRealpathSync, helperLoopError),
+    )
+
+    try {
+      const result = discoverPlugins(root)
+
+      expect(result.plugins).toEqual([])
+      expect(result.errors[0]?.reason).toContain('helper.ts')
+    } finally {
+      realpathSpy.mockRestore()
+    }
+  })
+
+  test('rejects bare-module imports from plugin entry graph', () => {
+    const root = makeTempDir()
+    writePlugin(
+      root,
+      'bare-import-plugin',
+      {},
+      "import 'left-pad'\nexport default function createPlugin(){ return { activate() {} } }",
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.plugins).toEqual([])
+    expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
+  })
+
+  test('rejects bare import.meta.require calls from plugin-owned imported modules', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'bare-import-meta-require-plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'bare-import-meta-require-plugin',
+        name: 'Bare Import Meta Require Plugin',
+        version: '1.0.0',
+        description: 'reject bare import.meta.require',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'runtime-bridge.ts'), "export const zod = import.meta.require('zod')\n", 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { zod } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return zod } } }\n",
+      'utf-8',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.plugins).toEqual([])
+    expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
+  })
+
+  test('rejects bare aliased import.meta.require calls from plugin-owned imported modules', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'bare-aliased-import-meta-require-plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'bare-aliased-import-meta-require-plugin',
+        name: 'Bare Aliased Import Meta Require Plugin',
+        version: '1.0.0',
+        description: 'reject bare aliased import.meta.require',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "const requireModule = import.meta.require\nexport const zod = requireModule('zod')\n",
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { zod } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return zod } } }\n",
+      'utf-8',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.plugins).toEqual([])
+    expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
+  })
+
+  test('rejects plugin-owned computed import.meta.require calls that cannot be resolved deterministically', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'computed-import-meta-require-plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'computed-import-meta-require-plugin',
+        name: 'Computed Import Meta Require Plugin',
+        version: '1.0.0',
+        description: 'reject computed import.meta.require',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "const spec = 'zo' + 'd'\nexport const zod = import.meta.require(spec)\n",
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { zod } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return zod } } }\n",
+      'utf-8',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.plugins).toEqual([])
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]?.reason).toContain('import.meta.require')
   })
 
   test('rejects plugin-owned dynamic imports that cannot be resolved deterministically', () => {

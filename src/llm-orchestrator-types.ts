@@ -16,7 +16,12 @@ export type LlmOrchestratorDeps = {
   stepCountIs: typeof stepCountIs
   buildOpenAI: (apiKey: string, baseURL: string) => ReturnType<typeof createOpenAICompatible>
   resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
-  maybeProvisionKaneo: (reply: ReplyFn, contextId: string, username: string | null) => Promise<void>
+  maybeAutoProvision: (
+    reply: ReplyFn,
+    contextId: string,
+    chatUserId: string,
+    username: string | null,
+  ) => Promise<boolean>
 } & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>>
 
 type TokenUsage = { inputTokens: number | undefined; outputTokens: number | undefined }

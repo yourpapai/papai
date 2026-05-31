@@ -114,7 +114,7 @@ describe('synthetic-web-search plugin', () => {
   test('activates and registers search tool and web-search-hint prompt fragment', () => {
     const { ctx, registeredTool, registeredFragment } = createMockContext()
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     expect(registeredTool.value).toBeDefined()
     expect(registeredTool.value!.name).toBe('search')
@@ -140,7 +140,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -174,7 +174,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ apiKey: 'stale-api-key', httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext({ apiKey: 'updated-api-key' })
@@ -198,7 +198,7 @@ describe('synthetic-web-search plugin', () => {
   test('search tool returns rate_limited error when rate limit exceeded', async () => {
     const { ctx, registeredTool } = createMockContext()
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext({ allowed: false, retryAfterSec: 30 })
@@ -216,7 +216,7 @@ describe('synthetic-web-search plugin', () => {
       ),
     })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = {
@@ -246,7 +246,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -270,7 +270,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -288,7 +288,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -305,7 +305,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -318,7 +318,7 @@ describe('synthetic-web-search plugin', () => {
   test('search tool returns not_configured error when API key is missing', async () => {
     const { ctx, registeredTool } = createMockContext({ apiKey: undefined })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext({ apiKey: undefined })
@@ -343,7 +343,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -373,7 +373,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -395,7 +395,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -420,7 +420,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
@@ -435,7 +435,7 @@ describe('synthetic-web-search plugin', () => {
 
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
-    void instance.activate(ctx)
+    instance.activate(ctx)
 
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()

@@ -61,6 +61,8 @@
     "src/config.ts": ["exports"],
     // resetPluginRegistryForTesting is a test-only seam.
     "src/plugins/registry.ts": ["exports"],
+    // resetContributionCollisionStateForTesting is a test-only seam.
+    "src/plugins/contributions.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.
     "src/system-config.ts": ["exports"],
     // resetStatsSaltCacheForTesting is a test-only seam.
@@ -123,6 +125,15 @@
     // sees no static consumer of the implementation.
     "plugins/task-provider-kaneo/validate-config.ts": ["exports"],
     "plugins/task-provider-youtrack/validate-config.ts": ["exports"],
+    // Strict discovery migration moved these plugin runtime consumers behind
+    // import.meta.require()-based plugin-local bridges, which Knip cannot trace.
+    "plugins/task-provider-kaneo/auto-provision.ts": ["files"],
+    "plugins/task-provider-kaneo/provision.ts": ["files", "exports"],
+    "plugins/task-provider-kaneo/client.ts": ["exports"],
+    "plugins/task-provider-kaneo/provider.ts": ["exports"],
+    "plugins/task-provider-youtrack/provider.ts": ["exports"],
+    "src/cache.ts": ["exports"],
+    "src/types/config.ts": ["exports"],
   },
 
   // Report unused exports even in entry files

@@ -22,6 +22,7 @@ export type {
   PluginInstance,
   PluginPromptFragment,
   PluginScheduledJob,
+  PluginScheduledJobRuntimeContext,
   PluginTaskProviderFacade,
   PluginTool,
   PluginToolRuntimeContext,
@@ -35,7 +36,6 @@ export const PLUGIN_PERMISSIONS = [
   'storage',
   'scheduler',
   'commands',
-  'chat.send',
   'tasks.read',
   'tasks.write',
   'provider.task',
@@ -46,14 +46,7 @@ export const PLUGIN_PERMISSIONS = [
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]
 
 /** Runtime state machine states for a plugin. */
-export type PluginState =
-  | 'discovered'
-  | 'approved'
-  | 'rejected'
-  | 'incompatible'
-  | 'config_missing'
-  | 'active'
-  | 'error'
+export type PluginState = 'discovered' | 'approved' | 'rejected' | 'incompatible' | 'active' | 'error'
 
 /** All valid task capability strings (used for manifest validation). */
 const TASK_CAPABILITY_VALUES = [
@@ -246,6 +239,14 @@ export const pluginManifestSchema = z
       .optional(),
     activationTimeoutMs: z.number().int().min(100).max(10000).optional().default(5000),
     mcp: mcpPluginConfigSchema.optional(),
+  })
+  .refine((m) => m.contributes.commands.length === 0 || m.permissions.includes('commands'), {
+    message: "Declaring contributes.commands requires the 'commands' permission",
+    path: ['permissions'],
+  })
+  .refine((m) => m.contributes.jobs.length === 0 || m.permissions.includes('scheduler'), {
+    message: "Declaring contributes.jobs requires the 'scheduler' permission",
+    path: ['permissions'],
   })
   .refine((m) => m.contributes.taskProviderTypes.length === 0 || m.permissions.includes('provider.task'), {
     message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",

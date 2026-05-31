@@ -4,9 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import type { TaskProviderFactory } from '../providers/registry.js'
+import type { TaskProviderAutoProvision, TaskProviderFactory } from '../providers/registry.js'
 import type { ProviderConfigField } from '../providers/types.js'
-import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
+import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { buildActivationGuard, buildNamedRegistrationHandlers, type ActivationGuard } from './registration-support.js'
@@ -36,6 +36,13 @@ export type PluginAdminConfig = {
 }
 
 /** Registration API given to a plugin's activate() function. */
+type TaskProviderRegistrationInput =
+  | TaskProviderFactory
+  | {
+      factory: TaskProviderFactory
+      autoProvision?: TaskProviderAutoProvision
+    }
+
 export type PluginRegistration = {
   /** Register a tool contribution. The name must match a declared contributes.tools entry. */
   registerTool(tool: PluginTool): void
@@ -46,7 +53,7 @@ export type PluginRegistration = {
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
   /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
-  registerTaskProviderType(type: string, factory: TaskProviderFactory): void
+  registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void
 }
 
 /** Full context passed to a plugin's activate() function. */
@@ -60,7 +67,7 @@ export type PluginContext = {
   /** Present only when the 'provider.task' or 'http' permission is held. */
   readonly providerRuntime?: PluginProviderRuntime
   /** Present only when 'identity' is held and the plugin declares one task provider type. */
-  readonly identity?: PluginIdentityFacade
+  readonly identity?: PluginIdentityLookupFacade
   readonly adminConfig: PluginAdminConfig
 }
 
@@ -86,7 +93,8 @@ function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
       kvDelete(pluginId, contextId, key)
     },
     list(prefix?: string): Array<{ key: string; value: string }> {
-      return kvList(pluginId, contextId, prefix).map((row) => ({ key: row.key, value: row.value }))
+      const rows = prefix === undefined ? kvList(pluginId, contextId) : kvList(pluginId, contextId, prefix)
+      return rows.map((row) => ({ key: row.key, value: row.value }))
     },
   })
 }
@@ -125,11 +133,8 @@ function buildRegisterTaskProviderType(
   manifest: PluginManifest,
   collected: PluginContributions,
   activationGuard: ActivationGuard,
-): (type: string, factory: TaskProviderFactory) => void {
-  return function registerTaskProviderType(
-    type: string,
-    factoryOrRegistration: TaskProviderFactory | Readonly<{ factory: TaskProviderFactory }>,
-  ): void {
+): (type: string, input: TaskProviderRegistrationInput) => void {
+  return function registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void {
     activationGuard.assertOpen()
     if (!manifest.permissions.includes('provider.task')) {
       throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
@@ -143,10 +148,11 @@ function buildRegisterTaskProviderType(
     if (collected.taskProviderRegistration !== undefined) {
       throw new Error(`Task provider type '${type}' was registered more than once`)
     }
-    const factory = typeof factoryOrRegistration === 'function' ? factoryOrRegistration : factoryOrRegistration.factory
+    const registration = typeof input === 'function' ? { factory: input } : input
     collected.taskProviderRegistration = {
       type,
-      factory,
+      factory: registration.factory,
+      autoProvision: registration.autoProvision,
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
       instanceConfigSchema: manifest.providerConfigSchema.map((field) => toProviderConfigField(field, 'instance')),
@@ -232,7 +238,7 @@ export function buildPluginContext(
   const [declaredProviderType] = declaredTypes
   const identity =
     permissions.has('identity') && declaredTypes.length === 1 && declaredProviderType !== undefined
-      ? buildIdentityFacade(declaredProviderType)
+      ? buildIdentityLookupFacade(declaredProviderType)
       : undefined
 
   const ctx: PluginContext = Object.freeze({

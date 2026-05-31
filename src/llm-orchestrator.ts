@@ -6,7 +6,6 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
-import { maybeProvisionKaneo } from '../plugins/task-provider-kaneo/provision.js'
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { getCachedHistory } from './cache.js'
@@ -31,6 +30,7 @@ import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-ty
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
+import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { getSystemConfig, isSystemConfigComplete, missingSystemConfigKeys } from './system-config.js'
@@ -47,7 +47,8 @@ const defaultDeps: LlmOrchestratorDeps = {
   buildOpenAI: (apiKey: string, baseURL: string) =>
     createOpenAICompatible({ name: 'openai-compatible', apiKey, baseURL, fetch: fetchWithoutTimeout }),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
-  maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
+  maybeAutoProvision: (reply, contextId, chatUserId, username) =>
+    maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
 }
 export { defaultDeps }
 
@@ -176,7 +177,11 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   const { reply, contextId, chatUserId, username, contextType, deps, configContextId, turnId } = args
   const configId = resolveConfigId(contextId, configContextId)
   if (contextType === 'dm') {
-    await deps.maybeProvisionKaneo(reply, configId, username)
+    try {
+      await deps.maybeAutoProvision(reply, configId, chatUserId, username)
+    } catch {
+      // Auto-provision is opportunistic; missing or broken hooks should fall through to normal setup guidance.
+    }
   }
   await ensureRequiredConfig(reply, contextId, configId)
   const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()

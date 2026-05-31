@@ -57,6 +57,7 @@ function commitTaskProviderRegistration(
   registerContributedTaskProviderType(type, {
     pluginId: manifest.id,
     factory: entry.factory,
+    autoProvision: entry.autoProvision,
     validateConfig,
     capabilities: entry.capabilities,
     displayName: entry.displayName,

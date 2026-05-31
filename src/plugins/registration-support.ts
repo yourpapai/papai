@@ -118,6 +118,7 @@ function buildPromptFragmentRegistration(
 }
 
 function buildCommandRegistration(
+  manifest: PluginManifest,
   names: RegistrationNames,
   args: { activationGuard: ActivationGuard; registerCommand(command: PluginCommand): void },
 ): (command: PluginCommand) => void {
@@ -129,12 +130,16 @@ function buildCommandRegistration(
     activationGuard: args.activationGuard,
     readName: (command) => command.name,
     onRegister: (command) => {
+      if (!manifest.permissions.includes('commands')) {
+        throw new Error(`Plugin ${manifest.id} cannot register commands without 'commands'`)
+      }
       args.registerCommand(command)
     },
   })
 }
 
 function buildScheduledJobRegistration(
+  manifest: PluginManifest,
   names: RegistrationNames,
   args: { activationGuard: ActivationGuard; registerScheduledJob(job: PluginScheduledJob): void },
 ): (job: PluginScheduledJob) => void {
@@ -146,6 +151,9 @@ function buildScheduledJobRegistration(
     activationGuard: args.activationGuard,
     readName: (job) => job.name,
     onRegister: (job) => {
+      if (!manifest.permissions.includes('scheduler')) {
+        throw new Error(`Plugin ${manifest.id} cannot register scheduled jobs without 'scheduler'`)
+      }
       args.registerScheduledJob(job)
     },
   })
@@ -170,7 +178,7 @@ export function buildNamedRegistrationHandlers(
   return {
     registerTool: buildToolRegistration(names, args),
     registerPromptFragment: buildPromptFragmentRegistration(names, args),
-    registerCommand: buildCommandRegistration(names, args),
-    registerScheduledJob: buildScheduledJobRegistration(names, args),
+    registerCommand: buildCommandRegistration(manifest, names, args),
+    registerScheduledJob: buildScheduledJobRegistration(manifest, names, args),
   }
 }

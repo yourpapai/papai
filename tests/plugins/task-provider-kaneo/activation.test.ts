@@ -8,16 +8,32 @@ import { describe, expect, test } from 'bun:test'
 import factory from '../../../plugins/task-provider-kaneo/index.js'
 import manifestJson from '../../../plugins/task-provider-kaneo/plugin.json' with { type: 'json' }
 import { KaneoProvider } from '../../../plugins/task-provider-kaneo/provider.js'
-import type {
-  PluginAdminConfig,
-  PluginContext,
-  PluginKvStore,
-  PluginLogger,
-  PluginRegistration,
-} from '../../../src/plugins/context.js'
-import { pluginManifestSchema, type PluginPermission } from '../../../src/plugins/types.js'
-import type { TaskProviderFactory } from '../../../src/providers/registry.js'
+import { pluginManifestSchema } from '../../../src/plugins/types.js'
 import { mockLogger } from '../../utils/test-helpers.js'
+
+type RegisterTaskProviderType = Parameters<
+  ReturnType<typeof factory>['activate']
+>[0]['registration']['registerTaskProviderType']
+type RegisterTaskProviderInput = Parameters<RegisterTaskProviderType>[1]
+
+function getCapturedFactory(
+  input: RegisterTaskProviderInput,
+): (config: Record<string, string>) => { readonly name: string } {
+  return typeof input === 'function' ? input : input.factory
+}
+
+function getCapturedAutoProvision(
+  input: RegisterTaskProviderInput,
+):
+  | ((context: {
+      contextId: string
+      chatUserId: string
+      username: string | null
+      reply: unknown
+    }) => Promise<boolean> | boolean)
+  | undefined {
+  return typeof input === 'function' ? undefined : input.autoProvision
+}
 
 describe('task-provider-kaneo activation', () => {
   // NOTE: full registry registration (activate() → registerContributedTaskProviderType) will only work
@@ -58,56 +74,30 @@ describe('task-provider-kaneo activation', () => {
 
   test('activate() registers a factory that builds a kaneo provider from raw config (both credential shapes)', () => {
     mockLogger()
-    let capturedFactory: TaskProviderFactory | undefined
+    type RegistrationContext = Parameters<ReturnType<typeof factory>['activate']>[0]
 
-    const stubKv: PluginKvStore = {
-      get(_key: string): string | undefined {
-        return undefined
-      },
-      set(_key: string, _value: string): void {},
-      delete(_key: string): void {},
-      list(_prefix?: string): Array<{ key: string; value: string }> {
-        return []
-      },
-    }
+    let capturedInput: RegisterTaskProviderInput | undefined
 
-    const stubLog: PluginLogger = {
-      debug(_data: Record<string, unknown>, _msg: string): void {},
-      info(_data: Record<string, unknown>, _msg: string): void {},
-      warn(_data: Record<string, unknown>, _msg: string): void {},
-      error(_data: Record<string, unknown>, _msg: string): void {},
-    }
-
-    const stubAdminConfig: PluginAdminConfig = {
-      get(_key: string): string | undefined {
-        return undefined
-      },
-    }
-
-    const stubRegistration: PluginRegistration = {
-      registerTaskProviderType(type: string, providerFactory: TaskProviderFactory): void {
+    const stubRegistration: RegistrationContext['registration'] = {
+      registerTaskProviderType(...args: Parameters<RegisterTaskProviderType>): void {
+        const [type, input] = args
         expect(type).toBe('kaneo')
-        capturedFactory = providerFactory
+        capturedInput = input
       },
-      registerTool(): void {},
-      registerPromptFragment(): void {},
-      registerCommand(): void {},
-      registerScheduledJob(): void {},
     }
 
-    const mockCtx: PluginContext = {
-      pluginId: 'task-provider-kaneo',
-      contextId: '__system__',
-      permissions: new Set<PluginPermission>(),
-      kv: stubKv,
-      log: stubLog,
-      adminConfig: stubAdminConfig,
+    const mockCtx: RegistrationContext = {
       registration: stubRegistration,
     }
 
-    void factory().activate(mockCtx)
+    factory().activate(mockCtx)
 
-    expect(capturedFactory).toBeDefined()
+    expect(capturedInput).toBeDefined()
+
+    const capturedFactory = getCapturedFactory(capturedInput!)
+    const capturedAutoProvision = getCapturedAutoProvision(capturedInput!)
+
+    expect(capturedAutoProvision).toBeDefined()
 
     // Plain api-key credential → Authorization: Bearer path (isKaneoSessionCookie returns false)
     const apiKeyProvider = capturedFactory?.({
