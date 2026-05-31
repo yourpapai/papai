@@ -5,58 +5,14 @@
 
 import { getConfigContextIdFromStorageContextId, parseScopedContextId } from '../chat/scoped-context.js'
 import { getPluginConfig } from '../config.js'
-import { buildMcpToolSet, buildPluginMcpToolSet, mcpPool } from '../mcp/index.js'
+import { adaptMcpPool, buildMcpToolSet, buildPluginMcpToolSet } from '../mcp/index.js'
 import type { PluginMcpDescriptor } from '../mcp/plugin-endpoints.js'
-import type { McpPluginConfig } from '../mcp/types.js'
 import { buildPluginToolSet, contributionRegistry } from '../plugins/contributions.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
 import { getToolMetadata } from '../tools/tool-metadata.js'
 import { buildTools } from '../tools/tools-builder.js'
 import type { IncomingInteraction } from './types.js'
-
-type PluginPoolAdapter = {
-  getOrCreateFromPlugin: (
-    pluginId: string,
-    mcp: McpPluginConfig,
-  ) => Promise<{
-    hash: string
-    client: {
-      listTools: () => Promise<{
-        tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>
-      }>
-      callTool: (params: { name: string; arguments?: Record<string, unknown> }) => Promise<{
-        content: Array<{ type: string; text?: string }>
-        isError?: boolean
-      }>
-    }
-  }>
-}
-
-function adaptMcpPool(): PluginPoolAdapter {
-  return {
-    async getOrCreateFromPlugin(pluginId, mcp) {
-      const { hash, client } = await mcpPool.getOrCreateFromPlugin(pluginId, mcp)
-      return {
-        hash,
-        client: {
-          listTools: () => client.listTools(),
-          callTool: async (params) => {
-            const result = await client.callTool(params)
-            const content = Array.isArray(result.content)
-              ? result.content.filter(
-                  (c: { type: unknown; text?: unknown }): c is { type: string; text?: string } =>
-                    typeof c === 'object' && c !== null && typeof c.type === 'string',
-                )
-              : []
-            const isError = typeof result.isError === 'boolean' ? result.isError : undefined
-            return { content, isError }
-          },
-        },
-      }
-    },
-  }
-}
 
 function buildPluginMcpDescriptors(pluginIds: readonly string[], contextId: string): Map<string, PluginMcpDescriptor> {
   const result = new Map<string, PluginMcpDescriptor>()

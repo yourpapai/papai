@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Plugin Developer Guide
 
-Papai plugins are trusted, repository-local extensions loaded from `plugins/<plugin-id>/`. The MVP is for first-party local plugins only: there is no sandbox, marketplace, npm package installation, hot reload, encrypted plugin secret store, raw provider access, raw DB access, or arbitrary process/env/network facade. Plugins may register one declared task-provider type through the trusted provider-task plugin API.
+Papai plugins are trusted, repository-local extensions loaded from `plugins/<plugin-id>/`. The MVP is for first-party local plugins only: there is no sandbox, marketplace, npm package installation, hot reload, encrypted plugin secret store, raw provider access, raw DB access, or arbitrary process/env/network facade. The framework exposes a restricted plugin API surface, but this is not a sandbox guarantee because plugin code still runs in-process. Plugins may register one declared task-provider type through the trusted provider-task plugin API.
 
 ## Quick Start
 
@@ -119,21 +119,21 @@ Object-style default exports such as `export default { activate() {} }` are reje
 
 The `ctx` object is frozen and exposes only framework-owned facades:
 
-| API                                                 | Description                                                                                                                |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.pluginId`                                      | Plugin ID.                                                                                                                 |
-| `ctx.contextId`                                     | Activation context ID. Activation currently uses the system context; tool and job execution are context-scoped separately. |
-| `ctx.permissions`                                   | Readonly set of requested permissions.                                                                                     |
-| `ctx.log.debug/info/warn/error(data, msg)`          | Structured plugin logger. Never log secrets.                                                                               |
-| `ctx.kv.get/set/delete/list`                        | Plugin/context KV store, available only with `storage` permission. KV is not a secret store.                               |
-| `ctx.adminConfig.get(key)`                          | Read-only admin-scoped plugin config for keys declared with `scope: "admin"`.                                              |
-| `ctx.providerRuntime`                               | Provider runtime helpers, present with `provider.task` or `http` permission.                                               |
-| `ctx.identity`                                      | Identity facade, present with `identity` permission when exactly one task provider type is declared.                       |
-| `ctx.registration.registerTool(tool)`               | Register a declared `PluginTool`.                                                                                          |
-| `ctx.registration.registerPromptFragment(fragment)` | Register a declared prompt fragment.                                                                                       |
-| `ctx.registration.registerCommand(command)`         | Register a declared command. Requires `commands`.                                                                          |
-| `ctx.registration.registerScheduledJob(job)`        | Register a declared scheduled job. Requires `scheduler`.                                                                   |
-| `ctx.registration.registerTaskProviderType(...)`    | Register the plugin's single declared task provider type. Requires `provider.task`.                                        |
+| API                                                 | Description                                                                                                                               |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.pluginId`                                      | Plugin ID.                                                                                                                                |
+| `ctx.contextId`                                     | Activation context ID. Activation currently uses the system context; tool and job execution are context-scoped separately.                |
+| `ctx.permissions`                                   | Readonly set of requested permissions.                                                                                                    |
+| `ctx.log.debug/info/warn/error(data, msg)`          | Structured plugin logger. Never log secrets.                                                                                              |
+| `ctx.kv.get/set/delete/list`                        | Plugin/context KV store, available only with `storage` permission. KV is not a secret store.                                              |
+| `ctx.adminConfig.get(key)`                          | Read-only admin-scoped plugin config for keys declared with `scope: "admin"`.                                                             |
+| `ctx.providerRuntime`                               | Provider runtime helpers, present with `provider.task` or `http` permission.                                                              |
+| `ctx.identity`                                      | Identity facade, present with `identity` permission when exactly one task provider type is declared.                                      |
+| `ctx.registration.registerTool(tool)`               | Register a declared `PluginTool`.                                                                                                         |
+| `ctx.registration.registerPromptFragment(fragment)` | Register a declared prompt fragment.                                                                                                      |
+| `ctx.registration.registerCommand(command)`         | Register a declared command. Requires `commands`.                                                                                         |
+| `ctx.registration.registerScheduledJob(job)`        | Register a declared scheduled job. Requires `scheduler`.                                                                                  |
+| `ctx.registration.registerTaskProviderType(...)`    | Register the plugin's single declared task provider type, either as a factory or `{ factory, autoProvision? }`. Requires `provider.task`. |
 
 Undeclared registrations throw during activation. Command registration also requires `commands`, and scheduled job registration requires `scheduler`. Activation failure cleans framework-owned contributions and records runtime diagnostics.
 
@@ -278,7 +278,20 @@ Keep discovered entry graphs strictly relative-only. Do not import `papai/plugin
 ```typescript
 type PluginContextLike = {
   registration: {
-    registerTaskProviderType(type: string, factory: (config: Record<string, string>) => unknown): void
+    registerTaskProviderType(
+      type: string,
+      registration:
+        | ((config: Record<string, string>) => unknown)
+        | {
+            factory: (config: Record<string, string>) => unknown
+            autoProvision?: (context: {
+              contextId: string
+              chatUserId: string
+              username: string | null
+              reply: unknown
+            }) => Promise<boolean> | boolean
+          },
+    ): void
   }
 }
 
@@ -292,12 +305,16 @@ import { createKaneoProvider } from './entry-runtime'
 
 const factory: PluginFactoryLike = (): PluginInstanceLike => ({
   activate(ctx: PluginContextLike): void {
-    ctx.registration.registerTaskProviderType('kaneo', (config) => createKaneoProvider(config))
+    ctx.registration.registerTaskProviderType('kaneo', {
+      factory: (config) => createKaneoProvider(config),
+    })
   },
 })
 
 export default factory
 ```
+
+Provider plugins may also supply `autoProvision` in the object form when the framework should offer provider-specific setup/provisioning flows through `/start`, `/setup`, or DM auto-provisioning.
 
 ### `validateConfig` contract
 

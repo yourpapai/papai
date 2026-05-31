@@ -12,7 +12,7 @@ import type { ContextSettings } from '../instances/types.js'
 import { getCapabilitiesForTaskInstance } from '../providers/registry.js'
 import type { TaskCapability } from '../providers/types.js'
 import type { PluginRegistryEntry } from './registry.js'
-import { getPluginAdminConfig, getPluginContextState, isPluginEnabledForContext } from './store.js'
+import { getPluginAdminConfig, getPluginContextState } from './store.js'
 import type { DiscoveredPlugin } from './types.js'
 
 export type PluginContextEligibility =
@@ -101,10 +101,7 @@ export function getPluginContextEligibilityForEntry(
 ): PluginContextEligibility {
   if (entry === undefined || entry.state !== 'active') return { eligible: false, reason: 'inactive' }
   const contextState = getPluginContextState(pluginId, contextId)
-  const enabled =
-    contextState === undefined
-      ? entry.discoveredPlugin.manifest.defaultEnabled
-      : isPluginEnabledForContext(pluginId, contextId)
+  const enabled = contextState === undefined ? entry.discoveredPlugin.manifest.defaultEnabled : contextState.enabled
   if (!enabled) return { eligible: false, reason: 'disabled' }
 
   const missingKeys = getMissingRequiredConfigKeys(entry.discoveredPlugin, contextId)

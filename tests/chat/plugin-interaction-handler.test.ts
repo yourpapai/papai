@@ -12,7 +12,7 @@ import type { IncomingInteraction } from '../../src/chat/types.js'
 import { setPluginConfig } from '../../src/config.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
-import { getPluginContextState, isPluginEnabledForContext, setPluginAdminConfig } from '../../src/plugins/store.js'
+import { getPluginContextState, setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -95,7 +95,7 @@ describe('handlePluginInteraction', () => {
     )
 
     expect(handled).toBe(true)
-    expect(isPluginEnabledForContext(pluginId, contextId)).toBe(false)
+    expect(getPluginContextState(pluginId, contextId)).toBeUndefined()
     expect(textCalls[0]).toContain('requires configuration')
     expect(textCalls[0]).toContain('API Token')
   })
@@ -114,7 +114,7 @@ describe('handlePluginInteraction', () => {
     )
 
     expect(handled).toBe(true)
-    expect(isPluginEnabledForContext(pluginId, contextId)).toBe(true)
+    expect(getPluginContextState(pluginId, contextId)!.enabled).toBe(true)
     expect(textCalls[0]).toContain('enabled')
   })
 
@@ -133,7 +133,7 @@ describe('handlePluginInteraction', () => {
       reply,
     )
 
-    expect(isPluginEnabledForContext(pluginId, 'ctx-1')).toBe(true)
+    expect(getPluginContextState(pluginId, 'ctx-1')!.enabled).toBe(true)
     expect(textCalls.some((text) => text.includes('enabled'))).toBe(true)
   })
 
@@ -158,7 +158,7 @@ describe('handlePluginInteraction', () => {
     )
 
     expect(handled).toBe(true)
-    expect(isPluginEnabledForContext(pluginId, contextId)).toBe(true)
+    expect(getPluginContextState(pluginId, contextId)!.enabled).toBe(true)
     expect(textCalls[0]).toContain('enabled')
   })
 
@@ -176,7 +176,7 @@ describe('handlePluginInteraction', () => {
     )
 
     expect(handled).toBe(true)
-    expect(isPluginEnabledForContext(pluginId, 'group-unknown')).toBe(false)
+    expect(getPluginContextState(pluginId, 'group-unknown')).toBeUndefined()
     expect(textCalls[0]).toContain('no longer recognized as an admin')
   })
 

@@ -7,9 +7,8 @@ import type { ToolSet } from 'ai'
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getPluginConfig } from '../config.js'
-import { buildMcpToolSet, buildPluginMcpToolSet, mcpPool } from '../mcp/index.js'
+import { adaptMcpPool, buildMcpToolSet, buildPluginMcpToolSet } from '../mcp/index.js'
 import type { PluginMcpDescriptor } from '../mcp/plugin-endpoints.js'
-import type { McpPluginConfig } from '../mcp/types.js'
 import { buildPluginToolSet, contributionRegistry } from '../plugins/contributions.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
@@ -79,49 +78,6 @@ function buildPluginMcpDescriptors(pluginIds: readonly string[], contextId: stri
   return result
 }
 
-type PluginPoolAdapter = {
-  getOrCreateFromPlugin: (
-    pluginId: string,
-    mcp: McpPluginConfig,
-  ) => Promise<{
-    hash: string
-    client: {
-      listTools: () => Promise<{
-        tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>
-      }>
-      callTool: (params: { name: string; arguments?: Record<string, unknown> }) => Promise<{
-        content: Array<{ type: string; text?: string }>
-        isError?: boolean
-      }>
-    }
-  }>
-}
-
-function adaptMcpPool(): PluginPoolAdapter {
-  return {
-    async getOrCreateFromPlugin(pluginId, mcp) {
-      const { hash, client } = await mcpPool.getOrCreateFromPlugin(pluginId, mcp)
-      return {
-        hash,
-        client: {
-          listTools: () => client.listTools(),
-          callTool: async (params) => {
-            const result = await client.callTool(params)
-            const content = Array.isArray(result.content)
-              ? result.content.filter(
-                  (c: { type: unknown; text?: unknown }): c is { type: string; text?: string } =>
-                    typeof c === 'object' && c !== null && typeof c.type === 'string',
-                )
-              : []
-            const isError = typeof result.isError === 'boolean' ? result.isError : undefined
-            return { content, isError }
-          },
-        },
-      }
-    },
-  }
-}
-
 async function buildPluginAndMcpTools(
   provider: TaskProvider,
   contextId: string,
@@ -166,7 +122,8 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
   const username = options.username
   const contextId = storageContextId
   const sharedContextId = contextId === undefined ? undefined : getConfigContextIdFromStorageContextId(contextId)
-  const mode = options.mode ?? 'normal'
+  let mode: MakeToolsOptions['mode'] = 'normal'
+  if (options.mode !== undefined) mode = options.mode
   const contextType = options.contextType
   const stagedDownloadFn = options.stagedDownloadFn
 
@@ -206,7 +163,7 @@ export async function makeTools(
   provider: TaskProvider,
   ...args: readonly [MakeToolsOptions] | readonly []
 ): Promise<ToolSet> {
-  const options = args[0] ?? { chatUserId: '' }
+  const options = args.length === 0 ? { chatUserId: '' } : args[0]
   const descriptors = await buildToolDescriptors(provider, options)
   return applyToolPreferences(descriptors, options.storageContextId, options.askPermission)
 }

@@ -375,6 +375,81 @@ describe('discoverPlugins', () => {
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
+  test('manifest hash changes when an aliased import.meta.require local target changes', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'hash-aliased-import-meta-require')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'hash-aliased-import-meta-require',
+        name: 'Hash Aliased Import Meta Require',
+        version: '1.0.0',
+        description: 'hash aliased import.meta.require helpers',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "const requireModule = import.meta.require\nexport const bridge = requireModule('./helper.ts')\n",
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { bridge } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return bridge.value } } }\n",
+      'utf-8',
+    )
+
+    const first = discoverPlugins(root)
+    expect(first.errors).toEqual([])
+    const firstHash = first.plugins[0]?.manifestHash
+    expect(typeof firstHash).toBe('string')
+
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
+
+    const second = discoverPlugins(root)
+    expect(second.errors).toEqual([])
+    expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
+  })
+
+  test('aliased import.meta.require resolves .js specifiers to plugin-local .ts source files', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'aliased-import-meta-require-js-specifier')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'aliased-import-meta-require-js-specifier',
+        name: 'Aliased Import Meta Require Js Specifier',
+        version: '1.0.0',
+        description: 'resolve js specifier to ts source',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "const requireModule = import.meta.require\nexport const bridge = requireModule('./helper.js')\n",
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { bridge } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return bridge.value } } }\n",
+      'utf-8',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.errors).toEqual([])
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]?.manifest.id).toBe('aliased-import-meta-require-js-specifier')
+  })
+
   test('manifest hash is stable across different plugin root paths', () => {
     const firstRoot = makeTempDir()
     const secondRoot = makeTempDir()
@@ -473,6 +548,39 @@ describe('discoverPlugins', () => {
       'utf-8',
     )
     writeFileSync(join(pluginDir, 'runtime-bridge.ts'), "export const zod = import.meta.require('zod')\n", 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { zod } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return zod } } }\n",
+      'utf-8',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.plugins).toEqual([])
+    expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
+  })
+
+  test('rejects bare aliased import.meta.require calls from plugin-owned imported modules', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'bare-aliased-import-meta-require-plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'bare-aliased-import-meta-require-plugin',
+        name: 'Bare Aliased Import Meta Require Plugin',
+        version: '1.0.0',
+        description: 'reject bare aliased import.meta.require',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(
+      join(pluginDir, 'runtime-bridge.ts'),
+      "const requireModule = import.meta.require\nexport const zod = requireModule('zod')\n",
+      'utf-8',
+    )
     writeFileSync(
       join(pluginDir, 'index.ts'),
       "import { zod } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return zod } } }\n",

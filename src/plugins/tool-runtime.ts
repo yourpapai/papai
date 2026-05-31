@@ -46,7 +46,8 @@ function buildRuntimeKv(
       kvDelete(pluginId, contextId, key)
     },
     list(prefix?: string): Array<{ key: string; value: string }> {
-      return kvList(pluginId, contextId, prefix).map((row) => ({ key: row.key, value: row.value }))
+      const rows = prefix === undefined ? kvList(pluginId, contextId) : kvList(pluginId, contextId, prefix)
+      return rows.map((row) => ({ key: row.key, value: row.value }))
     },
   })
 }

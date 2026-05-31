@@ -12,7 +12,6 @@ import {
   getPluginAdminState,
   getPluginContextState,
   getRecentRuntimeEvents,
-  isPluginEnabledForContext,
   kvDelete,
   kvGet,
   kvList,
@@ -36,8 +35,8 @@ describe('plugin store', () => {
       upsertPluginAdminState('my-plugin', 'discovered')
       const row = getPluginAdminState('my-plugin')
       expect(row).toBeDefined()
-      expect(row?.state).toBe('discovered')
-      expect(row?.approvedBy).toBeNull()
+      expect(row!.state).toBe('discovered')
+      expect(row!.approvedBy).toBeNull()
     })
 
     test('updates on conflict', () => {
@@ -47,8 +46,8 @@ describe('plugin store', () => {
         approvedManifestHash: 'abc',
       })
       const row = getPluginAdminState('my-plugin')
-      expect(row?.state).toBe('approved')
-      expect(row?.approvedBy).toBe('admin-123')
+      expect(row!.state).toBe('approved')
+      expect(row!.approvedBy).toBe('admin-123')
     })
 
     test('returns undefined for unknown plugin', () => {
@@ -73,8 +72,8 @@ describe('plugin store', () => {
       upsertPluginAdminState('my-plugin', 'discovered', { lastSeenManifestHash: 'hash1' })
       updatePluginAdminStateField('my-plugin', { state: 'approved', approvedBy: 'admin' })
       const row = getPluginAdminState('my-plugin')
-      expect(row?.state).toBe('approved')
-      expect(row?.approvedBy).toBe('admin')
+      expect(row!.state).toBe('approved')
+      expect(row!.approvedBy).toBe('admin')
     })
   })
 
@@ -85,17 +84,17 @@ describe('plugin store', () => {
 
     test('sets and reads context enabled state', () => {
       setPluginContextEnabled('plugin-a', 'ctx-1', true)
-      expect(isPluginEnabledForContext('plugin-a', 'ctx-1')).toBe(true)
+      expect(getPluginContextState('plugin-a', 'ctx-1')?.enabled).toBe(true)
     })
 
     test('updates context enabled state on second call', () => {
       setPluginContextEnabled('plugin-a', 'ctx-1', true)
       setPluginContextEnabled('plugin-a', 'ctx-1', false)
-      expect(isPluginEnabledForContext('plugin-a', 'ctx-1')).toBe(false)
+      expect(getPluginContextState('plugin-a', 'ctx-1')?.enabled).toBe(false)
     })
 
-    test('isPluginEnabledForContext returns false for unknown', () => {
-      expect(isPluginEnabledForContext('no-plugin', 'no-ctx')).toBe(false)
+    test('returns undefined for unknown context state', () => {
+      expect(getPluginContextState('no-plugin', 'no-ctx')).toBeUndefined()
     })
 
     test('getEnabledPluginsForContext returns only enabled plugins', () => {
@@ -149,6 +148,18 @@ describe('plugin store', () => {
       expect(rows.length).toBe(2)
     })
 
+    test('kvList treats wildcard characters literally in prefixes', () => {
+      kvSet('plug', 'ctx', 'literal%key', 'one')
+      kvSet('plug', 'ctx', 'literalXkey', 'two')
+      kvSet('plug', 'ctx', 'literal_key', 'three')
+
+      const percentRows = kvList('plug', 'ctx', 'literal%')
+      const underscoreRows = kvList('plug', 'ctx', 'literal_')
+
+      expect(percentRows.map((row) => row.key)).toEqual(['literal%key'])
+      expect(underscoreRows.map((row) => row.key)).toEqual(['literal_key'])
+    })
+
     test('KV is scoped per context', () => {
       kvSet('plug', 'ctx-1', 'k', 'v1')
       kvSet('plug', 'ctx-2', 'k', 'v2')
@@ -186,15 +197,15 @@ describe('plugin store', () => {
       recordRuntimeEvent('plug', 'activated', 'ok')
       const events = getRecentRuntimeEvents('plug')
       expect(events.length).toBe(1)
-      expect(events[0]?.eventType).toBe('activated')
-      expect(events[0]?.message).toBe('ok')
+      expect(events[0]!.eventType).toBe('activated')
+      expect(events[0]!.message).toBe('ok')
     })
 
     test('records an error event', () => {
       recordRuntimeEvent('plug', 'error', 'something broke')
       const events = getRecentRuntimeEvents('plug')
       const err = events.find((e) => e.eventType === 'error')
-      expect(err?.message).toBe('something broke')
+      expect(err!.message).toBe('something broke')
     })
 
     test('returns empty array for unknown plugin', () => {

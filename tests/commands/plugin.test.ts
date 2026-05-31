@@ -13,12 +13,7 @@ import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-sto
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
-import {
-  getPluginAdminState,
-  getPluginContextState,
-  isPluginEnabledForContext,
-  recordRuntimeEvent,
-} from '../../src/plugins/store.js'
+import { getPluginAdminState, getPluginContextState, recordRuntimeEvent } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import {
@@ -355,7 +350,7 @@ describe('registerPluginCommand', () => {
 
     expect(enabledOutput).toContain('enabled')
     expect(disabledOutput).toContain('disabled')
-    expect(isPluginEnabledForContext('toggle-plugin', 'ctx-1')).toBe(false)
+    expect(getPluginContextState('toggle-plugin', 'ctx-1')?.enabled).toBe(false)
   })
 
   test('disable rejects an unknown plugin without writing context state', async () => {
@@ -390,7 +385,7 @@ describe('registerPluginCommand', () => {
 
     const output = await runPluginCommand('enable target-platform-plugin other-context', 'platform-admin')
 
-    expect(isPluginEnabledForContext('target-platform-plugin', 'other-context')).toBe(false)
+    expect(getPluginContextState('target-platform-plugin', 'other-context')).toBeUndefined()
     expect(output).toContain('not authorized')
   })
 
@@ -408,7 +403,7 @@ describe('registerPluginCommand', () => {
       'other-platform',
     )
 
-    expect(isPluginEnabledForContext('matching-platform-plugin', 'other-context')).toBe(true)
+    expect(getPluginContextState('matching-platform-plugin', 'other-context')?.enabled).toBe(true)
     expect(output).toContain('enabled')
   })
 
@@ -425,7 +420,7 @@ describe('registerPluginCommand', () => {
       'source-platform',
     )
 
-    expect(isPluginEnabledForContext('source-platform-plugin', 'missing-context')).toBe(false)
+    expect(getPluginContextState('source-platform-plugin', 'missing-context')).toBeUndefined()
     expect(output).toContain('not configured')
   })
 
@@ -454,7 +449,7 @@ describe('registerPluginCommand', () => {
 
     const output = await runPluginCommand('enable default-target-plugin', 'platform-admin')
 
-    expect(isPluginEnabledForContext('default-target-plugin', 'platform-admin')).toBe(true)
+    expect(getPluginContextState('default-target-plugin', 'platform-admin')?.enabled).toBe(true)
     expect(output).toContain('enabled')
   })
 

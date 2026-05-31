@@ -1102,7 +1102,7 @@ describe('buildPluginToolSet', () => {
 
     expect(result).toBe('ok')
     const { getIdentityMapping } = await import('../../src/identity/mapping.js')
-    expect(getIdentityMapping('actor-1', 'test-provider')?.providerUserId).toBe('provider-user')
+    expect(getIdentityMapping('actor-1', 'test-provider')!.providerUserId).toBe('provider-user')
     expect(getIdentityMapping('victim-1', 'test-provider')).toBeNull()
   })
 
@@ -1136,6 +1136,34 @@ describe('buildPluginToolSet', () => {
     expect(event.message).toBe(
       "Tool contribution 'plugin_test_plugin__my_tool' skipped because the name already exists",
     )
+  })
+
+  test('collision suppression resets between tests when explicitly reset', () => {
+    const manifest = makeManifest()
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'A test tool',
+            execute: (): Promise<unknown> => Promise.resolve('ok'),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+    const existing = new Set(['plugin_test_plugin__my_tool'])
+
+    const firstTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    resetContributionCollisionStateForTesting()
+    const secondTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const events = getRecentRuntimeEvents('test-plugin', 5)
+
+    expect(Object.keys(firstTools)).toHaveLength(0)
+    expect(Object.keys(secondTools)).toHaveLength(0)
+    expect(events).toHaveLength(2)
   })
 })
 

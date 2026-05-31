@@ -395,6 +395,18 @@ describe('/config Command', () => {
       expect(buttonLabels).not.toContain('Enable Selected Unavailable Plugin')
     })
 
+    test('renders plugin error state distinctly from disabled', async () => {
+      const plugin = makePlugin('config-render-error-plugin', { name: 'Error Plugin' })
+      pluginRegistry.registerDiscovered(plugin)
+      pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+      pluginRegistry.markError(plugin.manifest.id, 'activation failed')
+
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(reply, USER_ID, true)
+
+      expect(buttonCalls[0]).toContain('Error Plugin: error')
+    })
+
     test('plugin rows treat admin-scoped required config as satisfied when admin config exists', async () => {
       const pluginId = 'config-admin-scope-plugin'
       registerActivePlugin(

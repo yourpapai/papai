@@ -79,9 +79,10 @@ function resolveEntryImport(fromFile: string, pluginDir: string, specifier: stri
     throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
   }
 
-  const candidates =
-    candidate.endsWith('.ts') || candidate.endsWith('.js')
-      ? [candidate]
+  const candidates = candidate.endsWith('.ts')
+    ? [candidate]
+    : candidate.endsWith('.js')
+      ? [candidate, `${candidate.slice(0, -3)}.ts`]
       : [`${candidate}.ts`, `${candidate}.js`, join(candidate, 'index.ts'), join(candidate, 'index.js')]
 
   const resolvedPath = candidates.find((path) => fs.existsSync(path))

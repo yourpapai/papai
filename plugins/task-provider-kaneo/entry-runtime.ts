@@ -3,14 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { TaskProvider } from '../../src/providers/types.js'
-
 type KaneoConfig = {
   apiKey: string
   baseUrl: string
 } & Partial<{
   sessionCookie: string
 }>
+
+type TaskProviderLike = {
+  readonly name: string
+}
 
 type KaneoClientModule = typeof import('./client.js')
 type KaneoProviderModule = typeof import('./provider.js')
@@ -45,7 +47,7 @@ function getKaneoProviderModule(): KaneoProviderModule {
   return moduleValue
 }
 
-export function createKaneoProvider(config: Record<string, string>): TaskProvider {
+export function createKaneoProvider(config: Record<string, string>): TaskProviderLike {
   const { isKaneoSessionCookie } = getKaneoClientModule()
   const { KaneoProvider } = getKaneoProviderModule()
 

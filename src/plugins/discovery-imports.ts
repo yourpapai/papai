@@ -13,6 +13,8 @@ type ImportScanResult = {
   hasNonDeterministicImportMetaRequire: boolean
 }
 
+type RequireAliasSet = Set<string>
+
 type PendingPluginSource = {
   path: string
   fromRequire: boolean
@@ -52,40 +54,89 @@ function isImportMetaRequireCall(node: ts.Node): node is ts.CallExpression {
   )
 }
 
+function isRequireAliasDeclaration(node: ts.Node): node is ts.VariableDeclaration {
+  return (
+    ts.isVariableDeclaration(node) &&
+    ts.isIdentifier(node.name) &&
+    node.initializer !== undefined &&
+    ts.isPropertyAccessExpression(node.initializer) &&
+    node.initializer.name.text === 'require' &&
+    ts.isMetaProperty(node.initializer.expression) &&
+    node.initializer.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+    node.initializer.expression.name.text === 'meta'
+  )
+}
+
+function readRequireAlias(node: ts.Node): string | null {
+  if (!isRequireAliasDeclaration(node)) return null
+  return ts.isIdentifier(node.name) ? node.name.text : null
+}
+
+function isAliasedImportMetaRequireCall(node: ts.Node, aliases: ReadonlySet<string>): node is ts.CallExpression {
+  return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && aliases.has(node.expression.text)
+}
+
+function collectImportSpecifiers(
+  node: ts.Node,
+  aliases: ReadonlySet<string>,
+  specifiers: {
+    staticSpecifiers: string[]
+    dynamicSpecifiers: string[]
+    importMetaRequireSpecifiers: string[]
+  },
+): { hasNonDeterministicDynamicImport: boolean; hasNonDeterministicImportMetaRequire: boolean } {
+  let hasNonDeterministicDynamicImport = false
+  let hasNonDeterministicImportMetaRequire = false
+
+  if (ts.isImportDeclaration(node)) {
+    const specifier = readImportDeclarationSpecifier(node)
+    if (specifier !== null) specifiers.staticSpecifiers.push(specifier)
+  }
+
+  if (ts.isExportDeclaration(node)) {
+    const specifier = readExportDeclarationSpecifier(node)
+    if (specifier !== null) specifiers.staticSpecifiers.push(specifier)
+  }
+
+  if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+    const specifier = readDynamicImportSpecifier(node)
+    if (specifier === null) hasNonDeterministicDynamicImport = true
+    else specifiers.dynamicSpecifiers.push(specifier)
+  }
+
+  if (isImportMetaRequireCall(node) || isAliasedImportMetaRequireCall(node, aliases)) {
+    const specifier = readDynamicImportSpecifier(node)
+    if (specifier === null) hasNonDeterministicImportMetaRequire = true
+    else specifiers.importMetaRequireSpecifiers.push(specifier)
+  }
+
+  return { hasNonDeterministicDynamicImport, hasNonDeterministicImportMetaRequire }
+}
+
 function collectImports(sourceFile: ts.SourceFile): ImportScanResult {
   const staticSpecifiers: string[] = []
   const dynamicSpecifiers: string[] = []
   const importMetaRequireSpecifiers: string[] = []
+  const requireAliases: RequireAliasSet = new Set()
   let hasNonDeterministicDynamicImport = false
   let hasNonDeterministicImportMetaRequire = false
 
   function visit(node: ts.Node): void {
-    if (ts.isImportDeclaration(node)) {
-      const specifier = readImportDeclarationSpecifier(node)
-      if (specifier !== null) staticSpecifiers.push(specifier)
+    const requireAlias = readRequireAlias(node)
+    if (requireAlias !== null) {
+      requireAliases.add(requireAlias)
     }
 
-    if (ts.isExportDeclaration(node)) {
-      const specifier = readExportDeclarationSpecifier(node)
-      if (specifier !== null) staticSpecifiers.push(specifier)
+    const result = collectImportSpecifiers(node, requireAliases, {
+      staticSpecifiers,
+      dynamicSpecifiers,
+      importMetaRequireSpecifiers,
+    })
+    if (result.hasNonDeterministicDynamicImport) {
+      hasNonDeterministicDynamicImport = true
     }
-
-    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-      const specifier = readDynamicImportSpecifier(node)
-      if (specifier === null) {
-        hasNonDeterministicDynamicImport = true
-      } else {
-        dynamicSpecifiers.push(specifier)
-      }
-    }
-
-    if (isImportMetaRequireCall(node)) {
-      const specifier = readDynamicImportSpecifier(node)
-      if (specifier === null) {
-        hasNonDeterministicImportMetaRequire = true
-      } else {
-        importMetaRequireSpecifiers.push(specifier)
-      }
+    if (result.hasNonDeterministicImportMetaRequire) {
+      hasNonDeterministicImportMetaRequire = true
     }
 
     ts.forEachChild(node, visit)
@@ -210,6 +261,17 @@ export function readPluginSourceGraph(
     if (!ordered.includes(current.path)) ordered.push(current.path)
 
     const source = readFileSync(current.path, 'utf-8')
+    if (current.fromRequire) {
+      addPendingRequireImports(
+        pending,
+        current,
+        pluginDir,
+        readPluginImportMetaRequireSpecifiers(current.path, source),
+        deps,
+      )
+      continue
+    }
+
     addPendingStaticImports(pending, current.path, pluginDir, readPluginDynamicImports(current.path, source), deps)
     addPendingRequireImports(
       pending,

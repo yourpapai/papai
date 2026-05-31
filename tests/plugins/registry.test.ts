@@ -26,7 +26,7 @@ import {
 } from '../../src/plugins/registry.js'
 import {
   getPluginAdminState,
-  isPluginEnabledForContext as storeIsEnabled,
+  getPluginContextState,
   setPluginAdminConfig,
   updatePluginAdminStateField,
 } from '../../src/plugins/store.js'
@@ -423,7 +423,7 @@ describe('singleton registry helpers', () => {
 
   test('setPluginEnabledForContext persists context-level enablement', () => {
     setPluginEnabledForContext('test-plugin', 'ctx-1', true)
-    expect(storeIsEnabled('test-plugin', 'ctx-1')).toBe(true)
+    expect(getPluginContextState('test-plugin', 'ctx-1')?.enabled).toBe(true)
   })
 
   test('getPluginsForContext returns active plugins enabled for context', () => {

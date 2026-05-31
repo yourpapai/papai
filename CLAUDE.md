@@ -288,7 +288,7 @@ Optional: debug server + debug/admin clients
 
 ## Plugin System
 
-Trusted, repository-local first-party plugins only — no sandbox, no marketplace, no npm install, no hot reload, no plugin secret store, and no raw provider/DB/env/network access.
+Trusted, repository-local first-party plugins only — no sandbox, no marketplace, no npm install, no hot reload, no plugin secret store, and no raw provider/DB/env/network access. The framework exposes a restricted runtime API, but this is not a sandbox guarantee because plugin code runs in-process.
 
 ### Layout
 
@@ -337,6 +337,7 @@ Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `proce
 - LLM-facing tool name: `plugin_<sanitized-plugin-id>__<tool-name>` (e.g., `plugin_hello_world__greet`).
 - Command name: `plugin_<sanitized-plugin-id>_<command-name>`, registered through the same `ChatProvider.registerCommand` path as core commands.
 - Scheduled job owner: `plugin:<pluginId>:<jobName>`, executed only for contexts where the plugin is enabled and eligible.
+- Scheduled jobs execute with a framework-owned runtime context, not bare `contextId` alone.
 - Prompt fragments are synchronous strings or sync functions; appended to the system prompt with a 2,000-char-per-fragment / 8,000-char-total budget.
 
 ### Permissions (MVP)

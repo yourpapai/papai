@@ -141,6 +141,20 @@ describe('handleAdminSystem', () => {
     expect(pick(body, 'taskProvider')).toBe('unknown')
   })
 
+  test('reports a single custom active task provider type by name', async () => {
+    insertTaskInstance({
+      id: 'linear-main',
+      type: 'linear',
+      config: { baseUrl: 'https://linear.invalid' },
+      status: 'active',
+    })
+
+    const res = handleAdminSystem()
+    const body = await readJson(res)
+
+    expect(pick(body, 'taskProvider')).toBe('linear')
+  })
+
   test('adminUserSet is true when ADMIN_USER_ID is set', async () => {
     process.env['ADMIN_USER_ID'] = 'u1'
 

@@ -95,6 +95,8 @@ function formatPluginStatus(entry: PluginRegistryEntry, targetContextId: string)
       ? ' (default)'
       : ''
   if (!selected) return 'disabled'
+  if (entry.state === 'error') return 'error'
+  if (entry.state !== 'active') return `inactive (${entry.state})`
 
   const eligibility = getPluginContextEligibility(entry.discoveredPlugin.manifest.id, targetContextId)
   if (eligibility.eligible) return `enabled${source}`
@@ -116,10 +118,14 @@ function appendPluginRequirementLines(lines: string[], entry: PluginRegistryEntr
     getMissingRequiredPluginRequirements(entry.discoveredPlugin, targetContextId).map((requirement) => requirement.key),
   )
   for (const requirement of entry.discoveredPlugin.manifest.configRequirements) {
-    const value =
-      requirement.scope === 'admin'
-        ? (getPluginAdminConfig(entry.discoveredPlugin.manifest.id, requirement.key) ?? null)
-        : getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
+    let value: string | null
+    if (requirement.scope === 'admin') {
+      value = null
+      const adminValue = getPluginAdminConfig(entry.discoveredPlugin.manifest.id, requirement.key)
+      if (adminValue !== undefined) value = adminValue
+    } else {
+      value = getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
+    }
     const displayedValue =
       missingKeys.has(requirement.key) || value === null || value === ''
         ? '*(not set)*'
@@ -131,7 +137,9 @@ function appendPluginRequirementLines(lines: string[], entry: PluginRegistryEntr
 }
 
 function appendPluginConfigLines(lines: string[], targetContextId: string): void {
-  const pluginEntries = pluginRegistry.getAllEntries().filter((entry) => entry.state === 'active')
+  const pluginEntries = pluginRegistry
+    .getAllEntries()
+    .filter((entry) => (entry.state === 'active' ? true : isPluginSelectedForContext(entry, targetContextId)))
   if (pluginEntries.length === 0) return
 
   lines.push('\n🧩 **Plugins**')
@@ -150,7 +158,7 @@ function appendPluginConfigLines(lines: string[], targetContextId: string): void
 function buildPluginButtons(targetContextId: string): ChatButton[] {
   return pluginRegistry
     .getAllEntries()
-    .filter((entry) => entry.state === 'active')
+    .filter((entry) => (entry.state === 'active' ? true : isPluginSelectedForContext(entry, targetContextId)))
     .map((entry) => {
       const selected = isPluginSelectedForContext(entry, targetContextId)
       return {
@@ -180,7 +188,10 @@ export async function renderConfigForTarget(
   const lines = ['⚙️ **Current Configuration**\n']
 
   fields.forEach((field) => {
-    lines.push(formatConfigLine(field, getFieldValue(targetContextId, field) ?? undefined))
+    const value = getFieldValue(targetContextId, field)
+    let formattedValue: string | undefined
+    if (value !== null) formattedValue = value
+    lines.push(formatConfigLine(field, formattedValue))
   })
   const aiOutputSection = buildAiOutputConfigSection(targetContextId)
   lines.push(...aiOutputSection.lines)
