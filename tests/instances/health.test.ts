@@ -15,7 +15,7 @@ import { createMockProvider } from '../tools/mock-provider.js'
 import { createTrackedLoggerMock, setupTestDb } from '../utils/test-helpers.js'
 
 describe('warnUnresolvedTaskInstances', () => {
-  test('logs a WARN with /plugin approve commands for unregistered types', async () => {
+  test('logs a WARN pointing at the settings web UI for unregistered types', async () => {
     await setupTestDb()
     insertTaskInstance({ id: 'k-1', type: 'kaneo', config: { baseUrl: 'x' }, status: 'active' })
     const tracked = createTrackedLoggerMock()
@@ -27,7 +27,7 @@ describe('warnUnresolvedTaskInstances', () => {
     const warns = tracked.getCallsByLevel('warn')
     const message = warns.map((entry) => String(entry.args[1])).join('\n')
     expect(message).toContain('task-provider-kaneo')
-    expect(message).toContain('/plugin approve')
+    expect(message).toContain('settings web UI')
   })
 
   test('emits nothing when every type has an active provider', async () => {

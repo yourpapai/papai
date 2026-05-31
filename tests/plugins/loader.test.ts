@@ -9,6 +9,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { eq, sql } from 'drizzle-orm'
+
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { pluginRuntimeEvents } from '../../src/db/schema.js'
 import { getTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
 import {
@@ -18,7 +22,6 @@ import {
   toPluginImportSpecifier,
 } from '../../src/plugins/loader.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
-import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import {
@@ -38,6 +41,23 @@ const tempDirs: string[] = []
 function requireValue<T>(value: T | null | undefined, label: string): T {
   if (value === undefined || value === null) throw new Error(`${label} was unexpectedly absent`)
   return value
+}
+
+function getRecentRuntimeEvents(
+  pluginId: string,
+  limit = 20,
+): Array<{ eventType: string; message: string | null; occurredAt: string }> {
+  return getDrizzleDb()
+    .select({
+      eventType: pluginRuntimeEvents.eventType,
+      message: pluginRuntimeEvents.message,
+      occurredAt: pluginRuntimeEvents.occurredAt,
+    })
+    .from(pluginRuntimeEvents)
+    .where(eq(pluginRuntimeEvents.pluginId, pluginId))
+    .orderBy(sql`${pluginRuntimeEvents.occurredAt} DESC, rowid DESC`)
+    .limit(limit)
+    .all()
 }
 
 function makeManifest(

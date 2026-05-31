@@ -49,8 +49,7 @@ I'm your task management assistant. I can help you:
 ⚙️ **Configure integrations** with your task tracker
 
 **Get Started:**
-🚀 **/setup** - Configure your settings (API keys, models, etc.)
-📊 **/config** - View your current configuration
+⚙️ **/config** - Open your settings (API keys, models, integrations) in the web UI
 ❓ **/help** - Show available commands
 
 **Quick Tips:**

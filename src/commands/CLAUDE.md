@@ -27,24 +27,16 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 ## Current Command Behavior
 
 - Commands are registered in `src/bot.ts` via `setupBot(chat, adminUserId)`.
-- Current command surface is `/help`, `/start`, `/setup`, `/config`, `/context`, `/clear`, `/group`, plus admin-only `/user`, `/users`, `/announce`, and `/plugin`.
-- `/setup` and `/config` are DM-driven. In groups they redirect admins to DM, then the user chooses personal settings or a manageable group through the group-settings selector.
-- `/context` is no longer an admin-only export command. It builds a tokenized `ContextSnapshot` and sends a platform-native view through `chat.renderContext()`.
+- Current core command surface: `/help`, `/start`, `/config`, `/context`, `/clear`, `/dashboard`. Active plugins also register `plugin_<sanitized-plugin-id>_<command-name>` commands at startup via `registerPluginCommands`.
+- `/config` is launcher-only. In DM it issues a single-use settings link (outcome: `ok` / `rate_limited` / `not_configured`). In group contexts it sends one of two messages: a DM redirect for group admins, or an access-denied explanation for non-admins. `SETTINGS_PUBLIC_BASE_URL` must be set; when it is not, `/config` replies asking the admin to configure that variable. All configuration (personal, group, admin, plugins, identity, instances, system LLM, announce) happens in the settings web UI.
+- `/context` builds a tokenized `ContextSnapshot` and sends a platform-native view through `chat.renderContext()`.
 - `/clear` clears conversation history, summary, and facts for the current storage context. The bot admin can also clear another user or all users; non-bot group admins are limited to clearing the current group context.
-- `/group` is the group authorization command surface and must route username lookup through `extractGroupUserId()` / source-instance resolution before assuming `@username` lookup works.
-- `/plugin` is DM-only and bot-admin-only. Subcommands: `list`, `info <id>`, `approve <id>`, `reject <id>`, `enable <id> [context-id]`, `disable <id> [context-id]`. Approve/reject take effect on next startup; enable/disable take effect on the next tool/prompt assembly. Per-context plugin enable toggles are also surfaced as `plg:` inline buttons inside `/config`.
-- `/config` includes a "🧰 Tools" section. Tapping it opens a domain list; users toggle whole domains (`tgl:dom:`) or drill in (`tgl:open:`) to toggle individual tools (`tgl:tool:`) with risk labels. Callbacks are routed in `src/chat/interaction-router.ts` to `handleToolToggleInteraction`. Personal-vs-group targeting reuses the group-settings selector, identical to plugin toggles.
+- `/dashboard` is DM-only and bot-admin-only; it issues a sign-in link to the operator debug/admin UI when `DEBUG_SERVER=true`.
+- The retired commands `/setup`, `/group`, `/groups`, `/user`, `/users`, `/announce`, and `/plugin` no longer exist. Their functionality (group management, plugin approval/enable/disable, identity, instance management, announcements) is now handled in the settings web UI.
 
-## Interception Flow
+## No Interception Flow
 
-Bot wiring in `src/bot.ts` may intercept non-command messages before they reach the LLM queue:
-
-- group-settings selector responses in DM
-- config-editor text input
-- wizard/setup input
-- auto-started setup wizard prompts
-
-Interactive callbacks are routed separately through `src/chat/interaction-router.ts`.
+There is no message interception. Non-command text goes straight to the LLM orchestrator queue. Interactive chat callbacks (`gsel:`, `cfg:`, `wizard_`, `plg:`, `tgl:`) are retired; `src/chat/interaction-router.ts` only authorizes the actor and otherwise matches nothing.
 
 ## Types
 

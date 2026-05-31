@@ -136,7 +136,6 @@ describe('state-collector', () => {
     const initData = data['data']
     assert.ok(isRecord(initData))
     expect(initData).toHaveProperty('sessions')
-    expect(initData).toHaveProperty('wizards')
     expect(initData).toHaveProperty('scheduler')
     expect(initData).toHaveProperty('pollers')
     expect(initData).toHaveProperty('messageCache')

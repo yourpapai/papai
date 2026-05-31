@@ -52,11 +52,6 @@ export const parseScopedContextId = (contextId: string): PlatformScopedThreadCon
 
 export const isScopedContextId = (contextId: string): boolean => parseScopedContextId(contextId) !== null
 
-export const toStorageContextId = (platformInstanceId: string, nativeOrScopedContextId: string): string => {
-  if (isScopedContextId(nativeOrScopedContextId)) return nativeOrScopedContextId
-  return toScopedContextId({ platformInstanceId, nativeContextId: nativeOrScopedContextId })
-}
-
 export const getNativeContextId = (scopedOrNativeContextId: string): string => {
   const parsed = parseScopedContextId(scopedOrNativeContextId)
   if (parsed === null) return scopedOrNativeContextId

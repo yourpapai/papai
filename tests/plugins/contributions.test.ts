@@ -5,8 +5,12 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq, sql } from 'drizzle-orm'
+
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ChatCapability } from '../../src/chat/types.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { pluginRuntimeEvents } from '../../src/db/schema.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { namespacedCommandName, registerPluginCommands } from '../../src/plugins/command-contributions.js'
@@ -30,7 +34,6 @@ import {
   resetPluginRegistryForTesting,
   setPluginEnabledForContext,
 } from '../../src/plugins/registry.js'
-import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
 import { scheduler } from '../../src/scheduler-instance.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -65,6 +68,23 @@ function getRuntimeOverrides(args: MakeRuntimeArgs): Partial<PluginToolSetRuntim
 function requireValue<T>(value: T | undefined, label: string): T {
   if (value === undefined) throw new Error(`${label} was unexpectedly undefined`)
   return value
+}
+
+function getRecentRuntimeEvents(
+  pluginId: string,
+  limit = 20,
+): Array<{ eventType: string; message: string | null; occurredAt: string }> {
+  return getDrizzleDb()
+    .select({
+      eventType: pluginRuntimeEvents.eventType,
+      message: pluginRuntimeEvents.message,
+      occurredAt: pluginRuntimeEvents.occurredAt,
+    })
+    .from(pluginRuntimeEvents)
+    .where(eq(pluginRuntimeEvents.pluginId, pluginId))
+    .orderBy(sql`${pluginRuntimeEvents.occurredAt} DESC, rowid DESC`)
+    .limit(limit)
+    .all()
 }
 
 function makeManifest(...args: MakeManifestArgs): PluginManifest {

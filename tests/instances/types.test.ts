@@ -5,17 +5,17 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { isBuiltinTaskType } from '../../src/instances/types.js'
+import type { BootstrapResult } from '../../src/instances/types.js'
 
-describe('isBuiltinTaskType', () => {
-  test('returns true for built-in provider types', () => {
-    expect(isBuiltinTaskType('kaneo')).toBe(true)
-    expect(isBuiltinTaskType('youtrack')).toBe(true)
-  })
+describe('instances/types', () => {
+  test('BootstrapResult discriminant narrows correctly', () => {
+    const succeeded: BootstrapResult = {
+      bootstrapped: true,
+      platformInstanceId: 'pi-1',
+    }
+    const skipped: BootstrapResult = { bootstrapped: false, reason: 'already-bootstrapped' }
 
-  test('returns false for contributed/unknown provider types', () => {
-    expect(isBuiltinTaskType('demo-tracker')).toBe(false)
-    expect(isBuiltinTaskType('')).toBe(false)
-    expect(isBuiltinTaskType('Kaneo')).toBe(false)
+    expect(succeeded.bootstrapped).toBe(true)
+    expect(skipped.bootstrapped).toBe(false)
   })
 })

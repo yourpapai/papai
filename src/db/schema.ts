@@ -278,3 +278,11 @@ export { attachments } from './attachments-schema.js'
 export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
 export { contextSettings, platformAdmins, platformInstances, superAdmins, taskInstances } from './instance-schema.js'
+export {
+  settingsAuthCodes,
+  settingsRateLimit,
+  settingsSessions,
+  type SettingsAuthCodeRow,
+  type SettingsRateLimitRow,
+  type SettingsSessionRow,
+} from './settings-auth-schema.js'

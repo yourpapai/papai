@@ -6,11 +6,44 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { and, eq } from 'drizzle-orm'
+
 import { recordGroupObservation } from '../src/bot-group-observation.js'
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
-import { findGroupUserObservation, findKnownGroupContext } from '../src/group-settings/registry.js'
+import { getDrizzleDb } from '../src/db/drizzle.js'
+import { groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
+import type { KnownGroupContext } from '../src/group-settings/types.js'
 import { createDmMessage, createGroupMessage, createMockChat, mockLogger, setupTestDb } from './utils/test-helpers.js'
+
+function findKnownGroupContext(provider: string, contextId: string): KnownGroupContext | null {
+  const row = getDrizzleDb()
+    .select()
+    .from(knownGroupContexts)
+    .where(and(eq(knownGroupContexts.provider, provider), eq(knownGroupContexts.contextId, contextId)))
+    .get()
+  if (row === undefined) return null
+  return { ...row, source: 'observed' as const }
+}
+
+function findGroupUserObservation(
+  provider: string,
+  contextId: string,
+  userId: string,
+): { provider: string; contextId: string; userId: string; username: string | null; displayLabel: string } | null {
+  const row = getDrizzleDb()
+    .select()
+    .from(groupUserObservations)
+    .where(
+      and(
+        eq(groupUserObservations.provider, provider),
+        eq(groupUserObservations.contextId, contextId),
+        eq(groupUserObservations.userId, userId),
+      ),
+    )
+    .get()
+  return row ?? null
+}
 
 function createRouterLikeChat(sourceProvider: ChatProvider): ChatProvider {
   return {

@@ -87,7 +87,7 @@ const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
 
 const unresolvedReasonFor = (instance: TaskInstance): string | null =>
   getTaskProviderDescriptor(instance.type) === undefined
-    ? `Provider plugin for type '${instance.type}' is not active. Run /plugin approve.`
+    ? `Provider plugin for type '${instance.type}' is not active. Approve it in the settings web UI admin area (Plugins approval).`
     : null
 
 const taskInstanceView = (

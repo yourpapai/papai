@@ -11,15 +11,11 @@ export type TelegramCommandVisibility = {
 }
 
 export type CommandRegistration =
-  | 'registerAdminCommands'
   | 'registerClearCommand'
   | 'registerConfigCommand'
   | 'registerContextCommand'
   | 'registerDashboardCommand'
-  | 'registerGroupCommand'
   | 'registerHelpCommand'
-  | 'registerPluginCommand'
-  | 'registerSetupCommand'
   | 'registerStartCommand'
 
 export type CommandCatalogEntry = {
@@ -53,19 +49,8 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     },
   },
   {
-    name: 'setup',
-    description: 'Interactive configuration wizard',
-    registration: 'registerSetupCommand',
-    telegram: {
-      publishInDmUser: true,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
     name: 'config',
-    description: 'View or edit current configuration',
+    description: 'Open your settings in the web UI',
     registration: 'registerConfigCommand',
     telegram: {
       publishInDmUser: true,
@@ -94,72 +79,6 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
       publishInDmAdmin: true,
       publishInGroupUser: true,
       publishInGroupAdmin: true,
-    },
-  },
-  {
-    name: 'group',
-    description: 'Manage group authorization or membership',
-    registration: 'registerGroupCommand',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: true,
-      publishInGroupAdmin: true,
-    },
-  },
-  {
-    name: 'groups',
-    description: 'List authorized groups',
-    registration: 'registerGroupCommand',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
-    name: 'user',
-    description: 'Manage users',
-    registration: 'registerAdminCommands',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
-    name: 'users',
-    description: 'List authorized users',
-    registration: 'registerAdminCommands',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
-    name: 'announce',
-    description: 'Send announcement to all authorized users',
-    registration: 'registerAdminCommands',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
-    name: 'plugin',
-    description: 'Manage plugins',
-    registration: 'registerPluginCommand',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
     },
   },
   {

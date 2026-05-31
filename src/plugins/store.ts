@@ -6,12 +6,7 @@
 import { and, eq, like, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import type {
-  PluginAdminStateRow,
-  PluginContextStateRow,
-  PluginKvRow,
-  PluginRuntimeEventRow,
-} from '../db/plugin-schema.js'
+import type { PluginAdminStateRow, PluginContextStateRow, PluginKvRow } from '../db/plugin-schema.js'
 import { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents, systemConfig } from '../db/schema.js'
 import { logger } from '../logger.js'
 import type { PluginState } from './types.js'
@@ -23,11 +18,6 @@ const log = logger.child({ scope: 'plugins:store' })
 export function getPluginAdminState(pluginId: string): PluginAdminStateRow | undefined {
   const db = getDrizzleDb()
   return db.select().from(pluginAdminState).where(eq(pluginAdminState.pluginId, pluginId)).get()
-}
-
-export function getAllPluginAdminStates(): PluginAdminStateRow[] {
-  const db = getDrizzleDb()
-  return db.select().from(pluginAdminState).all()
 }
 
 export function upsertPluginAdminState(
@@ -113,16 +103,6 @@ export function setPluginContextEnabled(pluginId: string, contextId: string, ena
   log.debug({ pluginId, contextId, enabled }, 'Plugin context state updated')
 }
 
-export function getEnabledPluginsForContext(contextId: string): string[] {
-  const db = getDrizzleDb()
-  return db
-    .select({ pluginId: pluginContextState.pluginId })
-    .from(pluginContextState)
-    .where(and(eq(pluginContextState.contextId, contextId), eq(pluginContextState.enabled, true)))
-    .all()
-    .map((r) => r.pluginId)
-}
-
 export function getContextStatesForPlugin(pluginId: string): Array<{ contextId: string; enabled: boolean }> {
   const db = getDrizzleDb()
   return db
@@ -196,23 +176,6 @@ export function recordRuntimeEvent(
       'Failed to record plugin runtime event',
     )
   }
-}
-
-type PluginRuntimeEventSummary = Pick<PluginRuntimeEventRow, 'eventType' | 'message' | 'occurredAt'>
-
-export function getRecentRuntimeEvents(pluginId: string, limit = 20): PluginRuntimeEventSummary[] {
-  const db = getDrizzleDb()
-  return db
-    .select({
-      eventType: pluginRuntimeEvents.eventType,
-      message: pluginRuntimeEvents.message,
-      occurredAt: pluginRuntimeEvents.occurredAt,
-    })
-    .from(pluginRuntimeEvents)
-    .where(eq(pluginRuntimeEvents.pluginId, pluginId))
-    .orderBy(sql`${pluginRuntimeEvents.occurredAt} DESC`)
-    .limit(limit)
-    .all()
 }
 
 // ---- Admin config ----

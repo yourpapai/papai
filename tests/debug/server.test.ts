@@ -30,7 +30,17 @@ const TEST_PORT = 19100
 const PUBLIC_DIR = path.resolve(import.meta.dir, '../../public')
 
 function ensurePublicBuilt(): void {
-  const required = ['debug.js', 'debug.html', 'debug.css', 'admin.js', 'admin.html', 'admin.css']
+  const required = [
+    'debug.js',
+    'debug.html',
+    'debug.css',
+    'admin.js',
+    'admin.html',
+    'admin.css',
+    'settings.js',
+    'settings.html',
+    'settings.css',
+  ]
   const missing = required.some((f) => !fs.existsSync(path.join(PUBLIC_DIR, f)))
   if (!missing) return
 
@@ -440,5 +450,35 @@ describe('debug-server', () => {
 
     expect(res.status).toBe(401)
     await cancelBody(res)
+  })
+
+  test('GET /api/platform-instances remains unauthorized without a session cookie when DEBUG_TOKEN is configured', async () => {
+    process.env['DEBUG_TOKEN'] = 'server-test-token'
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/platform-instances`)
+
+    expect(res.status).toBe(401)
+    await cancelBody(res)
+    delete process.env['DEBUG_TOKEN']
+  })
+
+  test('settings domain is isolated from DEBUG_TOKEN', async () => {
+    process.env['DEBUG_TOKEN'] = 'server-test-token'
+
+    // A DEBUG_TOKEN bearer must NOT authenticate a settings route (no session cookie).
+    const settingsRes = await fetch(`http://localhost:${TEST_PORT}/settings/api/session`, {
+      headers: { Authorization: 'Bearer server-test-token' },
+    })
+    await cancelBody(settingsRes)
+    expect(settingsRes.status).toBe(401)
+
+    // A settings cookie must NOT authenticate an operator route when DEBUG_TOKEN is set.
+    const operatorRes = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
+      headers: { Cookie: 'papai_settings_session=anything' },
+    })
+    await cancelBody(operatorRes)
+    expect(operatorRes.status).toBe(401)
+
+    delete process.env['DEBUG_TOKEN']
   })
 })
