@@ -157,6 +157,33 @@ describe('TaskProviderResolver', () => {
     expect(await resolver.resolve('ctx-plugin-gone')).toBeNull()
   })
 
+  test('resolve returns null without calling createProvider when the descriptor is unknown', async () => {
+    const createProvider = mock((): ReturnType<TaskProviderResolverDeps['createProvider']> => {
+      throw new Error('createProvider must not be called for unknown descriptor')
+    })
+    const resolver = new TaskProviderResolver({
+      getContextSettings: (): ReturnType<TaskProviderResolverDeps['getContextSettings']> => ({
+        contextId: 'c',
+        taskInstanceId: 't',
+        platformInstanceId: 'p',
+      }),
+      getTaskInstance: (): ReturnType<TaskProviderResolverDeps['getTaskInstance']> => ({
+        id: 't',
+        type: 'ghost',
+        config: { baseUrl: 'https://x' },
+        status: 'active',
+        createdAt: '2026-05-31T00:00:00.000Z',
+      }),
+      getTaskProviderDescriptor: (): ReturnType<TaskProviderResolverDeps['getTaskProviderDescriptor']> => undefined,
+      getTaskProviderConfigValidator: (): ReturnType<TaskProviderResolverDeps['getTaskProviderConfigValidator']> =>
+        undefined,
+      getConfig: (): ReturnType<TaskProviderResolverDeps['getConfig']> => null,
+      createProvider,
+    })
+    expect(await resolver.resolve('c')).toBeNull()
+    expect(createProvider).not.toHaveBeenCalled()
+  })
+
   test('builds a YouTrack provider from instance baseUrl and per-context token', async () => {
     // youtrack is now plugin-contributed; register it so the resolver knows its config schema
     registerYouTrackContributed()

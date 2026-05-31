@@ -147,10 +147,14 @@ export class TaskProviderResolver {
     }
 
     const descriptor = this.deps.getTaskProviderDescriptor(instance.type)
-    const config =
-      descriptor === undefined
-        ? { ...instance.config }
-        : buildConfigFromDescriptor(contextId, instance, descriptor, this.deps)
+    if (descriptor === undefined) {
+      log.warn(
+        { contextId, taskInstanceId: instance.id, taskProvider: instance.type },
+        'Cannot resolve task provider: unknown provider type (plugin inactive?)',
+      )
+      return null
+    }
+    const config = buildConfigFromDescriptor(contextId, instance, descriptor, this.deps)
     if (config === null) return null
 
     const provider = await createValidatedProvider(contextId, instance, config, this.deps)
