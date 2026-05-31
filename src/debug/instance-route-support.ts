@@ -237,10 +237,11 @@ const reconcilePlatformInstances = async (deps: InstanceApiDeps): Promise<Respon
   const desiredById = new Map(desiredInstances.map((instance) => [instance.id, instance]))
   const activeInstances = desiredInstances.filter((instance) => instance.status === 'active')
   const activeIds = new Set(activeInstances.map((instance) => instance.id))
+  const unreadableIds = new Set(desiredResult.failures.map((failure) => failure.id))
   const runtimeIdsToRemove = router
     .listInstances()
     .map((instance) => instance.id)
-    .filter((id) => !activeIds.has(id))
+    .filter((id) => !activeIds.has(id) && !unreadableIds.has(id))
   const limit = pLimit(INSTANCE_APPLY_CONCURRENCY)
   const removePatches = runtimeIdsToRemove.map((id) => {
     const desired = desiredById.get(id)
