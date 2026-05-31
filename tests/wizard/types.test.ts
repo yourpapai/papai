@@ -120,12 +120,13 @@ describe('Wizard Types', () => {
     expect(result2.isSensitiveKey).toBe(true)
   })
 
-  test('WizardData accepts core config keys', () => {
-    const configKey: ConfigKey = 'kaneo_apikey'
+  test('WizardData accepts static config keys', () => {
+    // Provider keys are no longer ConfigKey members; WizardData accepts any string key
+    const configKey: ConfigKey = 'timezone'
     const data: WizardData = {
-      [configKey]: 'test-value',
+      [configKey]: 'UTC',
     }
 
-    expect(data[configKey]).toBe('test-value')
+    expect(data[configKey]).toBe('UTC')
   })
 })

@@ -29,7 +29,7 @@ import type {
   ResolveUserContext,
 } from '../src/chat/types.js'
 import { listCommandCatalogEntries } from '../src/commands/catalog.js'
-import { getConfig, setConfig } from '../src/config.js'
+import { getConfigValue, setConfig, setConfigValue } from '../src/config.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
@@ -438,10 +438,13 @@ function setupContextTaskAssignment(contextId: string, ...args: [] | [platformIn
   }
 }
 
+// Provider credentials are now plugin-namespaced; use the dynamic accessor.
+const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+
 function setupUserConfig(userId: string): void {
   for (const contextId of new Set([userId, scopedDm(userId), scopedGroup(userId)])) {
     setupContextTaskAssignment(contextId)
-    setConfig(contextId, 'kaneo_apikey', 'test-kaneo-key')
+    setConfigValue(contextId, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
     setConfig(contextId, 'timezone', 'UTC')
   }
 }
@@ -1887,7 +1890,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
       expect(processMessageCallCount).toBe(0)
       expect(textCalls).toHaveLength(0)
-      expect(getConfig('wizard-user', 'kaneo_apikey')).toBeNull()
+      // Provider credentials use plugin-namespaced keys; verify wizard did not save any credential
+      expect(getConfigValue('wizard-user', KANEO_CREDENTIAL_KEY)).toBeNull()
     })
 
     test('does not continue group settings selector after DM access is revoked', async () => {

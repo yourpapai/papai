@@ -67,10 +67,13 @@ describe('config-editor public API', () => {
     expect(parseCallbackData('cfg:cancel')).toEqual({ action: 'cancel', key: null })
     expect(parseCallbackData('cfg:back')).toEqual({ action: 'back', key: null })
     expect(parseCallbackData('cfg:setup')).toEqual({ action: 'setup', key: null })
-    expect(parseCallbackData('cfg:edit:kaneo_apikey')).toEqual({
+    // Provider keys are now plugin-namespaced dynamic keys
+    expect(parseCallbackData('cfg:edit:plugin:task-provider-kaneo:provider:credential')).toEqual({
       action: 'edit',
-      key: 'kaneo_apikey',
+      key: 'plugin:task-provider-kaneo:provider:credential',
     })
+    // Flat provider keys ('kaneo_apikey') are no longer allowed dynamic config keys
+    expect(parseCallbackData('cfg:edit:kaneo_apikey')).toEqual({ action: null, key: null })
     expect(parseCallbackData('cfg:save:timezone')).toEqual({ action: 'save', key: 'timezone' })
     expect(parseCallbackData('invalid')).toEqual({ action: null, key: null })
   })
@@ -79,7 +82,10 @@ describe('config-editor public API', () => {
     expect(serializeCallbackData({ action: 'cancel' })).toBe('cfg:cancel')
     expect(serializeCallbackData({ action: 'back' })).toBe('cfg:back')
     expect(serializeCallbackData({ action: 'setup' })).toBe('cfg:setup')
-    expect(serializeCallbackData({ action: 'edit', key: 'kaneo_apikey' })).toBe('cfg:edit:kaneo_apikey')
+    // Provider keys are now plugin-namespaced dynamic keys
+    expect(serializeCallbackData({ action: 'edit', key: 'plugin:task-provider-kaneo:provider:credential' })).toBe(
+      'cfg:edit:plugin:task-provider-kaneo:provider:credential',
+    )
     expect(serializeCallbackData({ action: 'save', key: 'timezone' })).toBe('cfg:save:timezone')
   })
 

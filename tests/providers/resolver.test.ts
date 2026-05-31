@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { setConfig, setConfigValue } from '../../src/config.js'
+import { setConfigValue } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { deleteTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import {
@@ -136,7 +136,8 @@ describe('TaskProviderResolver', () => {
       status: 'stopped',
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-stopped', platformInstanceId: 'telegram-default' })
-    setConfig('ctx-1', 'youtrack_token', 'perm:abc')
+    // Provider token is now plugin-namespaced
+    setConfigValue('ctx-1', 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
     const resolver = makeResolver()
 
     expect(await resolver.resolve('ctx-1')).toBeNull()
@@ -525,7 +526,8 @@ describe('TaskProviderResolver', () => {
       taskInstanceId: 'yt-legacy-url',
       platformInstanceId: 'telegram-default',
     })
-    setConfig('ctx-legacy-url', 'youtrack_token', 'perm:abc')
+    // Provider token is now plugin-namespaced
+    setConfigValue('ctx-legacy-url', 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
     const resolver = makeResolver()
 
     expect(await resolver.resolve('ctx-legacy-url')).toBeNull()

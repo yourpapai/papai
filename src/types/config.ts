@@ -7,14 +7,10 @@
  * Configuration types shared between production and tests.
  */
 
-// Task-tracker specific config keys.
-// Note: kaneo_workspace_id is auto-provisioned and not user-visible.
-export type TaskProviderConfigKey = 'kaneo_apikey' | 'kaneo_workspace_id' | 'youtrack_token'
-export const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id' satisfies TaskProviderConfigKey
-
 // Plugin-namespaced config keys for the task-provider-kaneo plugin.
-// These are plain string constants (not ConfigKey union members) used after
-// migration 048 renames the flat keys in user_config.
+// These are plain string constants (not ConfigKey union members); the flat
+// legacy keys ('kaneo_apikey', 'kaneo_workspace_id') were renamed to these
+// by migration 048_namespace_kaneo_config.
 export const KANEO_PLUGIN_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
 export const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:workspaceId'
 
@@ -24,9 +20,13 @@ export type PreferenceConfigKey = 'timezone'
 // MCP endpoint config keys
 export type McpConfigKey = 'mcp_endpoints'
 
-// All per-user config keys. LLM credentials live in `system_config` (see
-// `src/system-config.ts`) and are owned by the bot admin, not per-user.
-export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey | McpConfigKey
+// Static per-user config keys. Provider-specific keys ('kaneo_apikey',
+// 'kaneo_workspace_id', 'youtrack_token', etc.) are no longer part of this
+// union; they are plugin-namespaced dynamic keys handled via
+// setConfigValue/getConfigValue + isAllowedDynamicConfigKey.
+// LLM credentials live in `system_config` (see `src/system-config.ts`)
+// and are owned by the bot admin, not per-user.
+export type ConfigKey = PreferenceConfigKey | McpConfigKey
 
 export type ConfigField = {
   readonly key: string
@@ -37,15 +37,9 @@ export type ConfigField = {
   readonly kind: 'preference' | 'provider-context' | 'plugin-context'
 }
 
-// All valid config keys (not filtered by provider)
-// Note: kaneo_workspace_id is auto-provisioned and stored separately
-export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
-  'kaneo_apikey',
-  KANEO_WORKSPACE_CONFIG_KEY,
-  'youtrack_token',
-  'timezone',
-  'mcp_endpoints',
-]
+// All valid static config keys (preference and MCP only; provider keys are
+// handled via the dynamic-config path).
+export const ALL_CONFIG_KEYS: readonly ConfigKey[] = ['timezone', 'mcp_endpoints']
 
 /**
  * Check if a string is a valid ConfigKey

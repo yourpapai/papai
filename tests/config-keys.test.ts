@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
+import { setCachedConfig } from '../src/cache.js'
 import {
   getConfigFieldsForContext,
   getConfigKeysForContext,
@@ -150,8 +151,10 @@ describe('getConfigKeysForContext', () => {
     registerYouTrackContributed()
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
-    setConfig('ctx-yt', 'kaneo_apikey', 'hidden-kaneo-key')
-    setConfig('ctx-yt', 'youtrack_token', 'perm:abc')
+    // Simulate stale flat-key rows that may remain in cache from pre-migration data;
+    // these are not ConfigKey members and should not appear in getAllConfig output.
+    setCachedConfig('ctx-yt', 'kaneo_apikey', 'hidden-kaneo-key')
+    setCachedConfig('ctx-yt', 'youtrack_token', 'perm:abc')
     setConfig('ctx-yt', 'timezone', 'UTC')
 
     // The contributed youtrack token uses plugin-namespaced key; legacy 'youtrack_token' is not visible
