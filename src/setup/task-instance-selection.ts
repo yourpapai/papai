@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { setContextSettings } from '../instances/context-store.js'
-import { listTaskInstances } from '../instances/task-store.js'
+import { listTaskInstancesSafe } from '../instances/task-store.js'
 import type { TaskInstance, TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 
@@ -27,7 +27,8 @@ const sessions = new Map<string, SelectionSession>()
 
 const sessionKey = (userId: string, contextId: string): string => `${userId}:${contextId}`
 
-const activeTaskInstances = (): TaskInstance[] => listTaskInstances().filter((instance) => instance.status === 'active')
+const activeTaskInstances = (): TaskInstance[] =>
+  listTaskInstancesSafe().instances.filter((instance) => instance.status === 'active')
 
 const formatChoiceList = (instances: readonly TaskInstance[]): string =>
   [

@@ -5,6 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { taskInstances } from '../../src/db/schema.js'
 import { getContextSettings } from '../../src/instances/context-store.js'
 import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
@@ -133,6 +135,19 @@ describe('task instance setup selection', () => {
       taskInstanceId: 'yt-prod',
       platformInstanceId: 'telegram-secondary',
     })
+  })
+
+  test('degrades gracefully when a task_instances row is undecryptable', () => {
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
+    getDrizzleDb()
+      .insert(taskInstances)
+      .values({ id: 'bad-task', type: 'kaneo', config: 'not-base64', status: 'active' })
+      .run()
+
+    const result = startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
+
+    expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
   })
 
   test('rejects text selection that is not one of the active options', () => {
