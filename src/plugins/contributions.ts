@@ -5,7 +5,6 @@
 
 import type { ToolSet } from 'ai'
 import { tool } from 'ai'
-import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
@@ -13,6 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
 import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
 import { namespacedJobName, namespacedToolName } from './contribution-names.js'
+import { getPluginToolInputSchema } from './input-schema.js'
 import { getPluginContextEligibility } from './registry.js'
 import { getScheduledJobContextIds } from './scheduled-contexts.js'
 import { recordRuntimeEvent } from './store.js'
@@ -70,11 +70,6 @@ const getRawCommands = (rawContributions: PluginContributions): readonly PluginC
 const getRawJobs = (rawContributions: PluginContributions): readonly PluginScheduledJob[] => {
   if (rawContributions.jobs === undefined) return []
   return rawContributions.jobs
-}
-
-const getInputSchema = (pluginTool: PluginTool): z.ZodType => {
-  if (pluginTool.inputSchema === undefined) return z.object({})
-  return pluginTool.inputSchema
 }
 
 /** Registry of active plugin contributions (in-memory, per-process). */
@@ -278,7 +273,7 @@ export function buildPluginToolSet(
 
       usedNames.add(namespacedName)
 
-      const schema = getInputSchema(pluginTool)
+      const schema = getPluginToolInputSchema(pluginTool)
       const wrappedExecute = wrapToolExecution((input, options) => {
         return pluginTool.execute(
           input,

@@ -3,59 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-type PluginToolLike = {
-  name: string
-  description: string
-  execute: (
-    input: unknown,
-    runtimeContext: PluginToolRuntimeContextLike,
-    options: { abortSignal?: AbortSignal },
-  ) => Promise<unknown>
-}
-
-type PluginContextLike = {
-  log: {
-    info(data: Record<string, unknown>, message: string): void
-  }
-  providerRuntime?: {
-    httpFetch?: (url: string, init?: RequestInit) => Promise<Response>
-  }
-  registration: {
-    registerTool(tool: PluginToolLike): void
-    registerPromptFragment(fragment: { name: string; content: string | (() => string) }): void
-  }
-}
-
-type PluginToolRuntimeContextLike = {
-  chatUserId: string
-  storageContextId: string
-  adminConfig: {
-    get(key: string): string | undefined
-  }
-  rateLimit: {
-    check(actorId: string): { allowed: boolean; retryAfterSec?: number }
-  }
-}
-
-type PluginFactoryLike = () => {
-  activate(ctx: PluginContextLike): void
-  deactivate?(ctx: PluginContextLike): void
-}
+import { requirePluginContext, type HttpFetch, type PluginToolRuntimeContextLike } from './context.ts'
+import { searchInputSchema } from './input-schema.ts'
 
 const API_ENDPOINT = 'https://api.synthetic.new/v2/search'
 
-type SearchInput = {
-  query: string
-  max_length: number
-  index?: number
-}
+type SearchInput = { query: string; max_length: number; index?: number }
 
-type SearchResult = {
-  url: string
-  title: string
-  text: string
-  published?: string
-}
+type SearchResult = { url: string; title: string; text: string; published?: string }
+
+type IntegerBounds = { minimum: number; maximum: number | undefined; defaultValue: number | undefined }
 
 class ValidationError extends Error {}
 
@@ -83,7 +40,7 @@ function readOptionalString(record: Record<string, unknown>, key: string, errorM
 function readOptionalBoundedInteger(
   record: Record<string, unknown>,
   key: string,
-  options: { minimum: number; maximum?: number; defaultValue?: number },
+  options: IntegerBounds,
 ): number | undefined {
   const value = record[key]
   if (value === undefined) return options.defaultValue
@@ -114,11 +71,16 @@ function parseSearchInput(input: unknown): SearchInput {
     maximum: 10000,
     defaultValue: 0,
   })
-  const index = readOptionalBoundedInteger(input, 'index', { minimum: 0 })
+  const index = readOptionalBoundedInteger(input, 'index', { minimum: 0, maximum: undefined, defaultValue: undefined })
+
+  let normalizedMaxLength = 0
+  if (maxLength !== undefined) {
+    normalizedMaxLength = maxLength
+  }
 
   return {
     query,
-    max_length: maxLength ?? 0,
+    max_length: normalizedMaxLength,
     ...(index === undefined ? {} : { index }),
   }
 }
@@ -188,13 +150,55 @@ function processSearchResults(results: SearchResult[], parsed: SearchInput): unk
   }
 }
 
+function resolveRateLimitActorId(runtimeContext: PluginToolRuntimeContextLike): string {
+  if (runtimeContext.chatUserId !== '') return runtimeContext.chatUserId
+  return runtimeContext.storageContextId
+}
+
+async function fetchSearchApiResults(
+  parsed: SearchInput,
+  apiKey: string,
+  abortSignal: AbortSignal | undefined,
+  httpFetch: HttpFetch,
+): Promise<unknown> {
+  const response = await httpFetch(API_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query: parsed.query }),
+    signal: abortSignal,
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    return { error: 'api_error', status: response.status, message: errorText }
+  }
+
+  const data: unknown = await response.json()
+  const validated = parseSearchResponse(data)
+  return processSearchResults(validated.results, parsed)
+}
+
+function buildSearchExecutionError(err: unknown): unknown {
+  if (err instanceof ValidationError) {
+    return { error: 'validation_error', message: err.message }
+  }
+  const message = err instanceof Error ? err.message : String(err)
+  if (err instanceof Error && err.name === 'AbortError') {
+    return { error: 'timeout', message }
+  }
+  return { error: 'network_error', message }
+}
+
 async function executeSearch(
   input: unknown,
   runtimeContext: PluginToolRuntimeContextLike,
   abortSignal: AbortSignal | undefined,
-  httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined,
+  httpFetch: HttpFetch | undefined,
 ): Promise<unknown> {
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.chatUserId || runtimeContext.storageContextId)
+  const rateResult = runtimeContext.rateLimit.check(resolveRateLimitActorId(runtimeContext))
   if (!rateResult.allowed) {
     return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
   }
@@ -208,62 +212,47 @@ async function executeSearch(
   const parsed = parseSearchInput(input)
 
   try {
-    const response = await httpFetch(API_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query: parsed.query }),
-      signal: abortSignal,
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      return { error: 'api_error', status: response.status, message: errorText }
-    }
-
-    const data: unknown = await response.json()
-    const validated = parseSearchResponse(data)
-
-    return processSearchResults(validated.results, parsed)
+    return await fetchSearchApiResults(parsed, apiKey, abortSignal, httpFetch)
   } catch (err) {
-    if (err instanceof ValidationError) {
-      return { error: 'validation_error', message: err.message }
-    }
-    const message = err instanceof Error ? err.message : String(err)
-    if (err instanceof Error && err.name === 'AbortError') {
-      return { error: 'timeout', message }
-    }
-    return { error: 'network_error', message }
+    return buildSearchExecutionError(err)
   }
 }
 
-const factory: PluginFactoryLike = () => {
-  let httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined
+const factory = (): {
+  activate(ctx: unknown): void
+  deactivate(ctx: unknown): void
+} => {
+  let httpFetch: HttpFetch | undefined
 
   return {
-    activate(ctx: PluginContextLike): void {
-      httpFetch = ctx.providerRuntime?.httpFetch
+    activate(ctx: unknown): void {
+      const pluginContext = requirePluginContext(ctx)
+      const providerRuntime = pluginContext.providerRuntime
+      httpFetch = providerRuntime === undefined ? undefined : providerRuntime.httpFetch
 
-      ctx.log.info({}, 'synthetic-web-search plugin activated')
+      pluginContext.log.info({}, 'synthetic-web-search plugin activated')
 
-      ctx.registration.registerTool({
+      pluginContext.registration.registerTool({
         name: 'search',
         description: 'Uses a search engine which returns title, url, and content in markdown',
-        execute: (input: unknown, runtimeContext: PluginToolRuntimeContextLike, options) =>
-          executeSearch(input, runtimeContext, options.abortSignal, httpFetch),
+        inputSchema: searchInputSchema,
+        execute: (
+          input: unknown,
+          runtimeContext: PluginToolRuntimeContextLike,
+          options: { abortSignal: AbortSignal | undefined },
+        ) => executeSearch(input, runtimeContext, options.abortSignal, httpFetch),
       })
 
-      ctx.registration.registerPromptFragment({
+      pluginContext.registration.registerPromptFragment({
         name: 'web-search-hint',
         content:
           'When the user asks a question that requires up-to-date information not in your training data, use the search tool to find relevant web content. Use web_fetch to read full page content when a search result looks promising.',
       })
     },
 
-    deactivate(ctx: PluginContextLike): void {
-      ctx.log.info({}, 'synthetic-web-search plugin deactivated')
+    deactivate(ctx: unknown): void {
+      const pluginContext = requirePluginContext(ctx)
+      pluginContext.log.info({}, 'synthetic-web-search plugin deactivated')
     },
   }
 }
