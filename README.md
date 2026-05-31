@@ -127,8 +127,8 @@ TELEGRAM_BOT_TOKEN=your_token_here
 ```
 
 > Task providers are no longer env-bootstrapped. After the bot starts, create a task
-> instance via `/admin#instances`, then approve its plugin with `/plugin approve task-provider-kaneo`
-> or `/plugin approve task-provider-youtrack` (DM, bot admin). The provider base URL is an
+> instance via `/admin#instances`, then approve its plugin (`task-provider-kaneo` or
+> `task-provider-youtrack`) in the settings web UI admin area (Plugins approval, super admin). The provider base URL is an
 > instance config field set in `/admin#instances`, not an env var.
 
 Start the bot:
@@ -263,9 +263,10 @@ Discord support uses gateway intents including `MessageContent`. Enable the **Me
 <summary><b>Kaneo Configuration</b></summary>
 
 Papai no longer reads Kaneo URLs from the environment. The Kaneo client URL is now a task-instance
-config field: create the task instance in `/admin#instances`, then run `/plugin approve task-provider-kaneo`.
+config field: create the task instance in `/admin#instances`, then approve `task-provider-kaneo` in the
+settings web UI admin area (Plugins approval).
 Per-user credentials (`plugin:task-provider-kaneo:provider:credential`, `plugin:task-provider-kaneo:provider:workspaceId`)
-are set through `/setup` and `/config`.
+are set in the settings web UI, opened via `/config`.
 
 Kaneo can auto-provision user accounts for the bot workflow. In self-hosted deployments, `docker-compose.yml`
 still expects Kaneo-service variables such as `KANEO_CLIENT_URL` (consumed by the bundled Kaneo and Caddy
@@ -277,7 +278,8 @@ services, not papai), `KANEO_POSTGRES_PASSWORD`, and `KANEO_AUTH_SECRET`.
 <summary><b>YouTrack Configuration</b></summary>
 
 Papai no longer reads `YOUTRACK_URL` from the environment. The YouTrack instance URL is a task-instance
-config field: create the task instance in `/admin#instances`, then run `/plugin approve task-provider-youtrack`.
+config field: create the task instance in `/admin#instances`, then approve `task-provider-youtrack` in the
+settings web UI admin area (Plugins approval).
 Runtime setup still requires a per-user token (`plugin:task-provider-youtrack:provider:token`), configured
 through the bot.
 
@@ -564,7 +566,7 @@ services:
       INSTANCE_CONFIG_KEY: ${INSTANCE_CONFIG_KEY}
 ```
 
-After the stack is up, create the Kaneo task instance via `/admin#instances` and approve it with `/plugin approve task-provider-kaneo`; the Kaneo client URL is an instance config field, not a papai env var.
+After the stack is up, create the Kaneo task instance via `/admin#instances` and approve `task-provider-kaneo` in the settings web UI admin area (Plugins approval); the Kaneo client URL is an instance config field, not a papai env var.
 
 For a real deployment, prefer the checked-in `docker-compose.yml` and `.env.example` together, because the full stack is Kaneo-specific and also needs Kaneo service settings (`KANEO_CLIENT_URL`, `KANEO_POSTGRES_PASSWORD`, `KANEO_AUTH_SECRET`) consumed by the bundled Kaneo and Caddy services. For YouTrack deployments, you typically run `papai` against an external YouTrack instance instead of this full bundled stack.
 

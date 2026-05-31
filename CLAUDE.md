@@ -163,7 +163,7 @@ Chat-provider bootstrap requirements:
 
 `CHAT_PROVIDER` is used only by first-run env bootstrap when the platform instance table is empty. After bootstrap, platform instance selection is read from `context_settings`, platform instance base config lives in `platform_instances`, and per-context credentials stay in `user_config`.
 
-Task instances are no longer env-bootstrapped (Phases 3–4 of the task-provider→plugin migration). Create task instances via `/admin#instances`, then run `/plugin approve task-provider-kaneo` or `/plugin approve task-provider-youtrack` (DM, super admin) after deploying.
+Task instances are no longer env-bootstrapped (Phases 3–4 of the task-provider→plugin migration). Create task instances via `/admin#instances`, then approve `task-provider-kaneo` or `task-provider-youtrack` in the settings web UI admin area (Plugins approval, super admin) after deploying. (The `/plugin` chat command is retired — plugin approval is UI-only.)
 
 **Removed env vars (Phases 3–4 of the task-provider→plugin migration):** `TASK_PROVIDER`, `KANEO_CLIENT_URL`, `KANEO_INTERNAL_URL`, and `YOUTRACK_URL` are no longer read at first-run bootstrap. Create task instances via `/admin#instances`, then approve the relevant plugin after deploying.
 
@@ -419,19 +419,23 @@ Current phase-five provider features such as sprints, activities, saved queries,
 
 ### User-Configurable Tool Access
 
-Beyond capability + context gating, each personal or managed-group context can disable
-tools. Preferences are an opt-out denylist (default: all enabled) stored as JSON under a
-reserved `tool_prefs` config key and applied as the final filter in `makeTools()`. The
-system prompt (`src/system-prompt.ts`) is composed from tool-gated fragments so it never
-instructs the agent to use a disabled tool, and appends an "Unavailable tools" line for
-partially-disabled domains. Managed via the Tools section of the settings web UI.
+Beyond capability + context gating, each personal or managed-group context assigns every
+tool a three-state permission — `allow` (default), `ask`, or `deny` — stored as JSON under
+a reserved `tool_prefs` config key (`{ domainDefaults, toolOverrides }`) and applied as the
+final step in `makeTools()`. `deny` removes the tool from the set; `allow` exposes it
+normally; `ask` exposes it wrapped so it requires explicit user permission before each call
+(its input schema gains a `_permission_reason` field and execution is gated). The system
+prompt (`src/system-prompt.ts`) is composed from permission-aware fragments: it never
+instructs the agent to use a denied tool, lists ask-gated tools with their permission
+requirement, and appends an "Unavailable tools" line for denied domains. Managed via the
+Tools section of the settings web UI (per-tool and per-domain Allow/Ask/Deny).
 
 ### MCP-Sourced Tools
 
 When a context configures `mcp_endpoints`, or an enabled plugin declares an `mcp` server,
 `makeTools()` also merges tools fetched from those external MCP servers. User-endpoint tools
 are named `mcp_<server>__<tool>`; plugin-sourced MCP tools use the `plugin_<server>__<tool>`
-namespace. These tools are subject to the same per-context denylist as builtins. See
+namespace. These tools are subject to the same per-context tool permissions as builtins. See
 `src/mcp/CLAUDE.md`.
 
 ## Logging
