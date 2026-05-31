@@ -6,7 +6,13 @@
 import type { z } from 'zod'
 
 import type { GlobalStatsSchema, SubjectStatsSchema } from '../../admin/fetcher-schemas.js'
-import type { AdminLlmSnapshot, BillingDetail, BillingRoleTotals, BillingSubject } from '../../shared/api-types.js'
+import type {
+  AdminLlmSnapshot,
+  BillingDetail,
+  BillingRoleTotals,
+  BillingSubject,
+  IdentityMappingEntry,
+} from '../../shared/api-types.js'
 
 type GlobalStats = z.infer<typeof GlobalStatsSchema>
 type SubjectStats = z.infer<typeof SubjectStatsSchema>
@@ -45,6 +51,38 @@ function percentiles(): GlobalStats['distributions']['memosPerSubject'] {
   return { count: 12, min: 0, p50: 2, p90: 6, p99: 14, max: 20, mean: 3.4 }
 }
 
+function toolMix(): GlobalStats['toolMix'] {
+  return {
+    topTools: [
+      { toolName: 'create_task', count: 982, successRate: 0.97 },
+      { toolName: 'search_tasks', count: 741, successRate: 0.96 },
+      { toolName: 'list_tasks', count: 603, successRate: 0.98 },
+      { toolName: 'update_task', count: 441, successRate: 0.94 },
+      { toolName: 'get_task', count: 318, successRate: 0.99 },
+      { toolName: 'save_memo', count: 214, successRate: 0.95 },
+      { toolName: 'web_fetch', count: 148, successRate: 0.88 },
+      { toolName: 'get_current_time', count: 94, successRate: 1.0 },
+    ],
+    errorTypeCounts: { validation: 18, provider_4xx: 9, timeout: 4 },
+    totalCalls: 4390,
+    totalSuccessRate: 0.953,
+    toolCallGrowth30d: [
+      { date: '2026-05-02', count: 112 },
+      { date: '2026-05-04', count: 98 },
+      { date: '2026-05-06', count: 143 },
+      { date: '2026-05-08', count: 165 },
+      { date: '2026-05-10', count: 121 },
+      { date: '2026-05-12', count: 187 },
+      { date: '2026-05-14', count: 203 },
+      { date: '2026-05-16', count: 178 },
+      { date: '2026-05-18', count: 156 },
+      { date: '2026-05-20', count: 194 },
+      { date: '2026-05-24', count: 211 },
+      { date: '2026-05-28', count: 229 },
+    ],
+  }
+}
+
 export function makeGlobalStats(overrides: Partial<GlobalStats> = {}): GlobalStats {
   return {
     generatedAt: FIXED_TS,
@@ -70,10 +108,7 @@ export function makeGlobalStats(overrides: Partial<GlobalStats> = {}): GlobalSta
       subjectsWithInstructions: 3,
     },
     webFetches: { topHosts: [{ hostHash: 'h-abc123', count: 7 }] },
-    toolMix: {
-      topTools: [{ toolName: 'create_task', count: 30, successRate: 0.96 }],
-      errorTypeCounts: { validation: 2 },
-    },
+    toolMix: toolMix(),
     llmUsage: {
       totalCalls: 42,
       mainCalls: 30,
@@ -89,11 +124,11 @@ export function makeGlobalStats(overrides: Partial<GlobalStats> = {}): GlobalSta
 export function makeAdminLlmSnapshot(overrides: Partial<AdminLlmSnapshot> = {}): AdminLlmSnapshot {
   const base = { updatedAt: FIXED_TS, updatedBy: 'admin' }
   return {
-    llm_apikey: { ...base, value: '***' },
-    llm_baseurl: { ...base, value: 'https://api.example.com' },
-    main_model: { ...base, value: 'gpt-4o-mini' },
-    small_model: { ...base, value: 'gpt-4o-mini' },
-    embedding_model: { ...base, value: 'text-embedding-3-small' },
+    llm_apikey: { ...base, value: '***', required: true },
+    llm_baseurl: { ...base, value: 'https://api.example.com', required: true },
+    main_model: { ...base, value: 'gpt-4o-mini', required: true },
+    small_model: { ...base, value: 'gpt-4o-mini', required: false },
+    embedding_model: { ...base, value: 'text-embedding-3-small', required: false },
     ...overrides,
   }
 }
@@ -175,4 +210,29 @@ export function makeSubjectStats(overrides: Partial<SubjectStats> = {}): Subject
     toolCalls: subjectToolCalls(),
     ...overrides,
   }
+}
+
+export function makeIdentityMappingsSample(): IdentityMappingEntry[] {
+  return [
+    {
+      contextId: 'tg:1001',
+      providerName: 'task-provider-kaneo',
+      providerUserId: 'ku-101',
+      providerUserLogin: 'alice',
+      displayName: 'Alice',
+      matchedAt: '2026-05-01T00:00:00.000Z',
+      matchMethod: 'manual_nl',
+      confidence: 1,
+    },
+    {
+      contextId: 'tg:1002',
+      providerName: 'task-provider-kaneo',
+      providerUserId: 'ku-102',
+      providerUserLogin: 'bob',
+      displayName: 'Bob',
+      matchedAt: '2026-05-10T00:00:00.000Z',
+      matchMethod: 'auto',
+      confidence: 0.85,
+    },
+  ]
 }

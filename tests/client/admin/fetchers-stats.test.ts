@@ -59,7 +59,7 @@ const fullGlobalPayload = (overrides: Record<string, unknown>): Record<string, u
     subjectsWithInstructions: 0,
   },
   webFetches: { topHosts: [] },
-  toolMix: { topTools: [], errorTypeCounts: {} },
+  toolMix: { topTools: [], errorTypeCounts: {}, totalCalls: 0, totalSuccessRate: 0, toolCallGrowth30d: [] },
   llmUsage: {
     totalCalls: 0,
     mainCalls: 0,
@@ -93,7 +93,7 @@ describe('fetchStatsGlobal', () => {
         subjectsWithInstructions: 0,
       },
       webFetches: { topHosts: [] },
-      toolMix: { topTools: [], errorTypeCounts: {} },
+      toolMix: { topTools: [], errorTypeCounts: {}, totalCalls: 0, totalSuccessRate: 0, toolCallGrowth30d: [] },
       llmUsage: {
         totalCalls: 0,
         mainCalls: 0,

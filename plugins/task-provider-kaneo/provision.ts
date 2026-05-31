@@ -249,7 +249,7 @@ const provLog = logger.child({ scope: 'kaneo:auto-provision' })
 
 /**
  * Auto-provisions a Kaneo account for a context assigned to an active Kaneo task instance.
- * Unassigned contexts return without provisioning; /setup owns task-instance assignment.
+ * Unassigned contexts return without provisioning; /config owns task-instance assignment.
  */
 export async function maybeProvisionKaneo(
   reply: ReplyFn,

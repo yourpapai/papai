@@ -7,6 +7,7 @@
   import { untrack } from 'svelte'
 
   import type { AdminLlmSnapshot, AdminSystemSummary } from '../../shared/api-types.js'
+  import Panel from '../../shared/ui/Panel.svelte'
   import CredentialsForm from '../components/CredentialsForm.svelte'
   import { fetchAdminLlm, fetchAdminSystem } from '../fetchers.js'
 
@@ -62,31 +63,41 @@
     <p class="status-error">{error}</p>
   {/if}
 
-  <section class="system-summary" aria-label="System summary">
-    <h3>Environment summary</h3>
-    {#if system === null}
-      <span class="placeholder">Loading...</span>
-    {:else}
-      <dl data-testid="system-summary">
-        <div><dt>Chat provider</dt><dd>{system.chatProvider}</dd></div>
-        <div><dt>Task provider</dt><dd>{system.taskProvider}</dd></div>
-        <div><dt>Debug server</dt><dd>{boolLabel(system.debugServer)}</dd></div>
-        <div><dt>Admin user</dt><dd>{system.adminUserSet ? 'Configured' : 'Missing'}</dd></div>
-      </dl>
-    {/if}
-  </section>
+  <Panel title="system summary">
+    {#snippet body()}
+      <div class="system__summary">
+        {#if system === null}
+          <span class="placeholder">Loading...</span>
+        {:else}
+          <dl data-testid="system-summary">
+            <div><dt>Chat provider</dt><dd>{system.chatProvider}</dd></div>
+            <div><dt>Task provider</dt><dd>{system.taskProvider}</dd></div>
+            <div><dt>Debug server</dt><dd>{boolLabel(system.debugServer)}</dd></div>
+            <div><dt>Admin user</dt><dd>{system.adminUserSet ? 'Configured' : 'Missing'}</dd></div>
+          </dl>
+        {/if}
+      </div>
+    {/snippet}
+  </Panel>
 
-  <p class="admin-system__note">POST /admin/llm requires an active dashboard session</p>
-  <CredentialsForm snapshot={adminLlm} onRefresh={loadAdmin} />
+  <Panel title="llm credentials">
+    {#snippet body()}
+      <CredentialsForm snapshot={adminLlm} onRefresh={loadAdmin} />
+    {/snippet}
+  </Panel>
 </section>
 
 <style>
-  .admin-system__note {
-    color: var(--fg3);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    margin: 8px 12px 0;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+  .admin-section {
+    scroll-margin-top: 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .system__summary {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 </style>

@@ -329,6 +329,7 @@ describe('processMessage', () => {
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
     unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+    unregisterContributedTaskProviderType('auto-throw-plugin')
   })
 
   afterAll(() => {
@@ -346,7 +347,7 @@ describe('processMessage', () => {
   describe('missing configuration', () => {
     test('group context does not call maybeAutoProvision before missing-provider-config handling', async () => {
       // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its token key.
-      // Simulate missing config by having resolve return null → orchestrator sends /setup guidance.
+      // Simulate missing config by having resolve return null -> orchestrator sends /config guidance.
       let maybeProvisionCalls = 0
       const freshGroupCtx = 'group-yt:thread-1'
       assignYouTrackContext('group-yt')
@@ -365,7 +366,7 @@ describe('processMessage', () => {
       await processMessage(reply, freshGroupCtx, 'user-1', null, 'hello', 'group', 'group-yt', deps)
 
       expect(maybeProvisionCalls).toBe(0)
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('replies with bot-misconfigured when system_config is incomplete', async () => {
@@ -376,7 +377,7 @@ describe('processMessage', () => {
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
       expect(textCalls[0]).toContain('not fully configured')
-      expect(textCalls[0]).not.toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('bot-misconfigured path does not send typing', async () => {
@@ -387,11 +388,12 @@ describe('processMessage', () => {
 
       expect(typingCalls).toHaveLength(0)
       expect(textCalls[0]).toContain('not fully configured')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('missing YouTrack provider config is derived from assigned task instance', async () => {
       // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its
-      // plugin-namespaced token key. The /setup guidance is now triggered by resolver returning null
+      // plugin-namespaced token key. The /config guidance is now triggered by resolver returning null
       // when the token is absent. Simulate by having resolve return null.
       const freshCtx = 'missing-youtrack-token-2'
       assignYouTrackContext(freshCtx)
@@ -407,8 +409,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls.length).toBeGreaterThanOrEqual(1)
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
 
     test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
@@ -431,7 +432,7 @@ describe('processMessage', () => {
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(resolverCalls).toBe(1)
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
 
     test('missing provider config is derived from assigned task instance', async () => {
@@ -450,7 +451,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
 
     test('replies with setup guidance when resolver returns null after credentials pass', async () => {
@@ -478,7 +479,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
 
     test('dm context calls maybeAutoProvision with generic provider context', async () => {
@@ -498,7 +499,7 @@ describe('processMessage', () => {
       await processMessage(reply, CTX_ID, 'user-1', 'alice', 'hello', 'dm', undefined, deps)
 
       expect(autoProvisionCalls).toEqual([{ contextId: CTX_ID, chatUserId: 'user-1', username: 'alice' }])
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
 
     test('dm context continues to setup guidance when generic auto-provision hook throws', async () => {
@@ -535,9 +536,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, CTX_ID, 'user-1', 'alice', 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /setup before I can do that.')
-
-      unregisterContributedTaskProviderType('auto-throw-plugin')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
   })
 

@@ -52,6 +52,9 @@ const globalPayload = (overrides: Partial<GlobalStats> | null): GlobalStats => {
     toolMix: {
       topTools: [{ toolName: 'create_task', count: 8, successRate: 1 }],
       errorTypeCounts: {},
+      totalCalls: 8,
+      totalSuccessRate: 1,
+      toolCallGrowth30d: [{ date: '2026-05-01', count: 5 }],
     },
     llmUsage: {
       totalCalls: 0,
@@ -112,37 +115,43 @@ afterEach(() => {
 })
 
 describe('admin StatsPanel', () => {
-  test('renders title and window selector', () => {
+  test('renders title and window Seg buttons', () => {
     installFetch({ payload: null, status: null, error: null })
     const { target, component } = render(freshState())
     expect(target.textContent).toContain('Stats')
-    const select = target.querySelector<HTMLSelectElement>('[data-testid="stats-window-select"]')
-    expect(select).not.toBeNull()
+    const segBtns = target.querySelectorAll('.ui-seg__btn')
+    expect(segBtns.length).toBeGreaterThan(0)
+    const labels = Array.from(segBtns).map((b) => b.textContent?.trim())
+    expect(labels).toContain('30d')
+    expect(labels).toContain('7d')
+    expect(labels).toContain('1d')
     void unmount(component)
   })
 
-  test('fetches /stats/global on mount and renders DM total + active counts', async () => {
+  test('fetches /stats/global on mount and renders active counts', async () => {
     const calls = installFetch({ payload: null, status: null, error: null })
     const { target, component } = render(freshState())
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
     expect(calls.some((url) => url.startsWith('/stats/global'))).toBe(true)
-    expect(target.textContent).toMatch(/42/u)
-    expect(target.textContent).toMatch(/Group total/u)
+    // active 1d = 3, 7d = 9, 30d = 21 from globalPayload; total subjects = 42+7 = 49
+    expect(target.textContent).toMatch(/3/u)
+    expect(target.textContent).toMatch(/9/u)
+    expect(target.textContent).toMatch(/21/u)
     void unmount(component)
   })
 
-  test('refetches when the window selector changes', async () => {
+  test('refetches when the window Seg button changes', async () => {
     const calls = installFetch({ payload: null, status: null, error: null })
     const state = freshState()
     const { target, component } = render(state)
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
-    const select = target.querySelector<HTMLSelectElement>('[data-testid="stats-window-select"]')
-    expect(select).not.toBeNull()
-    const selectEl = select!
-    selectEl.value = '7d'
-    selectEl.dispatchEvent(new Event('change', { bubbles: true }))
+    // Find and click the 7d button
+    const segBtns = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn'))
+    const btn7d = segBtns.find((b) => b.textContent?.trim() === '7d')
+    expect(btn7d).not.toBeUndefined()
+    btn7d!.click()
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
     expect(calls.some((url) => url.includes('window=7d'))).toBe(true)
@@ -155,6 +164,28 @@ describe('admin StatsPanel', () => {
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
     expect(target.textContent).toMatch(/boom/u)
+    void unmount(component)
+  })
+
+  test('renders all four distribution row labels', async () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    expect(target.textContent).toContain('memos / subject')
+    expect(target.textContent).toContain('recurring / subject')
+    expect(target.textContent).toContain('messages / subject')
+    expect(target.textContent).toContain('attach bytes / subject')
+    void unmount(component)
+  })
+
+  test('renders tool calls panel with total calls and top tool', async () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    expect(target.textContent).toContain('tool calls')
+    expect(target.textContent).toContain('create_task')
     void unmount(component)
   })
 })

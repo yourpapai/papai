@@ -4,99 +4,164 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { onMount } from 'svelte'
+
   import type { IdentityMappingEntry } from '../../shared/api-types.js'
-  import { fetchAdminIdentity } from '../fetchers.js'
+  import DataTable from '../../shared/ui/DataTable.svelte'
+  import Panel from '../../shared/ui/Panel.svelte'
+  import { fetchAdminIdentityMappings } from '../fetchers.js'
 
   let userId = $state('')
-  let provider = $state('task-provider')
-  let mapping: IdentityMappingEntry | null = $state(null)
+  let mappings: IdentityMappingEntry[] = $state([])
   let hasLoaded = $state(false)
   let loading = $state(false)
   let error: string | null = $state(null)
-  let rootEl: HTMLElement | undefined = $state()
-  let loaded = $state(false)
 
-  async function loadIdentity(): Promise<void> {
-    if (userId.trim() === '' || provider.trim() === '') return
+  async function loadMappings(): Promise<void> {
     loading = true
     error = null
     try {
-      mapping = await fetchAdminIdentity(userId.trim(), provider.trim())
+      mappings = await fetchAdminIdentityMappings()
       hasLoaded = true
     } catch (err) {
       hasLoaded = true
-      mapping = null
+      mappings = []
       error = err instanceof Error ? err.message : String(err)
     } finally {
       loading = false
     }
   }
 
-  async function loadInitial(): Promise<void> {
-    if (loaded) return
-    loaded = true
-  }
-
-  $effect(() => {
-    if (rootEl === undefined) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            void loadInitial()
-            observer.disconnect()
-            return
-          }
-        }
-      },
-      { rootMargin: '0px' },
-    )
-    observer.observe(rootEl)
-    return () => observer.disconnect()
+  onMount(() => {
+    void loadMappings()
   })
 
-  function submit(event: SubmitEvent): void {
-    event.preventDefault()
-    void loadIdentity()
+  interface MappingRow {
+    rowKey: string
+    user: string
+    provider: string
+    login: string
+    method: string
+    conf: string
   }
+
+  const filtered = $derived<IdentityMappingEntry[]>(
+    userId.trim() === ''
+      ? mappings
+      : mappings.filter((m) => m.contextId.includes(userId.trim())),
+  )
+
+  const rows = $derived<MappingRow[]>(
+    filtered.map((m) => ({
+      rowKey: `${m.contextId}:${m.providerName}`,
+      user: m.displayName ?? m.contextId,
+      provider: m.providerName,
+      login: m.providerUserLogin ?? '—',
+      method: m.matchMethod ?? '—',
+      conf: m.confidence !== null && m.confidence !== undefined ? String(m.confidence) : '—',
+    })),
+  )
+
+  const columns = [
+    { key: 'user' as const, label: 'User' },
+    { key: 'provider' as const, label: 'Provider' },
+    { key: 'login' as const, label: 'Login' },
+    { key: 'method' as const, label: 'Method' },
+    { key: 'conf' as const, label: 'Conf', align: 'right' as const },
+  ]
 </script>
 
-<section id="identities" class="admin-data-section admin-section" bind:this={rootEl}>
-  <header class="admin-section-header">
-    <div>
-      <p class="eyebrow">Mappings</p>
-      <h2 data-testid="admin-section-title">Identities</h2>
-    </div>
-  </header>
-
-  <form class="admin-filter-form" onsubmit={submit}>
-    <label>
-      <span>User ID</span>
-      <input data-testid="identity-user-id" bind:value={userId} placeholder="user id" type="text" />
-    </label>
-    <label>
-      <span>Provider</span>
-      <input data-testid="identity-provider" bind:value={provider} placeholder="kaneo" type="text" />
-    </label>
-    <button data-testid="identity-load" disabled={userId.trim() === '' || provider.trim() === '' || loading} type="submit">
-      {loading ? 'Loading...' : 'Load'}
-    </button>
-  </form>
-
-  {#if error !== null}
-    <p class="status-error">{error}</p>
-  {:else if hasLoaded && mapping === null}
-    <p class="placeholder">No identity mapping found</p>
-  {:else if mapping !== null}
-    <dl class="admin-key-value-list">
-      <div><dt>Context ID</dt><dd>{mapping.contextId}</dd></div>
-      <div><dt>Provider</dt><dd>{mapping.providerName}</dd></div>
-      <div><dt>Provider user ID</dt><dd>{mapping.providerUserId ?? 'Unmatched'}</dd></div>
-      <div><dt>Login</dt><dd>{mapping.providerUserLogin ?? 'Unknown'}</dd></div>
-      <div><dt>Display name</dt><dd>{mapping.displayName ?? 'Unknown'}</dd></div>
-      <div><dt>Matched at</dt><dd>{mapping.matchedAt}</dd></div>
-      <div><dt>Match method</dt><dd>{mapping.matchMethod ?? 'Unknown'}</dd></div>
-      <div><dt>Confidence</dt><dd>{mapping.confidence ?? 'Unknown'}</dd></div>
-    </dl>
-  {/if}
+<section id="identities" class="admin-data-section admin-section">
+  <Panel title="identity mappings" count={filtered.length}>
+    {#snippet action()}
+      <form
+        class="identities__filter"
+        onsubmit={(e) => {
+          e.preventDefault()
+          void loadMappings()
+        }}>
+        <input
+          class="identities__user-id-input"
+          data-testid="identities-user-id"
+          type="text"
+          bind:value={userId}
+          placeholder="filter by user id" />
+        <button
+          class="identities__reload-btn"
+          data-testid="identities-load"
+          type="submit"
+          disabled={loading}>
+          {loading ? 'Loading…' : 'Reload'}
+        </button>
+      </form>
+    {/snippet}
+    {#snippet body()}
+      <div class="identities__body">
+        {#if error !== null}
+          <p class="status-error" data-testid="identities-error">{error}</p>
+        {:else if !hasLoaded}
+          <p class="placeholder">Loading…</p>
+        {:else if filtered.length === 0}
+          <p class="placeholder" data-testid="identities-empty">No mappings found</p>
+        {:else}
+          <DataTable {columns} {rows} rowKey="rowKey" />
+        {/if}
+      </div>
+    {/snippet}
+  </Panel>
 </section>
+
+<style>
+  .admin-section {
+    scroll-margin-top: 96px;
+  }
+  .identities__filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .identities__user-id-input {
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--fg);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    outline: 0;
+    padding: 4px 10px;
+  }
+  .identities__reload-btn {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+    color: var(--bg);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    height: 22px;
+    padding: 3px 8px;
+  }
+  .identities__reload-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .identities__body {
+    padding: 0;
+  }
+  .placeholder {
+    margin: 0;
+    padding: 24px;
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: center;
+  }
+  .status-error {
+    margin: 0;
+    padding: 12px;
+    color: var(--danger);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+</style>

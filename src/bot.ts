@@ -6,24 +6,18 @@
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
 import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
-import { autoStartWizardIfNeeded } from './bot-auto-setup.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
-import { maybeInterceptWizard } from './bot-settings.js'
-import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
+import { supportsFileReplies } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
-import { resolveSourceChatProvider, resolveSourceProviderName } from './chat/source-instance.js'
+import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
-  registerAdminCommands,
   registerClearCommand,
   registerConfigCommand,
   registerContextCommand,
   registerDashboardCommand,
-  registerGroupCommand,
   registerHelpCommand,
-  registerPluginCommand,
-  registerSetupCommand,
   registerStartCommand,
 } from './commands/index.js'
 import { emitUser } from './debug/event-bus.js'
@@ -47,21 +41,15 @@ const log = logger.child({ scope: 'bot' })
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
 function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string | null {
   if (auth.reason === 'group_not_allowed')
-    return `This group is not authorized to use this bot. Ask the bot admin to run \`/group add ${groupId}\` in a DM with the bot.`
+    return `This group (${groupId}) is not authorized to use this bot. Ask the bot admin to authorize it in the settings web UI — they can open it with \`/config\` in a DM.`
   if (auth.reason === 'group_member_not_allowed')
-    return "You're not authorized to use this bot in this group. Ask a group admin to add you with `/group adduser <user-id|@username>`"
+    return "You're not authorized to use this bot in this group. Ask a group admin to add you in the settings web UI — they can open it with `/config` in a DM."
   if (auth.reason === 'dm_not_allowed') return 'You are not authorized to use this bot.'
   return null
 }
 async function replyToUnauthorized(reply: ReplyFn, auth: AuthorizationResult, groupId: string): Promise<void> {
   const message = getUnauthorizedReplyText(auth, groupId)
   if (message !== null) await reply.text(message)
-}
-function shouldDeferUnauthorizedDmCommand(commandName: string, msg: IncomingMessage): boolean {
-  if (msg.contextType !== 'dm') return false
-  if (commandName === 'group') return true
-  if (commandName === 'groups') return true
-  return false
 }
 function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
   return checkAuthorizationExtended(
@@ -76,7 +64,6 @@ function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
 }
 function createObservedCommandHandler(
   chat: ChatProvider,
-  commandName: string,
   handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>,
 ): (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void> {
   return async (msg, reply, _auth): Promise<void> => {
@@ -84,8 +71,7 @@ function createObservedCommandHandler(
     const tracked = trackReplyUsage(reply, supportsFileReplies(chat))
     const auth = resolveMessageAuth(msg)
     if (!auth.allowed) {
-      if (shouldDeferUnauthorizedDmCommand(commandName, msg)) await handler(msg, tracked.reply, auth)
-      else await replyToUnauthorized(tracked.reply, auth, msg.contextId)
+      await replyToUnauthorized(tracked.reply, auth, msg.contextId)
       emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
       return
     }
@@ -100,7 +86,7 @@ function createObservedChatProvider(chat: ChatProvider): ChatProvider {
     get(target, prop: keyof ChatProvider) {
       if (prop === 'registerCommand') {
         return (name: string, handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>) => {
-          registerCommand(name, createObservedCommandHandler(chat, name, handler))
+          registerCommand(name, createObservedCommandHandler(chat, handler))
         }
       }
       return target[prop]
@@ -111,13 +97,9 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   const observedChat = createObservedChatProvider(chat)
   registerHelpCommand(observedChat)
   registerStartCommand(observedChat)
-  registerSetupCommand(observedChat)
   registerConfigCommand(observedChat)
   registerContextCommand(observedChat)
   registerClearCommand(observedChat, undefined, adminUserId)
-  registerAdminCommands(observedChat, adminUserId)
-  registerGroupCommand(observedChat)
-  registerPluginCommand(observedChat)
   registerDashboardCommand(observedChat)
   registerPluginCommands(observedChat)
 }
@@ -225,19 +207,6 @@ async function onIncomingMessage(
     storageContextId: auth.storageContextId,
   })
   if (auth.allowed) recordGroupObservation(chat, msg)
-  const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
-  if (
-    await maybeInterceptWizard(
-      msg,
-      tracked.reply,
-      auth,
-      supportsInteractiveButtons(sourceChat),
-      autoStartWizardIfNeeded,
-    )
-  ) {
-    emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
-    return
-  }
   tryStageGroupCandidates(chat, msg, auth.storageContextId)
   await handleMessage(chat, msg, tracked.reply, auth, deps)
   if (!willQueueAuthorizedMessage(msg, auth))

@@ -12,8 +12,6 @@ import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../../src/db/schema.js'
 import {
-  findGroupUserObservation,
-  findKnownGroupContext,
   listAdminGroupContextsForUser,
   upsertGroupAdminObservation,
   upsertGroupUserObservation,
@@ -101,72 +99,6 @@ describe('group-settings registry', () => {
     assert.ok(observation !== undefined)
     expect(observation.displayLabel).toBe('Alice Example (@alice)')
     expect(observation.username).toBe('alice')
-  })
-
-  test('finds group user observations by exact provider, context, and user', () => {
-    upsertGroupUserObservation({
-      provider: 'telegram',
-      contextId: 'group-1',
-      userId: 'user-1',
-      username: 'alice',
-      displayLabel: 'Alice Example (@alice)',
-    })
-    upsertGroupUserObservation({
-      provider: 'discord',
-      contextId: 'group-1',
-      userId: 'user-1',
-      username: 'alice-discord',
-      displayLabel: 'Alice Discord',
-    })
-
-    expect(findGroupUserObservation('telegram', 'group-1', 'user-1')).toEqual({
-      provider: 'telegram',
-      contextId: 'group-1',
-      userId: 'user-1',
-      username: 'alice',
-      displayLabel: 'Alice Example (@alice)',
-    })
-  })
-
-  test('finds known group contexts by provider and context id', () => {
-    upsertKnownGroupContext({
-      contextId: 'group-1',
-      provider: 'telegram',
-      displayName: 'Operations',
-      parentName: 'Platform',
-    })
-
-    const telegramContext = findKnownGroupContext('telegram', 'group-1')
-
-    expect(telegramContext).not.toBeNull()
-    assert.ok(telegramContext !== null)
-    expect(telegramContext.displayName).toBe('Operations')
-    expect(findKnownGroupContext('discord', 'group-1')).toBeNull()
-  })
-
-  test('stores known group contexts separately per provider for the same context id', () => {
-    upsertKnownGroupContext({
-      contextId: 'shared-group',
-      provider: 'telegram',
-      displayName: 'Telegram Operations',
-      parentName: null,
-    })
-    upsertKnownGroupContext({
-      contextId: 'shared-group',
-      provider: 'discord',
-      displayName: 'Discord Operations',
-      parentName: null,
-    })
-
-    const telegramContext = findKnownGroupContext('telegram', 'shared-group')
-    const discordContext = findKnownGroupContext('discord', 'shared-group')
-
-    expect(telegramContext).not.toBeNull()
-    expect(discordContext).not.toBeNull()
-    assert.ok(telegramContext !== null)
-    assert.ok(discordContext !== null)
-    expect(telegramContext.displayName).toBe('Telegram Operations')
-    expect(discordContext.displayName).toBe('Discord Operations')
   })
 
   test('stores the latest admin observation per group and user', () => {

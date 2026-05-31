@@ -602,7 +602,8 @@ describe('InstancesSection', () => {
   })
 
   test('shows unresolved label when a task instance has no active provider plugin', async () => {
-    const unresolvedReason = "Provider plugin for type 'no-plugin' is not active. Run /plugin approve."
+    const unresolvedReason =
+      "Provider plugin for type 'no-plugin' is not active. Approve it in the settings web UI admin area (Plugins approval)."
     const unresolvedTaskInstance = {
       id: 'no-plugin-main',
       type: 'no-plugin',

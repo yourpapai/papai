@@ -16,8 +16,6 @@ import { cleanupExpiredMessages } from './message-cache/persistence.js'
 import { cleanupExpiredQueues } from './message-queue/index.js'
 import { createScheduler } from './utils/scheduler.js'
 import type { ErrorEvent, FatalErrorEvent } from './utils/scheduler.types.js'
-import { cleanupExpiredWizardSessions } from './wizard/state.js'
-
 const log = logger.child({ scope: 'scheduler-instance' })
 
 // Create singleton scheduler
@@ -46,13 +44,6 @@ scheduler.register('message-cleanup', {
   // Hourly
   interval: 60 * 60 * 1000,
   handler: cleanupExpiredMessages,
-  options: { immediate: true },
-})
-
-scheduler.register('wizard-session-cleanup', {
-  // Every 10 minutes
-  interval: 10 * 60 * 1000,
-  handler: cleanupExpiredWizardSessions,
   options: { immediate: true },
 })
 

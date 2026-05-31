@@ -36,3 +36,19 @@
     <div class="wizard-badge">🧙 wizard step {wizard.currentStep}/{wizard.totalSteps}</div>
   {/if}
 </div>
+
+<style>
+  .session-card {
+    display: block;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--hair);
+    line-height: 1.45;
+    cursor: pointer;
+  }
+
+  .session-detail,
+  .wizard-badge {
+    display: block;
+    margin-top: 2px;
+  }
+</style>

@@ -18,7 +18,7 @@ import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dir, '..')
 
-const BUNDLES = ['public/debug.js', 'public/admin.js'] as const
+const BUNDLES = ['public/debug.js', 'public/admin.js', 'public/settings.js'] as const
 
 // Identifiers/specifiers that exist only in the story + mock harness.
 const FORBIDDEN_MARKERS = [

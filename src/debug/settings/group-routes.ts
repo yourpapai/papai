@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { z } from 'zod'
+
+import { addGroupMember, listGroupMembers, removeGroupMember } from '../../groups.js'
+import { getContextSettings, setContextSettings } from '../../instances/context-store.js'
+import { getTaskInstance, listTaskInstances } from '../../instances/task-store.js'
+import { logger } from '../../logger.js'
+import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
+import { requireScope } from '../../settings/scope-guard.js'
+import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
+
+const log = logger.child({ scope: 'debug-server:settings-group' })
+
+type GroupContext = { contextId: string }
+type GroupOutcome = { ok: true; group: GroupContext } | { ok: false; response: Response }
+
+/** Resolve a required group scope from a raw contextId; 403 if not a manageable group. */
+function requireGroup(
+  authed: AuthenticatedSettingsRequest,
+  action: 'read' | 'write',
+  rawContextId: string | null,
+): GroupOutcome {
+  if (rawContextId === null || rawContextId.length === 0) {
+    return { ok: false, response: settingsJson(403, { error: 'forbidden' }) }
+  }
+  const result = requireScope(authed.principal, { action, target: { kind: 'group', contextId: rawContextId } })
+  if (!result.ok) return { ok: false, response: settingsJson(403, { error: 'forbidden' }) }
+  return { ok: true, group: { contextId: result.contextId } }
+}
+
+function handleMembersGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
+  const outcome = requireGroup(authed, 'read', url.searchParams.get('contextId'))
+  if (!outcome.ok) return outcome.response
+  return settingsJson(200, { contextId: outcome.group.contextId, members: listGroupMembers(outcome.group.contextId) })
+}
+
+const MemberBodySchema = z.object({ userId: z.string().min(1), contextId: z.string().min(1) })
+
+async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
+  const csrf = requireCsrf(req, authed)
+  if (csrf !== null) return csrf
+  const parsed = await parseJsonBody(req)
+  if (!parsed.ok) return parsed.response
+  const body = MemberBodySchema.safeParse(parsed.value)
+  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const outcome = requireGroup(authed, 'write', body.data.contextId)
+  if (!outcome.ok) return outcome.response
+
+  if (req.method === 'POST') {
+    addGroupMember(outcome.group.contextId, body.data.userId, authed.principal.platformUserId)
+    log.info({ contextId: outcome.group.contextId }, 'Settings group member added')
+  } else {
+    removeGroupMember(outcome.group.contextId, body.data.userId)
+    log.info({ contextId: outcome.group.contextId }, 'Settings group member removed')
+  }
+  return settingsJson(200, { ok: true, contextId: outcome.group.contextId })
+}
+
+function handleTaskInstanceGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
+  const outcome = requireGroup(authed, 'read', url.searchParams.get('contextId'))
+  if (!outcome.ok) return outcome.response
+  const settings = getContextSettings(outcome.group.contextId)
+  return settingsJson(200, {
+    contextId: outcome.group.contextId,
+    taskInstanceId: settings?.taskInstanceId ?? null,
+    available: listTaskInstances().map((t) => ({ id: t.id, type: t.type, status: t.status })),
+  })
+}
+
+const TaskInstanceBodySchema = z.object({ taskInstanceId: z.string().min(1), contextId: z.string().min(1) })
+
+async function handleTaskInstancePatch(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
+  const csrf = requireCsrf(req, authed)
+  if (csrf !== null) return csrf
+  const parsed = await parseJsonBody(req)
+  if (!parsed.ok) return parsed.response
+  const body = TaskInstanceBodySchema.safeParse(parsed.value)
+  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const outcome = requireGroup(authed, 'write', body.data.contextId)
+  if (!outcome.ok) return outcome.response
+
+  if (getTaskInstance(body.data.taskInstanceId) === null) {
+    return settingsJson(422, { error: 'unknown task instance' })
+  }
+  const existing = getContextSettings(outcome.group.contextId)
+  setContextSettings({
+    contextId: outcome.group.contextId,
+    taskInstanceId: body.data.taskInstanceId,
+    platformInstanceId: existing?.platformInstanceId ?? authed.principal.platformInstanceId,
+  })
+  log.info(
+    { contextId: outcome.group.contextId, taskInstanceId: body.data.taskInstanceId },
+    'Settings group task instance set',
+  )
+  return settingsJson(200, { ok: true, contextId: outcome.group.contextId })
+}
+
+export function handleGroupRoutes(req: Request, url: URL, pathname: string): Promise<Response> {
+  const auth = authenticate(req)
+  if (!auth.ok) return Promise.resolve(auth.response)
+
+  if (pathname === '/settings/api/group/members') {
+    if (req.method === 'GET') return Promise.resolve(handleMembersGet(auth.authed, url))
+    if (req.method === 'POST' || req.method === 'DELETE') return handleMembersWrite(req, auth.authed)
+    return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
+  }
+  if (pathname === '/settings/api/group/task-instance') {
+    if (req.method === 'GET') return Promise.resolve(handleTaskInstanceGet(auth.authed, url))
+    if (req.method === 'PATCH') return handleTaskInstancePatch(req, auth.authed)
+    return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
+  }
+  return Promise.resolve(settingsJson(404, { error: 'not found' }))
+}

@@ -10,7 +10,6 @@ import {
   isScopedContextId,
   toScopedContextId,
   toScopedThreadContextId,
-  toStorageContextId,
 } from '../../src/chat/scoped-context.js'
 
 describe('scoped chat context ids', () => {
@@ -47,19 +46,6 @@ describe('scoped chat context ids', () => {
     expect(isScopedContextId('pi:abc:ctx:def')).toBe(false)
     expect(isScopedContextId('pi:dGVsZWdyYW0:ctx:')).toBe(false)
     expect(isScopedContextId('pi::ctx:MTIz')).toBe(false)
-  })
-
-  test('converts native ids to storage ids exactly once', () => {
-    const scoped = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-123' })
-
-    expect(toStorageContextId('telegram-default', 'group-123')).toBe(scoped)
-    expect(toStorageContextId('telegram-default', scoped)).toBe(scoped)
-  })
-
-  test('does not pass through malformed scoped-looking ids as storage ids', () => {
-    expect(toStorageContextId('telegram-default', 'pi:abc:ctx:def')).toBe(
-      'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:cGk6YWJjOmN0eDpkZWY',
-    )
   })
 
   test('returns native ids from scoped ids', () => {

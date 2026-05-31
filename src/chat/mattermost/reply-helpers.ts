@@ -47,11 +47,7 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
       await apiFetch('DELETE', `/api/v4/posts/${messageId}`, undefined)
     },
     buttons: (_content: string, _options: ButtonReplyOptions): Promise<void> => {
-      return Promise.reject(
-        new Error(
-          'Mattermost does not support interactive buttons. Use supportsInteractiveButtons() to check before calling reply.buttons().',
-        ),
-      )
+      return Promise.reject(new Error('This platform does not support interactive buttons.'))
     },
   }
 }

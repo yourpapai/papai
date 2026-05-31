@@ -75,4 +75,3 @@ export const pluginRuntimeEvents = sqliteTable(
 export type PluginAdminStateRow = typeof pluginAdminState.$inferSelect
 export type PluginContextStateRow = typeof pluginContextState.$inferSelect
 export type PluginKvRow = typeof pluginKv.$inferSelect
-export type PluginRuntimeEventRow = typeof pluginRuntimeEvents.$inferSelect

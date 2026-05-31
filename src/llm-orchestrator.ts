@@ -124,7 +124,7 @@ const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId:
   const missing = checkRequiredProviderConfig(configId)
   if (missing.length === 0) return
   log.warn({ contextId, configId, missing }, 'Missing required provider config keys')
-  await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /setup to configure.`)
+  await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /config to finish setup in the settings web UI.`)
   throw new Error('Missing configuration')
 }
 
@@ -133,7 +133,9 @@ let botMisconfiguredNotified = false
 const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise<void> => {
   const missing = missingSystemConfigKeys()
   log.error({ contextId, missing }, 'system_config is incomplete; bot cannot serve this turn')
-  await reply.text('⚠️ The bot is not fully configured. The administrator has been notified.')
+  await reply.text(
+    '⚠️ The bot is not fully configured. Ask the administrator to run /config and complete setup in the web UI.',
+  )
   if (!botMisconfiguredNotified) {
     botMisconfiguredNotified = true
     log.warn({ missing }, 'admin notification suppressed for subsequent turns in this process')
@@ -187,7 +189,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   const provider = await deps.resolve(configId)
   if (provider === null) {
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
-    await reply.text('I need /setup before I can do that.')
+    await reply.text('I need /config before I can do that.')
     return { response: { messages: [] } }
   }
   await maybeAutoLinkIdentity(chatUserId, username, provider)

@@ -8,17 +8,14 @@ import { and, eq } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../db/schema.js'
 import { logger } from '../logger.js'
-import { isWithinThrottleWindow, toGroupUserObservation, toKnownGroupContext } from './registry-helpers.js'
+import { isWithinThrottleWindow } from './registry-helpers.js'
 import type {
-  GroupUserObservation,
   UpsertGroupAdminObservationInput,
   UpsertGroupUserObservationInput,
   UpsertKnownGroupContextInput,
 } from './registry-types.js'
-import type { KnownGroupContext } from './types.js'
 
 export type {
-  GroupUserObservation,
   UpsertGroupAdminObservationInput,
   UpsertGroupUserObservationInput,
   UpsertKnownGroupContextInput,
@@ -107,23 +104,6 @@ const upsertGroupAdminObservationRow = (input: UpsertGroupAdminObservationInput,
       set: { username: input.username, isAdmin: input.isAdmin, lastSeenAt: now },
     })
     .run()
-}
-
-export function findKnownGroupContext(provider: string, contextId: string): KnownGroupContext | null {
-  const row = getDrizzleDb()
-    .select({
-      contextId: knownGroupContexts.contextId,
-      provider: knownGroupContexts.provider,
-      displayName: knownGroupContexts.displayName,
-      parentName: knownGroupContexts.parentName,
-      firstSeenAt: knownGroupContexts.firstSeenAt,
-      lastSeenAt: knownGroupContexts.lastSeenAt,
-    })
-    .from(knownGroupContexts)
-    .where(and(eq(knownGroupContexts.provider, provider), eq(knownGroupContexts.contextId, contextId)))
-    .get()
-
-  return row === undefined ? null : toKnownGroupContext(row)
 }
 
 export function upsertKnownGroupContext(input: UpsertKnownGroupContextInput): void {
@@ -215,30 +195,4 @@ export function upsertGroupUserObservation(input: UpsertGroupUserObservationInpu
     { provider: input.provider, contextId: input.contextId, userId: input.userId },
     'Group user observation upserted',
   )
-}
-
-export function findGroupUserObservation(
-  provider: string,
-  contextId: string,
-  userId: string,
-): GroupUserObservation | null {
-  const row = getDrizzleDb()
-    .select({
-      provider: groupUserObservations.provider,
-      contextId: groupUserObservations.contextId,
-      userId: groupUserObservations.userId,
-      username: groupUserObservations.username,
-      displayLabel: groupUserObservations.displayLabel,
-    })
-    .from(groupUserObservations)
-    .where(
-      and(
-        eq(groupUserObservations.provider, provider),
-        eq(groupUserObservations.contextId, contextId),
-        eq(groupUserObservations.userId, userId),
-      ),
-    )
-    .get()
-
-  return row === undefined ? null : toGroupUserObservation(row)
 }

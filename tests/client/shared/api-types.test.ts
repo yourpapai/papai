@@ -226,6 +226,7 @@ describe('api-types', () => {
       value: 'sk-proj-...',
       updatedAt: 123456789,
       updatedBy: 'user123',
+      required: true,
     }
 
     const llmSnapshot: AdminLlmSnapshot = {
