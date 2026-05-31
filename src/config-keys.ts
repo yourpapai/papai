@@ -44,11 +44,6 @@ const storageKeyForProviderField = (
   return field.key
 }
 
-function labelForStorageKey(storageKey: string, fallback: string): string {
-  if (storageKey === 'youtrack_token') return 'YouTrack Token'
-  return fallback
-}
-
 function getPluginContextFields(): readonly ConfigField[] {
   return pluginRegistry.getAllEntries().flatMap((entry) => {
     if (entry.state !== 'active') return []
@@ -87,7 +82,7 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
       (field): ConfigField => ({
         key: field.key,
         storageKey: storageKeyForProviderField(descriptor, field),
-        label: labelForStorageKey(storageKeyForProviderField(descriptor, field), field.label),
+        label: field.label,
         required: field.required,
         sensitive: field.sensitive,
         kind: 'provider-context',

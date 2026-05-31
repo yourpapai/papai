@@ -233,6 +233,41 @@ describe('getConfigFieldsForContext', () => {
     expect(fields.map((field) => field.storageKey)).not.toContain('plugin:plugin-tracker:provider:token')
     expect(fields.map((field) => field.storageKey)).not.toContain('custom_token')
   })
+
+  test('provider context field label comes from the descriptor field, not a hardcoded map', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
+      contextConfigSchema: [
+        {
+          key: 'token',
+          label: 'My Distinct Token Label',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+    })
+    insertTaskInstance({
+      id: 'plugin-prod',
+      type: 'plugin-tracker',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'ctx-plugin',
+      taskInstanceId: 'plugin-prod',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const fields = getConfigFieldsForContext('ctx-plugin')
+    const tokenField = fields.find((f) => f.storageKey.endsWith(':provider:token'))
+
+    expect(tokenField?.label).toBe('My Distinct Token Label')
+  })
 })
 
 describe('getRequiredProviderConfigKeysForContext', () => {
