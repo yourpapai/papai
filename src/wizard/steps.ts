@@ -19,19 +19,12 @@ const TIMEZONE_FIELD: ConfigField = {
 }
 
 const BUILTIN_PROMPTS: Record<string, string> = {
-  kaneo_apikey: '🔑 Enter your Kaneo API key:',
-  youtrack_token: '🔑 Enter your YouTrack token:',
   timezone:
     '🌍 Enter your timezone (e.g., America/New_York, UTC, UTC+5). UTC offsets are accepted and saved as a standard timezone:',
 }
 
 function promptForField(field: ConfigField): string {
   return BUILTIN_PROMPTS[field.storageKey] ?? `🔑 Enter your ${field.label}:`
-}
-
-function displayLabelForKey(key: string, fallback: string): string {
-  if (key === 'youtrack_token') return 'YouTrack Token'
-  return fallback
 }
 
 function storageKeyForField(
@@ -54,7 +47,7 @@ function providerFields(taskProvider: string): ConfigField[] {
       (field): ConfigField => ({
         key: field.key,
         storageKey: storageKeyForField(descriptor, field),
-        label: displayLabelForKey(storageKeyForField(descriptor, field), field.label),
+        label: field.label,
         required: field.required,
         sensitive: field.sensitive,
         kind: 'provider-context',
@@ -78,14 +71,6 @@ export function getWizardSteps(taskProvider: string): WizardStep[] {
   return [...providerFields(taskProvider).map((field) => createStep(field)), createStep(TIMEZONE_FIELD)]
 }
 
-function validateApiKey(value: string): string | null {
-  return value.trim().length === 0 ? 'API key cannot be empty' : null
-}
-
-function validateToken(value: string): string | null {
-  return value.trim().length === 0 ? 'Token cannot be empty' : null
-}
-
 function validateTimezone(value: string): string | null {
   return normalizeTimezone(value.trim()) === null
     ? 'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.'
@@ -93,8 +78,6 @@ function validateTimezone(value: string): string | null {
 }
 
 function validateField(field: ConfigField, value: string): string | null {
-  if (field.storageKey === 'kaneo_apikey' || field.storageKey === 'kaneo_workspace_id') return validateApiKey(value)
-  if (field.storageKey === 'youtrack_token') return validateToken(value)
   if (field.storageKey === 'timezone') return validateTimezone(value)
   return field.required && value.trim().length === 0 ? `${field.label} cannot be empty` : null
 }

@@ -172,17 +172,47 @@ describe('getWizardSteps', () => {
     expect(steps.map((step) => step.key)).toEqual(['plugin:plugin-tracker:provider:metadata_token', 'timezone'])
     expect(steps.map((step) => step.key)).not.toContain('plugin:plugin-tracker:provider:apiToken')
   })
+
+  test('provider step prompt comes from descriptor field label (no hardcoded literal)', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
+      contextConfigSchema: [
+        { key: 'credential', label: 'Custom Secret Key', required: true, sensitive: true, scope: 'context' },
+      ],
+    })
+
+    const steps = getWizardSteps('plugin-tracker')
+    const credStep = steps.find((s) => s.key.endsWith(':provider:credential'))
+
+    expect(credStep).toBeDefined()
+    expect(credStep!.prompt).toBe('🔑 Enter your Custom Secret Key:')
+  })
 })
 
 describe('step validation', () => {
   beforeEach(() => {
     registerKaneoContributed()
     registerYouTrackContributed()
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
+      contextConfigSchema: [
+        { key: 'credential', label: 'Custom Secret Key', required: true, sensitive: true, scope: 'context' },
+      ],
+    })
   })
 
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
     unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+    unregisterContributedTaskProviderType('plugin-tracker')
   })
 
   test('validates kaneo credential - accepts non-empty string (contributed)', async () => {
@@ -229,6 +259,12 @@ describe('step validation', () => {
     expect(result).toBe(
       'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.',
     )
+  })
+
+  test('empty required provider value is rejected with a label-based message', async () => {
+    const steps = getWizardSteps('plugin-tracker')
+    const credStep = steps.find((s) => s.key.endsWith(':provider:credential'))!
+    expect(await credStep.validate('')).toBe('Custom Secret Key cannot be empty')
   })
 })
 
