@@ -12,6 +12,7 @@ import {
   makeBillingDetail,
   makeBillingSubject,
   makeGlobalStats,
+  makeIdentityMappingsSample,
   makeSubjectStats,
 } from '../fixtures/index.js'
 
@@ -234,6 +235,20 @@ const taskProviderTypes = {
       traits: [],
       source: { plugin: 'task-provider-kaneo' },
     },
+  ],
+}
+
+const identityMappingsRoute = '/admin/identity/mappings' as const
+
+export const identityMappingsHandlers: HandlerFamily = {
+  populated: [http.get(identityMappingsRoute, () => HttpResponse.json(makeIdentityMappingsSample()))],
+  empty: [http.get(identityMappingsRoute, () => HttpResponse.json([]))],
+  error: [http.get(identityMappingsRoute, () => HttpResponse.json({ error: 'boom' }, { status: 500 }))],
+  loading: [
+    http.get(identityMappingsRoute, async () => {
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json(makeIdentityMappingsSample())
+    }),
   ],
 }
 

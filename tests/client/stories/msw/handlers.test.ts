@@ -10,6 +10,7 @@ import type { HttpHandler } from 'msw'
 import {
   adminHandlers,
   billingHandlers,
+  identityMappingsHandlers,
   instancesHandlers,
   pluginConfigHandlers,
   statsHandlers,
@@ -21,7 +22,14 @@ function pathsOf(handlers: readonly HttpHandler[]): string[] {
 
 describe('msw handlers', () => {
   test('every family exposes populated / empty / error / loading variants', () => {
-    for (const family of [adminHandlers, billingHandlers, statsHandlers, pluginConfigHandlers, instancesHandlers]) {
+    for (const family of [
+      adminHandlers,
+      billingHandlers,
+      statsHandlers,
+      pluginConfigHandlers,
+      instancesHandlers,
+      identityMappingsHandlers,
+    ]) {
       expect(Array.isArray(family.populated)).toBe(true)
       expect(Array.isArray(family.empty)).toBe(true)
       expect(Array.isArray(family.error)).toBe(true)
@@ -53,5 +61,9 @@ describe('msw handlers', () => {
     expect(paths.some((p) => p.includes('/api/platform-instances'))).toBe(true)
     expect(paths.some((p) => p.includes('/api/task-instances'))).toBe(true)
     expect(paths.some((p) => p.includes('/api/admins'))).toBe(true)
+  })
+
+  test('identityMappingsHandlers populated handlers cover /admin/identity/mappings', () => {
+    expect(pathsOf(identityMappingsHandlers.populated).some((p) => p.includes('/admin/identity/mappings'))).toBe(true)
   })
 })

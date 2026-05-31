@@ -27,8 +27,8 @@ describe('msw scenarios', () => {
     expect(scenarios[name].length).toBeGreaterThan(0)
   })
 
-  test('admin-populated composes admin, billing, stats, pluginConfig, and instances families', () => {
-    // admin (2) + billing (2) + stats (2) + pluginConfig (2) + instances (8) populated handlers
-    expect(scenarios['admin-populated'].length).toBe(16)
+  test('admin-populated composes admin, billing, stats, pluginConfig, instances, and identityMappings families', () => {
+    // admin (2) + billing (2) + stats (2) + pluginConfig (2) + instances (8) + identityMappings (1) populated handlers
+    expect(scenarios['admin-populated'].length).toBe(17)
   })
 })

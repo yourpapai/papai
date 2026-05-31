@@ -6,7 +6,13 @@
 import type { z } from 'zod'
 
 import type { GlobalStatsSchema, SubjectStatsSchema } from '../../admin/fetcher-schemas.js'
-import type { AdminLlmSnapshot, BillingDetail, BillingRoleTotals, BillingSubject } from '../../shared/api-types.js'
+import type {
+  AdminLlmSnapshot,
+  BillingDetail,
+  BillingRoleTotals,
+  BillingSubject,
+  IdentityMappingEntry,
+} from '../../shared/api-types.js'
 
 type GlobalStats = z.infer<typeof GlobalStatsSchema>
 type SubjectStats = z.infer<typeof SubjectStatsSchema>
@@ -204,4 +210,29 @@ export function makeSubjectStats(overrides: Partial<SubjectStats> = {}): Subject
     toolCalls: subjectToolCalls(),
     ...overrides,
   }
+}
+
+export function makeIdentityMappingsSample(): IdentityMappingEntry[] {
+  return [
+    {
+      contextId: 'tg:1001',
+      providerName: 'task-provider-kaneo',
+      providerUserId: 'ku-101',
+      providerUserLogin: 'alice',
+      displayName: 'Alice',
+      matchedAt: '2026-05-01T00:00:00.000Z',
+      matchMethod: 'manual_nl',
+      confidence: 1,
+    },
+    {
+      contextId: 'tg:1002',
+      providerName: 'task-provider-kaneo',
+      providerUserId: 'ku-102',
+      providerUserLogin: 'bob',
+      displayName: 'Bob',
+      matchedAt: '2026-05-10T00:00:00.000Z',
+      matchMethod: 'auto',
+      confidence: 0.85,
+    },
+  ]
 }
