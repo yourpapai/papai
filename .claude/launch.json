@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "storybook",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["storybook"],
+      "port": 6006
+    },
+    {
+      "name": "assets",
+      "runtimeExecutable": "bunx",
+      "runtimeArgs": ["serve", "client/assets", "-p", "5174", "-L"],
+      "port": 5174
+    }
+  ]
+}
