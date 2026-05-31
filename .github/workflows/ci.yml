@@ -99,7 +99,6 @@ jobs:
           echo "KANEO_POSTGRES_PASSWORD=test-password" >> .env
           echo "KANEO_AUTH_SECRET=test-auth-secret-for-ci-environment" >> .env
           echo "KANEO_CLIENT_URL=http://localhost:11337" >> .env
-          echo "TASK_PROVIDER=kaneo" >> .env
       - name: Run E2E tests
         run: bun test:e2e
         env:

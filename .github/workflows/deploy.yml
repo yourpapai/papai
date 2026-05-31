@@ -93,6 +93,8 @@ jobs:
           KANEO_POSTGRES_PASSWORD: ${{ secrets.KANEO_POSTGRES_PASSWORD }}
           KANEO_AUTH_SECRET: ${{ secrets.KANEO_AUTH_SECRET }}
           KANEO_CLIENT_URL: ${{ vars.KANEO_CLIENT_URL }}
+          INSTANCE_CONFIG_KEY: ${{ secrets.INSTANCE_CONFIG_KEY }}
+          SETTINGS_PUBLIC_BASE_URL: ${{ vars.SETTINGS_PUBLIC_BASE_URL }}
           DEBUG_SERVER: ${{ vars.DEBUG_SERVER || 'false' }}
           DEBUG_TOKEN: ${{ secrets.DEBUG_TOKEN }}
           LOG_LEVEL: ${{ vars.LOG_LEVEL || 'info' }}
@@ -128,9 +130,10 @@ jobs:
           cd ~/${GITHUB_REPOSITORY##*/}
           {
             printf 'CHAT_PROVIDER=telegram\n'
-            printf 'TASK_PROVIDER=kaneo\n'
             printf 'TELEGRAM_BOT_TOKEN=%s\n' "${TELEGRAM_BOT_TOKEN}"
             printf 'ADMIN_USER_ID=%s\n' "${ADMIN_USER_ID}"
+            [ -n "${INSTANCE_CONFIG_KEY}" ] && printf 'INSTANCE_CONFIG_KEY=%s\n' "${INSTANCE_CONFIG_KEY}"
+            [ -n "${SETTINGS_PUBLIC_BASE_URL}" ] && printf 'SETTINGS_PUBLIC_BASE_URL=%s\n' "${SETTINGS_PUBLIC_BASE_URL}"
             printf 'KANEO_POSTGRES_PASSWORD=%s\n' "${KANEO_POSTGRES_PASSWORD}"
             printf 'KANEO_AUTH_SECRET=%s\n' "${KANEO_AUTH_SECRET}"
             [ -n "${KANEO_CLIENT_URL}" ] && printf 'KANEO_CLIENT_URL=%s\n' "${KANEO_CLIENT_URL}"
