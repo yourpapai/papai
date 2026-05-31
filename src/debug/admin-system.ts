@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { listPlatformInstances } from '../instances/platform-store.js'
-import { listTaskInstances } from '../instances/task-store.js'
+import { listActivePlatformInstancesSafe } from '../instances/platform-store.js'
+import { listTaskInstancesSafe } from '../instances/task-store.js'
 import { logger } from '../logger.js'
 import { listRecentRequests } from '../usage/recent-requests.js'
 import { RecentRequestsResponseSchema } from './admin-schemas.js'
@@ -23,15 +23,11 @@ const isTaskProvider = (type: string): type is (typeof TASK_PROVIDERS)[number] =
   TASK_PROVIDERS.some((knownType) => knownType === type)
 
 const safeChatProvider = (): AdminChatProvider =>
-  singleKnownProvider(
-    listPlatformInstances()
-      .filter((instance) => instance.status === 'active')
-      .map((instance) => instance.type),
-  )
+  singleKnownProvider(listActivePlatformInstancesSafe().instances.map((instance) => instance.type))
 
 const safeTaskProvider = (): AdminTaskProvider => {
-  const activeTypes = listTaskInstances()
-    .filter((instance) => instance.status === 'active')
+  const activeTypes = listTaskInstancesSafe()
+    .instances.filter((instance) => instance.status === 'active')
     .map((instance) => instance.type)
   if (!activeTypes.every((type) => isTaskProvider(type))) return 'unknown'
   return singleKnownProvider(activeTypes)

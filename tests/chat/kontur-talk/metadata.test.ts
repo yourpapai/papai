@@ -32,9 +32,7 @@ describe('Kontur Talk metadata', () => {
     expect(konturTalkTraits.maxMessageLength).toBe(4096)
   })
 
-  test('config requirements include KONTUR_TALK_JWT_TOKEN', () => {
-    expect(konturTalkConfigRequirements).toEqual([
-      { key: 'KONTUR_TALK_JWT_TOKEN', label: 'Kontur Talk JWT Token', required: true },
-    ])
+  test('config requirements include jwtToken', () => {
+    expect(konturTalkConfigRequirements).toEqual([{ key: 'jwtToken', label: 'Kontur Talk JWT Token', required: true }])
   })
 })

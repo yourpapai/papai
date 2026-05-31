@@ -268,7 +268,10 @@ export const pluginManifestSchema = z
     path: ['main'],
   })
 
-type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
+export type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
+// Provider-plugin fields carry Zod `.default([])`, so a parsed manifest always has them.
+// They are optional on the hand-constructed type so test fixtures and non-provider plugins
+// may omit them.
 export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema' | 'providerTraits'> & {
   providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
   providerTraits?: ParsedPluginManifest['providerTraits']

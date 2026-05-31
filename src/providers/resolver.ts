@@ -8,7 +8,7 @@ import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { validateTaskInstanceConfigResult } from './config-validation.js'
+import { validateEffectiveTaskProviderConfigResult } from './config-validation.js'
 import { createProvider, getTaskProviderConfigValidator, getTaskProviderDescriptor } from './registry.js'
 import type { TaskProviderConfigValidator, TaskProviderTypeDescriptor } from './registry.js'
 import type { ProviderConfigField, TaskProvider } from './types.js'
@@ -93,7 +93,7 @@ const createValidatedProvider = async (
   config: Record<string, string>,
   deps: TaskProviderResolverDeps,
 ): Promise<TaskProvider | null> => {
-  const validationFailure = await validateTaskInstanceConfigResult(instance.type, config, deps, 'logical', 'resolved')
+  const validationFailure = await validateEffectiveTaskProviderConfigResult(instance.type, config, deps, 'logical')
   if (validationFailure !== null) {
     log.warn(
       { contextId, taskInstanceId: instance.id, taskProvider: instance.type, validationFailure },
@@ -147,10 +147,14 @@ export class TaskProviderResolver {
     }
 
     const descriptor = this.deps.getTaskProviderDescriptor(instance.type)
-    const config =
-      descriptor === undefined
-        ? { ...instance.config }
-        : buildConfigFromDescriptor(contextId, instance, descriptor, this.deps)
+    if (descriptor === undefined) {
+      log.warn(
+        { contextId, taskInstanceId: instance.id, taskProvider: instance.type },
+        'Cannot resolve task provider: unknown provider type (plugin inactive?)',
+      )
+      return null
+    }
+    const config = buildConfigFromDescriptor(contextId, instance, descriptor, this.deps)
     if (config === null) return null
 
     const provider = await createValidatedProvider(contextId, instance, config, this.deps)

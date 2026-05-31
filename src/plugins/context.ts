@@ -126,7 +126,10 @@ function buildRegisterTaskProviderType(
   collected: PluginContributions,
   activationGuard: ActivationGuard,
 ): (type: string, factory: TaskProviderFactory) => void {
-  return function registerTaskProviderType(type: string, factory: TaskProviderFactory): void {
+  return function registerTaskProviderType(
+    type: string,
+    factoryOrRegistration: TaskProviderFactory | Readonly<{ factory: TaskProviderFactory }>,
+  ): void {
     activationGuard.assertOpen()
     if (!manifest.permissions.includes('provider.task')) {
       throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
@@ -140,6 +143,7 @@ function buildRegisterTaskProviderType(
     if (collected.taskProviderRegistration !== undefined) {
       throw new Error(`Task provider type '${type}' was registered more than once`)
     }
+    const factory = typeof factoryOrRegistration === 'function' ? factoryOrRegistration : factoryOrRegistration.factory
     collected.taskProviderRegistration = {
       type,
       factory,
@@ -149,7 +153,7 @@ function buildRegisterTaskProviderType(
       contextConfigSchema: (manifest.providerContextConfigSchema ?? []).map((field) =>
         toProviderConfigField(field, 'context'),
       ),
-      traits: new Set(manifest.providerTraits ?? []),
+      traits: new Set(manifest.providerTraits),
     }
   }
 }

@@ -52,12 +52,12 @@ export class ChatRouter implements ChatProvider {
   readonly configRequirements = []
 
   private readonly instances = new Map<string, ManagedChatInstance>()
+  private readonly stoppingInstances = new Set<string>()
   private readonly commandHandlers = new Map<string, CommandHandler>()
   private messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
 
   constructor(private readonly factory: ManagedChatInstanceFactory) {}
-
   get threadCapabilities(): ThreadCapabilities {
     return threadCapabilitiesForManagedInstances(this.instances.values())
   }
@@ -90,22 +90,12 @@ export class ChatRouter implements ChatProvider {
   async removeInstance(id: string): Promise<void> {
     const instance = this.instances.get(id)
     if (instance === undefined) return
-    instance.status = 'stopped'
     try {
       await instance.provider.stop()
-    } catch (error) {
-      log.warn({ platformInstanceId: id, error: errorMessage(error) }, 'failed to stop chat instance during removal')
     } finally {
+      instance.status = 'stopped'
       this.instances.delete(id)
     }
-  }
-
-  async removeInstanceStrict(id: string): Promise<void> {
-    const instance = this.instances.get(id)
-    if (instance === undefined) return
-    instance.status = 'stopped'
-    await instance.provider.stop()
-    this.instances.delete(id)
   }
 
   getInstance(id: string): ManagedChatInstance | null {
@@ -113,18 +103,25 @@ export class ChatRouter implements ChatProvider {
   }
   isInstanceActive(platformInstanceId: string): boolean {
     const instance = this.instances.get(platformInstanceId)
-    return instance !== undefined && instance.status === 'active'
+    return instance !== undefined && instance.status === 'active' && !this.stoppingInstances.has(platformInstanceId)
   }
   listInstances(): readonly ManagedChatInstanceSnapshot[] {
     return managedInstanceSnapshots(this.instances.values())
   }
+
   async startInstance(id: string): Promise<void> {
     const instance = this.instances.get(id)
     if (instance === undefined) {
       log.warn({ platformInstanceId: id }, 'cannot start unknown chat instance')
       return
     }
+    if (instance.status === 'active') {
+      this.stoppingInstances.delete(id)
+      log.debug({ platformInstanceId: id }, 'chat instance already active')
+      return
+    }
 
+    this.stoppingInstances.delete(id)
     try {
       await instance.provider.start()
       instance.status = 'active'
@@ -140,9 +137,18 @@ export class ChatRouter implements ChatProvider {
       log.warn({ platformInstanceId: id }, 'cannot stop unknown chat instance')
       return
     }
+    if (instance.status === 'stopped') {
+      log.debug({ platformInstanceId: id }, 'chat instance already stopped')
+      return
+    }
 
-    instance.status = 'stopped'
-    await instance.provider.stop()
+    this.stoppingInstances.add(id)
+    try {
+      await instance.provider.stop()
+      instance.status = 'stopped'
+    } finally {
+      this.stoppingInstances.delete(id)
+    }
   }
 
   async start(): Promise<void> {
@@ -178,7 +184,7 @@ export class ChatRouter implements ChatProvider {
 
   async sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
     const instance = this.instances.get(platformInstanceId)
-    if (instance === undefined || instance.status !== 'active') {
+    if (instance === undefined || !this.isInstanceActive(platformInstanceId)) {
       log.warn({ platformInstanceId }, 'cannot route message to inactive or unknown chat instance')
       return false
     }
@@ -208,7 +214,6 @@ export class ChatRouter implements ChatProvider {
   getInstanceTraits(platformInstanceId: string): ChatProviderTraits | null {
     return traitsForManagedInstance(this.instances.get(platformInstanceId))
   }
-
   getPlatformInstanceCapabilities(platformInstanceId: string): ReadonlySet<ChatCapability> {
     return capabilitiesForManagedInstance(this.instances.get(platformInstanceId))
   }
@@ -267,16 +272,9 @@ export class ChatRouter implements ChatProvider {
   }
 
   private providerForResolveContext(context: ResolveUserContext): ChatProvider | null {
-    const platformInstanceId = this.platformInstanceIdForResolveContext(context)
-    if (platformInstanceId === null) return null
-    return providerForManagedInstance(this.instances.get(platformInstanceId))
-  }
-
-  private platformInstanceIdForResolveContext(context: ResolveUserContext): string | null {
-    if (context.platformInstanceId !== undefined) return context.platformInstanceId
-    const settings = getContextSettings(context.contextId)
-    if (settings === null) return null
-    return settings.platformInstanceId
+    const platformInstanceId =
+      context.platformInstanceId ?? getContextSettings(context.contextId)?.platformInstanceId ?? null
+    return platformInstanceId === null ? null : providerForManagedInstance(this.instances.get(platformInstanceId))
   }
 
   private async stopInstanceSafely(instance: ManagedChatInstance): Promise<void> {
@@ -284,6 +282,7 @@ export class ChatRouter implements ChatProvider {
       await this.stopInstance(instance.id)
     } catch (error) {
       instance.status = 'stopped'
+      this.stoppingInstances.delete(instance.id)
       log.error({ platformInstanceId: instance.id, error: errorMessage(error) }, 'failed to stop chat instance')
     }
   }

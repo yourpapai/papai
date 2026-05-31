@@ -14,8 +14,8 @@ import {
 describe('mattermost metadata', () => {
   it('should export required config requirements', () => {
     expect(mattermostConfigRequirements.length).toBe(2)
-    expect(mattermostConfigRequirements[0]?.key).toBe('MATTERMOST_URL')
-    expect(mattermostConfigRequirements[1]?.key).toBe('MATTERMOST_BOT_TOKEN')
+    expect(mattermostConfigRequirements[0]?.key).toBe('baseUrl')
+    expect(mattermostConfigRequirements[1]?.key).toBe('token')
   })
 
   it('should export capabilities as ReadonlySet', () => {

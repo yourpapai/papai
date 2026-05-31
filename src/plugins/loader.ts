@@ -6,6 +6,7 @@
 import pLimit from 'p-limit'
 
 import { logger } from '../logger.js'
+import type { TaskProviderConfigValidator } from '../providers/registry.js'
 import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
 import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
@@ -42,7 +43,11 @@ const SYSTEM_CONTEXT_ID = '__system__'
 const activationOrder: string[] = []
 const activeInstances = new Map<string, PluginInstance>()
 
-function commitTaskProviderRegistration(plugin: DiscoveredPlugin, ctx: ReturnType<typeof buildPluginContext>): void {
+function commitTaskProviderRegistration(
+  plugin: DiscoveredPlugin,
+  ctx: ReturnType<typeof buildPluginContext>,
+  validateConfig?: TaskProviderConfigValidator,
+): void {
   const registration = ctx.collected.taskProviderRegistration
   if (registration === undefined) return
 
@@ -52,7 +57,7 @@ function commitTaskProviderRegistration(plugin: DiscoveredPlugin, ctx: ReturnTyp
   registerContributedTaskProviderType(type, {
     pluginId: manifest.id,
     factory: entry.factory,
-    validateConfig: entry.validateConfig,
+    validateConfig,
     capabilities: entry.capabilities,
     displayName: entry.displayName,
     instanceConfigSchema: entry.instanceConfigSchema,
@@ -86,11 +91,12 @@ function finalizeSuccessfulActivation(
   plugin: DiscoveredPlugin,
   activationContext: ReturnType<typeof buildPluginContext>,
   instance: PluginInstance | null,
+  validateConfig?: TaskProviderConfigValidator,
 ): void {
   const { manifest } = plugin
   const { collected } = activationContext
 
-  commitTaskProviderRegistration(plugin, activationContext)
+  commitTaskProviderRegistration(plugin, activationContext, validateConfig)
   contributionRegistry.register(manifest.id, collected, manifest)
   if (instance !== null) {
     activeInstances.set(manifest.id, instance)
@@ -146,10 +152,7 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
         `Plugin '${manifest.id}' declares providerConfigValidator but did not register task provider type '${manifest.contributes.taskProviderTypes[0] ?? 'unknown'}'`,
       )
     }
-    if (activationContext.collected.taskProviderRegistration !== undefined) {
-      activationContext.collected.taskProviderRegistration.validateConfig = validateConfig
-    }
-    finalizeSuccessfulActivation(plugin, activationContext, importedModule?.instance ?? null)
+    finalizeSuccessfulActivation(plugin, activationContext, importedModule?.instance ?? null, validateConfig)
     return true
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -171,7 +174,6 @@ export async function activatePlugins(plugins: DiscoveredPlugin[]): Promise<void
   const results = await Promise.all(plugins.map((p) => limit(() => activateOne(p))))
   const activated = results.filter(Boolean).length
   const failed = results.length - activated
-  activationOrder.push(...plugins.filter((_, index) => results[index] === true).map((plugin) => plugin.manifest.id))
 
   log.info({ activated, failed, total: plugins.length }, 'Plugin activation complete')
 }

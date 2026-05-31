@@ -8,9 +8,10 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { getThreadScopedStorageContextId } from '../src/auth.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
 import type { IncomingMessage } from '../src/chat/types.js'
-import { setConfig } from '../src/config.js'
+import { setConfig, setConfigValue } from '../src/config.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance, getTaskInstance } from '../src/instances/task-store.js'
+import { KANEO_PLUGIN_CREDENTIAL_KEY } from '../src/types/config.js'
 import { addUser as addScopedUser } from '../src/users.js'
 import {
   createDmMessage,
@@ -57,7 +58,7 @@ function setupUserConfig(userId: string): void {
       })
     }
     setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
-    setConfig(contextId, 'kaneo_apikey', 'test-kaneo-key')
+    setConfigValue(contextId, KANEO_PLUGIN_CREDENTIAL_KEY, 'test-kaneo-key')
     setConfig(contextId, 'timezone', 'UTC')
   }
 }

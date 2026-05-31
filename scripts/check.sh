@@ -41,6 +41,19 @@ is_license_header_file() {
   esac
 }
 
+is_oxlint_scoped_file() {
+  local file="$1"
+  case "$file" in
+    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+      case "$file" in
+        *.ts|*.tsx|*.js|*.jsx) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 run_license_header_check() {
   local output_file="$1"
   shift
@@ -110,7 +123,9 @@ if [ "$STAGED_MODE" = true ]; then
     esac
     case "$file" in
       *.ts|*.tsx|*.js|*.jsx)
-        lintable_files+=("$file")
+        if is_oxlint_scoped_file "$file"; then
+          lintable_files+=("$file")
+        fi
         ;;
     esac
   done

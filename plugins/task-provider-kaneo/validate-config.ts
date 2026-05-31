@@ -3,11 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-// NOTE: this validator runs against the TASK-INSTANCE config only (instance-scoped
-// fields like baseUrl/internalUrl). The context-scoped credential and workspaceId are
-// NOT available here (they live per-user in user_config), so an authenticated
-// healthcheck is not possible at instance-config validation time. We validate the
-// instance URL shape; credential validation happens during /setup.
+// NOTE: this validator only inspects instance-scoped fields (baseUrl/internalUrl).
+// It is reached from two call paths: (1) task-instance config validation, where only
+// instance-scoped fields exist; and (2) resolver-time
+// validateEffectiveTaskProviderConfigResult, which passes the merged config
+// (instance + context-scoped credential/workspaceId). This validator ignores the
+// context-scoped fields by design — no authenticated healthcheck is done here;
+// credential validation happens during /setup.
 export function validateConfig(config: Record<string, string>): Promise<{ ok: true } | { ok: false; reason: string }> {
   const baseUrl = config['baseUrl']?.trim() ?? ''
   if (baseUrl.length === 0) return Promise.resolve({ ok: false, reason: 'baseUrl is required' })

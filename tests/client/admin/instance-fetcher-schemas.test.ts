@@ -7,7 +7,10 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   ApplyInstancesResultSchema,
+  PlatformInstanceListResponseSchema,
+  PlatformInstanceViewSchema,
   PlatformProviderTypeViewSchema,
+  TaskInstanceListResponseSchema,
   TaskInstanceViewSchema,
   TaskProviderTypeViewSchema,
 } from '../../../client/admin/instance-fetcher-schemas.js'
@@ -19,9 +22,40 @@ describe('ApplyInstancesResultSchema', () => {
       started: ['telegram-main'],
       stopped: ['discord-old'],
       removed: ['discord-old'],
+      removedDetails: [{ id: 'discord-old', desiredStatus: 'stopped' }],
       recreated: ['mattermost-main'],
       unchanged: ['telegram-secondary'],
-      failed: [{ id: 'telegram-bad', action: 'stop', error: 'boom' }],
+      failed: [{ id: 'telegram-bad', action: 'remove', error: 'boom' }],
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  test('ApplyInstancesResultSchema defaults missing removedDetails for legacy payloads', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 1,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.removedDetails).toEqual([])
+  })
+
+  test('ApplyInstancesResultSchema accepts unreadable diagnostics', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 1,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
     })
 
     expect(result.success).toBe(true)
@@ -64,6 +98,55 @@ describe('TaskInstanceViewSchema', () => {
         "Provider plugin for type 'no-such-provider' is not active. Approve it in the settings web UI admin area (Plugins approval).",
     })
     expect(result.success).toBe(true)
+  })
+})
+
+describe('instance list response schemas', () => {
+  const platformInstance = {
+    id: 'telegram-main',
+    type: 'telegram',
+    config: { token: '********' },
+    status: 'active',
+    createdAt: '2026-05-26T00:00:00.000Z',
+  } as const
+
+  const taskInstance = {
+    id: 'kaneo-main',
+    type: 'kaneo',
+    config: { baseUrl: 'https://kaneo.invalid' },
+    status: 'active',
+    createdAt: '2026-05-26T00:00:00.000Z',
+    unresolvedReason: null,
+  } as const
+
+  test('PlatformInstanceListResponseSchema accepts the clean array shape', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse([platformInstance])
+    expect(result.success).toBe(true)
+  })
+
+  test('PlatformInstanceListResponseSchema accepts unreadable diagnostics shape', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse({
+      instances: [platformInstance],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('TaskInstanceListResponseSchema accepts unreadable diagnostics shape', () => {
+    const result = TaskInstanceListResponseSchema.safeParse({
+      instances: [taskInstance],
+      unreadable: [{ table: 'task_instances', id: 'bad', type: 'kaneo', error: 'Encrypted payload' }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('instance list object shape still validates row schemas', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse({
+      instances: [{ ...platformInstance, type: 'unknown' }],
+      unreadable: [],
+    })
+    expect(result.success).toBe(false)
+    expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, type: 'unknown' }).success).toBe(false)
   })
 })
 

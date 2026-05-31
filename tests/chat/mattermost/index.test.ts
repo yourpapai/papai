@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { fetchMattermostFiles } from '../../../src/chat/mattermost/file-helpers.js'
@@ -192,26 +192,24 @@ void mock.module('../../../src/auth.js', () => ({
 describe('MattermostChatProvider', () => {
   let provider: MattermostChatProvider
 
-  beforeEach(() => {
-    // Set required env vars
-    process.env['MATTERMOST_URL'] = 'http://localhost:8065'
-    process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
+  test('constructor requires explicit baseUrl, token, and platform instance id', () => {
+    expect(() => new MattermostChatProvider({ token: 'cfg-token', platformInstanceId: TEST_PLATFORM_ID })).toThrow(
+      'MATTERMOST_URL environment variable is required',
+    )
+    expect(
+      () => new MattermostChatProvider({ baseUrl: 'https://configured.invalid', platformInstanceId: TEST_PLATFORM_ID }),
+    ).toThrow('MATTERMOST_BOT_TOKEN environment variable is required')
+    expect(
+      () =>
+        new MattermostChatProvider({
+          baseUrl: 'https://configured.invalid',
+          token: 'cfg-token',
+          platformInstanceId: '   ',
+        }),
+    ).toThrow('platformInstanceId is required')
   })
 
-  test('constructor rejects legacy url config without MATTERMOST_URL env', () => {
-    delete process.env['MATTERMOST_URL']
-    const legacyConfig = {
-      url: 'https://legacy.invalid',
-      token: 'cfg-token',
-      platformInstanceId: TEST_PLATFORM_ID,
-    }
-
-    expect(() => new MattermostChatProvider(legacyConfig)).toThrow('MATTERMOST_URL environment variable is required')
-  })
-
-  test('constructor accepts baseUrl config without MATTERMOST_URL env', () => {
-    delete process.env['MATTERMOST_URL']
-
+  test('constructor accepts explicit baseUrl config', () => {
     const constructedProvider = new MattermostChatProvider({
       baseUrl: 'https://configured.invalid',
       token: 'cfg-token',
@@ -1205,8 +1203,6 @@ describe('MattermostChatProvider reverse label resolution', () => {
   test('resolveGroupLabel returns channel display name', async () => {
     setMockFetch(makeFetchChannel('chan-1', { type: 'O', display_name: 'Operations', name: 'operations' }))
 
-    process.env['MATTERMOST_URL'] = 'http://localhost:8065'
-    process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
     const provider = createMattermostProvider()
     const label = await provider.resolveGroupLabel?.('chan-1')
 
@@ -1225,8 +1221,6 @@ describe('MattermostChatProvider reverse label resolution', () => {
       }),
     )
 
-    process.env['MATTERMOST_URL'] = 'http://localhost:8065'
-    process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
     const provider = createMattermostProvider()
     const label = await provider.resolveUserLabel?.('user-1')
 
@@ -1237,8 +1231,6 @@ describe('MattermostChatProvider reverse label resolution', () => {
   test('resolveUserLabel returns null when user lookup fails', async () => {
     setMockFetch(() => Promise.resolve(new Response(null, { status: 404 })))
 
-    process.env['MATTERMOST_URL'] = 'http://localhost:8065'
-    process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
     const provider = createMattermostProvider()
     const label = await provider.resolveUserLabel?.('missing-user')
 

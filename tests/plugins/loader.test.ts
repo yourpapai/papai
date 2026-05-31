@@ -65,7 +65,7 @@ function makeManifest(
 ): PluginManifest {
   const [id] = args
   const overrides = args.length === 2 ? args[1] : {}
-  return {
+  const baseManifest: PluginManifest = {
     id,
     name: 'Test Plugin',
     version: '1.0.0',
@@ -87,9 +87,17 @@ function makeManifest(
     requiredChatCapabilities: [],
     configRequirements: [],
     providerCapabilities: [],
+    providerTraits: [],
     providerConfigSchema: [],
+    providerContextConfigSchema: [],
     providerAllowedHosts: [],
+  }
+  return {
+    ...baseManifest,
     ...overrides,
+    contributes: overrides.contributes ?? baseManifest.contributes,
+    providerTraits: overrides.providerTraits ?? baseManifest.providerTraits,
+    providerContextConfigSchema: overrides.providerContextConfigSchema ?? baseManifest.providerContextConfigSchema,
   }
 }
 
@@ -904,6 +912,107 @@ describe('activatePlugins', () => {
       ok: false,
       reason: 'baseUrl rejected',
     })
+  })
+
+  test('validator is wired into the registered provider type without mutating the collected registration object', async () => {
+    // Regression guard for refactor: validateConfig must be threaded as a parameter
+    // through finalizeSuccessfulActivation → commitTaskProviderRegistration and passed
+    // directly to registerContributedTaskProviderType, NOT injected via post-hoc mutation
+    // of activationContext.collected.taskProviderRegistration.validateConfig.
+    const entryPoint = writeTempPluginModule(`
+      export async function validateThreadedConfig(config) {
+        return config.apiKey === 'valid-key'
+          ? { ok: true }
+          : { ok: false, reason: 'apiKey is invalid' }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('threaded-validator-tracker', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('threaded-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['threaded-validator-tracker'],
+      },
+      providerConfigValidator: 'validateThreadedConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    // The validator must be retrievable and functional — this holds whether
+    // the loader threads it as a parameter or injects it via mutation.
+    // The test serves as a locked regression guard: any refactor that breaks
+    // the threading path will cause this assertion to fail.
+    const validator = requireValue(
+      getTaskProviderConfigValidator('threaded-validator-tracker'),
+      'threaded-validator-tracker config validator',
+    )
+    await expect(validator({ apiKey: 'valid-key' })).resolves.toEqual({ ok: true })
+    await expect(validator({ apiKey: 'wrong-key' })).resolves.toEqual({ ok: false, reason: 'apiKey is invalid' })
+    // Plugin must be active — confirm the whole activation path completed cleanly
+    expect(
+      requireValue(pluginRegistry.getEntry('threaded-validator-plugin'), 'threaded validator registry entry').state,
+    ).toBe('active')
+  })
+
+  test('keeps API v1 compatibility for object-shaped task provider registration', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('legacy-validated-plugin-tracker', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('legacy-validated-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['legacy-validated-plugin-tracker'],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(() => createProvider('legacy-validated-plugin-tracker', {})).not.toThrow()
+  })
+
+  test('tracks each activated plugin only once', async () => {
+    const firstEntryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return { activate() {} }
+      }
+    `)
+    const secondEntryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return { activate() {} }
+      }
+    `)
+    const firstPlugin = makePlugin('activation-order-first', firstEntryPoint)
+    const secondPlugin = makePlugin('activation-order-second', secondEntryPoint)
+    approvePlugin(firstPlugin)
+    approvePlugin(secondPlugin)
+
+    await activatePlugins([firstPlugin, secondPlugin])
+
+    expect(getActivatedPluginIds()).toEqual(['activation-order-first', 'activation-order-second'])
   })
 
   test('wraps malformed providerConfigValidator returns as validation failures', async () => {

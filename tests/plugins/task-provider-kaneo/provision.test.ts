@@ -575,4 +575,54 @@ describe('maybeProvisionKaneo', () => {
 
     expect(textCalls).toHaveLength(0)
   })
+
+  test('reads internalUrl as-is from task instance config when present', async () => {
+    delete process.env['KANEO_CLIENT_URL']
+    insertTaskInstance({
+      id: 'kaneo-internal-url-test',
+      type: 'kaneo',
+      status: 'active',
+      config: { baseUrl: 'https://kaneo.public.invalid', internalUrl: 'https://kaneo.internal.invalid' },
+    })
+    setContextSettings({
+      contextId: 'ctx-internal-url',
+      taskInstanceId: 'kaneo-internal-url-test',
+      platformInstanceId: 'telegram-default',
+    })
+    const requestedUrls: string[] = []
+    setMockFetch((url) => {
+      requestedUrls.push(url)
+      return routeStandardProvision(url)
+    })
+
+    await maybeProvisionKaneo(mockReply, 'ctx-internal-url', 'bob')
+
+    expect(textCalls).toHaveLength(1)
+    expect(requestedUrls.every((url) => url.startsWith('https://kaneo.internal.invalid/'))).toBe(true)
+  })
+
+  test('falls back to publicUrl when internalUrl is absent from task instance config', async () => {
+    delete process.env['KANEO_CLIENT_URL']
+    insertTaskInstance({
+      id: 'kaneo-no-internal-url-test',
+      type: 'kaneo',
+      status: 'active',
+      config: { baseUrl: 'https://kaneo.public.invalid' },
+    })
+    setContextSettings({
+      contextId: 'ctx-no-internal-url',
+      taskInstanceId: 'kaneo-no-internal-url-test',
+      platformInstanceId: 'telegram-default',
+    })
+    const requestedUrls: string[] = []
+    setMockFetch((url) => {
+      requestedUrls.push(url)
+      return routeStandardProvision(url)
+    })
+
+    await maybeProvisionKaneo(mockReply, 'ctx-no-internal-url', 'carol')
+
+    expect(textCalls).toHaveLength(1)
+    expect(requestedUrls.every((url) => url.startsWith('https://kaneo.public.invalid/'))).toBe(true)
+  })
 })

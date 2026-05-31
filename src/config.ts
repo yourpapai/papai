@@ -4,14 +4,13 @@
 // See LICENSE in the project root for details.
 
 import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from './cache.js'
-import { getConfigKeysForContext } from './config-keys.js'
+import { getConfigKeysForContext, isSensitiveProviderStorageKey } from './config-keys.js'
 import { logger } from './logger.js'
 import { isAllowedDynamicConfigKey, isConfigKey as isKnownConfigKey, type ConfigKey } from './types/config.js'
 import { normalizeTimezoneValue } from './utils/timezone.js'
 
 const log = logger.child({ scope: 'config' })
 
-const SENSITIVE_KEYS: ReadonlySet<string> = new Set(['kaneo_apikey', 'youtrack_token'])
 const TOOL_ASSEMBLY_CONFIG_KEYS: ReadonlySet<string> = new Set(['mcp_endpoints'])
 
 function clearToolCacheIfToolAssemblyConfig(contextId: string, key: string): void {
@@ -47,7 +46,7 @@ function readDynamicConfigValue(key: string, value: string | null): string | nul
 }
 
 export function isSensitiveKey(key: string): boolean {
-  return SENSITIVE_KEYS.has(key)
+  return isSensitiveProviderStorageKey(key)
 }
 
 export function setConfig(userId: string, key: ConfigKey, value: string): void {
@@ -109,7 +108,7 @@ export function setPluginConfig(contextId: string, pluginId: string, key: string
 }
 
 export function maskValue(key: string, value: string): string {
-  if (SENSITIVE_KEYS.has(key)) {
+  if (isSensitiveProviderStorageKey(key)) {
     return maskSensitiveValue(value)
   }
   return value

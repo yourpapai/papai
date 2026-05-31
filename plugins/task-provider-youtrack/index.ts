@@ -13,6 +13,10 @@ export { validateConfig } from './validate-config.js'
 
 const factory: PluginFactory = (): PluginInstance => ({
   activate(ctx: PluginContext): void {
+    // KNOWN GAP (#15): YouTrackProvider's client.ts uses global fetch, not ctx.providerRuntime,
+    // so the manifest's providerAllowedHosts ([]) is declared but NOT enforced. The factory
+    // signature is (config) => TaskProvider and never receives ctx, so providerRuntime is
+    // unreachable here today. See docs/plugins/developer-guide.md "Known limitation".
     ctx.registration.registerTaskProviderType(
       'youtrack',
       (config): TaskProvider =>

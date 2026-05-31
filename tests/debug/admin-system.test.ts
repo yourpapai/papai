@@ -6,6 +6,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { taskInstances } from '../../src/db/schema.js'
 import { handleAdminSystem } from '../../src/debug/admin-system.js'
 import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
@@ -155,5 +157,24 @@ describe('handleAdminSystem', () => {
     const res = handleAdminSystem()
     const body = await readJson(res)
     expect(pick(body, 'adminUserSet')).toBe(false)
+  })
+
+  test('degrades gracefully when a task_instances row is undecryptable', async () => {
+    insertTaskInstance({
+      id: 'kaneo-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    getDrizzleDb()
+      .insert(taskInstances)
+      .values({ id: 'bad-task', type: 'kaneo', config: 'not-base64', status: 'active' })
+      .run()
+
+    const res = handleAdminSystem()
+    const body = await readJson(res)
+
+    expect(res.status).toBe(200)
+    expect(pick(body, 'taskProvider')).toBe('kaneo')
   })
 })

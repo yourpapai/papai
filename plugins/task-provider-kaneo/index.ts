@@ -22,6 +22,12 @@ const buildKaneoConfig = (config: Record<string, string>): KaneoConfig => {
 
 const factory: PluginFactory = (): PluginInstance => ({
   activate(ctx: PluginContext): void {
+    // KNOWN GAP (#15): KaneoProvider's client.ts uses global fetch, not ctx.providerRuntime,
+    // so the manifest's providerAllowedHosts ([]) is declared but NOT enforced. The factory
+    // signature is (config) => TaskProvider and never receives ctx, so providerRuntime is
+    // unreachable here today. Enforcing it needs factory/client plumbing plus a dynamic-host
+    // admission mechanism (the instance baseUrl host is operator-configured) and an http://
+    // policy decision. See docs/plugins/developer-guide.md "Known limitation".
     ctx.registration.registerTaskProviderType(
       'kaneo',
       (config): TaskProvider => new KaneoProvider(buildKaneoConfig(config), config['workspaceId'] ?? ''),

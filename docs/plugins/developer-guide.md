@@ -233,6 +233,20 @@ Provider plugin manifests split config into two schemas:
 
 Keys are **camelCase** and there is no `storageKey` property. Set `providerAllowedHosts: []` when the plugin uses the instance `baseUrl` dynamically rather than a fixed allowlist.
 
+> **Known limitation (host allowlist not enforced for first-party task providers).** The
+> bundled `task-provider-kaneo` and `task-provider-youtrack` plugins make their HTTP calls
+> through a global `fetch` in their own `client.ts`, **not** through `ctx.providerRuntime.httpFetch()`.
+> Their `providerAllowedHosts` is therefore declared (`[]`) but **not enforced** at runtime —
+> the host allowlist and HTTPS-only checks in `providerRuntime` do not apply to their traffic.
+> This is a deliberate, documented gap rather than an oversight: enforcing it requires
+> (1) threading `ctx.providerRuntime` through the `(config) => TaskProvider` factory into the
+> provider client (the factory does not receive `ctx` today), (2) a mechanism to admit the
+> operator-configured instance `baseUrl` host into the otherwise-static allowlist, and (3) a
+> policy decision for self-hosted `http://` instances (`providerRuntime` is HTTPS-only). Until
+> those are designed, treat first-party provider HTTP as unguarded by `providerRuntime`. New
+> `http`-permission plugins that _do_ route through `ctx.providerRuntime.httpFetch()` are
+> still enforced normally.
+
 Abbreviated manifest for reference:
 
 ```json

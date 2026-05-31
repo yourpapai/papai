@@ -11,15 +11,15 @@ import {
   deletePlatformInstance,
   getPlatformInstance,
   insertPlatformInstance,
-  listActivePlatformInstances,
   listPlatformInstances,
+  listPlatformInstancesSafe,
   updatePlatformInstance,
 } from '../instances/platform-store.js'
 import {
   deleteTaskInstance,
   getTaskInstance,
   insertTaskInstance,
-  listTaskInstances,
+  listTaskInstancesSafe,
   updateTaskInstance,
 } from '../instances/task-store.js'
 import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
@@ -51,7 +51,8 @@ const log = logger.child({ scope: 'debug:instance-routes' })
 
 const defaultDeps: InstanceApiDeps = {
   getRuntimeChatRouter,
-  listActivePlatformInstances,
+  listPlatformInstances,
+  listPlatformInstancesSafe,
 }
 
 const INSTANCE_ROUTE_MASK = '********'
@@ -135,11 +136,27 @@ const handlePlatformPatch = async (req: Request, instanceId: string): Promise<Re
   return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
 }
 
+const platformInstanceListResponse = (): Response => {
+  const result = listPlatformInstancesSafe()
+  return jsonResponse({
+    instances: result.instances.map((instance) => maskedPlatformInstance(instance)),
+    unreadable: result.failures,
+  })
+}
+
+const taskInstanceListResponse = (): Response => {
+  const result = listTaskInstancesSafe()
+  return jsonResponse({
+    instances: result.instances.map((instance) => taskInstanceView(instance)),
+    unreadable: result.failures,
+  })
+}
+
 const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApiDeps): Promise<Response | null> => {
   const parts = splitPath(url)
 
   if (url.pathname === '/api/platform-instances' && req.method === 'GET') {
-    return jsonResponse(listPlatformInstances().map((instance) => maskedPlatformInstance(instance)))
+    return platformInstanceListResponse()
   }
 
   if (url.pathname === '/api/platform-instances' && req.method === 'POST') {
@@ -204,7 +221,7 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   const parts = splitPath(url)
 
   if (url.pathname === '/api/task-instances' && req.method === 'GET') {
-    return jsonResponse(listTaskInstances().map((instance) => taskInstanceView(instance)))
+    return taskInstanceListResponse()
   }
 
   if (url.pathname === '/api/task-instances' && req.method === 'POST') {

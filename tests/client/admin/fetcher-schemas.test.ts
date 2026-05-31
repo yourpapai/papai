@@ -124,11 +124,25 @@ describe('instance API schemas', () => {
       removed: ['discord-old'],
       recreated: ['mattermost-main'],
       unchanged: ['telegram-secondary'],
-      failed: [{ id: 'telegram-bad', action: 'stop', error: 'failed to stop' }],
+      failed: [{ id: 'telegram-bad', action: 'remove', error: 'failed to remove' }],
     })
 
     expect(parsed.applied).toBe(2)
-    expect(parsed.failed[0]?.action).toBe('stop')
+    expect(parsed.failed[0]?.action).toBe('remove')
+  })
+
+  test('rejects stop as a failed action (never emitted by server)', () => {
+    expect(
+      ApplyInstancesResultSchema.safeParse({
+        applied: 1,
+        started: [],
+        stopped: [],
+        removed: [],
+        recreated: [],
+        unchanged: [],
+        failed: [{ id: 'telegram-bad', action: 'stop', error: 'should be rejected' }],
+      }).success,
+    ).toBe(false)
   })
 
   test('rejects unknown platform and status enums; task type is open string', () => {

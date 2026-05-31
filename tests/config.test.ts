@@ -6,7 +6,16 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedConfig, setCachedConfig } from '../src/cache.js'
-import { getAllConfig, getConfig, isConfigKey, isSensitiveKey, maskValue, setConfig } from '../src/config.js'
+import {
+  getAllConfig,
+  getConfig,
+  getConfigValue,
+  isConfigKey,
+  isSensitiveKey,
+  maskValue,
+  setConfig,
+  setConfigValue,
+} from '../src/config.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
 import {
@@ -25,6 +34,10 @@ beforeEach(() => {
   mockLogger()
 })
 
+// Namespaced key used in tests that previously relied on legacy 'kaneo_apikey'
+const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+const YOUTRACK_TOKEN_KEY_DYNAMIC = 'plugin:task-provider-youtrack:provider:token'
+
 describe('setConfig', () => {
   beforeEach(async () => {
     await setupTestDb()
@@ -34,30 +47,33 @@ describe('setConfig', () => {
   })
 
   test('stores value for user and key', () => {
-    setConfig(USER_A, 'kaneo_apikey', 'test-api-key')
-    expect(getConfig(USER_A, 'kaneo_apikey')).toBe('test-api-key')
+    // Provider keys are now dynamic (plugin-namespaced); use setConfigValue/getConfigValue
+    setConfigValue(USER_A, KANEO_CREDENTIAL_KEY, 'test-api-key')
+    expect(getConfigValue(USER_A, KANEO_CREDENTIAL_KEY)).toBe('test-api-key')
   })
 
   test('updates existing value', () => {
-    setConfig(USER_A, 'kaneo_apikey', 'old-key')
-    setConfig(USER_A, 'kaneo_apikey', 'new-key')
-    expect(getConfig(USER_A, 'kaneo_apikey')).toBe('new-key')
+    setConfigValue(USER_A, KANEO_CREDENTIAL_KEY, 'old-key')
+    setConfigValue(USER_A, KANEO_CREDENTIAL_KEY, 'new-key')
+    expect(getConfigValue(USER_A, KANEO_CREDENTIAL_KEY)).toBe('new-key')
   })
 
   test('isolates config between users', () => {
-    setConfig(USER_A, 'kaneo_apikey', 'key-a')
-    setConfig(USER_B, 'kaneo_apikey', 'key-b')
-    expect(getConfig(USER_A, 'kaneo_apikey')).toBe('key-a')
-    expect(getConfig(USER_B, 'kaneo_apikey')).toBe('key-b')
+    setConfigValue(USER_A, KANEO_CREDENTIAL_KEY, 'key-a')
+    setConfigValue(USER_B, KANEO_CREDENTIAL_KEY, 'key-b')
+    expect(getConfigValue(USER_A, KANEO_CREDENTIAL_KEY)).toBe('key-a')
+    expect(getConfigValue(USER_B, KANEO_CREDENTIAL_KEY)).toBe('key-b')
   })
 
-  test('handles all remaining per-user keys', () => {
-    setConfig(USER_A, 'kaneo_apikey', 'value-for-kaneo_apikey')
-    setConfig(USER_A, 'youtrack_token', 'value-for-youtrack_token')
+  test('handles static and dynamic per-user keys', () => {
+    // Static keys still use setConfig/getConfig
     setConfig(USER_A, 'timezone', 'UTC')
-    expect(getConfig(USER_A, 'kaneo_apikey')).toBe('value-for-kaneo_apikey')
-    expect(getConfig(USER_A, 'youtrack_token')).toBe('value-for-youtrack_token')
     expect(getConfig(USER_A, 'timezone')).toBe('UTC')
+    // Dynamic provider keys use setConfigValue/getConfigValue
+    setConfigValue(USER_A, KANEO_CREDENTIAL_KEY, 'value-for-kaneo')
+    setConfigValue(USER_A, YOUTRACK_TOKEN_KEY_DYNAMIC, 'value-for-youtrack')
+    expect(getConfigValue(USER_A, KANEO_CREDENTIAL_KEY)).toBe('value-for-kaneo')
+    expect(getConfigValue(USER_A, YOUTRACK_TOKEN_KEY_DYNAMIC)).toBe('value-for-youtrack')
   })
 
   test('normalizes timezone shorthand before storing it', () => {
@@ -76,12 +92,13 @@ describe('getConfig', () => {
   })
 
   test('returns stored value', () => {
-    setConfig(USER_A, 'kaneo_apikey', 'key-abc')
-    expect(getConfig(USER_A, 'kaneo_apikey')).toBe('key-abc')
+    // Provider keys are now dynamic; use setConfigValue/getConfigValue
+    setConfigValue(USER_A, KANEO_CREDENTIAL_KEY, 'key-abc')
+    expect(getConfigValue(USER_A, KANEO_CREDENTIAL_KEY)).toBe('key-abc')
   })
 
-  test('returns null for unset key', () => {
-    expect(getConfig(USER_A, 'kaneo_apikey')).toBeNull()
+  test('returns null for unset dynamic key', () => {
+    expect(getConfigValue(USER_A, KANEO_CREDENTIAL_KEY)).toBeNull()
   })
 
   test('normalizes legacy timezone values on read', () => {
@@ -91,11 +108,19 @@ describe('getConfig', () => {
 })
 
 describe('isConfigKey', () => {
-  test('returns true for valid per-user keys', () => {
-    const validKeys: ConfigKey[] = ['kaneo_apikey', 'youtrack_token', 'timezone', 'kaneo_workspace_id']
+  test('returns true for static per-user keys only', () => {
+    // Only static (non-provider) keys are ConfigKey members after refactor
+    const validKeys: ConfigKey[] = ['timezone', 'mcp_endpoints']
     for (const key of validKeys) {
       expect(isConfigKey(key)).toBe(true)
     }
+  })
+
+  test('returns false for legacy flat provider keys (now dynamic)', () => {
+    // These were removed from ConfigKey; they are handled via isAllowedDynamicConfigKey
+    expect(isConfigKey('kaneo_apikey')).toBe(false)
+    expect(isConfigKey('youtrack_token')).toBe(false)
+    expect(isConfigKey('kaneo_workspace_id')).toBe(false)
   })
 
   test('returns false for invalid keys (including former LLM keys)', () => {
@@ -196,30 +221,61 @@ describe('getAllConfig', () => {
   })
 })
 
+const PLUGIN_TRACKER_PLUGIN_ID = 'plugin-tracker'
+
+const registerPluginTrackerContributed = (): void => {
+  registerContributedTaskProviderType('plugin-tracker', {
+    pluginId: PLUGIN_TRACKER_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'plugin-tracker' }),
+    capabilities: new Set(),
+    displayName: 'Plugin Tracker',
+    instanceConfigSchema: [],
+    contextConfigSchema: [
+      { key: 'credential', label: 'Plugin Credential', required: true, sensitive: true, scope: 'context' },
+      { key: 'workspaceId', label: 'Workspace ID', required: false, sensitive: false, scope: 'context' },
+    ],
+  })
+}
+
 describe('maskValue', () => {
-  test('masks sensitive keys', () => {
-    expect(maskValue('kaneo_apikey', 'secret-key-1234')).toBe('****1234')
-    expect(maskValue('youtrack_token', 'perm:token-abcd')).toBe('****abcd')
+  beforeEach(() => {
+    registerPluginTrackerContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(PLUGIN_TRACKER_PLUGIN_ID)
+  })
+
+  test('masks sensitive namespaced provider credential key', () => {
+    expect(maskValue('plugin:plugin-tracker:provider:credential', 'abcd1234')).toBe('****1234')
   })
 
   test('returns unmasked value for non-sensitive keys', () => {
     expect(maskValue('timezone', 'America/New_York')).toBe('America/New_York')
+    expect(maskValue('plugin:plugin-tracker:provider:workspaceId', 'ws-123')).toBe('ws-123')
   })
 
-  test('handles short values for sensitive keys', () => {
-    expect(maskValue('kaneo_apikey', 'ab')).toBe('****ab')
-    expect(maskValue('kaneo_apikey', '')).toBe('****')
+  test('handles short values for sensitive namespaced keys', () => {
+    expect(maskValue('plugin:plugin-tracker:provider:credential', 'ab')).toBe('****ab')
+    expect(maskValue('plugin:plugin-tracker:provider:credential', '')).toBe('****')
   })
 })
 
 describe('isSensitiveKey', () => {
-  test('returns true for sensitive keys', () => {
-    expect(isSensitiveKey('kaneo_apikey')).toBe(true)
-    expect(isSensitiveKey('youtrack_token')).toBe(true)
+  beforeEach(() => {
+    registerPluginTrackerContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(PLUGIN_TRACKER_PLUGIN_ID)
+  })
+
+  test('returns true for sensitive namespaced provider credential key', () => {
+    expect(isSensitiveKey('plugin:plugin-tracker:provider:credential')).toBe(true)
   })
 
   test('returns false for non-sensitive keys', () => {
     expect(isSensitiveKey('timezone')).toBe(false)
-    expect(isSensitiveKey('kaneo_workspace_id')).toBe(false)
+    expect(isSensitiveKey('plugin:plugin-tracker:provider:workspaceId')).toBe(false)
   })
 })

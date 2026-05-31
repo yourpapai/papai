@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 
 import { KonturTalkChatProvider } from '../../../src/chat/kontur-talk/index.js'
 import type { DeferredDeliveryTarget, IncomingMessage } from '../../../src/chat/types.js'
@@ -70,59 +70,57 @@ function findObjectBody(bodies: unknown[]): object | undefined {
 }
 
 describe('KonturTalkChatProvider', () => {
-  const origEnv = { ...process.env }
-
-  beforeEach(() => {
-    process.env['KONTUR_TALK_JWT_TOKEN'] = TEST_JWT
-  })
+  const createProvider = (): KonturTalkChatProvider =>
+    new KonturTalkChatProvider({ jwtToken: TEST_JWT, platformInstanceId: 'kontur-main' })
 
   afterEach(() => {
-    process.env = { ...origEnv }
     restoreFetch()
   })
 
+  test('constructor does not invent a default platform instance id', () => {
+    expect(() => new KonturTalkChatProvider({ jwtToken: 'jwt' })).toThrow('platformInstanceId is required')
+  })
+
   test('name is kontur-talk', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     expect(provider.name).toBe('kontur-talk')
   })
 
   test('capabilities include messages.reply-context', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     expect(provider.capabilities.has('messages.reply-context')).toBe(true)
   })
 
   test('capabilities do not include messages.buttons', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     expect(provider.capabilities.has('messages.buttons')).toBe(false)
   })
 
   test('traits observe all group messages', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     expect(provider.traits.observedGroupMessages).toBe('all')
   })
 
   test('traits max message length is 4096', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     expect(provider.traits.maxMessageLength).toBe(4096)
   })
 
   test('thread capabilities support threads', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     expect(provider.threadCapabilities.supportsThreads).toBe(true)
     expect(provider.threadCapabilities.canCreateThreads).toBe(true)
     expect(provider.threadCapabilities.threadScope).toBe('message')
   })
 
-  test('config requirements include KONTUR_TALK_JWT_TOKEN', () => {
-    const provider = new KonturTalkChatProvider()
-    expect(provider.configRequirements).toEqual([
-      { key: 'KONTUR_TALK_JWT_TOKEN', label: 'Kontur Talk JWT Token', required: true },
-    ])
+  test('config requirements include jwtToken', () => {
+    const provider = createProvider()
+    expect(provider.configRequirements).toEqual([{ key: 'jwtToken', label: 'Kontur Talk JWT Token', required: true }])
   })
 
   test('start() extracts botUserId from JWT', async () => {
     setMockFetch(() => emptyUpdatesResponse())
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     await provider.start()
     expect(provider.getBotUserId()).toBe('bot123')
     await provider.stop()
@@ -130,7 +128,7 @@ describe('KonturTalkChatProvider', () => {
 
   test('stop() sets running to false', async () => {
     setMockFetch(() => emptyUpdatesResponse())
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     await provider.start()
     await provider.stop()
     expect(provider.isRunning()).toBe(false)
@@ -142,9 +140,9 @@ describe('KonturTalkChatProvider', () => {
       capturedBodies.push(parseBody(options))
       return sentResponse()
     })
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
 
-    await provider.sendMessage('kontur-talk-default', GROUP_TARGET, 'Hello group')
+    await provider.sendMessage('kontur-main', GROUP_TARGET, 'Hello group')
 
     const body = findObjectBody(capturedBodies)
     expect(body).toEqual({
@@ -162,10 +160,10 @@ describe('KonturTalkChatProvider', () => {
       fetchCallCount++
       return sentResponse()
     })
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     const callsBefore = fetchCallCount
 
-    await provider.sendMessage('kontur-talk-default', DM_TARGET, 'Hello DM')
+    await provider.sendMessage('kontur-main', DM_TARGET, 'Hello DM')
 
     expect(fetchCallCount).toBe(callsBefore)
   })
@@ -176,16 +174,16 @@ describe('KonturTalkChatProvider', () => {
       capturedBodies.push(parseBody(options))
       return sentResponse()
     })
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
 
-    await provider.sendMessage('kontur-talk-default', THREAD_TARGET, 'In thread')
+    await provider.sendMessage('kontur-main', THREAD_TARGET, 'In thread')
 
     const body = findObjectBody(capturedBodies)
     expect(body).toHaveProperty('thread_id', '$thread123')
   })
 
   test('renderContext returns formatted context', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     const result = provider.renderContext({
       modelName: 'gpt-4',
       totalTokens: 1000,
@@ -197,12 +195,12 @@ describe('KonturTalkChatProvider', () => {
   })
 
   test('registerCommand stores handler', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     provider.registerCommand('test', () => Promise.resolve())
   })
 
   test('onMessage stores handler', () => {
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     provider.onMessage(() => Promise.resolve())
   })
 
@@ -232,7 +230,7 @@ describe('KonturTalkChatProvider', () => {
           ),
       )
     })
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     provider.onMessage((msg) => {
       handledUpdates.push({ text: msg.text })
       return Promise.resolve()
@@ -252,7 +250,7 @@ describe('KonturTalkChatProvider', () => {
       callCount++
       return delay(10).then(() => new Response('server error', { status: 500 }))
     })
-    const provider = new KonturTalkChatProvider()
+    const provider = createProvider()
     await provider.start()
 
     await delay(200)
@@ -295,7 +293,7 @@ describe('KonturTalkChatProvider', () => {
     test('handleUpdate dispatches text message to messageHandler', async () => {
       const received: IncomingMessage[] = []
       mockFetchWithUpdates([makeUpdate({ event_id: '$event1', body: 'Hello bot' })])
-      const provider = new KonturTalkChatProvider()
+      const provider = createProvider()
       provider.onMessage((msg, _reply) => {
         received.push(msg)
         return Promise.resolve()
@@ -314,7 +312,7 @@ describe('KonturTalkChatProvider', () => {
     test('handleUpdate passes non-mentioned group messages with isMentioned=false', async () => {
       const received: IncomingMessage[] = []
       mockFetchWithUpdates([makeUpdate({ event_id: '$event2', body: 'Not mentioning bot', mentions: null })])
-      const provider = new KonturTalkChatProvider()
+      const provider = createProvider()
       provider.onMessage((msg, _reply) => {
         received.push(msg)
         return Promise.resolve()
@@ -331,7 +329,7 @@ describe('KonturTalkChatProvider', () => {
     test('handleUpdate recognizes mentions="all"', async () => {
       const received: IncomingMessage[] = []
       mockFetchWithUpdates([makeUpdate({ event_id: '$event3', body: '@all check this', mentions: 'all' })])
-      const provider = new KonturTalkChatProvider()
+      const provider = createProvider()
       provider.onMessage((msg, _reply) => {
         received.push(msg)
         return Promise.resolve()
@@ -348,7 +346,7 @@ describe('KonturTalkChatProvider', () => {
     test('handleUpdate dispatches to command handler', async () => {
       const commandCalls: string[] = []
       mockFetchWithUpdates([makeUpdate({ event_id: '$event4', body: '/help' })])
-      const provider = new KonturTalkChatProvider()
+      const provider = createProvider()
       provider.registerCommand('help', () => {
         commandCalls.push('help')
         return Promise.resolve()
@@ -368,7 +366,7 @@ describe('KonturTalkChatProvider', () => {
     test('handleUpdate passes threadId to IncomingMessage', async () => {
       let capturedThreadId: string | undefined
       mockFetchWithUpdates([makeUpdate({ event_id: '$event5', body: 'In thread', thread_id: '$thread123' })])
-      const provider = new KonturTalkChatProvider()
+      const provider = createProvider()
       provider.onMessage((msg, _reply) => {
         capturedThreadId = msg.threadId
         return Promise.resolve()
@@ -387,7 +385,7 @@ describe('KonturTalkChatProvider', () => {
         makeUpdate({ event_id: '$img1', message_type: 'm.image', body: '' }),
         makeUpdate({ event_id: '$text1', message_type: 'm.text', body: 'Hello' }),
       ])
-      const provider = new KonturTalkChatProvider()
+      const provider = createProvider()
       provider.onMessage((msg, _reply) => {
         received.push(msg)
         return Promise.resolve()
@@ -412,7 +410,7 @@ describe('KonturTalkChatProvider', () => {
           mentions: null,
         }),
       ])
-      const provider = new KonturTalkChatProvider()
+      const provider = createProvider()
       provider.onMessage((msg, _reply) => {
         received.push(msg)
         return Promise.resolve()

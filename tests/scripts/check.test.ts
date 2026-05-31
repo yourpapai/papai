@@ -155,6 +155,33 @@ describe('check.sh --staged', () => {
     }
   })
 
+  test('skips oxlint when staged files are hook-only TypeScript files outside lint scope', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const hookFile = '.hooks/tests/tdd/checks/check-full.test.ts'
+      const hookFilePath = path.join(repoDir, hookFile)
+      mkdirSync(path.dirname(hookFilePath), { recursive: true })
+      writeFileSync(hookFilePath, 'import { test } from "bun:test"\n\ntest("hook", () => {})\n')
+      expectSuccess(runCommand(repoDir, ['git', 'add', hookFile]))
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh', '--staged'], env)
+
+      expect(result.exitCode).toBe(0)
+
+      const calls = readFileSync(logFile, 'utf8')
+      expect(calls).toContain('bun run typecheck')
+      expect(calls).toContain(`bunx oxfmt --check --ignore-path=.oxfmtignore ${hookFile}`)
+      expect(calls).not.toContain('bunx oxlint')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
   test('requires license headers for new code files outside src and client', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 

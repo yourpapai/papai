@@ -47,6 +47,10 @@ const mentionsNotFound =
   (text: string): boolean =>
     text.includes(id) && text.includes('not found')
 
+/** Returns true when a reply is the restored required-config guard prompt. */
+const mentionsMissingConfig = (text: string): boolean =>
+  text.includes('Missing configuration') && text.includes('/config')
+
 const containsFact = (
   facts: readonly MemoryFact[],
   expected: Readonly<Pick<MemoryFact, 'identifier' | 'title' | 'url'>>,
@@ -136,7 +140,7 @@ import {
 } from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
-import { setConfig, setConfigValue } from '../src/config.js'
+import { setConfigValue } from '../src/config.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
@@ -398,9 +402,8 @@ describe('processMessage', () => {
     })
 
     test('missing YouTrack provider config is derived from assigned task instance', async () => {
-      // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its
-      // plugin-namespaced token key. The /setup guidance is now triggered by resolver returning null
-      // when the token is absent. Simulate by having resolve return null.
+      // YouTrack requires a context-scoped token. With the required-config guard restored,
+      // an unconfigured context is told to finish setup via /config before the resolver runs.
       const freshCtx = 'missing-youtrack-token-2'
       assignYouTrackContext(freshCtx)
 
@@ -415,7 +418,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /config before I can do that.')
+      expect(textCalls.some(mentionsMissingConfig)).toBe(true)
     })
 
     test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
@@ -442,8 +445,8 @@ describe('processMessage', () => {
     })
 
     test('missing provider config is derived from assigned task instance', async () => {
-      // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its
-      // plugin-namespaced token key. Simulate missing credentials via resolver returning null.
+      // With the required-config guard restored, a context assigned to a provider whose
+      // required context-scoped credential is unset is told to finish setup via /config.
       const freshCtx = 'missing-youtrack-token'
       assignYouTrackContext(freshCtx)
       const deps: LlmOrchestratorDeps = {
@@ -457,7 +460,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /config before I can do that.')
+      expect(textCalls.some(mentionsMissingConfig)).toBe(true)
     })
 
     test('replies with setup guidance when resolver returns null after credentials pass', async () => {
@@ -473,7 +476,7 @@ describe('processMessage', () => {
         taskInstanceId: 'yt-prod-null',
         platformInstanceId: 'telegram-default',
       })
-      setConfig(freshCtx, 'youtrack_token', 'perm:abc')
+      setConfigValue(freshCtx, 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),

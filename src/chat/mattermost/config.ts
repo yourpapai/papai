@@ -15,23 +15,15 @@ export type ResolvedMattermostConfig = {
   platformInstanceId: string
 }
 
-const resolveConfigValue = (value: string | undefined, fallback: string | undefined): string | undefined => {
-  if (value === undefined) return fallback
-  return value
-}
-
 const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
   if (platformInstanceId === undefined || platformInstanceId.trim() === '')
     throw new Error('platformInstanceId is required')
   return platformInstanceId
 }
 
-export const resolveMattermostConfig = (
-  config: MattermostConstructorConfig,
-  fallbackEnv: Record<string, string | undefined> | undefined = process.env,
-): ResolvedMattermostConfig => {
-  const url = resolveConfigValue(config.baseUrl, fallbackEnv?.['MATTERMOST_URL'])
-  const token = resolveConfigValue(config.token, fallbackEnv?.['MATTERMOST_BOT_TOKEN'])
+export const resolveMattermostConfig = (config: MattermostConstructorConfig): ResolvedMattermostConfig => {
+  const url = config.baseUrl
+  const token = config.token
   if (url === undefined || url.trim() === '') {
     throw new Error('MATTERMOST_URL environment variable is required')
   }

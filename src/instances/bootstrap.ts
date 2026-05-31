@@ -72,7 +72,11 @@ const parseEnv = (): ParsedEnv => ({
   adminUserId: getTrimmedEnv('ADMIN_USER_ID'),
 })
 
-const collectMissing = (parsed: ParsedEnv): string[] => {
+type CollectMissingResult =
+  | { ok: true; chatType: PlatformInstanceType; adminUserId: string }
+  | { ok: false; missing: string[] }
+
+const collectMissing = (parsed: ParsedEnv): CollectMissingResult => {
   const missing: string[] = []
   if (parsed.chatType === null) missing.push('CHAT_PROVIDER')
   if (parsed.adminUserId === undefined) missing.push('ADMIN_USER_ID')
@@ -81,7 +85,10 @@ const collectMissing = (parsed: ParsedEnv): string[] => {
       if (getTrimmedEnv(v) === undefined) missing.push(v)
     }
   }
-  return missing
+  if (missing.length > 0 || parsed.chatType === null || parsed.adminUserId === undefined) {
+    return { ok: false, missing }
+  }
+  return { ok: true, chatType: parsed.chatType, adminUserId: parsed.adminUserId }
 }
 
 const seedInstances = (chatType: PlatformInstanceType, adminUserId: string): { platformInstanceId: string } => {
@@ -122,21 +129,16 @@ export const bootstrapInstancesFromEnv = (): BootstrapResult => {
     return { bootstrapped: false, reason: 'no-env' }
   }
 
-  const missing = collectMissing(parsed)
-  if (missing.length > 0) {
-    log.warn({ missing }, 'Bootstrap aborted: partial environment')
-    return { bootstrapped: false, reason: 'partial-env', missing }
+  const collected = collectMissing(parsed)
+  if (!collected.ok) {
+    log.warn({ missing: collected.missing }, 'Bootstrap aborted: partial environment')
+    return { bootstrapped: false, reason: 'partial-env', missing: collected.missing }
   }
 
-  // Narrowing for the type checker: all required values are non-null because missing is empty.
-  if (parsed.chatType === null || parsed.adminUserId === undefined) {
-    return { bootstrapped: false, reason: 'partial-env', missing }
-  }
-
-  const { platformInstanceId } = seedInstances(parsed.chatType, parsed.adminUserId)
+  const { platformInstanceId } = seedInstances(collected.chatType, collected.adminUserId)
 
   log.info(
-    { platformInstanceId, adminUserId: parsed.adminUserId },
+    { platformInstanceId, adminUserId: collected.adminUserId },
     'Bootstrapped from environment variables. DB is now the source of truth.',
   )
   return { bootstrapped: true, platformInstanceId }
