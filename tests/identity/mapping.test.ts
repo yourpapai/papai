@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from 'bun:test'
 import {
   clearIdentityMapping,
   getIdentityMapping,
+  listAllIdentityMappings,
   setIdentityMapping,
   type IdentityMappingDeps,
 } from '../../src/identity/mapping.js'
@@ -61,6 +62,69 @@ describe('identity mapping CRUD', () => {
     expect(result).not.toBeNull()
     expect(result?.providerUserId).toBeNull()
     expect(result?.matchMethod).toBe('unmatched')
+  })
+})
+
+describe('listAllIdentityMappings', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  it('returns an empty array when no mappings exist', () => {
+    const result = listAllIdentityMappings()
+    expect(result).toEqual([])
+  })
+
+  it('returns all stored mappings across different contexts and providers', () => {
+    setIdentityMapping({
+      contextId: 'ctx-A',
+      providerName: 'kaneo',
+      providerUserId: 'k-1',
+      providerUserLogin: 'alice',
+      displayName: 'Alice',
+      matchMethod: 'auto',
+      confidence: 100,
+    })
+    setIdentityMapping({
+      contextId: 'ctx-B',
+      providerName: 'youtrack',
+      providerUserId: 'yt-2',
+      providerUserLogin: 'bob',
+      displayName: 'Bob',
+      matchMethod: 'manual_nl',
+      confidence: 80,
+    })
+
+    const result = listAllIdentityMappings()
+    expect(result).toHaveLength(2)
+    const contextIds = result.map((r) => r.contextId).sort((a, b) => a.localeCompare(b))
+    expect(contextIds).toEqual(['ctx-A', 'ctx-B'])
+  })
+
+  it('returns the correct IdentityMapping shape for each row', () => {
+    setIdentityMapping({
+      contextId: 'ctx-shape',
+      providerName: 'kaneo',
+      providerUserId: 'k-99',
+      providerUserLogin: 'charlie',
+      displayName: 'Charlie',
+      matchMethod: 'auto',
+      confidence: 95,
+    })
+
+    const result = listAllIdentityMappings()
+    expect(result).toHaveLength(1)
+    const entry = result[0]
+    expect(entry).toBeDefined()
+    expect(entry?.contextId).toBe('ctx-shape')
+    expect(entry?.providerName).toBe('kaneo')
+    expect(entry?.providerUserId).toBe('k-99')
+    expect(entry?.providerUserLogin).toBe('charlie')
+    expect(entry?.displayName).toBe('Charlie')
+    expect(entry?.matchMethod).toBe('auto')
+    expect(entry?.confidence).toBe(95)
+    expect(typeof entry?.matchedAt).toBe('string')
   })
 })
 

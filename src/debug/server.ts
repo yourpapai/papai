@@ -8,7 +8,7 @@ import path from 'node:path'
 import { listAuthorizedGroups } from '../authorized-groups.js'
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listScheduledPrompts } from '../deferred-prompts/scheduled.js'
-import { getIdentityMapping } from '../identity/mapping.js'
+import { getIdentityMapping, listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { listMemos } from '../memos.js'
 import { listRecurringTasks } from '../recurring.js'
@@ -170,6 +170,11 @@ function handleIdentity(url: URL): Response {
   return jsonResponse(mapping)
 }
 
+function handleAdminIdentityMappings(): Response {
+  const mappings = listAllIdentityMappings()
+  return jsonResponse(mappings)
+}
+
 function resolveParamDefault(value: string | null, fallback: string): string {
   if (value !== null) return value
   return fallback
@@ -196,6 +201,10 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
   if (url.pathname === '/admin/plugin-config') {
     if (req.method === 'GET') return handleAdminPluginConfigGet()
     if (req.method === 'POST') return handleAdminPluginConfigPost(req)
+    return new Response('Method not allowed', { status: 405 })
+  }
+  if (url.pathname === '/admin/identity/mappings') {
+    if (req.method === 'GET') return handleAdminIdentityMappings()
     return new Response('Method not allowed', { status: 405 })
   }
   if (url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/admin.css') {

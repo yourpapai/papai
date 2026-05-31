@@ -16,6 +16,7 @@ import {
   fetchAdmins,
   fetchAdminGroups,
   fetchAdminIdentity,
+  fetchAdminIdentityMappings,
   fetchAdminLlm,
   fetchAdminSystem,
   fetchDeferredPrompts,
@@ -306,6 +307,53 @@ describe('fetchAdminIdentity', () => {
     installFetch(200, { contextId: 'user-1', providerName: 'kaneo' })
 
     await expect(fetchAdminIdentity('user-1', 'kaneo')).rejects.toThrow()
+  })
+})
+
+describe('fetchAdminIdentityMappings', () => {
+  test('GETs /admin/identity/mappings and returns a validated array', async () => {
+    installFetch(200, [
+      {
+        contextId: 'ctx-alice',
+        providerName: 'kaneo',
+        providerUserId: 'k-1',
+        providerUserLogin: 'alice',
+        displayName: 'Alice',
+        matchedAt: '2026-05-21T00:00:00.000Z',
+        matchMethod: 'auto',
+        confidence: 100,
+      },
+    ])
+
+    const result = await fetchAdminIdentityMappings()
+    const firstEntry = expectDefined(result[0], 'missing identity mapping entry')
+
+    expect(firstCaptured().url).toBe('/admin/identity/mappings')
+    expect(result).toHaveLength(1)
+    expect(firstEntry.contextId).toBe('ctx-alice')
+    expect(firstEntry.providerName).toBe('kaneo')
+    expect(firstEntry.matchMethod).toBe('auto')
+  })
+
+  test('returns empty array when server returns []', async () => {
+    installFetch(200, [])
+
+    const result = await fetchAdminIdentityMappings()
+
+    expect(firstCaptured().url).toBe('/admin/identity/mappings')
+    expect(result).toEqual([])
+  })
+
+  test('rejects malformed identity mapping payloads', async () => {
+    installFetch(200, [{ contextId: 'ctx-alice' }])
+
+    await expect(fetchAdminIdentityMappings()).rejects.toThrow()
+  })
+
+  test('throws on non-ok response', async () => {
+    installFetch(401, 'Unauthorized')
+
+    await expect(fetchAdminIdentityMappings()).rejects.toThrow('request failed with status 401')
   })
 })
 

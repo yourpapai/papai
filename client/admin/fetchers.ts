@@ -142,6 +142,13 @@ export const fetchAdminIdentity = async (userId: string, provider: string): Prom
   return IdentityMappingEntrySchema.parse(body) as IdentityMappingEntry
 }
 
+export const fetchAdminIdentityMappings = async (): Promise<IdentityMappingEntry[]> => {
+  const res = await fetch('/admin/identity/mappings')
+  const body = await readBody(res)
+  requireOk(res, body)
+  return z.array(IdentityMappingEntrySchema).parse(body) as IdentityMappingEntry[]
+}
+
 export const fetchRecentRequests = async (
   subjectId: string,
   ...args: readonly [] | readonly [number]
