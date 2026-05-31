@@ -764,7 +764,9 @@ describe('instance API routes', () => {
       removed: [],
       failed: [{ id: 'telegram-main', action: 'remove', error: 'stop failed' }],
     })
-    expect(router.getInstance('telegram-main')).not.toBeNull()
+    // The stop failure is reported via failed[], but the instance is still evicted from the
+    // runtime map (removeInstance's finally) so it is not wedged and a later apply can retry.
+    expect(router.getInstance('telegram-main')).toBeNull()
   })
 
   test('apply does not replace instance when recreate cannot stop old provider', async () => {
