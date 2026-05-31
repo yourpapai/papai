@@ -196,30 +196,61 @@ describe('getAllConfig', () => {
   })
 })
 
+const PLUGIN_TRACKER_PLUGIN_ID = 'plugin-tracker'
+
+const registerPluginTrackerContributed = (): void => {
+  registerContributedTaskProviderType('plugin-tracker', {
+    pluginId: PLUGIN_TRACKER_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'plugin-tracker' }),
+    capabilities: new Set(),
+    displayName: 'Plugin Tracker',
+    instanceConfigSchema: [],
+    contextConfigSchema: [
+      { key: 'credential', label: 'Plugin Credential', required: true, sensitive: true, scope: 'context' },
+      { key: 'workspaceId', label: 'Workspace ID', required: false, sensitive: false, scope: 'context' },
+    ],
+  })
+}
+
 describe('maskValue', () => {
-  test('masks sensitive keys', () => {
-    expect(maskValue('kaneo_apikey', 'secret-key-1234')).toBe('****1234')
-    expect(maskValue('youtrack_token', 'perm:token-abcd')).toBe('****abcd')
+  beforeEach(() => {
+    registerPluginTrackerContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(PLUGIN_TRACKER_PLUGIN_ID)
+  })
+
+  test('masks sensitive namespaced provider credential key', () => {
+    expect(maskValue('plugin:plugin-tracker:provider:credential', 'abcd1234')).toBe('****1234')
   })
 
   test('returns unmasked value for non-sensitive keys', () => {
     expect(maskValue('timezone', 'America/New_York')).toBe('America/New_York')
+    expect(maskValue('plugin:plugin-tracker:provider:workspaceId', 'ws-123')).toBe('ws-123')
   })
 
-  test('handles short values for sensitive keys', () => {
-    expect(maskValue('kaneo_apikey', 'ab')).toBe('****ab')
-    expect(maskValue('kaneo_apikey', '')).toBe('****')
+  test('handles short values for sensitive namespaced keys', () => {
+    expect(maskValue('plugin:plugin-tracker:provider:credential', 'ab')).toBe('****ab')
+    expect(maskValue('plugin:plugin-tracker:provider:credential', '')).toBe('****')
   })
 })
 
 describe('isSensitiveKey', () => {
-  test('returns true for sensitive keys', () => {
-    expect(isSensitiveKey('kaneo_apikey')).toBe(true)
-    expect(isSensitiveKey('youtrack_token')).toBe(true)
+  beforeEach(() => {
+    registerPluginTrackerContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(PLUGIN_TRACKER_PLUGIN_ID)
+  })
+
+  test('returns true for sensitive namespaced provider credential key', () => {
+    expect(isSensitiveKey('plugin:plugin-tracker:provider:credential')).toBe(true)
   })
 
   test('returns false for non-sensitive keys', () => {
     expect(isSensitiveKey('timezone')).toBe(false)
-    expect(isSensitiveKey('kaneo_workspace_id')).toBe(false)
+    expect(isSensitiveKey('plugin:plugin-tracker:provider:workspaceId')).toBe(false)
   })
 })

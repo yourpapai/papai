@@ -11,6 +11,7 @@ import {
   getConfigFieldsForContext,
   getConfigKeysForContext,
   getRequiredProviderConfigKeysForContext,
+  isSensitiveProviderStorageKey,
 } from '../src/config-keys.js'
 import { setConfig, getAllConfig } from '../src/config.js'
 import { taskInstances } from '../src/db/schema.js'
@@ -280,5 +281,38 @@ describe('getRequiredProviderConfigKeysForContext', () => {
     const keys = getRequiredProviderConfigKeysForContext('unassigned-context')
 
     expect(keys.filter((k) => k.startsWith('plugin:'))).toHaveLength(0)
+  })
+})
+
+describe('isSensitiveProviderStorageKey', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
+      contextConfigSchema: [
+        { key: 'credential', label: 'Plugin Credential', required: true, sensitive: true, scope: 'context' },
+        { key: 'workspaceId', label: 'Workspace ID', required: false, sensitive: false, scope: 'context' },
+      ],
+    })
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType('plugin-tracker')
+  })
+
+  test('true for a sensitive namespaced provider credential key', () => {
+    expect(isSensitiveProviderStorageKey('plugin:plugin-tracker:provider:credential')).toBe(true)
+  })
+
+  test('false for a non-sensitive provider field and for unknown/static keys', () => {
+    expect(isSensitiveProviderStorageKey('plugin:plugin-tracker:provider:workspaceId')).toBe(false)
+    expect(isSensitiveProviderStorageKey('timezone')).toBe(false)
   })
 })

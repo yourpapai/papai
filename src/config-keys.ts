@@ -6,7 +6,7 @@
 import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
 import { pluginRegistry } from './plugins/registry.js'
-import { getTaskProviderDescriptor } from './providers/registry.js'
+import { getTaskProviderDescriptor, listTaskProviderTypes } from './providers/registry.js'
 import {
   isAllowedDynamicConfigKey,
   KANEO_PLUGIN_WORKSPACE_KEY,
@@ -109,4 +109,12 @@ export function getRequiredProviderConfigKeysForContext(contextId: string): stri
   return getConfigFieldsForContext(contextId)
     .filter((field) => field.required && field.kind !== 'preference')
     .map((field) => field.storageKey)
+}
+
+export function isSensitiveProviderStorageKey(key: string): boolean {
+  return listTaskProviderTypes().some((descriptor) =>
+    [...descriptor.contextConfigSchema, ...descriptor.instanceConfigSchema].some(
+      (field) => storageKeyForProviderField(descriptor, field) === key && field.sensitive,
+    ),
+  )
 }
