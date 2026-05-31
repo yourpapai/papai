@@ -4,7 +4,7 @@
   <img src="docs/assets/logo.png" alt="PAPAI logo" width="600">
 </p>
 
-<p align="center">Natural language task management for Telegram, Mattermost, and Discord</p>
+<p align="center">Natural language task management for Telegram, Mattermost, Discord, and Kontur Talk</p>
 
 <p align="center">
   <a href="https://github.com/yourpapai/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
@@ -38,7 +38,7 @@
 
 ## Overview
 
-Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, or Discord, connect it to Kaneo or YouTrack, and manage work through conversational task operations. Platform and task-provider instances are stored in SQLite after first bootstrap, so one deployment can manage multiple configured chat and task-provider instances.
+Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, Discord, or Kontur Talk, connect it to Kaneo or YouTrack, and manage work through conversational task operations. Platform and task-provider instances are stored in SQLite after first bootstrap, so one deployment can manage multiple configured chat and task-provider instances.
 
 The bot interprets natural-language requests, invokes capability-gated tools through LLM tool-calling, and replies with task details, updates, summaries, and search results. Personal and group settings are managed in the settings web UI launched via `/config` (requires `SETTINGS_PUBLIC_BASE_URL`). Conversation history, memory, and memo storage are isolated by storage context. Telegram forum topics and Mattermost threads get separate thread-scoped context; Discord currently does not.
 
@@ -70,11 +70,12 @@ The bot interprets natural-language requests, invokes capability-gated tools thr
 
 ### Platform Support
 
-| Platform       | Group Message Model                | Threads                                                                  | Command Menu | Buttons      | File Receive | File Replies | Notes                                                                                      |
-| -------------- | ---------------------------------- | ------------------------------------------------------------------------ | ------------ | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------------------ |
-| **Telegram**   | Sees group messages directly       | Forum topics supported and can create a topic on mention in forum groups | Yes          | Yes          | Yes          | Yes          | Best support for bot command menus and forum-topic flows                                   |
-| **Mattermost** | Sees group messages directly       | Thread/root-post aware                                                   | No           | No callbacks | Yes          | Yes          | Username resolution supported                                                              |
-| **Discord**    | DMs plus guild-channel `@mentions` | No separate thread-scoped support today                                  | No           | Yes          | No           | No           | Uses embeds for rich `/context` output; requires Message Content intent for content access |
+| Platform        | Group Message Model                | Threads                                                                  | Command Menu | Buttons      | File Receive | File Replies | Notes                                                                                      |
+| --------------- | ---------------------------------- | ------------------------------------------------------------------------ | ------------ | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------------------ |
+| **Telegram**    | Sees group messages directly       | Forum topics supported and can create a topic on mention in forum groups | Yes          | Yes          | Yes          | Yes          | Best support for bot command menus and forum-topic flows                                   |
+| **Mattermost**  | Sees group messages directly       | Thread/root-post aware                                                   | No           | No callbacks | Yes          | Yes          | Username resolution supported                                                              |
+| **Discord**     | DMs plus guild-channel `@mentions` | No separate thread-scoped support today                                  | No           | Yes          | No           | No           | Uses embeds for rich `/context` output; requires Message Content intent for content access |
+| **Kontur Talk** | Sees group messages directly       | Message-scoped threads supported                                         | No           | No           | No           | No           | JWT-authenticated; reply-context aware; minimal interaction surface                        |
 
 ### Task Provider Support
 
@@ -92,7 +93,7 @@ YouTrack task creation can require workflow-specific custom fields. Papai expose
 ### Prerequisites
 
 - [Bun](https://bun.sh) 1.3+
-- One supported chat platform: Telegram, Mattermost, or Discord
+- One supported chat platform: Telegram, Mattermost, Discord, or Kontur Talk
 - One supported task provider: Kaneo or YouTrack
 - OpenAI-compatible API credentials for your chosen model provider
 
@@ -112,7 +113,7 @@ Edit `.env`:
 ADMIN_USER_ID=123456789         # Your platform user ID
 
 # First-run platform-instance bootstrap. Used only when the platform instance table is empty.
-CHAT_PROVIDER=telegram          # or: mattermost, discord
+CHAT_PROVIDER=telegram          # or: mattermost, discord, kontur-talk
 # INSTANCE_CONFIG_KEY=64_hex_chars_for_production_config_encryption
 
 # Central LLM credentials (seeded once into system_config on first start)
@@ -159,7 +160,8 @@ flowchart TD
     Router --> CP1[Telegram Instance]
     Router --> CP2[Mattermost Instance]
     Router --> CP3[Discord Instance]
-    User[User<br>Telegram / Mattermost / Discord] -->|Message or interaction| Router
+    Router --> CP4[Kontur Talk Instance]
+    User[User<br>Telegram / Mattermost / Discord / Kontur Talk] -->|Message or interaction| Router
     Router -->|IncomingMessage / IncomingInteraction + platformInstanceId| Bot[bot.ts]
     Bot -->|queued prompt + reply context + attachment ids| Queue[Message Queue + Attachment Workspace]
     Queue --> LLM[LLM Orchestrator]
@@ -173,23 +175,23 @@ flowchart TD
 
 ### Component Overview
 
-| Path                                               | Responsibility                                                                               |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring             |
-| `src/bot.ts`                                       | Platform-agnostic message handling, queueing, and interaction routing                        |
-| `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata and the `ChatRouter`     |
-| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                               |
-| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                                |
-| `src/providers/`                                   | Shared normalized provider types/utilities; Kaneo and YouTrack ship as first-party plugins   |
-| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap           |
-| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                        |
-| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver   |
-| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                  |
-| `src/group-settings/`                              | Admin group-context listing, scope filtering, and group observations for the settings web UI |
-| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`             |
-| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV         |
-| `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints   |
-| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                             |
+| Path                                               | Responsibility                                                                                        |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring                      |
+| `src/bot.ts`                                       | Platform-agnostic message handling, queueing, and interaction routing                                 |
+| `src/chat/`                                        | Telegram, Mattermost, Discord, and Kontur Talk adapters plus capability metadata and the `ChatRouter` |
+| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                                        |
+| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                                         |
+| `src/providers/`                                   | Shared normalized provider types/utilities; Kaneo and YouTrack ship as first-party plugins            |
+| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap                    |
+| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                                 |
+| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver            |
+| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                           |
+| `src/group-settings/`                              | Admin group-context listing, scope filtering, and group observations for the settings web UI          |
+| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`                      |
+| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV                  |
+| `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints            |
+| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                                      |
 
 ---
 
@@ -200,12 +202,12 @@ flowchart TD
 <details>
 <summary><b>Startup And Bootstrap Variables</b> (click to expand)</summary>
 
-| Variable                   | When required                    | Description                                                                                                                    | Example                                            |
-| -------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| `ADMIN_USER_ID`            | Always                           | Initial authorized admin identity                                                                                              | Platform user ID string seen by the active adapter |
-| `CHAT_PROVIDER`            | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                                                            | `telegram`, `mattermost`, or `discord`             |
-| `SETTINGS_PUBLIC_BASE_URL` | For the settings web UI          | External base URL used to build single-use `/config` settings links and scope the settings cookie; `/config` errors without it | `https://bot.example.com`                          |
-| `INSTANCE_CONFIG_KEY`      | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset                                | 64 hex chars                                       |
+| Variable                   | When required                    | Description                                                                                                                    | Example                                               |
+| -------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `ADMIN_USER_ID`            | Always                           | Initial authorized admin identity                                                                                              | Platform user ID string seen by the active adapter    |
+| `CHAT_PROVIDER`            | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                                                            | `telegram`, `mattermost`, `discord`, or `kontur-talk` |
+| `SETTINGS_PUBLIC_BASE_URL` | For the settings web UI          | External base URL used to build single-use `/config` settings links and scope the settings cookie; `/config` errors without it | `https://bot.example.com`                             |
+| `INSTANCE_CONFIG_KEY`      | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset                                | 64 hex chars                                          |
 
 </details>
 
@@ -257,6 +259,17 @@ For Mattermost and Discord, use the platform user ID string the bot receives, no
 | `DISCORD_BOT_TOKEN` | Bot token from the Discord developer portal |
 
 Discord support uses gateway intents including `MessageContent`. Enable the **Message Content Intent** for the bot in the Discord developer portal if you expect the bot to read message content beyond explicit interaction payloads. Verified applications must also enable the privileged Message Content intent in the portal for non-empty content, attachments, embeds, and similar fields.
+
+</details>
+
+<details>
+<summary><b>Kontur Talk Configuration</b></summary>
+
+| Variable                | Description                                          |
+| ----------------------- | ---------------------------------------------------- |
+| `KONTUR_TALK_JWT_TOKEN` | JWT used to authenticate the bot against Kontur Talk |
+
+Kontur Talk observes group messages directly and supports message-scoped threads. Its interaction surface is minimal: no command menu, buttons, or file transfer — only reply-context-aware messaging. `ADMIN_USER_ID` must match the Kontur Talk platform user ID string the bot receives.
 
 </details>
 
@@ -397,7 +410,7 @@ Send natural-language requests to the bot.
 
 ### Group Chat
 
-Add the bot to a Telegram group, Mattermost channel, or Discord server/channel.
+Add the bot to a Telegram group, Mattermost channel, Discord server/channel, or Kontur Talk room.
 
 Typical flow:
 

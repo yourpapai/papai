@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-papai is a chat bot that manages tasks via LLM tool-calling. A user sends natural-language messages through configured chat platform instances (Telegram, Mattermost, or Discord), the bot invokes a configurable OpenAI-compatible LLM (via Vercel AI SDK), executes capability-gated task-tracker tools, and replies with the result. Runtime behavior depends on the source platform instance, assigned task instance, conversation context, and per-user or group-targeted configuration stored in SQLite.
+papai is a chat bot that manages tasks via LLM tool-calling. A user sends natural-language messages through configured chat platform instances (Telegram, Mattermost, Discord, or Kontur Talk), the bot invokes a configurable OpenAI-compatible LLM (via Vercel AI SDK), executes capability-gated task-tracker tools, and replies with the result. Runtime behavior depends on the source platform instance, assigned task instance, conversation context, and per-user or group-targeted configuration stored in SQLite.
 
 Notable current behaviors:
 
@@ -149,17 +149,18 @@ the bot logs `WARN` at startup and replies "the bot is not fully configured"
 to incoming messages until the admin sets them via env + restart or through
 `/admin#system`.
 
-`ADMIN_USER_ID` is stored as the initial authorized `platform_user_id`, so it must match the user ID string the active chat adapter sees. For Telegram this is numeric; for Mattermost and Discord it is the platform user ID string, not a display name.
+`ADMIN_USER_ID` is stored as the initial authorized `platform_user_id`, so it must match the user ID string the active chat adapter sees. For Telegram this is numeric; for Mattermost, Discord, and Kontur Talk it is the platform user ID string, not a display name.
 
 First-run env bootstrap requirements when the instance tables are empty:
 
-- `CHAT_PROVIDER` (`telegram`, `mattermost`, or `discord`)
+- `CHAT_PROVIDER` (`telegram`, `mattermost`, `discord`, or `kontur-talk`)
 
 Chat-provider bootstrap requirements:
 
 - Telegram: `TELEGRAM_BOT_TOKEN`
 - Mattermost: `MATTERMOST_URL`, `MATTERMOST_BOT_TOKEN`
 - Discord: `DISCORD_BOT_TOKEN`
+- Kontur Talk: `KONTUR_TALK_JWT_TOKEN`
 
 `CHAT_PROVIDER` is used only by first-run env bootstrap when the platform instance table is empty. After bootstrap, platform instance selection is read from `context_settings`, platform instance base config lives in `platform_instances`, and per-context credentials stay in `user_config`.
 
