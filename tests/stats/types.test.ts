@@ -112,7 +112,7 @@ describe('stats types', () => {
         subjectsWithInstructions: 0,
       },
       webFetches: { topHosts: [] },
-      toolMix: { topTools: [], errorTypeCounts: {} },
+      toolMix: { topTools: [], errorTypeCounts: {}, totalCalls: 0, totalSuccessRate: 0, toolCallGrowth30d: [] },
       llmUsage: {
         totalCalls: 0,
         mainCalls: 0,

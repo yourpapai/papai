@@ -20,6 +20,7 @@ export type AdminLlmKeyState = {
   value: string | null
   updatedAt: number | null
   updatedBy: string | null
+  required: boolean
 }
 
 export type AdminLlmSnapshot = Record<SystemConfigKey, AdminLlmKeyState>
@@ -35,22 +36,30 @@ export class AdminLlmError extends Error {
   }
 }
 
-const emptyState = (): AdminLlmKeyState => ({ value: null, updatedAt: null, updatedBy: null })
+const REQUIRED_LLM_KEYS = new Set<SystemConfigKey>(['llm_apikey', 'llm_baseurl', 'main_model'])
+
+const emptyState = (key: SystemConfigKey): AdminLlmKeyState => ({
+  value: null,
+  updatedAt: null,
+  updatedBy: null,
+  required: REQUIRED_LLM_KEYS.has(key),
+})
 
 export const getAdminLlmSnapshot = (): AdminLlmSnapshot => {
   log.debug('getAdminLlmSnapshot called')
   const snapshot: AdminLlmSnapshot = {
-    llm_apikey: emptyState(),
-    llm_baseurl: emptyState(),
-    main_model: emptyState(),
-    small_model: emptyState(),
-    embedding_model: emptyState(),
+    llm_apikey: emptyState('llm_apikey'),
+    llm_baseurl: emptyState('llm_baseurl'),
+    main_model: emptyState('main_model'),
+    small_model: emptyState('small_model'),
+    embedding_model: emptyState('embedding_model'),
   }
   for (const entry of listSystemConfigEntries()) {
     snapshot[entry.key] = {
       value: maskSystemConfigValue(entry.key, entry.value),
       updatedAt: entry.updatedAt,
       updatedBy: entry.updatedBy,
+      required: REQUIRED_LLM_KEYS.has(entry.key),
     }
   }
   return snapshot

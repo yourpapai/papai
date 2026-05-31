@@ -55,6 +55,9 @@ export const GlobalStatsSchema = z.object({
   toolMix: z.object({
     topTools: z.array(z.object({ toolName: z.string(), count: z.number(), successRate: z.number() })),
     errorTypeCounts: z.record(z.string(), z.number()),
+    totalCalls: z.number(),
+    totalSuccessRate: z.number(),
+    toolCallGrowth30d: z.array(z.object({ date: z.string(), count: z.number() })),
   }),
   llmUsage: z.object({
     totalCalls: z.number(),
@@ -193,6 +196,7 @@ const AdminLlmKeyStateSchema = z.object({
   value: z.string().nullable(),
   updatedAt: z.number().nullable(),
   updatedBy: z.string().nullable(),
+  required: z.boolean(),
 })
 
 export const AdminLlmSnapshotSchema = z.object({

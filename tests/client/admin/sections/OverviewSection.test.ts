@@ -38,7 +38,7 @@ describe('OverviewSection.svelte', () => {
     void unmount(component)
   })
 
-  test('renders active 30d total + 1d/7d sub-label', () => {
+  test('renders tokens KPI as em-dash placeholder (token data not yet available)', () => {
     adminGlobals.data = {
       subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
       active: { activeIn1d: 4, activeIn7d: 12, activeIn30d: 24 },
@@ -46,8 +46,9 @@ describe('OverviewSection.svelte', () => {
       toolMix: { topTools: [], errorTypeCounts: {} },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('24')
-    expect(target.textContent).toContain('4 1d · 12 7d')
+    const kpis = target.querySelector('[data-testid="admin-overview-kpis"]')!
+    expect(kpis.textContent).toContain('tokens')
+    expect(kpis.textContent).toContain('—')
     void unmount(component)
   })
 
@@ -65,7 +66,7 @@ describe('OverviewSection.svelte', () => {
       },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('1500')
+    expect(target.textContent).toContain('1,500')
     expect(target.textContent).toContain('1420 ok · 80 fail')
     void unmount(component)
   })
@@ -99,7 +100,7 @@ describe('OverviewSection.svelte', () => {
       },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('1089')
+    expect(target.textContent).toContain('1,089')
     expect(target.textContent).toContain('892 main · 197 small')
     void unmount(component)
   })
@@ -112,7 +113,7 @@ describe('OverviewSection.svelte', () => {
       toolMix: { topTools: [], errorTypeCounts: {} },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    const llmKpi = target.querySelector('.admin-overview__kpis')!
+    const llmKpi = target.querySelector('[data-testid="admin-overview-kpis"]')!
     expect(llmKpi.textContent).toContain('llm calls')
     expect(llmKpi.textContent).toContain('—')
     void unmount(component)

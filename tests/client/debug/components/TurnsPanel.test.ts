@@ -65,9 +65,26 @@ describe('TurnsPanel', () => {
     void unmount(component)
   })
 
-  test('renders status class on turn row', () => {
+  test('renders a 6-column table header', () => {
+    const { target, component } = render(freshState([makeTurn()]))
+    const headers = target.querySelectorAll('th')
+    expect(headers.length).toBe(6)
+    const labels = Array.from(headers).map((h) => h.textContent?.trim().toLowerCase())
+    expect(labels).toContain('time')
+    expect(labels).toContain('status')
+    expect(labels).toContain('scope')
+    expect(labels).toContain('duration')
+    expect(labels).toContain('msgs')
+    expect(labels).toContain('tools')
+    void unmount(component)
+  })
+
+  test('renders status pill for each turn row', () => {
     const { target, component } = render(freshState([makeTurn({ status: 'error' })]))
-    expect(target.innerHTML).toContain('status-error')
+    // Status pill should have danger tone class
+    expect(target.innerHTML).toContain('ui-pill--danger')
+    // Should contain the status text
+    expect(target.textContent).toContain('error')
     void unmount(component)
   })
 
@@ -78,16 +95,60 @@ describe('TurnsPanel', () => {
     ])
     state.scopeFilter = 'dm'
     const { target, component } = render(state)
-    expect(target.innerHTML).not.toContain('No turns')
-    // Only one row should render
-    const rows = target.querySelectorAll('.turn-row')
+    expect(target.textContent).not.toContain('No turns')
+    // Only one data row should render (tbody tr with clickable class)
+    const rows = target.querySelectorAll('.ui-datatable__tr')
     expect(rows.length).toBe(1)
     void unmount(component)
   })
 
-  test('renders log-link button per turn', () => {
-    const { target, component } = render(freshState([makeTurn()]))
-    expect(target.querySelector('.turn-log-link')).not.toBeNull()
+  test('renders tool pill chips with +N overflow', () => {
+    const turn = makeTurn({
+      toolCalls: [
+        { name: 'tool_a', durationMs: 10, ok: true },
+        { name: 'tool_b', durationMs: 10, ok: true },
+        { name: 'tool_c', durationMs: 10, ok: true },
+        { name: 'tool_d', durationMs: 10, ok: true },
+      ],
+    })
+    const { target, component } = render(freshState([turn]))
+    expect(target.textContent).toContain('tool_a')
+    expect(target.textContent).toContain('tool_b')
+    expect(target.textContent).toContain('tool_c')
+    // 4th tool should not render as pill — instead "+1" overflow
+    expect(target.textContent).toContain('+1')
+    void unmount(component)
+  })
+
+  test('shows header summary pills for running/error/cancelled turns', () => {
+    const state = freshState([
+      makeTurn({ turnId: 't1', status: 'running' }),
+      makeTurn({ turnId: 't2', status: 'error' }),
+      makeTurn({ turnId: 't3', status: 'cancelled' }),
+    ])
+    const { target, component } = render(state)
+    expect(target.textContent).toContain('running 1')
+    expect(target.textContent).toContain('error 1')
+    expect(target.textContent).toContain('cancelled 1')
+    void unmount(component)
+  })
+
+  test('calls onShowTurn when a table row is clicked', () => {
+    const seen: Turn[] = []
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.getElementById('root')!
+    const component = mount(TurnsPanel, {
+      target,
+      props: {
+        dashboard: freshState([makeTurn()]),
+        onShowTurn: (t: Turn) => seen.push(t),
+        onShowLogsForTurn: () => {},
+      },
+    })
+    const row = target.querySelector<HTMLElement>('.ui-datatable__tr--clickable')
+    row?.click()
+    expect(seen.length).toBe(1)
+    expect(seen[0]?.turnId).toBe('t1')
     void unmount(component)
   })
 })

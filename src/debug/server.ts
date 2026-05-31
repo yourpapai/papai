@@ -5,7 +5,9 @@
 
 import path from 'node:path'
 
+import { removeAuthorizedGroup } from '../authorized-groups.js'
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
+import { listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
 import { handleAuthClaim, handleAuthLogout, handleAuthWhoami } from './auth-routes.js'
@@ -132,6 +134,10 @@ function handleTurnLookup(url: URL): Response {
   return new Response('Not found', { status: 404 })
 }
 
+function handleAdminIdentityMappings(): Response {
+  return jsonResponse(listAllIdentityMappings())
+}
+
 function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> | null {
   if (url.pathname === '/admin/system') {
     if (req.method === 'GET') return handleAdminSystem()
@@ -148,6 +154,10 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
   if (url.pathname === '/admin/plugin-config') {
     if (req.method === 'GET') return handleAdminPluginConfigGet()
     if (req.method === 'POST') return handleAdminPluginConfigPost(req)
+    return new Response('Method not allowed', { status: 405 })
+  }
+  if (url.pathname === '/admin/identity/mappings') {
+    if (req.method === 'GET') return handleAdminIdentityMappings()
     return new Response('Method not allowed', { status: 405 })
   }
   if (url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/admin.css') {
@@ -175,6 +185,11 @@ function routeProtectedPaths(req: Request, url: URL): Response | Promise<Respons
   if (url.pathname === '/memos') return handleMemos(url)
   if (url.pathname === '/identity') return handleIdentity(url)
   if (url.pathname === '/auth/groups') return handleAuthGroups()
+  if (url.pathname.startsWith('/auth/groups/')) {
+    const groupId = decodeURIComponent(url.pathname.slice('/auth/groups/'.length))
+    if (req.method === 'DELETE') return jsonResponse({ removed: removeAuthorizedGroup(groupId) })
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (url.pathname === '/mcp/status') {
     if (req.method === 'GET') return handleMcpStatus()
     return new Response('Method not allowed', { status: 405 })

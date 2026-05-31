@@ -10,12 +10,12 @@ import { flushSync, mount, unmount } from 'svelte'
 import SystemSection from '../../../../client/admin/sections/SystemSection.svelte'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
-const emptyKey = { value: null, updatedAt: null, updatedBy: null }
+const emptyKey = { value: null, updatedAt: null, updatedBy: null, required: false }
 
 const llmSnapshot = {
-  llm_apikey: { value: '****1234', updatedAt: 1, updatedBy: 'admin' },
-  llm_baseurl: { value: 'https://llm.example.test/v1', updatedAt: 2, updatedBy: 'admin' },
-  main_model: { value: 'gpt-main', updatedAt: 3, updatedBy: 'admin' },
+  llm_apikey: { value: '****1234', updatedAt: 1, updatedBy: 'admin', required: true },
+  llm_baseurl: { value: 'https://llm.example.test/v1', updatedAt: 2, updatedBy: 'admin', required: true },
+  main_model: { value: 'gpt-main', updatedAt: 3, updatedBy: 'admin', required: true },
   small_model: emptyKey,
   embedding_model: emptyKey,
 }

@@ -92,7 +92,13 @@ describe('toolMixGlobal', () => {
   })
 
   test('returns empty mix when no rows', () => {
-    expect(toolMixGlobal()).toEqual({ topTools: [], errorTypeCounts: {} })
+    expect(toolMixGlobal()).toEqual({
+      topTools: [],
+      errorTypeCounts: {},
+      totalCalls: 0,
+      totalSuccessRate: 0,
+      toolCallGrowth30d: [],
+    })
   })
 
   test('aggregates tool counts, success rate, and error type counts globally', () => {
@@ -162,5 +168,90 @@ describe('toolMixGlobal', () => {
     expect(result.topTools[1]?.count).toBe(2)
     expect(result.topTools[1]?.successRate).toBe(0.5)
     expect(result.errorTypeCounts).toEqual({ network: 1, provider: 1 })
+  })
+
+  test('totalCalls counts all rows and totalSuccessRate is fraction 0-1', () => {
+    const base = {
+      turnId: 't',
+      contextType: 'dm',
+      chatUserId: 'u1',
+      model: 'm',
+      modelRole: 'main',
+      toolCallId: 'tc',
+      storageContextId: 'u1',
+    } as const
+
+    getDrizzleDb()
+      .insert(toolCallEvents)
+      .values([
+        { eventId: 'r1', occurredAt: 10, toolName: 'create_task', success: 1, ...base },
+        { eventId: 'r2', occurredAt: 20, toolName: 'create_task', success: 1, ...base },
+        { eventId: 'r3', occurredAt: 30, toolName: 'search_tasks', success: 0, ...base, errorType: 'err' },
+      ])
+      .run()
+
+    const result = toolMixGlobal()
+
+    expect(result.totalCalls).toBe(3)
+    expect(result.totalSuccessRate).toBeCloseTo(2 / 3, 5)
+  })
+
+  test('totalSuccessRate is 0 when there are no rows', () => {
+    const result = toolMixGlobal()
+    expect(result.totalCalls).toBe(0)
+    expect(result.totalSuccessRate).toBe(0)
+  })
+
+  test('toolCallGrowth30d returns daily buckets within 30 days, excludes older rows, ascending order', () => {
+    const now = Date.now()
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000
+    const base = {
+      turnId: 't',
+      contextType: 'dm',
+      chatUserId: 'u1',
+      model: 'm',
+      modelRole: 'main',
+      toolCallId: 'tc',
+      storageContextId: 'u1',
+    } as const
+
+    // 2 calls 5 days ago
+    const fiveDaysAgo = now - 5 * ONE_DAY_MS
+    // 1 call yesterday
+    const yesterday = now - ONE_DAY_MS
+    // 1 call older than 30 days (should be excluded)
+    const thirtyOneDaysAgo = now - 31 * ONE_DAY_MS
+
+    getDrizzleDb()
+      .insert(toolCallEvents)
+      .values([
+        { eventId: 'g1', occurredAt: fiveDaysAgo, toolName: 'create_task', success: 1, ...base },
+        { eventId: 'g2', occurredAt: fiveDaysAgo + 1000, toolName: 'search_tasks', success: 1, ...base },
+        { eventId: 'g3', occurredAt: yesterday, toolName: 'create_task', success: 0, ...base, errorType: 'e' },
+        { eventId: 'g4', occurredAt: thirtyOneDaysAgo, toolName: 'create_task', success: 1, ...base },
+      ])
+      .run()
+
+    const result = toolMixGlobal()
+
+    // Only rows within 30 days are included in growth
+    expect(result.toolCallGrowth30d.length).toBeGreaterThanOrEqual(2)
+
+    const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
+    const fiveDayDate = isoDay(fiveDaysAgo)
+    const yesterdayDate = isoDay(yesterday)
+
+    const fiveDay = result.toolCallGrowth30d.find((p) => p.date === fiveDayDate)
+    const yDay = result.toolCallGrowth30d.find((p) => p.date === yesterdayDate)
+    expect(fiveDay?.count).toBe(2)
+    expect(yDay?.count).toBe(1)
+
+    // The 31-day-old row must not appear at all
+    const thirtyOneDate = isoDay(thirtyOneDaysAgo)
+    expect(result.toolCallGrowth30d.find((p) => p.date === thirtyOneDate)).toBeUndefined()
+
+    // Result is sorted ascending
+    const dates = result.toolCallGrowth30d.map((p) => p.date)
+    expect(dates).toEqual([...dates].sort())
   })
 })

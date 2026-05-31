@@ -11,6 +11,7 @@
   import SubjectStatsPanel from '../components/SubjectStatsPanel.svelte'
   import SubjectsTable from '../components/SubjectsTable.svelte'
   import { fetchBillingDetail, fetchBillingSubjects } from '../fetchers.js'
+  import Panel from '../../shared/ui/Panel.svelte'
 
   let billingWindow: BillingWindow = $state('30d')
   let billingSubjects: BillingSubject[] = $state([])
@@ -59,37 +60,40 @@
   })
 </script>
 
-<section id="billing" class="billing-panel admin-section">
-  <header class="billing-header">
-    <div>
-      <p class="eyebrow">Usage</p>
-      <h2 data-testid="admin-section-title">Billing</h2>
-    </div>
-    <button
-      type="button"
-      data-testid="billing-refresh"
-      onclick={() => {
-        void refreshAll()
-      }}>{fetching ? 'Refreshing...' : 'Refresh'}</button>
-  </header>
-
-  {#if error !== null}
-    <p class="status-error">{error}</p>
-  {/if}
-
-  <SubjectsTable subjects={billingSubjects} onSelect={(subject) => void selectSubject(subject)} />
+<section id="billing" class="admin-section">
+  <Panel title="Billing" count={billingSubjects.length}>
+    {#snippet action()}
+      <button
+        type="button"
+        class="billing-refresh-btn"
+        data-testid="billing-refresh"
+        onclick={() => {
+          void refreshAll()
+        }}>{fetching ? 'Refreshing...' : 'Refresh'}</button>
+    {/snippet}
+    {#snippet body()}
+      {#if error !== null}
+        <p class="status-error">{error}</p>
+      {/if}
+      <SubjectsTable subjects={billingSubjects} onSelect={(subject) => void selectSubject(subject)} />
+    {/snippet}
+  </Panel>
 
   {#if selectedSubject !== null}
-    <div class="billing-inline-detail">
-      {#if detailFetching && billingDetail === null && detailError === null}
-        <span class="placeholder">Loading...</span>
-      {:else if detailError !== null}
-        <p class="status-error">{detailError}</p>
-      {:else if billingDetail !== null}
-        <SubjectDetail detail={billingDetail} />
-      {/if}
-      <SubjectStatsPanel storageContextId={selectedSubject.storageContextId} />
-    </div>
+    <Panel title={`subject detail · ${selectedSubject.displayName ?? selectedSubject.storageContextId}`}>
+      {#snippet body()}
+        <div class="billing-inline-detail">
+          {#if detailFetching && billingDetail === null && detailError === null}
+            <span class="placeholder">Loading...</span>
+          {:else if detailError !== null}
+            <p class="status-error">{detailError}</p>
+          {:else if billingDetail !== null}
+            <SubjectDetail detail={billingDetail} />
+          {/if}
+          <SubjectStatsPanel storageContextId={selectedSubject.storageContextId} />
+        </div>
+      {/snippet}
+    </Panel>
   {/if}
 </section>
 
@@ -98,6 +102,23 @@
     display: grid;
     grid-template-columns: 1.4fr 1fr;
     gap: 12px;
-    margin-top: 12px;
+    padding: 12px;
+  }
+
+  .billing-refresh-btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    height: 22px;
+    cursor: pointer;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--fg2);
+    border: 1px solid transparent;
+  }
+
+  .billing-refresh-btn:hover {
+    background: var(--raised);
   }
 </style>
