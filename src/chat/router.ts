@@ -87,7 +87,7 @@ export class ChatRouter implements ChatProvider {
     return instance
   }
 
-  async removeInstanceStrict(id: string): Promise<void> {
+  async removeInstance(id: string): Promise<void> {
     const instance = this.instances.get(id)
     if (instance === undefined) return
     try {

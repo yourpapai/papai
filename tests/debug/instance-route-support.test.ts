@@ -62,7 +62,7 @@ class FakeRouter extends ChatRouter {
     return this.snapshots
   }
 
-  override removeInstanceStrict(id: string): Promise<void> {
+  override removeInstance(id: string): Promise<void> {
     this.removedIds.push(id)
     return Promise.resolve()
   }

@@ -157,7 +157,7 @@ const removeRuntimeInstance = async (
   desiredStatus: RemovedDetail['desiredStatus'],
 ): Promise<ApplyResultPatch> => {
   try {
-    await router.removeInstanceStrict(id)
+    await router.removeInstance(id)
     return { stopped: [id], removed: [id], removedDetails: [{ id, desiredStatus }] }
   } catch (error) {
     return failedPatch(id, 'remove', error)
