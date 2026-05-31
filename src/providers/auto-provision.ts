@@ -8,20 +8,24 @@ import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
 import { getTaskProviderDescriptor } from './registry.js'
 
-export function maybeAutoProvisionProvider(
+export async function maybeAutoProvisionProvider(
   reply: ReplyFn,
   contextId: string,
   chatUserId: string,
   username: string | null,
 ): Promise<boolean> {
   const settings = getContextSettings(contextId)
-  if (settings === null) return Promise.resolve(false)
+  if (settings === null) return false
 
   const taskInstance = getTaskInstance(settings.taskInstanceId)
-  if (taskInstance === null || taskInstance.status !== 'active') return Promise.resolve(false)
+  if (taskInstance === null || taskInstance.status !== 'active') return false
 
   const descriptor = getTaskProviderDescriptor(taskInstance.type)
-  if (descriptor?.autoProvision === undefined) return Promise.resolve(false)
+  if (descriptor === undefined || descriptor.autoProvision === undefined) return false
 
-  return Promise.resolve(descriptor.autoProvision({ contextId, chatUserId, username, reply }))
+  try {
+    return await descriptor.autoProvision({ contextId, chatUserId, username, reply })
+  } catch {
+    return false
+  }
 }

@@ -50,8 +50,10 @@ const genericAutoProvisionDescriptorForType = (_type: string): TaskProviderTypeD
 
 const SCOPED_GROUP_1 = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
 const SCOPED_ADMIN_1 = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'admin-1' })
+const GENERIC_PROVIDER_TYPE = 'plugin-provider-generic'
+
 const GENERIC_AUTO_PROVISION_DESCRIPTOR: TaskProviderTypeDescriptor = {
-  type: 'youtrack',
+  type: GENERIC_PROVIDER_TYPE,
   displayName: 'Generic Auto-Provisioned Provider',
   source: { plugin: 'task-provider-generic' },
   autoProvision: () => true,
@@ -212,7 +214,7 @@ describe('/setup command', () => {
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(configLookups).toEqual(['plugin:task-provider-generic:provider:token'])
-    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'group-1', username: null }])
+    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'admin-1', username: null }])
     expect(textCalls).toContain('generic auto provisioning reply')
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(false)
   })
@@ -247,7 +249,42 @@ describe('/setup command', () => {
 
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
-    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'group-1', username: null }])
+    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'admin-1', username: null }])
+    expect(textCalls).toContain('generic auto provisioning reply')
+    expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(true)
+  })
+
+  test('first-time allowlisted group setup continues into wizard for non-builtin providers when auto-provision does not provision', async () => {
+    const { reply, textCalls } = createMockReply()
+    const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
+    const deps: SetupCommandDeps = {
+      isAuthorizedGroup: () => true,
+      maybeAutoProvision: async (provisionReply, contextId, chatUserId, username) => {
+        autoProvisionCalls.push({ contextId, chatUserId, username })
+        await provisionReply.text('generic auto provisioning reply')
+        return false
+      },
+      createWizard: () => ({ success: true, prompt: 'wizard-started' }),
+      getConfigValue: () => null,
+      getContextSettings: () => ({
+        contextId: 'group-1',
+        taskInstanceId: 'plugin-provider-prod',
+        platformInstanceId: 'telegram-default',
+      }),
+      getTaskInstance: () => ({
+        id: 'plugin-provider-prod',
+        type: GENERIC_PROVIDER_TYPE,
+        config: { baseUrl: 'https://provider.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      getTaskProviderDescriptor: genericAutoProvisionDescriptorForType,
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: GENERIC_PROVIDER_TYPE }),
+    }
+
+    await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
+
+    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'admin-1', username: null }])
     expect(textCalls).toContain('generic auto provisioning reply')
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(true)
   })
@@ -421,9 +458,9 @@ describe('/setup command', () => {
       getConfigValue: () => null,
       getContextSettings: (...args) => getContextSettingsImpl(...args),
       getTaskInstance: () => ({
-        id: 'youtrack-prod',
-        type: 'youtrack',
-        config: { baseUrl: 'https://youtrack.invalid' },
+        id: 'plugin-provider-prod',
+        type: GENERIC_PROVIDER_TYPE,
+        config: { baseUrl: 'https://provider.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
@@ -431,17 +468,17 @@ describe('/setup command', () => {
       startTaskInstanceSelection: () => {
         getContextSettingsImpl = (): ReturnType<SetupCommandDeps['getContextSettings']> => ({
           contextId: 'group-1',
-          taskInstanceId: 'youtrack-prod',
+          taskInstanceId: 'plugin-provider-prod',
           platformInstanceId: 'telegram-default',
         })
-        return { status: 'assigned', taskProvider: 'youtrack' }
+        return { status: 'assigned', taskProvider: GENERIC_PROVIDER_TYPE }
       },
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(provisionCalls).toBe(1)
-    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'group-1', username: null }])
+    expect(autoProvisionCalls).toEqual([{ contextId: 'group-1', chatUserId: 'admin-1', username: null }])
     expect(textCalls).toContain('generic auto provisioning reply')
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(false)
   })
@@ -455,7 +492,7 @@ describe('/setup command', () => {
         provisionCalls++
         expect({ contextId, chatUserId, username }).toEqual({
           contextId: 'group-1',
-          chatUserId: 'group-1',
+          chatUserId: 'admin-1',
           username: null,
         })
         return Promise.resolve(false)
@@ -481,6 +518,34 @@ describe('/setup command', () => {
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(provisionCalls).toBe(1)
+    expect(textCalls).toEqual(['wizard-started'])
+  })
+
+  test('continues to wizard when generic auto-provision hook throws for the group', async () => {
+    const { reply, textCalls } = createMockReply()
+    const deps: SetupCommandDeps = {
+      isAuthorizedGroup: () => true,
+      maybeAutoProvision: () => Promise.reject(new Error('auto provision exploded')),
+      createWizard: () => ({ success: true, prompt: 'wizard-started' }),
+      getConfigValue: () => null,
+      getContextSettings: () => ({
+        contextId: 'group-1',
+        taskInstanceId: 'plugin-provider-prod',
+        platformInstanceId: 'telegram-default',
+      }),
+      getTaskInstance: () => ({
+        id: 'plugin-provider-prod',
+        type: GENERIC_PROVIDER_TYPE,
+        config: { baseUrl: 'https://provider.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      getTaskProviderDescriptor: genericAutoProvisionDescriptorForType,
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: GENERIC_PROVIDER_TYPE }),
+    }
+
+    await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
+
     expect(textCalls).toEqual(['wizard-started'])
   })
 })

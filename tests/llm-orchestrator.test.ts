@@ -500,6 +500,45 @@ describe('processMessage', () => {
       expect(autoProvisionCalls).toEqual([{ contextId: CTX_ID, chatUserId: 'user-1', username: 'alice' }])
       expect(textCalls).toContain('I need /setup before I can do that.')
     })
+
+    test('dm context continues to setup guidance when generic auto-provision hook throws', async () => {
+      registerContributedTaskProviderType('auto-throw-provider', {
+        pluginId: 'auto-throw-plugin',
+        factory: () => createMockProvider({ name: 'auto-throw-provider' }),
+        capabilities: new Set(),
+        displayName: 'Auto Throw Provider',
+        autoProvision: () => {
+          throw new Error('auto provision exploded')
+        },
+        instanceConfigSchema: [],
+        contextConfigSchema: [],
+      })
+      insertTaskInstance({
+        id: 'auto-throw-instance',
+        type: 'auto-throw-provider',
+        config: { baseUrl: 'https://auto.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: CTX_ID,
+        taskInstanceId: 'auto-throw-instance',
+        platformInstanceId: 'telegram-default',
+      })
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: defaultDeps.maybeAutoProvision,
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', 'alice', 'hello', 'dm', undefined, deps)
+
+      expect(textCalls).toContain('I need /setup before I can do that.')
+
+      unregisterContributedTaskProviderType('auto-throw-plugin')
+    })
   })
 
   describe('LLM API error', () => {

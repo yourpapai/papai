@@ -12,7 +12,6 @@ import { getConfigValue } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
-import { isBuiltinTaskType } from '../instances/types.js'
 import type { TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { maybeAutoProvisionProvider } from '../providers/auto-provision.js'
@@ -97,6 +96,7 @@ function isFirstTimeAutoProvisionableGroupSetup(
 
 function maybeAutoProvisionGroup(
   reply: ReplyFn,
+  userId: string,
   targetContextId: string,
   taskProvider: TaskInstanceType,
   isGroupTarget: boolean,
@@ -105,7 +105,7 @@ function maybeAutoProvisionGroup(
   if (!isGroupTarget || !isFirstTimeAutoProvisionableGroupSetup(targetContextId, taskProvider, deps)) {
     return Promise.resolve(false)
   }
-  return deps.maybeAutoProvision(reply, targetContextId, targetContextId, null)
+  return deps.maybeAutoProvision(reply, targetContextId, userId, null).catch(() => false)
 }
 
 export async function startWizardForAssignedTask(
@@ -116,10 +116,8 @@ export async function startWizardForAssignedTask(
   isGroupTarget: boolean,
   ...rest: [] | [SetupCommandDeps]
 ): Promise<void> {
-  // Contributed provider types have no wizard-managed credentials; instance config is used directly
-  if (!isBuiltinTaskType(taskProvider)) return
   const deps = rest.length === 0 ? defaultDeps : rest[0]
-  if (await maybeAutoProvisionGroup(reply, targetContextId, taskProvider, isGroupTarget, deps)) return
+  if (await maybeAutoProvisionGroup(reply, userId, targetContextId, taskProvider, isGroupTarget, deps)) return
   const result = deps.createWizard(userId, targetContextId, taskProvider)
   await reply.text(result.prompt)
 }

@@ -39,10 +39,15 @@ const maybeAddDemoUser = async (msg: IncomingMessage, reply: ReplyFn, deps: Star
     })
   }
   log.info({ userId: msg.user.id }, 'Demo mode: auto-added user via /start')
-  await deps.maybeAutoProvision(reply, msg.user.id, msg.user.id, msg.user.username)
+  try {
+    await deps.maybeAutoProvision(reply, msg.user.id, msg.user.id, msg.user.username)
+  } catch {
+    // Auto-provision is opportunistic; demo users should still reach the welcome flow.
+  }
 }
 
-export function registerStartCommand(chat: ChatProvider, deps: StartCommandDeps = defaultDeps): void {
+export function registerStartCommand(chat: ChatProvider, ...rest: [] | [StartCommandDeps]): void {
+  const deps = rest.length === 0 ? defaultDeps : rest[0]
   const handler: CommandHandler = async (msg, reply, auth) => {
     await maybeAddDemoUser(msg, reply, deps)
 

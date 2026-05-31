@@ -175,7 +175,11 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   const { reply, contextId, chatUserId, username, contextType, deps, configContextId, turnId } = args
   const configId = resolveConfigId(contextId, configContextId)
   if (contextType === 'dm') {
-    await deps.maybeAutoProvision(reply, configId, chatUserId, username)
+    try {
+      await deps.maybeAutoProvision(reply, configId, chatUserId, username)
+    } catch {
+      // Auto-provision is opportunistic; missing or broken hooks should fall through to normal setup guidance.
+    }
   }
   await ensureRequiredConfig(reply, contextId, configId)
   const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()

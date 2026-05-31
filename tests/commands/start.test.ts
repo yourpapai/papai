@@ -19,7 +19,7 @@ import {
 
 const TEST_PLATFORM_ID = 'test-instance'
 
-const addUser = (userId: string, addedBy: string, username?: string): void => {
+const addUser = (userId: string, addedBy: string, username: string | undefined): void => {
   addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
 }
 
@@ -49,7 +49,12 @@ describe('start command — demo mode auto-add', () => {
     capturedFormatted = null
     lastHandler = null
     registerStartCommand(mockChat)
-    lastHandler = commandHandlers.get('start') ?? null
+    const registeredHandler = commandHandlers.get('start')
+    if (registeredHandler === undefined) {
+      lastHandler = null
+      return
+    }
+    lastHandler = registeredHandler
   })
 
   afterEach(() => {
@@ -163,5 +168,49 @@ describe('start command — demo mode auto-add', () => {
     expect(autoProvisionCalls).toEqual([
       { contextId: 'demo-start-generic', chatUserId: 'demo-start-generic', username: 'generic-user' },
     ])
+  })
+
+  test('demo mode auto-add continues when generic auto-provision hook throws', async () => {
+    process.env['DEMO_MODE'] = 'true'
+    const deps: StartCommandDeps = {
+      maybeAutoProvision: () => {
+        throw new Error('auto provision exploded')
+      },
+    }
+    const { provider, commandHandlers: localCommandHandlers } = createMockChatWithCommandHandlers()
+    registerStartCommand(provider, deps)
+    const handler = localCommandHandlers.get('start')
+    const reply = {
+      text: (): Promise<void> => Promise.resolve(),
+      formatted: (content: string): Promise<void> => {
+        capturedFormatted = content
+        return Promise.resolve()
+      },
+      file: (): Promise<void> => Promise.resolve(),
+      typing: (): void => {},
+      buttons: (): Promise<void> => Promise.resolve(),
+    }
+
+    await handler!(
+      {
+        user: { id: 'demo-start-throws', username: 'generic-user', isAdmin: false },
+        contextId: 'demo-start-throws',
+        contextType: 'dm',
+        text: '/start',
+        platformInstanceId: TEST_PLATFORM_ID,
+        commandMatch: 'start',
+        isMentioned: false,
+      },
+      reply,
+      {
+        allowed: true,
+        isBotAdmin: false,
+        isGroupAdmin: false,
+        storageContextId: 'demo-start-throws',
+      },
+    )
+
+    expect(isAuthorized('demo-start-throws')).toBe(true)
+    expect(capturedFormatted).toContain('Welcome')
   })
 })
