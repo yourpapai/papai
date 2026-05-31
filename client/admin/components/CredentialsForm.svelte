@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import type { AdminLlmKeyState, AdminLlmSnapshot } from '../../shared/api-types.js'
+  import Pill from '../../shared/ui/Pill.svelte'
   import { submitAdminLlm, type SubmitAdminLlmInput } from '../fetchers.js'
 
   type Key = SubmitAdminLlmInput['key']
@@ -74,7 +75,14 @@
       <tbody>
         {#each KEYS as key (key)}
           <tr data-testid="credentials-row">
-            <td>{key}</td>
+            <td>
+              <span class="key-name">{key}</span>
+              {#if snapshot[key].required}
+                <span data-testid="badge-required-{key}"><Pill tone="neutral">required</Pill></span>
+              {:else}
+                <span data-testid="badge-optional-{key}"><Pill tone="mute">optional</Pill></span>
+              {/if}
+            </td>
             <td>
               {#if editing === key}
                 <input
@@ -118,3 +126,9 @@
     </table>
   {/if}
 </section>
+
+<style>
+  .key-name {
+    margin-right: 6px;
+  }
+</style>

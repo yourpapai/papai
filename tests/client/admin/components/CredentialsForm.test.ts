@@ -141,6 +141,16 @@ describe('CredentialsForm', () => {
     void unmount(component)
   })
 
+  test('shows "required" badge for required keys and "optional" badge for optional keys', () => {
+    const { target, component } = render(populated)
+    expect(target.querySelector('[data-testid="badge-required-llm_apikey"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-required-llm_baseurl"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-required-main_model"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-optional-small_model"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-optional-embedding_model"]')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('submitting calls POST /admin/llm and triggers onRefresh on success', async () => {
     const recorded: { body: string | null } = { body: null }
     setMockFetch((url, init) => respondToPost(url, init, recorded))
