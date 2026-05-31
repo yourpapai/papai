@@ -27,11 +27,11 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 ## Current Command Behavior
 
 - Commands are registered in `src/bot.ts` via `setupBot(chat, adminUserId)`.
-- Current command surface: `/help`, `/start`, `/config`, `/context`, `/clear`, `/dashboard`.
-- `/config` is launcher-only. In DM it issues a single-use settings link (outcome: `ok` / `rate_limited` / `not_configured`). In group contexts it sends an admin-redirect message. `SETTINGS_PUBLIC_BASE_URL` must be set; when it is not, `/config` replies asking the admin to configure that variable. All configuration (personal, group, admin, plugins, identity, instances, system LLM, announce) happens in the settings web UI.
+- Current core command surface: `/help`, `/start`, `/config`, `/context`, `/clear`, `/dashboard`. Active plugins also register `plugin_<sanitized-plugin-id>_<command-name>` commands at startup via `registerPluginCommands`.
+- `/config` is launcher-only. In DM it issues a single-use settings link (outcome: `ok` / `rate_limited` / `not_configured`). In group contexts it sends one of two messages: a DM redirect for group admins, or an access-denied explanation for non-admins. `SETTINGS_PUBLIC_BASE_URL` must be set; when it is not, `/config` replies asking the admin to configure that variable. All configuration (personal, group, admin, plugins, identity, instances, system LLM, announce) happens in the settings web UI.
 - `/context` builds a tokenized `ContextSnapshot` and sends a platform-native view through `chat.renderContext()`.
 - `/clear` clears conversation history, summary, and facts for the current storage context. The bot admin can also clear another user or all users; non-bot group admins are limited to clearing the current group context.
-- `/dashboard` issues a sign-in link to the operator debug/admin UI when `DEBUG_SERVER=true`.
+- `/dashboard` is DM-only and bot-admin-only; it issues a sign-in link to the operator debug/admin UI when `DEBUG_SERVER=true`.
 - The retired commands `/setup`, `/group`, `/groups`, `/user`, `/users`, `/announce`, and `/plugin` no longer exist. Their functionality (group management, plugin approval/enable/disable, identity, instance management, announcements) is now handled in the settings web UI.
 
 ## No Interception Flow

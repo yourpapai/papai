@@ -20,10 +20,10 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 
 - `bun start` — build the debug/admin clients and run the bot
 - `bun start:debug` — build the debug/admin clients and run the bot with `DEBUG_SERVER=true`
-- `bun build:client` — bundle the debug/admin UIs from `client/{debug,admin}/` to `public/`
+- `bun build:client` — bundle the debug/admin/settings UIs from `client/{debug,admin,settings}/` to `public/`
 - `bun storybook` — run the dashboard component harness on http://localhost:6006 (Storybook + Vite, dev-only)
 - `bun build:storybook` — build the static story site to `storybook-static/` (git-ignored)
-- `bun check:bundle-isolation` — rebuild the client and assert the dev-only `client/stories/**` harness never leaked into the production debug/admin bundles
+- `bun check:bundle-isolation` — rebuild the client and assert the dev-only `client/stories/**` harness never leaked into the production debug/admin/settings bundles
 - `bun review-loop:start` — run the review-loop workflow
 - `bun lint` — lint with oxlint
 - `bun lint:agent-strict -- <paths...>` — stricter agent-focused lint pass for selected paths
@@ -172,7 +172,7 @@ Optional but important runtime flags include:
 - `DEBUG_SERVER`, `DEBUG_HOSTNAME`, `DEBUG_PORT`
 - `LOG_LEVEL`
 - `DEMO_MODE`
-- `KANEO_INTERNAL_URL` for internal bot-to-Kaneo traffic
+- `KANEO_CLIENT_URL` / `KANEO_INTERNAL_URL` — public/internal Kaneo base URLs. No longer read at first-run bootstrap, but both are still read at runtime by the settings-UI Kaneo provisioning route (`src/debug/settings/provision-routes.ts`); `KANEO_INTERNAL_URL` also carries internal bot-to-Kaneo traffic
 - `SETTINGS_PUBLIC_BASE_URL` — **required** external base URL (e.g. `https://bot.example.com`)
   used to build single-use settings links and scope the `Secure` settings
   session cookie. When unset, `/config` replies asking the admin to configure
@@ -270,7 +270,7 @@ Optional: debug server + debug/admin clients
 - `src/index.ts` — startup, env validation, DB initialization, instance bootstrap, chat router startup, scheduler/poller start, optional debug server start
 - `src/bot.ts` — command registration, auth checks, queueing, interaction routing; non-command text goes straight to the LLM queue with no message interception
 - `src/chat/types.ts` — `ChatProvider`, `ReplyFn`, `IncomingMessage`, `IncomingInteraction`, context-rendering types
-- `src/chat/registry.ts` — chat provider registry (`telegram`, `mattermost`, `discord`)
+- `src/chat/registry.ts` — chat provider registry (`telegram`, `mattermost`, `discord`, `kontur-talk`); instances are constructed via `createChatProviderFromConfig(id, type, config)`
 - `src/chat/router.ts` — `ChatRouter` runtime fan-out over active platform instances; tags incoming messages/interactions with `platformInstanceId` and routes proactive sends back to the source instance
 - `src/chat/startup.ts` — command-menu registration when supported by provider capabilities
 - `src/chat/interaction-router.ts` — interaction entry point retained as a safe sink; all config-flow callback routes (`gsel:`/`cfg:`/`wizard_`/`plg:`/`tgl:`) were retired with the move to the settings web UI; the router now only authorizes the actor and otherwise matches nothing
@@ -278,7 +278,7 @@ Optional: debug server + debug/admin clients
 - `src/conversation.ts` / `src/history.ts` / `src/memory.ts` — history, summary, and fact management
 - `src/attachments/` — durable attachment workspace: ingest, S3 blob store, metadata, manifest, and resolver
 - `src/message-queue/` — message coalescing and orderly orchestrator dispatch
-- `src/group-settings/` — personal vs group settings target resolution, used by the settings web UI
+- `src/group-settings/` — admin-facing group context support for the settings web UI: `admin-group-list.ts` (`listAdminGroupContextsForUser` — DB-backed listing of groups a user administers), `admin-scope.ts` (`getAdminLookupScope` / `matchesAdminPlatformInstance` — platform-instance scope filtering), the `registry.ts` group-observation store, and `access.ts` authorization. The legacy DM selector/state/dispatch flow was removed with the move to the web UI
 - `src/identity/` — chat-to-provider identity mapping and “me” resolution
 - `src/tools/` — context-aware, capability-gated tool assembly and tool wrappers
 - `src/providers/` — shared normalized provider types and utilities; both Kaneo (`plugins/task-provider-kaneo/`) and YouTrack (`plugins/task-provider-youtrack/`) are now first-party plugin-contributed providers
@@ -290,16 +290,23 @@ Optional: debug server + debug/admin clients
 - `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Runtime task-provider construction goes through `TaskProviderResolver`, and chat startup goes through `ChatRouter`.
 - `src/mcp/` — Model Context Protocol adapter. Connects to external MCP servers and exposes their tools to the LLM as Vercel AI SDK tools. Two sources: per-context user endpoints from the `mcp_endpoints` config key (`user-endpoints.ts`) and plugin-declared servers from a manifest's `mcp` field (`plugin-endpoints.ts`). `McpConnectionPool`/`mcpPool` (`client-pool.ts`) pools connections with retry and idle eviction; `convertMcpToolsToToolSet()` (`tool-adapter.ts`) wraps remote tools. `makeTools()` merges these tools and swallows all MCP failures so a dead server never breaks the pipeline. Only `streamable-http` is runtime-supported; `stdio` is schema-reserved. See `src/mcp/CLAUDE.md`.
 - `src/settings/` — settings web UI access model: one-time auth-code issuance
-  (`issue-link.ts`, `auth-code-store.ts`), SQLite-backed sessions with
-  synchronizer-token CSRF (`session-store.ts`), per-request principal resolution
-  (`principal.ts`), the `requireScope` guard (`scope-guard.ts`), context listing
-  (`contexts.ts`), and cookie/request auth helpers (`cookies.ts`, `request-auth.ts`).
-  HTTP handlers live in `src/debug/settings-routes.ts`, dispatched by
-  `src/debug/settings-router.ts`, which `src/debug/server.ts` routes to **before**
-  any `DEBUG_TOKEN` check so the per-user settings trust domain stays strictly
-  separate from the operator domain. Tables `settings_auth_codes`,
+  (`issue-link.ts`, `auth-code-store.ts`), token crypto (`crypto.ts`),
+  SQLite-backed sessions with synchronizer-token CSRF (`session-store.ts`),
+  per-request principal resolution (`principal.ts`), the `requireScope` guard
+  (`scope-guard.ts`), context listing (`contexts.ts`), public-base-URL resolution
+  (`config.ts`, reads `SETTINGS_PUBLIC_BASE_URL`), rate limiting (`rate-limit.ts`,
+  backed by `settings_rate_limit`), and cookie/request auth helpers (`cookies.ts`,
+  `request-auth.ts`). Session-lifecycle handlers (auth-code→session exchange,
+  bootstrap/CSRF rotate, logout) live in `src/debug/settings-routes.ts`; the
+  per-capability data handlers live under `src/debug/settings/`. Both are dispatched
+  by `src/debug/settings-router.ts`/`settings-api-router.ts`, which `src/debug/server.ts`
+  routes to **before** any `DEBUG_TOKEN` check (static `/settings`, `/settings.js`,
+  `/settings.css` are also served there) so the per-user settings trust domain stays
+  strictly separate from the operator domain. Per-capability handlers share helpers in
+  `src/debug/settings/respond.ts` (`authenticate`, `requireCsrf`, `resolveContextScope`,
+  `settingsJson`). Tables `settings_auth_codes`,
   `settings_sessions`, `settings_rate_limit` are created by migration
-  `048_settings_auth`. The per-capability data routes live under `/settings/api/*`,
+  `050_settings_auth`. The per-capability data routes live under `/settings/api/*`,
   dispatched by `src/debug/settings-api-router.ts` to handlers in
   `src/debug/settings/` (`config-routes.ts`, `tools-routes.ts`, `mcp-routes.ts`,
   `plugins-routes.ts`, `identity-routes.ts`, `provision-routes.ts`,
@@ -317,6 +324,19 @@ Optional: debug server + debug/admin clients
   `getAdminPluginConfigSnapshot`/`applyAdminPluginConfigUpdate` from
   `src/debug/admin-plugin-config.ts` — the same logic the `DEBUG_TOKEN`-gated
   `/admin/plugin-config` route uses.
+- `client/settings/` — the settings web UI: a Svelte SPA (`SettingsApp.svelte`,
+  `index.ts`, `settings.html`, plus `session.svelte.ts` for the session/bootstrap
+  state machine and `scrollspy.ts` for hash-synced section nav) bootstrapped from
+  the single-use link `/config` issues (exchanges a `?code=` param, else falls back
+  to a cookie-authenticated bootstrap). It gates sections by role + context and renders:
+  always-visible user sections `ProfileSection`, `TaskProviderSection`, `ToolsSection`,
+  `McpSection`, `PluginsSection`, `IdentitySection`; group-context-gated sections
+  `MembersSection` and `GroupProviderSection`; bot-admin sections under `sections/admin/`
+  (`AdminInstancesSection`, `AdminSystemSection`, `AdminPluginsConfigSection`,
+  `AdminUsersSection`, `AdminGroupsSection`, `AdminAnnounceSection`); and super-admin-only
+  sections (`AdminAdminsSection`, `AdminPluginsApprovalSection`). Data flows through
+  `fetchers.ts`/`admin-fetchers.ts` (Zod-validated by `fetcher-schemas.ts`) against
+  the `/settings/api/*` routes. Bundled to `public/settings.js` by `bun build:client`.
 
 ## Plugin System
 

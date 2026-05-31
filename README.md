@@ -173,23 +173,23 @@ flowchart TD
 
 ### Component Overview
 
-| Path                                               | Responsibility                                                                             |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring           |
-| `src/bot.ts`                                       | Platform-agnostic message handling, queueing, and interaction routing                      |
-| `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata and the `ChatRouter`   |
-| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                             |
-| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                              |
-| `src/providers/`                                   | Shared normalized provider types/utilities; Kaneo and YouTrack ship as first-party plugins |
-| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap         |
-| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                      |
-| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver |
-| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                |
-| `src/group-settings/`                              | Personal vs group configuration target resolution used by the settings web UI              |
-| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`           |
-| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV       |
-| `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints |
-| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                           |
+| Path                                               | Responsibility                                                                               |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring             |
+| `src/bot.ts`                                       | Platform-agnostic message handling, queueing, and interaction routing                        |
+| `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata and the `ChatRouter`     |
+| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                               |
+| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                                |
+| `src/providers/`                                   | Shared normalized provider types/utilities; Kaneo and YouTrack ship as first-party plugins   |
+| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap           |
+| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                        |
+| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver   |
+| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                  |
+| `src/group-settings/`                              | Admin group-context listing, scope filtering, and group observations for the settings web UI |
+| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`             |
+| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV         |
+| `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints   |
+| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                             |
 
 ---
 
@@ -200,11 +200,12 @@ flowchart TD
 <details>
 <summary><b>Startup And Bootstrap Variables</b> (click to expand)</summary>
 
-| Variable              | When required                    | Description                                                                                     | Example                                            |
-| --------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `ADMIN_USER_ID`       | Always                           | Initial authorized admin identity                                                               | Platform user ID string seen by the active adapter |
-| `CHAT_PROVIDER`       | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                             | `telegram`, `mattermost`, or `discord`             |
-| `INSTANCE_CONFIG_KEY` | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset | 64 hex chars                                       |
+| Variable                   | When required                    | Description                                                                                                                    | Example                                            |
+| -------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| `ADMIN_USER_ID`            | Always                           | Initial authorized admin identity                                                                                              | Platform user ID string seen by the active adapter |
+| `CHAT_PROVIDER`            | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                                                            | `telegram`, `mattermost`, or `discord`             |
+| `SETTINGS_PUBLIC_BASE_URL` | For the settings web UI          | External base URL used to build single-use `/config` settings links and scope the settings cookie; `/config` errors without it | `https://bot.example.com`                          |
+| `INSTANCE_CONFIG_KEY`      | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset                                | 64 hex chars                                       |
 
 </details>
 
@@ -280,8 +281,8 @@ services, not papai), `KANEO_POSTGRES_PASSWORD`, and `KANEO_AUTH_SECRET`.
 Papai no longer reads `YOUTRACK_URL` from the environment. The YouTrack instance URL is a task-instance
 config field: create the task instance in `/admin#instances`, then approve `task-provider-youtrack` in the
 settings web UI admin area (Plugins approval).
-Runtime setup still requires a per-user token (`plugin:task-provider-youtrack:provider:token`), configured
-through the bot.
+Runtime setup still requires a per-user token (`plugin:task-provider-youtrack:provider:token`), set in the
+settings web UI, opened via `/config`.
 
 </details>
 

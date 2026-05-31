@@ -38,7 +38,7 @@ interface ChatProvider {
 
 ## Registration
 
-Adapters register in `src/chat/registry.ts` via `createChatProvider(name)`. Built-in adapters are `telegram`, `mattermost`, and `discord`. Runtime startup wraps active adapter instances in `src/chat/router.ts` (`ChatRouter`), which fans out commands, starts/stops instances, tags incoming events with `platformInstanceId`, and routes proactive sends back to the target instance.
+Adapters register in `src/chat/registry.ts` via `createChatProviderFromConfig(id, type, config)`. Built-in adapters are `telegram`, `mattermost`, `discord`, and `kontur-talk`. Runtime startup wraps active adapter instances in `src/chat/router.ts` (`ChatRouter`), which fans out commands, starts/stops instances, tags incoming events with `platformInstanceId`, and routes proactive sends back to the target instance.
 
 ## Rules
 
