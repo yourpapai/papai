@@ -104,3 +104,9 @@ export function getConfigKeysForContext(contextId: string): readonly string[] {
     .filter((key) => isAllowedDynamicConfigKey(key))
   return keys.length === 0 ? PREFERENCE_KEYS : keys
 }
+
+export function getRequiredProviderConfigKeysForContext(contextId: string): string[] {
+  return getConfigFieldsForContext(contextId)
+    .filter((field) => field.required && field.kind !== 'preference')
+    .map((field) => field.storageKey)
+}

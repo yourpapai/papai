@@ -7,7 +7,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
-import { getConfigFieldsForContext, getConfigKeysForContext } from '../src/config-keys.js'
+import {
+  getConfigFieldsForContext,
+  getConfigKeysForContext,
+  getRequiredProviderConfigKeysForContext,
+} from '../src/config-keys.js'
 import { setConfig, getAllConfig } from '../src/config.js'
 import { taskInstances } from '../src/db/schema.js'
 import { setContextSettings } from '../src/instances/context-store.js'
@@ -227,5 +231,54 @@ describe('getConfigFieldsForContext', () => {
     expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:custom_token')
     expect(fields.map((field) => field.storageKey)).not.toContain('plugin:plugin-tracker:provider:token')
     expect(fields.map((field) => field.storageKey)).not.toContain('custom_token')
+  })
+})
+
+describe('getRequiredProviderConfigKeysForContext', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType('plugin-tracker')
+  })
+
+  test('returns the namespaced required provider context keys, excluding preferences and workspace', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
+      contextConfigSchema: [
+        { key: 'credential', label: 'Plugin Credential', required: true, sensitive: true, scope: 'context' },
+      ],
+    })
+    insertTaskInstance({
+      id: 'plugin-prod',
+      type: 'plugin-tracker',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'ctx-plugin',
+      taskInstanceId: 'plugin-prod',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const keys = getRequiredProviderConfigKeysForContext('ctx-plugin')
+
+    expect(keys).toContain('plugin:plugin-tracker:provider:credential')
+    expect(keys).not.toContain('timezone')
+    expect(keys).not.toContain('mcp_endpoints')
+  })
+
+  test('returns no provider keys when the context has no active task assignment', () => {
+    const keys = getRequiredProviderConfigKeysForContext('unassigned-context')
+
+    expect(keys.filter((k) => k.startsWith('plugin:'))).toHaveLength(0)
   })
 })
