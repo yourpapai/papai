@@ -62,6 +62,9 @@
     "src/plugins/registry.ts": ["exports"],
     // resetContributionCollisionStateForTesting is a test-only seam.
     "src/plugins/contributions.ts": ["exports"],
+    // getTaskProviderProvision is a forward-compat export wired in a downstream
+    // task of the plugins deployment safety plan (mirrors getTaskProviderConfigValidator).
+    "src/providers/registry.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.
     "src/system-config.ts": ["exports"],
     // resetStatsSaltCacheForTesting is a test-only seam.
@@ -114,6 +117,7 @@
     "client/shared/fetcher-helpers.ts": ["exports"],
     "client/shared/helpers.ts": ["exports"],
     "client/shared/api-types.ts": ["types"],
+    "client/shared/ui/status-tone.ts": ["files", "exports"],
     // Plugin entry-point default exports are imported dynamically by the plugin
     // loader (by path), so knip sees no static importer. Each new plugin adds a line.
     "plugins/synthetic-web-search/index.ts": ["exports"],
