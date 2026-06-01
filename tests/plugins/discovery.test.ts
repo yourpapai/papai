@@ -70,6 +70,18 @@ describe('discoverPlugins', () => {
     expect(result.errors).toEqual([])
   })
 
+  test('reports directoryMissing=true when the plugins directory is absent', () => {
+    const missingDir = join(makeTempDir(), 'does-not-exist')
+    const result = discoverPlugins(missingDir)
+    expect(result.directoryMissing).toBe(true)
+  })
+
+  test('reports directoryMissing=false when the plugins directory exists but is empty', () => {
+    const emptyDir = makeTempDir()
+    const result = discoverPlugins(emptyDir)
+    expect(result.directoryMissing).toBe(false)
+  })
+
   test('discovers valid plugins in deterministic directory/id order', () => {
     const root = makeTempDir()
     writePlugin(root, 'zeta')

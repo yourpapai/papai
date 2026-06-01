@@ -26,6 +26,12 @@ export type DiscoveryError = {
 export type DiscoveryResult = {
   plugins: DiscoveredPlugin[]
   errors: DiscoveryError[]
+  /**
+   * True when the configured plugins directory did not exist on disk at the
+   * time of discovery. Indicates a deployment misconfiguration (e.g. the
+   * Docker image was built without `COPY plugins ./plugins`).
+   */
+  directoryMissing: boolean
 }
 
 export function isPathInsideDirectory(
@@ -224,7 +230,7 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
 
   if (!fs.existsSync(pluginsDir)) {
     log.debug({ pluginsDir }, 'Plugins directory does not exist — no plugins to discover')
-    return { plugins: [], errors: [] }
+    return { plugins: [], errors: [], directoryMissing: true }
   }
 
   let entries: string[]
@@ -235,7 +241,7 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
       { pluginsDir, error: error instanceof Error ? error.message : String(error) },
       'Failed to read plugins directory',
     )
-    return { plugins: [], errors: [] }
+    return { plugins: [], errors: [], directoryMissing: false }
   }
 
   const plugins: DiscoveredPlugin[] = []
@@ -264,5 +270,5 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
   }
 
   log.info({ discovered: plugins.length, errors: errors.length }, 'Plugin discovery complete')
-  return { plugins, errors }
+  return { plugins, errors, directoryMissing: false }
 }
