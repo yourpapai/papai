@@ -23,6 +23,27 @@ export type TaskProviderAutoProvisionContext = {
 
 export type TaskProviderAutoProvision = (context: TaskProviderAutoProvisionContext) => Promise<boolean> | boolean
 
+export type TaskProviderProvisionContext = Readonly<{
+  contextId: string
+  username: string | null
+  publicUrl: string | undefined
+  internalUrl: string | undefined
+}>
+
+export type TaskProviderProvisionOutcome =
+  | {
+      status: 'provisioned'
+      email: string
+      password: string
+      kaneoUrl: string
+      apiKey: string
+      workspaceId: string
+    }
+  | { status: 'registration_disabled' }
+  | { status: 'failed'; error: string }
+
+export type TaskProviderProvision = (context: TaskProviderProvisionContext) => Promise<TaskProviderProvisionOutcome>
+
 export type TaskProviderConfigValidator = (
   config: Record<string, string>,
 ) => Promise<{ ok: true } | { ok: false; reason: string }>
@@ -42,6 +63,7 @@ export type ContributedTaskProviderEntry = {
   pluginId: string
   factory: TaskProviderFactory
   autoProvision?: TaskProviderAutoProvision
+  provision?: TaskProviderProvision
   capabilities: ReadonlySet<TaskCapability>
   displayName: string
   validateConfig?: TaskProviderConfigValidator
@@ -169,11 +191,19 @@ export function getTaskProviderConfigValidator(type: string): TaskProviderConfig
   return contributed.validateConfig
 }
 
+/** Resolve the optional HTTP provision hook for a task-provider type. */
+export function getTaskProviderProvision(type: string): TaskProviderProvision | undefined {
+  const descriptor = getTaskProviderDescriptor(type)
+  if (descriptor === undefined) return undefined
+  return descriptor.provision
+}
+
 export type TaskProviderTypeDescriptor = {
   type: string
   displayName: string
   source: 'builtin' | { plugin: string }
   autoProvision?: TaskProviderAutoProvision
+  provision?: TaskProviderProvision
   instanceConfigSchema: readonly ProviderConfigField[]
   contextConfigSchema: readonly ProviderConfigField[]
   capabilities: ReadonlySet<TaskCapability>
@@ -224,6 +254,7 @@ export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
         displayName: entry.displayName,
         source: { plugin: entry.pluginId },
         autoProvision: entry.autoProvision,
+        provision: entry.provision,
         instanceConfigSchema,
         contextConfigSchema,
         capabilities: entry.capabilities,
