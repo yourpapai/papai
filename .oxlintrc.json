@@ -2,7 +2,14 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "vitest"],
   "jsPlugins": ["./lint-plugins/papai-policy.js"],
-  "ignorePatterns": ["docs/tdd-hooks/**", ".hooks/**", ".opencode/**", ".claude/hooks/**", "lint-plugins/**"],
+  "ignorePatterns": [
+    "docs/tdd-hooks/**",
+    ".hooks/**",
+    ".opencode/**",
+    ".claude/hooks/**",
+    ".codex/hooks/**",
+    "lint-plugins/**"
+  ],
   "categories": {
     "correctness": "error",
     "suspicious": "error",

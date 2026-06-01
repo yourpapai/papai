@@ -1,7 +1,3 @@
 [mcp_servers.codeindex]
-args = [
-    "run",
-    "scripts/codeindex-cli.ts",
-    "mcp",
-]
+args = ["run", "scripts/codeindex-cli.ts", "mcp"]
 command = "bun"

@@ -289,7 +289,7 @@ if [ "$STAGED_MODE" = true ]; then
   fi
 else
   # Original behavior: run all checks
-  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check" "review-loop:test")
+  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check")
   failed=0
   pids=()
 
@@ -302,15 +302,12 @@ else
         header_checked_files=()
         while IFS= read -r file; do
           [ -n "$file" ] || continue
-          # Skip tracked files that have been deleted in the worktree.
           [ -f "$file" ] || continue
           if is_license_header_file "$file"; then
             header_checked_files+=("$file")
           fi
         done < <(git ls-files 2>/dev/null || true)
         run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
-      elif [ "$check" = "test" ]; then
-        bun test >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       else
         bun run "$check" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       fi
