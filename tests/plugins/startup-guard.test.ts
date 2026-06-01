@@ -18,7 +18,9 @@ describe('evaluateStartupGuard', () => {
 
   test('recommends warn-and-continue when plugins directory is missing and DEBUG_SERVER=false', () => {
     const decision = evaluateStartupGuard({ directoryMissing: true, debugServerEnabled: false })
-    expect(decision.action).toBe('warn')
+    assert.equal(decision.action, 'warn')
+    assert('reason' in decision)
+    expect(decision.reason).toContain('degraded mode')
   })
 
   test('recommends ok when plugins directory is present', () => {
