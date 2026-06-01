@@ -88,7 +88,7 @@ Goal: make the "plugins directory is missing" case observable at `process.exit` 
 - Modify: `src/plugins/discovery.ts:222-228` (populate the field)
 - Modify: `tests/plugins/discovery.test.ts:64-71` (add test)
 
-- [ ] **Step 1: Add the failing test**
+- [x] **Step 1: Add the failing test**
 
 Add this test inside the existing `describe('discoverPlugins', ...)` block in `tests/plugins/discovery.test.ts`, after the "returns no plugins and no errors when plugins directory is missing" test:
 
@@ -106,12 +106,12 @@ test('reports directoryMissing=false when the plugins directory exists but is em
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun test tests/plugins/discovery.test.ts -t "directoryMissing"`
 Expected: FAIL with `result.directoryMissing is undefined` (TypeError when comparing).
 
-- [ ] **Step 3: Add the `directoryMissing` field to `DiscoveryResult`**
+- [x] **Step 3: Add the `directoryMissing` field to `DiscoveryResult`**
 
 In `src/plugins/discovery.ts`, replace the `DiscoveryResult` type (currently lines 26–29):
 
@@ -128,7 +128,7 @@ export type DiscoveryResult = {
 }
 ```
 
-- [ ] **Step 4: Populate the field in both `discoverPlugins` return paths**
+- [x] **Step 4: Populate the field in both `discoverPlugins` return paths**
 
 In `src/plugins/discovery.ts`, update the two `return` statements inside `discoverPlugins`:
 
@@ -136,17 +136,17 @@ In `src/plugins/discovery.ts`, update the two `return` statements inside `discov
 - The "read failed" branch (around line 233–239) should return `{ plugins: [], errors: [], directoryMissing: false }`.
 - The final return at the bottom of the function (line 267) should return `{ plugins, errors, directoryMissing: false }`.
 
-- [ ] **Step 5: Run the discovery tests to verify they pass**
+- [x] **Step 5: Run the discovery tests to verify they pass**
 
 Run: `bun test tests/plugins/discovery.test.ts`
 Expected: PASS, including the two new tests and the existing "returns no plugins and no errors when plugins directory is missing" test (the new field is additive and the existing assertion `expect(result.plugins).toEqual([])` etc. still holds).
 
-- [ ] **Step 6: Typecheck**
+- [x] **Step 6: Typecheck**
 
 Run: `bun typecheck`
 Expected: PASS. The field is additive, so no other call sites need changes.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/plugins/discovery.ts tests/plugins/discovery.test.ts
