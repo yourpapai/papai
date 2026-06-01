@@ -483,4 +483,66 @@ No commit — this is a gate over Tasks 1–6.
 - **2.2 — Section headers (B1):** `PageHeader` in `StatsPanel`, `SystemSection`, `InstancesSection`, `PluginConfigSection` (removes the eyebrow + `<h2>` double-title).
 - **2.3 — InstancesSection (B2/B3/B4/B5):** raw buttons→`Btn`, raw inputs→`Input`/`Field`, status text→`StatusPill`, `JSON.stringify` cell→`JsonCell`.
 - **2.4 — Forms & status (A7, B2/B3/B4, B7, C2):** Reminders/Memos/Identities/Groups/Billing/Credentials/PluginConfig.
+
+---
+
+## Verification findings (Task 6)
+
+**Verdict: ⚠️ mismatch found — numerators and denominators are drawn from different subject universes; a numerator can legitimately exceed `dmTotal + groupTotal`.**
+
+### Denominator (`subjects.dmTotal` / `subjects.groupTotal`)
+
+`subjectsGlobal()` in `src/stats/global-subjects.ts:53–68` counts:
+
+- `dmTotal` — `COUNT(*)` from `users` (every row ever registered).
+- `groupTotal` — `COUNT(*)` from `authorized_groups` (every row ever registered).
+
+These two tables are the canonical "known subject" roster. A subject that has only memos, recurring tasks, deferred prompts, or instructions — but has **never been registered in `users` or `authorized_groups`** — is invisible to both counters.
+
+### Active-subject numerators (`active.activeIn1d/7d/30d`)
+
+`activeSubjectCounts()` → `activeSubjectsSince(cutoff)` in `src/stats/global-subjects.ts:70–93` collects the union of:
+
+- `storageContextId` values from `llm_usage_events` (table `llmUsageEvents`) where `occurredAt >= cutoff`.
+- `contextId` values from `message_metadata` where `timestamp >= cutoff`.
+
+The set of distinct IDs returned is **not constrained to `users ∪ authorized_groups`**. Any `storageContextId` that appears in `llm_usage_events` or `message_metadata` within the window is counted — including synthetic context IDs used in tests, legacy pre-registration rows, or contexts that were removed from `users`/`authorized_groups` after the fact.
+
+**Concrete repro scenario:** A context sends an LLM message (`llm_usage_events` row inserted), its user row is subsequently deleted from `users` (e.g. via admin cleanup), and its group was never registered in `authorized_groups`. After deletion, `dmTotal` and `groupTotal` both decrease (or never counted this context), while `activeIn1d` still counts it. Result: `activeIn1d` > `dmTotal + groupTotal`.
+
+A second, more common scenario: message-metadata rows for group thread contexts use a thread-scoped `contextId` (e.g. `<groupId>:<threadId>`), which does **not** match the plain `groupId` stored in `authorized_groups`. `activeSubjectsSince` adds these thread-scoped IDs to the active set, inflating `activeIn7d`/`activeIn30d` above `groupTotal`.
+
+### Surface-mix numerators (`surfaceMix.subjectsWith*`)
+
+`surfaceMixGlobal()` in `src/stats/global-mix.ts:80–109` counts:
+
+- `subjectsWithMemos` — `COUNT(DISTINCT memos.user_id)` (`src/stats/global-mix.ts:81–84`). `memos.user_id` is a free-text foreign key; it is **not constrained** to `users.platform_user_id`.
+- `subjectsWithRecurring` — `COUNT(DISTINCT recurring_tasks.user_id)` (`src/stats/global-mix.ts:85–88`). Same table, same constraint gap.
+- `subjectsWithDeferred` — `COUNT(DISTINCT scheduled_prompts.created_by_user_id)` (`src/stats/global-mix.ts:89–92`). Same gap.
+- `subjectsWithInstructions` — `COUNT(DISTINCT user_instructions.context_id)` (`src/stats/global-mix.ts:93–96`). `context_id` is not constrained to either `users` or `authorized_groups`.
+
+None of these four queries join back to `users` or `authorized_groups`. Any user ID stored in `memos`, `recurring_tasks`, `scheduled_prompts`, or `user_instructions` that does not correspond to a registered subject is silently counted in the numerator while being absent from the denominator. For the `userInstructions` case the identifier is a `contextId` (potentially a group-thread-scoped ID), making the mismatch structurally identical to the active-subject case.
+
+### Summary
+
+| Numerator field            | Source column                                                        | Constrained to `users`/`authorized_groups`? |
+| -------------------------- | -------------------------------------------------------------------- | ------------------------------------------- |
+| `activeIn1d/7d/30d`        | `llm_usage_events.storage_context_id`, `message_metadata.context_id` | No                                          |
+| `subjectsWithMemos`        | `memos.user_id`                                                      | No                                          |
+| `subjectsWithRecurring`    | `recurring_tasks.user_id`                                            | No                                          |
+| `subjectsWithDeferred`     | `scheduled_prompts.created_by_user_id`                               | No                                          |
+| `subjectsWithInstructions` | `user_instructions.context_id`                                       | No                                          |
+
+All five numerators can exceed `dmTotal + groupTotal` under realistic conditions (user deletion, thread-scoped context IDs, legacy rows).
+
+### Recommended follow-up fix task (do NOT implement here)
+
+Create a separate follow-up task to align the subject universe across all aggregations. The fix options are:
+
+1. **Filter numerators at query time** — add `WHERE EXISTS (SELECT 1 FROM users WHERE ... ) OR EXISTS (SELECT 1 FROM authorized_groups WHERE ...)` sub-selects to each numerator query so only registered subjects are counted. This is SQL-correct but adds join overhead.
+2. **Widen the denominator** — replace `dmTotal`/`groupTotal` with a single "total distinct subjects ever seen" counter derived from the union of all subject-bearing tables. This makes the denominator match the broadest numerator definition rather than the narrowest.
+3. **Clamp at presentation only** — the UI already guards `min(value, total)` after Tasks 3–4, but this masks the root cause. Not recommended as a server fix.
+
+Option 1 is the most semantically correct: the intent of `dmTotal + groupTotal` is "subjects the bot knows about", and numerators should respect that boundary. File the follow-up as: **"fix(stats): constrain active-subject and surface-mix numerators to registered-subject universe"** targeting `src/stats/global-subjects.ts:activeSubjectsSince` and `src/stats/global-mix.ts:surfaceMixGlobal`.
+
 - **2.5 — System summary (B6):** `SystemSection` `<dl>` → `SummaryList`.
