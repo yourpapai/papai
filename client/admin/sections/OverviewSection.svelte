@@ -6,6 +6,7 @@
 <script lang="ts">
   import { fmtBytes } from '../../shared/helpers.js'
   import Bars from '../../shared/ui/Bars.svelte'
+  import Meter from '../../shared/ui/Meter.svelte'
   import MetricCard from '../../shared/ui/MetricCard.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import Spark from '../../shared/ui/Spark.svelte'
@@ -118,16 +119,7 @@
           {#snippet body()}
             <div class="overview__mix">
               {#each surfaceMix as row (row.label)}
-                <div class="overview__mix-row">
-                  <span class="overview__mix-label">{row.label}</span>
-                  <div class="overview__mix-bar">
-                    <div
-                      class="overview__mix-fill"
-                      style:width={row.total === 0 ? '0%' : `${Math.min(100, (row.n / row.total) * 100)}%`}>
-                    </div>
-                  </div>
-                  <span class="overview__mix-count">{row.n}/{row.total}</span>
-                </div>
+                <Meter label={row.label} value={row.n} total={row.total} />
               {/each}
             </div>
           {/snippet}
@@ -170,33 +162,5 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-  .overview__mix-row {
-    display: grid;
-    grid-template-columns: 96px 1fr 60px;
-    align-items: center;
-    gap: 10px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--fg);
-  }
-  .overview__mix-label {
-    color: var(--fg3);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  .overview__mix-bar {
-    height: 6px;
-    background: var(--inset);
-    overflow: hidden;
-  }
-  .overview__mix-fill {
-    height: 100%;
-    background: var(--accent);
-    opacity: 0.85;
-  }
-  .overview__mix-count {
-    text-align: right;
-    color: var(--fg3);
   }
 </style>

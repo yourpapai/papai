@@ -152,4 +152,25 @@ describe('OverviewSection.svelte', () => {
     expect(target.querySelector('.admin-overview__spark > *')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders surface mix via Meter, clamping over-capacity to warn (A6)', () => {
+    // instructions metric = 11, subjects total = 4 (dmTotal 3 + groupTotal 1)
+    adminGlobals.data = {
+      subjects: { dmTotal: 3, groupTotal: 1, growthLast30d: [] },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+      surfaceMix: {
+        subjectsWithMemos: 0,
+        subjectsWithRecurring: 0,
+        subjectsWithDeferred: 0,
+        subjectsWithInstructions: 11,
+      },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    const overFill = target.querySelector<HTMLElement>('.ui-meter__fill--warn')
+    expect(overFill).not.toBeNull()
+    expect(overFill?.style.width).toBe('100%')
+    void unmount(component)
+  })
 })
