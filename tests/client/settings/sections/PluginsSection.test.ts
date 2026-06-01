@@ -49,6 +49,39 @@ const captureToggleMock = (url: string, init: RequestInit): Promise<Response> =>
   return Promise.resolve(json(pluginsPayload))
 }
 
+const contextDisabledPayload = {
+  contextId: 'user:1',
+  plugins: [
+    {
+      id: 'web-search',
+      name: 'Web Search',
+      active: false,
+      enabled: false,
+      eligibility: { eligible: false, reason: 'disabled' },
+      contextConfig: [],
+    },
+  ],
+}
+let capturedDisabledToggleBody = ''
+const captureDisabledToggleMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/plugins/toggle')) capturedDisabledToggleBody = extractStringBody(init)
+  return Promise.resolve(json(contextDisabledPayload))
+}
+
+const inactivePayload = {
+  contextId: 'user:1',
+  plugins: [
+    {
+      id: 'pending',
+      name: 'Pending',
+      active: false,
+      enabled: false,
+      eligibility: { eligible: false, reason: 'inactive' },
+      contextConfig: [],
+    },
+  ],
+}
+
 const configPatchRequests: Array<{ url: string; init: RequestInit }> = []
 const isConfigPatch = (r: { url: string; init: RequestInit }): boolean =>
   r.url.includes('/plugins/config') && r.init.method === 'PATCH'
@@ -72,6 +105,7 @@ const trackConfigMock = (url: string, init: RequestInit): Promise<Response> => {
 
 afterEach(() => {
   capturedToggleBody = ''
+  capturedDisabledToggleBody = ''
   configPatchRequests.length = 0
   restoreFetch()
   setCsrfToken('')
@@ -99,6 +133,36 @@ describe('PluginsSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-hello-world"]')!.click()
     await drain()
     expect(capturedToggleBody).toBe(JSON.stringify({ pluginId: 'hello-world', enabled: true, contextId: 'user:1' }))
+    void unmount(component)
+  })
+
+  test('keeps the toggle clickable for an active-but-context-disabled plugin', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureDisabledToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-web-search"]')!
+    expect(button.disabled).toBe(false)
+    button.click()
+    await drain()
+    expect(capturedDisabledToggleBody).toBe(
+      JSON.stringify({ pluginId: 'web-search', enabled: true, contextId: 'user:1' }),
+    )
+    void unmount(component)
+  })
+
+  test('keeps the toggle disabled for an inactive plugin awaiting approval', async () => {
+    setMockFetch(() => Promise.resolve(json(inactivePayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-pending"]')!
+    expect(button.disabled).toBe(true)
     void unmount(component)
   })
 

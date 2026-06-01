@@ -103,7 +103,7 @@
             <button
               type="button"
               data-testid={`plugin-toggle-${plugin.id}`}
-              disabled={!plugin.active}
+              disabled={!plugin.eligibility.eligible && plugin.eligibility.reason === 'inactive'}
               onclick={() => void toggle(plugin)}>
               {plugin.enabled ? 'Disable' : 'Enable'}
             </button>

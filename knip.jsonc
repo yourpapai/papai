@@ -1,12 +1,17 @@
 {
   "$schema": "./node_modules/knip/schema.json",
 
+  // The review-loop workspace is a standalone developer tool with its own
+  // check suite (review-loop:lint/typecheck/format:check/test) run separately
+  // in check:full. knip-bun cannot resolve its .js-extension imports, so
+  // exclude it from analysis here.
+  "ignoreWorkspaces": ["review-loop"],
+
   // Entry points not auto-detected from package.json scripts
   "entry": [
     "client/admin/index.ts!",
     "client/debug/index.ts!",
     "client/settings/index.ts!",
-    "tests/review-loop/**/*.test.ts!",
     "scripts/behavior-audit/index.ts!",
     "scripts/behavior-audit/profile-clustering.ts!",
     "scripts/behavior-audit/tune-embedding.ts!",
@@ -19,13 +24,7 @@
 
   // All source files (production only). plugins/** is included so knip tracks
   // plugin->src usage (e.g. clearCachedTools, consumed only by a provider plugin).
-  "project": [
-    "src/**/*.ts!",
-    "client/**/*.ts!",
-    "review-loop/src/**/*.ts!",
-    "scripts/behavior-audit/**/*.ts!",
-    "plugins/**/*.ts!",
-  ],
+  "project": ["src/**/*.ts!", "client/**/*.ts!", "scripts/behavior-audit/**/*.ts!", "plugins/**/*.ts!"],
 
   // All issue types treated as hard errors
   "rules": {
