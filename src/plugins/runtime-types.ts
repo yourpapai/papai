@@ -11,6 +11,7 @@ import type {
   TaskProviderAutoProvision,
   TaskProviderConfigValidator,
   TaskProviderFactory,
+  TaskProviderProvision,
 } from '../providers/registry.js'
 import type { TaskCapability, ProviderConfigField, TaskProvider, TaskProviderTrait } from '../providers/types.js'
 import type { PluginAdminConfig } from './context.js'
@@ -81,6 +82,7 @@ export type PluginContributions = {
     type: string
     factory: TaskProviderFactory
     autoProvision?: TaskProviderAutoProvision
+    provision?: TaskProviderProvision
     validateConfig?: TaskProviderConfigValidator
     capabilities: ReadonlySet<TaskCapability>
     displayName: string

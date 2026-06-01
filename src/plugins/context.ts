@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import type { TaskProviderAutoProvision, TaskProviderFactory } from '../providers/registry.js'
+import type { TaskProviderAutoProvision, TaskProviderFactory, TaskProviderProvision } from '../providers/registry.js'
 import type { ProviderConfigField } from '../providers/types.js'
 import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
@@ -41,6 +41,7 @@ type TaskProviderRegistrationInput =
   | {
       factory: TaskProviderFactory
       autoProvision?: TaskProviderAutoProvision
+      provision?: TaskProviderProvision
     }
 
 export type PluginRegistration = {
@@ -153,6 +154,7 @@ function buildRegisterTaskProviderType(
       type,
       factory: registration.factory,
       autoProvision: registration.autoProvision,
+      provision: registration.provision,
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
       instanceConfigSchema: manifest.providerConfigSchema.map((field) => toProviderConfigField(field, 'instance')),
