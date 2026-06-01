@@ -217,4 +217,40 @@ describe('admin StatsPanel', () => {
     expect(target.textContent).toContain('exceeds total')
     void unmount(component)
   })
+
+  test('tool-calls panel renders exactly one DataTable header set (A3 guard)', async () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    // Scope to the tool-calls panel so the distributions table headers are excluded
+    const panelTitles = [...target.querySelectorAll('.ui-panel__title')]
+    const toolCallsTitle = panelTitles.find((el) => el.textContent?.trim() === 'tool calls')
+    expect(toolCallsTitle).not.toBeUndefined()
+    const toolCallsPanel = toolCallsTitle!.closest('.ui-panel')
+    expect(toolCallsPanel).not.toBeNull()
+    const headerCells = [...toolCallsPanel!.querySelectorAll('.ui-datatable__th')]
+    const headerLabels = headerCells.map((th) => th.textContent?.trim())
+    expect(headerLabels).toEqual(['Tool', 'Calls', 'Success'])
+    void unmount(component)
+  })
+
+  test('tool-calls chart renders before the table, not overlapping (A2 guard)', async () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    // Scope to the tool-calls panel to avoid the distributions table being found first
+    const panelTitles = [...target.querySelectorAll('.ui-panel__title')]
+    const toolCallsTitle = panelTitles.find((el) => el.textContent?.trim() === 'tool calls')
+    expect(toolCallsTitle).not.toBeUndefined()
+    const toolCallsPanel = toolCallsTitle!.closest('.ui-panel')
+    expect(toolCallsPanel).not.toBeNull()
+    const spark = toolCallsPanel!.querySelector('.stats-panel__sparkline')
+    const table = toolCallsPanel!.querySelector('.ui-datatable')
+    expect(spark).not.toBeNull()
+    expect(table).not.toBeNull()
+    expect(spark!.compareDocumentPosition(table!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    void unmount(component)
+  })
 })
