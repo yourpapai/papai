@@ -6,14 +6,14 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { CODE_TTL_MS, consumeAuthCode, issueAuthCode } from '../../src/settings/auth-code-store.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupSettingsAuthTestDb } from '../utils/test-helpers.js'
 
 const principal = { platformInstanceId: 'pi-1', platformUserId: 'u-1' }
 
 describe('settings auth-code store', () => {
   beforeEach(async () => {
     mockLogger()
-    await setupTestDb()
+    await setupSettingsAuthTestDb()
   })
 
   test('issue then consume returns the bound principal', () => {

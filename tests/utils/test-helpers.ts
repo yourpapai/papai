@@ -106,12 +106,9 @@ export function hasCachedMessage(contextId: string, messageId: string): boolean 
 let testDb: ReturnType<typeof drizzle<typeof schema>> | null = null
 let testSqlite: Database | null = null
 
-/**
- * Setup test database with all migrations.
- * Call this in beforeEach or at the start of each test.
- * Returns drizzle db instance.
- */
-export async function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
+async function setupMigratedTestDb(
+  migrations: readonly { id: string; up: (db: Database) => void }[],
+): Promise<ReturnType<typeof drizzle<typeof schema>>> {
   const { Database } = await import('bun:sqlite')
   const { drizzle } = await import('drizzle-orm/bun-sqlite')
   const { runMigrations } = await import('../../src/db/migrate.js')
@@ -126,9 +123,28 @@ export async function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof sc
   testSqlite.run('PRAGMA foreign_keys=ON')
   testDb = drizzle(testSqlite, { schema })
 
-  runMigrations(testSqlite, MIGRATIONS)
+  runMigrations(testSqlite, migrations)
   setDrizzleDbForTesting(testDb)
   return testDb
+}
+
+/**
+ * Setup test database with all migrations.
+ * Call this in beforeEach or at the start of each test.
+ * Returns drizzle db instance.
+ */
+export function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
+  return setupMigratedTestDb(MIGRATIONS)
+}
+
+/**
+ * Setup a focused test database for settings auth/session/quota stores.
+ * Use this for settings unit suites that do not depend on the full schema.
+ */
+export function setupSettingsAuthTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
+  return import('../../src/db/migrations/050_settings_auth.js').then(({ migration050SettingsAuth }) =>
+    setupMigratedTestDb([migration050SettingsAuth]),
+  )
 }
 
 /**

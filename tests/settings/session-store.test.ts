@@ -14,14 +14,14 @@ import {
   getSession,
   rotateSessionCsrf,
 } from '../../src/settings/session-store.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupSettingsAuthTestDb } from '../utils/test-helpers.js'
 
 const principal = { platformInstanceId: 'pi-1', platformUserId: 'u-1' }
 
 describe('settings session store', () => {
   beforeEach(async () => {
     mockLogger()
-    await setupTestDb()
+    await setupSettingsAuthTestDb()
   })
 
   test('createSession then getSession returns the principal and stored csrf hash', () => {

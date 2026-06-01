@@ -6,12 +6,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { consumeSettingsQuota } from '../../src/settings/rate-limit.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupSettingsAuthTestDb } from '../utils/test-helpers.js'
 
 describe('consumeSettingsQuota', () => {
   beforeEach(async () => {
     mockLogger()
-    await setupTestDb()
+    await setupSettingsAuthTestDb()
   })
 
   test('allows up to the limit in a window', () => {

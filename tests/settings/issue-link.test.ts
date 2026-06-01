@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { ISSUE_LIMIT, type IssueSettingsLinkResult, issueSettingsLink } from '../../src/settings/issue-link.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupSettingsAuthTestDb } from '../utils/test-helpers.js'
 
 const principal = { platformInstanceId: 'pi-1', platformUserId: 'u-1' }
 
@@ -20,7 +20,7 @@ describe('issueSettingsLink', () => {
 
   beforeEach(async () => {
     mockLogger()
-    await setupTestDb()
+    await setupSettingsAuthTestDb()
     delete process.env['SETTINGS_PUBLIC_BASE_URL']
   })
 
