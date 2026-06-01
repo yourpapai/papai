@@ -14,6 +14,7 @@
   import MetricCard from '../../shared/ui/MetricCard.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import Stat from '../../shared/ui/Stat.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Seg from '../../shared/ui/Seg.svelte'
   import { fetchStatsGlobal } from '../fetchers.js'
 
@@ -164,12 +165,8 @@
 </script>
 
 <div class="stats-panel" data-testid="stats-panel">
-  <header class="stats-panel__header">
-    <div>
-      <p class="eyebrow">Anonymous analytics</p>
-      <h2 data-testid="admin-section-title">Stats</h2>
-    </div>
-    <div class="stats-panel__controls">
+  <PageHeader eyebrow="Anonymous analytics" title="Stats" titleTestId="admin-section-title">
+    {#snippet action()}
       <Seg
         options={[...WINDOWS]}
         value={dashboard.statsWindow}
@@ -180,8 +177,8 @@
       {#if error !== null}
         <span class="status-error" data-testid="stats-error">{error}</span>
       {/if}
-    </div>
-  </header>
+    {/snippet}
+  </PageHeader>
 
   {#if dashboard.globalStats !== null}
     {@const g = dashboard.globalStats}
@@ -241,33 +238,6 @@
   .stats-panel {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-  }
-  .stats-panel__header {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .eyebrow {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.10em;
-    text-transform: uppercase;
-    color: var(--fg3);
-  }
-  .stats-panel__header h2 {
-    margin: 4px 0 0;
-    font-family: var(--font-mono);
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--fg);
-  }
-  .stats-panel__controls {
-    display: flex;
-    align-items: center;
     gap: 8px;
   }
   .stats-panel__grid {

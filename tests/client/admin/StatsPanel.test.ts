@@ -235,6 +235,15 @@ describe('admin StatsPanel', () => {
     void unmount(component)
   })
 
+  test('renders the Stats header via PageHeader (single title, no hand-rolled header)', () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    expect(target.querySelector('[data-testid="admin-section-title"]')?.textContent).toBe('Stats')
+    expect(target.querySelector('.ui-page-header')).not.toBeNull()
+    expect(target.querySelector('.stats-panel__header')).toBeNull()
+    void unmount(component)
+  })
+
   test('tool-calls chart renders before the table, not overlapping (A2 guard)', async () => {
     installFetch({ payload: null, status: null, error: null })
     const { target, component } = render(freshState())
