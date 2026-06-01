@@ -302,14 +302,14 @@ settings web UI, opened via `/config`.
 <details>
 <summary><b>Optional Debug Server</b></summary>
 
-| Variable                        | Description                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------ |
-| `DEBUG_SERVER`                  | Set to `true` to start the local debug server                                        |
-| `DEBUG_HOSTNAME`                | Debug server bind host (default `127.0.0.1`)                                         |
-| `DEBUG_PORT`                    | Debug server bind port (default `9100`)                                              |
-| `DASHBOARD_BASE_URL`            | Origin embedded in the sign-in link (default `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`) |
-| `DASHBOARD_SESSION_TTL_SECONDS` | Session lifetime (default `28800`, i.e. 8h)                                          |
-| `DASHBOARD_CLAIM_TTL_SECONDS`   | Sign-in link lifetime (default `300`, i.e. 5 min)                                    |
+| Variable                        | Description                                                                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `DEBUG_SERVER`                  | Set to `true` to start the local debug server                                                                               |
+| `DEBUG_HOSTNAME`                | Debug server bind host (default `127.0.0.1`)                                                                                |
+| `DEBUG_PORT`                    | Debug server bind port (default `9100`)                                                                                     |
+| `DASHBOARD_BASE_URL`            | Origin embedded in the sign-in link (falls back to `SETTINGS_PUBLIC_BASE_URL`, then `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`) |
+| `DASHBOARD_SESSION_TTL_SECONDS` | Session lifetime (default `28800`, i.e. 8h)                                                                                 |
+| `DASHBOARD_CLAIM_TTL_SECONDS`   | Sign-in link lifetime (default `300`, i.e. 5 min)                                                                           |
 
 `DEBUG_TOKEN` is no longer used; if set it is ignored and the bot logs a one-shot startup warning. Dashboard auth is now chat-issued.
 
@@ -514,7 +514,7 @@ Notes:
 
 - `bun start` builds the debug/admin clients first, then starts the bot.
 - `bun start:debug` also enables the local debug server.
-- `bun test` excludes client and E2E suites; run `bun test:client` and `bun test:e2e` separately.
+- `bun test` excludes client and E2E suites (configured in `bunfig.toml`); run `bun test:client` and `bun test:e2e` separately.
 - `bun check` runs staged-file checks, while `bun check:full` runs the wider repo checks.
 
 ---
@@ -527,7 +527,7 @@ Notes:
 bun test
 ```
 
-Runs the curated main Bun test suites defined in `package.json` for the repo’s non-client, non-E2E areas.
+Runs all server-side Bun test suites (excludes client and E2E via `bunfig.toml`).
 
 ### Client Tests
 

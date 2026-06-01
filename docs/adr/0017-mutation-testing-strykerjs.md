@@ -53,7 +53,7 @@ The decision was to adopt mutation testing as a first-class quality gate: a loca
 
 ## Decision
 
-Adopt StrykerJS with the command runner (`@stryker-mutator/core` + `@stryker-mutator/typescript-checker`) as the mutation testing framework. The command runner delegates test execution to the existing `bun run test` script. The TypeScript checker pre-filters mutants that would not compile, preventing false negatives caused by type errors rather than missing assertions. Incremental mode caches mutant results across runs, making local re-runs significantly faster.
+Adopt StrykerJS with the command runner (`@stryker-mutator/core` + `@stryker-mutator/typescript-checker`) as the mutation testing framework. The command runner delegates test execution to `bun test`. The TypeScript checker pre-filters mutants that would not compile, preventing false negatives caused by type errors rather than missing assertions. Incremental mode caches mutant results across runs, making local re-runs significantly faster.
 
 Mutation scope is limited to business logic files: `src/providers/**/*.ts`, `src/tools/**/*.ts`, `src/errors.ts`, `src/config.ts`, `src/memory.ts`, and `src/users.ts`. Re-export barrel files (`index.ts`), static value files (`constants.ts`), and the provider type interface (`providers/types.ts`) are excluded as they contain no testable logic.
 
@@ -70,7 +70,7 @@ Incremental mode addresses the performance concern for day-to-day use. The `repo
 ### Positive
 
 - Mutation score becomes the primary regression-detection metric, catching logic changes that line coverage misses
-- All tests run per mutant with the same `bun run test` invocation used in CI, ensuring mutation results are reproducible
+- All tests run per mutant with `bun test` as used in CI, ensuring mutation results are reproducible
 - TypeScript checker eliminates compile-error mutants before test execution, reducing noise
 - Incremental caching makes local re-runs fast; only changed-file mutants are re-tested
 - Mutation scripts (`test:mutate`, `test:mutate:changed`, `test:mutate:file`) give developers clear options for different workflows
@@ -98,12 +98,12 @@ Evidence:
 
 Divergences from the design plan:
 
-| Aspect                  | Planned                                                                                    | Actual                                       | Notes                                                                                                                                                   |
-| ----------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `commandRunner.command` | `bun test tests/providers tests/tools tests/db tests/utils tests/commands tests/*.test.ts` | `bun run test`                               | Delegates to the `test` script in `package.json`, which already enumerates the correct test directories; functionally equivalent and avoids duplication |
-| `thresholds.break`      | `null` (no enforcement initially)                                                          | `25`                                         | Set after Phase 1 established a 26.2% baseline; `break: 25` enforces a floor just below baseline as the initial gate                                    |
-| `reporters`             | `["clear-text", "html", "json"]`                                                           | `["clear-text", "progress", "html", "json"]` | `"progress"` reporter added for real-time feedback during long runs                                                                                     |
-| `ignorePatterns`        | `["tests", "node_modules", ".stryker-tmp"]`                                                | `["node_modules", ".stryker-tmp"]`           | `"tests"` entry removed; unnecessary since the `mutate` globs already target only `src/`                                                                |
+| Aspect                  | Planned                                                                                    | Actual                                       | Notes                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `commandRunner.command` | `bun test tests/providers tests/tools tests/db tests/utils tests/commands tests/*.test.ts` | `bun test`                                   | `bunfig.toml` now handles exclusion and preload; no need for an explicit path list                                   |
+| `thresholds.break`      | `null` (no enforcement initially)                                                          | `25`                                         | Set after Phase 1 established a 26.2% baseline; `break: 25` enforces a floor just below baseline as the initial gate |
+| `reporters`             | `["clear-text", "html", "json"]`                                                           | `["clear-text", "progress", "html", "json"]` | `"progress"` reporter added for real-time feedback during long runs                                                  |
+| `ignorePatterns`        | `["tests", "node_modules", ".stryker-tmp"]`                                                | `["node_modules", ".stryker-tmp"]`           | `"tests"` entry removed; unnecessary since the `mutate` globs already target only `src/`                             |
 
 ## Rollout
 

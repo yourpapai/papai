@@ -35,7 +35,7 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 - `bun typecheck` — TypeScript type checking
 - `bun security` — run Semgrep security scan locally
 - `bun security:ci` — run security scan with CI outputs
-- `bun test` — run the curated main unit/integration suites (excludes client and E2E)
+- `bun test` — run all server-side unit/integration suites (excludes client and E2E via bunfig.toml)
 - `bun test:client` — run debug/admin UI tests with happy-dom
 - `bun test:watch` — run unit tests in watch mode
 - `bun test:coverage` — run unit tests with coverage
@@ -69,7 +69,7 @@ bun test:client
 bun test:e2e
 ```
 
-- `bun test` runs the curated main non-client, non-E2E suites defined in `package.json`.
+- `bun test` runs all non-client, non-E2E suites (exclusions configured in `bunfig.toml`).
 - `bun test:client` runs `tests/client/` with `tests/client-setup.ts`.
 - `bun test:e2e` runs the Docker-backed Kaneo end-to-end suite with `tests/e2e/bun-test-setup.ts`.
 
@@ -182,11 +182,11 @@ Optional but important runtime flags include:
 
 When `DEBUG_SERVER=true`, the dashboard requires a session cookie minted via the bot. DM `/dashboard` to receive a one-time sign-in link (TTL 5 min). Sessions last `DASHBOARD_SESSION_TTL_SECONDS` (default 8h). See `docs/deployment/dashboard-access.md` for recommended deployment patterns.
 
-| Var                             | Required | Default                                | Purpose                        |
-| ------------------------------- | -------- | -------------------------------------- | ------------------------------ |
-| `DASHBOARD_BASE_URL`            | no       | `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}` | URL embedded in the magic link |
-| `DASHBOARD_SESSION_TTL_SECONDS` | no       | `28800`                                | session lifetime               |
-| `DASHBOARD_CLAIM_TTL_SECONDS`   | no       | `300`                                  | sign-in link lifetime          |
+| Var                             | Required | Default                                                                 | Purpose                        |
+| ------------------------------- | -------- | ----------------------------------------------------------------------- | ------------------------------ |
+| `DASHBOARD_BASE_URL`            | no       | `SETTINGS_PUBLIC_BASE_URL`, else `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}` | URL embedded in the magic link |
+| `DASHBOARD_SESSION_TTL_SECONDS` | no       | `28800`                                                                 | session lifetime               |
+| `DASHBOARD_CLAIM_TTL_SECONDS`   | no       | `300`                                                                   | sign-in link lifetime          |
 
 When `DEBUG_SERVER=true`, the local UI is split by audience:
 
