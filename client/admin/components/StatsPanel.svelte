@@ -13,6 +13,7 @@
   import DataTable from '../../shared/ui/DataTable.svelte'
   import MetricCard from '../../shared/ui/MetricCard.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
+  import Stat from '../../shared/ui/Stat.svelte'
   import Seg from '../../shared/ui/Seg.svelte'
   import { fetchStatsGlobal } from '../fetchers.js'
 
@@ -188,9 +189,9 @@
       <Panel title="active subjects">
         {#snippet body()}
           <div class="stats-panel__metrics">
-            <MetricCard label="1d" value={g.active.activeIn1d} sub={`of ${totalSubjects}`} />
-            <MetricCard label="7d" value={g.active.activeIn7d} sub={`of ${totalSubjects}`} />
-            <MetricCard label="30d" value={g.active.activeIn30d} sub={`of ${totalSubjects}`} />
+            <Stat label="1d" value={g.active.activeIn1d} of={totalSubjects} />
+            <Stat label="7d" value={g.active.activeIn7d} of={totalSubjects} />
+            <Stat label="30d" value={g.active.activeIn30d} of={totalSubjects} />
           </div>
         {/snippet}
       </Panel>

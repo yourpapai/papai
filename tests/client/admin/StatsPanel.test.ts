@@ -199,4 +199,22 @@ describe('admin StatsPanel', () => {
     expect(target.textContent).not.toContain('271.3 KB')
     void unmount(component)
   })
+
+  test('flags active-subject count exceeding total via Stat warn state (A5)', async () => {
+    const payload = globalPayload({
+      active: { activeIn1d: 1, activeIn7d: 2, activeIn30d: 13 },
+      subjects: {
+        dmTotal: 3,
+        groupTotal: 1,
+        growthLast30d: [{ date: '2026-05-01', dmAdded: 1, groupAdded: 0 }],
+      },
+    })
+    installFetch({ payload, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    expect(target.querySelector('.ui-stat__value--over')).not.toBeNull()
+    expect(target.textContent).toContain('exceeds total')
+    void unmount(component)
+  })
 })
