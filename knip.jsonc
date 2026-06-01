@@ -132,6 +132,7 @@
     // import.meta.require()-based plugin-local bridges, which Knip cannot trace.
     "plugins/task-provider-kaneo/auto-provision.ts": ["files"],
     "plugins/task-provider-kaneo/provision.ts": ["files", "exports"],
+    "plugins/task-provider-kaneo/provision-messages.ts": ["files", "exports"],
     "plugins/task-provider-kaneo/client.ts": ["exports"],
     "plugins/task-provider-kaneo/provider.ts": ["exports"],
     "plugins/task-provider-youtrack/provider.ts": ["exports"],

@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { statusTone } from '../../../../client/shared/ui/status-tone'
+import { statusTone } from '../../../../client/shared/ui/status-tone.js'
 
 describe('statusTone', () => {
   test.each([
