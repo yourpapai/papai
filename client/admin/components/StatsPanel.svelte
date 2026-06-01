@@ -12,10 +12,10 @@
   import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
   import MetricCard from '../../shared/ui/MetricCard.svelte'
-  import Panel from '../../shared/ui/Panel.svelte'
-  import Stat from '../../shared/ui/Stat.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Panel from '../../shared/ui/Panel.svelte'
   import Seg from '../../shared/ui/Seg.svelte'
+  import Stat from '../../shared/ui/Stat.svelte'
   import { fetchStatsGlobal } from '../fetchers.js'
 
   interface StatsState {
