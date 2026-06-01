@@ -13,6 +13,11 @@ IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG is required}"
 ADMIN_USER_ID="${ADMIN_USER_ID:?ADMIN_USER_ID is required}"
 DEADLINE="${STARTUP_DEADLINE_SECONDS:-15}"
 
+if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "Image '$IMAGE_TAG' not found in local Docker daemon. Was it built in this job?"
+  exit 1
+fi
+
 CONTAINER_NAME="papai-smoke-$$"
 LOG_FILE="$(mktemp)"
 cleanup() {
@@ -21,7 +26,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker run --rm --name "$CONTAINER_NAME" \
+docker run --name "$CONTAINER_NAME" \
   -e "ADMIN_USER_ID=$ADMIN_USER_ID" \
   -e "DEBUG_SERVER=true" \
   -e "LOG_LEVEL=info" \
@@ -33,12 +38,12 @@ docker run --rm --name "$CONTAINER_NAME" \
   "$IMAGE_TAG" \
   >"$LOG_FILE" 2>&1 &
 
-CONTAINER_PID=$!
-
 # Poll the container: it must remain running for the entire deadline.
+# Tolerate the first second for the container to leave the "created" state.
 elapsed=0
 while [ "$elapsed" -lt "$DEADLINE" ]; do
-  if ! docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null | grep -q true; then
+  state="$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true)"
+  if [ "$state" = "false" ]; then
     echo "Container exited early (after ${elapsed}s). Logs:"
     cat "$LOG_FILE"
     exit 1
@@ -54,8 +59,10 @@ if ! grep -q '"msg":"Starting papai..."' "$LOG_FILE"; then
   exit 1
 fi
 
-# Assert no module-resolution or fatal errors.
-if grep -qE 'Cannot find module|process.exit\(1\)|FATAL' "$LOG_FILE"; then
+# Assert no module-resolution or fatal errors. Pino emits level:60 for fatal;
+# matching the literal "FATAL" was dropped because it false-positives on
+# arbitrary substrings (e.g. inside a logged URL or stack frame).
+if grep -qE 'Cannot find module|process\.exit\(1\)|"level":60' "$LOG_FILE"; then
   echo "Found fatal error in logs:"
   cat "$LOG_FILE"
   exit 1
