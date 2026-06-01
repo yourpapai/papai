@@ -5,8 +5,10 @@
 
 import { z } from 'zod'
 
-import { provisionAndConfigure, type ProvisionOutcome } from '../../../plugins/task-provider-kaneo/provision.js'
+import { getContextSettings } from '../../instances/context-store.js'
+import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
+import { getTaskProviderProvision, type TaskProviderProvisionOutcome } from '../../providers/registry.js'
 import { listUsers } from '../../users.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 import type { ContextScope } from './respond.js'
@@ -23,12 +25,9 @@ function resolveProvisionUsername(
   return listUsers(platformInstanceId).find((u) => u.platform_user_id === platformUserId)?.username ?? null
 }
 
-function outcomeToResponse(scope: ContextScope, outcome: ProvisionOutcome): Response {
+function outcomeToResponse(scope: ContextScope, outcome: TaskProviderProvisionOutcome): Response {
   if (outcome.status === 'provisioned') {
-    log.info({ contextId: scope.contextId, status: 'provisioned' }, 'Settings Kaneo provision succeeded')
-    // One-time login reveal: email/password are not logged — returned in body only. The
-    // generated API key is persisted into config by provisionAndConfigure and is never
-    // returned in the response (it would needlessly widen secret exposure to the SPA).
+    log.info({ contextId: scope.contextId, status: 'provisioned' }, 'Settings provider provision succeeded')
     return settingsJson(200, {
       status: 'provisioned',
       contextId: scope.contextId,
@@ -39,9 +38,9 @@ function outcomeToResponse(scope: ContextScope, outcome: ProvisionOutcome): Resp
     })
   }
   if (outcome.status === 'registration_disabled') {
-    return settingsJson(422, { status: 'registration_disabled', error: 'Kaneo registration is disabled' })
+    return settingsJson(422, { status: 'registration_disabled', error: 'Provider registration is disabled' })
   }
-  log.warn({ contextId: scope.contextId, status: 'failed', error: outcome.error }, 'Settings Kaneo provision failed')
+  log.warn({ contextId: scope.contextId, status: 'failed', error: outcome.error }, 'Settings provider provision failed')
   return settingsJson(422, { status: 'failed', error: outcome.error })
 }
 
@@ -61,9 +60,30 @@ export async function handleProvisionKaneo(req: Request): Promise<Response> {
   const scope = resolveContextScope(principal, 'write', body.data.contextId)
   if (!scope.ok) return scope.response
 
+  const settings = getContextSettings(scope.scope.contextId)
+  if (settings === null) {
+    return settingsJson(422, { status: 'failed', error: 'Context has no settings' })
+  }
+  const taskInstance = getTaskInstance(settings.taskInstanceId)
+  if (taskInstance === null || taskInstance.status !== 'active') {
+    return settingsJson(422, { status: 'failed', error: 'No active task instance assigned' })
+  }
+  const provision = getTaskProviderProvision(taskInstance.type)
+  if (provision === undefined) {
+    return settingsJson(422, {
+      status: 'unsupported',
+      error: `Provider type '${taskInstance.type}' has no provision hook`,
+    })
+  }
+
   const username = resolveProvisionUsername(scope.scope, principal.platformInstanceId, principal.platformUserId)
   const publicUrl = process.env['KANEO_CLIENT_URL']
   const internalUrl = process.env['KANEO_INTERNAL_URL']
-  const outcome = await provisionAndConfigure(scope.scope.contextId, username, { publicUrl, internalUrl })
+  const outcome = await provision({
+    contextId: scope.scope.contextId,
+    username,
+    publicUrl,
+    internalUrl,
+  })
   return outcomeToResponse(scope.scope, outcome)
 }
