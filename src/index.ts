@@ -151,12 +151,10 @@ try {
 }
 const toActivate = pluginRegistry.getApprovedCompatiblePlugins()
 await activatePlugins(toActivate)
-log.info(
-  { activeCount: getActivatedPluginIds().length, requestedCount: toActivate.length },
-  'Plugin activation complete',
-)
+const activatedPluginIds = getActivatedPluginIds()
+log.info({ activeCount: activatedPluginIds.length, requestedCount: toActivate.length }, 'Plugin activation complete')
 
-const kaneoPluginActive = pluginRegistry.getEntry('task-provider-kaneo')?.state === 'active'
+const kaneoPluginActive = activatedPluginIds.includes('task-provider-kaneo')
 if (kaneoPluginActive) {
   const kaneoRepairSummary = runKaneoLegacyRepair()
   log.info({ kaneoRepairSummary }, 'Kaneo legacy repair evaluated')
