@@ -9,9 +9,12 @@ fi
 
 # Parse arguments
 STAGED_MODE=false
+SKIP_TESTS=false
 for arg in "$@"; do
   if [ "$arg" = "--staged" ]; then
     STAGED_MODE=true
+  elif [ "$arg" = "--skip-tests" ]; then
+    SKIP_TESTS=true
   fi
 done
 
@@ -289,7 +292,13 @@ if [ "$STAGED_MODE" = true ]; then
   fi
 else
   # Original behavior: run all checks
-  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check")
+  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check" "review-loop:test")
+  if [ "$SKIP_TESTS" = true ]; then
+    checks=("${checks[@]/test/}")
+    checks=("${checks[@]/test:client/}")
+    checks=("${checks[@]/review-loop:test/}")
+    checks=($(printf '%s\n' "${checks[@]}" | sed '/^$/d'))
+  fi
   failed=0
   pids=()
 
@@ -308,6 +317,8 @@ else
           fi
         done < <(git ls-files 2>/dev/null || true)
         run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
+      elif [ "$check" = "test" ]; then
+        bun test >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       else
         bun run "$check" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       fi

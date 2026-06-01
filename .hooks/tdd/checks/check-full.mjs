@@ -14,10 +14,12 @@ export function formatCheckResult(failures) {
   ].join('\n')
 }
 
-export function checkFull(ctx) {
+export function checkFull(ctx, skipTests = false) {
   try {
     const { cwd } = ctx
-    execFileSync('bun', ['run', 'check:full'], {
+    const args = ['run', 'check:full']
+    if (skipTests) args.push('--skip-tests')
+    execFileSync('bun', args, {
       cwd,
       encoding: 'utf8',
       stdio: 'pipe',

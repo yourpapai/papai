@@ -21,7 +21,7 @@ try {
     process.exit(0)
   }
 
-  const result = checkFull(ctx)
+  const result = checkFull(ctx, true)
 
   if (result) {
     state.setNeedsRecheck(false)
