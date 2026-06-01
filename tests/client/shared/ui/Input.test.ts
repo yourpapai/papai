@@ -62,7 +62,7 @@ describe('Input.svelte', () => {
     })
     const input = target.querySelector<HTMLInputElement>('input')!
     input.value = 'hello'
-    input.dispatchEvent(new Event('input'))
+    input.dispatchEvent(new Event('input', { bubbles: true }))
     expect(seen).toBe('hello')
     void unmount(c)
   })
