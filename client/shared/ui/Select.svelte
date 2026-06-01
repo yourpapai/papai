@@ -13,9 +13,10 @@
     value: string
     options: Option[]
     onChange?: (value: string) => void
+    testid?: string
   }
 
-  let { value, options, onChange }: Props = $props()
+  let { value, options, onChange, testid }: Props = $props()
 
   function handleChange(event: Event): void {
     onChange?.((event.target as HTMLSelectElement).value)
@@ -23,7 +24,7 @@
 </script>
 
 <div class="ui-select">
-  <select {value} onchange={handleChange}>
+  <select {value} onchangecapture={handleChange} data-testid={testid}>
     {#each options as opt (opt.value)}
       <option value={opt.value}>{opt.label}</option>
     {/each}
