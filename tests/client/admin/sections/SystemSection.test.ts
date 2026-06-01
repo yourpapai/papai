@@ -112,6 +112,16 @@ describe('SystemSection', () => {
     void unmount(component)
   })
 
+  test('renders a single System title via PageHeader with no duplicate eyebrow', () => {
+    installReadFetch()
+    const { component, target } = render()
+    expect(target.querySelector('[data-testid="admin-section-title"]')?.textContent).toBe('System')
+    expect(target.querySelector('.ui-page-header')).not.toBeNull()
+    expect(target.querySelector('.ui-caption')).toBeNull()
+    expect(target.querySelector('[data-testid="system-refresh"]')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('saves an edited LLM setting and refreshes the credentials snapshot', async () => {
     const recorded: { body: string | null; calls: string[] } = { body: null, calls: [] }
     installEditFetch(recorded)

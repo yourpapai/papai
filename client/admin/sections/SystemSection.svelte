@@ -7,6 +7,7 @@
   import { untrack } from 'svelte'
 
   import type { AdminLlmSnapshot, AdminSystemSummary } from '../../shared/api-types.js'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import CredentialsForm from '../components/CredentialsForm.svelte'
   import { fetchAdminLlm, fetchAdminSystem } from '../fetchers.js'
@@ -46,18 +47,16 @@
 </script>
 
 <section id="system" class="system-section admin-section">
-  <header class="system-header">
-    <div>
-      <p class="eyebrow">System</p>
-      <h2 data-testid="admin-section-title">System</h2>
-    </div>
-    <button
-      type="button"
-      data-testid="system-refresh"
-      onclick={() => {
-        void refreshAll()
-      }}>{fetching ? 'Refreshing...' : 'Refresh'}</button>
-  </header>
+  <PageHeader title="System" titleTestId="admin-section-title">
+    {#snippet action()}
+      <button
+        type="button"
+        data-testid="system-refresh"
+        onclick={() => {
+          void refreshAll()
+        }}>{fetching ? 'Refreshing...' : 'Refresh'}</button>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}
     <p class="status-error">{error}</p>
