@@ -13,15 +13,16 @@
     eyebrow?: string
     sub?: string
     action?: Snippet
+    titleTestId?: string
   }
 
-  let { title, eyebrow, sub, action }: Props = $props()
+  let { title, eyebrow, sub, action, titleTestId }: Props = $props()
 </script>
 
 <div class="ui-page-header">
   <div class="ui-page-header__text">
     {#if eyebrow}<Caption>{eyebrow}</Caption>{/if}
-    <div class="ui-page-header__title">{title}</div>
+    <div class="ui-page-header__title" data-testid={titleTestId}>{title}</div>
     {#if sub}<div class="ui-page-header__sub">{sub}</div>{/if}
   </div>
   {#if action}<div class="ui-page-header__action">{@render action()}</div>{/if}

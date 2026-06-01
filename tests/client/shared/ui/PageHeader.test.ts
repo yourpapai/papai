@@ -27,4 +27,20 @@ describe('PageHeader.svelte', () => {
     expect(target.querySelector('.ui-page-header__sub')).toBeNull()
     void unmount(c)
   })
+
+  test('applies titleTestId to the title element when provided', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(PageHeader, { target, props: { title: 'Instances', titleTestId: 'admin-section-title' } })
+    expect(target.querySelector('[data-testid="admin-section-title"]')?.textContent).toBe('Instances')
+    void unmount(c)
+  })
+
+  test('omits the title data-testid attribute when titleTestId is absent', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(PageHeader, { target, props: { title: 'System' } })
+    expect(target.querySelector('[data-testid]')).toBeNull()
+    void unmount(c)
+  })
 })
