@@ -34,6 +34,16 @@ const responseFor = (responses: ReadonlyMap<string, Response>, url: string): Pro
 }
 
 describe('RemindersSection', () => {
+  test('renders kit controls: Toolbar, Field, Input, Btn; no legacy header', () => {
+    const { target, component } = render()
+    expect(target.querySelector('.ui-toolbar')).not.toBeNull()
+    expect(target.querySelector('.ui-field')).not.toBeNull()
+    expect(target.querySelector('[data-testid="reminders-user-id"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="reminders-load"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('.reminders__header')).toBeNull()
+    void unmount(component)
+  })
+
   test('loads recurring and deferred reminders for a user', async () => {
     const calls: string[] = []
     const responses = new Map<string, Response>([

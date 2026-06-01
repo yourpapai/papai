@@ -6,7 +6,12 @@
 <script lang="ts">
   import type { DeferredPrompt, RecurringTask } from '../../shared/api-types.js'
   import { fetchDeferredPrompts, fetchRecurringTasks } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Input from '../../shared/ui/Input.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
+  import Toolbar from '../../shared/ui/Toolbar.svelte'
 
   let userId = $state('')
   let recurring: RecurringTask[] = $state([])
@@ -65,16 +70,14 @@
 </script>
 
 <section id="reminders" class="admin-section" bind:this={rootEl}>
-  <div class="reminders__header">
-    <input data-testid="reminders-user-id" bind:value={userId} placeholder="user id" type="text" />
-    <button
-      data-testid="reminders-load"
-      disabled={userId.trim() === '' || loading}
-      onclick={() => { void loadReminders() }}
-      type="button">
-      {loading ? 'Loading…' : 'Load'}
-    </button>
-  </div>
+  <Toolbar>
+    <Field label="user id">
+      <Input value={userId} onInput={(v) => (userId = v)} placeholder="user id" testid="reminders-user-id" />
+    </Field>
+    <Btn variant="primary" size="sm" testid="reminders-load" disabled={userId.trim() === '' || loading} onClick={() => { void loadReminders() }}>
+      {#snippet children()}{loading ? 'Loading…' : 'Load'}{/snippet}
+    </Btn>
+  </Toolbar>
 
   {#if error !== null}
     <p class="status-error">{error}</p>
@@ -94,7 +97,7 @@
                     <span class="reminders__title">{r.title}</span>
                     <span class="reminders__sub">{r.rrule ?? 'one-shot'}</span>
                   </div>
-                  <span class="reminders__status">{r.enabled ? 'Enabled' : 'Paused'}</span>
+                  <StatusPill status={r.enabled ? 'enabled' : 'paused'} />
                 </li>
               {/each}
             </ul>
@@ -114,7 +117,7 @@
                     <span class="reminders__title">{d.prompt}</span>
                     <span class="reminders__sub">fires at {d.fireAt}</span>
                   </div>
-                  <span class="reminders__status">{d.status}</span>
+                  <StatusPill status={d.status} />
                 </li>
               {/each}
             </ul>
@@ -128,12 +131,6 @@
 <style>
   .admin-section {
     scroll-margin-top: 96px;
-  }
-  .reminders__header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 12px;
   }
   .reminders__grid {
     display: grid;
@@ -172,12 +169,6 @@
   .reminders__sub {
     color: var(--fg3);
     font-size: 11px;
-  }
-  .reminders__status {
-    color: var(--fg3);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 10px;
   }
   .placeholder {
     margin: 0;
