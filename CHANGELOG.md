@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.4] - 2026-06-01
+
+### Added
+
+- **kaneo:** Export kaneoProvision hook for HTTP route dispatch
+- **kaneo:** Register kaneoProvision hook via plugin registry
+- **client/ui:** Add optional titleTestId prop to PageHeader
+- **client/ui:** Add optional testid pass-through to Btn
+- **client/ui:** Add password type and testid to Input
+- **client/ui:** Add optional testid pass-through to Select
+
+### Changed
+
+- **plugins:** Thread TaskProviderProvision through registration pipeline
+- **admin:** Consolidate byte formatting onto shared fmtBytes
+- **admin:** Consolidate SubjectsTable tests, carry row subject ref (review fixes)
+- **settings:** Dispatch provision via plugin registry, remove plugins/ import
+
+### Documentation
+
+- **plan:** Backstage phases 2.2-2.5 implementation plans
+- **plan:** Backstage phase 3.1 /debug kit sweep implementation plan
+- **plan:** Backstage phase 3.2 /settings user sections kit sweep
+- **plan:** Backstage phase 3.3 /settings admin sections + cleanup
+- **plan:** Record /stats aggregation verification findings (phase 2.1)
+- **plugins:** Document kaneoProvision hook in developer guide
+
+### Fixed
+
+- **admin:** Render SubjectsTable via DataTable with right-aligned formatted numerics (A1/A4)
+- **admin:** Render active subjects via Stat to flag over-capacity (A5)
+- **admin:** Render surface mix via Meter with clamped over-capacity (A6)
+- **admin:** Render Stats header via PageHeader (B1)
+- **admin:** Render System header via PageHeader, drop duplicate eyebrow (B1)
+- **admin:** Render Instances header via PageHeader (B1)
+- **admin:** Render Plugin Config header via PageHeader (B1)
+- **client/ui:** Restore controlled value + delegated oninput on Input (keep testid/password)
+- **client/ui:** Restore delegated onchange on Select (keep testid)
+- **admin:** Adopt Btn/Input/Select/StatusPill/JsonCell in InstancesSection (B2/B3/B4/B5)
+- **kaneo:** Repair legacy plugin setup flow
+- **startup:** Gate kaneo repair by activated plugins
+
+### Miscellaneous
+
+- **client:** Fix status-tone import and knip allowlist
+- **check:** Parallelize test runs by cpu count
+
+### Styling
+
+- **admin:** Alphabetize PageHeader import in StatsPanel
+
+### Testing
+
+- **settings:** Reduce auth db setup scope
+- **admin:** Regression guards for tool-calls chart/header (A2/A3); C1 covered by Bars tests
+- **kaneo:** Cover kaneoProvision hook delegates to provisionAndConfigure
+- **kaneo:** Verify kaneoProvision forwards all four fields
+
+### Ci
+
+- Smoke-test the built Docker image to catch boot-time crashes
+- **smoke:** Move smoke into build job, tolerate created state, preflight image
 ## [6.0.3] - 2026-06-01
 
 ### Added
