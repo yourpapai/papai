@@ -110,7 +110,7 @@ describe('fmtBytes', () => {
   test('humanizes using base 1024', () => {
     expect(fmtBytes(512)).toBe('512 B')
     expect(fmtBytes(1395505)).toBe('1.3 MB')
-    expect(fmtBytes(277806)).toBe('271.3 KB')
+    expect(fmtBytes(277806)).toBe('271 KB')
   })
   test('returns em dash for null/undefined', () => {
     expect(fmtBytes(null)).toBe('—')
