@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.3] - 2026-06-01
+
+### Added
+
+- **plugins:** Surface directoryMissing in DiscoveryResult
+- **client/ui:** Add fmtNum and fmtBytes formatting helpers
+- **client/ui:** Add statusTone status-string mapping
+- **client/ui:** Add StatusPill component
+- **client/ui:** Add PageHeader component
+- **client/ui:** Add Field labeled-control component
+- **client/ui:** Add FormRow component
+- **client/ui:** Add Toolbar component
+- **client/ui:** Add Tag attribute-badge component
+- **client/ui:** Add Code value-chip component
+- **client/ui:** Add JsonCell key-value chip component
+- **client/ui:** Add Secret masked-value component
+- **client/ui:** Add EmptyState component
+- **client/ui:** Add Meter clamped ratio-bar component
+- **client/ui:** Add Stat value-of-total component
+- **client/ui:** Add SummaryList key-value component
+
+### Changed
+
+- **providers:** Add TaskProviderProvision hook to plugin-contributed registry
+
+### Documentation
+
+- Add plugins deployment safety plan
+- **spec:** Backstage admin UI kit additions & audit fixes design
+- **plan:** Backstage kit additions phase 1 implementation plan
+- **plan:** Mark plugins deployment safety Task 1 complete
+- **plan:** Backstage phase 2.1 numbers/tables/guards implementation plan
+
+### Fixed
+
+- **client:** Make shell body the scroll container so main content scrolls
+- **settings:** Only disable plugin toggle for inactive plugins awaiting approval
+- **plugins:** Fail fast at startup when DEBUG_SERVER=true and plugins/ is missing
+- **client/ui:** Mono font for Meter value, .js extension on StatusPill import
+
+### Miscellaneous
+
+- Switch test script to bun test auto-discovery
+- Include prior session dashboard.ts and CLAUDE.md changes
+- Remove test suites from check:full stop hook, fix lint/format issues
+- Add --skip-tests flag to check:full, stop hook skips tests
+- **opencode:** Remove legacy pi wiring
+- **knip:** Ignore forward-compat TaskProviderProvision export and svelte-consumed client ui
+
+### Styling
+
+- **client/ui:** Use mono font for Stat value per design system
+
+### Testing
+
+- **startup-guard:** Assert warn reason mentions degraded mode
+- **providers:** Cover getTaskProviderProvision lookup
 ## [6.0.2] - 2026-06-01
 
 ### Fixed
