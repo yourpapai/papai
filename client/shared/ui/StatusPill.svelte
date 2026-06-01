@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import Pill from './Pill.svelte'
-  import { statusTone } from './status-tone'
+  import { statusTone } from './status-tone.js'
 
   interface Props {
     status: string

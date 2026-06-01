@@ -47,6 +47,7 @@
     color: var(--fg2);
   }
   .ui-meter__value {
+    font-family: var(--font-mono);
     font-size: 12px;
     color: var(--fg);
   }
