@@ -34,6 +34,39 @@ const responseFor = (responses: ReadonlyMap<string, Response>, url: string): Pro
 }
 
 describe('GroupsSection', () => {
+  test('renders refresh as Btn (.ui-btn), no legacy groups__refresh-btn', async () => {
+    const responses = new Map<string, Response>([['/auth/groups', Response.json([])]])
+    setMockFetch((url) => responseFor(responses, url))
+
+    const { target, component } = render()
+    await drain()
+
+    expect(target.querySelector('.ui-btn')).not.toBeNull()
+    expect(target.querySelector('.groups__refresh-btn')).toBeNull()
+
+    void unmount(component)
+  })
+
+  test('renders revoke as Btn (.ui-btn) when a group row is present', async () => {
+    const responses = new Map<string, Response>([
+      [
+        '/auth/groups',
+        Response.json([{ group_id: 'group-1', added_by: 'admin', added_at: '2026-05-21T00:00:00.000Z' }]),
+      ],
+    ])
+    setMockFetch((url) => responseFor(responses, url))
+
+    const { target, component } = render()
+    target.querySelector<HTMLButtonElement>('button[type="button"]')!.click()
+    await drain()
+
+    const uiBtns = target.querySelectorAll('.ui-btn')
+    expect(uiBtns.length).toBeGreaterThanOrEqual(2)
+    expect(target.querySelector('.groups__revoke-btn')).toBeNull()
+
+    void unmount(component)
+  })
+
   test('loads authorized groups via refresh button', async () => {
     const responses = new Map<string, Response>([
       [

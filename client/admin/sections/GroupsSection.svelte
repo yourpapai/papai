@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import type { AuthorizedGroupEntry } from '../../shared/api-types.js'
+  import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import { fetchAdminGroups } from '../fetchers.js'
@@ -89,15 +90,9 @@
 <section id="groups" class="admin-data-section admin-section" bind:this={rootEl}>
   <Panel title="authorized groups" count={groups.length}>
     {#snippet action()}
-      <button
-        class="groups__refresh-btn"
-        type="button"
-        onclick={() => {
-          void loadGroups()
-        }}
-        disabled={loading}>
-        {loading ? 'Refreshing…' : 'Refresh'}
-      </button>
+      <Btn variant="secondary" size="sm" onClick={() => { void loadGroups() }} disabled={loading}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
     {/snippet}
     {#snippet body()}
       <div class="groups__body">
@@ -108,14 +103,9 @@
         {:else if groups.length > 0}
           {#snippet cell(row: GroupRow, col: { key: string; label: string })}
             {#if col.key === 'action'}
-              <button
-                class="groups__revoke-btn"
-                type="button"
-                onclick={() => {
-                  void revoke(row.group_id)
-                }}>
-                revoke
-              </button>
+              <Btn variant="danger" size="sm" onClick={() => { void revoke(row.group_id) }}>
+                {#snippet children()}revoke{/snippet}
+              </Btn>
             {:else}
               {String(row[col.key as keyof GroupRow] ?? '')}
             {/if}
@@ -134,40 +124,6 @@
 
   .groups__body {
     padding: 0;
-  }
-
-  .groups__refresh-btn {
-    background: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: 2px;
-    color: var(--bg);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
-    height: 22px;
-    padding: 3px 8px;
-  }
-
-  .groups__refresh-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-
-  .groups__revoke-btn {
-    background: transparent;
-    border: 1px solid var(--danger);
-    border-radius: 2px;
-    color: var(--danger);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 2px 8px;
-  }
-
-  .groups__revoke-btn:hover {
-    background: var(--danger);
-    color: var(--bg);
   }
 
   .placeholder {
