@@ -25,6 +25,35 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # Sanitize check names for safe temp filenames (replace : with _)
 safe_name() { echo "${1//:/_}"; }
 
+get_cpu_count() {
+  local count=""
+
+  if command -v getconf >/dev/null 2>&1; then
+    count=$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)
+  fi
+
+  case "$count" in
+    ''|*[!0-9]*|0)
+      if command -v nproc >/dev/null 2>&1; then
+        count=$(nproc 2>/dev/null || true)
+      fi
+      ;;
+  esac
+
+  case "$count" in
+    ''|*[!0-9]*|0)
+      if command -v sysctl >/dev/null 2>&1; then
+        count=$(sysctl -n hw.logicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || true)
+      fi
+      ;;
+  esac
+
+  case "$count" in
+    ''|*[!0-9]*|0) printf '%s\n' '1' ;;
+    *) printf '%s\n' "$count" ;;
+  esac
+}
+
 is_license_header_file() {
   local file="$1"
   case "$file" in
@@ -307,6 +336,7 @@ else
   fi
   failed=0
   pids=()
+  test_max_concurrency=$(get_cpu_count)
 
   # Run all checks in parallel
   for check in "${checks[@]}"; do
@@ -324,7 +354,11 @@ else
         done < <(git ls-files 2>/dev/null || true)
         run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
       elif [ "$check" = "test" ]; then
-        bun test >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun test --concurrent --max-concurrency "$test_max_concurrency" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+      elif [ "$check" = "test:client" ]; then
+        bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ --concurrent --max-concurrency "$test_max_concurrency" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+      elif [ "$check" = "review-loop:test" ]; then
+        bun test tests/review-loop --concurrent --max-concurrency "$test_max_concurrency" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       else
         bun run "$check" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       fi

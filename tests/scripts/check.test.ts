@@ -273,3 +273,34 @@ describe('check.sh --skip-tests', () => {
     }
   })
 })
+
+describe('check.sh full mode', () => {
+  test('runs bun test commands with cpu-count-based parallelism', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      writeExecutable(
+        path.join(binDir, 'getconf'),
+        ['#!/bin/bash', 'set -euo pipefail', 'printf "7\\n"', ''].join('\n'),
+      )
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(0)
+
+      const calls = readFileSync(logFile, 'utf8')
+      expect(calls).toContain('bun test --concurrent --max-concurrency 7')
+      expect(calls).toContain('bun --conditions=browser test --preload ./tests/client-setup.ts')
+      expect(calls).toContain('tests/client/ --concurrent --max-concurrency 7')
+      expect(calls).toContain('bun test tests/review-loop --concurrent --max-concurrency 7')
+      expect(calls).not.toContain('bun run test:client')
+      expect(calls).not.toContain('bun run review-loop:test')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+})
