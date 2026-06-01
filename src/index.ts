@@ -17,6 +17,7 @@ import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-route
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
 import { warnUnresolvedTaskInstances } from './instances/health.js'
+import { runKaneoLegacyRepair } from './instances/kaneo-legacy-repair.js'
 import { listActivePlatformInstancesSafe } from './instances/platform-store.js'
 import { listTaskInstancesSafe } from './instances/task-store.js'
 import { logger } from './logger.js'
@@ -154,6 +155,12 @@ log.info(
   { activeCount: getActivatedPluginIds().length, requestedCount: toActivate.length },
   'Plugin activation complete',
 )
+
+const kaneoPluginActive = pluginRegistry.getEntry('task-provider-kaneo')?.state === 'active'
+if (kaneoPluginActive) {
+  const kaneoRepairSummary = runKaneoLegacyRepair()
+  log.info({ kaneoRepairSummary }, 'Kaneo legacy repair evaluated')
+}
 
 warnUnresolvedTaskInstances()
 warnIfLegacyDebugToken()

@@ -6,9 +6,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  AdminInstancesResponseSchema,
   BootstrapSchema,
   ConfigResponseSchema,
   IdentityResponseSchema,
+  ProviderTypesResponseSchema,
   McpResponseSchema,
   PluginsResponseSchema,
   ToolsResponseSchema,
@@ -105,5 +107,28 @@ describe('fetcher-schemas', () => {
       mapping: null,
     })
     expect(parsed.mapping).toBeNull()
+  })
+
+  test('AdminInstancesResponseSchema accepts unreadable diagnostics', () => {
+    const parsed = AdminInstancesResponseSchema.parse({
+      instances: [{ id: 'ti-1', type: 'kaneo', status: 'active', config: {} }],
+      unreadable: [{ table: 'task_instances', id: 'ti-broken', type: 'kaneo', error: 'Encrypted payload' }],
+    })
+    expect(parsed.instances).toHaveLength(1)
+  })
+
+  test('ProviderTypesResponseSchema preserves storageKey on instance config fields', () => {
+    const parsed = ProviderTypesResponseSchema.parse({
+      providerTypes: [
+        {
+          type: 'kaneo',
+          displayName: 'Kaneo',
+          instanceConfigSchema: [
+            { key: 'baseUrl', storageKey: 'tracker_url', label: 'Base URL', required: true, sensitive: false },
+          ],
+        },
+      ],
+    })
+    expect(parsed.providerTypes[0]?.instanceConfigSchema[0]?.storageKey).toBe('tracker_url')
   })
 })

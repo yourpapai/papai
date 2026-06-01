@@ -60,6 +60,12 @@ export const updateAdminPlatformInstance = (
 ): Promise<unknown> =>
   writeJson(`/settings/api/admin/platform-instances/${encodeURIComponent(id)}`, 'PATCH', input, (b) => b)
 
+export const updateAdminTaskInstance = (
+  id: string,
+  input: { status?: string; config?: Record<string, string> },
+): Promise<unknown> =>
+  writeJson(`/settings/api/admin/task-instances/${encodeURIComponent(id)}`, 'PATCH', input, (b) => b)
+
 export const deleteAdminPlatformInstance = (id: string): Promise<unknown> =>
   settingsFetch(`/settings/api/admin/platform-instances/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(
     async (res) => {

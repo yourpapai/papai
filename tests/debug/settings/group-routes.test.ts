@@ -9,11 +9,13 @@ import { z } from 'zod'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { taskInstances } from '../../../src/db/instance-schema.js'
 import { handleGroupRoutes } from '../../../src/debug/settings/group-routes.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
+import { getContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { addUser } from '../../../src/users.js'
-import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
+import { getTestDb, mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
 
 const MembersResponseSchema = z.object({ contextId: z.string(), members: z.array(z.unknown()) })
@@ -221,6 +223,40 @@ describe('settings group routes', () => {
     expect(body.taskInstanceId).toBe('ti-grp')
   })
 
+  test('task-instance GET only lists active task instances', async () => {
+    const contextId = seedManageableGroup()
+    insertTaskInstance({ id: 'ti-active', type: 'kaneo', config: {}, status: 'active' })
+    insertTaskInstance({ id: 'ti-pending', type: 'kaneo', config: {}, status: 'pending' })
+
+    const getUrl = new URL(`https://x/settings/api/group/task-instance?contextId=${encodeURIComponent(contextId)}`)
+    const res = await handleGroupRoutes(
+      new Request(getUrl, { headers: authHeaders(session) }),
+      getUrl,
+      '/settings/api/group/task-instance',
+    )
+
+    expect(res.status).toBe(200)
+    const body = TaskInstanceGetSchema.parse(await res.json())
+    expect(body.available).toEqual([{ id: 'ti-active', type: 'kaneo', status: 'active' }])
+  })
+
+  test('task-instance GET skips unreadable rows and still returns readable active instances', async () => {
+    const contextId = seedManageableGroup()
+    insertTaskInstance({ id: 'ti-active', type: 'kaneo', config: {}, status: 'active' })
+    getTestDb().insert(taskInstances).values({ id: 'ti-broken', type: 'kaneo', config: 'AAAA', status: 'active' }).run()
+
+    const getUrl = new URL(`https://x/settings/api/group/task-instance?contextId=${encodeURIComponent(contextId)}`)
+    const res = await handleGroupRoutes(
+      new Request(getUrl, { headers: authHeaders(session) }),
+      getUrl,
+      '/settings/api/group/task-instance',
+    )
+
+    expect(res.status).toBe(200)
+    const body = TaskInstanceGetSchema.parse(await res.json())
+    expect(body.available).toEqual([{ id: 'ti-active', type: 'kaneo', status: 'active' }])
+  })
+
   test('task-instance PATCH unknown instance returns 422', async () => {
     const contextId = seedManageableGroup()
 
@@ -235,5 +271,44 @@ describe('settings group routes', () => {
       '/settings/api/group/task-instance',
     )
     expect(res.status).toBe(422)
+  })
+
+  test('task-instance PATCH inactive instance returns 422', async () => {
+    const contextId = seedManageableGroup()
+    insertTaskInstance({ id: 'ti-pending', type: 'kaneo', config: {}, status: 'pending' })
+
+    const patchUrl = new URL('https://x/settings/api/group/task-instance')
+    const res = await handleGroupRoutes(
+      new Request(patchUrl, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskInstanceId: 'ti-pending', contextId }),
+      }),
+      patchUrl,
+      '/settings/api/group/task-instance',
+    )
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({ error: 'inactive task instance' })
+  })
+
+  test('task-instance PATCH rejects unreadable active rows', async () => {
+    const contextId = seedManageableGroup()
+    getTestDb().insert(taskInstances).values({ id: 'ti-broken', type: 'kaneo', config: 'AAAA', status: 'active' }).run()
+
+    const patchUrl = new URL('https://x/settings/api/group/task-instance')
+    const res = await handleGroupRoutes(
+      new Request(patchUrl, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskInstanceId: 'ti-broken', contextId }),
+      }),
+      patchUrl,
+      '/settings/api/group/task-instance',
+    )
+
+    expect(res.status).toBe(422)
+    await expect(res.json()).resolves.toEqual({ error: 'unreadable task instance' })
+    expect(getContextSettings(contextId)).toBeNull()
   })
 })

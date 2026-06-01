@@ -3,26 +3,30 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { listPlatformProviderTypes } from '../../../chat/registry.js'
-import { maskConfig } from '../../../instances/encryption.js'
+import { getDrizzleDb } from '../../../db/drizzle.js'
+import { platformInstances, taskInstances } from '../../../db/schema.js'
+import { decryptInstanceConfig, maskConfig } from '../../../instances/encryption.js'
 import {
   deletePlatformInstance,
   insertPlatformInstance,
-  listPlatformInstances,
+  listPlatformInstancesSafe,
   updatePlatformInstance,
 } from '../../../instances/platform-store.js'
 import {
   deleteTaskInstance,
   insertTaskInstance,
-  listTaskInstances,
+  listTaskInstancesSafe,
   updateTaskInstance,
 } from '../../../instances/task-store.js'
 import type { TaskInstance } from '../../../instances/types.js'
 import { logger } from '../../../logger.js'
 import { listTaskProviderTypes } from '../../../providers/registry.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
+import { validatePlatformInstanceConfig, validateTaskInstanceRouteConfig } from '../../instance-config-validation.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
 import { requireAdmin } from './admin-guard.js'
 
@@ -41,7 +45,7 @@ const TaskInstanceCreateSchema = z.object({
   id: z.string().min(1),
   type: z.string().min(1),
   config: z.record(z.string(), z.string()).default({}),
-  status: z.enum(['pending', 'active', 'stopped']).default('pending'),
+  status: z.enum(['pending', 'active', 'stopped']).default('active'),
 })
 
 const InstancePatchSchema = z.object({
@@ -54,10 +58,52 @@ function lastPathSegment(url: URL): string | undefined {
   return parts.at(-1)
 }
 
+type InstanceLookup = {
+  readonly type: string
+}
+
+type TaskInstanceLookup = InstanceLookup & {
+  readonly status: string
+  readonly config: string
+}
+
+function lookupTaskInstance(id: string): TaskInstanceLookup | null {
+  const row = getDrizzleDb()
+    .select({ type: taskInstances.type, status: taskInstances.status, config: taskInstances.config })
+    .from(taskInstances)
+    .where(eq(taskInstances.id, id))
+    .get()
+  return row ?? null
+}
+
+function lookupPlatformInstance(id: string): InstanceLookup | null {
+  const row = getDrizzleDb()
+    .select({ type: platformInstances.type })
+    .from(platformInstances)
+    .where(eq(platformInstances.id, id))
+    .get()
+  return row ?? null
+}
+
+function isActivating(nextStatus: string | undefined, currentStatus: string): boolean {
+  return nextStatus === 'active' && currentStatus !== 'active'
+}
+
+function readStoredTaskConfig(
+  lookup: TaskInstanceLookup,
+): { ok: true; config: Record<string, string> } | { ok: false; response: Response } {
+  try {
+    return { ok: true, config: decryptInstanceConfig(lookup.config) }
+  } catch {
+    return { ok: false, response: settingsJson(500, { error: 'config unreadable' }) }
+  }
+}
+
 function handleTaskInstancesGet(authed: AuthenticatedSettingsRequest): Response {
   const guard = requireAdmin(authed, 'read')
   if (guard !== null) return guard
-  return settingsJson(200, { instances: listTaskInstances().map(maskTask) })
+  const result = listTaskInstancesSafe()
+  return settingsJson(200, { instances: result.instances.map(maskTask), unreadable: result.failures })
 }
 
 async function handleTaskInstancesPost(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
@@ -67,6 +113,8 @@ async function handleTaskInstancesPost(req: Request, authed: AuthenticatedSettin
   if (!parsed.ok) return parsed.response
   const body = TaskInstanceCreateSchema.safeParse(parsed.value)
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const configError = await validateTaskInstanceRouteConfig(body.data.type, body.data.config)
+  if (configError !== null) return configError
   insertTaskInstance(body.data)
   log.info({ id: body.data.id }, 'Settings admin created task instance')
   return settingsJson(201, { ok: true, id: body.data.id })
@@ -79,10 +127,21 @@ async function handleTaskInstancePatch(
 ): Promise<Response> {
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
+  const existing = lookupTaskInstance(id)
+  if (existing === null) return settingsJson(404, { error: 'not found' })
   const parsed = await parseJsonBody(req)
   if (!parsed.ok) return parsed.response
   const body = InstancePatchSchema.safeParse(parsed.value)
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  let configToValidate = body.data.config
+  if (configToValidate === undefined && isActivating(body.data.status, existing.status)) {
+    const storedConfig = readStoredTaskConfig(existing)
+    if (!storedConfig.ok) return storedConfig.response
+    configToValidate = storedConfig.config
+  }
+  const configError =
+    configToValidate === undefined ? null : await validateTaskInstanceRouteConfig(existing.type, configToValidate)
+  if (configError !== null) return configError
   updateTaskInstance(id, { config: body.data.config, status: body.data.status })
   return settingsJson(200, { ok: true, id })
 }
@@ -90,6 +149,7 @@ async function handleTaskInstancePatch(
 function handleTaskInstanceDelete(req: Request, id: string, authed: AuthenticatedSettingsRequest): Response {
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
+  if (lookupTaskInstance(id) === null) return settingsJson(404, { error: 'not found' })
   deleteTaskInstance(id)
   return settingsJson(200, { ok: true, id })
 }
@@ -116,7 +176,11 @@ function handleTaskInstances(req: Request, url: URL, authed: AuthenticatedSettin
 function handlePlatformInstancesGet(authed: AuthenticatedSettingsRequest): Response {
   const guard = requireAdmin(authed, 'read')
   if (guard !== null) return guard
-  return settingsJson(200, { instances: listPlatformInstances().map((i) => ({ ...i, config: maskConfig(i.config) })) })
+  const result = listPlatformInstancesSafe()
+  return settingsJson(200, {
+    instances: result.instances.map((i) => ({ ...i, config: maskConfig(i.config) })),
+    unreadable: result.failures,
+  })
 }
 
 async function handlePlatformInstancesPost(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
@@ -126,6 +190,8 @@ async function handlePlatformInstancesPost(req: Request, authed: AuthenticatedSe
   if (!parsed.ok) return parsed.response
   const body = PlatformInstanceCreateSchema.safeParse(parsed.value)
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const configError = validatePlatformInstanceConfig(body.data.type, body.data.config)
+  if (configError !== null) return configError
   insertPlatformInstance(body.data)
   log.info({ id: body.data.id }, 'Settings admin created platform instance')
   return settingsJson(201, { ok: true, id: body.data.id })
@@ -138,10 +204,15 @@ async function handlePlatformInstancePatch(
 ): Promise<Response> {
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
+  const existing = lookupPlatformInstance(id)
+  if (existing === null) return settingsJson(404, { error: 'not found' })
   const parsed = await parseJsonBody(req)
   if (!parsed.ok) return parsed.response
   const body = InstancePatchSchema.safeParse(parsed.value)
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const configError =
+    body.data.config === undefined ? null : validatePlatformInstanceConfig(existing.type, body.data.config)
+  if (configError !== null) return configError
   updatePlatformInstance(id, { config: body.data.config, status: body.data.status })
   return settingsJson(200, { ok: true, id })
 }
@@ -149,6 +220,7 @@ async function handlePlatformInstancePatch(
 function handlePlatformInstanceDelete(req: Request, id: string, authed: AuthenticatedSettingsRequest): Response {
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
+  if (lookupPlatformInstance(id) === null) return settingsJson(404, { error: 'not found' })
   deletePlatformInstance(id)
   return settingsJson(200, { ok: true, id })
 }

@@ -3,11 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { getDrizzleDb } from '../../db/drizzle.js'
+import { taskInstances } from '../../db/instance-schema.js'
 import { addGroupMember, listGroupMembers, removeGroupMember } from '../../groups.js'
 import { getContextSettings, setContextSettings } from '../../instances/context-store.js'
-import { getTaskInstance, listTaskInstances } from '../../instances/task-store.js'
+import { listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { requireScope } from '../../settings/scope-guard.js'
@@ -17,6 +20,16 @@ const log = logger.child({ scope: 'debug-server:settings-group' })
 
 type GroupContext = { contextId: string }
 type GroupOutcome = { ok: true; group: GroupContext } | { ok: false; response: Response }
+type TaskInstanceLookup = { status: string }
+
+function lookupTaskInstance(id: string): TaskInstanceLookup | null {
+  const row = getDrizzleDb()
+    .select({ status: taskInstances.status })
+    .from(taskInstances)
+    .where(eq(taskInstances.id, id))
+    .get()
+  return row ?? null
+}
 
 /** Resolve a required group scope from a raw contextId; 403 if not a manageable group. */
 function requireGroup(
@@ -64,10 +77,13 @@ function handleTaskInstanceGet(authed: AuthenticatedSettingsRequest, url: URL): 
   const outcome = requireGroup(authed, 'read', url.searchParams.get('contextId'))
   if (!outcome.ok) return outcome.response
   const settings = getContextSettings(outcome.group.contextId)
+  const available = listTaskInstancesSafe()
+    .instances.filter((taskInstance) => taskInstance.status === 'active')
+    .map((taskInstance) => ({ id: taskInstance.id, type: taskInstance.type, status: taskInstance.status }))
   return settingsJson(200, {
     contextId: outcome.group.contextId,
     taskInstanceId: settings?.taskInstanceId ?? null,
-    available: listTaskInstances().map((t) => ({ id: t.id, type: t.type, status: t.status })),
+    available,
   })
 }
 
@@ -83,8 +99,16 @@ async function handleTaskInstancePatch(req: Request, authed: AuthenticatedSettin
   const outcome = requireGroup(authed, 'write', body.data.contextId)
   if (!outcome.ok) return outcome.response
 
-  if (getTaskInstance(body.data.taskInstanceId) === null) {
+  const taskInstanceResult = listTaskInstancesSafe()
+  if (taskInstanceResult.failures.some((failure) => failure.id === body.data.taskInstanceId)) {
+    return settingsJson(422, { error: 'unreadable task instance' })
+  }
+  const taskInstance = lookupTaskInstance(body.data.taskInstanceId)
+  if (taskInstance === null) {
     return settingsJson(422, { error: 'unknown task instance' })
+  }
+  if (taskInstance.status !== 'active') {
+    return settingsJson(422, { error: 'inactive task instance' })
   }
   const existing = getContextSettings(outcome.group.contextId)
   setContextSettings({

@@ -109,6 +109,18 @@ describe('GroupProviderSection', () => {
     void unmount(component)
   })
 
+  test('shows an empty state when no active task instances are available', async () => {
+    setMockFetch(() => Promise.resolve(json({ contextId: 'group:7', taskInstanceId: null, available: [] })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.textContent).toContain('No active task instances are available for this group.')
+    expect(target.querySelector('[data-testid="group-task-instance"]')).toBeNull()
+    expect(target.querySelector('[data-testid="group-task-instance-save"]')).toBeNull()
+    void unmount(component)
+  })
+
   test('a failed save keeps the form visible and shows an error', async () => {
     setCsrfToken('c')
     setMockFetch(patchErrorMock)

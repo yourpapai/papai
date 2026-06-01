@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import type { AdminInstanceRow, ProviderType } from '../../fetcher-schemas.js'
+  import type { AdminInstanceDecodeFailure, AdminInstanceRow, ProviderType } from '../../fetcher-schemas.js'
   import {
     createAdminPlatformInstance,
     createAdminTaskInstance,
@@ -15,10 +15,13 @@
     fetchAdminTaskInstances,
     fetchAdminTaskProviderTypes,
     updateAdminPlatformInstance,
+    updateAdminTaskInstance,
   } from '../../admin-fetchers.js'
 
   let platforms: AdminInstanceRow[] = $state([])
   let tasks: AdminInstanceRow[] = $state([])
+  let platformUnreadable: AdminInstanceDecodeFailure[] = $state([])
+  let taskUnreadable: AdminInstanceDecodeFailure[] = $state([])
   let platformTypes: ProviderType[] = $state([])
   let taskTypes: ProviderType[] = $state([])
   let error: string | null = $state(null)
@@ -39,24 +42,55 @@
     error = err instanceof Error ? err.message : String(err)
   }
 
+  const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+
   async function load(): Promise<void> {
     error = null
     loading = true
+    platformUnreadable = []
+    taskUnreadable = []
     try {
-      const [p, t, pt, tt] = await Promise.all([
+      const [p, t, pt, tt] = await Promise.allSettled([
         fetchAdminPlatformInstances(),
         fetchAdminTaskInstances(),
         fetchAdminPlatformProviderTypes(),
         fetchAdminTaskProviderTypes(),
       ])
-      platforms = p.instances
-      tasks = t.instances
-      platformTypes = pt.providerTypes
-      taskTypes = tt.providerTypes
-      if (platformType === '' && platformTypes.length > 0) platformType = platformTypes[0]!.type
-      if (taskType === '' && taskTypes.length > 0) taskType = taskTypes[0]!.type
-    } catch (err) {
-      setErr(err)
+      const loadErrors: string[] = []
+
+      if (p.status === 'fulfilled') {
+        platforms = p.value.instances
+        platformUnreadable = p.value.unreadable ?? []
+      } else {
+        platforms = []
+        loadErrors.push(errorMessage(p.reason))
+      }
+
+      if (t.status === 'fulfilled') {
+        tasks = t.value.instances
+        taskUnreadable = t.value.unreadable ?? []
+      } else {
+        tasks = []
+        loadErrors.push(errorMessage(t.reason))
+      }
+
+      if (pt.status === 'fulfilled') {
+        platformTypes = pt.value.providerTypes
+        if (platformType === '' && platformTypes.length > 0) platformType = platformTypes[0]!.type
+      } else {
+        platformTypes = []
+        loadErrors.push(errorMessage(pt.reason))
+      }
+
+      if (tt.status === 'fulfilled') {
+        taskTypes = tt.value.providerTypes
+        if (taskType === '' && taskTypes.length > 0) taskType = taskTypes[0]!.type
+      } else {
+        taskTypes = []
+        loadErrors.push(errorMessage(tt.reason))
+      }
+
+      if (loadErrors.length > 0) error = loadErrors.join('; ')
     } finally {
       loading = false
     }
@@ -70,7 +104,7 @@
     for (const field of schema) {
       const value = (fields[field.key] ?? '').trim()
       if (field.required && value === '') throw new Error(`${field.label} is required`)
-      if (value !== '') config[field.key] = value
+      if (value !== '') config[field.storageKey ?? field.key] = value
     }
     return config
   }
@@ -110,6 +144,17 @@
     status = null
     try {
       await updateAdminPlatformInstance(row.id, { status: row.status === 'active' ? 'stopped' : 'active' })
+      await load()
+    } catch (err) {
+      setErr(err)
+    }
+  }
+
+  async function toggleTaskStatus(row: AdminInstanceRow): Promise<void> {
+    error = null
+    status = null
+    try {
+      await updateAdminTaskInstance(row.id, { status: row.status === 'active' ? 'stopped' : 'active' })
       await load()
     } catch (err) {
       setErr(err)
@@ -214,6 +259,11 @@
       </tbody>
     </table>
   </div>
+  {#if platformUnreadable.length > 0}
+    <p class="status-error" data-testid="platform-unreadable">
+      Unreadable platform instances hidden: {platformUnreadable.map((failure) => failure.id).join(', ')}
+    </p>
+  {/if}
 
   <h3>Task instances</h3>
   <form
@@ -255,16 +305,26 @@
         {#each tasks as row (row.id)}
           <tr>
             <td>{row.id}</td><td>{row.type}</td><td>{row.status}</td>
-            <td
-              ><button
+            <td>
+              <button
+                type="button"
+                data-testid={`task-status-${row.id}`}
+                onclick={() => void toggleTaskStatus(row)}>{row.status === 'active' ? 'Stop' : 'Start'}</button
+              >
+              <button
                 type="button"
                 data-testid={`task-delete-${row.id}`}
                 onclick={() => void deleteTask(row.id)}>Delete</button
-              ></td
-            >
+              >
+            </td>
           </tr>
         {/each}
       </tbody>
     </table>
   </div>
+  {#if taskUnreadable.length > 0}
+    <p class="status-error" data-testid="task-unreadable">
+      Unreadable task instances hidden: {taskUnreadable.map((failure) => failure.id).join(', ')}
+    </p>
+  {/if}
 </section>

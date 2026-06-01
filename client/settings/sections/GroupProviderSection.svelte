@@ -69,16 +69,20 @@
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
   {#if data !== null}
-    <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void save() }}>
-      <label>
-        <span>Task instance</span>
-        <select data-testid="group-task-instance" value={selected} onchange={(e) => (selected = (e.target as HTMLSelectElement).value)}>
-          {#each data.available as option (option.id)}
-            <option value={option.id}>{option.id} ({option.type} · {option.status})</option>
-          {/each}
-        </select>
-      </label>
-      <button type="submit" data-testid="group-task-instance-save">Save</button>
-    </form>
+    {#if data.available.length === 0}
+      <p>No active task instances are available for this group.</p>
+    {:else}
+      <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void save() }}>
+        <label>
+          <span>Task instance</span>
+          <select data-testid="group-task-instance" value={selected} onchange={(e) => (selected = (e.target as HTMLSelectElement).value)}>
+            {#each data.available as option (option.id)}
+              <option value={option.id}>{option.id} ({option.type} · {option.status})</option>
+            {/each}
+          </select>
+        </label>
+        <button type="submit" data-testid="group-task-instance-save">Save</button>
+      </form>
+    {/if}
   {/if}
 </section>

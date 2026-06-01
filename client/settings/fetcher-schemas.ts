@@ -162,12 +162,23 @@ export const AdminInstanceRowSchema = z
     createdAt: z.union([z.string(), z.number()]).nullable().optional(),
   })
   .loose()
-export const AdminInstancesResponseSchema = z.object({ instances: z.array(AdminInstanceRowSchema) })
+const InstanceDecodeFailureSchema = z.object({
+  table: z.string(),
+  id: z.string(),
+  type: z.string(),
+  error: z.string(),
+})
+export const AdminInstancesResponseSchema = z.object({
+  instances: z.array(AdminInstanceRowSchema),
+  unreadable: z.array(InstanceDecodeFailureSchema).optional(),
+})
+export type AdminInstanceDecodeFailure = z.infer<typeof InstanceDecodeFailureSchema>
 export type AdminInstanceRow = z.infer<typeof AdminInstanceRowSchema>
 export type AdminInstancesResponse = z.infer<typeof AdminInstancesResponseSchema>
 
 export const ProviderTypeFieldSchema = z.object({
   key: z.string(),
+  storageKey: z.string().optional(),
   label: z.string(),
   required: z.boolean(),
   sensitive: z.boolean(),

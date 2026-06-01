@@ -19,6 +19,17 @@ const drain = async (): Promise<void> => {
   flushSync()
 }
 
+const requestMethod = (init?: RequestInit): string => {
+  if (init?.method === undefined) return 'GET'
+  return init.method
+}
+
+const responseFor = (responses: ReadonlyMap<string, Response>, call: string): Response => {
+  const response = responses.get(call)
+  if (response === undefined) return json({})
+  return response
+}
+
 const installFetch = (): void => {
   setMockFetch((url) => {
     if (url.includes('/admin/platform-instances'))
@@ -67,6 +78,131 @@ const mockFetchWithCreateFailure = (url: string, init?: RequestInit): Promise<Re
   return Promise.resolve(json({}))
 }
 
+const createTaskStatusMock = (onPatch: () => void) => {
+  const responses = new Map<string, Response>([
+    [
+      'GET /settings/api/admin/platform-instances',
+      json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }] }),
+    ],
+    [
+      'GET /settings/api/admin/task-instances',
+      json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }] }),
+    ],
+    [
+      'GET /settings/api/admin/platform-provider-types',
+      json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+    ],
+    [
+      'GET /settings/api/admin/task-provider-types',
+      json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] }),
+    ],
+    ['PATCH /settings/api/admin/task-instances/k', json({ ok: true, id: 'k' })],
+  ])
+
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const call = `${requestMethod(init)} ${url}`
+    if (call === 'PATCH /settings/api/admin/task-instances/k') onPatch()
+    return Promise.resolve(responseFor(responses, call))
+  }
+}
+
+const extractStringBody = (init: RequestInit): string => (typeof init.body === 'string' ? init.body : '')
+
+const createTaskStorageKeyMock = (onCreate: (body: string) => void) => {
+  const responses = new Map<string, Response>([
+    [
+      'GET /settings/api/admin/platform-instances',
+      json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }], unreadable: [] }),
+    ],
+    [
+      'GET /settings/api/admin/task-instances',
+      json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }], unreadable: [] }),
+    ],
+    [
+      'GET /settings/api/admin/platform-provider-types',
+      json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+    ],
+    [
+      'GET /settings/api/admin/task-provider-types',
+      json({
+        providerTypes: [
+          {
+            type: 'kaneo',
+            displayName: 'Kaneo',
+            instanceConfigSchema: [
+              { key: 'baseUrl', storageKey: 'tracker_url', label: 'Base URL', required: true, sensitive: false },
+            ],
+          },
+        ],
+      }),
+    ],
+    ['POST /settings/api/admin/task-instances', json({ ok: true, id: 'kaneo-new' })],
+  ])
+
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const call = `${requestMethod(init)} ${url}`
+    if (call === 'POST /settings/api/admin/task-instances') {
+      onCreate(init === undefined ? '' : extractStringBody(init))
+    }
+    return Promise.resolve(responseFor(responses, call))
+  }
+}
+
+const createProviderTypeFailureMock = () => {
+  const responses = new Map<string, Response>([
+    [
+      'GET /settings/api/admin/platform-instances',
+      json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }], unreadable: [] }),
+    ],
+    [
+      'GET /settings/api/admin/task-instances',
+      json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }], unreadable: [] }),
+    ],
+    [
+      'GET /settings/api/admin/platform-provider-types',
+      json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+    ],
+    ['GET /settings/api/admin/task-provider-types', new Response('provider types unavailable', { status: 500 })],
+  ])
+
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const call = `${requestMethod(init)} ${url}`
+    return Promise.resolve(responseFor(responses, call))
+  }
+}
+
+const createUnreadableDiagnosticsMock = () => {
+  const responses = new Map<string, Response>([
+    [
+      'GET /settings/api/admin/platform-instances',
+      json({
+        instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }],
+        unreadable: [{ table: 'platform_instances', id: 'pi-broken', type: 'telegram', error: 'Encrypted payload' }],
+      }),
+    ],
+    [
+      'GET /settings/api/admin/task-instances',
+      json({
+        instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }],
+        unreadable: [{ table: 'task_instances', id: 'ti-broken', type: 'kaneo', error: 'Encrypted payload' }],
+      }),
+    ],
+    [
+      'GET /settings/api/admin/platform-provider-types',
+      json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+    ],
+    [
+      'GET /settings/api/admin/task-provider-types',
+      json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] }),
+    ],
+  ])
+
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const call = `${requestMethod(init)} ${url}`
+    return Promise.resolve(responseFor(responses, call))
+  }
+}
+
 describe('AdminInstancesSection', () => {
   test('renders platform and task instance rows', async () => {
     installFetch()
@@ -96,6 +232,87 @@ describe('AdminInstancesSection', () => {
     await drain()
     expect(target.querySelector('.status-error')).not.toBeNull()
     expect(target.textContent).toContain('tg')
+    void unmount(component)
+  })
+
+  test('renders a task status button and calls PATCH when clicked', async () => {
+    setCsrfToken('c')
+    let taskPatchSeen = false
+    setMockFetch(
+      createTaskStatusMock(() => {
+        taskPatchSeen = true
+      }),
+    )
+
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="task-status-k"]')!.click()
+    await drain()
+
+    expect(taskPatchSeen).toBe(true)
+    void unmount(component)
+  })
+
+  test('creates task instances using storageKey when present', async () => {
+    setCsrfToken('c')
+    let createBody = ''
+    setMockFetch(
+      createTaskStorageKeyMock((body) => {
+        createBody = body
+      }),
+    )
+
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+
+    const taskIdInput = target.querySelector<HTMLInputElement>('[data-testid="task-id"]')!
+    taskIdInput.value = 'kaneo-new'
+    taskIdInput.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    const taskConfigInput = target.querySelectorAll<HTMLInputElement>('input')[2]!
+    taskConfigInput.value = 'https://kaneo.invalid'
+    taskConfigInput.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    taskIdInput.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await drain()
+
+    expect(createBody).toBe(
+      JSON.stringify({ id: 'kaneo-new', type: 'kaneo', config: { tracker_url: 'https://kaneo.invalid' } }),
+    )
+    void unmount(component)
+  })
+
+  test('keeps instance rows visible when a provider types request fails', async () => {
+    setMockFetch(createProviderTypeFailureMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+
+    await drain()
+
+    expect(target.textContent).toContain('tg')
+    expect(target.textContent).toContain('k')
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('shows unreadable instance diagnostics from list responses', async () => {
+    setMockFetch(createUnreadableDiagnosticsMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+
+    await drain()
+
+    expect(target.querySelector('[data-testid="platform-unreadable"]')?.textContent).toContain('pi-broken')
+    expect(target.querySelector('[data-testid="task-unreadable"]')?.textContent).toContain('ti-broken')
     void unmount(component)
   })
 })
