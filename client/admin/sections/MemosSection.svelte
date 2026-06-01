@@ -7,8 +7,10 @@
   import type { Memo } from '../../shared/api-types.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
+  import Input from '../../shared/ui/Input.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import Seg from '../../shared/ui/Seg.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
   import { fetchMemos } from '../fetchers.js'
 
   let userId = $state('')
@@ -87,25 +89,16 @@
           e.preventDefault()
           void loadMemos()
         }}>
-        <input
-          class="memos__user-id-input"
-          data-testid="memos-user-id"
-          type="text"
-          bind:value={userId}
-          placeholder="user id" />
+        <Input value={userId} onInput={(v) => (userId = v)} placeholder="user id" testid="memos-user-id" />
         <Seg
           options={['active', 'archived']}
           value={state}
           onChange={(v) => {
             state = v as 'active' | 'archived'
           }} />
-        <button
-          class="memos__load-btn"
-          data-testid="memos-load"
-          type="submit"
-          disabled={userId.trim() === '' || loading}>
-          {loading ? 'Loading…' : 'Load'}
-        </button>
+        <Btn variant="primary" size="sm" type="submit" testid="memos-load" disabled={userId.trim() === '' || loading}>
+          {#snippet children()}{loading ? 'Loading…' : 'Load'}{/snippet}
+        </Btn>
       </form>
     {/snippet}
     {#snippet body()}
@@ -117,7 +110,15 @@
         {:else if memos.length === 0}
           <p class="placeholder">No memos found</p>
         {:else}
-          <DataTable {columns} {rows} rowKey="id" />
+          <DataTable {columns} {rows} rowKey="id">
+            {#snippet cell(row, col)}
+              {#if col.key === 'status'}
+                <StatusPill status={row.status} />
+              {:else}
+                {String(row[col.key] ?? '')}
+              {/if}
+            {/snippet}
+          </DataTable>
         {/if}
       </div>
     {/snippet}
@@ -132,32 +133,6 @@
     display: flex;
     align-items: center;
     gap: 6px;
-  }
-  .memos__user-id-input {
-    background: var(--raised);
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    color: var(--fg);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    outline: 0;
-    padding: 4px 10px;
-  }
-  .memos__load-btn {
-    background: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: 2px;
-    color: var(--bg);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
-    height: 22px;
-    padding: 3px 8px;
-  }
-  .memos__load-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
   }
   .memos__body {
     padding: 0;

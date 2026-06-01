@@ -34,6 +34,13 @@ const responseFor = (responses: ReadonlyMap<string, Response>, url: string): Pro
 }
 
 describe('MemosSection', () => {
+  test('renders kit controls: Input for user id, Btn for load', () => {
+    const { target, component } = render()
+    expect(target.querySelector('[data-testid="memos-user-id"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="memos-load"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
   test('loads memos for a user and selected state', async () => {
     const calls: string[] = []
     const responses = new Map<string, Response>([
