@@ -30,6 +30,7 @@
     padding: 14px 16px;
   }
   .ui-stat__value {
+    font-family: var(--font-mono);
     font-size: 26px;
     font-weight: 600;
     color: var(--fg);
