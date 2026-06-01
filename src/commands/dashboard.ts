@@ -6,12 +6,15 @@
 import type { ChatProvider, CommandHandler } from '../chat/types.js'
 import { getClaimTtlSeconds, issueClaim } from '../dashboard-auth/index.js'
 import { logger } from '../logger.js'
+import { getSettingsPublicBaseUrl } from '../settings/config.js'
 
 const log = logger.child({ scope: 'commands:dashboard' })
 
 const defaultBaseUrl = (): string => {
   const explicit = process.env['DASHBOARD_BASE_URL']
   if (explicit !== undefined && explicit !== '') return explicit.replace(/\/$/u, '')
+  const settingsBase = getSettingsPublicBaseUrl()
+  if (settingsBase !== null) return settingsBase
   const host = process.env['DEBUG_HOSTNAME'] ?? '127.0.0.1'
   const port = process.env['DEBUG_PORT'] ?? '9100'
   return `http://${host}:${port}`
