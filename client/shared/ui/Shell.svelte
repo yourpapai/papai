@@ -24,13 +24,18 @@
     background: var(--bg);
     color: var(--fg);
     font-family: var(--font-mono);
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+  }
+  .ui-shell__topbar {
+    flex: 0 0 auto;
   }
   .ui-shell__body {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
+    overflow-y: auto;
     padding: 16px;
   }
 </style>

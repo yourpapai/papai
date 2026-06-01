@@ -41,7 +41,11 @@
     padding: 12px;
     background: var(--surface);
     border-right: 1px solid var(--border);
-    min-height: 100vh;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    overflow-y: auto;
   }
   .settings-sidebar__nav {
     display: flex;
@@ -64,5 +68,11 @@
     color: var(--accent);
     border-left-color: var(--accent);
     background: var(--raised);
+  }
+  @media (max-width: 720px) {
+    .settings-sidebar {
+      position: static;
+      max-height: none;
+    }
   }
 </style>
