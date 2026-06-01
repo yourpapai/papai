@@ -8,7 +8,6 @@
 
   import type {
     AdminInstanceView,
-    InstanceConfigView,
     PlatformInstanceView,
     PlatformProviderTypeView,
     TaskInstanceView,
@@ -30,8 +29,13 @@
     updatePlatformInstance,
   } from '../fetchers.js'
   import Btn from '../../shared/ui/Btn.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Input from '../../shared/ui/Input.svelte'
+  import JsonCell from '../../shared/ui/JsonCell.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
+  import Select from '../../shared/ui/Select.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
 
   type FormStatus = { readonly kind: 'success' | 'error'; readonly message: string }
   type PlatformType = PlatformInstanceView['type']
@@ -57,7 +61,6 @@
   const selectedPlatformType = $derived(platformProviderTypes.find((descriptor) => descriptor.type === platformType))
   const selectedTaskType = $derived(taskProviderTypes.find((descriptor) => descriptor.type === taskType))
 
-  const configLabel = (config: InstanceConfigView): string => JSON.stringify(config)
   const fieldStorageKey = (field: { readonly key: string; readonly storageKey?: string }): string => field.storageKey ?? field.key
   const setSuccess = (message: string): void => {
     status = { kind: 'success', message }
@@ -287,35 +290,38 @@
 
   <div class="admin-subsection-grid instances-grid">
     <Panel title="platform instances">
+      {#snippet action()}
+        <Btn variant="secondary" size="sm" testid="platform-apply-button" onClick={() => void applyPlatforms()}>
+          {#snippet children()}Apply changes{/snippet}
+        </Btn>
+      {/snippet}
       {#snippet body()}
-        <div class="instances-subheader">
-          <h3>Platform Instances</h3>
-          <button type="button" data-testid="platform-apply-button" onclick={() => void applyPlatforms()}>Apply changes</button>
-        </div>
         {#if platformDirty}
           <p class="placeholder" data-testid="platform-unapplied-indicator">Platform changes are unapplied</p>
         {/if}
         <form class="admin-filter-form" data-testid="platform-create-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
-          <label><span>ID</span><input data-testid="platform-id-input" bind:value={platformId} /></label>
-          <label>
-            <span>Type</span>
-            <select data-testid="platform-type-input" bind:value={platformType}>
-              {#each platformProviderTypes as descriptor (descriptor.type)}
-                <option value={descriptor.type}>{descriptor.displayName}</option>
-              {/each}
-            </select>
-          </label>
+          <Field label="ID">
+            <Input value={platformId} onInput={(v) => (platformId = v)} testid="platform-id-input" />
+          </Field>
+          <Field label="Type">
+            <Select
+              value={platformType}
+              options={platformProviderTypes.map((d) => ({ value: d.type, label: d.displayName }))}
+              onChange={(v) => (platformType = v as PlatformType)}
+              testid="platform-type-input" />
+          </Field>
           {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
-            <label>
-              <span>{field.label}{field.required ? ' *' : ''}</span>
-              <input
-                data-testid={`platform-config-${field.key}`}
+            <Field label={field.label} required={field.required}>
+              <Input
                 type={field.sensitive ? 'password' : 'text'}
-                bind:value={platformConfigFields[field.key]}
-              />
-            </label>
+                value={platformConfigFields[field.key] ?? ''}
+                onInput={(v) => (platformConfigFields[field.key] = v)}
+                testid={`platform-config-${field.key}`} />
+            </Field>
           {/each}
-          <button type="submit" data-testid="platform-create-button">Create</button>
+          <Btn type="submit" variant="primary" testid="platform-create-button">
+            {#snippet children()}Create{/snippet}
+          </Btn>
         </form>
         <div class="admin-table-wrap">
           <table class="admin-table">
@@ -323,10 +329,18 @@
             <tbody>
               {#each platformInstances as instance (instance.id)}
                 <tr data-testid="platform-instance-row">
-                  <td>{instance.id}</td><td>{instance.type}</td><td>{instance.status}</td><td>{configLabel(instance.config)}</td><td>{instance.createdAt}</td>
-                  <td>
-                    <button type="button" data-testid={`platform-status-${instance.id}`} onclick={() => void updatePlatformStatus(instance)}>{instance.status === 'active' ? 'Stop' : 'Start'}</button>
-                    <button type="button" data-testid={`platform-delete-${instance.id}`} onclick={() => void removePlatform(instance.id)}>Delete</button>
+                  <td>{instance.id}</td>
+                  <td>{instance.type}</td>
+                  <td><StatusPill status={instance.status} /></td>
+                  <td><JsonCell value={instance.config} /></td>
+                  <td>{instance.createdAt}</td>
+                  <td class="admin-table__actions">
+                    <Btn variant="outline" size="sm" testid={`platform-status-${instance.id}`} onClick={() => void updatePlatformStatus(instance)}>
+                      {#snippet children()}{instance.status === 'active' ? 'Stop' : 'Start'}{/snippet}
+                    </Btn>
+                    <Btn variant="danger" size="sm" testid={`platform-delete-${instance.id}`} onClick={() => void removePlatform(instance.id)}>
+                      {#snippet children()}Delete{/snippet}
+                    </Btn>
                   </td>
                 </tr>
               {/each}
@@ -338,28 +352,29 @@
 
     <Panel title="task instances">
       {#snippet body()}
-        <h3>Task Instances</h3>
         <form class="admin-filter-form" data-testid="task-create-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
-          <label><span>ID</span><input data-testid="task-id-input" bind:value={taskId} /></label>
-          <label>
-            <span>Type</span>
-            <select data-testid="task-type-input" bind:value={taskType}>
-              {#each taskProviderTypes as descriptor (descriptor.type)}
-                <option value={descriptor.type}>{descriptor.displayName}</option>
-              {/each}
-            </select>
-          </label>
+          <Field label="ID">
+            <Input value={taskId} onInput={(v) => (taskId = v)} testid="task-id-input" />
+          </Field>
+          <Field label="Type">
+            <Select
+              value={taskType}
+              options={taskProviderTypes.map((d) => ({ value: d.type, label: d.displayName }))}
+              onChange={(v) => (taskType = v)}
+              testid="task-type-input" />
+          </Field>
           {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
-            <label>
-              <span>{field.label}{field.required ? ' *' : ''}</span>
-              {#if field.sensitive}
-                <input data-testid={`task-config-${field.key}`} type="password" bind:value={taskConfigFields[field.key]} />
-              {:else}
-                <input data-testid={`task-config-${field.key}`} bind:value={taskConfigFields[field.key]} />
-              {/if}
-            </label>
+            <Field label={field.label} required={field.required}>
+              <Input
+                type={field.sensitive ? 'password' : 'text'}
+                value={taskConfigFields[field.key] ?? ''}
+                onInput={(v) => (taskConfigFields[field.key] = v)}
+                testid={`task-config-${field.key}`} />
+            </Field>
           {/each}
-          <button type="submit" data-testid="task-create-button">Create</button>
+          <Btn type="submit" variant="primary" testid="task-create-button">
+            {#snippet children()}Create{/snippet}
+          </Btn>
         </form>
         <div class="admin-table-wrap">
           <table class="admin-table">
@@ -367,12 +382,18 @@
             <tbody>
               {#each taskInstances as instance (instance.id)}
                 <tr data-testid="task-instance-row">
-                  <td>{instance.id}</td><td>{instance.type}</td><td>{instance.status}</td><td>{configLabel(instance.config)}</td><td>{instance.createdAt}</td>
-                  <td>
+                  <td>{instance.id}</td>
+                  <td>{instance.type}</td>
+                  <td><StatusPill status={instance.status} /></td>
+                  <td><JsonCell value={instance.config} /></td>
+                  <td>{instance.createdAt}</td>
+                  <td class="admin-table__actions">
                     {#if instance.unresolvedReason}
                       <span data-testid={`task-instance-unresolved-${instance.id}`} class="unresolved-label">{instance.unresolvedReason}</span>
                     {/if}
-                    <button type="button" data-testid={`task-delete-${instance.id}`} onclick={() => void removeTask(instance)}>Delete</button>
+                    <Btn variant="danger" size="sm" testid={`task-delete-${instance.id}`} onClick={() => void removeTask(instance)}>
+                      {#snippet children()}Delete{/snippet}
+                    </Btn>
                   </td>
                 </tr>
               {/each}
@@ -384,11 +405,16 @@
 
     <Panel title="admins">
       {#snippet body()}
-        <h3>Admins</h3>
         <form class="admin-filter-form" data-testid="admin-create-form" onsubmit={(event) => { event.preventDefault(); void addAdmin() }}>
-          <label><span>User ID</span><input data-testid="admin-user-id-input" bind:value={adminUserId} /></label>
-          <label><span>Platform Instance ID</span><input data-testid="admin-platform-id-input" bind:value={adminPlatformInstanceId} /></label>
-          <button type="submit" data-testid="admin-create-button">Create</button>
+          <Field label="User ID">
+            <Input value={adminUserId} onInput={(v) => (adminUserId = v)} testid="admin-user-id-input" />
+          </Field>
+          <Field label="Platform Instance ID">
+            <Input value={adminPlatformInstanceId} onInput={(v) => (adminPlatformInstanceId = v)} testid="admin-platform-id-input" />
+          </Field>
+          <Btn type="submit" variant="primary" testid="admin-create-button">
+            {#snippet children()}Create{/snippet}
+          </Btn>
         </form>
         <div class="admin-table-wrap">
           <table class="admin-table">
@@ -396,8 +422,14 @@
             <tbody>
               {#each admins as admin (`${admin.userId}:${admin.platformInstanceId}`)}
                 <tr data-testid="admin-instance-row">
-                  <td>{admin.userId}</td><td>{admin.platformInstanceId}</td><td>{admin.createdAt ?? 'n/a'}</td>
-                  <td><button type="button" data-testid={`admin-remove-${admin.userId}`} onclick={() => void removeAdmin(admin.userId, admin.platformInstanceId)}>Remove</button></td>
+                  <td>{admin.userId}</td>
+                  <td>{admin.platformInstanceId}</td>
+                  <td>{admin.createdAt ?? 'n/a'}</td>
+                  <td class="admin-table__actions">
+                    <Btn variant="danger" size="sm" testid={`admin-remove-${admin.userId}`} onClick={() => void removeAdmin(admin.userId, admin.platformInstanceId)}>
+                      {#snippet children()}Remove{/snippet}
+                    </Btn>
+                  </td>
                 </tr>
               {/each}
             </tbody>
@@ -412,22 +444,6 @@
   .instances-grid section {
     display: grid;
     gap: 12px;
-  }
-
-  .instances-subheader {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .instances-subheader button,
-  .admin-table button {
-    padding: 8px 10px;
-    border: 1px solid var(--strong);
-    border-radius: 2px;
-    background: var(--bg);
-    color: var(--fg);
   }
 
   .status-success {
@@ -445,10 +461,9 @@
     font-size: 0.8em;
   }
 
-  @media (max-width: 720px) {
-    .instances-subheader {
-      flex-direction: column;
-      align-items: stretch;
-    }
+  .admin-table__actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
   }
 </style>

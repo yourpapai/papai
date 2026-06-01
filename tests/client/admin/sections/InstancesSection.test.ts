@@ -221,27 +221,16 @@ const enterValue = (el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEleme
   el.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-// happy-dom (v20) does not sync <option> :checked/selected state from select.value, so
-// Svelte 5's change-event bind:value path never updates. Drive selection via the
-// [selected]-attribute + form-reset path, which Svelte reads on the is_reset branch.
-const selectTaskType = (target: HTMLElement, formTestId: string, value: string): void => {
+// The Select kit component uses an onChange handler that reads event.target.value,
+// so setting el.value + dispatching change is sufficient (no bind:value reset trick needed).
+const selectTaskType = (target: HTMLElement, _formTestId: string, value: string): void => {
   const el = select(target, 'task-type-input')
-  const option = el.querySelector<HTMLOptionElement>(`option[value="${value}"]`)
-  if (option === null) throw new Error(`option ${value} missing`)
-  option.setAttribute('selected', '')
-  const form = target.querySelector<HTMLFormElement>(`[data-testid="${formTestId}"]`)
-  if (form === null) throw new Error(`${formTestId} missing`)
-  form.dispatchEvent(new Event('reset', { bubbles: true }))
+  enterValue(el, value)
 }
 
 const selectPlatformType = (target: HTMLElement, value: string): void => {
   const el = select(target, 'platform-type-input')
-  const option = el.querySelector<HTMLOptionElement>(`option[value="${value}"]`)
-  if (option === null) throw new Error(`option ${value} missing`)
-  option.setAttribute('selected', '')
-  const form = target.querySelector<HTMLFormElement>('[data-testid="platform-create-form"]')
-  if (form === null) throw new Error('platform-create-form missing')
-  form.dispatchEvent(new Event('reset', { bubbles: true }))
+  enterValue(el, value)
 }
 
 const setConfirm = (value: boolean): void => {
@@ -280,7 +269,7 @@ describe('InstancesSection', () => {
     const { target, component } = render()
     await drain()
 
-    expect(target.textContent).toContain('Platform Instances')
+    expect(target.textContent).toContain('platform instances')
     expect(callNames(calls)).toContain('GET /api/platform-provider-types')
     expect(target.textContent).toContain('telegram-main')
     expect(target.textContent).toContain('****1234')
@@ -289,9 +278,9 @@ describe('InstancesSection', () => {
     await drain()
     expect(input(target, 'platform-config-baseUrl')).toBeTruthy()
     expect(input(target, 'platform-config-token').type).toBe('password')
-    expect(target.textContent).toContain('Task Instances')
+    expect(target.textContent).toContain('task instances')
     expect(target.textContent).toContain('kaneo-main')
-    expect(target.textContent).toContain('Admins')
+    expect(target.textContent).toContain('admins')
     expect(target.textContent).toContain('admin-user')
 
     void unmount(component)
@@ -665,6 +654,26 @@ describe('InstancesSection', () => {
     const label = target.querySelector('[data-testid="task-instance-unresolved-no-plugin-main"]')
     expect(label).not.toBeNull()
     expect(label?.textContent).toContain('not active')
+
+    void unmount(component)
+  })
+
+  test('renders StatusPill, JsonCell, and kit Btn/Input for platform instances (B2/B3/B4/B5)', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    // B4: StatusPill — the active instance must render a .ui-pill element
+    expect(target.querySelector('.ui-pill')).not.toBeNull()
+    // B5: JsonCell — the object config must render a .ui-jsoncell element (not raw JSON string)
+    expect(target.querySelector('.ui-jsoncell')).not.toBeNull()
+    expect(target.textContent).not.toContain('{"TELEGRAM_BOT_TOKEN"')
+    // B2: Create button uses Btn kit component (has .ui-btn class)
+    expect(target.querySelector('[data-testid="platform-create-button"]')?.classList.contains('ui-btn')).toBe(true)
+    // B3: ID input is wrapped in .ui-input (Input kit component)
+    expect(target.querySelector('[data-testid="platform-id-input"]')?.closest('.ui-input')).not.toBeNull()
 
     void unmount(component)
   })
