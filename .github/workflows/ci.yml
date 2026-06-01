@@ -41,6 +41,19 @@ jobs:
           path: public/
           retention-days: 1
 
+  smoke:
+    name: Docker smoke test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke test against the freshly built image
+        env:
+          IMAGE_TAG: papai:ci-build-${{ github.sha }}
+          ADMIN_USER_ID: 'smoke-admin'
+          STARTUP_DEADLINE_SECONDS: '15'
+        run: bash scripts/ci/docker-smoke-test.sh
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
