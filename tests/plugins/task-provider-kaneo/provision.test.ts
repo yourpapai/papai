@@ -17,6 +17,7 @@ import {
   provisionKaneoUser,
 } from '../../../plugins/task-provider-kaneo/provision.js'
 import { userCachesForTesting, getCachedTools, setCachedTools } from '../../../src/cache.js'
+import { getConfigValue } from '../../../src/config.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import {
@@ -33,6 +34,7 @@ import {
 } from '../../utils/test-helpers.js'
 
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:workspaceId'
 
 function assignKaneoContext(contextId: string): void {
   insertTaskInstance({
@@ -660,7 +662,11 @@ describe('kaneoProvision', () => {
   })
 
   test('forwards publicUrl/internalUrl/contextId/username to provisionAndConfigure', async () => {
-    setMockFetch(routeKaneoProvisionHook)
+    const capturedUrls: string[] = []
+    setMockFetch((url) => {
+      capturedUrls.push(url)
+      return routeKaneoProvisionHook(url)
+    })
 
     const outcome = await kaneoProvision({
       contextId: 'ctx-1',
@@ -673,5 +679,8 @@ describe('kaneoProvision', () => {
     expect(outcome.email).toContain('alice')
     expect(outcome.kaneoUrl).toBe('https://k.example.com')
     expect(outcome.workspaceId).toBe('ws-1')
+    expect(capturedUrls.length).toBeGreaterThan(0)
+    expect(capturedUrls.every((u) => u.startsWith('https://k-internal.example.com/'))).toBe(true)
+    expect(getConfigValue('ctx-1', KANEO_PLUGIN_WORKSPACE_KEY)).toBe('ws-1')
   })
 })
