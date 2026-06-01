@@ -304,6 +304,23 @@ type PluginContextLike = {
               username: string | null
               reply: unknown
             }) => Promise<boolean> | boolean
+            provision?: (context: {
+              contextId: string
+              username: string | null
+              publicUrl: string | undefined
+              internalUrl: string | undefined
+            }) => Promise<
+              | {
+                  status: 'provisioned'
+                  email: string
+                  password: string
+                  kaneoUrl: string
+                  apiKey: string
+                  workspaceId: string
+                }
+              | { status: 'registration_disabled' }
+              | { status: 'failed'; error: string }
+            >
           },
     ): void
   }
@@ -329,6 +346,8 @@ export default factory
 ```
 
 Provider plugins may also supply `autoProvision` in the object form when the framework should offer provider-specific setup/provisioning flows through `/start`, `/setup`, or DM auto-provisioning.
+
+For self-hosted provider instances, plugins may additionally supply `provision` — the HTTP-route-dispatch counterpart used by the settings web UI's provisioning flow (`/admin` → provision). Unlike `autoProvision`, `provision` is called from a settings-web request (no `chatUserId`, no `reply`), receives the operator-configured `publicUrl` and `internalUrl` from the task instance, and returns a typed outcome — either a `provisioned` envelope (with credentials + URL + API key + workspace id) the UI can hand back to the operator, `registration_disabled` when the upstream explicitly rejects sign-up, or `failed` with an `error` string. The settings route dispatches this hook through the registry (`getTaskProviderProvision(type)` in `src/providers/registry.ts`) so the route never has to statically import the plugin module — plugins that want a hosted-instance flow can simply export a `provision` function and register it.
 
 ### `validateConfig` contract
 
