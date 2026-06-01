@@ -16,6 +16,17 @@ type TaskProviderAutoProvisionLike = (context: {
   reply: unknown
 }) => Promise<boolean> | boolean
 
+type TaskProviderProvisionLike = (context: {
+  contextId: string
+  username: string | null
+  publicUrl: string | undefined
+  internalUrl: string | undefined
+}) => Promise<
+  | { status: 'provisioned'; email: string; password: string; kaneoUrl: string; apiKey: string; workspaceId: string }
+  | { status: 'registration_disabled' }
+  | { status: 'failed'; error: string }
+>
+
 type PluginContextLike = {
   registration: {
     registerTaskProviderType(
@@ -25,6 +36,7 @@ type PluginContextLike = {
         | {
             factory: (config: Record<string, string>) => TaskProviderLike
             autoProvision?: TaskProviderAutoProvisionLike
+            provision?: TaskProviderProvisionLike
           },
     ): void
   }
@@ -32,6 +44,7 @@ type PluginContextLike = {
 
 type KaneoProvisionModule = {
   kaneoAutoProvision: TaskProviderAutoProvisionLike
+  kaneoProvision: TaskProviderProvisionLike
 }
 
 type PluginInstanceLike = {
@@ -47,7 +60,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isKaneoProvisionModule(value: unknown): value is KaneoProvisionModule {
-  return isRecord(value) && typeof value['kaneoAutoProvision'] === 'function'
+  return (
+    isRecord(value) &&
+    typeof value['kaneoAutoProvision'] === 'function' &&
+    typeof value['kaneoProvision'] === 'function'
+  )
 }
 
 function getKaneoProvisionModule(): KaneoProvisionModule {
@@ -65,9 +82,11 @@ const factory: PluginFactoryLike = () => ({
   activate(ctx: PluginContextLike): void {
     // KNOWN GAP (#15): provider clients still use global fetch instead of ctx.providerRuntime.
     // Provider runtime enforcement needs factory/client plumbing plus dynamic-host admission.
+    const provisionModule = getKaneoProvisionModule()
     ctx.registration.registerTaskProviderType('kaneo', {
       factory: (config): TaskProviderLike => createKaneoProvider(config),
-      autoProvision: getKaneoProvisionModule().kaneoAutoProvision,
+      autoProvision: provisionModule.kaneoAutoProvision,
+      provision: provisionModule.kaneoProvision,
     })
   },
 })
