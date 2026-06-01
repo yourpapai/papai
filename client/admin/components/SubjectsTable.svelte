@@ -23,6 +23,7 @@
 
   interface Row {
     storageContextId: string
+    subjectRef: BillingSubject
     subject: string
     type: string
     main: string
@@ -35,17 +36,16 @@
   const rows = $derived<Row[]>(
     subjects.map((s) => ({
       storageContextId: s.storageContextId,
+      subjectRef: s,
       subject: displayLabel(s),
       type: s.contextType,
       main: `${fmtNum(s.totals.main.inputTokens, 0)} / ${fmtNum(s.totals.main.outputTokens, 0)}`,
       small: `${fmtNum(s.totals.small.inputTokens, 0)} / ${fmtNum(s.totals.small.outputTokens, 0)}`,
       embedding: fmtNum(s.totals.embedding.inputTokens, 0),
       tools: fmtNum(s.toolCalls, 0),
-      last: formatTime(new Date(s.lastActiveAt).toISOString()),
+      last: formatTime(s.lastActiveAt),
     })),
   )
-
-  const byId = $derived(new Map(subjects.map((s) => [s.storageContextId, s])))
 
   const columns = [
     { key: 'subject' as const, label: 'Subject', width: '1.4fr' },
@@ -58,8 +58,7 @@
   ]
 
   function handleRowClick(row: Row): void {
-    const found = byId.get(row.storageContextId)
-    if (found !== undefined) onSelect(found)
+    onSelect(row.subjectRef)
   }
 </script>
 

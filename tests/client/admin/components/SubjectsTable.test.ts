@@ -8,7 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { mount, unmount } from 'svelte'
 
 import SubjectsTable from '../../../../client/admin/components/SubjectsTable.svelte'
-import type { BillingSubject } from '../../../../client/shared/api-types'
+import type { BillingSubject } from '../../../../client/shared/api-types.js'
 
 function subject(over: Partial<BillingSubject> = {}): BillingSubject {
   return {
@@ -60,6 +60,47 @@ describe('SubjectsTable.svelte', () => {
     target.querySelector<HTMLElement>('.ui-datatable__tr')!.click()
     expect(picked).toHaveLength(1)
     expect(picked[0]?.storageContextId).toBe('ctx-1')
+    void unmount(c)
+  })
+
+  test('shows empty-state text when subjects is empty', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(SubjectsTable, { target, props: { subjects: [], onSelect: () => {} } })
+    expect(target.textContent).toContain('No usage in the selected window')
+    void unmount(c)
+  })
+
+  test('renders one row per subject with display name', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(SubjectsTable, {
+      target,
+      props: {
+        subjects: [
+          subject({ storageContextId: 'user-A', displayName: 'alice' }),
+          subject({ storageContextId: 'user-B', displayName: 'bob' }),
+        ],
+        onSelect: () => {},
+      },
+    })
+    const text = target.textContent
+    expect(text).toContain('alice')
+    expect(text).toContain('bob')
+    void unmount(c)
+  })
+
+  test('falls back to storageContextId when displayName is null', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(SubjectsTable, {
+      target,
+      props: {
+        subjects: [subject({ storageContextId: 'user-A', displayName: null })],
+        onSelect: () => {},
+      },
+    })
+    expect(target.textContent).toContain('user-A')
     void unmount(c)
   })
 })
