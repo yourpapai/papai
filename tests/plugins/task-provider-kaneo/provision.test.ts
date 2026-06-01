@@ -6,11 +6,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { kaneoProvision } from '../../../plugins/task-provider-kaneo/auto-provision.js'
 import { isKaneoSessionCookie, type KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
 import { ALL_CAPABILITIES, KANEO_TRAITS } from '../../../plugins/task-provider-kaneo/constants.js'
 import { KaneoProvider } from '../../../plugins/task-provider-kaneo/provider.js'
 import {
   maybeProvisionKaneo,
+  type ProvisionOutcome,
   provisionAndConfigure,
   provisionKaneoUser,
 } from '../../../plugins/task-provider-kaneo/provision.js'
@@ -244,6 +246,21 @@ function routeStandardProvision(url: string): Promise<Response> {
   return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
 }
 
+function routeKaneoProvisionHook(url: string): Promise<Response> {
+  if (url.includes('/sign-up')) {
+    return Promise.resolve(
+      new Response(JSON.stringify({ user: { id: 'u' }, token: 'session-cookie' }), { status: 200 }),
+    )
+  }
+  if (url.includes('/organization/create')) {
+    return Promise.resolve(new Response(JSON.stringify({ id: 'ws-1', slug: 's' }), { status: 200 }))
+  }
+  if (url.includes('/api-key/create')) {
+    return Promise.resolve(new Response(JSON.stringify({ key: 'k' }), { status: 200 }))
+  }
+  return Promise.resolve(new Response('{}', { status: 200 }))
+}
+
 function extractCapturedHeaders(_url: string, options: RequestInit | undefined): Record<string, string> {
   const headers = options === undefined ? undefined : options.headers
   if (headers === undefined) {
@@ -264,6 +281,12 @@ const buildKaneoConfig = (config: Record<string, string>): KaneoConfig => {
   return isKaneoSessionCookie(credential)
     ? { apiKey: '', baseUrl, sessionCookie: credential }
     : { apiKey: credential, baseUrl }
+}
+
+function assertProvisioned(
+  outcome: ProvisionOutcome,
+): asserts outcome is Extract<ProvisionOutcome, { status: 'provisioned' }> {
+  expect(outcome.status).toBe('provisioned')
 }
 
 describe('provisionKaneoUser - unique email generation', () => {
@@ -624,5 +647,31 @@ describe('maybeProvisionKaneo', () => {
 
     expect(textCalls).toHaveLength(1)
     expect(requestedUrls.every((url) => url.startsWith('https://kaneo.public.invalid/'))).toBe(true)
+  })
+})
+
+describe('kaneoProvision', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  afterEach(() => {
+    restoreFetch()
+  })
+
+  test('forwards publicUrl/internalUrl/contextId/username to provisionAndConfigure', async () => {
+    setMockFetch(routeKaneoProvisionHook)
+
+    const outcome = await kaneoProvision({
+      contextId: 'ctx-1',
+      username: 'alice',
+      publicUrl: 'https://k.example.com',
+      internalUrl: 'https://k-internal.example.com',
+    })
+
+    assertProvisioned(outcome)
+    expect(outcome.email).toContain('alice')
+    expect(outcome.kaneoUrl).toBe('https://k.example.com')
+    expect(outcome.workspaceId).toBe('ws-1')
   })
 })
