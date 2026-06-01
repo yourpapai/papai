@@ -629,6 +629,20 @@ describe('InstancesSection', () => {
     void unmount(component)
   })
 
+  test('renders the Instances header via PageHeader', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    expect(target.querySelector('[data-testid="admin-section-title"]')?.textContent).toBe('Instances')
+    expect(target.querySelector('.ui-page-header')).not.toBeNull()
+    expect(target.querySelector('.admin-section-header')).toBeNull()
+
+    void unmount(component)
+  })
+
   test('shows unresolved label when a task instance has no active provider plugin', async () => {
     const unresolvedReason =
       "Provider plugin for type 'no-plugin' is not active. Approve it in the settings web UI admin area (Plugins approval)."

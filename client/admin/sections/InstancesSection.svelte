@@ -30,6 +30,7 @@
     updatePlatformInstance,
   } from '../fetchers.js'
   import Btn from '../../shared/ui/Btn.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
 
   type FormStatus = { readonly kind: 'success' | 'error'; readonly message: string }
@@ -272,15 +273,13 @@
 </script>
 
 <section id="instances" class="admin-data-section admin-section">
-  <header class="admin-section-header">
-    <div>
-      <p class="eyebrow">Runtime</p>
-      <h2 data-testid="admin-section-title">Instances</h2>
-    </div>
-    <Btn variant="secondary" size="sm" onClick={() => void refreshAll()}>
-      {#snippet children()}{loading ? 'Refreshing...' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader eyebrow="Runtime" title="Instances" titleTestId="admin-section-title">
+    {#snippet action()}
+      <Btn variant="secondary" size="sm" onClick={() => void refreshAll()}>
+        {#snippet children()}{loading ? 'Refreshing...' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if status !== null}
     <p class={status.kind === 'error' ? 'status-error' : 'status-success'}>{status.message}</p>
