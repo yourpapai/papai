@@ -79,8 +79,21 @@ describe('OverviewSection.svelte', () => {
       toolMix: { topTools: [], errorTypeCounts: {} },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('20.0 MB')
-    expect(target.textContent).toContain('12.0 MB sqlite · 8.0 MB s3')
+    expect(target.textContent).toContain('19 MB')
+    expect(target.textContent).toContain('11 MB sqlite · 7.6 MB s3')
+    void unmount(component)
+  })
+
+  test('formats storage bytes via the shared fmtBytes (base-1024, 1.4 MB not 1.5 MB)', () => {
+    adminGlobals.data = {
+      subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 1_500_000, s3AttachmentBytes: 0 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    expect(target.textContent).toContain('1.4 MB')
+    expect(target.textContent).not.toContain('1.5 MB')
     void unmount(component)
   })
 

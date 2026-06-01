@@ -4,6 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { fmtBytes } from '../../shared/helpers.js'
   import Bars from '../../shared/ui/Bars.svelte'
   import MetricCard from '../../shared/ui/MetricCard.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
@@ -47,24 +48,17 @@
   const toolTotal = $derived(toolTotals === null ? '—' : toolTotals.total.toLocaleString())
   const toolSub = $derived(toolTotals === null ? undefined : `${toolTotals.ok} ok · ${toolTotals.fail} fail`)
 
-  function formatBytes(n: number): string {
-    if (n < 1_000) return `${n} B`
-    if (n < 1_000_000) return `${(n / 1_000).toFixed(1)} KB`
-    if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)} MB`
-    return `${(n / 1_000_000_000).toFixed(1)} GB`
-  }
-
   const storageTotal = $derived(
     adminGlobals.data?.storage === undefined
       ? '—'
-      : formatBytes(
+      : fmtBytes(
           adminGlobals.data.storage.sqliteBytes + adminGlobals.data.storage.s3AttachmentBytes,
         ),
   )
   const storageSub = $derived(
     adminGlobals.data?.storage === undefined
       ? undefined
-      : `${formatBytes(adminGlobals.data.storage.sqliteBytes)} sqlite · ${formatBytes(adminGlobals.data.storage.s3AttachmentBytes)} s3`,
+      : `${fmtBytes(adminGlobals.data.storage.sqliteBytes)} sqlite · ${fmtBytes(adminGlobals.data.storage.s3AttachmentBytes)} s3`,
   )
 
   // Tokens are not always present; show placeholder if unavailable.

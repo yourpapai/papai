@@ -7,6 +7,7 @@
   import { untrack } from 'svelte'
 
   import type { GlobalStats, StatsWindow } from '../../shared/api-types.js'
+  import { fmtBytes } from '../../shared/helpers.js'
   import Bars from '../../shared/ui/Bars.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
@@ -30,13 +31,6 @@
 
   let loading = $state(false)
   let error: string | null = $state(null)
-
-  function formatBytes(n: number): string {
-    if (n < 1024) return `${n} B`
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
-    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`
-  }
 
   async function loadStats(): Promise<void> {
     loading = true
@@ -204,8 +198,8 @@
       <Panel title="storage">
         {#snippet body()}
           <div class="stats-panel__metrics">
-            <MetricCard label="sqlite" value={formatBytes(g.storage.sqliteBytes)} />
-            <MetricCard label="s3 attachments" value={formatBytes(g.storage.s3AttachmentBytes)} />
+            <MetricCard label="sqlite" value={fmtBytes(g.storage.sqliteBytes)} />
+            <MetricCard label="s3 attachments" value={fmtBytes(g.storage.s3AttachmentBytes)} />
           </div>
         {/snippet}
       </Panel>

@@ -188,4 +188,15 @@ describe('admin StatsPanel', () => {
     expect(target.textContent).toContain('create_task')
     void unmount(component)
   })
+
+  test('formats storage bytes via the shared fmtBytes (base-1024, no decimals >=10)', async () => {
+    const payload = globalPayload({ storage: { sqliteBytes: 277806, s3AttachmentBytes: 0 } })
+    installFetch({ payload, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    expect(target.textContent).toContain('271 KB')
+    expect(target.textContent).not.toContain('271.3 KB')
+    void unmount(component)
+  })
 })
