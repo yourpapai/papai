@@ -24,7 +24,7 @@
 </script>
 
 <div class="ui-select">
-  <select {value} onchangecapture={handleChange} data-testid={testid}>
+  <select {value} onchange={handleChange} data-testid={testid}>
     {#each options as opt (opt.value)}
       <option value={opt.value}>{opt.label}</option>
     {/each}

@@ -52,7 +52,7 @@ describe('Select.svelte', () => {
     const sel = target.querySelector<HTMLSelectElement>('[data-testid="type-input"]')!
     expect(sel.tagName).toBe('SELECT')
     sel.value = 'b'
-    sel.dispatchEvent(new Event('change'))
+    sel.dispatchEvent(new Event('change', { bubbles: true }))
     expect(picked).toBe('b')
     void unmount(c)
   })
