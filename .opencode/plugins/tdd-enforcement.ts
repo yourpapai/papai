@@ -170,7 +170,7 @@ const handleSessionIdle = (
     return
   }
 
-  const result = checkFull({ cwd: directory, session_id: sessionID })
+  const result = checkFull({ cwd: directory, session_id: sessionID }, true)
   if (!result) {
     state.setNeedsRecheck(true)
     return

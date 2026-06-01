@@ -242,3 +242,34 @@ describe('check.sh --staged', () => {
     }
   })
 })
+
+describe('check.sh --skip-tests', () => {
+  test('drops only test checks without corrupting colon-delimited script names', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh', '--skip-tests'], env)
+
+      expect(result.exitCode).toBe(0)
+
+      const calls = readFileSync(logFile, 'utf8')
+        .trim()
+        .split('\n')
+        .filter((entry) => entry.length > 0)
+
+      expect(calls).toContain('bun run lint')
+      expect(calls).toContain('bun run review-loop:lint')
+      expect(calls).not.toContain('bun run test')
+      expect(calls).not.toContain('bun run test:client')
+      expect(calls).not.toContain('bun run review-loop:test')
+      expect(calls).not.toContain('bun run :client')
+      expect(calls).not.toContain('bun run review-loop:')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+})

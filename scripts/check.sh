@@ -294,10 +294,16 @@ else
   # Original behavior: run all checks
   checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check" "review-loop:test")
   if [ "$SKIP_TESTS" = true ]; then
-    checks=("${checks[@]/test/}")
-    checks=("${checks[@]/test:client/}")
-    checks=("${checks[@]/review-loop:test/}")
-    checks=($(printf '%s\n' "${checks[@]}" | sed '/^$/d'))
+    filtered_checks=()
+    for check in "${checks[@]}"; do
+      case "$check" in
+        test|test:client|review-loop:test)
+          continue
+          ;;
+      esac
+      filtered_checks+=("$check")
+    done
+    checks=("${filtered_checks[@]}")
   fi
   failed=0
   pids=()

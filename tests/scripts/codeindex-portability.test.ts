@@ -24,16 +24,14 @@ describe('codeindex portability wiring', () => {
     expect(extractEvidence).not.toContain("from 'codeindex/src/")
   })
 
-  test('routes config and extensions through the wrapper without absolute codeindex paths', () => {
+  test('routes config and the active plugin through the wrapper without absolute codeindex paths', () => {
     const mcpConfig = readRepoFile('.mcp.json')
     const openCodeConfig = readRepoFile('opencode.json')
     const reindexPlugin = readRepoFile('.opencode/plugins/codeindex-reindex.ts')
-    const piExtension = readRepoFile('.pi/extensions/codeindex-reindex/index.ts')
 
     expect(mcpConfig).toContain('"scripts/codeindex-cli.ts"')
     expect(openCodeConfig).toContain('"scripts/codeindex-cli.ts"')
     expect(reindexPlugin).toContain("['run', 'scripts/codeindex-cli.ts', 'reindex']")
-    expect(piExtension).toContain("['run', 'scripts/codeindex-cli.ts', 'reindex']")
 
     const staleAbsolutePath = '/Users/ki/Projects/papai/codeindex/src/cli.ts'
     expect(mcpConfig).not.toContain(staleAbsolutePath)
