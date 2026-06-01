@@ -132,7 +132,7 @@ describe('BillingSection', () => {
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
 
-    const row = target.querySelector<HTMLElement>('[data-testid="subject-row"]')
+    const row = target.querySelector<HTMLElement>('.ui-datatable__tr')
     expect(row).not.toBeNull()
     row!.click()
     for (let i = 0; i < 10; i++) await Promise.resolve()

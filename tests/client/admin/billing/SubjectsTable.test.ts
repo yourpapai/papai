@@ -76,7 +76,7 @@ describe('admin SubjectsTable', () => {
   test('calling onSelect when a row is clicked', () => {
     const subject = makeSubject({})
     const { target, component, selected } = render([subject])
-    const row = target.querySelector<HTMLElement>('[data-testid="subject-row"]')
+    const row = target.querySelector<HTMLElement>('.ui-datatable__tr')
     expect(row).not.toBeNull()
     row!.click()
     expect(selected).toHaveLength(1)
