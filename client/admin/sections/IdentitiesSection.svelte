@@ -7,7 +7,9 @@
   import { onMount } from 'svelte'
 
   import type { IdentityMappingEntry } from '../../shared/api-types.js'
+  import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
+  import Input from '../../shared/ui/Input.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import { fetchAdminIdentityMappings } from '../fetchers.js'
 
@@ -80,19 +82,10 @@
           e.preventDefault()
           void loadMappings()
         }}>
-        <input
-          class="identities__user-id-input"
-          data-testid="identities-user-id"
-          type="text"
-          bind:value={userId}
-          placeholder="filter by user id" />
-        <button
-          class="identities__reload-btn"
-          data-testid="identities-load"
-          type="submit"
-          disabled={loading}>
-          {loading ? 'Loading…' : 'Reload'}
-        </button>
+        <Input value={userId} onInput={(v) => (userId = v)} placeholder="filter by user id" testid="identities-user-id" />
+        <Btn variant="primary" size="sm" type="submit" testid="identities-load" disabled={loading}>
+          {#snippet children()}{loading ? 'Loading…' : 'Reload'}{/snippet}
+        </Btn>
       </form>
     {/snippet}
     {#snippet body()}
@@ -119,32 +112,6 @@
     display: flex;
     align-items: center;
     gap: 6px;
-  }
-  .identities__user-id-input {
-    background: var(--raised);
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    color: var(--fg);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    outline: 0;
-    padding: 4px 10px;
-  }
-  .identities__reload-btn {
-    background: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: 2px;
-    color: var(--bg);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
-    height: 22px;
-    padding: 3px 8px;
-  }
-  .identities__reload-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
   }
   .identities__body {
     padding: 0;

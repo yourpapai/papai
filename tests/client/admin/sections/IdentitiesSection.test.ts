@@ -57,6 +57,16 @@ const sampleMappings = [
 ]
 
 describe('IdentitiesSection', () => {
+  test('renders kit controls: Input for user id filter, Btn for reload', async () => {
+    const responses = new Map<string, Response>([['/admin/identity/mappings', Response.json([])]])
+    setMockFetch((url) => responseFor(responses, url))
+    const { target, component } = render()
+    await drain()
+    expect(target.querySelector('[data-testid="identities-user-id"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="identities-load"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
   test('loads and renders all identity mappings on mount', async () => {
     const calls: string[] = []
     const responses = new Map<string, Response>([['/admin/identity/mappings', Response.json(sampleMappings)]])
