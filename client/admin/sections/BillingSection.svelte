@@ -11,6 +11,7 @@
   import SubjectStatsPanel from '../components/SubjectStatsPanel.svelte'
   import SubjectsTable from '../components/SubjectsTable.svelte'
   import { fetchBillingDetail, fetchBillingSubjects } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
 
   let billingWindow: BillingWindow = $state('30d')
@@ -63,13 +64,9 @@
 <section id="billing" class="admin-section">
   <Panel title="Billing" count={billingSubjects.length}>
     {#snippet action()}
-      <button
-        type="button"
-        class="billing-refresh-btn"
-        data-testid="billing-refresh"
-        onclick={() => {
-          void refreshAll()
-        }}>{fetching ? 'Refreshing...' : 'Refresh'}</button>
+      <Btn variant="ghost" size="sm" testid="billing-refresh" onClick={() => { void refreshAll() }}>
+        {#snippet children()}{fetching ? 'Refreshing...' : 'Refresh'}{/snippet}
+      </Btn>
     {/snippet}
     {#snippet body()}
       {#if error !== null}
@@ -105,20 +102,4 @@
     padding: 12px;
   }
 
-  .billing-refresh-btn {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
-    padding: 3px 8px;
-    height: 22px;
-    cursor: pointer;
-    border-radius: 2px;
-    background: transparent;
-    color: var(--fg2);
-    border: 1px solid transparent;
-  }
-
-  .billing-refresh-btn:hover {
-    background: var(--raised);
-  }
 </style>
