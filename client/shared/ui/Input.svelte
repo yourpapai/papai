@@ -11,15 +11,24 @@
     placeholder?: string
     prefix?: Snippet
     onInput?: (value: string) => void
-    type?: 'text' | 'search'
+    type?: 'text' | 'search' | 'password'
     readonly?: boolean
+    testid?: string
   }
 
-  let { value, placeholder, prefix, onInput, type = 'text', readonly = false }: Props = $props()
+  let { value, placeholder, prefix, onInput, type = 'text', readonly = false, testid }: Props =
+    $props()
 
-  function handleInput(event: Event): void {
-    const next = (event.target as HTMLInputElement).value
-    onInput?.(next)
+  let _value = $state(value)
+
+  const bound = {
+    get value(): string {
+      return _value
+    },
+    set value(v: string) {
+      _value = v
+      onInput?.(v)
+    },
   }
 </script>
 
@@ -27,7 +36,7 @@
   {#if prefix}
     <span class="ui-input__prefix">{@render prefix()}</span>
   {/if}
-  <input {type} {placeholder} {value} {readonly} oninput={handleInput} />
+  <input {type} {placeholder} bind:value={bound.value} {readonly} data-testid={testid} />
 </div>
 
 <style>
