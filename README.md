@@ -442,7 +442,7 @@ plugins/
 
 ### Lifecycle
 
-1. **Discover** — startup scans `plugins/` and records each package in `plugin_admin_state` as `discovered`. The manifest + entry source are hashed for integrity.
+1. **Discover** — startup scans `plugins/` and records each package in `plugin_admin_state` as `discovered`. The manifest + entry source are hashed for integrity. If the `plugins/` directory is missing and `DEBUG_SERVER=true`, startup fails fast (the settings web UI cannot dispatch task-provider provisioning without plugins); otherwise a `WARN` is logged and the bot starts in degraded mode.
 2. **Approve** — bot admin approves the plugin in the settings web UI admin area. Any subsequent change to the manifest or entry source clears approval and requires re-approval.
 3. **Activate** — on the next startup, approved plugins are imported with a per-plugin activation timeout. Failures are isolated and recorded to `plugin_runtime_events`.
 4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group context via the settings web UI admin area or `defaultEnabled: true` in the manifest.

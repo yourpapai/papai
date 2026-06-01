@@ -356,7 +356,7 @@ Trusted, repository-local first-party plugins only — no sandbox, no marketplac
 
 ### Lifecycle
 
-1. **Discover** — startup scans `plugins/`, hashes manifest + entry point content, and records each plugin in `plugin_admin_state` with state `discovered`.
+1. **Discover** — startup scans `plugins/`, hashes manifest + entry point content, and records each plugin in `plugin_admin_state` with state `discovered`. If the `plugins/` directory is missing, the `evaluateStartupGuard` decision in `src/plugins/startup-guard.ts` runs: `DEBUG_SERVER=true` causes a fail-fast exit (the settings web UI cannot dispatch task-provider provisioning without plugins), while `DEBUG_SERVER=false` logs a `WARN` and continues in degraded mode.
 2. **Approve** — bot admin approves the plugin in the settings web UI admin area. Approval is keyed to the manifest hash; any change to manifest or entry source clears approval and reverts the plugin to `discovered`.
 3. **Activate** — on next startup, approved plugins are imported with a per-plugin activation timeout (`activationTimeoutMs`, 100–10000ms, default 5000) and bounded `p-limit` concurrency. Activation failures are isolated; `plugin_runtime_events` records `activated`/`deactivated`/`error` rows.
 4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group `contextId` via the settings web UI admin area or `defaultEnabled: true` in the manifest. Per-context state lives in `plugin_context_state`.
