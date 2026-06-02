@@ -5,8 +5,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { count, eq } from 'drizzle-orm'
+
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { migration051LegacyContextIdBackfill } from '../../src/db/migrations/051_legacy_context_id_backfill.js'
 import { taskInstances, userConfig } from '../../src/db/schema.js'
 import { getContextSettings, setContextSettings } from '../../src/instances/context-store.js'
 import { runKaneoLegacyRepair } from '../../src/instances/kaneo-legacy-repair.js'
@@ -14,7 +17,7 @@ import { getTaskInstance, insertTaskInstance, listTaskInstances } from '../../sr
 import { getPluginContextState } from '../../src/plugins/store.js'
 import { KANEO_PLUGIN_CREDENTIAL_KEY, KANEO_PLUGIN_WORKSPACE_KEY } from '../../src/types/config.js'
 import { addUser } from '../../src/users.js'
-import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedTestPlatformInstance, seedTestTaskInstance, setupTestDb } from '../utils/test-helpers.js'
 
 function seedLegacyKaneoConfig(contextId: string): void {
   getDrizzleDb()
@@ -330,5 +333,55 @@ describe('runKaneoLegacyRepair', () => {
       taskInstanceId: 'kaneo-default',
       platformInstanceId: 'pi-1',
     })
+  })
+
+  test('production-shape DB: raw user_config ids get scoped by migration 051 and then repaired', () => {
+    seedTestTaskInstance({ id: 'kaneo-default' })
+    const rawUserId = '-1003555943365'
+    const rawTimezone = 'Etc/GMT-5'
+    const rawCredential = 'kaneo-cred'
+    const rawWorkspace = 'kaneo-ws'
+    getDrizzleDb()
+      .insert(userConfig)
+      .values([
+        { userId: rawUserId, key: KANEO_PLUGIN_CREDENTIAL_KEY, value: rawCredential },
+        { userId: rawUserId, key: KANEO_PLUGIN_WORKSPACE_KEY, value: rawWorkspace },
+        { userId: rawUserId, key: 'timezone', value: rawTimezone },
+      ])
+      .run()
+
+    migration051LegacyContextIdBackfill.up(getDrizzleDb().$client)
+
+    const scopedUser = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: rawUserId })
+    const userConfigAfterMigration = getDrizzleDb()
+      .select({ key: userConfig.key, value: userConfig.value })
+      .from(userConfig)
+      .where(eq(userConfig.userId, scopedUser))
+      .all()
+    expect(userConfigAfterMigration).toEqual([
+      { key: KANEO_PLUGIN_CREDENTIAL_KEY, value: rawCredential },
+      { key: KANEO_PLUGIN_WORKSPACE_KEY, value: rawWorkspace },
+      { key: 'timezone', value: rawTimezone },
+    ])
+    expect(
+      getDrizzleDb().select({ count: count() }).from(userConfig).where(eq(userConfig.userId, rawUserId)).get(),
+    ).toEqual({ count: 0 })
+    expect(getContextSettings(scopedUser)).toBeNull()
+
+    const summary = runKaneoLegacyRepair()
+
+    expect(summary).toEqual({
+      repairedContexts: 1,
+      createdTaskInstances: 0,
+      promotedTaskInstances: 0,
+      skippedDueToAmbiguousTaskInstance: 0,
+    })
+    expect(getContextSettings(scopedUser)).toEqual({
+      contextId: scopedUser,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'pi-1',
+    })
+    expect(getPluginContextState('task-provider-kaneo', scopedUser)?.enabled).toBe(true)
+    expect(getTaskInstance('kaneo-default')?.status).toBe('active')
   })
 })

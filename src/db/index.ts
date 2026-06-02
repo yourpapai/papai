@@ -61,6 +61,7 @@ import { migration047DashboardSessions } from './migrations/047_dashboard_sessio
 import { migration048NamespaceKaneoConfig } from './migrations/048_namespace_kaneo_config.js'
 import { migration049NamespaceYoutrackConfig } from './migrations/049_namespace_youtrack_config.js'
 import { migration050SettingsAuth } from './migrations/050_settings_auth.js'
+import { migration051LegacyContextIdBackfill } from './migrations/051_legacy_context_id_backfill.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -146,6 +147,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration048NamespaceKaneoConfig,
   migration049NamespaceYoutrackConfig,
   migration050SettingsAuth,
+  migration051LegacyContextIdBackfill,
 ]
 
 export const initDb = (): void => {
