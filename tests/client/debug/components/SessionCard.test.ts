@@ -70,4 +70,20 @@ describe('SessionCard', () => {
     expect(target.textContent).toContain('config: 2 keys')
     void unmount(component)
   })
+
+  test('renders a StatusPill reflecting active/idle state', () => {
+    const activeSession = baseSession({ lastAccessed: Date.now() })
+    const { target: activeTarget, component: activeComponent } = render('u1', activeSession)
+    const activePill = activeTarget.querySelector('.ui-pill')
+    expect(activePill).not.toBeNull()
+    expect(activePill?.textContent?.trim()).toBe('active')
+    void unmount(activeComponent)
+
+    const idleSession = baseSession({ lastAccessed: Date.now() - 600_000 })
+    const { target: idleTarget, component: idleComponent } = render('u1', idleSession)
+    const idlePill = idleTarget.querySelector('.ui-pill')
+    expect(idlePill).not.toBeNull()
+    expect(idlePill?.textContent?.trim()).toBe('idle')
+    void unmount(idleComponent)
+  })
 })
