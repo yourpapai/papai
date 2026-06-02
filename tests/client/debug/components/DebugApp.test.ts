@@ -51,7 +51,7 @@ describe('DebugApp.svelte', () => {
     expect(html).toContain('debug-grid')
     expect(html).toContain('log-explorer')
     expect(html).toContain('turns')
-    expect(html).toContain('Notifications')
+    expect(html).toContain('notifications')
     expect(html).toContain('Tool Failures')
     expect(html).toContain('Live Context')
 
