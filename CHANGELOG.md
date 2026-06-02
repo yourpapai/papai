@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.6] - 2026-06-02
+
+### Fixed
+
+- **client/ui:** Only render Secret reveal button when onReveal is provided
+- **plugins:** Apply approval changes without restart
+- **db:** Scope legacy context ids left raw by migration 043
+- **ci:** Set DB_PATH in docker smoke test so the bun user can write the db
+- **ci:** Pin buildx to host docker driver so smoke test sees the built image
+
+### Testing
+
+- **admin:** Assert StatusPill renders for memos/reminders status (B4 guard)
 ## [6.0.5] - 2026-06-02
 
 ### Fixed
