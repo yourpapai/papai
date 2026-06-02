@@ -1,5 +1,8 @@
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
+  import DataTable from '../../shared/ui/DataTable.svelte'
+  import KV from '../../shared/ui/KV.svelte'
+  import SummaryList from '../../shared/ui/SummaryList.svelte'
   import TreeView from '../../shared/TreeView.svelte'
   import type { Session } from '../dashboard-types.js'
 
@@ -23,16 +26,24 @@
   }
 
   const configEntries = $derived(session.config === undefined ? [] : Object.entries(session.config))
+
+  const configRows = $derived(
+    configEntries.map(([key, value]) => ({ key, value: value === null ? 'null' : String(value) })),
+  )
+  const configColumns = [
+    { key: 'key' as const, label: 'Key' },
+    { key: 'value' as const, label: 'Value' },
+  ]
 </script>
 
 <div class="session-detail-section">
   <h4>Basic Info</h4>
-  <div class="session-detail-grid">
-    <div class="session-detail-item"><div class="label">User ID</div><div class="value">{userId}</div></div>
-    <div class="session-detail-item"><div class="label">Last Accessed</div><div class="value">{formatTime(session.lastAccessed)}</div></div>
-    <div class="session-detail-item"><div class="label">History Length</div><div class="value">{session.historyLength} messages</div></div>
-    <div class="session-detail-item"><div class="label">Has Tools</div><div class="value">{session.hasTools === true ? 'yes' : 'no'}</div></div>
-  </div>
+  <SummaryList items={[
+    { k: 'User ID', v: userId },
+    { k: 'Last Accessed', v: formatTime(session.lastAccessed) },
+    { k: 'History Length', v: `${session.historyLength} messages` },
+    { k: 'Has Tools', v: session.hasTools === true ? 'yes' : 'no' },
+  ]} />
 </div>
 
 {#if session.summary !== null && session.summary !== ''}
@@ -45,19 +56,7 @@
 {#if configEntries.length > 0}
   <div class="session-detail-section">
     <h4>Configuration</h4>
-    <table class="config-table">
-      <thead>
-        <tr><th>Key</th><th>Value</th></tr>
-      </thead>
-      <tbody>
-        {#each configEntries as [key, value] (key)}
-          <tr>
-            <td>{key}</td>
-            <td class="value" class:null={value === null}>{value === null ? 'null' : value}</td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    <DataTable columns={configColumns} rows={configRows} rowKey="key" />
   </div>
 {/if}
 
@@ -73,8 +72,7 @@
           </div>
           <div class="tool-call-id">{fact.url}</div>
           <div class="tool-section">
-            <div class="label">Last seen</div>
-            <div class="value">{formatTime(fact.lastSeen)}</div>
+            <KV k="Last seen" v={formatTime(fact.lastSeen)} />
           </div>
         </div>
       {/each}
