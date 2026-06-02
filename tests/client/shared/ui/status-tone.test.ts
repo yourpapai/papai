@@ -19,6 +19,15 @@ describe('statusTone', () => {
   ] as const)('maps %s -> %s', (status, tone) => {
     expect(statusTone(status)).toBe(tone)
   })
+  test.each([
+    ['trace', 'mute'],
+    ['debug', 'mute'],
+    ['fatal', 'danger'],
+    ['retriable', 'info'],
+    ['non-retriable', 'mute'],
+  ] as const)('maps debug status %s -> %s', (status, tone) => {
+    expect(statusTone(status)).toBe(tone)
+  })
   test('is case-insensitive', () => {
     expect(statusTone('ACTIVE')).toBe('accent')
   })

@@ -25,6 +25,11 @@ const TONE_MAP: Record<string, StatusTone> = {
   unknown: 'mute',
   disabled: 'mute',
   '—': 'mute',
+  trace: 'mute',
+  debug: 'mute',
+  fatal: 'danger',
+  retriable: 'info',
+  'non-retriable': 'mute',
 }
 
 export function statusTone(status: string): StatusTone {
