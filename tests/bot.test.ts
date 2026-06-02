@@ -152,10 +152,12 @@ const withSynchronousQueue = (deps: Readonly<Omit<BotDeps, 'enqueueMessage'>>): 
 // Listener helpers defined outside test blocks to avoid no-conditional-in-test
 // ---------------------------------------------------------------------------
 
-function makeRepliedEventListener(repliedEvents: DebugEvent[]): (event: DebugEvent) => void {
+function makeRepliedEventListener(repliedEvents: DebugEvent[], scopeUserId?: string): (event: DebugEvent) => void {
   return (event: DebugEvent): void => {
     if (event.type === 'message:replied') {
-      repliedEvents.push(event)
+      if (scopeUserId === undefined || (event.scope.kind === 'user' && event.scope.userId === scopeUserId)) {
+        repliedEvents.push(event)
+      }
     }
   }
 }
@@ -638,7 +640,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       setupUserConfig('auth-user')
 
       const repliedEvents: DebugEvent[] = []
-      const listener = makeRepliedEventListener(repliedEvents)
+      const listener = makeRepliedEventListener(repliedEvents, 'auth-user')
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
@@ -706,7 +708,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       setupUserConfig('auth-user')
 
       const repliedEvents: DebugEvent[] = []
-      const listener = makeRepliedEventListener(repliedEvents)
+      const listener = makeRepliedEventListener(repliedEvents, 'auth-user')
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
@@ -744,7 +746,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       setupUserConfig('auth-user')
 
       const repliedEvents: DebugEvent[] = []
-      const listener = makeRepliedEventListener(repliedEvents)
+      const listener = makeRepliedEventListener(repliedEvents, 'auth-user')
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
@@ -782,7 +784,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       setupUserConfig('auth-user')
 
       const repliedEvents: DebugEvent[] = []
-      const listener = makeRepliedEventListener(repliedEvents)
+      const listener = makeRepliedEventListener(repliedEvents, 'auth-user')
       subscribe(listener)
 
       const { provider: failingChat, getMessageHandler: getFailingHandler } = createMockChatForBot()
@@ -1001,7 +1003,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('emits message:replied for unauthorized mention denial path', async () => {
     const repliedEvents: DebugEvent[] = []
-    const listener = makeRepliedEventListener(repliedEvents)
+    const listener = makeRepliedEventListener(repliedEvents, 'unknown-group-user')
     subscribe(listener)
 
     try {
@@ -1567,7 +1569,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     setupUserConfig('group-admin-reply')
 
     const repliedEvents: DebugEvent[] = []
-    const listener = makeRepliedEventListener(repliedEvents)
+    const listener = makeRepliedEventListener(repliedEvents, 'group-admin-reply')
     subscribe(listener)
 
     try {

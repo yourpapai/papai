@@ -275,15 +275,10 @@ describe('check.sh --skip-tests', () => {
 })
 
 describe('check.sh full mode', () => {
-  test('runs bun test commands with cpu-count-based parallelism', () => {
+  test('invokes bun test directly without a concurrency override', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 
     try {
-      writeExecutable(
-        path.join(binDir, 'getconf'),
-        ['#!/bin/bash', 'set -euo pipefail', 'printf "7\\n"', ''].join('\n'),
-      )
-
       const env = createEnv({
         PATH: `${binDir}:${basePath}`,
         CHECK_LOG_FILE: logFile,
@@ -293,10 +288,10 @@ describe('check.sh full mode', () => {
       expect(result.exitCode).toBe(0)
 
       const calls = readFileSync(logFile, 'utf8')
-      expect(calls).toContain('bun test --concurrent --max-concurrency 7')
+      expect(calls).toContain('bun test')
       expect(calls).toContain('bun --conditions=browser test --preload ./tests/client-setup.ts')
-      expect(calls).toContain('tests/client/ --concurrent --max-concurrency 7')
-      expect(calls).toContain('bun test tests/review-loop --concurrent --max-concurrency 7')
+      expect(calls).toContain('bun test tests/review-loop')
+      expect(calls).not.toContain('--max-concurrency')
       expect(calls).not.toContain('bun run test:client')
       expect(calls).not.toContain('bun run review-loop:test')
     } finally {

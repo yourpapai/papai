@@ -269,11 +269,7 @@ export class TelegramChatProvider implements ChatProvider {
   }
   private async dispatchCallbackQuery(ctx: Context): Promise<void> {
     await ctx.answerCallbackQuery()
-    const interaction = buildTelegramInteraction(
-      ctx,
-      await checkTelegramAdminStatus(ctx, (chatId) => this.bot.api.getChatAdministrators(chatId)),
-      this.platformInstanceId,
-    )
+    const interaction = buildTelegramInteraction(ctx, await this.checkAdminStatus(ctx), this.platformInstanceId)
     if (interaction === null) return
     const reply = this.buildReplyFn(ctx, interaction.threadId, true)
     if (this.interactionHandler === undefined) {

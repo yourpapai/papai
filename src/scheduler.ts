@@ -179,6 +179,7 @@ export const stopScheduler = (): void => {
     scheduler.unregister('recurring-tasks')
     chatProviderRef = null
     tickCount = 0
+    activeTickPromise = null
     log.info('Stopped recurring task scheduler')
   }
 }

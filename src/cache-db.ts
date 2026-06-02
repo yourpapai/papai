@@ -12,9 +12,9 @@ import { logger } from './logger.js'
 const log = logger.child({ scope: 'cache-db' })
 
 export function syncHistoryToDb(userId: string, messages: unknown[]): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.insert(conversationHistory)
         .values({ userId, messages: JSON.stringify(messages) })
         .onConflictDoUpdate({
@@ -33,9 +33,9 @@ export function syncHistoryToDb(userId: string, messages: unknown[]): void {
 }
 
 export function syncSummaryToDb(userId: string, summary: string): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.insert(memorySummary)
         .values({ userId, summary, updatedAt: new Date().toISOString() })
         .onConflictDoUpdate({
@@ -58,10 +58,9 @@ export function syncFactToDb(
   fact: { identifier: string; title: string; url: string },
   now: string,
 ): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
-
       db.transaction((tx) => {
         // Insert or update the fact
         tx.insert(memoryFacts)
@@ -101,9 +100,9 @@ export function syncFactToDb(
 }
 
 export function syncConfigToDb(userId: string, key: string, value: string): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.insert(userConfig)
         .values({ userId, key, value })
         .onConflictDoUpdate({
@@ -125,9 +124,9 @@ export function syncInstructionToDb(
   contextId: string,
   instruction: { id: string; text: string; createdAt: string },
 ): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.insert(userInstructions)
         .values({
           id: instruction.id,
@@ -148,9 +147,9 @@ export function syncInstructionToDb(
 }
 
 export function deleteInstructionFromDb(contextId: string, id: string): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.delete(userInstructions)
         .where(and(eq(userInstructions.id, id), eq(userInstructions.contextId, contextId)))
         .run()

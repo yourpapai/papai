@@ -159,6 +159,9 @@ describe('scheduler', () => {
   }
 
   beforeEach(() => {
+    // Ensure scheduler is stopped before each test (guards against concurrent test leakage)
+    stopScheduler()
+
     // Reset mutable state to defaults
     createTaskCallCount = 0
     resolveCreateTask = null
