@@ -9,6 +9,7 @@
   import type { AdminLlmSnapshot, AdminSystemSummary } from '../../shared/api-types.js'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
+  import SummaryList from '../../shared/ui/SummaryList.svelte'
   import CredentialsForm from '../components/CredentialsForm.svelte'
   import { fetchAdminLlm, fetchAdminSystem } from '../fetchers.js'
 
@@ -68,12 +69,16 @@
         {#if system === null}
           <span class="placeholder">Loading...</span>
         {:else}
-          <dl data-testid="system-summary">
-            <div><dt>Chat provider</dt><dd>{system.chatProvider}</dd></div>
-            <div><dt>Task provider</dt><dd>{system.taskProvider}</dd></div>
-            <div><dt>Debug server</dt><dd>{boolLabel(system.debugServer)}</dd></div>
-            <div><dt>Admin user</dt><dd>{system.adminUserSet ? 'Configured' : 'Missing'}</dd></div>
-          </dl>
+          <div data-testid="system-summary">
+            <SummaryList
+              cols={2}
+              items={[
+                { k: 'chat provider', v: system.chatProvider },
+                { k: 'task provider', v: system.taskProvider, pill: true },
+                { k: 'debug server', v: boolLabel(system.debugServer), pill: true },
+                { k: 'admin user', v: system.adminUserSet ? 'Configured' : 'Missing', pill: true },
+              ]} />
+          </div>
         {/if}
       </div>
     {/snippet}
@@ -97,6 +102,5 @@
     padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
   }
 </style>

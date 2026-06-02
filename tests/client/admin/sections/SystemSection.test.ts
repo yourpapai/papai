@@ -104,7 +104,7 @@ describe('SystemSection', () => {
     expect(target.textContent).toContain('System')
     expect(target.textContent).toContain('telegram')
     expect(target.textContent).toContain('kaneo')
-    expect(target.textContent).toContain('Debug server')
+    expect(target.textContent).toContain('debug server')
     expect(target.textContent).toContain('Enabled')
     expect(target.querySelectorAll('[data-testid="credentials-row"]')).toHaveLength(5)
     expect(target.textContent).toContain('****1234')
@@ -119,6 +119,21 @@ describe('SystemSection', () => {
     expect(target.querySelector('.ui-page-header')).not.toBeNull()
     expect(target.querySelector('.ui-caption')).toBeNull()
     expect(target.querySelector('[data-testid="system-refresh"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders the system summary via SummaryList with aligned rows and pills (B6)', async () => {
+    installReadFetch()
+    const { component, target } = render()
+    await drain()
+
+    expect(target.querySelector('.ui-summary')).not.toBeNull()
+    expect(target.querySelectorAll('.ui-summary__row').length).toBe(4)
+    // exactly three values render as pills (task provider, debug server, admin user)
+    expect(target.querySelectorAll('[data-testid="system-summary"] .ui-pill').length).toBe(3)
+    // the old definition-list is gone
+    expect(target.querySelector('dl[data-testid="system-summary"]')).toBeNull()
+
     void unmount(component)
   })
 
