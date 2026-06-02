@@ -52,7 +52,7 @@ describe('DebugApp.svelte', () => {
     expect(html).toContain('log-explorer')
     expect(html).toContain('turns')
     expect(html).toContain('notifications')
-    expect(html).toContain('Tool Failures')
+    expect(html).toContain('tool failures')
     expect(html).toContain('Live Context')
 
     // Absence checks (admin/management panels)

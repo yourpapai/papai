@@ -165,14 +165,6 @@
   word-break: break-word;
 }
 
-.failure-retriable.retriable {
-  color: var(--warn);
-}
-
-.failure-retriable.non-retriable {
-  color: var(--danger);
-}
-
 /* --- Left panel children --- */
 
 #sessions {
