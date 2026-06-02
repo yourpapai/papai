@@ -35,6 +35,7 @@ docker run --name "$CONTAINER_NAME" \
   -e "LLM_BASE_URL=https://example.invalid" \
   -e "MAIN_MODEL=smoke-model" \
   -e "SETTINGS_PUBLIC_BASE_URL=https://settings.example.invalid" \
+  -e "DB_PATH=/data/papai.db" \
   "$IMAGE_TAG" \
   >"$LOG_FILE" 2>&1 &
 
