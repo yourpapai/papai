@@ -168,7 +168,7 @@ jobs:
           backup_file="papai-\$(date +%Y%m%d_%H%M%S).db"
 
           # Check if papai is running and backup the database
-          if docker compose ps papai | grep -q "running"; then
+          if docker compose ps --status running --services | grep -qx "papai"; then
             docker compose cp papai:/data/papai.db "\$backup_dir/\$backup_file" 2>/dev/null || echo "Note: Could not backup database (may not exist yet)"
             if [ -f "\$backup_dir/\$backup_file" ]; then
               echo "Database backed up to: \$backup_dir/\$backup_file"
