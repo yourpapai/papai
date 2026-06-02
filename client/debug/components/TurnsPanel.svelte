@@ -7,6 +7,7 @@
   import { formatTime } from '../../shared/helpers.js'
   import type { Turn, DashboardState, ScopeFilter } from '../dashboard-types.js'
   import DataTable from '../../shared/ui/DataTable.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
 
@@ -109,7 +110,7 @@
       cell={cellRender}
       onRowClick={selectTurn}>
       {#snippet empty()}
-        <span class="turns__placeholder">No turns</span>
+        <EmptyState title="No turns" />
       {/snippet}
     </DataTable>
   {/snippet}
@@ -149,11 +150,6 @@
     display: flex;
     gap: 6px;
     align-items: center;
-  }
-
-  .turns__placeholder {
-    color: var(--fg3);
-    font-size: 12px;
   }
 
   .turns__tool-chips {

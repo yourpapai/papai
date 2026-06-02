@@ -65,6 +65,12 @@ describe('TurnsPanel', () => {
     void unmount(component)
   })
 
+  test('shows an EmptyState when there are no turns', () => {
+    const { target, component } = render(freshState())
+    expect(target.querySelector('.ui-empty')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('renders a 6-column table header', () => {
     const { target, component } = render(freshState([makeTurn()]))
     const headers = target.querySelectorAll('th')
