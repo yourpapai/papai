@@ -1,6 +1,7 @@
 <script lang="ts">
   import PropertiesTable from '../../shared/PropertiesTable.svelte'
-  import { formatTime, levelClass, levelName } from '../../shared/helpers.js'
+  import SummaryList from '../../shared/ui/SummaryList.svelte'
+  import { formatTime, levelName } from '../../shared/helpers.js'
   import type { LogEntry } from '../dashboard-types.js'
 
   interface Props {
@@ -22,12 +23,11 @@
 </script>
 
 <div class="log-detail-meta">
-  <div class="log-detail-meta-item"><div class="label">Time</div><div class="value">{formatTime(entry.time)}</div></div>
-  <div class="log-detail-meta-item">
-    <div class="label">Level</div>
-    <div class="value {levelClass(entry.level)}">{levelName(entry.level)} ({entry.level})</div>
-  </div>
-  <div class="log-detail-meta-item"><div class="label">Scope</div><div class="value">{entry.scope ?? 'none'}</div></div>
+  <SummaryList items={[
+    { k: 'Time', v: formatTime(entry.time) },
+    { k: 'Level', v: levelName(entry.level), pill: true },
+    { k: 'Scope', v: entry.scope ?? 'none' },
+  ]} />
 </div>
 
 <div class="log-detail-section">
