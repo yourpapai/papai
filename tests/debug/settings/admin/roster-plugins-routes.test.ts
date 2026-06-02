@@ -5,6 +5,9 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 
 import { z } from 'zod'
 
@@ -13,9 +16,11 @@ import type { DeferredDeliveryTarget } from '../../../../src/chat/types.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../../../src/debug/chat-router-runtime.js'
 import { handleAdminRosterPluginsRoutes } from '../../../../src/debug/settings/admin/roster-plugins-routes.js'
 import { addAdmin, listAdmins, SUPER_ADMIN_PLATFORM_ID } from '../../../../src/instances/admin-store.js'
+import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from '../../../../src/plugins/loader.js'
 import { pluginRegistry } from '../../../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../../../src/plugins/types.js'
+import { getTaskProviderDescriptor } from '../../../../src/providers/registry.js'
 import { addUser } from '../../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from '../helpers.js'
@@ -47,6 +52,61 @@ function makePlugin(overrides?: Partial<DiscoveredPlugin>): DiscoveredPlugin {
   }
 }
 
+const tempDirs: string[] = []
+
+function writeTempPluginModule(source: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'papai-admin-plugin-approval-'))
+  tempDirs.push(dir)
+  const modulePath = join(dir, 'index.mjs')
+  writeFileSync(modulePath, source)
+  return modulePath
+}
+
+function makeRuntimeProviderPlugin(providerType: string): DiscoveredPlugin {
+  const entryPoint = writeTempPluginModule(`
+    export default function createPlugin() {
+      return {
+        activate(ctx) {
+          ctx.registration.registerTaskProviderType('${providerType}', {
+            factory: () => ({ name: '${providerType}' }),
+          })
+        },
+      }
+    }
+  `)
+  return makePlugin({
+    entryPoint,
+    pluginDir: dirname(entryPoint),
+    manifest: {
+      id: 'test-plugin',
+      name: 'Test Provider Plugin',
+      version: '1.0.0',
+      description: 'A test plugin',
+      apiVersion: PLUGIN_API_VERSION,
+      main: 'index.ts',
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [providerType],
+      },
+      permissions: ['provider.task'],
+      defaultEnabled: true,
+      activationTimeoutMs: 5000,
+      requiredTaskCapabilities: [],
+      requiredChatCapabilities: [],
+      configRequirements: [],
+      providerCapabilities: [],
+      providerConfigSchema: [],
+      providerContextConfigSchema: [],
+      providerAllowedHosts: [],
+      providerTraits: [],
+    },
+  })
+}
+
 class MockSendRouter extends ChatRouter {
   constructor() {
     super(() => {
@@ -70,6 +130,7 @@ describe('settings admin roster/plugins routes', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    await deactivateAllPlugins()
     pluginRegistry.clearForTesting()
     seedTestPlatformInstance({ id: 'pi-1' })
     addUser({ userId: 'sa-1', platformInstanceId: 'pi-1', addedBy: 'boot', username: undefined })
@@ -80,9 +141,11 @@ describe('settings admin roster/plugins routes', () => {
     botAdminSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'ba-1' })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await deactivateAllPlugins()
     pluginRegistry.clearForTesting()
     clearRuntimeChatRouter()
+    tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }))
   })
 
   test('bot-admin (non-SA) cannot add to the roster (403)', async () => {
@@ -145,8 +208,9 @@ describe('settings admin roster/plugins routes', () => {
     expect(res.status).toBe(403)
   })
 
-  test('plugin approval as SA on a discovered plugin returns 200 with state approved', async () => {
-    pluginRegistry.registerDiscovered(makePlugin())
+  test('plugin approval as SA activates a discovered provider plugin immediately', async () => {
+    const plugin = makeRuntimeProviderPlugin('runtime-provider')
+    pluginRegistry.registerDiscovered(plugin)
     const url = new URL('https://x/settings/api/admin/plugin-approval')
     const res = await handleAdminRosterPluginsRoutes(
       new Request(url, {
@@ -159,8 +223,37 @@ describe('settings admin roster/plugins routes', () => {
     )
     expect(res.status).toBe(200)
     const body = z.object({ ok: z.boolean(), state: z.string() }).parse(await res.json())
-    expect(body.state).toBe('approved')
-    expect(pluginRegistry.getEntry('test-plugin')?.state).toBe('approved')
+    expect(body.state).toBe('active')
+    expect(pluginRegistry.getEntry('test-plugin')?.state).toBe('active')
+    expect(getTaskProviderDescriptor('runtime-provider')).toBeDefined()
+    expect(getActivatedPluginIds()).toContain('test-plugin')
+  })
+
+  test('plugin reject as SA deactivates an active provider plugin immediately', async () => {
+    const plugin = makeRuntimeProviderPlugin('runtime-provider')
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+    await activatePlugins([plugin])
+    expect(pluginRegistry.getEntry('test-plugin')?.state).toBe('active')
+    expect(getTaskProviderDescriptor('runtime-provider')).toBeDefined()
+
+    const url = new URL('https://x/settings/api/admin/plugin-approval')
+    const res = await handleAdminRosterPluginsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(superSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: 'test-plugin', action: 'reject' }),
+      }),
+      url,
+      '/settings/api/admin/plugin-approval',
+    )
+
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.boolean(), state: z.string() }).parse(await res.json())
+    expect(body.state).toBe('rejected')
+    expect(pluginRegistry.getEntry('test-plugin')?.state).toBe('rejected')
+    expect(getTaskProviderDescriptor('runtime-provider')).toBeUndefined()
+    expect(getActivatedPluginIds()).not.toContain('test-plugin')
   })
 
   test('plugin approval as non-SA bot-admin returns 403', async () => {

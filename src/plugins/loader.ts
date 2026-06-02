@@ -43,6 +43,11 @@ const SYSTEM_CONTEXT_ID = '__system__'
 const activationOrder: string[] = []
 const activeInstances = new Map<string, PluginInstance>()
 
+function removeActivatedPluginId(pluginId: string): void {
+  const index = activationOrder.lastIndexOf(pluginId)
+  if (index >= 0) activationOrder.splice(index, 1)
+}
+
 function commitTaskProviderRegistration(
   plugin: DiscoveredPlugin,
   ctx: ReturnType<typeof buildPluginContext>,
@@ -208,6 +213,7 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
     cleanupContributedTaskProviderTypes(pluginId, options)
+    removeActivatedPluginId(pluginId)
     pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'deactivated')
     log.info({ pluginId }, 'Plugin deactivated')
@@ -217,9 +223,14 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
     cleanupContributedTaskProviderTypes(pluginId, options)
+    removeActivatedPluginId(pluginId)
     pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'error', `Deactivation error: ${msg}`)
   }
+}
+
+export async function deactivatePluginById(pluginId: string, options: DeactivateAllPluginsOptions = {}): Promise<void> {
+  await deactivateOne(pluginId, options)
 }
 
 export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}): Promise<void> {

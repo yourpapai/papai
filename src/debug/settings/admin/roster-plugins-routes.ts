@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { broadcastMessage } from '../../../commands/announce-broadcast.js'
 import { addAdmin, listAdmins, removeAdmin } from '../../../instances/admin-store.js'
 import { logger } from '../../../logger.js'
+import { activatePlugins, deactivatePluginById } from '../../../plugins/loader.js'
 import { pluginRegistry } from '../../../plugins/registry.js'
 import { getPluginAdminState } from '../../../plugins/store.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
@@ -65,7 +66,14 @@ async function handlePluginApproval(req: Request, authed: AuthenticatedSettingsR
 
   if (body.data.action === 'approve') {
     pluginRegistry.approve(body.data.pluginId, authed.principal.platformUserId, entry.discoveredPlugin.manifestHash)
+    const approvedEntry = pluginRegistry.getEntry(body.data.pluginId)
+    if (approvedEntry !== undefined && approvedEntry.state === 'approved') {
+      await activatePlugins([approvedEntry.discoveredPlugin])
+    }
   } else {
+    if (entry.state === 'active') {
+      await deactivatePluginById(body.data.pluginId)
+    }
     pluginRegistry.reject(body.data.pluginId)
   }
   log.info({ pluginId: body.data.pluginId, action: body.data.action }, 'Settings SA changed plugin approval')
