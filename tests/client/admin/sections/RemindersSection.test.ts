@@ -92,6 +92,7 @@ describe('RemindersSection', () => {
     expect(calls).toEqual(['/recurring?userId=user-1', '/deferred?userId=user-1'])
     expect(target.textContent).toContain('Daily sync')
     expect(target.textContent).toContain('Follow up tomorrow')
+    expect(target.querySelector('.ui-pill')).not.toBeNull()
 
     void unmount(component)
   })

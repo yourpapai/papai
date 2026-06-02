@@ -80,6 +80,7 @@ describe('MemosSection', () => {
     expect(calls).toEqual(['/memos?userId=user-1&state=active'])
     expect(target.textContent).toContain('remember billing')
     expect(target.textContent).toContain('ops')
+    expect(target.querySelector('.ui-pill')).not.toBeNull()
 
     void unmount(component)
   })
