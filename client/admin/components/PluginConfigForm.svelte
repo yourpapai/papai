@@ -5,6 +5,10 @@
 
 <script lang="ts">
   import type { AdminPluginConfigKeyState, AdminPluginConfigSnapshot } from '../../shared/api-types.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Input from '../../shared/ui/Input.svelte'
+  import Panel from '../../shared/ui/Panel.svelte'
+  import Secret from '../../shared/ui/Secret.svelte'
   import { submitAdminPluginConfig } from '../plugin-config-fetchers.js'
 
   interface Props {
@@ -59,84 +63,85 @@
 </script>
 
 <section class="plugin-config-form">
-  <h3>Plugin configuration</h3>
   {#if snapshot === null}
     <span class="placeholder">Loading...</span>
   {:else if snapshot.plugins.length === 0}
     <p class="empty-state">No plugins with configuration found.</p>
   {:else}
     {#each snapshot.plugins as plugin (plugin.pluginId)}
-      <section class="plugin-group" aria-label={`Plugin ${plugin.pluginId}`}>
-        <h4>{plugin.pluginId}</h4>
-        <table>
-          <thead>
-            <tr><th>Key</th><th>Value</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            {#each plugin.keys as keyState (keyState.key)}
-              <tr data-testid="plugin-config-row">
-                <td>
-                  <span>{keyState.label}</span>
-                  {#if keyState.required}
-                    <span class="required-badge">required</span>
-                  {/if}
-                </td>
-                <td>
-                  {#if isEditing(plugin.pluginId, keyState.key)}
-                    <input
-                      type={keyState.sensitive ? 'password' : 'text'}
-                      data-testid={`input-${plugin.pluginId}-${keyState.key}`}
-                      bind:value={inputValue}
-                      placeholder="new value" />
-                  {:else if keyState.sensitive && keyState.value !== null}
-                    <code class="masked-value" data-testid={`masked-value-${plugin.pluginId}-${keyState.key}`}>{keyState.value}</code>
-                  {:else}
-                    <span>{display(keyState)}</span>
-                  {/if}
-                </td>
-                <td>
-                  {#if isEditing(plugin.pluginId, keyState.key)}
-                    <button
-                      type="button"
-                      data-testid={`submit-${plugin.pluginId}-${keyState.key}`}
-                      disabled={submitting || inputValue.trim() === ''}
-                      onclick={() => {
-                        void submit(plugin.pluginId, keyState.key)
-                      }}>Save</button>
-                    <button type="button" onclick={cancelEdit}>Cancel</button>
-                  {:else}
-                    <button
-                      type="button"
-                      data-testid={`edit-${plugin.pluginId}-${keyState.key}`}
-                      onclick={() => startEdit(plugin.pluginId, keyState.key)}>Edit</button>
-                  {/if}
-                  {#if status !== null && status.pluginId === plugin.pluginId && status.key === keyState.key}
-                    <span class={status.kind === 'error' ? 'status-error' : 'status-success'}>
-                      {status.message}
-                    </span>
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </section>
+      <Panel title={plugin.pluginId}>
+        {#snippet body()}
+          <table>
+            <thead>
+              <tr><th>Key</th><th>Value</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              {#each plugin.keys as keyState (keyState.key)}
+                <tr data-testid="plugin-config-row">
+                  <td>
+                    <span>{keyState.label}</span>
+                    {#if keyState.required}
+                      <span class="required-badge">required</span>
+                    {/if}
+                  </td>
+                  <td>
+                    {#if isEditing(plugin.pluginId, keyState.key)}
+                      <Input
+                        type={keyState.sensitive ? 'password' : 'text'}
+                        value={inputValue}
+                        onInput={(v) => (inputValue = v)}
+                        placeholder="new value"
+                        testid={`input-${plugin.pluginId}-${keyState.key}`} />
+                    {:else if keyState.sensitive && keyState.value !== null}
+                      <span data-testid={`masked-value-${plugin.pluginId}-${keyState.key}`}>
+                        <Secret value={keyState.value} hint="(hidden)" />
+                      </span>
+                    {:else}
+                      <span>{display(keyState)}</span>
+                    {/if}
+                  </td>
+                  <td>
+                    {#if isEditing(plugin.pluginId, keyState.key)}
+                      <Btn
+                        variant="primary"
+                        size="sm"
+                        type="button"
+                        testid={`submit-${plugin.pluginId}-${keyState.key}`}
+                        disabled={submitting || inputValue.trim() === ''}
+                        onClick={() => {
+                          void submit(plugin.pluginId, keyState.key)
+                        }}>
+                        {#snippet children()}Save{/snippet}
+                      </Btn>
+                      <Btn variant="ghost" size="sm" onClick={cancelEdit}>
+                        {#snippet children()}Cancel{/snippet}
+                      </Btn>
+                    {:else}
+                      <Btn
+                        variant="secondary"
+                        size="sm"
+                        testid={`edit-${plugin.pluginId}-${keyState.key}`}
+                        onClick={() => startEdit(plugin.pluginId, keyState.key)}>
+                        {#snippet children()}Edit{/snippet}
+                      </Btn>
+                    {/if}
+                    {#if status !== null && status.pluginId === plugin.pluginId && status.key === keyState.key}
+                      <span class={status.kind === 'error' ? 'status-error' : 'status-success'}>
+                        {status.message}
+                      </span>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/snippet}
+      </Panel>
     {/each}
   {/if}
 </section>
 
 <style>
-  .plugin-group {
-    margin-block-start: 16px;
-  }
-
-  .plugin-group h4 {
-    margin: 0 0 8px;
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: var(--fg2);
-  }
-
   .required-badge {
     display: inline-block;
     margin-inline-start: 6px;
