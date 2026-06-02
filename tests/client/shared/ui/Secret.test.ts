@@ -10,13 +10,25 @@ import { mount, unmount } from 'svelte'
 import Secret from '../../../../client/shared/ui/Secret.svelte'
 
 describe('Secret.svelte', () => {
-  test('renders the masked value and a reveal button', () => {
+  test('renders the masked value and a reveal button when onReveal is provided', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(Secret, {
+      target,
+      props: { value: '••••d2a0', hint: '(hidden)', onReveal: () => {} },
+    })
+    expect(target.querySelector('.ui-secret__value')?.textContent).toContain('••••d2a0')
+    expect(target.querySelector('.ui-secret__hint')?.textContent).toContain('(hidden)')
+    expect(target.querySelector('.ui-btn')?.textContent).toContain('reveal')
+    void unmount(c)
+  })
+
+  test('renders masked value but no reveal button when onReveal is not provided', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
     const c = mount(Secret, { target, props: { value: '••••d2a0', hint: '(hidden)' } })
     expect(target.querySelector('.ui-secret__value')?.textContent).toContain('••••d2a0')
-    expect(target.querySelector('.ui-secret__hint')?.textContent).toContain('(hidden)')
-    expect(target.querySelector('.ui-btn')?.textContent).toContain('reveal')
+    expect(target.querySelector('.ui-btn')).toBeNull()
     void unmount(c)
   })
   test('fires onReveal when the reveal button is clicked', () => {

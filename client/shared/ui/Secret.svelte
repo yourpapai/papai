@@ -18,7 +18,9 @@
 <span class="ui-secret">
   <span class="ui-secret__value">{value}</span>
   {#if hint}<span class="ui-secret__hint">{hint}</span>{/if}
-  <Btn size="sm" variant="ghost" onClick={onReveal}>reveal</Btn>
+  {#if onReveal}
+    <Btn size="sm" variant="ghost" onClick={onReveal}>reveal</Btn>
+  {/if}
 </span>
 
 <style>
