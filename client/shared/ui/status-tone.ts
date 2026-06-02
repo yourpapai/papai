@@ -27,6 +27,8 @@ const TONE_MAP: Record<string, StatusTone> = {
   '—': 'mute',
   trace: 'mute',
   debug: 'mute',
+  warn: 'warn',
+  info: 'info',
   fatal: 'danger',
   retriable: 'info',
   'non-retriable': 'mute',
