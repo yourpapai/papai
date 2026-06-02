@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.5] - 2026-06-02
+
+### Fixed
+
+- **admin:** Contain Reminders filter + StatusPill status (A7/B2/B3/B4)
+- **admin:** Adopt Input/Btn/StatusPill in MemosSection (B2/B3/B4)
+- **admin:** Adopt Input/Btn in IdentitiesSection (B2/B3)
+- **admin:** Adopt Btn for Groups refresh/revoke (B2)
+- **admin:** Adopt Btn for Billing refresh (B2)
+- **admin:** Render recent-request status as StatusPill (B4)
+- **admin:** Adopt Secret/Input/Btn in CredentialsForm, drop duplicate heading (C2/B2/B3/B7)
+- **admin:** Panel-wrap plugin groups, adopt Secret/Input/Btn (B7/B2/B3/C2)
+- **deploy:** Use compose status filter for backup gate
 ## [6.0.4] - 2026-06-01
 
 ### Added
