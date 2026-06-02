@@ -5,7 +5,10 @@
 
 <script lang="ts">
   import type { AdminLlmKeyState, AdminLlmSnapshot } from '../../shared/api-types.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Input from '../../shared/ui/Input.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
+  import Secret from '../../shared/ui/Secret.svelte'
   import { submitAdminLlm, type SubmitAdminLlmInput } from '../fetchers.js'
 
   type Key = SubmitAdminLlmInput['key']
@@ -64,7 +67,6 @@
 </script>
 
 <section class="credentials-form">
-  <h3>LLM credentials</h3>
   {#if snapshot === null}
     <span class="placeholder">Loading...</span>
   {:else}
@@ -85,14 +87,16 @@
             </td>
             <td>
               {#if editing === key}
-                <input
-                  type="text"
-                  data-testid={`input-${key}`}
-                  bind:value={inputValue}
-                  placeholder="new value" />
+                <Input
+                  type={SENSITIVE_KEYS.has(key) ? 'password' : 'text'}
+                  value={inputValue}
+                  onInput={(v) => (inputValue = v)}
+                  placeholder="new value"
+                  testid={`input-${key}`} />
               {:else if SENSITIVE_KEYS.has(key) && snapshot[key].value !== null}
-                <code class="masked-value" data-testid={`masked-value-${key}`}>{snapshot[key].value}</code>
-                <span class="masked-hint">(hidden)</span>
+                <span data-testid={`masked-value-${key}`}>
+                  <Secret value={snapshot[key].value ?? '••••••••'} hint="(hidden)" />
+                </span>
               {:else}
                 <span>{display(snapshot[key])}</span>
               {/if}
@@ -100,19 +104,24 @@
             <td>{updatedByDisplay(snapshot[key])}</td>
             <td>
               {#if editing === key}
-                <button
+                <Btn
+                  variant="primary"
+                  size="sm"
                   type="button"
-                  data-testid={`submit-${key}`}
+                  testid={`submit-${key}`}
                   disabled={submitting || inputValue.trim() === ''}
-                  onclick={() => {
+                  onClick={() => {
                     void submit(key)
-                  }}>Save</button>
-                <button type="button" onclick={cancelEdit}>Cancel</button>
+                  }}>
+                  {#snippet children()}Save{/snippet}
+                </Btn>
+                <Btn variant="ghost" size="sm" onClick={cancelEdit}>
+                  {#snippet children()}Cancel{/snippet}
+                </Btn>
               {:else}
-                <button
-                  type="button"
-                  data-testid={`edit-${key}`}
-                  onclick={() => startEdit(key)}>Edit</button>
+                <Btn variant="secondary" size="sm" testid={`edit-${key}`} onClick={() => startEdit(key)}>
+                  {#snippet children()}Edit{/snippet}
+                </Btn>
               {/if}
               {#if status !== null && status.forKey === key}
                 <span class={status.kind === 'error' ? 'status-error' : 'status-success'}>

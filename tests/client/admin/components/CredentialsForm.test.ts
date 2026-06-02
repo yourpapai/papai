@@ -174,4 +174,25 @@ describe('CredentialsForm', () => {
     expect(m.refreshes).toBeGreaterThanOrEqual(1)
     void unmount(m.component)
   })
+
+  test('sensitive key masked value renders as ui-secret component', () => {
+    const { target, component } = render(populated)
+    expect(target.querySelector('.ui-secret')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('edit button for llm_apikey has class ui-btn', () => {
+    const { target, component } = render(populated)
+    const editBtn = target.querySelector('[data-testid="edit-llm_apikey"]')
+    expect(editBtn).not.toBeNull()
+    expect(editBtn?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
+  test('does not render an h3 with text "LLM credentials"', () => {
+    const { target, component } = render(populated)
+    const hasHeading = [...target.querySelectorAll('h3')].some((h) => h.textContent === 'LLM credentials')
+    expect(hasHeading).toBe(false)
+    void unmount(component)
+  })
 })
