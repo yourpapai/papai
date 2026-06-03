@@ -111,4 +111,16 @@ describe('MembersSection', () => {
     expect(target.querySelector('[data-testid="member-remove-42"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders the add form with kit Input/Btn and members via DataTable', async () => {
+    setMockFetch(() => Promise.resolve(json(membersPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.querySelector('[data-testid="member-add-input"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="member-add"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    void unmount(component)
+  })
 })

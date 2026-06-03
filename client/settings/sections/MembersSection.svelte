@@ -6,6 +6,10 @@
 <script lang="ts">
   import { addGroupMember, fetchGroupMembers, removeGroupMember } from '../fetchers.js'
   import type { GroupMembersResponse } from '../fetcher-schemas.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import DataTable from '../../shared/ui/DataTable.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Input from '../../shared/ui/Input.svelte'
 
   interface Props {
     contextId: string
@@ -56,6 +60,23 @@
   $effect(() => {
     void load(contextId)
   })
+
+  interface MemberRow {
+    user_id: string
+    added_by: string
+    added_at: string
+  }
+
+  const memberRows = $derived<MemberRow[]>(
+    members.map((m) => ({ user_id: m.user_id, added_by: m.added_by, added_at: m.added_at })),
+  )
+
+  const memberColumns = [
+    { key: 'user_id' as const, label: 'User ID' },
+    { key: 'added_by' as const, label: 'Added by' },
+    { key: 'added_at' as const, label: 'Added at' },
+    { key: 'actions' as const, label: '', align: 'right' as const },
+  ]
 </script>
 
 <section id="members" class="settings-section">
@@ -64,30 +85,36 @@
       <p class="eyebrow">Group</p>
       <h2>Members</h2>
     </div>
-    <button type="button" onclick={() => void load(contextId)}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
 
   <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void add() }}>
-    <label>
-      <span>User ID</span>
-      <input data-testid="member-add-input" value={newUserId} oninput={(e) => (newUserId = (e.target as HTMLInputElement).value)} />
-    </label>
-    <button type="submit" data-testid="member-add">Add member</button>
+    <Field label="User ID">
+      {#snippet children()}
+        <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="member-add-input" />
+      {/snippet}
+    </Field>
+    <Btn variant="primary" type="submit" testid="member-add">
+      {#snippet children()}Add member{/snippet}
+    </Btn>
   </form>
 
   <div class="settings-table-wrap">
-    <table class="settings-table">
-      <thead><tr><th>User ID</th><th>Added by</th><th>Added at</th><th>Actions</th></tr></thead>
-      <tbody>
-        {#each members as member (member.user_id)}
-          <tr>
-            <td>{member.user_id}</td><td>{member.added_by}</td><td>{member.added_at}</td>
-            <td><button type="button" data-testid={`member-remove-${member.user_id}`} onclick={() => void remove(member.user_id)}>Remove</button></td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    {#snippet cell(row: MemberRow, col: { key: string; label: string })}
+      {#if col.key === 'actions'}
+        <Btn variant="ghost" size="sm" testid={`member-remove-${row.user_id}`} onClick={() => void remove(row.user_id)}>
+          {#snippet children()}Remove{/snippet}
+        </Btn>
+      {:else}
+        {String(row[col.key as keyof MemberRow] ?? '')}
+      {/if}
+    {/snippet}
+    <DataTable columns={memberColumns} rows={memberRows} {cell} rowKey="user_id">
+      {#snippet empty()}No members{/snippet}
+    </DataTable>
   </div>
 </section>
