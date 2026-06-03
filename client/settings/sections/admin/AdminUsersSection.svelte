@@ -6,6 +6,10 @@
 <script lang="ts">
   import { addAdminUser, fetchAdminUsers, removeAdminUser } from '../../admin-fetchers.js'
   import type { AdminUserRow } from '../../fetcher-schemas.js'
+  import Btn from '../../../shared/ui/Btn.svelte'
+  import DataTable from '../../../shared/ui/DataTable.svelte'
+  import Field from '../../../shared/ui/Field.svelte'
+  import Input from '../../../shared/ui/Input.svelte'
 
   let users: AdminUserRow[] = $state([])
   let error: string | null = $state(null)
@@ -59,6 +63,21 @@
   $effect(() => {
     void load()
   })
+
+  interface UserRow {
+    platform_user_id: string
+    username: string
+  }
+
+  const userRows = $derived<UserRow[]>(
+    users.map((u) => ({ platform_user_id: u.platform_user_id, username: u.username ?? '—' })),
+  )
+
+  const userColumns = [
+    { key: 'platform_user_id' as const, label: 'User ID' },
+    { key: 'username' as const, label: 'Username' },
+    { key: 'actions' as const, label: '', align: 'right' as const },
+  ]
 </script>
 
 <section id="users" class="settings-section">
@@ -67,29 +86,42 @@
       <p class="eyebrow">Admin · Access</p>
       <h2>Users</h2>
     </div>
-    <button type="button" onclick={() => void load()}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load()}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
   <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void add() }}>
-    <label><span>User ID</span><input data-testid="user-add-input" value={newUserId} oninput={(e) => (newUserId = (e.target as HTMLInputElement).value)} /></label>
-    <label><span>Username (optional)</span><input value={newUsername} oninput={(e) => (newUsername = (e.target as HTMLInputElement).value)} /></label>
-    <button type="submit" data-testid="user-add">Add user</button>
+    <Field label="User ID">
+      {#snippet children()}
+        <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="user-add-input" />
+      {/snippet}
+    </Field>
+    <Field label="Username" hint="optional">
+      {#snippet children()}
+        <Input value={newUsername} onInput={(v) => (newUsername = v)} />
+      {/snippet}
+    </Field>
+    <Btn variant="primary" type="submit" testid="user-add">
+      {#snippet children()}Add user{/snippet}
+    </Btn>
   </form>
 
   <div class="settings-table-wrap">
-    <table class="settings-table">
-      <thead><tr><th>User ID</th><th>Username</th><th>Actions</th></tr></thead>
-      <tbody>
-        {#each users as user (user.platform_user_id)}
-          <tr>
-            <td>{user.platform_user_id}</td><td>{user.username ?? '—'}</td>
-            <td><button type="button" data-testid={`user-remove-${user.platform_user_id}`} onclick={() => void remove(user.platform_user_id)}>Remove</button></td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    {#snippet cell(row: UserRow, col: { key: string; label: string })}
+      {#if col.key === 'actions'}
+        <Btn variant="ghost" size="sm" testid={`user-remove-${row.platform_user_id}`} onClick={() => void remove(row.platform_user_id)}>
+          {#snippet children()}Remove{/snippet}
+        </Btn>
+      {:else}
+        {String(row[col.key as keyof UserRow] ?? '')}
+      {/if}
+    {/snippet}
+    <DataTable columns={userColumns} rows={userRows} {cell} rowKey="platform_user_id">
+      {#snippet empty()}No users{/snippet}
+    </DataTable>
   </div>
 </section>

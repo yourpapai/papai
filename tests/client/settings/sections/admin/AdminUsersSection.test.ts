@@ -128,4 +128,17 @@ describe('AdminUsersSection', () => {
     expect(target.querySelector('[data-testid="user-remove-42"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders the add form with Field/Input/Btn and users via DataTable', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureUsersMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="user-add-input"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="user-add"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    void unmount(component)
+  })
 })
