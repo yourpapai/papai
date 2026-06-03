@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
 const REPO_ROOT = path.resolve(import.meta.dir, '../..')
@@ -49,15 +49,22 @@ describe('codeindex portability wiring', () => {
   })
 
   test('removes stale in-repo codeindex guidance from active repo files', () => {
-    const architectureInventory = readRepoFile('scripts/architecture-inventory-registry.ts')
     const reviewLoopGuide = readRepoFile('review-loop/CLAUDE.md')
     const verificationGuide = readRepoFile('docs/guides/codeindex-verification.md')
-
-    expect(architectureInventory).not.toContain("'codeindex/src/cli.ts'")
-    expect(architectureInventory).toContain("'scripts/codeindex-cli.ts'")
 
     expect(reviewLoopGuide).not.toContain('codeindex/src/')
     expect(verificationGuide).not.toContain('That Touch `codeindex/`')
     expect(verificationGuide).toContain('Before Merging PRs That Touch `codeindex` Integration')
+  })
+
+  test('removes architecture inventory tooling from active repo files', () => {
+    const packageJson = readRepoFile('package.json')
+    const architectureInventoryFiles = [
+      ...readdirSync(path.join(REPO_ROOT, 'scripts')).map((entry) => `scripts/${entry}`),
+      ...readdirSync(path.join(REPO_ROOT, 'tests/scripts')).map((entry) => `tests/scripts/${entry}`),
+    ].filter((relativePath) => relativePath.includes('architecture-inventory'))
+
+    expect(packageJson).not.toContain('"inventory:architecture": "bun scripts/architecture-inventory.ts"')
+    expect(architectureInventoryFiles).toEqual([])
   })
 })
