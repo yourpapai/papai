@@ -6,6 +6,10 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
+  import Btn from '../../shared/ui/Btn.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import Secret from '../../shared/ui/Secret.svelte'
+  import SummaryList from '../../shared/ui/SummaryList.svelte'
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
   import type { ConfigField, ProvisionResult } from '../fetcher-schemas.js'
   import { fetchConfig, provisionKaneo } from '../fetchers.js'
@@ -70,7 +74,9 @@
       <p class="eyebrow">Task provider</p>
       <h2>Task provider</h2>
     </div>
-    <button type="button" onclick={() => void load(contextId)}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}
@@ -78,7 +84,7 @@
   {:else if loading}
     <p class="placeholder">Loading…</p>
   {:else if visible.length === 0}
-    <p class="placeholder">No task-provider credentials for this context.</p>
+    <EmptyState title="No task-provider credentials" hint="No task-provider credentials for this context." />
   {:else}
     <div class="settings-field-list">
       {#each visible as field (field.key)}
@@ -90,20 +96,23 @@
   <div class="settings-provision">
     <h3>Kaneo auto-provision</h3>
     <p class="placeholder">Creates a Kaneo account and stores its API key for this context. Credentials are shown once.</p>
-    <button type="button" data-testid="provision-kaneo" disabled={provisioning} onclick={() => void provision()}>
-      {provisioning ? 'Provisioning…' : 'Provision Kaneo'}
-    </button>
+    <Btn variant="primary" testid="provision-kaneo" disabled={provisioning} onClick={() => void provision()}>
+      {#snippet children()}{provisioning ? 'Provisioning…' : 'Provision Kaneo'}{/snippet}
+    </Btn>
     {#if provisionError !== null}
       <p class="status-error">{provisionError}</p>
     {/if}
     {#if provisioned !== null}
       <div class="settings-provision__reveal" data-testid="provision-result">
         <p class="status-success">Provisioned — copy these now, they will not be shown again:</p>
-        <dl>
-          <div><dt>Email</dt><dd>{provisioned.email}</dd></div>
-          <div><dt>Password</dt><dd>{provisioned.password}</dd></div>
-          <div><dt>Kaneo URL</dt><dd>{provisioned.kaneoUrl}</dd></div>
-        </dl>
+        <SummaryList items={[
+          { k: 'Email', v: provisioned.email },
+          { k: 'Kaneo URL', v: provisioned.kaneoUrl },
+        ]} />
+        <div class="settings-provision__secret">
+          <span class="settings-provision__secret-label">Password</span>
+          <Secret value={provisioned.password} hint="shown once — copy now" />
+        </div>
       </div>
     {/if}
   </div>
@@ -121,25 +130,14 @@
     padding-top: 8px;
     border-top: 1px solid var(--border);
   }
-  .settings-provision button {
-    justify-self: start;
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 8px 12px;
-    border-radius: 2px;
-  }
-  .settings-provision__reveal dl {
-    display: grid;
-    gap: 6px;
-  }
-  .settings-provision__reveal div {
+  .settings-provision__secret {
     display: flex;
+    align-items: center;
     gap: 10px;
     font-family: var(--font-mono);
     font-size: 12px;
   }
-  .settings-provision__reveal dt {
+  .settings-provision__secret-label {
     color: var(--fg3);
     min-width: 80px;
   }

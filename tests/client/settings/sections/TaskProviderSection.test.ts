@@ -90,4 +90,14 @@ describe('TaskProviderSection', () => {
     expect(target.textContent).toContain('https://k')
     void unmount(component)
   })
+
+  test('renders refresh + provision as kit Btns', () => {
+    setMockFetch(() => Promise.resolve(json(configPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'ctx' } })
+    expect(target.querySelector('.settings-section-header .ui-btn')).not.toBeNull()
+    expect(target.querySelector('[data-testid="provision-kaneo"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
 })
