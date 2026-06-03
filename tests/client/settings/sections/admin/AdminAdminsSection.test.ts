@@ -84,6 +84,19 @@ describe('AdminAdminsSection', () => {
     void unmount(component)
   })
 
+  test('renders the add form with Field/Input/Btn and roster via DataTable', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureRosterMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminAdminsSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="admin-user-input"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="admin-add"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('a failed add keeps the admins table visible and shows an error', async () => {
     setCsrfToken('c')
     setMockFetch(postErrorMock)
