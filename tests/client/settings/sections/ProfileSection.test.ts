@@ -81,7 +81,16 @@ describe('ProfileSection', () => {
     const component = mount(ProfileSection, { target, props: { contextId: 'user:1' } })
     await drain()
     expect(target.querySelector('.status-error')).not.toBeNull()
-    expect(target.querySelector('.placeholder')).toBeNull()
+    expect(target.querySelector('.ui-empty')).toBeNull()
+    void unmount(component)
+  })
+
+  test('renders the refresh control as a kit Btn', () => {
+    setMockFetch(() => Promise.resolve(json(configPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ProfileSection, { target, props: { contextId: 'ctx' } })
+    expect(target.querySelector('.settings-section-header .ui-btn')).not.toBeNull()
     void unmount(component)
   })
 })

@@ -7,6 +7,8 @@
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
   import type { ConfigField } from '../fetcher-schemas.js'
   import { fetchConfig } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
 
   interface Props {
     contextId: string
@@ -45,7 +47,9 @@
       <p class="eyebrow">Personal</p>
       <h2>Profile</h2>
     </div>
-    <button type="button" onclick={() => void load(contextId)}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}
@@ -53,7 +57,7 @@
   {:else if loading}
     <p class="placeholder">Loading…</p>
   {:else if visible.length === 0}
-    <p class="placeholder">No editable profile settings for this context.</p>
+    <EmptyState title="No profile settings" hint="This context has no editable profile settings." />
   {:else}
     <div class="settings-field-list">
       {#each visible as field (field.key)}
