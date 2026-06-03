@@ -8,6 +8,9 @@
 
   import type { ConfigField } from '../fetcher-schemas.js'
   import { patchConfig } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Input from '../../shared/ui/Input.svelte'
+  import Secret from '../../shared/ui/Secret.svelte'
 
   interface Props {
     contextId: string
@@ -55,26 +58,28 @@
   <div class="settings-field__head">
     <span class="settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
     {#if field.sensitive && field.hasValue && !replacing}
-      <span class="masked-value">{field.value}</span>
-      <button type="button" data-testid={`cfg-replace-${field.key}`} onclick={() => (replacing = true)}>Replace</button>
+      <Secret value={field.value} />
+      <Btn variant="ghost" size="sm" testid={`cfg-replace-${field.key}`} onClick={() => (replacing = true)}>
+        {#snippet children()}Replace{/snippet}
+      </Btn>
     {/if}
   </div>
 
   {#if editorOpen}
     <div class="settings-field__editor">
-      <input
-        data-testid={`cfg-input-${field.key}`}
+      <Input
         type={field.sensitive ? 'password' : 'text'}
         value={draft}
         placeholder={field.sensitive ? 'enter a new value' : ''}
-        oninput={(event) => (draft = (event.target as HTMLInputElement).value)} />
-      <button type="button" data-testid={`cfg-save-${field.key}`} disabled={saving} onclick={() => void save()}>
-        {saving ? 'Saving…' : 'Save'}
-      </button>
+        onInput={(v) => (draft = v)}
+        testid={`cfg-input-${field.key}`} />
+      <Btn variant="primary" size="sm" testid={`cfg-save-${field.key}`} disabled={saving} onClick={() => void save()}>
+        {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
+      </Btn>
       {#if field.sensitive}
-        <button type="button" data-testid={`cfg-cancel-${field.key}`} onclick={() => { replacing = false; draft = '' }}>
-          Cancel
-        </button>
+        <Btn variant="ghost" size="sm" testid={`cfg-cancel-${field.key}`} onClick={() => { replacing = false; draft = '' }}>
+          {#snippet children()}Cancel{/snippet}
+        </Btn>
       {/if}
     </div>
   {/if}
@@ -108,21 +113,8 @@
     gap: 8px;
     flex-wrap: wrap;
   }
-  .settings-field__editor input {
+  .settings-field__editor :global(.ui-input) {
     flex: 1;
     min-width: 200px;
-    background: var(--raised);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding: 8px 10px;
-    border-radius: 2px;
-  }
-  .settings-field__editor button,
-  .settings-field__head button {
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 8px 10px;
-    border-radius: 2px;
   }
 </style>

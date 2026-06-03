@@ -130,6 +130,56 @@ describe('ConfigFieldRow', () => {
     void unmount(component)
   })
 
+  test('non-sensitive field input is wrapped in .ui-input and save button has ui-btn class', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'k',
+        storageKey: 'k',
+        label: 'Key',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: false,
+        value: '',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const inputEl = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-k"]')!
+    expect(inputEl).not.toBeNull()
+    expect(inputEl.closest('.ui-input')).not.toBeNull()
+    const saveBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-k"]')!
+    expect(saveBtn).not.toBeNull()
+    expect(saveBtn.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
+  test('sensitive field with value renders .ui-secret and replace button has ui-btn class', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'k',
+        storageKey: 'k',
+        label: 'Key',
+        required: false,
+        sensitive: true,
+        kind: 'preference',
+        hasValue: true,
+        value: '****abcd',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    expect(target.querySelector('.ui-secret')).not.toBeNull()
+    const replaceBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-replace-k"]')!
+    expect(replaceBtn).not.toBeNull()
+    expect(replaceBtn.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
   test('cancel resets the sensitive replace editor', () => {
     setMockFetch(() => Promise.resolve(json({})))
     const { component, target } = render({
