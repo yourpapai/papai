@@ -86,4 +86,28 @@ describe('Input.svelte', () => {
     expect(last).toBe('hi')
     void unmount(component)
   })
+
+  test('renders a textarea in multiline mode and emits onInput', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    let seen = ''
+    const c = mount(Input, {
+      target,
+      props: {
+        value: '',
+        multiline: true,
+        rows: 3,
+        onInput: (v: string) => {
+          seen = v
+        },
+      },
+    })
+    const ta = target.querySelector<HTMLTextAreaElement>('textarea')!
+    expect(ta).not.toBeNull()
+    expect(target.querySelector('input')).toBeNull()
+    ta.value = 'hi'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(seen).toBe('hi')
+    void unmount(c)
+  })
 })
