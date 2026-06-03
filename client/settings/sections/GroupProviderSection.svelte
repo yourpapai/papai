@@ -6,6 +6,7 @@
 <script lang="ts">
   import Btn from '../../shared/ui/Btn.svelte'
   import Field from '../../shared/ui/Field.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Select from '../../shared/ui/Select.svelte'
   import { fetchGroupTaskInstance, patchGroupTaskInstance } from '../fetchers.js'
   import type { GroupTaskInstanceResponse } from '../fetcher-schemas.js'
@@ -60,15 +61,13 @@
 </script>
 
 <section id="group-provider" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Group</p>
-      <h2>Group task provider</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader eyebrow="Group" title="Group task provider">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}

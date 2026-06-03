@@ -97,6 +97,17 @@ describe('AdminAdminsSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureRosterMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminAdminsSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Admins')
+    void unmount(component)
+  })
+
   test('a failed add keeps the admins table visible and shows an error', async () => {
     setCsrfToken('c')
     setMockFetch(postErrorMock)

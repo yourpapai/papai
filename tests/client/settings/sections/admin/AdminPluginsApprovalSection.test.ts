@@ -109,6 +109,17 @@ describe('AdminPluginsApprovalSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureApprovalMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsApprovalSection, { target, props: { catalogContextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Plugin approval')
+    void unmount(component)
+  })
+
   test('renders plugins via DataTable with StatusPill and approve/reject Btns', async () => {
     setCsrfToken('c')
     setMockFetch(captureApprovalMock)

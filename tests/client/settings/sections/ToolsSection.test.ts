@@ -155,6 +155,16 @@ describe('ToolsSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(() => Promise.resolve(json(toolsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Tools')
+    void unmount(component)
+  })
+
   test('renders domain summary as a Pill and per-tool permission Btns', async () => {
     setMockFetch(() => Promise.resolve(json(toolsPayload)))
     document.body.innerHTML = '<div id="root"></div>'

@@ -9,6 +9,7 @@
   import type { PluginEntry } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
   import DataTable from '../../../shared/ui/DataTable.svelte'
+  import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import StatusPill from '../../../shared/ui/StatusPill.svelte'
 
   interface Props {
@@ -67,15 +68,13 @@
 </script>
 
 <section id="plugin-approval" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Admin · Plugins</p>
-      <h2>Plugin approval</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load()}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader eyebrow="Admin · Plugins" title="Plugin approval">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load()}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}

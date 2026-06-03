@@ -111,6 +111,16 @@ describe('IdentitySection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(() => Promise.resolve(json(identityPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(IdentitySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Identity')
+    void unmount(component)
+  })
+
   test('renders labeled Inputs and Save/Clear Btns', async () => {
     setMockFetch(() => Promise.resolve(json(identityPayload)))
     document.body.innerHTML = '<div id="root"></div>'

@@ -135,6 +135,16 @@ describe('GroupProviderSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(capturePatchMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Group task provider')
+    void unmount(component)
+  })
+
   test('renders the task-instance Select and Save Btn', async () => {
     setMockFetch(capturePatchMock)
     document.body.innerHTML = '<div id="root"></div>'

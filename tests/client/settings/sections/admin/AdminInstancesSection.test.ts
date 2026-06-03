@@ -316,6 +316,16 @@ describe('AdminInstancesSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Instances')
+    void unmount(component)
+  })
+
   test('renders forms via Field/Input/Select/Btn and tables via DataTable with StatusPill', async () => {
     installFetch()
     document.body.innerHTML = '<div id="root"></div>'

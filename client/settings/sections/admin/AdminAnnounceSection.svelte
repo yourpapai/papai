@@ -7,6 +7,7 @@
   import Btn from '../../../shared/ui/Btn.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import Input from '../../../shared/ui/Input.svelte'
+  import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import { sendAnnounce } from '../../admin-fetchers.js'
   import type { AnnounceResult } from '../../fetcher-schemas.js'
 
@@ -33,12 +34,7 @@
 </script>
 
 <section id="announce" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Admin</p>
-      <h2>Announce</h2>
-    </div>
-  </header>
+  <PageHeader eyebrow="Admin" title="Announce" />
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
 

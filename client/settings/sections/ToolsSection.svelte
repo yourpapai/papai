@@ -6,6 +6,7 @@
 <script lang="ts">
   import Btn from '../../shared/ui/Btn.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
 
   import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolRisk } from '../fetcher-schemas.js'
@@ -81,13 +82,11 @@
 </script>
 
 <section id="tools" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Tools</p>
-      <h2>Tools</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>{#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}</Btn>
-  </header>
+  <PageHeader title="Tools">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>{#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}</Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}
     <p class="status-error">{error}</p>

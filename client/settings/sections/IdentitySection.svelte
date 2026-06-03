@@ -9,6 +9,7 @@
   import Btn from '../../shared/ui/Btn.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import Input from '../../shared/ui/Input.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
 
   interface Props {
     contextId: string
@@ -24,6 +25,8 @@
   let providerUserId = $state('')
   let providerUserLogin = $state('')
   let displayName = $state('')
+
+  const headerTitle = $derived(data !== null ? `Identity · ${data.providerName}` : 'Identity')
 
   async function load(id: string): Promise<void> {
     error = null
@@ -81,15 +84,13 @@
 </script>
 
 <section id="identity" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Identity</p>
-      <h2>Identity{#if data !== null} · {data.providerName}{/if}</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader title={headerTitle}>
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if notice !== null}
     <p class="placeholder">{notice}</p>

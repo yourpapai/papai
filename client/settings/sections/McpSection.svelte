@@ -9,6 +9,7 @@
   import Btn from '../../shared/ui/Btn.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import Input from '../../shared/ui/Input.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
 
   interface HeaderRow {
     name: string
@@ -145,15 +146,13 @@
 </script>
 
 <section id="mcp" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Integrations</p>
-      <h2>MCP endpoints</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader eyebrow="Integrations" title="MCP endpoints">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}

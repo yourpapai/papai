@@ -100,6 +100,17 @@ describe('AdminGroupsSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureGroupsMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminGroupsSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Groups')
+    void unmount(component)
+  })
+
   test('renders the add form with Field/Input/Btn and groups via DataTable', async () => {
     setCsrfToken('c')
     setMockFetch(captureGroupsMock)

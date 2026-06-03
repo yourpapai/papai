@@ -211,6 +211,16 @@ describe('PluginsSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(() => Promise.resolve(json(pluginsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Plugins')
+    void unmount(component)
+  })
+
   test('shows EmptyState when no plugins are discovered', async () => {
     setMockFetch(() => Promise.resolve(json({ contextId: 'user:1', plugins: [] })))
     document.body.innerHTML = '<div id="root"></div>'

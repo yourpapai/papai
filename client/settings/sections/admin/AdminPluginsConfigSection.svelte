@@ -10,6 +10,7 @@
   import EmptyState from '../../../shared/ui/EmptyState.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import Input from '../../../shared/ui/Input.svelte'
+  import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Secret from '../../../shared/ui/Secret.svelte'
 
   let plugins: AdminPluginConfigEntry[] = $state([])
@@ -57,15 +58,13 @@
 </script>
 
 <section id="plugin-config" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Admin · Plugins</p>
-      <h2>Plugin config</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load()}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader eyebrow="Admin · Plugins" title="Plugin config">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load()}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}

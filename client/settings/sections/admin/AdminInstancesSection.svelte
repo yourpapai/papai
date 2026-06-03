@@ -21,6 +21,7 @@
   import DataTable from '../../../shared/ui/DataTable.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import Input from '../../../shared/ui/Input.svelte'
+  import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Select from '../../../shared/ui/Select.svelte'
   import StatusPill from '../../../shared/ui/StatusPill.svelte'
 
@@ -212,15 +213,13 @@
 </script>
 
 <section id="instances" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Admin · Runtime</p>
-      <h2>Instances</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load()}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader eyebrow="Admin · Runtime" title="Instances">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load()}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}

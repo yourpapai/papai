@@ -96,8 +96,18 @@ describe('TaskProviderSection', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'ctx' } })
-    expect(target.querySelector('.settings-section-header .ui-btn')).not.toBeNull()
+    expect(target.querySelector('.ui-page-header__action .ui-btn')).not.toBeNull()
     expect(target.querySelector('[data-testid="provision-kaneo"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(() => Promise.resolve(json(configPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Task provider')
     void unmount(component)
   })
 })

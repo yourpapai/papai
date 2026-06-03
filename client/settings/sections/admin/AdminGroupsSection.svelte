@@ -10,6 +10,7 @@
   import DataTable from '../../../shared/ui/DataTable.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import Input from '../../../shared/ui/Input.svelte'
+  import PageHeader from '../../../shared/ui/PageHeader.svelte'
 
   let groups: AdminGroupRow[] = $state([])
   let error: string | null = $state(null)
@@ -80,15 +81,13 @@
 </script>
 
 <section id="groups" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Admin · Access</p>
-      <h2>Groups</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load()}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader eyebrow="Admin · Access" title="Groups">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load()}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}

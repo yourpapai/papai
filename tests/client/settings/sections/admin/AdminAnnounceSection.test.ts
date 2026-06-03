@@ -81,6 +81,14 @@ describe('AdminAnnounceSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(AdminAnnounceSection, { target, props: {} })
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Announce')
+    void unmount(c)
+  })
+
   test('renders the message field as a multiline Input and Send as a Btn', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!

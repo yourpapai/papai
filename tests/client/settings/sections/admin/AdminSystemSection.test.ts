@@ -112,6 +112,16 @@ describe('AdminSystemSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(() => Promise.resolve(json(systemPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminSystemSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('System (LLM)')
+    void unmount(component)
+  })
+
   test('renders masked system value via Secret and editor via Field/Input/Btn', async () => {
     setMockFetch(() => Promise.resolve(json(systemPayload)))
     document.body.innerHTML = '<div id="root"></div>'

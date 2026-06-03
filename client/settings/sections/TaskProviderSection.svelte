@@ -8,6 +8,7 @@
 
   import Btn from '../../shared/ui/Btn.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import SummaryList from '../../shared/ui/SummaryList.svelte'
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
@@ -69,15 +70,13 @@
 </script>
 
 <section id="task-provider" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Task provider</p>
-      <h2>Task provider</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader title="Task provider">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}
     <p class="status-error">{error}</p>

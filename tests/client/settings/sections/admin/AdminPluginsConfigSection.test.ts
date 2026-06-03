@@ -123,6 +123,16 @@ describe('AdminPluginsConfigSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(() => Promise.resolve(json(snapshotPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Plugin config')
+    void unmount(component)
+  })
+
   test('renders masked value via Secret and editor via Field/Input/Btn', async () => {
     setMockFetch(() => Promise.resolve(json(snapshotPayload)))
     document.body.innerHTML = '<div id="root"></div>'

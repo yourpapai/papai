@@ -112,6 +112,16 @@ describe('MembersSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(() => Promise.resolve(json(membersPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Members')
+    void unmount(component)
+  })
+
   test('renders the add form with kit Input/Btn and members via DataTable', async () => {
     setMockFetch(() => Promise.resolve(json(membersPayload)))
     document.body.innerHTML = '<div id="root"></div>'

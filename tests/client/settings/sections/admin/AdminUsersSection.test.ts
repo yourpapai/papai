@@ -129,6 +129,17 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
+  test('renders section header via PageHeader', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureUsersMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Users')
+    void unmount(component)
+  })
+
   test('renders the add form with Field/Input/Btn and users via DataTable', async () => {
     setCsrfToken('c')
     setMockFetch(captureUsersMock)

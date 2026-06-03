@@ -9,6 +9,7 @@
   import { fetchConfig } from '../fetchers.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
 
   interface Props {
     contextId: string
@@ -42,15 +43,13 @@
 </script>
 
 <section id="profile" class="settings-section">
-  <header class="settings-section-header">
-    <div>
-      <p class="eyebrow">Personal</p>
-      <h2>Profile</h2>
-    </div>
-    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
-      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-    </Btn>
-  </header>
+  <PageHeader eyebrow="Personal" title="Profile">
+    {#snippet action()}
+      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}
     <p class="status-error">{error}</p>
