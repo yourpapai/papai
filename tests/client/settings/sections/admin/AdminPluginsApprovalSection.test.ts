@@ -108,4 +108,18 @@ describe('AdminPluginsApprovalSection', () => {
     expect(target.querySelector('[data-testid="plugin-approve-hello-world"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders plugins via DataTable with StatusPill and approve/reject Btns', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureApprovalMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsApprovalSection, { target, props: { catalogContextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    expect(target.querySelector('.ui-pill')).not.toBeNull()
+    expect(target.querySelector('[data-testid="plugin-approve-hello-world"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('[data-testid="plugin-reject-hello-world"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
 })
