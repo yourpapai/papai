@@ -4,6 +4,9 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import Btn from '../../../shared/ui/Btn.svelte'
+  import Field from '../../../shared/ui/Field.svelte'
+  import Input from '../../../shared/ui/Input.svelte'
   import { sendAnnounce } from '../../admin-fetchers.js'
   import type { AnnounceResult } from '../../fetcher-schemas.js'
 
@@ -40,11 +43,12 @@
   {#if error !== null}<p class="status-error">{error}</p>{/if}
 
   <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void send() }}>
-    <label style="flex: 1; min-width: 280px;">
-      <span>Message</span>
-      <textarea data-testid="announce-message" rows="3" value={message} oninput={(e) => (message = (e.target as HTMLTextAreaElement).value)}></textarea>
-    </label>
-    <button type="submit" data-testid="announce-send" disabled={sending}>{sending ? 'Sending…' : 'Send announcement'}</button>
+    <Field label="Message">
+      <Input value={message} onInput={(v) => (message = v)} testid="announce-message" multiline rows={3} />
+    </Field>
+    <Btn variant="primary" type="submit" testid="announce-send" disabled={sending}>
+      {#snippet children()}{sending ? 'Sending…' : 'Send announcement'}{/snippet}
+    </Btn>
   </form>
 
   {#if result !== null}
@@ -53,16 +57,3 @@
     </p>
   {/if}
 </section>
-
-<style>
-  textarea {
-    background: var(--raised);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding: 8px 10px;
-    border-radius: 2px;
-    font-family: var(--font-mono);
-    width: 100%;
-    resize: vertical;
-  }
-</style>

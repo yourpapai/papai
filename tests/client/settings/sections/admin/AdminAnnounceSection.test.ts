@@ -80,4 +80,13 @@ describe('AdminAnnounceSection', () => {
     expect(target.querySelector<HTMLTextAreaElement>('[data-testid="announce-message"]')!.value).toBe('broadcast this')
     void unmount(component)
   })
+
+  test('renders the message field as a multiline Input and Send as a Btn', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(AdminAnnounceSection, { target, props: {} })
+    expect(target.querySelector('[data-testid="announce-message"]')?.tagName).toBe('TEXTAREA')
+    expect(target.querySelector('[data-testid="announce-send"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(c)
+  })
 })
