@@ -310,4 +310,17 @@ describe('McpSection', () => {
     expect(body.endpoints[0]?.toolFilter).toBeUndefined()
     void unmount(component)
   })
+
+  test('renders endpoint label/url via Field+Input and actions via Btn', async () => {
+    setMockFetch(() => Promise.resolve(json(mcpPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(McpSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.settings-mcp__row .ui-field .ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="mcp-add"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('[data-testid="mcp-save"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('[data-testid="mcp-remove-srv1"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
 })

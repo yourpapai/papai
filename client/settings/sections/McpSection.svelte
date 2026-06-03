@@ -6,6 +6,9 @@
 <script lang="ts">
   import type { McpEndpoint } from '../fetcher-schemas.js'
   import { fetchMcp, putMcp } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Input from '../../shared/ui/Input.svelte'
 
   interface HeaderRow {
     name: string
@@ -147,7 +150,9 @@
       <p class="eyebrow">Integrations</p>
       <h2>MCP endpoints</h2>
     </div>
-    <button type="button" onclick={() => void load(contextId)}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
@@ -159,16 +164,12 @@
     <div class="settings-mcp">
       {#each rows as row, index (row.endpoint.id)}
         <div class="settings-mcp__row" data-testid={`mcp-row-${row.endpoint.id}`}>
-          <label>
-            <span>Label</span>
-            <input
-              value={row.endpoint.label ?? ''}
-              oninput={(e) => (row.endpoint.label = (e.target as HTMLInputElement).value)} />
-          </label>
-          <label>
-            <span>URL (https)</span>
-            <input value={row.endpoint.url} oninput={(e) => (row.endpoint.url = (e.target as HTMLInputElement).value)} />
-          </label>
+          <Field label="Label">
+            <Input value={row.endpoint.label ?? ''} onInput={(v) => (row.endpoint.label = v)} />
+          </Field>
+          <Field label="URL (https)">
+            <Input value={row.endpoint.url} onInput={(v) => (row.endpoint.url = v)} />
+          </Field>
           <label class="settings-mcp__enabled">
             <input
               type="checkbox"
@@ -176,65 +177,68 @@
               onchange={(e) => (row.endpoint.enabled = (e.target as HTMLInputElement).checked)} />
             <span>Enabled</span>
           </label>
-          <button type="button" data-testid={`mcp-remove-${row.endpoint.id}`} onclick={() => removeRow(index)}>
-            Remove
-          </button>
+          <Btn variant="ghost" size="sm" testid={`mcp-remove-${row.endpoint.id}`} onClick={() => removeRow(index)}>
+            {#snippet children()}Remove{/snippet}
+          </Btn>
 
           <div class="settings-mcp__headers">
             <p class="settings-mcp__subsection-label">Auth headers</p>
             {#each row.headerRows as headerRow, hi (hi)}
               <div class="settings-mcp__header-row">
-                <label>
-                  <span>Name</span>
-                  <input
-                    data-testid={`mcp-header-name-${row.endpoint.id}-${hi}`}
+                <Field label="Name">
+                  <Input
                     value={headerRow.name}
-                    oninput={(e) => (headerRow.name = (e.target as HTMLInputElement).value)} />
-                </label>
-                <label>
-                  <span>Value <span class="settings-mcp__hint">(leave unchanged to keep stored value)</span></span>
-                  <input
-                    data-testid={`mcp-header-value-${row.endpoint.id}-${hi}`}
+                    onInput={(v) => (headerRow.name = v)}
+                    testid={`mcp-header-name-${row.endpoint.id}-${hi}`} />
+                </Field>
+                <Field label="Value" hint="leave unchanged to keep stored value">
+                  <Input
                     value={headerRow.value}
-                    oninput={(e) => (headerRow.value = (e.target as HTMLInputElement).value)} />
-                </label>
-                <button
-                  type="button"
-                  data-testid={`mcp-header-remove-${row.endpoint.id}-${hi}`}
-                  onclick={() => removeHeader(index, hi)}>
-                  ✕
-                </button>
+                    onInput={(v) => (headerRow.value = v)}
+                    testid={`mcp-header-value-${row.endpoint.id}-${hi}`} />
+                </Field>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  testid={`mcp-header-remove-${row.endpoint.id}-${hi}`}
+                  onClick={() => removeHeader(index, hi)}>
+                  {#snippet children()}✕{/snippet}
+                </Btn>
               </div>
             {/each}
-            <button type="button" data-testid={`mcp-header-add-${row.endpoint.id}`} onclick={() => addHeader(index)}>
-              Add header
-            </button>
+            <Btn
+              variant="secondary"
+              size="sm"
+              testid={`mcp-header-add-${row.endpoint.id}`}
+              onClick={() => addHeader(index)}>
+              {#snippet children()}Add header{/snippet}
+            </Btn>
           </div>
 
           <div class="settings-mcp__toolfilter">
             <p class="settings-mcp__subsection-label">Tool filter</p>
-            <label>
-              <span>Allow tools <span class="settings-mcp__hint">(comma or newline separated)</span></span>
-              <input
-                data-testid={`mcp-toolfilter-allow-${row.endpoint.id}`}
+            <Field label="Allow tools" hint="comma or newline separated">
+              <Input
                 value={row.allowText}
-                oninput={(e) => (row.allowText = (e.target as HTMLInputElement).value)} />
-            </label>
-            <label>
-              <span>Deny tools <span class="settings-mcp__hint">(comma or newline separated)</span></span>
-              <input
-                data-testid={`mcp-toolfilter-deny-${row.endpoint.id}`}
+                onInput={(v) => (row.allowText = v)}
+                testid={`mcp-toolfilter-allow-${row.endpoint.id}`} />
+            </Field>
+            <Field label="Deny tools" hint="comma or newline separated">
+              <Input
                 value={row.denyText}
-                oninput={(e) => (row.denyText = (e.target as HTMLInputElement).value)} />
-            </label>
+                onInput={(v) => (row.denyText = v)}
+                testid={`mcp-toolfilter-deny-${row.endpoint.id}`} />
+            </Field>
           </div>
         </div>
       {/each}
       <div class="settings-mcp__actions">
-        <button type="button" data-testid="mcp-add" onclick={addRow}>Add endpoint</button>
-        <button type="button" data-testid="mcp-save" disabled={saving} onclick={() => void save()}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        <Btn variant="secondary" testid="mcp-add" onClick={addRow}>
+          {#snippet children()}Add endpoint{/snippet}
+        </Btn>
+        <Btn variant="primary" testid="mcp-save" disabled={saving} onClick={() => void save()}>
+          {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
+        </Btn>
       </div>
     </div>
   {/if}
@@ -254,37 +258,23 @@
     border: 1px solid var(--border);
     background: var(--surface);
   }
-  .settings-mcp__row label {
-    display: grid;
-    gap: 6px;
+  .settings-mcp__row :global(.ui-field) {
     min-width: 200px;
   }
-  .settings-mcp__row span {
-    color: var(--fg3);
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
-  .settings-mcp__row input[type='text'],
-  .settings-mcp__row input:not([type]) {
-    background: var(--raised);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding: 8px 10px;
-    border-radius: 2px;
+  .settings-mcp__row :global(.ui-input) {
+    flex: 1;
+    min-width: 0;
   }
   .settings-mcp__enabled {
+    display: flex;
     flex-direction: row;
     align-items: center;
     gap: 6px;
-    min-width: auto;
   }
-  .settings-mcp__row button,
-  .settings-mcp__actions button {
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 8px 12px;
-    border-radius: 2px;
+  .settings-mcp__enabled span {
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
   .settings-mcp__actions {
     display: flex;
@@ -310,10 +300,11 @@
     gap: 8px;
     align-items: end;
   }
-  .settings-mcp__hint {
-    color: var(--fg3);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    opacity: 0.75;
+  .settings-mcp__header-row :global(.ui-field) {
+    min-width: 160px;
+  }
+  .settings-mcp__header-row :global(.ui-input) {
+    flex: 1;
+    min-width: 0;
   }
 </style>
