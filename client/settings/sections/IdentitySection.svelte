@@ -6,6 +6,9 @@
 <script lang="ts">
   import type { IdentityResponse } from '../fetcher-schemas.js'
   import { deleteIdentity, fetchIdentity, putIdentity } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Input from '../../shared/ui/Input.svelte'
 
   interface Props {
     contextId: string
@@ -83,7 +86,9 @@
       <p class="eyebrow">Identity</p>
       <h2>Identity{#if data !== null} · {data.providerName}{/if}</h2>
     </div>
-    <button type="button" onclick={() => void load(contextId)}>Refresh</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if notice !== null}
@@ -101,30 +106,23 @@
           void save()
         }}
       >
-        <label>
-          <span>Provider user ID</span>
-          <input
-            data-testid="identity-user-id"
-            value={providerUserId}
-            oninput={(e) => (providerUserId = (e.target as HTMLInputElement).value)}
-          />
-        </label>
-        <label>
-          <span>Provider login</span>
-          <input
-            value={providerUserLogin}
-            oninput={(e) => (providerUserLogin = (e.target as HTMLInputElement).value)}
-          />
-        </label>
-        <label>
-          <span>Display name</span>
-          <input
-            value={displayName}
-            oninput={(e) => (displayName = (e.target as HTMLInputElement).value)}
-          />
-        </label>
-        <button type="submit" data-testid="identity-save">Save</button>
-        <button type="button" data-testid="identity-clear" onclick={() => void clear()}>Clear</button>
+        <Field label="Provider user ID">
+          {#snippet children()}
+            <Input value={providerUserId} onInput={(v) => (providerUserId = v)} testid="identity-user-id" />
+          {/snippet}
+        </Field>
+        <Field label="Provider login">
+          {#snippet children()}
+            <Input value={providerUserLogin} onInput={(v) => (providerUserLogin = v)} />
+          {/snippet}
+        </Field>
+        <Field label="Display name">
+          {#snippet children()}
+            <Input value={displayName} onInput={(v) => (displayName = v)} />
+          {/snippet}
+        </Field>
+        <Btn variant="primary" type="submit" testid="identity-save">{#snippet children()}Save{/snippet}</Btn>
+        <Btn variant="ghost" testid="identity-clear" onClick={() => void clear()}>{#snippet children()}Clear{/snippet}</Btn>
       </form>
     {/if}
   {/if}

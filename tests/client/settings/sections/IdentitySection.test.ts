@@ -110,4 +110,16 @@ describe('IdentitySection', () => {
     expect(userIdInput!.value).toBe('')
     void unmount(component)
   })
+
+  test('renders labeled Inputs and Save/Clear Btns', async () => {
+    setMockFetch(() => Promise.resolve(json(identityPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(IdentitySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="identity-user-id"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="identity-save"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('[data-testid="identity-clear"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
 })
