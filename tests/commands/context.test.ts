@@ -16,7 +16,9 @@ import {
 } from '../../src/commands/context-tool-resolution.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
 import type { TaskProvider } from '../../src/providers/types.js'
+import { buildProviderlessSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
+import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createAuth,
@@ -477,5 +479,79 @@ describe('registerContextCommand', () => {
 
     expect(textCalls.length).toBe(1)
     expect(textCalls[0]).toMatch(/could not build context view/iu)
+  })
+
+  test('uses the full providerless system prompt when provider construction fails', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const chat = createMockChat({ commandHandlers: commands })
+    let capturedPrompt = ''
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        buildProvider: () => null,
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          capturedPrompt = collectorDeps.buildSystemPrompt()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+
+    const { reply } = createMockReply()
+    const auth = createAuth('providerless-user')
+
+    await handler(createDmMessage('providerless-user'), reply, auth)
+
+    const expectedPrompt = buildProviderlessSystemPrompt(auth.storageContextId, new Set<string>(), {
+      askPermissionAvailable: true,
+    })
+    expect(capturedPrompt).toBe(expectedPrompt)
+  })
+
+  test('uses resolved active tool surface when building provider-backed system prompt', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const chat = createMockChat({ commandHandlers: commands })
+    const provider = createMockProvider()
+    let capturedPrompt = ''
+    setToolPrefs('provider-backed-user', {
+      domainDefaults: {},
+      toolOverrides: { search_tasks: 'deny' },
+    })
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        buildProvider: (): typeof provider => provider,
+        resolveToolSurface: () =>
+          Promise.resolve({
+            definitions: {
+              create_task: { description: 'Create task' },
+            },
+          }),
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          capturedPrompt = collectorDeps.buildSystemPrompt()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+
+    const { reply } = createMockReply()
+
+    await handler(createDmMessage('provider-backed-user'), reply, createAuth('provider-backed-user'))
+
+    expect(capturedPrompt).toContain('Unavailable tools')
+    expect(capturedPrompt).toContain('search_tasks')
   })
 })

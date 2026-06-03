@@ -13,7 +13,7 @@ import { handleToolCallFinish } from './llm-orchestrator-support.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
-import { buildSystemPrompt } from './system-prompt.js'
+import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
 import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:invoke' })
@@ -214,7 +214,11 @@ export const invokeModel = async (
     enabledToolNames,
   } = args
   const start = Date.now()
-  emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting, turnId)
+  const systemPrompt =
+    provider === null
+      ? buildProviderlessSystemPrompt(contextId, enabledToolNames, { askPermissionAvailable: true })
+      : buildSystemPrompt(provider, contextId, enabledToolNames, { askPermissionAvailable: true })
+  emitLlmStart(contextId, mainModel, messages, tools, turnId)
   const ctx: ToolCallContext = {
     contextId,
     chatUserId,
@@ -226,7 +230,7 @@ export const invokeModel = async (
   }
   const result = await deps.generateText({
     model,
-    system: buildSystemPrompt(provider, contextId, enabledToolNames, { askPermissionAvailable: true }),
+    system: systemPrompt,
     messages,
     tools,
     timeout: 1_200_000,
@@ -234,7 +238,7 @@ export const invokeModel = async (
     experimental_onToolCallStart: buildToolCallStartHandler(ctx),
     experimental_onToolCallFinish: buildToolCallFinishHandler(ctx),
   })
-  emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, args.toolRouting, turnId)
+  emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId)
   return result
 }
 

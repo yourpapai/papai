@@ -57,6 +57,14 @@ type MakeManifestArgs = readonly [] | readonly [overrides: ManifestOverrides]
 
 type MakeRuntimeArgs = readonly [] | readonly [overrides: Partial<PluginToolSetRuntime>]
 
+function expectTaskProvider(
+  runtimeContext: Parameters<PluginContributions['tools'][number]['execute']>[1],
+): NonNullable<Parameters<PluginContributions['tools'][number]['execute']>[1]['taskProvider']> {
+  expect(runtimeContext.taskProvider).toBeDefined()
+  if (runtimeContext.taskProvider === undefined) throw new Error('Expected taskProvider to be defined')
+  return runtimeContext.taskProvider
+}
+
 function getManifestOverrides(args: MakeManifestArgs): ManifestOverrides {
   if (args.length === 0) return {}
   return args[0]
@@ -984,6 +992,35 @@ describe('buildPluginToolSet', () => {
     expect(result).toEqual({ storageContextId: 'ctx-1', chatUserId: 'user-1', kvValue: undefined })
   })
 
+  test('omits taskProvider from runtime context when providerless runtime is used', async () => {
+    const manifest = makeManifest({ permissions: [] })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'Checks provider presence',
+            execute: (_input, runtimeContext): Promise<unknown> =>
+              Promise.resolve({
+                hasTaskProviderKey: 'taskProvider' in runtimeContext,
+                hasTaskProviderValue: Boolean(runtimeContext.taskProvider),
+              }),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime({ provider: undefined }))
+    const execute = getToolExecutor(tools['plugin_test_plugin__my_tool'])
+
+    const result = await execute({}, { toolCallId: 'call-1' })
+
+    expect(result).toEqual({ hasTaskProviderKey: false, hasTaskProviderValue: false })
+  })
+
   test('exposes read facade when tasks.read permission is declared', async () => {
     const manifest = makeManifest({ permissions: ['tasks.read'] })
     const getTaskResult = { id: 'task-1', title: 'Task 1', url: 'https://example.test/task-1' }
@@ -997,7 +1034,7 @@ describe('buildPluginToolSet', () => {
           {
             name: 'my_tool',
             description: 'A test tool',
-            execute: (_input, runtimeContext): Promise<unknown> => runtimeContext.taskProvider.getTask('task-1'),
+            execute: (_input, runtimeContext): Promise<unknown> => expectTaskProvider(runtimeContext).getTask('task-1'),
           },
         ],
         promptFragments: [],
@@ -1024,7 +1061,7 @@ describe('buildPluginToolSet', () => {
           {
             name: 'my_tool',
             description: 'A test tool',
-            execute: (_input, runtimeContext): Promise<unknown> => runtimeContext.taskProvider.getTask('task-1'),
+            execute: (_input, runtimeContext): Promise<unknown> => expectTaskProvider(runtimeContext).getTask('task-1'),
           },
         ],
         promptFragments: [],
@@ -1061,7 +1098,7 @@ describe('buildPluginToolSet', () => {
             name: 'my_tool',
             description: 'A test tool',
             execute: (_input, runtimeContext): Promise<unknown> =>
-              runtimeContext.taskProvider.createTask({ projectId: 'project-1', title: 'New task' }),
+              expectTaskProvider(runtimeContext).createTask({ projectId: 'project-1', title: 'New task' }),
           },
         ],
         promptFragments: [],

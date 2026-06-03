@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { userCachesForTesting, clearCachedTools } from '../../src/cache.js'
+import { clearCachedToolsByPrefix } from '../../src/cache.js'
 import type { ReplyFn } from '../../src/chat/types.js'
 import { getConfigValue, setConfigValue } from '../../src/config.js'
 import { getContextSettings } from '../../src/instances/context-store.js'
@@ -59,13 +59,7 @@ function isRegistrationDisabledErrorMessage(message: string): boolean {
 }
 
 function clearProvisionedContextToolCaches(contextId: string): void {
-  clearCachedTools(contextId)
-  const groupScopedPrefix = `${contextId}:`
-  for (const cacheKey of userCachesForTesting.keys()) {
-    if (cacheKey.startsWith(groupScopedPrefix)) {
-      clearCachedTools(cacheKey)
-    }
-  }
+  clearCachedToolsByPrefix(contextId)
 }
 
 async function doSignUp(

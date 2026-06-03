@@ -22,7 +22,7 @@ import {
   makeListDeferredPromptsTool,
   makeUpdateDeferredPromptTool,
 } from '../../src/deferred-prompts/tools.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 
 const USER_ID = 'user-1'
 const toolCtx = {
@@ -167,6 +167,36 @@ describe('create_deferred_prompt', () => {
     assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'X' }, toolCtx)
     expect(result).toHaveProperty('error')
+  })
+
+  test('can disable task conditions for providerless creation', async () => {
+    const t = makeCreateDeferredPromptTool(USER_ID, USER_ID, 'dm', undefined, undefined, {
+      allowTaskConditions: false,
+    })
+    assert.ok(t.execute)
+
+    expect(
+      schemaValidates(t, {
+        prompt: 'Scheduled follow-up',
+        schedule: { fire_at: futureFireAt() },
+      }),
+    ).toBe(true)
+    expect(
+      schemaValidates(t, {
+        prompt: 'Alert me when a task is blocked',
+        condition: { field: 'task.status', op: 'eq', value: 'blocked' },
+      }),
+    ).toBe(false)
+
+    const result: unknown = await t.execute(
+      {
+        prompt: 'Alert me when a task is blocked',
+        condition: { field: 'task.status', op: 'eq', value: 'blocked' },
+      },
+      toolCtx,
+    )
+
+    expect(result).toEqual({ error: 'Task-dependent deferred alerts require a task provider.' })
   })
 
   test('rejects past fire_at', async () => {

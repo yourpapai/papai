@@ -179,17 +179,53 @@ export function clearCachedTools(userId: string): void {
 }
 
 /**
- * Clear cached tools for a context id and all of its derived group cache keys.
- * DM cache key is the bare contextId; group cache keys are `${contextId}:${chatUserId}:${username}`.
+ * Clear cached tools for a context id and all derived tool-descriptor cache keys.
+ * Supports both legacy raw context keys and the current llm-orchestrator descriptor
+ * keys scoped by provider mode and staged-download availability.
  */
 export function clearCachedToolsByPrefix(contextId: string): void {
-  const prefix = `${contextId}:`
+  const currentPrefixes = [
+    `provider-backed:no-staged-download:${contextId}`,
+    `provider-backed:with-staged-download:${contextId}`,
+    `providerless:no-staged-download:${contextId}`,
+    `providerless:with-staged-download:${contextId}`,
+  ]
+  const legacyPrefix = `${contextId}:`
   for (const [key, cache] of userCacheStore) {
-    if (key === contextId || key.startsWith(prefix)) {
+    if (
+      key === contextId ||
+      key.startsWith(legacyPrefix) ||
+      currentPrefixes.some((prefix) => key === prefix || key.startsWith(`${prefix}:`))
+    ) {
       cache.tools = null
     }
   }
   log.debug({ contextId }, 'Cleared cached tools by prefix')
+}
+
+export function getLatestCachedToolsForContext(contextId: string): unknown {
+  const currentPrefixes = [
+    `provider-backed:no-staged-download:${contextId}`,
+    `provider-backed:with-staged-download:${contextId}`,
+    `providerless:no-staged-download:${contextId}`,
+    `providerless:with-staged-download:${contextId}`,
+  ]
+  const legacyPrefix = `${contextId}:`
+  let latestTools: unknown = undefined
+  let latestAccessed = -1
+
+  for (const [key, cache] of userCacheStore) {
+    if (cache.tools === null) continue
+    const matchesContext =
+      key === contextId ||
+      key.startsWith(legacyPrefix) ||
+      currentPrefixes.some((prefix) => key === prefix || key.startsWith(`${prefix}:`))
+    if (!matchesContext || cache.lastAccessed < latestAccessed) continue
+    latestTools = cache.tools
+    latestAccessed = cache.lastAccessed
+  }
+
+  return latestTools
 }
 
 export function clearCachedFacts(userId: string): void {

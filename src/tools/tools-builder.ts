@@ -5,9 +5,7 @@
 
 import type { ToolSet } from 'ai'
 
-import { isS3Configured } from '../attachments/index.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
-import { getConfigContextIdFromStorageContextId, hasThreadContextId } from '../chat/scoped-context.js'
 import type { ContextType } from '../chat/types.js'
 import type { TaskProvider } from '../providers/types.js'
 import { makeAddCommentReactionTool } from './add-comment-reaction.js'
@@ -16,7 +14,6 @@ import { makeAddProjectMemberTool } from './add-project-member.js'
 import { makeAddTaskLabelTool } from './add-task-label.js'
 import { makeAddTaskRelationTool } from './add-task-relation.js'
 import { makeApplyYouTrackCommandTool } from './apply-youtrack-command.js'
-import { makeArchiveMemosTool } from './archive-memos.js'
 import { makeAssignTaskToSprintTool } from './assign-task-to-sprint.js'
 import { makeListAttachmentsTool, makeRemoveAttachmentTool, makeUploadAttachmentTool } from './attachment-tools.js'
 import { makeClearMyIdentityTool } from './clear-my-identity.js'
@@ -24,33 +21,25 @@ import { maybeAddCollaborationTaskTools } from './collaboration-tools-builder.js
 import { makeCoreTools } from './core-tools.js'
 import { makeCountTasksTool } from './count-tasks.js'
 import { makeCreateProjectTool } from './create-project.js'
-import { makeCreateRecurringTaskTool } from './create-recurring-task.js'
 import { makeCreateSprintTool } from './create-sprint.js'
 import { makeCreateStatusTool } from './create-status.js'
-import { addDeferredPromptTools } from './deferred-tools-builder.js'
 import { makeDeleteProjectTool } from './delete-project.js'
-import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
 import { makeDeleteStatusTool } from './delete-status.js'
 import { makeDeleteTaskTool } from './delete-task.js'
 import { makeGetCommentsTool } from './get-comments.js'
 import { makeGetProjectTool } from './get-project.js'
 import { makeGetTaskHistoryTool } from './get-task-history.js'
-import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructionTool } from './instructions.js'
 import { makeCreateLabelTool, makeListLabelsTool, makeRemoveLabelTool, makeUpdateLabelTool } from './label-tools.js'
 import { makeListAgilesTool } from './list-agiles.js'
-import { makeListMemosTool } from './list-memos.js'
 import { makeListProjectTeamTool } from './list-project-team.js'
 import { makeListProjectsTool } from './list-projects.js'
-import { makeListRecurringTasksTool } from './list-recurring-tasks.js'
 import { makeListSavedQueriesTool } from './list-saved-queries.js'
 import { makeListSprintsTool } from './list-sprints.js'
 import { makeListStatusesTool } from './list-statuses.js'
 import { makeListWorkTool } from './list-work.js'
 import { makeLogWorkTool } from './log-work.js'
-import { makeLookupGroupHistoryTool } from './lookup-group-history.js'
-import { makePauseRecurringTaskTool } from './pause-recurring-task.js'
 import { makePromoteMemoTool } from './promote-memo.js'
-import { makeUpdateRecurringTaskTool } from './recurring-tools.js'
+import { addProviderIndependentTools, getStorageOwnerId } from './provider-independent-tools-builder.js'
 import { makeRemoveCommentReactionTool } from './remove-comment-reaction.js'
 import { makeRemoveCommentTool } from './remove-comment.js'
 import { makeRemoveProjectMemberTool } from './remove-project-member.js'
@@ -58,13 +47,8 @@ import { makeRemoveTaskLabelTool } from './remove-task-label.js'
 import { makeRemoveTaskRelationTool } from './remove-task-relation.js'
 import { makeRemoveWorkTool } from './remove-work.js'
 import { makeReorderStatusesTool } from './reorder-statuses.js'
-import { makeResumeRecurringTaskTool } from './resume-recurring-task.js'
 import { makeRunSavedQueryTool } from './run-saved-query.js'
-import { makeSaveMemoTool } from './save-memo.js'
-import { makeSearchMemosTool } from './search-memos.js'
 import { makeSetMyIdentityTool } from './set-my-identity.js'
-import { makeSkipRecurringTaskTool } from './skip-recurring-task.js'
-import { makeResolveStagedFileTool, makeSearchStagedFilesTool } from './staged-tools.js'
 import type { ToolMode } from './types.js'
 import { makeUpdateCommentTool } from './update-comment.js'
 import { makeUpdateProjectTool } from './update-project.js'
@@ -72,8 +56,16 @@ import { makeUpdateSprintTool } from './update-sprint.js'
 import { makeUpdateStatusTool } from './update-status.js'
 import { makeUpdateTaskRelationTool } from './update-task-relation.js'
 import { makeUpdateWorkTool } from './update-work.js'
-import { makeWebFetchTool } from './web-fetch.js'
-import { makeDeleteFileTool, makeListFilesTool } from './workspace-files.js'
+
+type BuilderArgs =
+  | readonly []
+  | readonly [contextType: ContextType | undefined]
+  | readonly [contextType: ContextType | undefined, username: string | null | undefined]
+  | readonly [
+      contextType: ContextType | undefined,
+      username: string | null | undefined,
+      stagedDownloadFn: StagedFileDownloadFn | undefined,
+    ]
 
 function maybeAddProjectTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('projects.read') && provider.getProject !== undefined)
@@ -133,13 +125,11 @@ function maybeAddStatusTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('statuses.reorder')) tools['reorder_statuses'] = makeReorderStatusesTool(provider)
 }
 function addAttachmentTools(tools: ToolSet, provider: TaskProvider, contextId: string | undefined): void {
-  if (contextId === undefined || !isS3Configured()) return
+  if (contextId === undefined) return
   if (provider.capabilities.has('attachments.list')) tools['list_attachments'] = makeListAttachmentsTool(provider)
   if (provider.capabilities.has('attachments.upload'))
     tools['upload_attachment'] = makeUploadAttachmentTool(provider, contextId)
   if (provider.capabilities.has('attachments.delete')) tools['remove_attachment'] = makeRemoveAttachmentTool(provider)
-  tools['list_files'] = makeListFilesTool(contextId)
-  tools['delete_file'] = makeDeleteFileTool(contextId)
 }
 function maybeAddWorkItemTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('workItems.list')) tools['list_work'] = makeListWorkTool(provider)
@@ -177,50 +167,6 @@ function maybeAddPhaseFiveQueryTools(tools: ToolSet, provider: TaskProvider, mod
     tools['apply_youtrack_command'] = makeApplyYouTrackCommandTool(provider)
 }
 
-function getStorageOwnerId(chatUserId: string | undefined, contextId: string | undefined): string | undefined {
-  if (contextId !== undefined) return getConfigContextIdFromStorageContextId(contextId)
-  return chatUserId
-}
-
-function addInstructionTools(tools: ToolSet, contextId: string | undefined): void {
-  if (contextId === undefined) return
-  tools['save_instruction'] = makeSaveInstructionTool(contextId)
-  tools['list_instructions'] = makeListInstructionsTool(contextId)
-  tools['delete_instruction'] = makeDeleteInstructionTool(contextId)
-}
-function addWebFetchTool(
-  tools: ToolSet,
-  storageContextId: string | undefined,
-  actorUserId: string | undefined,
-  contextType: ContextType | undefined,
-): void {
-  if (storageContextId === undefined) return
-  tools['web_fetch'] = makeWebFetchTool(storageContextId, actorUserId, contextType)
-}
-function addMemoTools(tools: ToolSet, provider: TaskProvider, userId: string | undefined): void {
-  if (userId === undefined) return
-  tools['save_memo'] = makeSaveMemoTool(userId)
-  tools['search_memos'] = makeSearchMemosTool(userId)
-  tools['list_memos'] = makeListMemosTool(userId)
-  tools['archive_memos'] = makeArchiveMemosTool(userId)
-  tools['promote_memo'] = makePromoteMemoTool(provider, userId)
-}
-function addRecurringTools(tools: ToolSet, userId: string | undefined): void {
-  if (userId === undefined) return
-  tools['create_recurring_task'] = makeCreateRecurringTaskTool(userId)
-  tools['list_recurring_tasks'] = makeListRecurringTasksTool(userId)
-  tools['update_recurring_task'] = makeUpdateRecurringTaskTool(userId)
-  tools['pause_recurring_task'] = makePauseRecurringTaskTool()
-  tools['resume_recurring_task'] = makeResumeRecurringTaskTool()
-  tools['skip_recurring_task'] = makeSkipRecurringTaskTool()
-  tools['delete_recurring_task'] = makeDeleteRecurringTaskTool()
-}
-function addLookupGroupHistoryTool(tools: ToolSet, userId: string | undefined, contextId: string | undefined): void {
-  if (userId === undefined || contextId === undefined) return
-  if (!hasThreadContextId(contextId)) return
-  tools['lookup_group_history'] = makeLookupGroupHistoryTool(userId, contextId)
-}
-
 function maybeAddIdentityTools(
   tools: ToolSet,
   provider: TaskProvider,
@@ -239,20 +185,11 @@ export function buildTools(
   chatUserId: string | undefined,
   contextId: string | undefined,
   mode: ToolMode,
-  ...args:
-    | readonly []
-    | readonly [contextType: ContextType | undefined]
-    | readonly [contextType: ContextType | undefined, username: string | null | undefined]
-    | readonly [
-        contextType: ContextType | undefined,
-        username: string | null | undefined,
-        stagedDownloadFn: StagedFileDownloadFn | undefined,
-      ]
+  ...args: BuilderArgs
 ): ToolSet {
   const contextType = args[0]
   const username = args[1]
   const stagedDownloadFn = args[2]
-  const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
   const tools = makeCoreTools(provider, chatUserId, contextId)
   maybeAddProjectTools(tools, provider)
   maybeAddCommentTools(tools, provider)
@@ -262,24 +199,44 @@ export function buildTools(
   if (provider.capabilities.has('tasks.delete')) tools['delete_task'] = makeDeleteTaskTool(provider)
   maybeAddCollaborationTaskTools(tools, provider, chatUserId)
   addAttachmentTools(tools, provider, contextId)
-  if (contextId !== undefined && isS3Configured()) {
-    tools['search_staged_files'] = makeSearchStagedFilesTool(contextId)
-    if (stagedDownloadFn !== undefined)
-      tools['resolve_staged_file'] = makeResolveStagedFileTool(contextId, stagedDownloadFn)
-  }
   maybeAddWorkItemTools(tools, provider)
   maybeAddPhaseFiveSprintTools(tools, provider)
   maybeAddPhaseFiveQueryTools(tools, provider, mode)
   if (provider.capabilities.has('tasks.count') && provider.countTasks !== undefined)
     tools['count_tasks'] = makeCountTasksTool(provider)
-  addRecurringTools(tools, storageOwnerId)
-  addMemoTools(tools, provider, storageOwnerId)
-  addInstructionTools(tools, storageOwnerId)
-  addLookupGroupHistoryTool(tools, chatUserId, contextId)
-  addWebFetchTool(tools, contextId, storageOwnerId, contextType)
+  addProviderIndependentTools(tools, {
+    chatUserId,
+    contextId,
+    mode,
+    contextType,
+    username,
+    stagedDownloadFn,
+    allowTaskDependentDeferredPrompts: true,
+  })
+  const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
+  if (storageOwnerId !== undefined) tools['promote_memo'] = makePromoteMemoTool(provider, storageOwnerId)
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
-  if (mode === 'normal' && storageOwnerId !== undefined) {
-    addDeferredPromptTools(tools, storageOwnerId, chatUserId, contextId, contextType, username)
-  }
+  return tools
+}
+
+export function buildProviderlessTools(
+  chatUserId: string | undefined,
+  contextId: string | undefined,
+  mode: ToolMode,
+  ...args: BuilderArgs
+): ToolSet {
+  const contextType = args[0]
+  const username = args[1]
+  const stagedDownloadFn = args[2]
+  const tools: ToolSet = {}
+  addProviderIndependentTools(tools, {
+    chatUserId,
+    contextId,
+    mode,
+    contextType,
+    username,
+    stagedDownloadFn,
+    allowTaskDependentDeferredPrompts: false,
+  })
   return tools
 }

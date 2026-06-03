@@ -27,7 +27,7 @@ export type PluginToolRuntimeContext = {
   pluginId: string
   storageContextId: string
   chatUserId: string
-  taskProvider: PluginTaskProviderFacade
+  taskProvider?: PluginTaskProviderFacade
   kv: PluginContext['kv']
   adminConfig: PluginAdminConfig
   /** Identity claims are bound to this runtime actor. */

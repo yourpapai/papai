@@ -5,7 +5,7 @@
 
 import type { ToolSet } from 'ai'
 
-export type BenchmarkMode = 'direct_full' | 'direct_routed'
+export type BenchmarkMode = 'direct_full'
 export type BenchmarkTask = Readonly<{
   id: string
   title: string

@@ -62,4 +62,13 @@ describe('buildFullToolSet async', () => {
     expect(result.enabledToolNames).toBeInstanceOf(Set)
     expect(Object.keys(result.tools).length).toBeGreaterThan(0)
   })
+
+  test('keeps the full proactive tool set for reminder prompts', async () => {
+    const provider = createMockProvider()
+    const neutral = await buildFullToolSet(provider, 'user-1', 'ctx-1', 'dm', 'test prompt')
+    const reminder = await buildFullToolSet(provider, 'user-1', 'ctx-1', 'dm', 'remind me tomorrow')
+
+    expect(Object.keys(reminder.tools).toSorted()).toEqual(Object.keys(neutral.tools).toSorted())
+    expect(reminder.enabledToolNames).toEqual(neutral.enabledToolNames)
+  })
 })

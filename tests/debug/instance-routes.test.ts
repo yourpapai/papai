@@ -149,6 +149,17 @@ const cachedToolsFor = (key: string): unknown => {
   return entry.tools
 }
 
+const buildDescriptorCacheKey = (
+  contextId: string,
+  providerScope: 'provider-backed' | 'providerless',
+  stagedScope: 'no-staged-download' | 'with-staged-download',
+  chatUserId?: string,
+  username?: string,
+): string => {
+  const prefix = `${providerScope}:${stagedScope}:${contextId}`
+  return chatUserId === undefined || username === undefined ? prefix : `${prefix}:${chatUserId}:${username}`
+}
+
 const expectInstance = (router: ChatRouter, id: string): ManagedChatInstance => {
   const instance = router.getInstance(id)
   if (instance === null) throw new Error(`expected router instance ${id}`)
@@ -869,9 +880,12 @@ describe('instance API routes', () => {
     addUser({ userId: 'user-1', platformInstanceId: 'telegram-main', username: 'alice', addedBy: 'test' })
     addAdmin('platform-admin', 'telegram-main')
     addAdmin('super-admin', SUPER_ADMIN_PLATFORM_ID)
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-1:user-1:alice', { old_tool: {} })
-    setCachedTools('ctx-other', { old_tool: {} })
+    const dmCacheKey = buildDescriptorCacheKey('ctx-1', 'provider-backed', 'no-staged-download')
+    const groupCacheKey = buildDescriptorCacheKey('ctx-1', 'providerless', 'with-staged-download', 'user-1', 'alice')
+    const otherCacheKey = buildDescriptorCacheKey('ctx-other', 'provider-backed', 'no-staged-download')
+    setCachedTools(dmCacheKey, { old_tool: {} })
+    setCachedTools(groupCacheKey, { old_tool: {} })
+    setCachedTools(otherCacheKey, { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
@@ -886,9 +900,9 @@ describe('instance API routes', () => {
     expect(listAdmins().map((admin) => `${admin.platformInstanceId}:${admin.userId}`)).toEqual([
       '__super__:super-admin',
     ])
-    expect(cachedToolsFor('ctx-1')).toBeNull()
-    expect(cachedToolsFor('ctx-1:user-1:alice')).toBeNull()
-    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+    expect(cachedToolsFor(dmCacheKey)).toBeNull()
+    expect(cachedToolsFor(groupCacheKey)).toBeNull()
+    expect(cachedToolsFor(otherCacheKey)).toEqual({ old_tool: {} })
   })
 
   test('deleting platform instance does not remove runtime router instance until apply', async () => {
@@ -983,8 +997,10 @@ describe('instance API routes', () => {
     })
     seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-other', { old_tool: {} })
+    const cacheKey = buildDescriptorCacheKey('ctx-1', 'provider-backed', 'with-staged-download')
+    const otherCacheKey = buildDescriptorCacheKey('ctx-other', 'provider-backed', 'no-staged-download')
+    setCachedTools(cacheKey, { old_tool: {} })
+    setCachedTools(otherCacheKey, { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main/status', {
@@ -996,8 +1012,8 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(200)
     expect(pick(assertObject(await readJson(res)), 'status')).toBe('stopped')
-    expect(cachedToolsFor('ctx-1')).toBeNull()
-    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+    expect(cachedToolsFor(cacheKey)).toBeNull()
+    expect(cachedToolsFor(otherCacheKey)).toEqual({ old_tool: {} })
   })
 
   test('deletes task instance context settings before deleting the task instance', async () => {
@@ -1020,9 +1036,12 @@ describe('instance API routes', () => {
     seedPlatformInstance('telegram-main')
     seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-1:user-1:alice', { old_tool: {} })
-    setCachedTools('ctx-other', { old_tool: {} })
+    const dmCacheKey = buildDescriptorCacheKey('ctx-1', 'provider-backed', 'no-staged-download')
+    const groupCacheKey = buildDescriptorCacheKey('ctx-1', 'providerless', 'with-staged-download', 'user-1', 'alice')
+    const otherCacheKey = buildDescriptorCacheKey('ctx-other', 'provider-backed', 'no-staged-download')
+    setCachedTools(dmCacheKey, { old_tool: {} })
+    setCachedTools(groupCacheKey, { old_tool: {} })
+    setCachedTools(otherCacheKey, { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
@@ -1032,9 +1051,9 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(204)
-    expect(cachedToolsFor('ctx-1')).toBeNull()
-    expect(cachedToolsFor('ctx-1:user-1:alice')).toBeNull()
-    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+    expect(cachedToolsFor(dmCacheKey)).toBeNull()
+    expect(cachedToolsFor(groupCacheKey)).toBeNull()
+    expect(cachedToolsFor(otherCacheKey)).toEqual({ old_tool: {} })
   })
 
   test('lists task instances with referencing context IDs', async () => {
@@ -1130,8 +1149,10 @@ describe('instance API routes', () => {
       status: 'active',
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-other', { old_tool: {} })
+    const cacheKey = buildDescriptorCacheKey('ctx-1', 'providerless', 'no-staged-download', 'user-1', 'alice')
+    const otherCacheKey = buildDescriptorCacheKey('ctx-other', 'provider-backed', 'no-staged-download')
+    setCachedTools(cacheKey, { old_tool: {} })
+    setCachedTools(otherCacheKey, { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
@@ -1151,16 +1172,18 @@ describe('instance API routes', () => {
       baseUrl: 'https://new-kaneo.invalid',
       internalUrl: 'https://internal.kaneo.invalid',
     })
-    expect(cachedToolsFor('ctx-1')).toBeNull()
-    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+    expect(cachedToolsFor(cacheKey)).toBeNull()
+    expect(cachedToolsFor(otherCacheKey)).toEqual({ old_tool: {} })
   })
 
   test('PATCH /api/platform-instances/:id clears referencing context tool cache', async () => {
     seedPlatformInstance('telegram-main')
     seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-other', { old_tool: {} })
+    const cacheKey = buildDescriptorCacheKey('ctx-1', 'provider-backed', 'with-staged-download')
+    const otherCacheKey = buildDescriptorCacheKey('ctx-other', 'provider-backed', 'no-staged-download')
+    setCachedTools(cacheKey, { old_tool: {} })
+    setCachedTools(otherCacheKey, { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
@@ -1171,8 +1194,8 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(cachedToolsFor('ctx-1')).toBeNull()
-    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+    expect(cachedToolsFor(cacheKey)).toBeNull()
+    expect(cachedToolsFor(otherCacheKey)).toEqual({ old_tool: {} })
   })
 
   test('PATCH /api/task-instances/:id rejects missing descriptor-required config and preserves the previous config', async () => {

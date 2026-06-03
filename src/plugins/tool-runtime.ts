@@ -11,7 +11,7 @@ import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js
 import type { PluginManifest, PluginTaskProviderFacade, PluginToolRuntimeContext } from './types.js'
 
 export type PluginToolSetRuntime = {
-  provider: TaskProvider
+  provider?: TaskProvider
   storageContextId: string
   chatUserId: string
 }
@@ -65,29 +65,34 @@ function buildRuntimeAdminConfig(pluginId: string, manifest: PluginManifest): Pl
 
 export function buildPluginTaskProviderFacade(
   pluginId: string,
-  provider: TaskProvider,
+  provider: TaskProvider | undefined,
   canRead: boolean,
   canWrite: boolean,
 ): PluginTaskProviderFacade {
   return Object.freeze({
     getTask(taskId: string) {
       if (!canRead) deny(pluginId, 'tasks.read')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.getTask(taskId)
     },
     listTasks(projectId: string, params) {
       if (!canRead) deny(pluginId, 'tasks.read')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.listTasks(projectId, params)
     },
     searchTasks(params) {
       if (!canRead) deny(pluginId, 'tasks.read')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.searchTasks(params)
     },
     createTask(params) {
       if (!canWrite) deny(pluginId, 'tasks.write')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.createTask(params)
     },
     updateTask(taskId: string, params) {
       if (!canWrite) deny(pluginId, 'tasks.write')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.updateTask(taskId, params)
     },
   }) satisfies PluginTaskProviderFacade
@@ -139,18 +144,22 @@ export function buildPluginToolRuntimeContext(
 ): PluginToolRuntimeContext {
   const permissions = new Set(manifest.permissions)
   const identity = buildRuntimeIdentity(manifest, runtime.chatUserId)
+  const taskProvider =
+    runtime.provider === undefined
+      ? undefined
+      : buildPluginTaskProviderFacade(
+          pluginId,
+          runtime.provider,
+          permissions.has('tasks.read'),
+          permissions.has('tasks.write'),
+        )
   return Object.freeze({
     pluginId,
     storageContextId: runtime.storageContextId,
     chatUserId: runtime.chatUserId,
-    taskProvider: buildPluginTaskProviderFacade(
-      pluginId,
-      runtime.provider,
-      permissions.has('tasks.read'),
-      permissions.has('tasks.write'),
-    ),
     kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
     adminConfig: buildRuntimeAdminConfig(pluginId, manifest),
+    ...(taskProvider === undefined ? {} : { taskProvider }),
     ...(identity === undefined ? {} : { identity }),
     rateLimit: buildRateLimit(),
   })

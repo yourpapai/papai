@@ -19,6 +19,14 @@ import {
   setupTestDb,
 } from '../utils/test-helpers.js'
 
+const buildGroupDescriptorCacheKey = (
+  contextId: string,
+  chatUserId: string,
+  username: string,
+  providerScope: 'provider-backed' | 'providerless',
+  stagedScope: 'no-staged-download' | 'with-staged-download',
+): string => `${providerScope}:${stagedScope}:${contextId}:${chatUserId}:${username}`
+
 describe('context-store', () => {
   beforeEach(async () => {
     mockLogger()
@@ -47,19 +55,37 @@ describe('context-store', () => {
   })
 
   test('setContextSettings clears cached tool sets for the context', () => {
-    setCachedTools('u1', { old_tool: {} })
+    setCachedTools('provider-backed:no-staged-download:u1', { old_tool: {} })
+    setCachedTools('providerless:with-staged-download:u1', { old_tool: {} })
 
     setContextSettings({ contextId: 'u1', taskInstanceId: 'yt-default', platformInstanceId: 'tg-default' })
 
-    expect(getCachedTools('u1')).toBeUndefined()
+    expect(getCachedTools('provider-backed:no-staged-download:u1')).toBeUndefined()
+    expect(getCachedTools('providerless:with-staged-download:u1')).toBeUndefined()
   })
 
   test('setContextSettings clears cached group-derived tool sets for the context', () => {
-    setCachedTools('group-1:user-1:alice', { old_tool: {} })
+    const providerBackedKey = buildGroupDescriptorCacheKey(
+      'group-1',
+      'user-1',
+      'alice',
+      'provider-backed',
+      'no-staged-download',
+    )
+    const providerlessKey = buildGroupDescriptorCacheKey(
+      'group-1',
+      'user-1',
+      'alice',
+      'providerless',
+      'with-staged-download',
+    )
+    setCachedTools(providerBackedKey, { old_tool: {} })
+    setCachedTools(providerlessKey, { old_tool: {} })
 
     setContextSettings({ contextId: 'group-1', taskInstanceId: 'yt-default', platformInstanceId: 'tg-default' })
 
-    expect(getCachedTools('group-1:user-1:alice')).toBeUndefined()
+    expect(getCachedTools(providerBackedKey)).toBeUndefined()
+    expect(getCachedTools(providerlessKey)).toBeUndefined()
   })
 
   test('get returns null for unknown context', () => {

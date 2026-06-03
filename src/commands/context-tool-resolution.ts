@@ -9,8 +9,7 @@ import { getCachedTools } from '../cache.js'
 import { logger } from '../logger.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
 import type { TaskProvider } from '../providers/types.js'
-import { makeTools } from '../tools/index.js'
-import { routeToolsForMessage, type ToolRoutingIntent } from '../tools/tool-router.js'
+import { applyToolPreferences, buildProviderlessToolDescriptors, makeTools } from '../tools/index.js'
 
 const log = logger.child({ scope: 'commands:context-tool-resolution' })
 
@@ -21,15 +20,8 @@ export type BuildLiveToolSet = (
   provider: TaskProvider | null,
 ) => Promise<ToolSet | null> | ToolSet | null
 
-export interface ResolvedToolSurfaceRouting {
-  intent: ToolRoutingIntent
-  fullToolCount: number
-  exposedToolCount: number
-}
-
 export interface ResolvedContextToolSurface {
   definitions: Record<string, unknown>
-  routing?: ResolvedToolSurfaceRouting
 }
 
 export async function safeBuildProvider(contextId: string): Promise<TaskProvider | null> {
@@ -54,7 +46,14 @@ export function buildInvocationToolSet(
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
 ): Promise<ToolSet | null> | ToolSet | null {
-  if (provider === null) return null
+  if (provider === null) {
+    return buildProviderlessToolDescriptors({
+      storageContextId,
+      chatUserId: actorUserId,
+      mode: 'normal',
+      contextType,
+    }).then((tools) => applyToolPreferences(tools, storageContextId, undefined))
+  }
 
   return makeTools(provider, {
     storageContextId,
@@ -70,12 +69,12 @@ export async function resolveContextToolSurface(
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
   buildLiveToolSet: BuildLiveToolSet,
-  lastUserText?: string,
+  username?: string | null,
 ): Promise<ResolvedContextToolSurface> {
   try {
     const liveTools = await buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
     if (liveTools !== null) {
-      return applyRoutingIfApplicable(liveTools, lastUserText)
+      return { definitions: toToolRecord(liveTools) }
     }
   } catch (error) {
     log.warn(
@@ -89,22 +88,7 @@ export async function resolveContextToolSurface(
     )
   }
 
-  return buildDegradedToolSurface(storageContextId)
-}
-
-function applyRoutingIfApplicable(liveTools: ToolSet, lastUserText: string | undefined): ResolvedContextToolSurface {
-  if (lastUserText === undefined || lastUserText.trim().length === 0) {
-    return { definitions: toToolRecord(liveTools) }
-  }
-  const routed = routeToolsForMessage(lastUserText, liveTools)
-  return {
-    definitions: toToolRecord(routed.tools),
-    routing: {
-      intent: routed.decision.intent,
-      fullToolCount: routed.fullToolCount,
-      exposedToolCount: routed.exposedToolCount,
-    },
-  }
+  return buildDegradedToolSurface(storageContextId, actorUserId, provider, username)
 }
 
 function toToolRecord(value: unknown): Record<string, unknown> {
@@ -116,13 +100,41 @@ function isToolSet(value: Record<string, unknown>): value is ToolSet {
   return Object.values(value).every((entry) => typeof entry === 'object' && entry !== null)
 }
 
-function resolveCachedToolSet(contextId: string): ToolSet {
-  const cachedTools = toToolRecord(getCachedTools(contextId))
+function buildInvocationCacheKey(
+  storageContextId: string,
+  actorUserId: string,
+  provider: TaskProvider | null,
+  username: string | null | undefined,
+): string {
+  const providerCacheScope = provider === null ? 'providerless' : 'provider-backed'
+  const stagedDownloadScope = 'no-staged-download'
+  const usernameSuffix = username ?? ''
+  return `${providerCacheScope}:${stagedDownloadScope}:${storageContextId}:${actorUserId}:${usernameSuffix}`
+}
+
+function resolveCachedToolSet(
+  storageContextId: string,
+  actorUserId: string,
+  provider: TaskProvider | null,
+  username: string | null | undefined,
+): ToolSet {
+  const cachedTools = toToolRecord(
+    getCachedTools(buildInvocationCacheKey(storageContextId, actorUserId, provider, username)),
+  )
   return isToolSet(cachedTools) ? cachedTools : {}
 }
 
-function buildDegradedToolSurface(storageContextId: string): ResolvedContextToolSurface {
-  const cachedTools = resolveCachedToolSet(storageContextId)
+function buildDegradedToolSurface(
+  storageContextId: string,
+  actorUserId: string,
+  provider: TaskProvider | null,
+  username: string | null | undefined,
+): ResolvedContextToolSurface {
+  const cachedTools = applyToolPreferences(
+    resolveCachedToolSet(storageContextId, actorUserId, provider, username),
+    storageContextId,
+    undefined,
+  )
 
   return { definitions: toToolRecord(cachedTools) }
 }

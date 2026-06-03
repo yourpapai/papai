@@ -26,7 +26,7 @@ import {
 } from './llm-orchestrator-process-args.js'
 import { handleLlmTurnError, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation } from './llm-orchestrator-tools.js'
-import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
@@ -147,16 +147,6 @@ export const resetBotMisconfiguredNotifiedForTesting = (): void => {
   botMisconfiguredNotified = false
 }
 
-const buildToolRoutingTelemetry = (
-  routingResult: Awaited<ReturnType<typeof prepareLlmInvocation>>['routingResult'],
-): InvokeModelArgs['toolRouting'] => ({
-  intent: routingResult.decision.intent,
-  confidence: routingResult.decision.confidence,
-  reason: routingResult.decision.reason,
-  fullToolCount: routingResult.fullToolCount,
-  exposedToolCount: routingResult.exposedToolCount,
-})
-
 const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
   createAiProgressReporter(reply, getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)))
 
@@ -183,17 +173,16 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
       // Auto-provision is opportunistic; missing or broken hooks should fall through to normal setup guidance.
     }
   }
-  await ensureRequiredConfig(reply, contextId, configId)
   const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
   const provider = await deps.resolve(configId)
   if (provider === null) {
-    log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
-    await reply.text('I need /config before I can do that.')
-    return { response: { messages: [] } }
+    log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn; using providerless fallback')
+  } else {
+    await ensureRequiredConfig(reply, contextId, configId)
+    await maybeAutoLinkIdentity(chatUserId, username, provider)
   }
-  await maybeAutoLinkIdentity(chatUserId, username, provider)
-  const { routingResult, validatedMessages, enabledToolNames } = await prepareLlmInvocation(
+  const { tools, validatedMessages, enabledToolNames } = await prepareLlmInvocation(
     buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn),
   )
   const progressReporter = createProgressReporterForContext(reply, contextId)
@@ -204,9 +193,8 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     mainModel,
     model,
     provider,
-    tools: routingResult.tools,
+    tools,
     enabledToolNames,
-    toolRouting: buildToolRoutingTelemetry(routingResult),
     messages: validatedMessages,
     deps,
     progressReporter,

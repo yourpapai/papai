@@ -7,19 +7,12 @@ import type { ModelMessage } from 'ai'
 
 import type { ContextSection, ContextSnapshot } from '../chat/types.js'
 import { logger } from '../logger.js'
-import type { ToolRoutingIntent } from '../tools/tool-router.js'
 
 export { defaultCountTokens, prepareDefaultCountTokens, type EncodingName } from './context-tokenizer.js'
 
 const log = logger.child({ scope: 'commands:context-collector' })
 
 type Fact = { identifier: string; title: string; url: string; last_seen: string }
-
-export type ToolRoutingInfo = {
-  intent: ToolRoutingIntent
-  fullToolCount: number
-  exposedToolCount: number
-}
 
 export interface ContextCollectorDeps {
   getMainModel: () => string | null
@@ -32,7 +25,6 @@ export interface ContextCollectorDeps {
   getFacts: () => readonly Fact[]
   getActiveToolDefinitions: () => Record<string, unknown>
   getProviderName: () => string
-  getToolRoutingInfo?: () => ToolRoutingInfo | undefined
   countTokens: (text: string) => number
 }
 
@@ -214,19 +206,11 @@ const buildToolsSection = (deps: ContextCollectorDeps, counter: SafeCounter): Co
   const count = Object.keys(tools).length
   const providerName = deps.getProviderName()
   const tokens = counter.count(serializeTools(tools))
-  const routing = deps.getToolRoutingInfo?.()
   return {
     label: 'Tools',
     tokens,
-    detail: buildToolsDetail(count, providerName, routing),
+    detail: `${String(count)} active, gated by ${providerName}`,
   }
-}
-
-const buildToolsDetail = (exposedCount: number, providerName: string, routing: ToolRoutingInfo | undefined): string => {
-  if (routing === undefined) {
-    return `${String(exposedCount)} active, gated by ${providerName}`
-  }
-  return `${String(routing.exposedToolCount)} of ${String(routing.fullToolCount)} active, gated by ${providerName} · routed for ${routing.intent}`
 }
 
 export const collectContext = (contextId: string, deps: ContextCollectorDeps): ContextSnapshot => {

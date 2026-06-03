@@ -14,9 +14,8 @@ import { resolveTimezone } from './llm-orchestrator-config.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
 import type { TaskProvider } from './providers/types.js'
-import { applyToolPreferences, buildToolDescriptors } from './tools/index.js'
+import { applyToolPreferences, buildProviderlessToolDescriptors, buildToolDescriptors } from './tools/index.js'
 import type { AskPermissionFn } from './tools/permission-gate.js'
-import { routeToolsForMessage } from './tools/tool-router.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:tools' })
 
@@ -27,28 +26,31 @@ const getOrCreateDescriptors = async (
   contextId: string,
   chatUserId: string,
   username: string | null,
-  provider: TaskProvider,
+  provider: TaskProvider | null,
   contextType: 'dm' | 'group' | undefined,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
 ): Promise<ToolSet> => {
-  let cacheKey = contextId
-  if (contextType === 'group') {
-    const usernameSuffix = username ?? ''
-    cacheKey = `${contextId}:${chatUserId}:${usernameSuffix}`
-  }
+  const providerCacheScope = provider === null ? 'providerless' : 'provider-backed'
+  const stagedDownloadScope = stagedDownloadFn === undefined ? 'no-staged-download' : 'with-staged-download'
+  const usernameSuffix = username ?? ''
+  const cacheKey = `${providerCacheScope}:${stagedDownloadScope}:${contextId}:${chatUserId}:${usernameSuffix}`
   const cached = getCachedTools(cacheKey)
   if (cached !== undefined && cached !== null && isToolSet(cached)) {
     log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Using cached tool descriptors')
     return cached
   }
   log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Building tool descriptors (cache miss)')
-  const descriptors = await buildToolDescriptors(provider, {
+  const descriptorOptions = {
     storageContextId: contextId,
     chatUserId,
     username,
     contextType,
     stagedDownloadFn,
-  })
+  }
+  const descriptors =
+    provider === null
+      ? await buildProviderlessToolDescriptors(descriptorOptions)
+      : await buildToolDescriptors(provider, descriptorOptions)
   setCachedTools(cacheKey, descriptors)
   return descriptors
 }
@@ -59,7 +61,7 @@ export type LlmInvocationOptions = {
   chatUserId: string
   username: string | null
   contextType: 'dm' | 'group'
-  provider: TaskProvider
+  provider: TaskProvider | null
   history: readonly ModelMessage[]
   userText: string
   stagedDownloadFn: StagedFileDownloadFn | undefined
@@ -81,7 +83,7 @@ export type InvocationSource = {
 export function buildLlmInvocationOpts(
   src: InvocationSource,
   configId: string,
-  provider: TaskProvider,
+  provider: TaskProvider | null,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
 ): LlmInvocationOptions {
   const askPermission: AskPermissionFn = (req) => askPermissionViaChat(src.reply, src.contextId, req)
@@ -102,22 +104,12 @@ export function buildLlmInvocationOpts(
 export const prepareLlmInvocation = async (
   opts: LlmInvocationOptions,
 ): Promise<{
-  routingResult: ReturnType<typeof routeToolsForMessage>
+  tools: ToolSet
   validatedMessages: ModelMessage[]
   enabledToolNames: ReadonlySet<string>
 }> => {
-  const {
-    contextId,
-    configId,
-    chatUserId,
-    username,
-    contextType,
-    provider,
-    history,
-    userText,
-    stagedDownloadFn,
-    askPermission,
-  } = opts
+  const { contextId, configId, chatUserId, username, contextType, provider, history, stagedDownloadFn, askPermission } =
+    opts
   const descriptors = await getOrCreateDescriptors(
     contextId,
     chatUserId,
@@ -128,17 +120,12 @@ export const prepareLlmInvocation = async (
   )
   const fullTools = applyToolPreferences(descriptors, contextId, askPermission)
   const enabledToolNames = new Set(Object.keys(fullTools))
-  const routingResult = routeToolsForMessage(userText, fullTools)
   log.debug(
     {
       contextId,
-      routingIntent: routingResult.decision.intent,
-      routingConfidence: routingResult.decision.confidence,
-      routingReason: routingResult.decision.reason,
-      fullToolCount: routingResult.fullToolCount,
-      exposedToolCount: routingResult.exposedToolCount,
+      toolCount: Object.keys(fullTools).length,
     },
-    'Tool routing selected subset',
+    'Prepared tool set for LLM invocation',
   )
   const timezone = resolveTimezone(configId)
   const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history)
@@ -147,5 +134,5 @@ export const prepareLlmInvocation = async (
     { contextId, historyLength: history.length, hasMemory: memoryMsg !== null, timezone },
     'Calling generateText',
   )
-  return { routingResult, validatedMessages, enabledToolNames }
+  return { tools: fullTools, validatedMessages, enabledToolNames }
 }

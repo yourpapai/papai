@@ -10,42 +10,50 @@ import { setPluginConfig } from '../src/config.js'
 import { saveInstruction } from '../src/instructions.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { pluginRegistry } from '../src/plugins/registry.js'
-import type { DiscoveredPlugin } from '../src/plugins/types.js'
+import type { DiscoveredPlugin, PluginManifest, PluginPermission } from '../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../src/plugins/types.js'
-import { buildSystemPrompt } from '../src/system-prompt.js'
+import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../src/system-prompt.js'
 import { setToolPrefs } from '../src/tools/tool-preferences.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
-function makePromptPlugin(pluginId: string): DiscoveredPlugin {
-  return {
-    manifest: {
-      id: pluginId,
-      name: 'Prompt Plugin',
-      version: '1.0.0',
-      description: 'Plugin prompt gating test',
-      apiVersion: PLUGIN_API_VERSION,
-      main: 'index.ts',
-      contributes: {
-        tools: [],
-        promptFragments: ['guidance'],
-        commands: [],
-        jobs: [],
-        configKeys: [],
-        taskProviderTypes: [],
-      },
-      permissions: [],
-      defaultEnabled: true,
-      activationTimeoutMs: 5000,
-      requiredTaskCapabilities: [],
-      requiredChatCapabilities: [],
-      configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' }],
-      providerCapabilities: [],
-      providerTraits: [],
-      providerConfigSchema: [],
-      providerContextConfigSchema: [],
-      providerAllowedHosts: [],
+function makePromptPlugin(
+  pluginId: string,
+  permissions: readonly PluginPermission[] = [],
+  overrides: Omit<Partial<PluginManifest>, 'contributes'> & {
+    contributes?: Partial<PluginManifest['contributes']>
+  } = {},
+): DiscoveredPlugin {
+  const manifest: PluginManifest = {
+    id: pluginId,
+    name: 'Prompt Plugin',
+    version: '1.0.0',
+    description: 'Plugin prompt gating test',
+    apiVersion: PLUGIN_API_VERSION,
+    main: 'index.ts',
+    contributes: {
+      tools: [],
+      promptFragments: ['guidance'],
+      commands: [],
+      jobs: [],
+      configKeys: [],
+      taskProviderTypes: [],
     },
+    permissions: [...permissions],
+    defaultEnabled: true,
+    activationTimeoutMs: 5000,
+    requiredTaskCapabilities: [],
+    requiredChatCapabilities: [],
+    configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' }],
+    providerCapabilities: [],
+    providerTraits: [],
+    providerConfigSchema: [],
+    providerContextConfigSchema: [],
+    providerAllowedHosts: [],
+  }
+
+  return {
+    manifest: { ...manifest, ...overrides, contributes: { ...manifest.contributes, ...overrides.contributes } },
     pluginDir: `/tmp/${pluginId}`,
     entryPoint: `/tmp/${pluginId}/index.ts`,
     manifestHash: `hash-${pluginId}`,
@@ -145,6 +153,113 @@ describe('buildSystemPrompt', () => {
   })
 })
 
+describe('buildProviderlessSystemPrompt', () => {
+  beforeEach(async () => {
+    mockLogger()
+    mock.restore()
+    await setupTestDb()
+  })
+
+  test('explains task tracker unavailability and recovery path', () => {
+    const prompt = buildProviderlessSystemPrompt('ctx-providerless', new Set(['web_fetch', 'get_current_time']))
+
+    expect(prompt).toContain('task tracker tools are unavailable')
+    expect(prompt).toContain('/config')
+    expect(prompt).toContain('bot admin')
+  })
+
+  test('forbids pretending to inspect tracker data', () => {
+    const prompt = buildProviderlessSystemPrompt('ctx-providerless', new Set(['web_fetch', 'get_current_time']))
+
+    expect(prompt).toContain('must not pretend')
+    expect(prompt).toContain('inspect, search, create, update, or comment on tracker data')
+  })
+
+  test('keeps scheduled deferred guidance but omits task-dependent alert guidance', () => {
+    const prompt = buildProviderlessSystemPrompt(
+      'ctx-providerless-deferred',
+      new Set(['create_deferred_prompt', 'list_deferred_prompts', 'get_current_time']),
+    )
+
+    expect(prompt).toContain('SCHEDULED PROMPTS')
+    expect(prompt).not.toContain('ALERTS:')
+    expect(prompt).not.toContain('condition to monitor task changes')
+    expect(prompt).not.toContain('task.status')
+    expect(prompt).not.toContain('cooldown_minutes')
+  })
+
+  test('includes only plugin prompt fragments from plugins safe without a task provider', () => {
+    const contextId = 'ctx-providerless-plugin-filter'
+    const safePluginId = 'providerless-safe-plugin'
+    const providerPluginId = 'providerless-provider-plugin'
+
+    registerPromptPlugin(makePromptPlugin(safePluginId), 'SAFE_PROVIDERLESS_PLUGIN_GUIDANCE')
+    registerPromptPlugin(makePromptPlugin(providerPluginId, ['tasks.read']), 'TASK_PROVIDER_PLUGIN_GUIDANCE')
+    setPluginConfig(contextId, safePluginId, 'api_token', 'safe-token')
+    setPluginConfig(contextId, providerPluginId, 'api_token', 'provider-token')
+
+    const prompt = buildProviderlessSystemPrompt(contextId, new Set(['web_fetch', 'get_current_time']))
+
+    expect(prompt).toContain('SAFE_PROVIDERLESS_PLUGIN_GUIDANCE')
+    expect(prompt).not.toContain('TASK_PROVIDER_PLUGIN_GUIDANCE')
+
+    contributionRegistry.deregister(safePluginId)
+    contributionRegistry.deregister(providerPluginId)
+  })
+
+  test('excludes provider-coupled prompt fragments that declare identity-backed provider integration', () => {
+    const contextId = 'ctx-providerless-identity-plugin-filter'
+    const providerIdentityPluginId = 'providerless-identity-plugin'
+
+    registerPromptPlugin(
+      makePromptPlugin(providerIdentityPluginId, ['provider.task', 'identity'], {
+        contributes: { taskProviderTypes: ['providerless-identity'] },
+      }),
+      'IDENTITY_PROVIDER_PLUGIN_GUIDANCE',
+    )
+    setPluginConfig(contextId, providerIdentityPluginId, 'api_token', 'provider-token')
+
+    const prompt = buildProviderlessSystemPrompt(contextId, new Set(['web_fetch', 'get_current_time']))
+
+    expect(prompt).not.toContain('IDENTITY_PROVIDER_PLUGIN_GUIDANCE')
+
+    contributionRegistry.deregister(providerIdentityPluginId)
+  })
+
+  test('excludes prompt fragments from plugins that request provider.task permission', () => {
+    const contextId = 'ctx-providerless-provider-task-permission-filter'
+    const providerTaskPluginId = 'providerless-provider-task-plugin'
+
+    registerPromptPlugin(makePromptPlugin(providerTaskPluginId, ['provider.task']), 'PROVIDER_TASK_PLUGIN_GUIDANCE')
+    setPluginConfig(contextId, providerTaskPluginId, 'api_token', 'provider-token')
+
+    const prompt = buildProviderlessSystemPrompt(contextId, new Set(['web_fetch', 'get_current_time']))
+
+    expect(prompt).not.toContain('PROVIDER_TASK_PLUGIN_GUIDANCE')
+
+    contributionRegistry.deregister(providerTaskPluginId)
+  })
+
+  test('excludes prompt fragments from plugins that require task capabilities', () => {
+    const contextId = 'ctx-providerless-required-capabilities-filter'
+    const requiredCapabilitiesPluginId = 'providerless-required-capabilities-plugin'
+
+    registerPromptPlugin(
+      makePromptPlugin(requiredCapabilitiesPluginId, [], {
+        requiredTaskCapabilities: ['tasks.count'],
+      }),
+      'REQUIRED_CAPABILITIES_PLUGIN_GUIDANCE',
+    )
+    setPluginConfig(contextId, requiredCapabilitiesPluginId, 'api_token', 'provider-token')
+
+    const prompt = buildProviderlessSystemPrompt(contextId, new Set(['web_fetch', 'get_current_time']))
+
+    expect(prompt).not.toContain('REQUIRED_CAPABILITIES_PLUGIN_GUIDANCE')
+
+    contributionRegistry.deregister(requiredCapabilitiesPluginId)
+  })
+})
+
 describe('buildSystemPrompt fragment coherence', () => {
   const provider = createMockProvider()
 
@@ -188,6 +303,29 @@ describe('buildSystemPrompt fragment coherence', () => {
     expect(prompt).toContain('delete_task')
   })
 
+  test('appends safety-net line for denied domain companions when one tool is re-allowed', () => {
+    const contextId = 'frag-domain-default-safety-net-ctx'
+    setToolPrefs(contextId, {
+      domainDefaults: { task: 'deny' },
+      toolOverrides: { create_task: 'allow' },
+    })
+    const enabled = new Set(['create_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled)
+
+    expect(prompt).toContain('Unavailable tools')
+    expect(prompt).toContain('update_task')
+    expect(prompt).toContain('delete_task')
+    expect(prompt).not.toContain('create_task')
+  })
+
+  test('names the actual destructive tool surface', () => {
+    const enabled = new Set(['delete_task', 'delete_project', 'delete_status', 'remove_label', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, 'frag-destructive-tools', enabled)
+
+    expect(prompt).toContain('delete_task, delete_project, delete_status, remove_label')
+    expect(prompt).not.toContain('delete_column')
+  })
+
   test('omits the instructions rule when save_instruction is not in the enabled set', () => {
     const enabled = new Set(['create_task', 'get_current_time'])
     const prompt = buildSystemPrompt(provider, 'frag-no-instr', enabled)
@@ -199,6 +337,16 @@ describe('buildSystemPrompt fragment coherence', () => {
     const enabled = new Set(['create_task', 'get_current_time'])
     const prompt = buildSystemPrompt(provider, 'frag-deferred-off', enabled)
     expect(prompt).not.toContain('DEFERRED PROMPTS')
+  })
+
+  test('keeps alert guidance in provider-backed deferred prompts', () => {
+    const enabled = new Set(['create_deferred_prompt', 'list_deferred_prompts', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, 'frag-deferred-alerts-on', enabled)
+
+    expect(prompt).toContain('ALERTS:')
+    expect(prompt).toContain('condition to monitor task changes')
+    expect(prompt).toContain('task.status')
+    expect(prompt).toContain('cooldown_minutes')
   })
 })
 

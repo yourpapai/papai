@@ -22,8 +22,8 @@ import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../src/plugins/typ
 import type { TaskProvider } from '../../src/providers/types.js'
 import { listRecurringTasks } from '../../src/recurring.js'
 import { makeTools } from '../../src/tools/index.js'
-import { buildTools } from '../../src/tools/tools-builder.js'
-import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { buildProviderlessTools, buildTools } from '../../src/tools/tools-builder.js'
+import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 type DeferredListResult = Readonly<{ prompts: readonly Readonly<{ prompt: string }>[] }>
@@ -431,6 +431,63 @@ describe('buildTools', () => {
     expect(tools).not.toHaveProperty('list_memos')
     expect(tools).not.toHaveProperty('create_recurring_task')
     expect(tools).not.toHaveProperty('save_instruction')
+  })
+
+  it('builds only provider-independent tools for providerless invocation', () => {
+    const tools = buildProviderlessTools('user-123', 'group-456:thread-1', 'normal')
+
+    expect(tools).toHaveProperty('get_current_time')
+    expect(tools).toHaveProperty('save_memo')
+    expect(tools).toHaveProperty('search_memos')
+    expect(tools).toHaveProperty('list_memos')
+    expect(tools).toHaveProperty('archive_memos')
+    expect(tools).toHaveProperty('create_recurring_task')
+    expect(tools).toHaveProperty('list_recurring_tasks')
+    expect(tools).toHaveProperty('save_instruction')
+    expect(tools).toHaveProperty('list_instructions')
+    expect(tools).toHaveProperty('delete_instruction')
+    expect(tools).toHaveProperty('lookup_group_history')
+    expect(tools).toHaveProperty('web_fetch')
+    expect(tools).toHaveProperty('create_deferred_prompt')
+    expect(tools).toHaveProperty('list_deferred_prompts')
+
+    expect(tools).not.toHaveProperty('create_task')
+    expect(tools).not.toHaveProperty('update_task')
+    expect(tools).not.toHaveProperty('search_tasks')
+    expect(tools).not.toHaveProperty('get_task')
+    expect(tools).not.toHaveProperty('list_projects')
+    expect(tools).not.toHaveProperty('get_comments')
+    expect(tools).not.toHaveProperty('list_statuses')
+    expect(tools).not.toHaveProperty('log_work')
+    expect(tools).not.toHaveProperty('add_task_relation')
+    expect(tools).not.toHaveProperty('set_my_identity')
+    expect(tools).not.toHaveProperty('promote_memo')
+  })
+
+  it('exposes only schedule-based deferred prompt creation in providerless mode', async () => {
+    const tools = buildProviderlessTools('user-123', 'group-456:thread-1', 'normal')
+    const createDeferredPrompt = tools['create_deferred_prompt']
+
+    expect(createDeferredPrompt).toBeDefined()
+    expect(
+      schemaValidates(createDeferredPrompt!, {
+        prompt: 'Remind me later',
+        schedule: { fire_at: { date: '2027-01-15', time: '09:00' } },
+      }),
+    ).toBe(true)
+    expect(
+      schemaValidates(createDeferredPrompt!, {
+        prompt: 'Alert me when a task is blocked',
+        condition: { field: 'task.status', op: 'eq', value: 'blocked' },
+      }),
+    ).toBe(false)
+
+    const result = await getToolExecutor(createDeferredPrompt!)({
+      prompt: 'Alert me when a task is blocked',
+      condition: { field: 'task.status', op: 'eq', value: 'blocked' },
+    })
+
+    expect(result).toEqual({ error: 'Task-dependent deferred alerts require a task provider.' })
   })
 
   it('should add lookup_group_history when contextId is a legacy thread', () => {

@@ -131,10 +131,8 @@ export function parseBenchmarkArgs(args: readonly string[]): BenchmarkArgs {
   }
 }
 
-const systemForMode = (mode: BenchmarkMode): string =>
-  mode === 'direct_routed'
-    ? 'Use the routed subset of direct tools selected for the user message.'
-    : 'Use the available direct tools. Search before updating when the task is ambiguous.'
+const systemForMode = (_mode: BenchmarkMode): string =>
+  'Use the available direct tools. Search before updating when the task is ambiguous.'
 
 const stepToolCalls = (step: StepRecord): readonly unknown[] => {
   const toolCalls = step['toolCalls']
@@ -259,9 +257,7 @@ const runBenchmark = (args: BenchmarkArgs, apiKey: string): Promise<readonly Ben
   const repetitions = Array.from({ length: args.repetitions }, (_, index) => index)
   const runs = args.models.flatMap((model) =>
     repetitions.flatMap(() =>
-      scenarios.flatMap((scenario) =>
-        (['direct_full', 'direct_routed'] as const).map((mode) => ({ model, mode, scenario })),
-      ),
+      scenarios.flatMap((scenario) => (['direct_full'] as const).map((mode) => ({ model, mode, scenario }))),
     ),
   )
 

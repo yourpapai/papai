@@ -143,15 +143,14 @@ describe('collectContext', () => {
     expect(tools.detail).toBe('3 active, gated by kaneo')
   })
 
-  test('Tools detail includes routing info when last user message routed to a subset', () => {
+  test('Tools detail stays provider-focused without routing info', () => {
     const deps = makeDeps({
       getActiveToolDefinitions: () => ({ save_memo: {}, search_memos: {} }),
       getProviderName: () => 'kaneo',
-      getToolRoutingInfo: () => ({ intent: 'memo', fullToolCount: 49, exposedToolCount: 2 }),
     })
     const snapshot = collectContext('user1', deps)
     const tools = requireSection(snapshot.sections, 'Tools')
-    expect(tools.detail).toBe('2 of 49 active, gated by kaneo · routed for memo')
+    expect(tools.detail).toBe('2 active, gated by kaneo')
   })
 
   test('returns maxTokens=null for unknown model', () => {

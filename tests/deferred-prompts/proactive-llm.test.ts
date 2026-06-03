@@ -319,10 +319,13 @@ describe('dispatchExecution', () => {
       expect(messageIncludesText(messages, 'full mode history')).toBe(true)
     })
 
-    test('returns error when provider cannot be built', async () => {
+    test('falls back to providerless full execution when provider cannot be built', async () => {
       setupUserConfig()
       const result = await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => null)
-      expect(result).toContain('task provider not configured')
+      expect(result).toBe('Mock response')
+      expect(generateTextCalls).toHaveLength(1)
+      expect(generateTextCalls[0]!.system).toContain('task tracker tools are unavailable')
+      expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_task')
     })
 
     test('stores extracted facts in group thread delivery context instead of creator DM', async () => {

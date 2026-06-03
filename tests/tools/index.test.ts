@@ -18,13 +18,21 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 const CONTEXT = 'test-tool-prefs-index-user'
-const OTHER_CACHE_KEY = 'other-context:user-1:alice'
+
+const buildDescriptorCacheKeys = (contextId: string, chatUserId: string, username: string): readonly string[] =>
+  [
+    'provider-backed:no-staged-download',
+    'provider-backed:with-staged-download',
+    'providerless:no-staged-download',
+    'providerless:with-staged-download',
+  ].map((prefix) => `${prefix}:${contextId}:${chatUserId}:${username}`)
 
 type CacheInvalidationFixtures = Readonly<{
   parentContextId: string
   threadContextId: string
-  parentCacheKey: string
-  threadCacheKey: string
+  parentCacheKeys: readonly string[]
+  threadCacheKeys: readonly string[]
+  otherCacheKey: string
 }>
 
 const getCacheInvalidationFixtures = (): CacheInvalidationFixtures => {
@@ -40,23 +48,28 @@ const getCacheInvalidationFixtures = (): CacheInvalidationFixtures => {
   return {
     parentContextId,
     threadContextId,
-    parentCacheKey: `${parentContextId}:user-1:alice`,
-    threadCacheKey: `${threadContextId}:user-1:alice`,
+    parentCacheKeys: buildDescriptorCacheKeys(parentContextId, 'user-1', 'alice'),
+    threadCacheKeys: buildDescriptorCacheKeys(threadContextId, 'user-1', 'alice'),
+    otherCacheKey: 'provider-backed:no-staged-download:other-context:user-1:alice',
   }
 }
 
 const seedParentThreadAndUnrelatedToolCaches = (): CacheInvalidationFixtures => {
   const fixtures = getCacheInvalidationFixtures()
-  setCachedTools(fixtures.parentCacheKey, { save_memo: {} })
-  setCachedTools(fixtures.threadCacheKey, { save_memo: {} })
-  setCachedTools(OTHER_CACHE_KEY, { save_memo: {} })
+  for (const key of fixtures.parentCacheKeys) setCachedTools(key, { save_memo: {} })
+  for (const key of fixtures.threadCacheKeys) setCachedTools(key, { save_memo: {} })
+  setCachedTools(fixtures.otherCacheKey, { save_memo: {} })
   return fixtures
 }
 
-const expectParentThreadCachesCleared = (parentCacheKey: string, threadCacheKey: string): void => {
-  expect(getCachedTools(parentCacheKey)).toBeUndefined()
-  expect(getCachedTools(threadCacheKey)).toBeUndefined()
-  expect(getCachedTools(OTHER_CACHE_KEY)).toEqual({ save_memo: {} })
+const expectParentThreadCachesCleared = (
+  parentCacheKeys: readonly string[],
+  threadCacheKeys: readonly string[],
+  otherCacheKey: string,
+): void => {
+  for (const key of parentCacheKeys) expect(getCachedTools(key)).toBeUndefined()
+  for (const key of threadCacheKeys) expect(getCachedTools(key)).toBeUndefined()
+  expect(getCachedTools(otherCacheKey)).toEqual({ save_memo: {} })
 }
 
 beforeEach(async () => {
@@ -88,6 +101,17 @@ describe('makeTools', () => {
     expect(
       await makeTools(provider, { storageContextId: scopedMainContextId, chatUserId: 'user-1' }),
     ).not.toHaveProperty('lookup_group_history')
+  })
+
+  test('zero-arg makeTools does not synthesize an empty-string user owner', async () => {
+    const provider = createMockProvider()
+
+    const tools = await makeTools(provider)
+
+    expect(Object.keys(tools)).toContain('create_task')
+    expect(Object.keys(tools)).not.toContain('save_memo')
+    expect(Object.keys(tools)).not.toContain('create_recurring_task')
+    expect(Object.keys(tools)).not.toContain('save_instruction')
   })
 })
 
@@ -153,35 +177,39 @@ describe('makeTools preference filtering', () => {
   })
 
   test('clears cached parent and thread toolsets when parent preferences change', () => {
-    const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
+    const { parentContextId, parentCacheKeys, threadCacheKeys, otherCacheKey } =
+      seedParentThreadAndUnrelatedToolCaches()
 
     setToolPrefs(parentContextId, { domainDefaults: { memo: 'deny' }, toolOverrides: {} })
 
-    expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
+    expectParentThreadCachesCleared(parentCacheKeys, threadCacheKeys, otherCacheKey)
   })
 
   test('clears cached parent and thread toolsets when parent plugin enablement changes', () => {
-    const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
+    const { parentContextId, parentCacheKeys, threadCacheKeys, otherCacheKey } =
+      seedParentThreadAndUnrelatedToolCaches()
 
     setPluginEnabledForContext('hello-world', parentContextId, true)
 
-    expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
+    expectParentThreadCachesCleared(parentCacheKeys, threadCacheKeys, otherCacheKey)
   })
 
   test('clears cached parent and thread toolsets when parent plugin config changes', () => {
-    const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
+    const { parentContextId, parentCacheKeys, threadCacheKeys, otherCacheKey } =
+      seedParentThreadAndUnrelatedToolCaches()
 
     setPluginConfig(parentContextId, 'hello-world', 'greeting', 'hi')
 
-    expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
+    expectParentThreadCachesCleared(parentCacheKeys, threadCacheKeys, otherCacheKey)
   })
 
   test('clears cached parent and thread toolsets when parent MCP endpoints config changes', () => {
-    const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
+    const { parentContextId, parentCacheKeys, threadCacheKeys, otherCacheKey } =
+      seedParentThreadAndUnrelatedToolCaches()
 
     setConfigValue(parentContextId, 'mcp_endpoints', '[]')
 
-    expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
+    expectParentThreadCachesCleared(parentCacheKeys, threadCacheKeys, otherCacheKey)
   })
 })
 

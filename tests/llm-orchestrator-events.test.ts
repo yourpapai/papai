@@ -65,8 +65,8 @@ describe('llm-orchestrator-events', () => {
         expect(capturedEvent['model']).toBe('gpt-4')
         expect(capturedEvent['messageCount']).toBe(1)
         expect(capturedEvent['toolCount']).toBe(Object.keys(tools).length)
-        expect(capturedEvent['exposedToolCount']).toBe(Object.keys(tools).length)
-        expect(capturedEvent['fullToolCount']).toBe(Object.keys(tools).length)
+        expect(capturedEvent['exposedToolCount']).toBeUndefined()
+        expect(capturedEvent['fullToolCount']).toBeUndefined()
         expect(typeof capturedEvent['toolSchemaBytes']).toBe('number')
       } finally {
         unsubscribe(listener)
@@ -116,7 +116,6 @@ describe('llm-orchestrator-events', () => {
           startTime,
           [{ role: 'user', content: 'hi' }],
           tools,
-          undefined,
           'turn-1',
         )
 
@@ -131,8 +130,8 @@ describe('llm-orchestrator-events', () => {
         expect(capturedEvent['finishReason']).toBe('stop')
         expect(capturedEvent['messageCount']).toBe(1)
         expect(capturedEvent['toolCount']).toBe(Object.keys(tools).length)
-        expect(capturedEvent['exposedToolCount']).toBe(Object.keys(tools).length)
-        expect(capturedEvent['fullToolCount']).toBe(Object.keys(tools).length)
+        expect(capturedEvent['exposedToolCount']).toBeUndefined()
+        expect(capturedEvent['fullToolCount']).toBeUndefined()
         expect(typeof capturedEvent['toolSchemaBytes']).toBe('number')
         expect(capturedEvent['generatedText']).toBe('Done!')
         expect(Array.isArray(capturedEvent['stepsDetail'])).toBe(true)
@@ -171,7 +170,6 @@ describe('llm-orchestrator-events', () => {
           Date.now() - 10,
           [{ role: 'user', content: 'hi' }],
           tools,
-          undefined,
           'turn-2',
         )
 
@@ -288,7 +286,6 @@ describe('llm-orchestrator-events', () => {
           Date.now() - 1000,
           [{ role: 'user', content: 'hi' }],
           { x: cyclicTool },
-          undefined,
           'turn-cyclic',
         )
 

@@ -10,11 +10,12 @@ import { getPluginConfig } from '../config.js'
 import { adaptMcpPool, buildMcpToolSet, buildPluginMcpToolSet } from '../mcp/index.js'
 import type { PluginMcpDescriptor } from '../mcp/plugin-endpoints.js'
 import { buildPluginToolSet, contributionRegistry } from '../plugins/contributions.js'
+import { filterProviderlessPluginIds } from '../plugins/providerless.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
 import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
 import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
-import { buildTools } from './tools-builder.js'
+import { buildProviderlessTools, buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
 
@@ -111,6 +112,41 @@ async function buildPluginAndMcpTools(
   return { pluginTools, extraMcpTools }
 }
 
+async function buildProviderlessPluginAndMcpTools(
+  contextId: string,
+  chatUserId: string,
+  wrappedBuiltins: ToolSet,
+): Promise<{ pluginTools: ToolSet; extraMcpTools: ToolSet }> {
+  const activePlugins = getPluginsForContext(contextId)
+  if (activePlugins.length === 0) return { pluginTools: {}, extraMcpTools: {} }
+
+  const activePluginIds = activePlugins
+    .map((p) => p.manifest.id)
+    .filter((id) => contributionRegistry.getContributions(id) !== undefined)
+  const providerlessPluginIds = filterProviderlessPluginIds(activePluginIds)
+  const pluginTools = buildPluginToolSet(providerlessPluginIds, new Set(Object.keys(wrappedBuiltins)), {
+    provider: undefined,
+    storageContextId: contextId,
+    chatUserId,
+  })
+
+  const extraMcpTools: ToolSet = {}
+  const mcpPluginIds = filterProviderlessPluginIds(
+    activePlugins.filter((p) => p.manifest.mcp !== undefined).map((p) => p.manifest.id),
+  )
+  if (mcpPluginIds.length > 0) {
+    const descriptors = buildPluginMcpDescriptors(mcpPluginIds, contextId)
+    try {
+      const pluginMcpTools = await buildPluginMcpToolSet(mcpPluginIds, descriptors, adaptMcpPool())
+      Object.assign(extraMcpTools, pluginMcpTools)
+    } catch {
+      // MCP failures don't break the tool pipeline
+    }
+  }
+
+  return { pluginTools, extraMcpTools }
+}
+
 /**
  * Build the raw (preference-unfiltered) tool set for the given provider and context.
  * The result may be cached by the orchestrator; per-turn preference application
@@ -149,6 +185,39 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
   return { ...wrappedBuiltins, ...mcpTools, ...pluginTools }
 }
 
+export async function buildProviderlessToolDescriptors(options: MakeToolsOptions): Promise<ToolSet> {
+  const storageContextId = options.storageContextId
+  const chatUserId = options.chatUserId
+  const username = options.username
+  const contextId = storageContextId
+  const sharedContextId = contextId === undefined ? undefined : getConfigContextIdFromStorageContextId(contextId)
+  let mode: MakeToolsOptions['mode'] = 'normal'
+  if (options.mode !== undefined) mode = options.mode
+  const contextType = options.contextType
+  const stagedDownloadFn = options.stagedDownloadFn
+
+  const tools = buildProviderlessTools(chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
+  const wrappedBuiltins = wrapToolSet(tools)
+
+  let mcpTools: ToolSet = {}
+  if (sharedContextId !== undefined) {
+    try {
+      mcpTools = await buildMcpToolSet(sharedContextId)
+    } catch {
+      // MCP failures don't break the tool pipeline
+    }
+  }
+
+  let pluginTools: ToolSet = {}
+  if (sharedContextId !== undefined && chatUserId !== undefined) {
+    const result = await buildProviderlessPluginAndMcpTools(sharedContextId, chatUserId, wrappedBuiltins)
+    pluginTools = result.pluginTools
+    Object.assign(mcpTools, result.extraMcpTools)
+  }
+
+  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools }
+}
+
 /**
  * Build a tool set for the given provider and context, with preferences applied.
  *
@@ -163,7 +232,7 @@ export async function makeTools(
   provider: TaskProvider,
   ...args: readonly [MakeToolsOptions] | readonly []
 ): Promise<ToolSet> {
-  const options = args.length === 0 ? { chatUserId: '' } : args[0]
+  const options: MakeToolsOptions = args.length === 0 ? {} : args[0]
   const descriptors = await buildToolDescriptors(provider, options)
   return applyToolPreferences(descriptors, options.storageContextId, options.askPermission)
 }

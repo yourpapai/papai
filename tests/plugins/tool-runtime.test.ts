@@ -42,6 +42,15 @@ function makeRuntime(overrides: Partial<PluginToolSetRuntime> = {}): PluginToolS
   }
 }
 
+function getTaskProvider(
+  runtime: ReturnType<typeof buildPluginToolRuntimeContext>,
+): NonNullable<ReturnType<typeof buildPluginToolRuntimeContext>['taskProvider']> {
+  const taskProvider = runtime.taskProvider
+  expect(taskProvider).toBeDefined()
+  if (taskProvider === undefined) throw new Error('Expected taskProvider to be defined')
+  return taskProvider
+}
+
 describe('buildPluginToolRuntimeContext', () => {
   beforeEach(async () => {
     mockLogger()
@@ -207,14 +216,13 @@ describe('buildPluginToolRuntimeContext', () => {
       searchTasks,
     })
     const runtime = buildPluginToolRuntimeContext('test-plugin', makeManifest(), makeRuntime({ provider }))
+    const taskProvider = getTaskProvider(runtime)
 
-    expect(() => runtime.taskProvider.getTask('task-1')).toThrow(
+    expect(() => taskProvider.getTask('task-1')).toThrow("Plugin test-plugin does not have 'tasks.read' permission")
+    expect(() => taskProvider.listTasks('project-1')).toThrow(
       "Plugin test-plugin does not have 'tasks.read' permission",
     )
-    expect(() => runtime.taskProvider.listTasks('project-1')).toThrow(
-      "Plugin test-plugin does not have 'tasks.read' permission",
-    )
-    expect(() => runtime.taskProvider.searchTasks({ query: 'test' })).toThrow(
+    expect(() => taskProvider.searchTasks({ query: 'test' })).toThrow(
       "Plugin test-plugin does not have 'tasks.read' permission",
     )
     expect(getTask).not.toHaveBeenCalled()
@@ -238,11 +246,12 @@ describe('buildPluginToolRuntimeContext', () => {
       makeManifest({ permissions: ['tasks.read'] }),
       makeRuntime({ provider }),
     )
+    const taskProvider = getTaskProvider(runtime)
 
-    expect(() => runtime.taskProvider.createTask({ projectId: 'project-1', title: 'test' })).toThrow(
+    expect(() => taskProvider.createTask({ projectId: 'project-1', title: 'test' })).toThrow(
       "Plugin test-plugin does not have 'tasks.write' permission",
     )
-    expect(() => runtime.taskProvider.updateTask('task-1', { title: 'updated' })).toThrow(
+    expect(() => taskProvider.updateTask('task-1', { title: 'updated' })).toThrow(
       "Plugin test-plugin does not have 'tasks.write' permission",
     )
     expect(createTask).not.toHaveBeenCalled()

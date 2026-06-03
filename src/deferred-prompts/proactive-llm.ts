@@ -14,7 +14,7 @@ import { appendHistory } from '../history.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { getSystemConfig } from '../system-config.js'
-import { buildSystemPrompt } from '../system-prompt.js'
+import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
 import {
@@ -174,11 +174,11 @@ async function resolveFullProvider(
   userId: string,
   storageContextId: string,
   configContextId: string,
-): Promise<TaskProvider | string> {
+): Promise<TaskProvider | null> {
   const provider = await buildProviderFn(configContextId)
   if (provider !== null) return provider
   log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for deferred prompt')
-  return 'Deferred prompt skipped: task provider not configured.'
+  return null
 }
 
 async function runFullGeneration(
@@ -188,7 +188,7 @@ async function runFullGeneration(
   metadata: ExecutionMetadata,
   matchedTasksSummary: string | undefined,
   config: { apiKey: string; baseURL: string; mainModel: string },
-  provider: NonNullable<Awaited<ReturnType<BuildProviderFn>>>,
+  provider: Awaited<ReturnType<BuildProviderFn>>,
   deps: ProactiveLlmDeps,
 ): Promise<string> {
   const { createdByUserId, deliveryTarget } = execCtx
@@ -201,9 +201,10 @@ async function runFullGeneration(
     deliveryTarget.contextType,
     prompt,
   )
-  const systemPrompt = buildSystemPrompt(provider, storageContextId, enabledToolNames, {
-    askPermissionAvailable: false,
-  })
+  const systemPrompt =
+    provider === null
+      ? buildProviderlessSystemPrompt(storageContextId, enabledToolNames, { askPermissionAvailable: false })
+      : buildSystemPrompt(provider, storageContextId, enabledToolNames, { askPermissionAvailable: false })
   const { messages } = buildFullMessages(createdByUserId, storageContextId, type, prompt, matchedTasksSummary, metadata)
   log.debug(
     { userId: createdByUserId, mainModel: config.mainModel, historyLength: messages.length, mode: 'full' },
@@ -238,8 +239,6 @@ async function invokeFull(
   if (typeof config === 'string') return config
 
   const provider = await resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)
-  if (typeof provider === 'string') return provider
-
   return runFullGeneration(execCtx, type, prompt, metadata, matchedTasksSummary, config, provider, deps)
 }
 

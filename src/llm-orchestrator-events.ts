@@ -44,14 +44,6 @@ type ResultResponse = {
   modelId: string
 }>
 
-export type ToolRoutingTelemetry = {
-  intent: string
-  confidence: number
-  reason: string
-  fullToolCount: number
-  exposedToolCount: number
-}
-
 // Result type after awaiting all streamText promises
 export type ResolvedStreamTextResult = {
   text: string
@@ -102,51 +94,29 @@ function estimateToolSchemaBytes(tools: ToolSet): number {
   return total
 }
 
-function buildRoutingTelemetry(routing: ToolRoutingTelemetry | undefined): Record<string, unknown> {
-  if (routing === undefined) {
-    return {}
-  }
+function buildToolTelemetry(tools: ToolSet): Record<string, unknown> {
+  const toolCount = Object.keys(tools).length
+  log.debug({ toolCount }, 'buildToolTelemetry')
   return {
-    routingIntent: routing.intent,
-    routingConfidence: routing.confidence,
-    routingReason: routing.reason,
-  }
-}
-
-function buildToolTelemetry(tools: ToolSet, routing: ToolRoutingTelemetry | undefined): Record<string, unknown> {
-  const exposedToolCount = Object.keys(tools).length
-  const fullToolCount = routing === undefined ? exposedToolCount : routing.fullToolCount
-  log.debug({ exposedToolCount, hasRouting: routing !== undefined }, 'buildToolTelemetry')
-  return {
-    toolCount: exposedToolCount,
-    exposedToolCount,
-    fullToolCount,
+    toolCount,
     toolSchemaBytes: estimateToolSchemaBytes(tools),
-    ...buildRoutingTelemetry(routing),
   }
 }
 
 export function emitLlmStart(
-  ...args:
-    | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet]
-    | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet, routing: ToolRoutingTelemetry]
-    | [
-        contextId: string,
-        mainModel: string,
-        messages: ModelMessage[],
-        tools: ToolSet,
-        routing: ToolRoutingTelemetry | undefined,
-        turnId: string,
-      ]
+  contextId: string,
+  mainModel: string,
+  messages: ModelMessage[],
+  tools: ToolSet,
+  turnId?: string,
 ): void {
-  const [contextId, mainModel, messages, tools, routing, turnId] = args
   emitUser(
     'llm:start',
     contextId,
     {
       model: mainModel,
       messageCount: messages.length,
-      ...buildToolTelemetry(tools, routing),
+      ...buildToolTelemetry(tools),
     },
     turnId,
   )
@@ -161,7 +131,6 @@ export function emitLlmEnd(
   startTime: number,
   messages: ModelMessage[],
   tools: ToolSet,
-  routing: ToolRoutingTelemetry | undefined,
   turnId: string,
 ): void {
   emitUser(
@@ -178,7 +147,7 @@ export function emitLlmEnd(
       messageCount: messages.length,
       chatUserId,
       contextType,
-      ...buildToolTelemetry(tools, routing),
+      ...buildToolTelemetry(tools),
       generatedText: result.text,
       stepsDetail: buildStepsDetail(result.steps),
     },

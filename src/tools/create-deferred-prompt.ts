@@ -20,6 +20,38 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:create-deferred-prompt' })
 
+type CreateDeferredPromptToolOptions = Readonly<{
+  allowTaskConditions?: boolean
+}>
+
+function buildInputSchema(allowTaskConditions: boolean): z.ZodType<CreateInput> {
+  if (allowTaskConditions) {
+    return z.object({
+      prompt: z.string().describe('What to do/say when this fires - not scheduling meta-instructions'),
+      schedule: scheduleSchema.optional().describe('Time-based trigger (one-time or recurring)'),
+      condition: alertConditionSchema.optional().describe('Event-based trigger condition'),
+      cooldown_minutes: cooldownSchema,
+      execution: executionInputSchema,
+      delivery: deliveryPolicySchema,
+    })
+  }
+
+  return z
+    .object({
+      prompt: z.string().describe('What to do/say when this fires - not scheduling meta-instructions'),
+      schedule: scheduleSchema.optional().describe('Time-based trigger (one-time or recurring)'),
+      execution: executionInputSchema,
+      delivery: deliveryPolicySchema,
+    })
+    .strict()
+}
+
+function buildToolDescription(allowTaskConditions: boolean): string {
+  return allowTaskConditions
+    ? 'Create a scheduled task or monitoring alert. Provide either a schedule (for time-based) or a condition (for event-based), not both. Always classify the execution mode based on what the prompt needs at fire time.'
+    : 'Create a scheduled prompt. Use this only for time-based reminders or recurring scheduled follow-ups.'
+}
+
 function resolveActorUserId(userId: string, actorUserId: string | undefined): string {
   if (actorUserId === undefined) return userId
   return actorUserId
@@ -29,26 +61,22 @@ export function makeCreateDeferredPromptTool(
   userId: string,
   storageContextId: string,
   contextType: ContextType,
-  ...args:
-    | readonly []
-    | readonly [username: string | null | undefined]
-    | readonly [username: string | null | undefined, actorUserId: string]
+  username?: string | null,
+  actorUserIdArg?: string,
+  options: CreateDeferredPromptToolOptions = {},
 ): ToolSet[string] {
-  const username = args[0]
-  const actorUserId = resolveActorUserId(userId, args[1])
+  const actorUserId = resolveActorUserId(userId, actorUserIdArg)
+  const allowTaskConditions = options.allowTaskConditions ?? true
+  const inputSchema = buildInputSchema(allowTaskConditions)
+
   return tool({
-    description:
-      'Create a scheduled task or monitoring alert. Provide either a schedule (for time-based) or a condition (for event-based), not both. Always classify the execution mode based on what the prompt needs at fire time.',
-    inputSchema: z.object({
-      prompt: z.string().describe('What to do/say when this fires — not scheduling meta-instructions'),
-      schedule: scheduleSchema.optional().describe('Time-based trigger (one-time or recurring)'),
-      condition: alertConditionSchema.optional().describe('Event-based trigger condition'),
-      cooldown_minutes: cooldownSchema,
-      execution: executionInputSchema,
-      delivery: deliveryPolicySchema,
-    }),
+    description: buildToolDescription(allowTaskConditions),
+    inputSchema,
     execute: (input: CreateInput) => {
       try {
+        if (!allowTaskConditions && input.condition !== undefined) {
+          return { error: 'Task-dependent deferred alerts require a task provider.' }
+        }
         return executeCreate(userId, input, { userId: actorUserId, storageContextId, contextType, username })
       } catch (error) {
         log.error(

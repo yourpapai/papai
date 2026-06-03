@@ -8,7 +8,7 @@
  *
  * Uses mock.module() for src/tools/index.js so that buildToolDescriptors can
  * be spied on with a controlled return value; all other collaborators (cache,
- * conversation, validation, tool-router) use their real implementations
+ * conversation, validation) use their real implementations
  * against the test DB.
  */
 
@@ -36,9 +36,11 @@ const NO_STAGED_DOWNLOAD: StagedFileDownloadFn | undefined = undefined as Staged
 const buildToolDescriptorsSpy = mock(
   (_provider: TaskProvider, _options: MakeToolsOptions): Promise<ToolSet> => Promise.resolve({}),
 )
+const buildProviderlessToolDescriptorsSpy = mock((_options: MakeToolsOptions): Promise<ToolSet> => Promise.resolve({}))
 
 void mock.module('../src/tools/index.js', () => ({
   buildToolDescriptors: buildToolDescriptorsSpy,
+  buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
   applyToolPreferences: (tools: ToolSet): ToolSet => tools,
 }))
 
@@ -74,12 +76,14 @@ describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () =
     // re-install the spy here (after the restore) for every test in this suite.
     void mock.module('../src/tools/index.js', () => ({
       buildToolDescriptors: buildToolDescriptorsSpy,
+      buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
       applyToolPreferences: (tools: ToolSet): ToolSet => tools,
     }))
     mockLogger()
     await setupTestDb()
     userCachesForTesting.clear()
     buildToolDescriptorsSpy.mockClear()
+    buildProviderlessToolDescriptorsSpy.mockClear()
 
     provider = createMockProvider()
   })
@@ -106,6 +110,71 @@ describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () =
 
     expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(2)
   })
+
+  test('buildToolDescriptors is called again in DM when username changes for the same context', async () => {
+    await prepareLlmInvocation({
+      ...baseOpts(provider, { contextId: 'ctx-dm-username', configId: 'ctx-dm-username' }),
+      username: 'alice',
+    })
+    await prepareLlmInvocation({
+      ...baseOpts(provider, { contextId: 'ctx-dm-username', configId: 'ctx-dm-username' }),
+      username: 'bob',
+    })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(2)
+  })
+
+  test('provider-backed and providerless invocations do not share the same cache entry', async () => {
+    buildToolDescriptorsSpy.mockResolvedValueOnce({ create_task: makeGetCurrentTimeTool('provider') })
+    buildProviderlessToolDescriptorsSpy.mockResolvedValueOnce({ save_memo: makeGetCurrentTimeTool('providerless') })
+
+    const providerBacked = await prepareLlmInvocation(
+      baseOpts(provider, { contextId: 'ctx-shared', configId: 'ctx-shared' }),
+    )
+    const providerless = await prepareLlmInvocation({
+      contextId: 'ctx-shared',
+      configId: 'ctx-shared',
+      chatUserId: CHAT_USER_ID,
+      username: USERNAME,
+      contextType: 'dm',
+      provider: null,
+      history: [],
+      userText: 'remember this note',
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+      askPermission: undefined,
+    })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    expect(buildProviderlessToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    expect(providerBacked.enabledToolNames.has('create_task')).toBe(true)
+    expect(providerBacked.enabledToolNames.has('save_memo')).toBe(false)
+    expect(providerless.enabledToolNames.has('save_memo')).toBe(true)
+    expect(providerless.enabledToolNames.has('create_task')).toBe(false)
+  })
+
+  test('descriptor cache distinguishes stagedDownloadFn-sensitive tool sets', async () => {
+    const stagedDownloadFn: StagedFileDownloadFn = mock(() => Promise.resolve(Buffer.from('file')))
+    buildToolDescriptorsSpy
+      .mockResolvedValueOnce({ search_staged_files: makeGetCurrentTimeTool('no-download') })
+      .mockResolvedValueOnce({
+        search_staged_files: makeGetCurrentTimeTool('with-download'),
+        resolve_staged_file: makeGetCurrentTimeTool('with-download'),
+      })
+
+    const withoutDownload = await prepareLlmInvocation({
+      ...baseOpts(provider, { contextId: 'ctx-staged', configId: 'ctx-staged' }),
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+    })
+    const withDownload = await prepareLlmInvocation({
+      ...baseOpts(provider, { contextId: 'ctx-staged', configId: 'ctx-staged' }),
+      stagedDownloadFn,
+    })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(2)
+    expect(withoutDownload.enabledToolNames.has('search_staged_files')).toBe(true)
+    expect(withoutDownload.enabledToolNames.has('resolve_staged_file')).toBe(false)
+    expect(withDownload.enabledToolNames.has('resolve_staged_file')).toBe(true)
+  })
 })
 
 describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () => {
@@ -116,28 +185,21 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
     // re-install the spy here (after the restore) for every test in this suite.
     void mock.module('../src/tools/index.js', () => ({
       buildToolDescriptors: buildToolDescriptorsSpy,
+      buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
       applyToolPreferences: (tools: ToolSet): ToolSet => tools,
     }))
     mockLogger()
     await setupTestDb()
     userCachesForTesting.clear()
     buildToolDescriptorsSpy.mockClear()
+    buildProviderlessToolDescriptorsSpy.mockClear()
 
     provider = createMockProvider()
   })
 
-  test('returns enabledToolNames derived from buildToolDescriptors result before routing', async () => {
-    // Use a memo-intent message: 'remember this note' matches MEMO_RE → intent='memo',
-    // confidence=0.85 > HIGH_CONFIDENCE=0.65 → routing narrows to MEMO_DOMAINS
-    // (memo/time/web). create_task (domain: task) is dropped; save_memo (domain: memo)
-    // is kept. This proves enabledToolNames is sourced from the pre-routing full set.
-    //
-    // Tool factory values are placeholders — only the KEYS matter for enabledToolNames;
-    // a real factory is used to satisfy the no-unsafe-type-assertion lint rule.
+  test('returns enabledToolNames from the full tool set without routing', async () => {
     buildToolDescriptorsSpy.mockResolvedValueOnce({
-      // domain: task — dropped by memo routing
       create_task: makeGetCurrentTimeTool('u'),
-      // domain: memo — kept by memo routing
       save_memo: makeGetCurrentTimeTool('u'),
     })
 
@@ -154,15 +216,34 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
       askPermission: undefined,
     })
 
-    // Pre-routing origin: both keys are present in enabledToolNames even though
-    // routing drops create_task.
     expect(result.enabledToolNames instanceof Set).toBe(true)
     expect(result.enabledToolNames.has('create_task')).toBe(true)
     expect(result.enabledToolNames.has('save_memo')).toBe(true)
+    expect(Object.keys(result.tools).toSorted()).toEqual(['create_task', 'save_memo'])
+  })
 
-    // Contrast: routing actually narrowed the set — create_task is absent from
-    // routingResult.tools, confirming the two sets are genuinely different.
-    expect(Object.keys(result.routingResult.tools)).not.toContain('create_task')
-    expect(Object.keys(result.routingResult.tools)).toContain('save_memo')
+  test('uses providerless descriptors when provider is null', async () => {
+    buildProviderlessToolDescriptorsSpy.mockResolvedValueOnce({
+      save_memo: makeGetCurrentTimeTool('u'),
+      get_current_time: makeGetCurrentTimeTool('u'),
+    })
+
+    const result = await prepareLlmInvocation({
+      contextId: 'ctx-providerless',
+      configId: 'ctx-providerless',
+      chatUserId: 'user-pr',
+      username: null,
+      contextType: 'dm',
+      provider: null,
+      history: [],
+      userText: 'remember this note',
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+      askPermission: undefined,
+    })
+
+    expect(buildProviderlessToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(0)
+    expect(result.enabledToolNames.has('save_memo')).toBe(true)
+    expect(result.enabledToolNames.has('get_current_time')).toBe(true)
   })
 })

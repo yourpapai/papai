@@ -349,9 +349,7 @@ describe('processMessage', () => {
   // ---------------------------------------------------------------------------
 
   describe('missing configuration', () => {
-    test('group context does not call maybeAutoProvision before missing-provider-config handling', async () => {
-      // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its token key.
-      // Simulate missing config by having resolve return null -> orchestrator sends /config guidance.
+    test('group context does not call maybeAutoProvision before providerless fallback', async () => {
       let maybeProvisionCalls = 0
       const freshGroupCtx = 'group-yt:thread-1'
       assignYouTrackContext('group-yt')
@@ -370,7 +368,7 @@ describe('processMessage', () => {
       await processMessage(reply, freshGroupCtx, 'user-1', null, 'hello', 'group', 'group-yt', deps)
 
       expect(maybeProvisionCalls).toBe(0)
-      expect(textCalls[0]).toContain('/config')
+      expect(textCalls).toContain('Hello!')
     })
 
     test('replies with bot-misconfigured when system_config is incomplete', async () => {
@@ -395,9 +393,7 @@ describe('processMessage', () => {
       expect(textCalls[0]).toContain('/config')
     })
 
-    test('missing YouTrack provider config is derived from assigned task instance', async () => {
-      // YouTrack requires a context-scoped token. With the required-config guard restored,
-      // an unconfigured context is told to finish setup via /config before the resolver runs.
+    test('does not fail early on missing YouTrack provider config when providerless fallback can answer', async () => {
       const freshCtx = 'missing-youtrack-token-2'
       assignYouTrackContext(freshCtx)
 
@@ -412,14 +408,20 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls.some(mentionsMissingConfig)).toBe(true)
+      expect(textCalls.some(mentionsMissingConfig)).toBe(false)
+      expect(textCalls).toContain('Hello!')
     })
 
-    test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
+    test('invokes the model instead of replying with /config guidance when resolver returns null for assigned Kaneo', async () => {
       const freshCtx = 'missing-kaneo-workspace'
       assignKaneoContext(freshCtx)
       setConfigValue(freshCtx, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
       let resolverCalls = 0
+      let generateCalled = 0
+      generateTextImpl = (): Promise<GenerateTextResult> => {
+        generateCalled += 1
+        return defaultGenerateTextResult()
+      }
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
@@ -435,12 +437,12 @@ describe('processMessage', () => {
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(resolverCalls).toBe(1)
-      expect(textCalls).toContain('I need /config before I can do that.')
+      expect(generateCalled).toBe(1)
+      expect(textCalls).not.toContain('I need /config before I can do that.')
+      expect(textCalls).toContain('Hello!')
     })
 
-    test('missing provider config is derived from assigned task instance', async () => {
-      // With the required-config guard restored, a context assigned to a provider whose
-      // required context-scoped credential is unset is told to finish setup via /config.
+    test('does not fail early on missing provider config derived from the assigned task instance', async () => {
       const freshCtx = 'missing-youtrack-token'
       assignYouTrackContext(freshCtx)
       const deps: LlmOrchestratorDeps = {
@@ -454,10 +456,11 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls.some(mentionsMissingConfig)).toBe(true)
+      expect(textCalls.some(mentionsMissingConfig)).toBe(false)
+      expect(textCalls).toContain('Hello!')
     })
 
-    test('replies with setup guidance when resolver returns null after credentials pass', async () => {
+    test('invokes the model when resolver returns null after credentials pass', async () => {
       const freshCtx = 'resolver-null-context'
       insertTaskInstance({
         id: 'yt-prod-null',
@@ -471,6 +474,11 @@ describe('processMessage', () => {
         platformInstanceId: 'telegram-default',
       })
       setConfigValue(freshCtx, 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
+      let generateCalled = 0
+      generateTextImpl = (): Promise<GenerateTextResult> => {
+        generateCalled += 1
+        return defaultGenerateTextResult()
+      }
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
@@ -482,7 +490,9 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /config before I can do that.')
+      expect(generateCalled).toBe(1)
+      expect(textCalls).not.toContain('I need /config before I can do that.')
+      expect(textCalls).toContain('Hello!')
     })
 
     test('dm context calls maybeAutoProvision with generic provider context', async () => {
@@ -502,10 +512,10 @@ describe('processMessage', () => {
       await processMessage(reply, CTX_ID, 'user-1', 'alice', 'hello', 'dm', undefined, deps)
 
       expect(autoProvisionCalls).toEqual([{ contextId: CTX_ID, chatUserId: 'user-1', username: 'alice' }])
-      expect(textCalls).toContain('I need /config before I can do that.')
+      expect(textCalls).toContain('Hello!')
     })
 
-    test('dm context continues to setup guidance when generic auto-provision hook throws', async () => {
+    test('dm context still reaches providerless fallback when generic auto-provision hook throws', async () => {
       registerContributedTaskProviderType('auto-throw-provider', {
         pluginId: 'auto-throw-plugin',
         factory: () => createMockProvider({ name: 'auto-throw-provider' }),
@@ -539,7 +549,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, CTX_ID, 'user-1', 'alice', 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /config before I can do that.')
+      expect(textCalls).toContain('Hello!')
     })
   })
 
@@ -1126,8 +1136,8 @@ describe('processMessage', () => {
 
       await processMessage(reply, 'tool-results-ctx', 'user-1', null, 'create a test task', 'dm')
 
-      // Should complete without error - tool results passed directly to fact extraction
-      expect(textCalls.length).toBeGreaterThanOrEqual(0)
+      expect(textCalls).toEqual(['Task created successfully!'])
+      expect(textCalls).not.toContain('An unexpected error occurred. Please try again later.')
     })
 
     test('tool results with unmatched toolCallId still process successfully', async () => {
@@ -1156,8 +1166,8 @@ describe('processMessage', () => {
 
       await processMessage(reply, 'tool-results-missing-ctx', 'user-1', null, 'do something', 'dm')
 
-      // Should complete without error
-      expect(textCalls.length).toBeGreaterThanOrEqual(0)
+      expect(textCalls).toEqual(['Done!'])
+      expect(textCalls).not.toContain('An unexpected error occurred. Please try again later.')
     })
 
     test('persists facts from all tool-call steps', async () => {
@@ -1253,7 +1263,7 @@ describe('processMessage', () => {
       })
 
       // No mapping should be created
-      const mapping = getIdentityMapping(GROUP_CTX, 'mock')
+      const mapping = getIdentityMapping(USER_ID, 'mock')
       expect(mapping).toBeNull()
     })
 
@@ -1267,7 +1277,7 @@ describe('processMessage', () => {
       })
 
       // No mapping should be created
-      const mapping = getIdentityMapping(GROUP_CTX, 'mock')
+      const mapping = getIdentityMapping(USER_ID, 'mock')
       expect(mapping).toBeNull()
     })
 
@@ -1535,8 +1545,8 @@ describe('processMessage', () => {
     })
   })
 
-  describe('tool routing', () => {
-    test('passes an intent-routed tool subset to the model', async () => {
+  describe('tool exposure', () => {
+    test('passes the full tool set to the model for memo-like prompts', async () => {
       seedConfigForContext(CTX_ID)
       let capturedToolNames: string[] = []
       generateTextImpl = (args: GenerateTextArgs): Promise<GenerateTextResult> => {
@@ -1549,7 +1559,7 @@ describe('processMessage', () => {
 
       expect(capturedToolNames).toContain('save_memo')
       expect(capturedToolNames).toContain('search_memos')
-      expect(capturedToolNames).not.toContain('create_task')
+      expect(capturedToolNames).toContain('create_task')
     })
   })
 })

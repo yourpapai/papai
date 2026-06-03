@@ -459,10 +459,12 @@ describe('provisionKaneoUser - unique email generation', () => {
   test('provisionAndConfigure clears all group-scoped tool cache variants after success', async () => {
     process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
 
-    setCachedTools('group-1', { scope: 'base' })
-    setCachedTools('group-1:user-a', { scope: 'user-a' })
-    setCachedTools('group-1:user-b', { scope: 'user-b' })
-    setCachedTools('group-2:user-c', { scope: 'other-group' })
+    const providerBackedKey = 'provider-backed:no-staged-download:group-1:user-a:alice'
+    const providerlessKey = 'providerless:with-staged-download:group-1:user-b:bob'
+    const otherGroupKey = 'provider-backed:no-staged-download:group-2:user-c:carol'
+    setCachedTools(providerBackedKey, { scope: 'user-a' })
+    setCachedTools(providerlessKey, { scope: 'user-b' })
+    setCachedTools(otherGroupKey, { scope: 'other-group' })
 
     setMockFetch(routeStandardProvision)
 
@@ -472,10 +474,9 @@ describe('provisionKaneoUser - unique email generation', () => {
     })
 
     expect(result.status).toBe('provisioned')
-    expect(getCachedTools('group-1')).toBeUndefined()
-    expect(getCachedTools('group-1:user-a')).toBeUndefined()
-    expect(getCachedTools('group-1:user-b')).toBeUndefined()
-    expect(getCachedTools('group-2:user-c')).toEqual({ scope: 'other-group' })
+    expect(getCachedTools(providerBackedKey)).toBeUndefined()
+    expect(getCachedTools(providerlessKey)).toBeUndefined()
+    expect(getCachedTools(otherGroupKey)).toEqual({ scope: 'other-group' })
   })
 
   test('provisionAndConfigure fails clearly when public URL is blank', async () => {

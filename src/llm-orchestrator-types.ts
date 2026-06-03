@@ -48,24 +48,15 @@ export type StepInput = Partial<{
   usage: TokenUsage
 }>
 
-type ToolRoutingInfo = {
-  intent: string
-  confidence: number
-  reason: string
-  fullToolCount: number
-  exposedToolCount: number
-}
-
 export type InvokeModelArgs = {
   contextId: string
   chatUserId: string
   contextType: 'dm' | 'group'
   mainModel: string
   model: ReturnType<ReturnType<typeof createOpenAICompatible>>
-  provider: TaskProvider
+  provider: TaskProvider | null
   tools: ToolSet
   enabledToolNames: ReadonlySet<string>
-  toolRouting: ToolRoutingInfo | undefined
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
 } & Partial<Record<'progressReporter', AiProgressReporter>>

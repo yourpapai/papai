@@ -28,7 +28,7 @@ export type MakeToolsOptions = {
    * In DMs, this is the same as storageContextId.
    * In groups, this is the actual user ID while storageContextId is the group ID.
    */
-  chatUserId: string
+  chatUserId?: string
   /**
    * The chat username for the current actor when the platform provides one.
    * Used by tools that persist delivery metadata for later platform-native mentions.

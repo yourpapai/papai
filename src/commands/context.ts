@@ -13,14 +13,13 @@ import { logger } from '../logger.js'
 import { loadFacts, loadSummary } from '../memory.js'
 import type { TaskProvider } from '../providers/types.js'
 import { getSystemConfig } from '../system-config.js'
-import { buildSystemPrompt as buildSystemPromptImpl } from '../system-prompt.js'
+import { buildProviderlessSystemPrompt, buildSystemPrompt as buildSystemPromptImpl } from '../system-prompt.js'
 import {
   collectContext,
   type ContextCollectorDeps,
   defaultCountTokens,
   prepareDefaultCountTokens,
   resolveEncodingName,
-  type ToolRoutingInfo,
 } from './context-collector.js'
 import {
   buildInvocationToolSet,
@@ -44,7 +43,7 @@ export interface ContextCommandDeps {
     contextType: 'dm' | 'group',
     provider: TaskProvider | null,
     buildLiveToolSet: BuildLiveToolSet,
-    lastUserText: string | undefined,
+    username?: string | null,
   ) => Promise<ResolvedContextToolSurface> | ResolvedContextToolSurface
 }
 
@@ -73,29 +72,6 @@ function buildMemoryMessageText(contextId: string, history: readonly ModelMessag
   return memoryMsg === null ? null : memoryMsg.content
 }
 
-function extractTextFromUserContent(content: ModelMessage['content']): string {
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  const parts: string[] = []
-  for (const part of content) {
-    if (typeof part === 'object' && part !== null && 'type' in part && part.type === 'text' && 'text' in part) {
-      const text = (part as { text: unknown }).text
-      if (typeof text === 'string') parts.push(text)
-    }
-  }
-  return parts.join(' ')
-}
-
-export function getLastUserText(history: readonly ModelMessage[]): string | undefined {
-  for (let i = history.length - 1; i >= 0; i -= 1) {
-    const message = history[i]
-    if (message === undefined || message.role !== 'user') continue
-    const text = extractTextFromUserContent(message.content).trim()
-    if (text.length > 0) return text
-  }
-  return undefined
-}
-
 async function buildCollectorDeps(
   storageContextId: string,
   provider: TaskProvider | null,
@@ -113,7 +89,13 @@ async function buildCollectorDeps(
   return {
     getMainModel: () => modelName,
     buildSystemPrompt: () =>
-      provider === null ? buildInstructionsBlock(storageContextId) : buildSystemPromptImpl(provider, storageContextId),
+      provider === null
+        ? buildProviderlessSystemPrompt(storageContextId, new Set(Object.keys(resolvedToolSurface.definitions)), {
+            askPermissionAvailable: true,
+          })
+        : buildSystemPromptImpl(provider, storageContextId, new Set(Object.keys(resolvedToolSurface.definitions)), {
+            askPermissionAvailable: true,
+          }),
     buildInstructionsBlock: () => buildInstructionsBlock(storageContextId),
     getProviderAddendum: () => (provider === null ? '' : provider.getPromptAddendum()),
     getHistory: () => loadHistory(storageContextId),
@@ -122,7 +104,6 @@ async function buildCollectorDeps(
     getFacts: () => loadFacts(storageContextId),
     getActiveToolDefinitions: (): Record<string, unknown> => deps.resolveActiveToolDefinitions(resolvedToolSurface),
     getProviderName: () => providerName,
-    getToolRoutingInfo: (): ToolRoutingInfo | undefined => resolvedToolSurface.routing,
     countTokens: (text: string): number => defaultCountTokens(text, resolvedEncoding),
   }
 }
@@ -204,14 +185,13 @@ async function handleContextCommand(
   log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/context command called')
 
   const provider = await deps.buildProvider(auth.storageContextId)
-  const lastUserText = getLastUserText(loadHistory(auth.storageContextId))
   const resolvedToolSurface = await deps.resolveToolSurface(
     auth.storageContextId,
     msg.user.id,
     msg.contextType,
     provider,
     deps.buildLiveToolSet,
-    lastUserText,
+    msg.user.username,
   )
   let snapshot: ContextSnapshot
   try {
