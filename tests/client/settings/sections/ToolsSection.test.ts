@@ -154,4 +154,24 @@ describe('ToolsSection', () => {
     expect(toggleBtn!.textContent).toBeTruthy()
     void unmount(component)
   })
+
+  test('renders domain summary as a Pill and per-tool permission Btns', async () => {
+    setMockFetch(() => Promise.resolve(json(toolsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    // Domain summary should be rendered as a Pill (has ui-pill class)
+    const summaryEl = target.querySelector('[data-testid="domain-summary-task"]')
+    expect(summaryEl).not.toBeNull()
+    expect(summaryEl!.querySelector('.ui-pill')).not.toBeNull()
+    // Expand domain to reveal per-tool permission buttons
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-task"]')!.click()
+    flushSync()
+    // Per-tool permission buttons should be rendered as Btns (have ui-btn class)
+    const allowBtn = target.querySelector('[data-testid="tool-perm-allow-create_task"]')
+    expect(allowBtn).not.toBeNull()
+    expect(allowBtn!.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
 })

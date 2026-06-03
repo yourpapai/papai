@@ -4,6 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import Btn from '../../shared/ui/Btn.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
 
   import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolRisk } from '../fetcher-schemas.js'
@@ -25,6 +27,13 @@
     if (risk === 'write') return 'info'
     if (risk === 'open-world') return 'warn'
     return 'danger'
+  }
+
+  const summaryTone = (s: ToolDomainSummary): 'accent' | 'warn' | 'danger' | 'mute' => {
+    if (s === 'allow') return 'accent'
+    if (s === 'ask') return 'warn'
+    if (s === 'deny') return 'danger'
+    return 'mute'
   }
 
   /** Cycle summary: partial → allow → ask → deny → allow */
@@ -77,7 +86,7 @@
       <p class="eyebrow">Tools</p>
       <h2>Tools</h2>
     </div>
-    <button type="button" onclick={() => void load(contextId)}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>{#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}</Btn>
   </header>
 
   {#if error !== null}
@@ -97,13 +106,14 @@
               onclick={() => (expanded[domain.domain] = !expanded[domain.domain])}>
               {expanded[domain.domain] ? '▾' : '▸'} {domain.domain}
             </button>
-            <span class="settings-tools__summary" data-testid={`domain-summary-${domain.domain}`}>{domain.summary}</span>
-            <button
-              type="button"
-              data-testid={`domain-toggle-${domain.domain}`}
-              onclick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
-              {domain.summary === 'deny' ? 'Allow all' : domain.summary === 'ask' ? 'Deny all' : domain.summary === 'allow' ? 'Ask all' : 'Allow all'}
-            </button>
+            <span data-testid={`domain-summary-${domain.domain}`}>
+              <Pill tone={summaryTone(domain.summary)}>{#snippet children()}{domain.summary}{/snippet}</Pill>
+            </span>
+            <span class="settings-tools__domain-toggle">
+              <Btn variant="ghost" size="sm" testid={`domain-toggle-${domain.domain}`} onClick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
+                {#snippet children()}{domain.summary === 'deny' ? 'Allow all' : domain.summary === 'ask' ? 'Deny all' : domain.summary === 'allow' ? 'Ask all' : 'Allow all'}{/snippet}
+              </Btn>
+            </span>
           </div>
           {#if expanded[domain.domain]}
             <ul class="settings-tools__list">
@@ -112,27 +122,15 @@
                   <span class="settings-tools__name">{tool.name}</span>
                   <Pill tone={riskTone(tool.risk)}>{#snippet children()}{tool.risk}{/snippet}</Pill>
                   <div class="settings-tools__perm-group" role="group" aria-label={`Permission for ${tool.name}`}>
-                    <button
-                      type="button"
-                      data-testid={`tool-perm-allow-${tool.name}`}
-                      class:active={tool.permission === 'allow'}
-                      onclick={() => void onSetToolPermission(tool.name, 'allow')}>
-                      Allow
-                    </button>
-                    <button
-                      type="button"
-                      data-testid={`tool-perm-ask-${tool.name}`}
-                      class:active={tool.permission === 'ask'}
-                      onclick={() => void onSetToolPermission(tool.name, 'ask')}>
-                      Ask
-                    </button>
-                    <button
-                      type="button"
-                      data-testid={`tool-perm-deny-${tool.name}`}
-                      class:active={tool.permission === 'deny'}
-                      onclick={() => void onSetToolPermission(tool.name, 'deny')}>
-                      Deny
-                    </button>
+                    <Btn variant={tool.permission === 'allow' ? 'primary' : 'secondary'} size="sm" testid={`tool-perm-allow-${tool.name}`} onClick={() => void onSetToolPermission(tool.name, 'allow')}>
+                      {#snippet children()}Allow{/snippet}
+                    </Btn>
+                    <Btn variant={tool.permission === 'ask' ? 'primary' : 'secondary'} size="sm" testid={`tool-perm-ask-${tool.name}`} onClick={() => void onSetToolPermission(tool.name, 'ask')}>
+                      {#snippet children()}Ask{/snippet}
+                    </Btn>
+                    <Btn variant={tool.permission === 'deny' ? 'primary' : 'secondary'} size="sm" testid={`tool-perm-deny-${tool.name}`} onClick={() => void onSetToolPermission(tool.name, 'deny')}>
+                      {#snippet children()}Deny{/snippet}
+                    </Btn>
                   </div>
                 </li>
               {/each}
@@ -144,7 +142,7 @@
   {:else if loading}
     <p class="placeholder">Loading…</p>
   {:else if error === null}
-    <p class="placeholder">No togglable tools for this context.</p>
+    <EmptyState title="No togglable tools" hint="No togglable tools for this context." />
   {/if}
 </section>
 
@@ -171,20 +169,6 @@
     font-size: 12px;
     cursor: pointer;
   }
-  .settings-tools__summary {
-    color: var(--fg3);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-transform: uppercase;
-  }
-  .settings-tools__domain-head button:last-child {
-    margin-left: auto;
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 4px 8px;
-    border-radius: 2px;
-  }
   .settings-tools__list {
     list-style: none;
     margin: 0;
@@ -201,21 +185,12 @@
     font-family: var(--font-mono);
     font-size: 12px;
   }
+  .settings-tools__domain-toggle {
+    margin-left: auto;
+  }
   .settings-tools__perm-group {
     margin-left: auto;
     display: flex;
     gap: 2px;
-  }
-  .settings-tools__perm-group button {
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 4px 8px;
-    border-radius: 2px;
-    cursor: pointer;
-  }
-  .settings-tools__perm-group button.active {
-    background: var(--strong);
-    color: var(--bg);
   }
 </style>
