@@ -6,6 +6,10 @@
 <script lang="ts">
   import { fetchAdminSystem, submitAdminSystem } from '../../admin-fetchers.js'
   import type { AdminSystemResponse } from '../../fetcher-schemas.js'
+  import Btn from '../../../shared/ui/Btn.svelte'
+  import Field from '../../../shared/ui/Field.svelte'
+  import Input from '../../../shared/ui/Input.svelte'
+  import Secret from '../../../shared/ui/Secret.svelte'
 
   const SENSITIVE_SYSTEM_KEYS = new Set<string>(['llm_apikey'])
 
@@ -55,7 +59,9 @@
       <p class="eyebrow">Admin · System</p>
       <h2>System (LLM)</h2>
     </div>
-    <button type="button" onclick={() => void load()}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load()}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
@@ -66,17 +72,29 @@
       <div class="settings-field" data-testid={`system-row-${key}`}>
         <div class="settings-field__head">
           <span class="settings-field__label">{key}</span>
-          {#if config[key]?.value !== null}<span class="masked-value">{config[key]?.value}</span>{:else}<span class="placeholder">unset</span>{/if}
+          {#if config[key]?.value !== null}
+            <Secret value={config[key]?.value ?? ''} />
+          {:else}
+            <span class="placeholder">unset</span>
+          {/if}
         </div>
-        <div class="settings-field__editor">
-          <input
-            data-testid={`system-input-${key}`}
-            type={SENSITIVE_SYSTEM_KEYS.has(key) ? 'password' : 'text'}
-            value={drafts[key] ?? ''}
-            placeholder="enter a new value"
-            oninput={(e) => (drafts[key] = (e.target as HTMLInputElement).value)} />
-          <button type="button" data-testid={`system-save-${key}`} onclick={() => void save(key)}>Save</button>
-        </div>
+        <Field label="New value">
+          <div class="settings-field__editor-row">
+            <Input
+              type={SENSITIVE_SYSTEM_KEYS.has(key) ? 'password' : 'text'}
+              value={drafts[key] ?? ''}
+              placeholder="enter a new value"
+              onInput={(v) => (drafts[key] = v)}
+              testid={`system-input-${key}`} />
+            <Btn
+              variant="primary"
+              size="sm"
+              testid={`system-save-${key}`}
+              onClick={() => void save(key)}>
+              {#snippet children()}Save{/snippet}
+            </Btn>
+          </div>
+        </Field>
       </div>
     {/each}
   </div>
@@ -104,23 +122,9 @@
     font-family: var(--font-mono);
     font-size: 12px;
   }
-  .settings-field__editor {
+  .settings-field__editor-row {
     display: flex;
     gap: 8px;
-  }
-  .settings-field__editor input {
-    flex: 1;
-    background: var(--raised);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding: 8px 10px;
-    border-radius: 2px;
-  }
-  .settings-field__editor button {
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 8px 12px;
-    border-radius: 2px;
+    align-items: center;
   }
 </style>

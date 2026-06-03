@@ -111,4 +111,16 @@ describe('AdminSystemSection', () => {
     expect(target.querySelector('[data-testid="system-row-main_model"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders masked system value via Secret and editor via Field/Input/Btn', async () => {
+    setMockFetch(() => Promise.resolve(json(systemPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminSystemSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-secret')).not.toBeNull()
+    expect(target.querySelector('[data-testid="system-input-llm_apikey"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="system-save-llm_apikey"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
 })
