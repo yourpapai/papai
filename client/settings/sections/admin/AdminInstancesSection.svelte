@@ -17,6 +17,12 @@
     updateAdminPlatformInstance,
     updateAdminTaskInstance,
   } from '../../admin-fetchers.js'
+  import Btn from '../../../shared/ui/Btn.svelte'
+  import DataTable from '../../../shared/ui/DataTable.svelte'
+  import Field from '../../../shared/ui/Field.svelte'
+  import Input from '../../../shared/ui/Input.svelte'
+  import Select from '../../../shared/ui/Select.svelte'
+  import StatusPill from '../../../shared/ui/StatusPill.svelte'
 
   let platforms: AdminInstanceRow[] = $state([])
   let tasks: AdminInstanceRow[] = $state([])
@@ -188,6 +194,21 @@
   $effect(() => {
     void load()
   })
+
+  interface InstanceRow {
+    id: string
+    type: string
+    status: string
+  }
+
+  const platformRows = $derived<InstanceRow[]>(platforms.map((r) => ({ id: r.id, type: r.type, status: r.status })))
+  const taskRows = $derived<InstanceRow[]>(tasks.map((r) => ({ id: r.id, type: r.type, status: r.status })))
+  const instanceColumns = [
+    { key: 'id' as const, label: 'ID' },
+    { key: 'type' as const, label: 'Type' },
+    { key: 'status' as const, label: 'Status' },
+    { key: 'actions' as const, label: '', align: 'right' as const },
+  ]
 </script>
 
 <section id="instances" class="settings-section">
@@ -196,68 +217,55 @@
       <p class="eyebrow">Admin · Runtime</p>
       <h2>Instances</h2>
     </div>
-    <button type="button" onclick={() => void load()}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load()}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
   <h3>Platform instances</h3>
-  <form
-    class="settings-form"
-    onsubmit={(event) => {
-      event.preventDefault()
-      void createPlatform()
-    }}
-  >
-    <label
-      ><span>ID</span><input
-        data-testid="platform-id"
-        value={platformId}
-        oninput={(e) => (platformId = (e.target as HTMLInputElement).value)}
-      /></label
-    >
-    <label>
-      <span>Type</span>
-      <select value={platformType} onchange={(e) => (platformType = (e.target as HTMLSelectElement).value)}>
-        {#each platformTypes as t (t.type)}<option value={t.type}>{t.displayName}</option>{/each}
-      </select>
-    </label>
+  <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
+    <Field label="ID">
+      {#snippet children()}
+        <Input value={platformId} onInput={(v) => (platformId = v)} testid="platform-id" />
+      {/snippet}
+    </Field>
+    <Field label="Type">
+      {#snippet children()}
+        <Select value={platformType} options={platformTypes.map((t) => ({ value: t.type, label: t.displayName }))} onChange={(v) => (platformType = v)} />
+      {/snippet}
+    </Field>
     {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
-      <label>
-        <span>{field.label}{field.required ? ' *' : ''}</span>
-        <input
-          type={field.sensitive ? 'password' : 'text'}
-          value={platformConfig[field.key] ?? ''}
-          oninput={(e) => (platformConfig[field.key] = (e.target as HTMLInputElement).value)}
-        />
-      </label>
+      <Field label={`${field.label}${field.required ? ' *' : ''}`}>
+        {#snippet children()}
+          <Input type={field.sensitive ? 'password' : 'text'} value={platformConfig[field.key] ?? ''} onInput={(v) => (platformConfig[field.key] = v)} />
+        {/snippet}
+      </Field>
     {/each}
-    <button type="submit">Create</button>
+    <Btn variant="primary" type="submit">
+      {#snippet children()}Create{/snippet}
+    </Btn>
   </form>
   <div class="settings-table-wrap">
-    <table class="settings-table">
-      <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>
-        {#each platforms as row (row.id)}
-          <tr>
-            <td>{row.id}</td><td>{row.type}</td><td>{row.status}</td>
-            <td>
-              <button
-                type="button"
-                data-testid={`platform-status-${row.id}`}
-                onclick={() => void toggleStatus(row)}>{row.status === 'active' ? 'Stop' : 'Start'}</button
-              >
-              <button
-                type="button"
-                data-testid={`platform-delete-${row.id}`}
-                onclick={() => void deletePlatform(row.id)}>Delete</button
-              >
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    {#snippet platformCell(row: InstanceRow, col: { key: string; label: string })}
+      {#if col.key === 'status'}
+        <StatusPill status={row.status} />
+      {:else if col.key === 'actions'}
+        <Btn variant="outline" size="sm" testid={`platform-status-${row.id}`} onClick={() => void toggleStatus(platforms.find((p) => p.id === row.id)!)}>
+          {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
+        </Btn>
+        <Btn variant="danger" size="sm" testid={`platform-delete-${row.id}`} onClick={() => void deletePlatform(row.id)}>
+          {#snippet children()}Delete{/snippet}
+        </Btn>
+      {:else}
+        {String(row[col.key as keyof InstanceRow] ?? '')}
+      {/if}
+    {/snippet}
+    <DataTable columns={instanceColumns} rows={platformRows} cell={platformCell} rowKey="id">
+      {#snippet empty()}No platform instances{/snippet}
+    </DataTable>
   </div>
   {#if platformUnreadable.length > 0}
     <p class="status-error" data-testid="platform-unreadable">
@@ -266,61 +274,46 @@
   {/if}
 
   <h3>Task instances</h3>
-  <form
-    class="settings-form"
-    onsubmit={(event) => {
-      event.preventDefault()
-      void createTask()
-    }}
-  >
-    <label
-      ><span>ID</span><input
-        data-testid="task-id"
-        value={taskId}
-        oninput={(e) => (taskId = (e.target as HTMLInputElement).value)}
-      /></label
-    >
-    <label>
-      <span>Type</span>
-      <select value={taskType} onchange={(e) => (taskType = (e.target as HTMLSelectElement).value)}>
-        {#each taskTypes as t (t.type)}<option value={t.type}>{t.displayName}</option>{/each}
-      </select>
-    </label>
+  <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
+    <Field label="ID">
+      {#snippet children()}
+        <Input value={taskId} onInput={(v) => (taskId = v)} testid="task-id" />
+      {/snippet}
+    </Field>
+    <Field label="Type">
+      {#snippet children()}
+        <Select value={taskType} options={taskTypes.map((t) => ({ value: t.type, label: t.displayName }))} onChange={(v) => (taskType = v)} />
+      {/snippet}
+    </Field>
     {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
-      <label>
-        <span>{field.label}{field.required ? ' *' : ''}</span>
-        <input
-          type={field.sensitive ? 'password' : 'text'}
-          value={taskConfig[field.key] ?? ''}
-          oninput={(e) => (taskConfig[field.key] = (e.target as HTMLInputElement).value)}
-        />
-      </label>
+      <Field label={`${field.label}${field.required ? ' *' : ''}`}>
+        {#snippet children()}
+          <Input type={field.sensitive ? 'password' : 'text'} value={taskConfig[field.key] ?? ''} onInput={(v) => (taskConfig[field.key] = v)} />
+        {/snippet}
+      </Field>
     {/each}
-    <button type="submit">Create</button>
+    <Btn variant="primary" type="submit">
+      {#snippet children()}Create{/snippet}
+    </Btn>
   </form>
   <div class="settings-table-wrap">
-    <table class="settings-table">
-      <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>
-        {#each tasks as row (row.id)}
-          <tr>
-            <td>{row.id}</td><td>{row.type}</td><td>{row.status}</td>
-            <td>
-              <button
-                type="button"
-                data-testid={`task-status-${row.id}`}
-                onclick={() => void toggleTaskStatus(row)}>{row.status === 'active' ? 'Stop' : 'Start'}</button
-              >
-              <button
-                type="button"
-                data-testid={`task-delete-${row.id}`}
-                onclick={() => void deleteTask(row.id)}>Delete</button
-              >
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    {#snippet taskCell(row: InstanceRow, col: { key: string; label: string })}
+      {#if col.key === 'status'}
+        <StatusPill status={row.status} />
+      {:else if col.key === 'actions'}
+        <Btn variant="outline" size="sm" testid={`task-status-${row.id}`} onClick={() => void toggleTaskStatus(tasks.find((t) => t.id === row.id)!)}>
+          {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
+        </Btn>
+        <Btn variant="danger" size="sm" testid={`task-delete-${row.id}`} onClick={() => void deleteTask(row.id)}>
+          {#snippet children()}Delete{/snippet}
+        </Btn>
+      {:else}
+        {String(row[col.key as keyof InstanceRow] ?? '')}
+      {/if}
+    {/snippet}
+    <DataTable columns={instanceColumns} rows={taskRows} cell={taskCell} rowKey="id">
+      {#snippet empty()}No task instances{/snippet}
+    </DataTable>
   </div>
   {#if taskUnreadable.length > 0}
     <p class="status-error" data-testid="task-unreadable">

@@ -315,4 +315,18 @@ describe('AdminInstancesSection', () => {
     expect(target.querySelector('[data-testid="task-unreadable"]')?.textContent).toContain('ti-broken')
     void unmount(component)
   })
+
+  test('renders forms via Field/Input/Select/Btn and tables via DataTable with StatusPill', async () => {
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="platform-id"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('.ui-select')).not.toBeNull()
+    expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    expect(target.querySelector('.ui-pill')).not.toBeNull()
+    expect(target.querySelector('[data-testid="platform-status-tg"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
 })
