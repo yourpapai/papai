@@ -99,4 +99,17 @@ describe('AdminGroupsSection', () => {
     expect(target.querySelector('[data-testid="group-remove-g-1"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders the add form with Field/Input/Btn and groups via DataTable', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureGroupsMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminGroupsSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="group-add-input"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="group-add"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    void unmount(component)
+  })
 })

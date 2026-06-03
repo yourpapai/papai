@@ -6,6 +6,10 @@
 <script lang="ts">
   import { addAdminGroup, fetchAdminGroups, removeAdminGroup } from '../../admin-fetchers.js'
   import type { AdminGroupRow } from '../../fetcher-schemas.js'
+  import Btn from '../../../shared/ui/Btn.svelte'
+  import DataTable from '../../../shared/ui/DataTable.svelte'
+  import Field from '../../../shared/ui/Field.svelte'
+  import Input from '../../../shared/ui/Input.svelte'
 
   let groups: AdminGroupRow[] = $state([])
   let error: string | null = $state(null)
@@ -56,6 +60,23 @@
   $effect(() => {
     void load()
   })
+
+  interface GroupRow {
+    group_id: string
+    added_by: string
+    added_at: string
+  }
+
+  const groupRows = $derived<GroupRow[]>(
+    groups.map((g) => ({ group_id: g.group_id, added_by: g.added_by, added_at: g.added_at })),
+  )
+
+  const groupColumns = [
+    { key: 'group_id' as const, label: 'Group ID' },
+    { key: 'added_by' as const, label: 'Added by' },
+    { key: 'added_at' as const, label: 'Added at' },
+    { key: 'actions' as const, label: '', align: 'right' as const },
+  ]
 </script>
 
 <section id="groups" class="settings-section">
@@ -64,28 +85,37 @@
       <p class="eyebrow">Admin · Access</p>
       <h2>Groups</h2>
     </div>
-    <button type="button" onclick={() => void load()}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load()}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
   <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void add() }}>
-    <label><span>Group ID</span><input data-testid="group-add-input" value={newGroupId} oninput={(e) => (newGroupId = (e.target as HTMLInputElement).value)} /></label>
-    <button type="submit" data-testid="group-add">Add group</button>
+    <Field label="Group ID">
+      {#snippet children()}
+        <Input value={newGroupId} onInput={(v) => (newGroupId = v)} testid="group-add-input" />
+      {/snippet}
+    </Field>
+    <Btn variant="primary" type="submit" testid="group-add">
+      {#snippet children()}Add group{/snippet}
+    </Btn>
   </form>
 
   <div class="settings-table-wrap">
-    <table class="settings-table">
-      <thead><tr><th>Group ID</th><th>Added by</th><th>Added at</th><th>Actions</th></tr></thead>
-      <tbody>
-        {#each groups as group (group.group_id)}
-          <tr>
-            <td>{group.group_id}</td><td>{group.added_by}</td><td>{group.added_at}</td>
-            <td><button type="button" data-testid={`group-remove-${group.group_id}`} onclick={() => void remove(group.group_id)}>Remove</button></td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    {#snippet cell(row: GroupRow, col: { key: string; label: string })}
+      {#if col.key === 'actions'}
+        <Btn variant="ghost" size="sm" testid={`group-remove-${row.group_id}`} onClick={() => void remove(row.group_id)}>
+          {#snippet children()}Remove{/snippet}
+        </Btn>
+      {:else}
+        {String(row[col.key as keyof GroupRow] ?? '')}
+      {/if}
+    {/snippet}
+    <DataTable columns={groupColumns} rows={groupRows} {cell} rowKey="group_id">
+      {#snippet empty()}No groups{/snippet}
+    </DataTable>
   </div>
 </section>
