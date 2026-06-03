@@ -6,6 +6,11 @@
 <script lang="ts">
   import { fetchAdminPluginConfig, patchAdminPluginConfig } from '../../admin-fetchers.js'
   import type { AdminPluginConfigEntry } from '../../fetcher-schemas.js'
+  import Btn from '../../../shared/ui/Btn.svelte'
+  import EmptyState from '../../../shared/ui/EmptyState.svelte'
+  import Field from '../../../shared/ui/Field.svelte'
+  import Input from '../../../shared/ui/Input.svelte'
+  import Secret from '../../../shared/ui/Secret.svelte'
 
   let plugins: AdminPluginConfigEntry[] = $state([])
   let drafts: Record<string, string> = $state({})
@@ -57,7 +62,9 @@
       <p class="eyebrow">Admin · Plugins</p>
       <h2>Plugin config</h2>
     </div>
-    <button type="button" onclick={() => void load()}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load()}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
@@ -74,24 +81,29 @@
             <div class="settings-field__head">
               <span class="settings-field__label">{keyState.label}</span>
               {#if keyState.value !== null}
-                <span class="masked-value">{keyState.value}</span>
+                <Secret value={keyState.value} />
               {:else}
                 <span class="placeholder">unset</span>
               {/if}
               {#if keyState.required}<span class="badge-required">required</span>{/if}
             </div>
-            <div class="settings-field__editor">
-              <input
-                data-testid={`plugin-config-input-${plugin.pluginId}-${keyState.key}`}
-                type={keyState.sensitive ? 'password' : 'text'}
-                value={drafts[draftKey(plugin.pluginId, keyState.key)] ?? ''}
-                placeholder="enter a new value"
-                oninput={(e) => (drafts[draftKey(plugin.pluginId, keyState.key)] = (e.target as HTMLInputElement).value)} />
-              <button
-                type="button"
-                data-testid={`plugin-config-save-${plugin.pluginId}-${keyState.key}`}
-                onclick={() => void save(plugin.pluginId, keyState.key)}>Save</button>
-            </div>
+            <Field label="New value">
+              <div class="settings-field__editor-row">
+                <Input
+                  type={keyState.sensitive ? 'password' : 'text'}
+                  value={drafts[draftKey(plugin.pluginId, keyState.key)] ?? ''}
+                  placeholder="enter a new value"
+                  onInput={(v) => (drafts[draftKey(plugin.pluginId, keyState.key)] = v)}
+                  testid={`plugin-config-input-${plugin.pluginId}-${keyState.key}`} />
+                <Btn
+                  variant="primary"
+                  size="sm"
+                  testid={`plugin-config-save-${plugin.pluginId}-${keyState.key}`}
+                  onClick={() => void save(plugin.pluginId, keyState.key)}>
+                  {#snippet children()}Save{/snippet}
+                </Btn>
+              </div>
+            </Field>
           </div>
         {/each}
       </div>
@@ -99,7 +111,7 @@
   {/each}
 
   {#if plugins.length === 0 && !loading}
-    <p class="placeholder">No plugins with admin config keys found.</p>
+    <EmptyState title="No plugin config keys" hint="No plugins with admin config keys found." />
   {/if}
 </section>
 
@@ -141,23 +153,9 @@
     padding: 1px 4px;
     border-radius: 2px;
   }
-  .settings-field__editor {
+  .settings-field__editor-row {
     display: flex;
     gap: 8px;
-  }
-  .settings-field__editor input {
-    flex: 1;
-    background: var(--raised);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding: 8px 10px;
-    border-radius: 2px;
-  }
-  .settings-field__editor button {
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 8px 12px;
-    border-radius: 2px;
+    align-items: center;
   }
 </style>

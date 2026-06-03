@@ -123,6 +123,22 @@ describe('AdminPluginsConfigSection', () => {
     void unmount(component)
   })
 
+  test('renders masked value via Secret and editor via Field/Input/Btn', async () => {
+    setMockFetch(() => Promise.resolve(json(snapshotPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-secret')).not.toBeNull()
+    expect(
+      target.querySelector('[data-testid="plugin-config-input-my-plugin-api_key"]')?.closest('.ui-input'),
+    ).not.toBeNull()
+    expect(
+      target.querySelector('[data-testid="plugin-config-save-my-plugin-api_key"]')?.classList.contains('ui-btn'),
+    ).toBe(true)
+    void unmount(component)
+  })
+
   test('422 error from PATCH shows error message and keeps the rows visible', async () => {
     setCsrfToken('c')
     setMockFetch(patchErrorMock)
