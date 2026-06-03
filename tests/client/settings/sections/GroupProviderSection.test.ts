@@ -134,4 +134,15 @@ describe('GroupProviderSection', () => {
     expect(target.querySelector('[data-testid="group-task-instance"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders the task-instance Select and Save Btn', async () => {
+    setMockFetch(capturePatchMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.querySelector('[data-testid="group-task-instance"]')?.closest('.ui-select')).not.toBeNull()
+    expect(target.querySelector('[data-testid="group-task-instance-save"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
 })

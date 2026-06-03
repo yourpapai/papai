@@ -4,6 +4,9 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Select from '../../shared/ui/Select.svelte'
   import { fetchGroupTaskInstance, patchGroupTaskInstance } from '../fetchers.js'
   import type { GroupTaskInstanceResponse } from '../fetcher-schemas.js'
 
@@ -62,7 +65,9 @@
       <p class="eyebrow">Group</p>
       <h2>Group task provider</h2>
     </div>
-    <button type="button" onclick={() => void load(contextId)}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
@@ -73,15 +78,14 @@
       <p>No active task instances are available for this group.</p>
     {:else}
       <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void save() }}>
-        <label>
-          <span>Task instance</span>
-          <select data-testid="group-task-instance" value={selected} onchange={(e) => (selected = (e.target as HTMLSelectElement).value)}>
-            {#each data.available as option (option.id)}
-              <option value={option.id}>{option.id} ({option.type} · {option.status})</option>
-            {/each}
-          </select>
-        </label>
-        <button type="submit" data-testid="group-task-instance-save">Save</button>
+        <Field label="Task instance">
+          <Select
+            value={selected}
+            options={data.available.map((o) => ({ value: o.id, label: `${o.id} (${o.type} · ${o.status})` }))}
+            onChange={(v) => (selected = v)}
+            testid="group-task-instance" />
+        </Field>
+        <Btn variant="primary" type="submit" testid="group-task-instance-save">{#snippet children()}Save{/snippet}</Btn>
       </form>
     {/if}
   {/if}
