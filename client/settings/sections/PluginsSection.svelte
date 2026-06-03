@@ -6,6 +6,11 @@
 <script lang="ts">
   import type { PluginEntry } from '../fetcher-schemas.js'
   import { fetchPlugins, patchPluginConfig, togglePlugin } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Input from '../../shared/ui/Input.svelte'
+  import Pill from '../../shared/ui/Pill.svelte'
 
   interface Props {
     contextId: string
@@ -27,6 +32,12 @@
       return `capability_missing: ${plugin.eligibility.missingCapabilities.join(', ')}`
     }
     return plugin.eligibility.reason
+  }
+
+  const eligTone = (plugin: PluginEntry): 'accent' | 'warn' | 'mute' => {
+    if (plugin.eligibility.eligible) return 'accent'
+    if (plugin.eligibility.reason === 'inactive' || plugin.eligibility.reason === 'disabled') return 'mute'
+    return 'warn'
   }
 
   const draftKey = (pluginId: string, key: string): string => `${pluginId}::${key}`
@@ -82,7 +93,9 @@
       <p class="eyebrow">Plugins</p>
       <h2>Plugins</h2>
     </div>
-    <button type="button" onclick={() => void load(contextId)}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+    <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
+      {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+    </Btn>
   </header>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
@@ -90,7 +103,7 @@
   {#if loading && plugins.length === 0}
     <p class="placeholder">Loading…</p>
   {:else if !loading && error === null && plugins.length === 0}
-    <p class="placeholder">No plugins discovered.</p>
+    <EmptyState title="No plugins discovered" />
   {/if}
 
   {#if plugins.length > 0}
@@ -99,30 +112,39 @@
         <div class="settings-plugins__card">
           <div class="settings-plugins__head">
             <span class="settings-plugins__name">{plugin.name}</span>
-            <span class="settings-plugins__elig">{eligibilityLabel(plugin)}</span>
-            <button
-              type="button"
-              data-testid={`plugin-toggle-${plugin.id}`}
+            <span class="settings-plugins__elig">
+              <Pill tone={eligTone(plugin)}>{#snippet children()}{eligibilityLabel(plugin)}{/snippet}</Pill>
+            </span>
+            <Btn
+              variant="secondary"
+              size="sm"
+              testid={`plugin-toggle-${plugin.id}`}
               disabled={!plugin.eligibility.eligible && plugin.eligibility.reason === 'inactive'}
-              onclick={() => void toggle(plugin)}>
-              {plugin.enabled ? 'Disable' : 'Enable'}
-            </button>
+              onClick={() => void toggle(plugin)}>
+              {#snippet children()}{plugin.enabled ? 'Disable' : 'Enable'}{/snippet}
+            </Btn>
           </div>
           {#if plugin.contextConfig.length > 0}
             <div class="settings-plugins__cfg">
               {#each plugin.contextConfig as cfg (cfg.key)}
-                <label>
-                  <span>{cfg.label}{cfg.required ? ' *' : ''}{cfg.hasValue ? ' (set)' : ''}</span>
-                  <input
-                    type={cfg.sensitive ? 'password' : 'text'}
-                    value={drafts[draftKey(plugin.id, cfg.key)] ?? ''}
-                    placeholder={cfg.sensitive ? 'enter a new value' : ''}
-                    oninput={(e) => (drafts[draftKey(plugin.id, cfg.key)] = (e.target as HTMLInputElement).value)} />
-                  <button
-                    type="button"
-                    data-testid={`plugin-cfg-save-${plugin.id}-${cfg.key}`}
-                    onclick={() => void saveConfig(plugin.id, cfg.key)}>Save</button>
-                </label>
+                <Field label={`${cfg.label}${cfg.required ? ' *' : ''}${cfg.hasValue ? ' (set)' : ''}`}>
+                  {#snippet children()}
+                    <div class="settings-plugins__cfg-row">
+                      <Input
+                        type={cfg.sensitive ? 'password' : 'text'}
+                        value={drafts[draftKey(plugin.id, cfg.key)] ?? ''}
+                        placeholder={cfg.sensitive ? 'enter a new value' : ''}
+                        onInput={(v) => (drafts[draftKey(plugin.id, cfg.key)] = v)} />
+                      <Btn
+                        variant="primary"
+                        size="sm"
+                        testid={`plugin-cfg-save-${plugin.id}-${cfg.key}`}
+                        onClick={() => void saveConfig(plugin.id, cfg.key)}>
+                        {#snippet children()}Save{/snippet}
+                      </Btn>
+                    </div>
+                  {/snippet}
+                </Field>
               {/each}
             </div>
           {/if}
@@ -153,49 +175,18 @@
     font-family: var(--font-mono);
     font-size: 13px;
   }
-  .settings-plugins__elig {
-    color: var(--fg3);
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
-  .settings-plugins__head button {
-    margin-left: auto;
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 6px 10px;
-    border-radius: 2px;
-  }
   .settings-plugins__cfg {
     display: grid;
     gap: 10px;
   }
-  .settings-plugins__cfg label {
+  .settings-plugins__cfg-row {
     display: flex;
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
   }
-  .settings-plugins__cfg span {
-    color: var(--fg3);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    min-width: 140px;
-  }
-  .settings-plugins__cfg input {
+  .settings-plugins__cfg-row :global(.ui-input) {
     flex: 1;
-    min-width: 180px;
-    background: var(--raised);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding: 6px 10px;
-    border-radius: 2px;
-  }
-  .settings-plugins__cfg button {
-    border: 1px solid var(--strong);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 6px 10px;
-    border-radius: 2px;
+    min-width: 0;
   }
 </style>

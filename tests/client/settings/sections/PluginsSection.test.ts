@@ -120,6 +120,8 @@ describe('PluginsSection', () => {
     await drain()
     expect(target.textContent).toContain('Hello World')
     expect(target.textContent).toContain('config_missing')
+    // eligibility is now rendered as a Pill
+    expect(target.querySelector('.settings-plugins__elig .ui-pill')).not.toBeNull()
     void unmount(component)
   })
 
@@ -130,7 +132,10 @@ describe('PluginsSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
     await drain()
-    target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-hello-world"]')!.click()
+    // toggle is now a Btn (.ui-btn)
+    const toggleBtn = target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-hello-world"]')!
+    expect(toggleBtn.classList.contains('ui-btn')).toBe(true)
+    toggleBtn.click()
     await drain()
     expect(capturedToggleBody).toBe(JSON.stringify({ pluginId: 'hello-world', enabled: true, contextId: 'user:1' }))
     void unmount(component)
@@ -174,13 +179,46 @@ describe('PluginsSection', () => {
     const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
     await drain()
 
-    target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-save-needs-token-token"]')!.click()
+    // save button is now a Btn (.ui-btn)
+    const saveBtn = target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-save-needs-token-token"]')!
+    expect(saveBtn.classList.contains('ui-btn')).toBe(true)
+    saveBtn.click()
     await drain()
 
     const errorEl = target.querySelector('.status-error')
     expect(errorEl).not.toBeNull()
     expect(errorEl!.textContent).toContain('required')
     expect(configPatchRequests.filter(isConfigPatch)).toHaveLength(0)
+    void unmount(component)
+  })
+
+  test('renders eligibility as a Pill, toggle/save as Btn, config via Field/Input', async () => {
+    setMockFetch(() => Promise.resolve(json(pluginsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    // eligibility pill
+    expect(target.querySelector('.settings-plugins__elig .ui-pill')).not.toBeNull()
+    // toggle button is a Btn
+    expect(target.querySelector('[data-testid="plugin-toggle-hello-world"]')?.classList.contains('ui-btn')).toBe(true)
+    // config save button is a Btn
+    expect(target.querySelector('[data-testid="plugin-cfg-save-needs-cfg-token"]')?.classList.contains('ui-btn')).toBe(
+      true,
+    )
+    // config input is wrapped in .ui-input
+    expect(target.querySelector('.settings-plugins__cfg .ui-input')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('shows EmptyState when no plugins are discovered', async () => {
+    setMockFetch(() => Promise.resolve(json({ contextId: 'user:1', plugins: [] })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-empty')).not.toBeNull()
+    expect(target.textContent).toContain('No plugins discovered')
     void unmount(component)
   })
 })
