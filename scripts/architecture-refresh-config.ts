@@ -47,11 +47,21 @@ const CLIENT_SURFACE_PREFIXES: Readonly<Record<ClientSurfaceId, readonly string[
   debug: ['client/debug/'],
 }
 
+const escapeRegExp = (value: string): string => value.replaceAll(/[|\\{}()[\]^$+*?.]/gu, '\\$&')
+
+const architectureIncludePathPatterns = [
+  ...focusedServerAreaIds.flatMap((areaId) => SERVER_AREA_PREFIXES[areaId]),
+  ...clientSurfaceIds.flatMap((surfaceId) => CLIENT_SURFACE_PREFIXES[surfaceId]),
+].map((prefix) => `^${escapeRegExp(prefix)}`)
+
+const isIncludedArchitecturePath = (relativePath: string): boolean =>
+  architectureIncludePathPatterns.some((pattern) => new RegExp(pattern, 'u').test(relativePath))
+
 export const dependencyCruiserOptions = {
   tsConfig: 'tsconfig.json',
   exclude: { path: ['^tests/', '^review-loop/', '^docs/architecture/', '^client/stories/'] },
   doNotFollow: { dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'npm-bundled'] },
-  includeOnly: { path: ['^src/', '^client/'] },
+  includeOnly: { path: architectureIncludePathPatterns },
 }
 
 export const FOCUSED_SERVER_AREA_IDS = [...focusedServerAreaIds]
@@ -62,7 +72,11 @@ export const isArchitectureRuntimePath = (relativePath: string): boolean => {
     return false
   }
 
-  return !EXCLUDED_PREFIXES.some((prefix) => relativePath.startsWith(prefix))
+  if (EXCLUDED_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) {
+    return false
+  }
+
+  return isIncludedArchitecturePath(relativePath)
 }
 
 export const slugForArea = (areaId: string): string => areaId.replaceAll('/', '-')

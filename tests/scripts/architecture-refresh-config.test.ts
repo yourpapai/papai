@@ -5,6 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { Glob } from 'bun'
+
 import {
   CLIENT_SURFACE_IDS,
   FOCUSED_SERVER_AREA_IDS,
@@ -15,9 +17,22 @@ import {
 } from '../../scripts/architecture-refresh-config.js'
 
 describe('architecture refresh config', () => {
+  test('loads the dependency-cruiser config under plain Node ESM semantics', () => {
+    const result = Bun.spawnSync({
+      cmd: ['node', '--input-type=module', '--eval', "await import('./.dependency-cruiser.mjs')"],
+      cwd: process.cwd(),
+      stderr: 'pipe',
+      stdout: 'pipe',
+    })
+
+    expect(result.exitCode).toBe(0)
+  })
+
   test('includes src and client runtime files, but excludes non-runtime paths', () => {
     expect(isArchitectureRuntimePath('src/chat/router.ts')).toBe(true)
     expect(isArchitectureRuntimePath('client/settings/App.svelte')).toBe(true)
+    expect(isArchitectureRuntimePath('client/shared/Modal.svelte')).toBe(false)
+    expect(isArchitectureRuntimePath('client/assets/design-canvas.jsx')).toBe(false)
     expect(isArchitectureRuntimePath('client/stories/Button.stories.svelte')).toBe(false)
     expect(isArchitectureRuntimePath('tests/scripts/run-semgrep.test.ts')).toBe(false)
     expect(isArchitectureRuntimePath('scripts/build-client.ts')).toBe(false)
@@ -54,5 +69,19 @@ describe('architecture refresh config', () => {
     expect(clientSurfaceForPath('client/settings/App.svelte')).toBe('settings')
     expect(clientSurfaceForPath('client/admin/AdminApp.svelte')).toBe('admin')
     expect(clientSurfaceForPath('client/debug/DebugApp.svelte')).toBe('debug')
+  })
+
+  test('classifies every current Task 1 runtime path', async () => {
+    const glob = new Glob('{src,client}/**/*.{ts,tsx,js,jsx,svelte}')
+    const runtimePaths = (await Array.fromAsync(glob.scan('.'))).filter(isArchitectureRuntimePath)
+    const serverMisses = runtimePaths
+      .filter((relativePath) => relativePath.startsWith('src/'))
+      .filter((relativePath) => serverAreaForPath(relativePath) === null)
+    const clientMisses = runtimePaths
+      .filter((relativePath) => relativePath.startsWith('client/'))
+      .filter((relativePath) => clientSurfaceForPath(relativePath) === null)
+    const misses = [...serverMisses, ...clientMisses]
+
+    expect(misses).toEqual([])
   })
 })
