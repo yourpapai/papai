@@ -5,11 +5,7 @@ on:
     branches: [master]
     paths:
       - 'src/**'
-      - 'client/admin/**'
-      - 'client/debug/**'
-      - 'client/settings/**'
-      - 'client/shared/**'
-      - 'client/assets/**'
+      - 'client/**'
       - '!client/**/*.stories.*'
       - '!client/stories/**'
       - 'package.json'

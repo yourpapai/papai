@@ -127,4 +127,13 @@ describe('architecture refresh config', () => {
 
     expect(misses).toEqual([])
   })
+
+  test('keeps every declared focused server area backed by at least one current runtime path', async () => {
+    const glob = new Glob('src/**/*.{ts,tsx,js,jsx}')
+    const runtimePaths = (await Array.fromAsync(glob.scan('.'))).filter(isArchitectureRuntimePath)
+
+    for (const areaId of FOCUSED_SERVER_AREA_IDS) {
+      expect(runtimePaths.some((relativePath) => serverAreaForPath(relativePath) === areaId)).toBe(true)
+    }
+  })
 })

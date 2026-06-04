@@ -55,11 +55,7 @@ describe('architecture refresh workflow', () => {
       'push:',
       'branches: [master]',
       "- 'src/**'",
-      "- 'client/admin/**'",
-      "- 'client/debug/**'",
-      "- 'client/settings/**'",
-      "- 'client/shared/**'",
-      "- 'client/assets/**'",
+      "- 'client/**'",
       "- '!client/**/*.stories.*'",
       "- '!client/stories/**'",
       "- 'package.json'",
@@ -70,6 +66,11 @@ describe('architecture refresh workflow', () => {
       "- 'tsconfig.json'",
       "- '.github/workflows/architecture-refresh.yml'",
     ])
+    expect(triggerSection).not.toContain("- 'client/admin/**'")
+    expect(triggerSection).not.toContain("- 'client/debug/**'")
+    expect(triggerSection).not.toContain("- 'client/settings/**'")
+    expect(triggerSection).not.toContain("- 'client/shared/**'")
+    expect(triggerSection).not.toContain("- 'client/assets/**'")
     expectSectionToContainLines(permissionsSection, ['contents: write', 'pull-requests: write'])
     expectSectionToContainLines(concurrencySection, [
       'group: architecture-refresh-${{ github.workflow }}-${{ github.ref }}',
