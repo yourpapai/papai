@@ -11,7 +11,19 @@ export interface ArchitectureOutputFile {
   readonly content: string
 }
 
+const GENERATED_MARKDOWN_LICENSE_HEADER = [
+  '<!--',
+  'SPDX-License-Identifier: BUSL-1.1',
+  'Copyright (c) 2026 Dmitriy Lazarev',
+  'Use of this software is governed by the Business Source License 1.1.',
+  'See LICENSE in the project root for details.',
+  '-->',
+  '',
+].join('\n')
+
 const lines = (value: readonly string[]): string => value.join('\n')
+
+const withGeneratedMarkdownLicenseHeader = (content: string): string => `${GENERATED_MARKDOWN_LICENSE_HEADER}${content}`
 
 const listOrNone = (items: readonly string[]): string =>
   items.length === 0 ? '_None._' : items.map((item) => `- ${item}`).join('\n')
@@ -128,15 +140,15 @@ export const buildArchitectureOutputFiles = (model: ArchitectureLlm): readonly A
     },
     {
       relativePath: 'overview.md',
-      content: overviewForModel(serverAreas, clientSurfaces, model),
+      content: withGeneratedMarkdownLicenseHeader(overviewForModel(serverAreas, clientSurfaces, model)),
     },
     ...serverAreas.map((area) => ({
       relativePath: `server/${area.slug}.md`,
-      content: serverAreaDoc(area),
+      content: withGeneratedMarkdownLicenseHeader(serverAreaDoc(area)),
     })),
     {
       relativePath: 'client/overview.md',
-      content: clientOverviewDoc(clientSurfaces),
+      content: withGeneratedMarkdownLicenseHeader(clientOverviewDoc(clientSurfaces)),
     },
   ]
 }
