@@ -14,6 +14,10 @@ const rawGraph = {
       dependencies: [{ resolved: 'src/chat/router.ts' }],
     },
     {
+      source: 'src/commands/refresh.ts',
+      dependencies: [{ resolved: 'src/chat/router.ts' }],
+    },
+    {
       source: 'src/chat/router.ts',
       dependencies: [{ resolved: 'src/tools/tools-builder.ts' }],
     },
@@ -38,7 +42,7 @@ const rawGraph = {
       dependencies: [],
     },
   ],
-  summary: { totalCruised: 7 },
+  summary: { totalCruised: 8 },
 } as const
 
 describe('normalizeArchitectureGraph', () => {
@@ -47,7 +51,7 @@ describe('normalizeArchitectureGraph', () => {
 
     expect(model.rawArtifact).toBe('raw/dependency-cruiser.json')
     expect(model.server.areas.find((area) => area.id === 'shared/runtime')).toMatchObject({
-      paths: ['src/index.ts'],
+      paths: ['src/commands/refresh.ts', 'src/index.ts'],
       dependsOn: ['chat'],
     })
     expect(model.server.areas.find((area) => area.id === 'chat')?.dependsOn).toEqual(['tools'])
