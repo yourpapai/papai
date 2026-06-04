@@ -180,6 +180,45 @@ describe('ConfigFieldRow', () => {
     void unmount(component)
   })
 
+  test('sensitive field with no stored value lets you enter and save the initial value', async () => {
+    setCsrfToken('c')
+    let body = ''
+    setMockFetch((_url, init) => {
+      body = bodyString(init)
+      return Promise.resolve(json({ ok: true, contextId: 'user:1' }))
+    })
+    let saved = false
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'token',
+        storageKey: 'plugin:task-provider-youtrack:provider:token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        kind: 'provider-context',
+        hasValue: false,
+        value: '',
+      },
+      onSaved: () => {
+        saved = true
+      },
+    })
+    flushSync()
+    // An unset secret has nothing to mask/replace, so the editor must be open directly.
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-token"]')!
+    expect(input).not.toBeNull()
+    expect(target.querySelector('[data-testid="cfg-replace-token"]')).toBeNull()
+    input.value = 'perm-token-xyz'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-token"]')!.click()
+    await drain()
+    expect(body).toBe(JSON.stringify({ key: 'token', value: 'perm-token-xyz', contextId: 'user:1' }))
+    expect(saved).toBe(true)
+    void unmount(component)
+  })
+
   test('cancel resets the sensitive replace editor', () => {
     setMockFetch(() => Promise.resolve(json({})))
     const { component, target } = render({

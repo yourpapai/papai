@@ -26,7 +26,9 @@
   let error: string | null = $state(null)
   let saving = $state(false)
 
-  const editorOpen = $derived(!field.sensitive || replacing)
+  // An unset secret (no stored value) has nothing to mask, so open the editor
+  // directly — otherwise there is no Replace button and no way to enter a first value.
+  const editorOpen = $derived(!field.sensitive || replacing || !field.hasValue)
 
   $effect(() => {
     // Re-sync local edit state when the field prop changes (parent re-fetch / context switch).
@@ -76,7 +78,7 @@
       <Btn variant="primary" size="sm" testid={`cfg-save-${field.key}`} disabled={saving} onClick={() => void save()}>
         {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
       </Btn>
-      {#if field.sensitive}
+      {#if field.sensitive && field.hasValue}
         <Btn variant="ghost" size="sm" testid={`cfg-cancel-${field.key}`} onClick={() => { replacing = false; draft = '' }}>
           {#snippet children()}Cancel{/snippet}
         </Btn>
