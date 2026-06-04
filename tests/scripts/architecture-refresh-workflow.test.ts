@@ -6,63 +6,83 @@
 import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 
-const getSection = (workflow: string, startPattern: RegExp, endPattern: RegExp): string | null => {
+const getSection = (workflow: string, startPattern: RegExp, endPattern?: RegExp): string | null => {
   const startMatch = workflow.match(startPattern)
-  const endMatch = workflow.match(endPattern)
 
   if (!startMatch || startMatch.index === undefined) {
     return null
   }
 
   const startIndex = startMatch.index
-  const endIndex =
-    endMatch && endMatch.index !== undefined && endMatch.index > startIndex ? endMatch.index : workflow.length
+  const endMatch = endPattern ? workflow.slice(startIndex + 1).match(endPattern) : null
+  const endIndex = endMatch && endMatch.index !== undefined ? startIndex + 1 + endMatch.index : workflow.length
 
   return workflow.slice(startIndex, endIndex)
+}
+
+const expectSectionToContainLines = (section: string | null, expectedLines: string[]): void => {
+  expect(section).not.toBeNull()
+
+  for (const expectedLine of expectedLines) {
+    expect(section).toContain(expectedLine)
+  }
 }
 
 describe('architecture refresh workflow', () => {
   test('targets master pushes with runtime/config path filters and creates a dedicated PR', async () => {
     const workflow = await readFile('.github/workflows/architecture-refresh.yml', 'utf8')
     const triggerSection = getSection(workflow, /^on:\n/mu, /^permissions:\n/mu)
+    const permissionsSection = getSection(workflow, /^permissions:\n/mu, /^concurrency:\n/mu)
     const concurrencySection = getSection(workflow, /^concurrency:\n/mu, /^jobs:\n/mu)
     const checkoutStep = getSection(
       workflow,
       /^\s+- uses: actions\/checkout@v4\n/mu,
       /^\s+- uses: oven-sh\/setup-bun@v2\n/mu,
     )
-    const createPullRequestStep = getSection(
+    const createPullRequestStep = getSection(workflow, /^\s+- name: Create or update architecture refresh PR\n/mu)
+    const installGraphvizStep = getSection(
       workflow,
+      /^\s+- name: Install GraphViz\n/mu,
+      /^\s+- name: Install dependencies\n/mu,
+    )
+    const generateArtifactsStep = getSection(
+      workflow,
+      /^\s+- name: Generate architecture artifacts\n/mu,
       /^\s+- name: Create or update architecture refresh PR\n/mu,
-      /^\s+delete-branch: false\n/mu,
     )
 
-    expect(triggerSection).not.toBeNull()
-    expect(triggerSection).toContain('push:')
-    expect(workflow).toContain('branches: [master]')
-    expect(workflow).toContain("- 'src/**'")
-    expect(workflow).toContain("- 'client/**'")
-    expect(workflow).toContain("- 'package.json'")
-    expect(workflow).toContain("- 'bun.lock'")
-    expect(workflow).toContain("- '.dependency-cruiser.mjs'")
-    expect(workflow).toContain("- 'scripts/architecture-refresh-dependency-cruiser-config.mjs'")
-    expect(workflow).toContain("- 'scripts/architecture-refresh*.ts'")
-    expect(workflow).toContain("- 'tsconfig.json'")
-    expect(workflow).toContain("- '.github/workflows/architecture-refresh.yml'")
-    expect(workflow).toContain('contents: write')
-    expect(workflow).toContain('pull-requests: write')
-    expect(concurrencySection).not.toBeNull()
-    expect(concurrencySection).toContain('group: architecture-refresh-${{ github.workflow }}-${{ github.ref }}')
+    expectSectionToContainLines(triggerSection, [
+      'push:',
+      'branches: [master]',
+      "- 'src/**'",
+      "- 'client/**'",
+      "- 'package.json'",
+      "- 'bun.lock'",
+      "- '.dependency-cruiser.mjs'",
+      "- 'scripts/architecture-refresh-dependency-cruiser-config.mjs'",
+      "- 'scripts/architecture-refresh*.ts'",
+      "- 'tsconfig.json'",
+      "- '.github/workflows/architecture-refresh.yml'",
+    ])
+    expectSectionToContainLines(permissionsSection, ['contents: write', 'pull-requests: write'])
+    expectSectionToContainLines(concurrencySection, [
+      'group: architecture-refresh-${{ github.workflow }}-${{ github.ref }}',
+      'cancel-in-progress: true',
+    ])
     expect(concurrencySection).not.toContain('github.sha')
-    expect(checkoutStep).not.toBeNull()
-    expect(checkoutStep).toContain('- uses: actions/checkout@v4')
+    expectSectionToContainLines(checkoutStep, ['- uses: actions/checkout@v4'])
     expect(checkoutStep).not.toContain('ref:')
-    expect(workflow).toContain('graphviz')
-    expect(workflow).toContain('bun run architecture:refresh')
-    expect(createPullRequestStep).not.toBeNull()
-    expect(createPullRequestStep).toContain('peter-evans/create-pull-request@v8')
-    expect(createPullRequestStep).toContain('base: master')
-    expect(workflow).toContain('automation/architecture-refresh')
-    expect(workflow).toContain('docs/architecture/**')
+    expectSectionToContainLines(installGraphvizStep, ['graphviz'])
+    expectSectionToContainLines(generateArtifactsStep, ['bun run architecture:refresh'])
+    expectSectionToContainLines(createPullRequestStep, [
+      'peter-evans/create-pull-request@v8',
+      'branch: automation/architecture-refresh',
+      'base: master',
+      "commit-message: 'docs: refresh architecture artifacts'",
+      "title: 'docs: refresh architecture artifacts'",
+      'add-paths: |',
+      'docs/architecture/**',
+      'delete-branch: false',
+    ])
   })
 })
