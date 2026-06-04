@@ -172,14 +172,49 @@ describe('runArchitectureRefresh', () => {
     expect(executable).toBeNull()
     expect(checkedPaths).toEqual(['/opt/homebrew/bin/dot', '/usr/local/bin/dot'])
 
-    const svg = await renderDotToSvg('digraph test {}', {
-      env: { PATH: '/missing/bin' },
-      whichExecutable: () => null,
-      accessPath: () => Promise.reject(new Error('missing dot')),
-    })
+    await expect(
+      renderDotToSvg('digraph test {}', {
+        env: { PATH: '/missing/bin' },
+        whichExecutable: () => null,
+        accessPath: () => Promise.reject(new Error('missing dot')),
+      }),
+    ).rejects.toThrow('Graphviz dot executable not available on PATH or known fallback locations')
+  })
 
-    expect(svg).toContain('Graphviz dot executable not available')
-    expect(svg).toContain('digraph test {}')
+  test('wraps graph generation failures with stage-specific context', async () => {
+    await expect(
+      runArchitectureRefresh([], {
+        cruiseGraph: () => Promise.reject(new Error('depcruise exploded')),
+      }),
+    ).rejects.toThrow('Architecture refresh graph generation failed: depcruise exploded')
+  })
+
+  test('wraps normalization failures with stage-specific context', async () => {
+    await expect(
+      runArchitectureRefresh([], {
+        cruiseGraph: () =>
+          Promise.resolve({
+            modules: [createModule('src/unknown/runtime.ts', [])],
+            summary: createSummary(),
+          }),
+      }),
+    ).rejects.toThrow('Architecture refresh normalization failed: Uncategorized runtime path: src/unknown/runtime.ts')
+  })
+
+  test('wraps rendering failures with stage-specific context', async () => {
+    const rawGraph = createFullCommittedRawGraph()
+
+    await expect(
+      runArchitectureRefresh([], {
+        cruiseGraph: () => Promise.resolve(rawGraph),
+        formatTopLevelGraph: () => Promise.resolve('digraph broken {}'),
+        renderDotToSvg: () => Promise.reject(new Error('dot exited with code 1')),
+        formatGeneratedFiles: () => Promise.resolve(),
+        rmDir: () => Promise.resolve(),
+        mkdirp: () => Promise.resolve(),
+        writeTextFile: () => Promise.resolve(),
+      }),
+    ).rejects.toThrow('Architecture refresh rendering failed: dot exited with code 1')
   })
 
   test('prefers GRAPHVIZ_DOT before hard-coded fallback candidates', async () => {

@@ -104,22 +104,7 @@ const defaultFormatTopLevelGraph = async (kind: 'archi' | 'ddot', raw: ICruiseRe
   return reporterOutputToText(result.output)
 }
 
-const escapeSvgText = (value: string): string =>
-  value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
-
-const renderDotFallbackSvg = (dot: string): string => {
-  const content = escapeSvgText(dot)
-
-  return [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">',
-    '  <rect width="1200" height="800" fill="#ffffff" />',
-    '  <text x="24" y="40" font-family="monospace" font-size="24" fill="#111827">Graphviz dot executable not available</text>',
-    '  <text x="24" y="72" font-family="monospace" font-size="16" fill="#4b5563">DOT source preserved below for deterministic review output.</text>',
-    `  <foreignObject x="24" y="104" width="1152" height="672"><pre xmlns="http://www.w3.org/1999/xhtml" style="margin:0;font:14px monospace;white-space:pre-wrap;color:#111827;">${content}</pre></foreignObject>`,
-    '</svg>',
-    '',
-  ].join('\n')
-}
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 const findExecutableCandidateInOrder = async (
   candidatePaths: readonly string[],
@@ -160,7 +145,7 @@ export const findDotExecutable = (deps: DotDiscoveryDeps = {}): Promise<string |
 export const renderDotToSvg = (dot: string, deps: DotDiscoveryDeps = {}): Promise<string> =>
   findDotExecutable(deps).then((dotExecutable) =>
     dotExecutable === null
-      ? renderDotFallbackSvg(dot)
+      ? Promise.reject(new Error('Graphviz dot executable not available on PATH or known fallback locations'))
       : new Promise<string>((resolve, reject) => {
           const child = spawn(dotExecutable, ['-Tsvg'], { stdio: ['pipe', 'pipe', 'pipe'] })
           let stdout = ''
@@ -268,12 +253,22 @@ export const runArchitectureRefresh = async (
   const mkdirp = deps.mkdirp ?? defaultMkdirp
   const writeTextFile = deps.writeTextFile ?? defaultWriteTextFile
 
-  const raw = await cruiseGraph()
-  const model = normalizeArchitectureGraph(raw)
+  let raw: ICruiseResult
+  try {
+    raw = await cruiseGraph()
+  } catch (error) {
+    throw new Error(`Architecture refresh graph generation failed: ${errorMessage(error)}`, { cause: error })
+  }
+
+  let model: ArchitectureModel
+  try {
+    model = normalizeArchitectureGraph(raw)
+  } catch (error) {
+    throw new Error(`Architecture refresh normalization failed: ${errorMessage(error)}`, { cause: error })
+  }
+
   const outputRoot = path.join(process.cwd(), ARCHITECTURE_OUTPUT_DIR)
   const outputFiles = buildArchitectureOutputFiles(model)
-
-  await rmDir(outputRoot)
 
   const writeManagedFile = async (relativePath: string, content: string): Promise<void> => {
     const absolutePath = path.join(outputRoot, relativePath)
@@ -281,14 +276,19 @@ export const runArchitectureRefresh = async (
     await writeTextFile(absolutePath, content)
   }
 
-  await writeManagedFile('raw/dependency-cruiser.json', `${JSON.stringify(raw, null, 2)}\n`)
+  try {
+    await rmDir(outputRoot)
+    await writeManagedFile('raw/dependency-cruiser.json', `${JSON.stringify(raw, null, 2)}\n`)
 
-  await Promise.all(outputFiles.map((file) => writeManagedFile(file.relativePath, file.content)))
-  await formatGeneratedFiles([
-    path.join(outputRoot, 'raw/dependency-cruiser.json'),
-    ...outputFiles.map((file) => path.join(outputRoot, file.relativePath)),
-  ])
-  await writeCommittedDiagramFiles(model, raw, formatTopLevelGraph, renderDotToSvgFile, writeManagedFile)
+    await Promise.all(outputFiles.map((file) => writeManagedFile(file.relativePath, file.content)))
+    await formatGeneratedFiles([
+      path.join(outputRoot, 'raw/dependency-cruiser.json'),
+      ...outputFiles.map((file) => path.join(outputRoot, file.relativePath)),
+    ])
+    await writeCommittedDiagramFiles(model, raw, formatTopLevelGraph, renderDotToSvgFile, writeManagedFile)
+  } catch (error) {
+    throw new Error(`Architecture refresh rendering failed: ${errorMessage(error)}`, { cause: error })
+  }
 }
 
 if (import.meta.main) {
