@@ -22,6 +22,7 @@ const SCOPED_GROUP1_THREAD123 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:Z3JvdXAx:thread:dGhyZ
 const SCOPED_GROUP1_THREAD456 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:Z3JvdXAx:thread:dGhyZWFkNDU2'
 const SCOPED_STRANGER1 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:c3RyYW5nZXIx'
 const SCOPED_USER1 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:dXNlcjE'
+const SCOPED_ADMIN1 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:YWRtaW4x'
 
 const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
   const username = args[0]
@@ -136,6 +137,24 @@ describe('auth', () => {
         expect(unauthorizedAuth.storageContextId).toBe(SCOPED_GROUP1)
         expect(unauthorizedAuth.configContextId).toBe(SCOPED_GROUP1)
         expect(unauthorizedAuth.reason).toBe('group_not_allowed')
+      })
+    })
+
+    describe('bot admin in DM', () => {
+      test('keys config/storage off the user id, not the DM channel id', () => {
+        addUser('admin1', 'admin1')
+        addAdmin('admin1', TEST_PLATFORM_ID)
+
+        // The chat layer passes the DM *channel* id as contextId; on
+        // Mattermost/Discord/Kontur that is not the user id. The admin's context
+        // must still key off the user id so it matches the user-keyed personal
+        // context the settings UI binds (and that non-admin DM users get).
+        const dmAuth = checkAuthorizationExtended('admin1', null, 'dm-channel-xyz', 'dm', undefined, false)
+
+        expect(dmAuth.allowed).toBe(true)
+        expect(dmAuth.isBotAdmin).toBe(true)
+        expect(dmAuth.storageContextId).toBe(SCOPED_ADMIN1)
+        expect(dmAuth.configContextId).toBe(SCOPED_ADMIN1)
       })
     })
 

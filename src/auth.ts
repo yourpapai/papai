@@ -52,6 +52,14 @@ const getBotAdminAuth = (
   configContextId: getThreadScopedStorageContextId(contextId, contextType, undefined, platformInstanceId),
 })
 
+const getBotAdminDmAuth = (userId: string, platformInstanceId: string): AuthorizationResult => ({
+  allowed: true,
+  isBotAdmin: true,
+  isGroupAdmin: false,
+  storageContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
+  configContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
+})
+
 const getGroupMemberAuth = (
   contextId: string,
   contextType: ContextType,
@@ -156,6 +164,26 @@ const getUnauthenticatedGroupAuth = (
   return getUnauthorizedGroupAuth(contextId, threadId, platformInstanceId, 'group_member_not_allowed')
 }
 
+const getAdminAuth = (
+  userId: string,
+  contextId: string,
+  contextType: ContextType,
+  threadId: string | undefined,
+  isPlatformAdmin: boolean,
+  platformInstanceId: string,
+): AuthorizationResult => {
+  // In a DM the chat layer passes the DM *channel* id as contextId, which is
+  // not the user id on Mattermost/Discord/Kontur. Key the admin's DM context
+  // off the user id so it matches the user-keyed personal context the settings
+  // UI binds (and that non-admin DM users already get); otherwise an admin's
+  // DM never sees its bound task instance / per-user config.
+  if (contextType === 'dm') {
+    return getBotAdminDmAuth(userId, platformInstanceId)
+  }
+
+  return getBotAdminAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
+}
+
 export const checkAuthorizationExtended = (
   userId: string,
   username: string | null,
@@ -184,7 +212,7 @@ export const checkAuthorizationExtended = (
   }
 
   if (isAdmin(userId, platformInstanceId)) {
-    return getBotAdminAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
+    return getAdminAuth(userId, contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
 
   if (isAuthorized(userId, platformInstanceId)) {
