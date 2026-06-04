@@ -20,17 +20,6 @@ import { architectureLlmSchema, type ArchitectureLlm } from './architecture-refr
 type RuntimeServerAreaId = (typeof RUNTIME_SERVER_AREA_IDS)[number]
 type RuntimeClientSurfaceId = (typeof RUNTIME_CLIENT_SURFACE_IDS)[number]
 
-const KNOWN_SHARED_SERVER_RUNTIME_PREFIXES = [
-  'src/commands/',
-  'src/config-editor/',
-  'src/dashboard-auth/',
-  'src/db/',
-  'src/group-settings/',
-  'src/message-cache/',
-  'src/types/',
-  'src/utils/',
-] as const
-
 type RawCruiseDependency = {
   resolved?: string
   module?: string
@@ -86,18 +75,11 @@ const isRuntimeServerArea = (areaId: string | null): areaId is RuntimeServerArea
 const isRuntimeClientSurface = (surfaceId: string | null): surfaceId is RuntimeClientSurfaceId =>
   surfaceId !== null && RUNTIME_CLIENT_SURFACE_IDS.some((runtimeSurfaceId) => runtimeSurfaceId === surfaceId)
 
-const isKnownSharedServerRuntimePath = (relativePath: string): boolean =>
-  /^src\/[^/]+\.[^/]+$/u.test(relativePath) ||
-  KNOWN_SHARED_SERVER_RUNTIME_PREFIXES.some((prefix) => relativePath.startsWith(prefix))
-
 const resolveReducedArea = (
   relativePath: string,
 ): { id: RuntimeServerAreaId; kind: 'server' } | { id: RuntimeClientSurfaceId; kind: 'client' } => {
   const serverArea = serverAreaForPath(relativePath)
-  if (
-    isRuntimeServerArea(serverArea) &&
-    (serverArea !== 'shared/runtime' || isKnownSharedServerRuntimePath(relativePath))
-  ) {
+  if (isRuntimeServerArea(serverArea)) {
     return { id: serverArea, kind: 'server' }
   }
 

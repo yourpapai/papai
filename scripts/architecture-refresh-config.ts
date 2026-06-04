@@ -50,6 +50,38 @@ const SERVER_AREA_PREFIXES: Readonly<Record<FocusedServerAreaId, readonly string
   'stats/usage': ['src/stats/', 'src/usage/'],
 }
 
+const SHARED_SERVER_RUNTIME_PREFIXES = [
+  'src/announcements.ts',
+  'src/auth.ts',
+  'src/authorized-groups.ts',
+  'src/bot-group-observation.ts',
+  'src/bot-reply-tracking.ts',
+  'src/cache',
+  'src/changelog-reader.ts',
+  'src/commands/',
+  'src/config-editor/',
+  'src/config',
+  'src/dashboard-auth/',
+  'src/db/',
+  'src/embeddings.ts',
+  'src/error-analysis.ts',
+  'src/errors.ts',
+  'src/group-settings/',
+  'src/groups.ts',
+  'src/index.ts',
+  'src/instructions.ts',
+  'src/logger.ts',
+  'src/message-cache/',
+  'src/reply-context.ts',
+  'src/reply-typing-heartbeat.ts',
+  'src/startup-helpers.ts',
+  'src/system-config.ts',
+  'src/tool-failure.ts',
+  'src/types/',
+  'src/users.ts',
+  'src/utils/',
+] as const
+
 const CLIENT_SURFACE_PREFIXES: Readonly<Record<ClientSurfaceId, readonly string[]>> = {
   settings: ['client/settings/'],
   admin: ['client/admin/'],
@@ -82,7 +114,10 @@ export const serverAreaForPath = (relativePath: string): RuntimeServerAreaId | n
     }
   }
 
-  if (relativePath.startsWith('src/') && isArchitectureRuntimePath(relativePath)) {
+  if (
+    isArchitectureRuntimePath(relativePath) &&
+    SHARED_SERVER_RUNTIME_PREFIXES.some((prefix) => relativePath.startsWith(prefix))
+  ) {
     return SHARED_SERVER_AREA_ID
   }
 

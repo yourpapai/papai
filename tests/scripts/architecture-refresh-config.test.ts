@@ -99,6 +99,9 @@ describe('architecture refresh config', () => {
     expect(serverAreaForPath('src/debug/settings/server.ts')).toBe('settings/debug')
     expect(serverAreaForPath('src/index.ts')).toBe('shared/runtime')
     expect(serverAreaForPath('src/group-settings/registry.ts')).toBe('shared/runtime')
+    expect(serverAreaForPath('src/cache.ts')).toBe('shared/runtime')
+    expect(serverAreaForPath('src/db/schema.ts')).toBe('shared/runtime')
+    expect(serverAreaForPath('src/unknown/new-runtime.ts')).toBeNull()
 
     expect(CLIENT_SURFACE_IDS).toEqual(['settings', 'admin', 'debug'])
     expect(RUNTIME_SERVER_AREA_IDS).toContain('shared/runtime')
@@ -108,6 +111,7 @@ describe('architecture refresh config', () => {
     expect(clientSurfaceForPath('client/debug/DebugApp.svelte')).toBe('debug')
     expect(clientSurfaceForPath('client/shared/Modal.svelte')).toBe('shared')
     expect(clientSurfaceForPath('client/assets/design-canvas.jsx')).toBe('assets')
+    expect(clientSurfaceForPath('client/unknown/new-runtime.ts')).toBeNull()
   })
 
   test('classifies every current Task 1 runtime path', async () => {

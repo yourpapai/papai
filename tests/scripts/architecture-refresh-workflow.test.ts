@@ -85,4 +85,17 @@ describe('architecture refresh workflow', () => {
       'delete-branch: false',
     ])
   })
+
+  test('installs graphviz in the normal CI check job before bun check:full', async () => {
+    const workflow = await readFile('.github/workflows/ci.yml', 'utf8')
+    const checkJob = getSection(workflow, /^\s{2}check:\n/mu, /^\s{2}e2e:\n/mu)
+    const installGraphvizStep = getSection(
+      workflow,
+      /^\s+- name: Install GraphViz\n/mu,
+      /^\s+- name: Download build output\n/mu,
+    )
+
+    expectSectionToContainLines(checkJob, ['name: Checks', 'run: bun check:full'])
+    expectSectionToContainLines(installGraphvizStep, ['graphviz'])
+  })
 })
