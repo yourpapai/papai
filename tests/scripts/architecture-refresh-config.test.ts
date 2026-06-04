@@ -33,7 +33,7 @@ describe('architecture refresh config', () => {
   })
 
   test('shares one dependency-cruiser options object across TS and Node entrypoints', () => {
-    expect(dependencyCruiserConfig).toEqual({ options: dependencyCruiserOptions })
+    expect(dependencyCruiserConfig.options).toBe(dependencyCruiserOptions)
   })
 
   test('runs depcruise successfully with the checked-in config', () => {
