@@ -8,6 +8,8 @@ import {
   EXCLUDED_PREFIXES,
   FOCUSED_SERVER_AREA_IDS,
   INCLUDED_ROOTS,
+  RUNTIME_CLIENT_SURFACE_IDS,
+  RUNTIME_SERVER_AREA_IDS,
   clientSurfaceForPath,
   isArchitectureRuntimePath,
   serverAreaForPath,
@@ -15,8 +17,19 @@ import {
 } from './architecture-refresh-config.js'
 import { architectureLlmSchema, type ArchitectureLlm } from './architecture-refresh-model.js'
 
-type FocusedServerAreaId = (typeof FOCUSED_SERVER_AREA_IDS)[number]
-type FocusedClientSurfaceId = (typeof CLIENT_SURFACE_IDS)[number]
+type RuntimeServerAreaId = (typeof RUNTIME_SERVER_AREA_IDS)[number]
+type RuntimeClientSurfaceId = (typeof RUNTIME_CLIENT_SURFACE_IDS)[number]
+
+const KNOWN_SHARED_SERVER_RUNTIME_PREFIXES = [
+  'src/commands/',
+  'src/config-editor/',
+  'src/dashboard-auth/',
+  'src/db/',
+  'src/group-settings/',
+  'src/message-cache/',
+  'src/types/',
+  'src/utils/',
+] as const
 
 type RawCruiseDependency = {
   resolved?: string
@@ -41,6 +54,11 @@ type AreaAccumulator = Readonly<{
   dependedOnBy: Set<string>
 }>
 
+type AreaMaps = Readonly<{
+  serverAreas: Map<string, AreaAccumulator>
+  clientSurfaces: Map<string, AreaAccumulator>
+}>
+
 const moduleSource = (module: RawCruiseModule): string => module.source.replaceAll('\\', '/')
 
 const dependencyTarget = (dependency: RawCruiseDependency): string | null => {
@@ -62,26 +80,48 @@ const createArea = (id: string, kind: 'server' | 'client'): AreaAccumulator => (
   dependedOnBy: new Set<string>(),
 })
 
-const isFocusedServerArea = (areaId: string | null): areaId is FocusedServerAreaId =>
-  areaId !== null && FOCUSED_SERVER_AREA_IDS.some((focusedAreaId) => focusedAreaId === areaId)
+const isRuntimeServerArea = (areaId: string | null): areaId is RuntimeServerAreaId =>
+  areaId !== null && RUNTIME_SERVER_AREA_IDS.some((runtimeAreaId) => runtimeAreaId === areaId)
 
-const isFocusedClientSurface = (surfaceId: string | null): surfaceId is FocusedClientSurfaceId =>
-  surfaceId !== null && CLIENT_SURFACE_IDS.some((clientSurfaceId) => clientSurfaceId === surfaceId)
+const isRuntimeClientSurface = (surfaceId: string | null): surfaceId is RuntimeClientSurfaceId =>
+  surfaceId !== null && RUNTIME_CLIENT_SURFACE_IDS.some((runtimeSurfaceId) => runtimeSurfaceId === surfaceId)
+
+const isKnownSharedServerRuntimePath = (relativePath: string): boolean =>
+  /^src\/[^/]+\.[^/]+$/u.test(relativePath) ||
+  KNOWN_SHARED_SERVER_RUNTIME_PREFIXES.some((prefix) => relativePath.startsWith(prefix))
 
 const resolveReducedArea = (
   relativePath: string,
-): { id: FocusedServerAreaId; kind: 'server' } | { id: FocusedClientSurfaceId; kind: 'client' } => {
+): { id: RuntimeServerAreaId; kind: 'server' } | { id: RuntimeClientSurfaceId; kind: 'client' } => {
   const serverArea = serverAreaForPath(relativePath)
-  if (isFocusedServerArea(serverArea)) {
+  if (
+    isRuntimeServerArea(serverArea) &&
+    (serverArea !== 'shared/runtime' || isKnownSharedServerRuntimePath(relativePath))
+  ) {
     return { id: serverArea, kind: 'server' }
   }
 
   const clientSurface = clientSurfaceForPath(relativePath)
-  if (isFocusedClientSurface(clientSurface)) {
+  if (isRuntimeClientSurface(clientSurface)) {
     return { id: clientSurface, kind: 'client' }
   }
 
   throw new Error(`Uncategorized runtime path: ${relativePath}`)
+}
+
+const getOrCreateArea = (
+  areas: Map<string, AreaAccumulator>,
+  id: string,
+  kind: 'server' | 'client',
+): AreaAccumulator => {
+  const existingArea = areas.get(id)
+  if (existingArea) {
+    return existingArea
+  }
+
+  const area = createArea(id, kind)
+  areas.set(id, area)
+  return area
 }
 
 const serializeArea = (area: AreaAccumulator): ArchitectureLlm['server']['areas'][number] => ({
@@ -94,37 +134,43 @@ const serializeArea = (area: AreaAccumulator): ArchitectureLlm['server']['areas'
   dependedOnBy: [...area.dependedOnBy].sort(),
 })
 
-export const normalizeArchitectureGraph = (raw: RawCruiseResult): ArchitectureLlm => {
-  const serverAreas = new Map(FOCUSED_SERVER_AREA_IDS.map((id) => [id, createArea(id, 'server')]))
-  const clientSurfaces = new Map(CLIENT_SURFACE_IDS.map((id) => [id, createArea(id, 'client')]))
+const getArea = (maps: AreaMaps, reducedArea: ReturnType<typeof resolveReducedArea>): AreaAccumulator =>
+  reducedArea.kind === 'server'
+    ? getOrCreateArea(maps.serverAreas, reducedArea.id, 'server')
+    : getOrCreateArea(maps.clientSurfaces, reducedArea.id, 'client')
 
-  for (const module of raw.modules) {
-    const source = moduleSource(module)
-    if (!isArchitectureRuntimePath(source)) {
+const collectModuleDependencies = (module: RawCruiseModule, maps: AreaMaps): void => {
+  const source = moduleSource(module)
+  if (!isArchitectureRuntimePath(source)) {
+    return
+  }
+
+  const ownerArea = getArea(maps, resolveReducedArea(source))
+  ownerArea.paths.add(source)
+
+  for (const dependency of module.dependencies ?? []) {
+    const target = dependencyTarget(dependency)
+    if (target === null || !isArchitectureRuntimePath(target)) {
       continue
     }
 
-    const owner = resolveReducedArea(source)
-    const ownerArea = owner.kind === 'server' ? serverAreas.get(owner.id)! : clientSurfaces.get(owner.id)!
-    ownerArea.paths.add(source)
-
-    for (const dependency of module.dependencies ?? []) {
-      const target = dependencyTarget(dependency)
-      if (target === null || !isArchitectureRuntimePath(target)) {
-        continue
-      }
-
-      const targetArea = resolveReducedArea(target)
-      if (targetArea.id === ownerArea.id) {
-        continue
-      }
-
-      ownerArea.dependsOn.add(targetArea.id)
-
-      const dependentArea =
-        targetArea.kind === 'server' ? serverAreas.get(targetArea.id)! : clientSurfaces.get(targetArea.id)!
-      dependentArea.dependedOnBy.add(ownerArea.id)
+    const targetArea = getArea(maps, resolveReducedArea(target))
+    if (targetArea.id === ownerArea.id) {
+      continue
     }
+
+    ownerArea.dependsOn.add(targetArea.id)
+    targetArea.dependedOnBy.add(ownerArea.id)
+  }
+}
+
+export const normalizeArchitectureGraph = (raw: RawCruiseResult): ArchitectureLlm => {
+  const serverAreas = new Map(FOCUSED_SERVER_AREA_IDS.map((id) => [id, createArea(id, 'server')]))
+  const clientSurfaces = new Map(CLIENT_SURFACE_IDS.map((id) => [id, createArea(id, 'client')]))
+  const maps = { serverAreas, clientSurfaces }
+
+  for (const module of raw.modules) {
+    collectModuleDependencies(module, maps)
   }
 
   return architectureLlmSchema.parse({
