@@ -5,6 +5,8 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { constants } from 'node:fs'
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import type { DependencyType, ICruiseResult, IDependency, IModule, ISummary } from 'dependency-cruiser'
@@ -226,5 +228,33 @@ describe('runArchitectureRefresh', () => {
 
     expect(executable).toBeNull()
     expect(accessPath.mock.calls.map((call) => call[1])).toEqual([constants.X_OK, constants.X_OK, constants.X_OK])
+  })
+
+  test('waits for graphviz stdout to close before resolving successful renders', async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'architecture-refresh-'))
+    const dotPath = path.join(tempDir, 'dot')
+
+    try {
+      await writeFile(
+        dotPath,
+        ['#!/bin/sh', 'cat >/dev/null', '(sleep 0.05; printf "<svg>delayed output</svg>\\n") &', 'exit 0', ''].join(
+          '\n',
+        ),
+        'utf8',
+      )
+      await chmod(dotPath, 0o755)
+
+      const svg = await renderDotToSvg('digraph test {}', {
+        env: {
+          PATH: '/missing/bin',
+          GRAPHVIZ_DOT: dotPath,
+        },
+        whichExecutable: () => null,
+      })
+
+      expect(svg).toContain('<svg>delayed output</svg>')
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
   })
 })

@@ -176,7 +176,7 @@ export const renderDotToSvg = (dot: string, deps: DotDiscoveryDeps = {}): Promis
             stderr += chunk
           })
           child.once('error', reject)
-          child.once('exit', (code) => {
+          child.once('close', (code) => {
             if (code === 0) {
               resolve(stdout)
               return
@@ -210,7 +210,7 @@ const defaultFormatGeneratedFiles = (filePaths: readonly string[]): Promise<void
       stderr += chunk
     })
     child.once('error', reject)
-    child.once('exit', (code) => {
+    child.once('close', (code) => {
       if (code === 0) {
         resolve()
         return
