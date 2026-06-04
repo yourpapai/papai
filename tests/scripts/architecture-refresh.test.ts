@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { DependencyType, ICruiseResult, IDependency, IModule, ISummary } from 'dependency-cruiser'
 
-import { runArchitectureRefresh } from '../../scripts/architecture-refresh.js'
+import { findDotExecutable, renderDotToSvg, runArchitectureRefresh } from '../../scripts/architecture-refresh.js'
 
 const createDependency = (resolved: string): IDependency => ({
   circular: false,
@@ -90,5 +90,50 @@ describe('runArchitectureRefresh', () => {
     expect(hasWrittenPath(writePaths, 'docs/architecture/server/chat.svg')).toBe(true)
     expect(hasWrittenPath(writePaths, 'docs/architecture/client/overview.md')).toBe(true)
     expect(hasWrittenPath(writePaths, 'docs/architecture/client/settings.svg')).toBe(true)
+  })
+
+  test('resolves dot from PATH before falling back to hard-coded locations', async () => {
+    const checkedPaths: string[] = []
+
+    const executable = await findDotExecutable({
+      env: { PATH: '/usr/bin:/bin' },
+      whichExecutable: (command, options) => {
+        expect(command).toBe('dot')
+        expect(options).toEqual({ PATH: '/usr/bin:/bin' })
+        return '/usr/bin/dot'
+      },
+      accessPath: (candidate) => {
+        checkedPaths.push(candidate)
+        return Promise.reject(new Error(`unexpected fallback access for ${candidate}`))
+      },
+    })
+
+    expect(executable).toBe('/usr/bin/dot')
+    expect(checkedPaths).toEqual([])
+  })
+
+  test('falls back to deterministic svg output when PATH and known dot locations are unavailable', async () => {
+    const checkedPaths: string[] = []
+
+    const executable = await findDotExecutable({
+      env: { PATH: '/missing/bin' },
+      whichExecutable: () => null,
+      accessPath: (candidate) => {
+        checkedPaths.push(candidate)
+        return Promise.reject(new Error(`missing ${candidate}`))
+      },
+    })
+
+    expect(executable).toBeNull()
+    expect(checkedPaths).toEqual(['/opt/homebrew/bin/dot', '/usr/local/bin/dot'])
+
+    const svg = await renderDotToSvg('digraph test {}', {
+      env: { PATH: '/missing/bin' },
+      whichExecutable: () => null,
+      accessPath: () => Promise.reject(new Error('missing dot')),
+    })
+
+    expect(svg).toContain('Graphviz dot executable not available')
+    expect(svg).toContain('digraph test {}')
   })
 })

@@ -40,6 +40,12 @@ export interface RunArchitectureRefreshDeps {
   readonly writeTextFile?: (filePath: string, content: string) => Promise<void>
 }
 
+interface DotDiscoveryDeps {
+  readonly env?: NodeJS.ProcessEnv
+  readonly whichExecutable?: (command: string, options?: { PATH?: string }) => string | null
+  readonly accessPath?: (filePath: string) => Promise<void>
+}
+
 type ArchitectureModel = ReturnType<typeof normalizeArchitectureGraph>
 
 const DEPENDENCY_CRUISER_CONFIG_PATH = '.dependency-cruiser.mjs'
@@ -114,14 +120,25 @@ const renderDotFallbackSvg = (dot: string): string => {
   ].join('\n')
 }
 
-const findDotExecutable = async (): Promise<string | null> => {
-  const candidatePaths = [process.env['GRAPHVIZ_DOT'], '/opt/homebrew/bin/dot', '/usr/local/bin/dot'].filter(
+export const findDotExecutable = async (deps: DotDiscoveryDeps = {}): Promise<string | null> => {
+  const env = deps.env ?? process.env
+  const whichExecutable =
+    deps.whichExecutable ??
+    ((command: string, options?: { PATH?: string }): string | null => Bun.which(command, options))
+  const accessPath = deps.accessPath ?? access
+  const pathResolvedDot = whichExecutable('dot', { PATH: env['PATH'] })
+
+  if (pathResolvedDot !== null) {
+    return pathResolvedDot
+  }
+
+  const candidatePaths = [env['GRAPHVIZ_DOT'], '/opt/homebrew/bin/dot', '/usr/local/bin/dot'].filter(
     (candidate): candidate is string => candidate !== undefined,
   )
 
   const availableCandidate = await Promise.any(
     candidatePaths.map(async (candidate): Promise<string> => {
-      await access(candidate)
+      await accessPath(candidate)
       return candidate
     }),
   ).catch((): string | null => null)
@@ -129,8 +146,8 @@ const findDotExecutable = async (): Promise<string | null> => {
   return availableCandidate
 }
 
-const defaultRenderDotToSvg = (dot: string): Promise<string> =>
-  findDotExecutable().then((dotExecutable) =>
+export const renderDotToSvg = (dot: string, deps: DotDiscoveryDeps = {}): Promise<string> =>
+  findDotExecutable(deps).then((dotExecutable) =>
     dotExecutable === null
       ? renderDotFallbackSvg(dot)
       : new Promise<string>((resolve, reject) => {
@@ -159,6 +176,8 @@ const defaultRenderDotToSvg = (dot: string): Promise<string> =>
           child.stdin.end(dot)
         }),
   )
+
+const defaultRenderDotToSvg = (dot: string): Promise<string> => renderDotToSvg(dot)
 
 const defaultRmDir = (dirPath: string): Promise<void> => rm(dirPath, { recursive: true, force: true })
 
@@ -200,7 +219,7 @@ const writeCommittedDiagramFiles = async (
   model: ArchitectureModel,
   raw: ICruiseResult,
   formatTopLevelGraph: (kind: 'archi' | 'ddot', rawGraph: ICruiseResult) => Promise<string>,
-  renderDotToSvg: (dot: string) => Promise<string>,
+  renderDotToSvgFile: (dot: string) => Promise<string>,
   writeManagedFile: (relativePath: string, content: string) => Promise<void>,
 ): Promise<void> => {
   const [serverArchiDot, serverDdotDot] = await Promise.all([
@@ -208,19 +227,19 @@ const writeCommittedDiagramFiles = async (
     formatTopLevelGraph('ddot', raw),
   ])
   const [serverArchiSvg, serverDdotSvg] = await Promise.all([
-    renderDotToSvg(serverArchiDot),
-    renderDotToSvg(serverDdotDot),
+    renderDotToSvgFile(serverArchiDot),
+    renderDotToSvgFile(serverDdotDot),
   ])
 
   await Promise.all([
     writeManagedFile('diagrams/server-archi.svg', serverArchiSvg),
     writeManagedFile('diagrams/server-ddot.svg', serverDdotSvg),
     ...committedServerAreas(model).map(async (area): Promise<void> => {
-      const svg = await renderDotToSvg(renderFocusedAreaDot(area.id, model))
+      const svg = await renderDotToSvgFile(renderFocusedAreaDot(area.id, model))
       await writeManagedFile(`server/${area.slug}.svg`, svg)
     }),
     ...committedClientSurfaces(model).map(async (surface): Promise<void> => {
-      const svg = await renderDotToSvg(renderClientSurfaceDot(surface.id, model))
+      const svg = await renderDotToSvgFile(renderClientSurfaceDot(surface.id, model))
       await writeManagedFile(`client/${surface.slug}.svg`, svg)
     }),
   ])
@@ -232,7 +251,7 @@ export const runArchitectureRefresh = async (
 ): Promise<void> => {
   const cruiseGraph = deps.cruiseGraph ?? defaultCruiseGraph
   const formatTopLevelGraph = deps.formatTopLevelGraph ?? defaultFormatTopLevelGraph
-  const renderDotToSvg = deps.renderDotToSvg ?? defaultRenderDotToSvg
+  const renderDotToSvgFile = deps.renderDotToSvg ?? defaultRenderDotToSvg
   const formatGeneratedFiles = deps.formatGeneratedFiles ?? defaultFormatGeneratedFiles
   const rmDir = deps.rmDir ?? defaultRmDir
   const mkdirp = deps.mkdirp ?? defaultMkdirp
@@ -258,7 +277,7 @@ export const runArchitectureRefresh = async (
     path.join(outputRoot, 'raw/dependency-cruiser.json'),
     ...outputFiles.map((file) => path.join(outputRoot, file.relativePath)),
   ])
-  await writeCommittedDiagramFiles(model, raw, formatTopLevelGraph, renderDotToSvg, writeManagedFile)
+  await writeCommittedDiagramFiles(model, raw, formatTopLevelGraph, renderDotToSvgFile, writeManagedFile)
 }
 
 if (import.meta.main) {
