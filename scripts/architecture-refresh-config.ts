@@ -9,6 +9,7 @@ import {
   type ClientSurfaceId,
   type FocusedServerAreaId,
 } from './architecture-refresh-model.js'
+export { dependencyCruiserOptions } from './architecture-refresh-dependency-cruiser-config.mjs'
 
 export const ARCHITECTURE_OUTPUT_DIR = 'docs/architecture'
 export const INCLUDED_ROOTS = ['src', 'client'] as const
@@ -21,13 +22,6 @@ export const EXCLUDED_PREFIXES = [
 ] as const
 
 const NON_RUNTIME_PATH_PATTERNS = [/\.stories\.[^/]+$/u]
-const DEPENDENCY_CRUISER_EXCLUDE_PATHS = [
-  '^tests/',
-  '^review-loop/',
-  '^docs/architecture/',
-  '^client/stories/',
-  '\\.stories\\.',
-] as const
 const SHARED_SERVER_AREA_ID = 'shared/runtime' as const
 const runtimeServerAreaIds = [...focusedServerAreaIds, SHARED_SERVER_AREA_ID] as const
 const runtimeClientSurfaceIds = [...clientSurfaceIds, 'shared', 'assets'] as const
@@ -60,13 +54,6 @@ const CLIENT_SURFACE_PREFIXES: Readonly<Record<ClientSurfaceId, readonly string[
   settings: ['client/settings/'],
   admin: ['client/admin/'],
   debug: ['client/debug/'],
-}
-
-export const dependencyCruiserOptions = {
-  tsConfig: 'tsconfig.json',
-  exclude: { path: [...DEPENDENCY_CRUISER_EXCLUDE_PATHS] },
-  doNotFollow: { dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'npm-bundled'] },
-  includeOnly: { path: ['^src/', '^client/'] },
 }
 
 export const FOCUSED_SERVER_AREA_IDS = [...focusedServerAreaIds]

@@ -7,12 +7,14 @@ import { describe, expect, test } from 'bun:test'
 
 import { Glob } from 'bun'
 
+import dependencyCruiserConfig from '../../.dependency-cruiser.mjs'
 import {
   CLIENT_SURFACE_IDS,
   FOCUSED_SERVER_AREA_IDS,
   RUNTIME_CLIENT_SURFACE_IDS,
   RUNTIME_SERVER_AREA_IDS,
   clientSurfaceForPath,
+  dependencyCruiserOptions,
   isArchitectureRuntimePath,
   serverAreaForPath,
   slugForArea,
@@ -22,6 +24,32 @@ describe('architecture refresh config', () => {
   test('loads the dependency-cruiser config under plain Node ESM semantics', () => {
     const result = Bun.spawnSync({
       cmd: ['node', '--input-type=module', '--eval', "await import('./.dependency-cruiser.mjs')"],
+      cwd: process.cwd(),
+      stderr: 'pipe',
+      stdout: 'pipe',
+    })
+
+    expect(result.exitCode).toBe(0)
+  })
+
+  test('shares one dependency-cruiser options object across TS and Node entrypoints', () => {
+    expect(dependencyCruiserConfig).toEqual({ options: dependencyCruiserOptions })
+  })
+
+  test('runs depcruise successfully with the checked-in config', () => {
+    const result = Bun.spawnSync({
+      cmd: ['bunx', 'depcruise', '--config', '.dependency-cruiser.mjs', '--output-type', 'err-long', 'src', 'client'],
+      cwd: process.cwd(),
+      stderr: 'pipe',
+      stdout: 'pipe',
+    })
+
+    expect(result.exitCode).toBe(0)
+  })
+
+  test('runs the public architecture:refresh script entrypoint successfully', () => {
+    const result = Bun.spawnSync({
+      cmd: ['bun', 'run', 'architecture:refresh'],
       cwd: process.cwd(),
       stderr: 'pipe',
       stdout: 'pipe',
