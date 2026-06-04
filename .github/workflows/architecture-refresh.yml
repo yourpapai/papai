@@ -9,7 +9,9 @@ on:
       - 'package.json'
       - 'bun.lock'
       - '.dependency-cruiser.mjs'
+      - 'scripts/architecture-refresh-dependency-cruiser-config.mjs'
       - 'scripts/architecture-refresh*.ts'
+      - 'tsconfig.json'
       - '.github/workflows/architecture-refresh.yml'
 
 permissions:
