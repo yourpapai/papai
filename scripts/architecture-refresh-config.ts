@@ -20,6 +20,21 @@ export const EXCLUDED_PREFIXES = [
   'client/stories/',
 ] as const
 
+const NON_RUNTIME_PATH_PATTERNS = [/\.stories\.[^/]+$/u]
+const DEPENDENCY_CRUISER_EXCLUDE_PATHS = [
+  '^tests/',
+  '^review-loop/',
+  '^docs/architecture/',
+  '^client/stories/',
+  '\\.stories\\.',
+] as const
+const SHARED_SERVER_AREA_ID = 'shared/runtime' as const
+const runtimeServerAreaIds = [...focusedServerAreaIds, SHARED_SERVER_AREA_ID] as const
+const runtimeClientSurfaceIds = [...clientSurfaceIds, 'shared', 'assets'] as const
+
+type RuntimeServerAreaId = (typeof runtimeServerAreaIds)[number]
+type RuntimeClientSurfaceId = (typeof runtimeClientSurfaceIds)[number]
+
 const SERVER_AREA_PREFIXES: Readonly<Record<FocusedServerAreaId, readonly string[]>> = {
   chat: ['src/chat/', 'src/bot.ts'],
   'llm-orchestrator': [
@@ -47,25 +62,17 @@ const CLIENT_SURFACE_PREFIXES: Readonly<Record<ClientSurfaceId, readonly string[
   debug: ['client/debug/'],
 }
 
-const escapeRegExp = (value: string): string => value.replaceAll(/[|\\{}()[\]^$+*?.]/gu, '\\$&')
-
-const architectureIncludePathPatterns = [
-  ...focusedServerAreaIds.flatMap((areaId) => SERVER_AREA_PREFIXES[areaId]),
-  ...clientSurfaceIds.flatMap((surfaceId) => CLIENT_SURFACE_PREFIXES[surfaceId]),
-].map((prefix) => `^${escapeRegExp(prefix)}`)
-
-const isIncludedArchitecturePath = (relativePath: string): boolean =>
-  architectureIncludePathPatterns.some((pattern) => new RegExp(pattern, 'u').test(relativePath))
-
 export const dependencyCruiserOptions = {
   tsConfig: 'tsconfig.json',
-  exclude: { path: ['^tests/', '^review-loop/', '^docs/architecture/', '^client/stories/'] },
+  exclude: { path: [...DEPENDENCY_CRUISER_EXCLUDE_PATHS] },
   doNotFollow: { dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'npm-bundled'] },
-  includeOnly: { path: architectureIncludePathPatterns },
+  includeOnly: { path: ['^src/', '^client/'] },
 }
 
 export const FOCUSED_SERVER_AREA_IDS = [...focusedServerAreaIds]
 export const CLIENT_SURFACE_IDS = [...clientSurfaceIds]
+export const RUNTIME_SERVER_AREA_IDS = [...runtimeServerAreaIds]
+export const RUNTIME_CLIENT_SURFACE_IDS = [...runtimeClientSurfaceIds]
 
 export const isArchitectureRuntimePath = (relativePath: string): boolean => {
   if (!INCLUDED_ROOTS.some((root) => relativePath === root || relativePath.startsWith(`${root}/`))) {
@@ -76,26 +83,38 @@ export const isArchitectureRuntimePath = (relativePath: string): boolean => {
     return false
   }
 
-  return isIncludedArchitecturePath(relativePath)
+  return !NON_RUNTIME_PATH_PATTERNS.some((pattern) => pattern.test(relativePath))
 }
 
 export const slugForArea = (areaId: string): string => areaId.replaceAll('/', '-')
 
-export const serverAreaForPath = (relativePath: string): FocusedServerAreaId | null => {
+export const serverAreaForPath = (relativePath: string): RuntimeServerAreaId | null => {
   for (const areaId of focusedServerAreaIds) {
     if (SERVER_AREA_PREFIXES[areaId].some((prefix) => relativePath.startsWith(prefix))) {
       return areaId
     }
   }
 
+  if (relativePath.startsWith('src/') && isArchitectureRuntimePath(relativePath)) {
+    return SHARED_SERVER_AREA_ID
+  }
+
   return null
 }
 
-export const clientSurfaceForPath = (relativePath: string): ClientSurfaceId | null => {
+export const clientSurfaceForPath = (relativePath: string): RuntimeClientSurfaceId | null => {
   for (const surfaceId of clientSurfaceIds) {
     if (CLIENT_SURFACE_PREFIXES[surfaceId].some((prefix) => relativePath.startsWith(prefix))) {
       return surfaceId
     }
+  }
+
+  if (relativePath.startsWith('client/shared/') && isArchitectureRuntimePath(relativePath)) {
+    return 'shared'
+  }
+
+  if (relativePath.startsWith('client/assets/') && isArchitectureRuntimePath(relativePath)) {
+    return 'assets'
   }
 
   return null

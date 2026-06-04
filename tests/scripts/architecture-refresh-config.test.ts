@@ -10,6 +10,8 @@ import { Glob } from 'bun'
 import {
   CLIENT_SURFACE_IDS,
   FOCUSED_SERVER_AREA_IDS,
+  RUNTIME_CLIENT_SURFACE_IDS,
+  RUNTIME_SERVER_AREA_IDS,
   clientSurfaceForPath,
   isArchitectureRuntimePath,
   serverAreaForPath,
@@ -31,9 +33,12 @@ describe('architecture refresh config', () => {
   test('includes src and client runtime files, but excludes non-runtime paths', () => {
     expect(isArchitectureRuntimePath('src/chat/router.ts')).toBe(true)
     expect(isArchitectureRuntimePath('client/settings/App.svelte')).toBe(true)
-    expect(isArchitectureRuntimePath('client/shared/Modal.svelte')).toBe(false)
-    expect(isArchitectureRuntimePath('client/assets/design-canvas.jsx')).toBe(false)
+    expect(isArchitectureRuntimePath('src/index.ts')).toBe(true)
+    expect(isArchitectureRuntimePath('src/group-settings/registry.ts')).toBe(true)
+    expect(isArchitectureRuntimePath('client/shared/Modal.svelte')).toBe(true)
+    expect(isArchitectureRuntimePath('client/assets/design-canvas.jsx')).toBe(true)
     expect(isArchitectureRuntimePath('client/stories/Button.stories.svelte')).toBe(false)
+    expect(isArchitectureRuntimePath('client/admin/AdminApp.stories.svelte')).toBe(false)
     expect(isArchitectureRuntimePath('tests/scripts/run-semgrep.test.ts')).toBe(false)
     expect(isArchitectureRuntimePath('scripts/build-client.ts')).toBe(false)
     expect(isArchitectureRuntimePath('docs/architecture/overview.md')).toBe(false)
@@ -64,11 +69,17 @@ describe('architecture refresh config', () => {
     expect(serverAreaForPath('src/llm-orchestrator.ts')).toBe('llm-orchestrator')
     expect(serverAreaForPath('src/tools/tools-builder.ts')).toBe('tools')
     expect(serverAreaForPath('src/debug/settings/server.ts')).toBe('settings/debug')
+    expect(serverAreaForPath('src/index.ts')).toBe('shared/runtime')
+    expect(serverAreaForPath('src/group-settings/registry.ts')).toBe('shared/runtime')
 
     expect(CLIENT_SURFACE_IDS).toEqual(['settings', 'admin', 'debug'])
+    expect(RUNTIME_SERVER_AREA_IDS).toContain('shared/runtime')
+    expect(RUNTIME_CLIENT_SURFACE_IDS).toEqual(['settings', 'admin', 'debug', 'shared', 'assets'])
     expect(clientSurfaceForPath('client/settings/App.svelte')).toBe('settings')
     expect(clientSurfaceForPath('client/admin/AdminApp.svelte')).toBe('admin')
     expect(clientSurfaceForPath('client/debug/DebugApp.svelte')).toBe('debug')
+    expect(clientSurfaceForPath('client/shared/Modal.svelte')).toBe('shared')
+    expect(clientSurfaceForPath('client/assets/design-canvas.jsx')).toBe('assets')
   })
 
   test('classifies every current Task 1 runtime path', async () => {
