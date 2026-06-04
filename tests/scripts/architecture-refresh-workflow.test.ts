@@ -24,13 +24,21 @@ const getSection = (workflow: string, startPattern: RegExp, endPattern: RegExp):
 describe('architecture refresh workflow', () => {
   test('targets master pushes with runtime/config path filters and creates a dedicated PR', async () => {
     const workflow = await readFile('.github/workflows/architecture-refresh.yml', 'utf8')
+    const triggerSection = getSection(workflow, /^on:\n/mu, /^permissions:\n/mu)
     const concurrencySection = getSection(workflow, /^concurrency:\n/mu, /^jobs:\n/mu)
     const checkoutStep = getSection(
       workflow,
       /^\s+- uses: actions\/checkout@v4\n/mu,
       /^\s+- uses: oven-sh\/setup-bun@v2\n/mu,
     )
+    const createPullRequestStep = getSection(
+      workflow,
+      /^\s+- name: Create or update architecture refresh PR\n/mu,
+      /^\s+delete-branch: false\n/mu,
+    )
 
+    expect(triggerSection).not.toBeNull()
+    expect(triggerSection).toContain('push:')
     expect(workflow).toContain('branches: [master]')
     expect(workflow).toContain("- 'src/**'")
     expect(workflow).toContain("- 'client/**'")
@@ -51,7 +59,9 @@ describe('architecture refresh workflow', () => {
     expect(checkoutStep).not.toContain('ref:')
     expect(workflow).toContain('graphviz')
     expect(workflow).toContain('bun run architecture:refresh')
-    expect(workflow).toContain('peter-evans/create-pull-request@v8')
+    expect(createPullRequestStep).not.toBeNull()
+    expect(createPullRequestStep).toContain('peter-evans/create-pull-request@v8')
+    expect(createPullRequestStep).toContain('base: master')
     expect(workflow).toContain('automation/architecture-refresh')
     expect(workflow).toContain('docs/architecture/**')
   })
