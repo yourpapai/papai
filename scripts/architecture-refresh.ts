@@ -70,6 +70,8 @@ const dependencyCruiserApiOptions: ICruiseOptions = {
   },
 }
 
+const GRAPHVIZ_PREFLIGHT_DOT = 'digraph architecture_refresh_preflight { preflight -> render }'
+
 const reporterOutputToCruiseResult = (output: IReporterOutput['output']): ICruiseResult => {
   if (typeof output === 'string') {
     throw new Error('Expected dependency-cruiser graph output, received formatted text output')
@@ -173,9 +175,7 @@ export const renderDotToSvg = (dot: string, deps: DotDiscoveryDeps = {}): Promis
   )
 
 const defaultPreflightDiagramRenderer = async (): Promise<void> => {
-  if ((await findDotExecutable()) === null) {
-    throw new Error('Graphviz dot executable not available on PATH or known fallback locations')
-  }
+  await renderDotToSvg(GRAPHVIZ_PREFLIGHT_DOT)
 }
 
 const noopPreflightDiagramRenderer = (): Promise<void> => Promise.resolve()

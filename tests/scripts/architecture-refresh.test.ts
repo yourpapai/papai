@@ -111,6 +111,24 @@ const expectedCommittedArtifactPathsInWorkspace = expectedCommittedArtifactPaths
   path.join(process.cwd(), relativePath),
 )
 
+const restorePathEnvVar = (value: string | undefined): void => {
+  if (value === undefined) {
+    delete process.env['PATH']
+    return
+  }
+
+  process.env['PATH'] = value
+}
+
+const restoreGraphvizDotEnvVar = (value: string | undefined): void => {
+  if (value === undefined) {
+    delete process.env['GRAPHVIZ_DOT']
+    return
+  }
+
+  process.env['GRAPHVIZ_DOT'] = value
+}
+
 describe('runArchitectureRefresh', () => {
   let writes: Array<{ path: string; content: string }>
 
@@ -242,6 +260,49 @@ describe('runArchitectureRefresh', () => {
     expect(rmDir).not.toHaveBeenCalled()
     expect(mkdirp).not.toHaveBeenCalled()
     expect(writeTextFile).not.toHaveBeenCalled()
+  })
+
+  test('proves the default graphviz preflight can render before mutating the output tree', async () => {
+    const rawGraph = createFullCommittedRawGraph()
+    const rmDir = mock((_dirPath: string) => Promise.resolve())
+    const mkdirp = mock((_dirPath: string) => Promise.resolve())
+    const writeTextFile = mock((_filePath: string, _content: string) => Promise.resolve())
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'architecture-refresh-preflight-'))
+    const dotPath = path.join(tempDir, 'dot')
+    const originalPath = process.env['PATH']
+    const originalGraphvizDot = process.env['GRAPHVIZ_DOT']
+
+    try {
+      await writeFile(
+        dotPath,
+        ['#!/bin/sh', '/bin/cat >/dev/null', 'printf "broken dot\\n" >&2', 'exit 1', ''].join('\n'),
+        'utf8',
+      )
+      await chmod(dotPath, 0o755)
+
+      process.env['PATH'] = '/missing/bin'
+      process.env['GRAPHVIZ_DOT'] = dotPath
+
+      await expect(
+        runArchitectureRefresh([], {
+          cruiseGraph: () => Promise.resolve(rawGraph),
+          formatTopLevelGraph: () => Promise.resolve('digraph ready {}'),
+          formatGeneratedFiles: () => Promise.resolve(),
+          rmDir,
+          mkdirp,
+          writeTextFile,
+        }),
+      ).rejects.toThrow('Architecture refresh rendering failed: broken dot')
+
+      expect(rmDir).not.toHaveBeenCalled()
+      expect(mkdirp).not.toHaveBeenCalled()
+      expect(writeTextFile).not.toHaveBeenCalled()
+    } finally {
+      restorePathEnvVar(originalPath)
+      restoreGraphvizDotEnvVar(originalGraphvizDot)
+
+      await rm(tempDir, { recursive: true, force: true })
+    }
   })
 
   test('prefers GRAPHVIZ_DOT before hard-coded fallback candidates', async () => {
