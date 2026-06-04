@@ -151,6 +151,13 @@ export const GroupTaskInstanceResponseSchema = z.object({
 })
 export type GroupTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponseSchema>
 
+export const ContextTaskInstanceResponseSchema = z.object({
+  contextId: z.string(),
+  taskInstanceId: z.string().nullable(),
+  available: z.array(TaskInstanceOptionSchema),
+})
+export type ContextTaskInstanceResponse = z.infer<typeof ContextTaskInstanceResponseSchema>
+
 // --- Admin (lenient: store-shaped rows rendered generically) ---
 
 export const AdminInstanceRowSchema = z

@@ -5,14 +5,21 @@
 
 export const SESSION_COOKIE_NAME = 'papai_settings_session'
 
-const ATTRIBUTES = 'HttpOnly; Secure; SameSite=Lax; Path=/settings'
+const BASE_ATTRIBUTES = 'HttpOnly; SameSite=Lax; Path=/settings'
 
-export function buildSessionCookie(sessionId: string, maxAgeSec: number): string {
-  return `${SESSION_COOKIE_NAME}=${sessionId}; ${ATTRIBUTES}; Max-Age=${maxAgeSec}`
+/**
+ * Build the session cookie. `Secure` is appended only when the request arrived
+ * over HTTPS — browsers silently reject a `Secure` cookie sent over plain HTTP,
+ * which would make the session appear to expire immediately.
+ */
+export function buildSessionCookie(sessionId: string, maxAgeSec: number, secure: boolean): string {
+  const cookie = `${SESSION_COOKIE_NAME}=${sessionId}; ${BASE_ATTRIBUTES}; Max-Age=${maxAgeSec}`
+  return secure ? `${cookie}; Secure` : cookie
 }
 
-export function clearSessionCookie(): string {
-  return `${SESSION_COOKIE_NAME}=; ${ATTRIBUTES}; Max-Age=0`
+export function clearSessionCookie(secure: boolean): string {
+  const cookie = `${SESSION_COOKIE_NAME}=; ${BASE_ATTRIBUTES}; Max-Age=0`
+  return secure ? `${cookie}; Secure` : cookie
 }
 
 export function parseSessionCookie(req: Request): string | null {

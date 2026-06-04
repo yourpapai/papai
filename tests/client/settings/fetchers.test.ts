@@ -8,8 +8,10 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import {
   exchangeCode,
   fetchConfig,
+  fetchContextTaskInstance,
   onUnauthorized,
   patchConfig,
+  patchContextTaskInstance,
   setCsrfToken,
 } from '../../../client/settings/fetchers.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
@@ -25,6 +27,7 @@ const json = (payload: unknown, status = 200): Response =>
 const parseBody = (body: BodyInit | null | undefined): unknown => (typeof body === 'string' ? JSON.parse(body) : null)
 const bodyString = (init: RequestInit): string => JSON.stringify(parseBody(init.body))
 const csrfHeader = (init: RequestInit): string => new Headers(init.headers).get('X-Settings-CSRF') ?? ''
+const methodOf = (init: RequestInit): string => (init.method ?? 'GET').toUpperCase()
 
 describe('fetchers', () => {
   test('exchangeCode posts the code and returns the bootstrap payload', async () => {
@@ -59,6 +62,35 @@ describe('fetchers', () => {
     })
     await fetchConfig('g:1')
     expect(seenUrl).toContain('contextId=g%3A1')
+  })
+
+  test('fetchContextTaskInstance GETs the context endpoint with contextId in the query', async () => {
+    let seenUrl = ''
+    setMockFetch((url) => {
+      seenUrl = url
+      return Promise.resolve(json({ contextId: 'user:1', taskInstanceId: null, available: [] }))
+    })
+    const data = await fetchContextTaskInstance('user:1')
+    expect(seenUrl).toContain('/settings/api/context/task-instance')
+    expect(seenUrl).toContain('contextId=user%3A1')
+    expect(data.taskInstanceId).toBeNull()
+  })
+
+  test('patchContextTaskInstance PATCHes with body and CSRF header', async () => {
+    setCsrfToken('csrf-xyz')
+    let method = ''
+    let header = ''
+    let seenBody = ''
+    setMockFetch((_url, init) => {
+      method = methodOf(init)
+      header = csrfHeader(init)
+      seenBody = bodyString(init)
+      return Promise.resolve(json({ ok: true, contextId: 'user:1' }))
+    })
+    await patchContextTaskInstance({ taskInstanceId: 'yt-default', contextId: 'user:1' })
+    expect(method).toBe('PATCH')
+    expect(header).toBe('csrf-xyz')
+    expect(seenBody).toBe(JSON.stringify({ taskInstanceId: 'yt-default', contextId: 'user:1' }))
   })
 
   test('a 401 fires registered unauthorized handlers', async () => {

@@ -10,6 +10,21 @@ import { type SessionRecord, getSession } from './session-store.js'
 
 export const CSRF_HEADER = 'X-Settings-CSRF'
 
+/**
+ * Whether the request arrived over HTTPS. Behind a reverse proxy the real scheme
+ * is carried by the LAST `X-Forwarded-Proto` hop the trusted proxy appended;
+ * otherwise fall back to the request URL's protocol. Used to gate the `Secure`
+ * cookie attribute — emitting `Secure` over plain HTTP makes browsers drop the cookie.
+ */
+export function isSecureRequest(req: Request): boolean {
+  const proto = req.headers.get('X-Forwarded-Proto')
+  if (proto !== null) {
+    const first = proto.split(',')[0]?.trim()
+    return first === 'https'
+  }
+  return new URL(req.url).protocol === 'https:'
+}
+
 export type AuthenticatedSettingsRequest = {
   readonly sessionId: string
   readonly session: SessionRecord

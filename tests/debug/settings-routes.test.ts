@@ -84,9 +84,36 @@ describe('settings routes', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('Set-Cookie')).toContain(`${SESSION_COOKIE_NAME}=`)
     expect(res.headers.get('Set-Cookie')).toContain('HttpOnly')
+    // HTTPS request → cookie carries Secure.
+    expect(res.headers.get('Set-Cookie')).toContain('Secure')
     const body = await readJson(res)
     expect(typeof pickString(body, 'csrfToken')).toBe('string')
     expect(Array.isArray(pickArray(body, 'contexts'))).toBe(true)
+  })
+
+  test('exchange over plain HTTP omits Secure so the browser keeps the cookie', async () => {
+    const code = issueAuthCode(principal, 1000)
+    const req = new Request('http://x/settings/auth/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+    const res = await handleSettingsExchange(req, 2000)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Set-Cookie')).toContain(`${SESSION_COOKIE_NAME}=`)
+    expect(res.headers.get('Set-Cookie')).not.toContain('Secure')
+  })
+
+  test('exchange behind a TLS-terminating proxy (X-Forwarded-Proto) keeps Secure', async () => {
+    const code = issueAuthCode(principal, 1000)
+    const req = new Request('http://x/settings/auth/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
+      body: JSON.stringify({ code }),
+    })
+    const res = await handleSettingsExchange(req, 2000)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Set-Cookie')).toContain('Secure')
   })
 
   test('bootstrap rejects an unauthenticated request with 401', () => {

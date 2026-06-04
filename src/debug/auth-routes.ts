@@ -13,17 +13,9 @@ import {
   revokeSession,
 } from '../dashboard-auth/index.js'
 import { logger } from '../logger.js'
+import { isSecureRequest } from '../settings/request-auth.js'
 
 const log = logger.child({ scope: 'auth-routes' })
-
-const isSecureRequest = (req: Request): boolean => {
-  const proto = req.headers.get('X-Forwarded-Proto')
-  if (proto !== null) {
-    const first = proto.split(',')[0]?.trim()
-    return first === 'https'
-  }
-  return new URL(req.url).protocol === 'https:'
-}
 
 export const handleAuthClaim = (req: Request, url: URL): Response => {
   const nonce = url.searchParams.get('n')

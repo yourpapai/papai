@@ -8,6 +8,7 @@ import { handleAdminPluginConfigRoutes } from './settings/admin/plugin-config-ro
 import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
 import { handleAdminSystemAccessRoutes } from './settings/admin/system-access-routes.js'
 import { handleConfigRoutes } from './settings/config-routes.js'
+import { handleContextTaskInstanceRoutes } from './settings/context-task-instance-routes.js'
 import { handleGroupRoutes } from './settings/group-routes.js'
 import { handleIdentityRoutes } from './settings/identity-routes.js'
 import { handleMcpRoutes } from './settings/mcp-routes.js'
@@ -47,6 +48,7 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
     return handleAdminPluginConfigRoutes(req, url, url.pathname)
   }
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
+  if (url.pathname === '/settings/api/context/task-instance') return handleContextTaskInstanceRoutes(req, url)
   if (url.pathname === '/settings/api/tools' || url.pathname === '/settings/api/tools/toggle') {
     return handleToolsRoutes(req, url, url.pathname)
   }

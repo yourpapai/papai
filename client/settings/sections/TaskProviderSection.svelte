@@ -7,13 +7,14 @@
   import { untrack } from 'svelte'
 
   import Btn from '../../shared/ui/Btn.svelte'
-  import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import Field from '../../shared/ui/Field.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
+  import Select from '../../shared/ui/Select.svelte'
   import SummaryList from '../../shared/ui/SummaryList.svelte'
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
-  import type { ConfigField, ProvisionResult } from '../fetcher-schemas.js'
-  import { fetchConfig, provisionKaneo } from '../fetchers.js'
+  import type { ConfigField, ContextTaskInstanceResponse, ProvisionResult } from '../fetcher-schemas.js'
+  import { fetchConfig, fetchContextTaskInstance, patchContextTaskInstance, provisionKaneo } from '../fetchers.js'
 
   interface Props {
     contextId: string
@@ -28,17 +29,46 @@
   let provisionError: string | null = $state(null)
   let provisioned: ProvisionResult | null = $state(null)
 
+  let instanceData: ContextTaskInstanceResponse | null = $state(null)
+  let selectedInstanceId = $state('')
+  let bindError: string | null = $state(null)
+  let bindStatus: string | null = $state(null)
+  let binding = $state(false)
+
   const visible = $derived(fields.filter((field) => field.kind === 'provider-context'))
 
   async function load(id: string): Promise<void> {
     error = null
     loading = true
     try {
-      fields = (await fetchConfig(id)).fields
+      const [config, instance] = await Promise.all([fetchConfig(id), fetchContextTaskInstance(id)])
+      fields = config.fields
+      instanceData = instance
+      const currentId = instance.taskInstanceId
+      selectedInstanceId =
+        currentId !== null && instance.available.some((a) => a.id === currentId)
+          ? currentId
+          : (instance.available[0]?.id ?? '')
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
       loading = false
+    }
+  }
+
+  async function bindInstance(): Promise<void> {
+    bindError = null
+    bindStatus = null
+    if (selectedInstanceId === '') return
+    binding = true
+    try {
+      await patchContextTaskInstance({ taskInstanceId: selectedInstanceId, contextId })
+      bindStatus = 'Task instance bound.'
+      await load(contextId)
+    } catch (err) {
+      bindError = err instanceof Error ? err.message : String(err)
+    } finally {
+      binding = false
     }
   }
 
@@ -82,14 +112,39 @@
     <p class="status-error">{error}</p>
   {:else if loading}
     <p class="placeholder">Loading…</p>
-  {:else if visible.length === 0}
-    <EmptyState title="No task-provider credentials" hint="No task-provider credentials for this context." />
   {:else}
-    <div class="settings-field-list">
-      {#each visible as field (field.key)}
-        <ConfigFieldRow {contextId} {field} onSaved={() => void load(contextId)} />
-      {/each}
-    </div>
+    {#if instanceData !== null}
+      <div class="settings-task-instance">
+        {#if bindError !== null}<p class="status-error">{bindError}</p>{/if}
+        {#if bindStatus !== null}<p class="status-success">{bindStatus}</p>{/if}
+        {#if instanceData.available.length === 0}
+          <p class="placeholder">No active task instances available. Ask an admin to create one.</p>
+        {:else}
+          <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void bindInstance() }}>
+            <Field label="Task instance">
+              <Select
+                value={selectedInstanceId}
+                options={instanceData.available.map((o) => ({ value: o.id, label: `${o.id} (${o.type} · ${o.status})` }))}
+                onChange={(v) => (selectedInstanceId = v)}
+                testid="context-task-instance" />
+            </Field>
+            <Btn variant="primary" type="submit" disabled={binding} testid="context-task-instance-save">
+              {#snippet children()}{binding ? 'Binding…' : 'Bind'}{/snippet}
+            </Btn>
+          </form>
+        {/if}
+      </div>
+    {/if}
+
+    {#if visible.length > 0}
+      <div class="settings-field-list">
+        {#each visible as field (field.key)}
+          <ConfigFieldRow {contextId} {field} onSaved={() => void load(contextId)} />
+        {/each}
+      </div>
+    {:else if instanceData?.taskInstanceId == null}
+      <p class="placeholder">Bind a task instance above to configure its credentials.</p>
+    {/if}
   {/if}
 
   <div class="settings-provision">

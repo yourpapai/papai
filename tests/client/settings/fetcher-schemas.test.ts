@@ -9,6 +9,7 @@ import {
   AdminInstancesResponseSchema,
   BootstrapSchema,
   ConfigResponseSchema,
+  ContextTaskInstanceResponseSchema,
   IdentityResponseSchema,
   ProviderTypesResponseSchema,
   McpResponseSchema,
@@ -115,6 +116,25 @@ describe('fetcher-schemas', () => {
       unreadable: [{ table: 'task_instances', id: 'ti-broken', type: 'kaneo', error: 'Encrypted payload' }],
     })
     expect(parsed.instances).toHaveLength(1)
+  })
+
+  test('ContextTaskInstanceResponseSchema parses a bound payload', () => {
+    const parsed = ContextTaskInstanceResponseSchema.parse({
+      contextId: 'user:1',
+      taskInstanceId: 'yt-default',
+      available: [{ id: 'yt-default', type: 'youtrack', status: 'active' }],
+    })
+    expect(parsed.taskInstanceId).toBe('yt-default')
+    expect(parsed.available[0]?.type).toBe('youtrack')
+  })
+
+  test('ContextTaskInstanceResponseSchema accepts a null taskInstanceId', () => {
+    const parsed = ContextTaskInstanceResponseSchema.parse({
+      contextId: 'user:1',
+      taskInstanceId: null,
+      available: [],
+    })
+    expect(parsed.taskInstanceId).toBeNull()
   })
 
   test('ProviderTypesResponseSchema preserves storageKey on instance config fields', () => {

@@ -7,6 +7,7 @@ import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
   BootstrapSchema,
   ConfigResponseSchema,
+  ContextTaskInstanceResponseSchema,
   GroupMembersResponseSchema,
   GroupTaskInstanceResponseSchema,
   IdentityResponseSchema,
@@ -16,6 +17,7 @@ import {
   ToolsResponseSchema,
   type BootstrapData,
   type ConfigResponse,
+  type ContextTaskInstanceResponse,
   type GroupMembersResponse,
   type GroupTaskInstanceResponse,
   type IdentityResponse,
@@ -181,3 +183,11 @@ export const fetchGroupTaskInstance = (contextId: string): Promise<GroupTaskInst
 
 export const patchGroupTaskInstance = (input: { taskInstanceId: string; contextId: string }): Promise<unknown> =>
   writeJson('/settings/api/group/task-instance', 'PATCH', input, (b) => b)
+
+export const fetchContextTaskInstance = (contextId: string): Promise<ContextTaskInstanceResponse> =>
+  getJson(`/settings/api/context/task-instance?${ctxQuery(contextId)}`, (b) =>
+    ContextTaskInstanceResponseSchema.parse(b),
+  )
+
+export const patchContextTaskInstance = (input: { taskInstanceId: string; contextId: string }): Promise<unknown> =>
+  writeJson('/settings/api/context/task-instance', 'PATCH', input, (b) => b)

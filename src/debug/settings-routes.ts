@@ -11,7 +11,7 @@ import { listAvailableContexts } from '../settings/contexts.js'
 import { buildSessionCookie, clearSessionCookie } from '../settings/cookies.js'
 import { resolveSettingsPrincipal } from '../settings/principal.js'
 import { consumeSettingsQuota } from '../settings/rate-limit.js'
-import { authenticateSettingsRequest, verifyCsrf } from '../settings/request-auth.js'
+import { authenticateSettingsRequest, isSecureRequest, verifyCsrf } from '../settings/request-auth.js'
 import { requireScope } from '../settings/scope-guard.js'
 import { createSession, deleteSession, rotateSessionCsrf } from '../settings/session-store.js'
 import { listUsers } from '../users.js'
@@ -83,7 +83,7 @@ export async function handleSettingsExchange(req: Request, nowMs: number = Date.
       principal: { isBotAdmin: resolved.isBotAdmin, isSuperAdmin: resolved.isSuperAdmin },
       contexts: listAvailableContexts(resolved),
     },
-    { 'Set-Cookie': buildSessionCookie(created.sessionId, maxAgeSec) },
+    { 'Set-Cookie': buildSessionCookie(created.sessionId, maxAgeSec, isSecureRequest(req)) },
   )
 }
 
@@ -111,11 +111,11 @@ export function handleSettingsBootstrap(req: Request, nowMs: number = Date.now()
 export function handleSettingsLogout(req: Request, nowMs: number = Date.now()): Response {
   const authed = authenticateSettingsRequest(req, nowMs)
   if (authed === null) {
-    return jsonResponse(401, { error: 'unauthenticated' }, { 'Set-Cookie': clearSessionCookie() })
+    return jsonResponse(401, { error: 'unauthenticated' }, { 'Set-Cookie': clearSessionCookie(isSecureRequest(req)) })
   }
   if (!verifyCsrf(req, authed.session)) {
     return jsonResponse(403, { error: 'invalid csrf token' })
   }
   deleteSession(authed.sessionId)
-  return jsonResponse(200, { ok: true }, { 'Set-Cookie': clearSessionCookie() })
+  return jsonResponse(200, { ok: true }, { 'Set-Cookie': clearSessionCookie(isSecureRequest(req)) })
 }

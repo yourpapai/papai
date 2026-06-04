@@ -54,10 +54,50 @@ const provisionPayload = {
   workspaceId: 'w1',
 }
 
-const routeProvisionMock = (url: string): Promise<Response> => {
-  if (url.includes('/settings/api/provision/kaneo')) return Promise.resolve(json(provisionPayload))
-  return Promise.resolve(json(configPayload))
+const boundInstancePayload = {
+  contextId: 'user:1',
+  taskInstanceId: 'yt-default',
+  available: [{ id: 'yt-default', type: 'youtrack', status: 'active' }],
 }
+
+const unboundInstancePayload = {
+  contextId: 'user:1',
+  taskInstanceId: null,
+  available: [{ id: 'yt-default', type: 'youtrack', status: 'active' }],
+}
+
+const noInstancesPayload = { contextId: 'user:1', taskInstanceId: null, available: [] }
+
+/** Route both the config and the context task-instance endpoints from a single mock. */
+const routeMock =
+  (instance: unknown, config: unknown = configPayload) =>
+  (url: string): Promise<Response> => {
+    if (url.includes('/settings/api/context/task-instance')) return Promise.resolve(json(instance))
+    if (url.includes('/settings/api/provision/kaneo')) return Promise.resolve(json(provisionPayload))
+    return Promise.resolve(json(config))
+  }
+
+interface PatchRecord {
+  method: string
+  body: string
+}
+
+/**
+ * Route the context task-instance endpoint, recording any PATCH into `sink.value`.
+ * GET returns the unbound payload; the config endpoint returns no fields.
+ */
+const routeBindingMock =
+  (sink: { value: PatchRecord | null }) =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const isInstance = url.includes('/settings/api/context/task-instance')
+    if (isInstance && method === 'PATCH') {
+      sink.value = { method, body: typeof init?.body === 'string' ? init.body : '' }
+      return Promise.resolve(json({ ok: true, contextId: 'user:1' }))
+    }
+    if (isInstance) return Promise.resolve(json(unboundInstancePayload))
+    return Promise.resolve(json({ contextId: 'user:1', fields: [] }))
+  }
 
 afterEach(() => {
   restoreFetch()
@@ -66,7 +106,7 @@ afterEach(() => {
 
 describe('TaskProviderSection', () => {
   test('renders provider-context fields only', async () => {
-    setMockFetch(() => Promise.resolve(json(configPayload)))
+    setMockFetch(routeMock(boundInstancePayload))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
@@ -78,7 +118,7 @@ describe('TaskProviderSection', () => {
 
   test('provision reveals one-time credentials', async () => {
     setCsrfToken('c')
-    setMockFetch(routeProvisionMock)
+    setMockFetch(routeMock(boundInstancePayload))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
@@ -92,7 +132,7 @@ describe('TaskProviderSection', () => {
   })
 
   test('renders refresh + provision as kit Btns', () => {
-    setMockFetch(() => Promise.resolve(json(configPayload)))
+    setMockFetch(routeMock(boundInstancePayload))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'ctx' } })
@@ -102,12 +142,50 @@ describe('TaskProviderSection', () => {
   })
 
   test('renders section header via PageHeader', async () => {
-    setMockFetch(() => Promise.resolve(json(configPayload)))
+    setMockFetch(routeMock(boundInstancePayload))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
     await drain()
     expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Task provider')
+    void unmount(component)
+  })
+
+  test('shows the instance selector when no instance is bound', async () => {
+    setMockFetch(routeMock(unboundInstancePayload, { contextId: 'user:1', fields: [] }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="context-task-instance"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('shows an empty hint when no active instances are available', async () => {
+    setMockFetch(routeMock(noInstancesPayload, { contextId: 'user:1', fields: [] }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="context-task-instance"]')).toBeNull()
+    expect(target.textContent).toContain('No active task instances available')
+    void unmount(component)
+  })
+
+  test('binding an instance PATCHes the context endpoint and re-fetches', async () => {
+    setCsrfToken('c')
+    const sink: { value: PatchRecord | null } = { value: null }
+    setMockFetch(routeBindingMock(sink))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="context-task-instance-save"]')!.click()
+    await drain()
+    const patched = sink.value
+    expect(patched).not.toBeNull()
+    expect(patched!.method).toBe('PATCH')
+    expect(JSON.parse(patched!.body)).toEqual({ taskInstanceId: 'yt-default', contextId: 'user:1' })
     void unmount(component)
   })
 })

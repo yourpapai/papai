@@ -142,7 +142,7 @@ Then configure runtime settings:
 
 1. Ensure `SETTINGS_PUBLIC_BASE_URL` is set to the bot's public base URL (e.g. `https://bot.example.com`)
 2. DM the bot and run `/config` to receive a single-use link to the settings web UI
-3. Complete personal settings (task provider credentials, timezone) in the web UI
+3. In the web UI Task provider section, bind the context to an active task instance, then enter its credentials (the credential fields appear only after a task instance is bound) and set your timezone
 4. For group settings, open `/config` in DM and select the group context in the web UI
 
 > LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#system` without restarting the bot.
@@ -202,12 +202,12 @@ flowchart TD
 <details>
 <summary><b>Startup And Bootstrap Variables</b> (click to expand)</summary>
 
-| Variable                   | When required                    | Description                                                                                                                    | Example                                               |
-| -------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| `ADMIN_USER_ID`            | Always                           | Initial authorized admin identity                                                                                              | Platform user ID string seen by the active adapter    |
-| `CHAT_PROVIDER`            | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                                                            | `telegram`, `mattermost`, `discord`, or `kontur-talk` |
-| `SETTINGS_PUBLIC_BASE_URL` | For the settings web UI          | External base URL used to build single-use `/config` settings links and scope the settings cookie; `/config` errors without it | `https://bot.example.com`                             |
-| `INSTANCE_CONFIG_KEY`      | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset                                | 64 hex chars                                          |
+| Variable                   | When required                    | Description                                                                                                                                                      | Example                                               |
+| -------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `ADMIN_USER_ID`            | Always                           | Initial authorized admin identity                                                                                                                                | Platform user ID string seen by the active adapter    |
+| `CHAT_PROVIDER`            | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                                                                                              | `telegram`, `mattermost`, `discord`, or `kontur-talk` |
+| `SETTINGS_PUBLIC_BASE_URL` | For the settings web UI          | External base URL used to build single-use `/config` settings links; `/config` errors without it (the settings cookie is marked `Secure` only on HTTPS requests) | `https://bot.example.com`                             |
+| `INSTANCE_CONFIG_KEY`      | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset                                                                  | 64 hex chars                                          |
 
 </details>
 
