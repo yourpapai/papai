@@ -217,6 +217,33 @@ describe('runArchitectureRefresh', () => {
     ).rejects.toThrow('Architecture refresh rendering failed: dot exited with code 1')
   })
 
+  test('leaves the output tree untouched when graphviz is unavailable before rendering starts', async () => {
+    const rawGraph = createFullCommittedRawGraph()
+    const rmDir = mock((_dirPath: string) => Promise.resolve())
+    const mkdirp = mock((_dirPath: string) => Promise.resolve())
+    const writeTextFile = mock((_filePath: string, _content: string) => Promise.resolve())
+
+    await expect(
+      runArchitectureRefresh([], {
+        cruiseGraph: () => Promise.resolve(rawGraph),
+        formatTopLevelGraph: () => Promise.resolve('digraph ready {}'),
+        renderDotToSvg: (_dot) => Promise.resolve('<svg/>'),
+        preflightDiagramRenderer: () =>
+          Promise.reject(new Error('Graphviz dot executable not available on PATH or known fallback locations')),
+        formatGeneratedFiles: () => Promise.resolve(),
+        rmDir,
+        mkdirp,
+        writeTextFile,
+      }),
+    ).rejects.toThrow(
+      'Architecture refresh rendering failed: Graphviz dot executable not available on PATH or known fallback locations',
+    )
+
+    expect(rmDir).not.toHaveBeenCalled()
+    expect(mkdirp).not.toHaveBeenCalled()
+    expect(writeTextFile).not.toHaveBeenCalled()
+  })
+
   test('prefers GRAPHVIZ_DOT before hard-coded fallback candidates', async () => {
     const checkedPaths: string[] = []
     const accessResults = [

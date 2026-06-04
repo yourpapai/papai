@@ -35,6 +35,7 @@ export interface RunArchitectureRefreshDeps {
   readonly cruiseGraph?: () => Promise<ICruiseResult>
   readonly formatTopLevelGraph?: (kind: 'archi' | 'ddot', raw: ICruiseResult) => Promise<string>
   readonly renderDotToSvg?: (dot: string) => Promise<string>
+  readonly preflightDiagramRenderer?: () => Promise<void>
   readonly formatGeneratedFiles?: (filePaths: readonly string[]) => Promise<void>
   readonly rmDir?: (dirPath: string) => Promise<void>
   readonly mkdirp?: (dirPath: string) => Promise<void>
@@ -99,10 +100,8 @@ const serverOnlyRawGraph = (raw: ICruiseResult): ICruiseResult => ({
   modules: raw.modules.filter((module) => module.source.startsWith('src/')),
 })
 
-const defaultFormatTopLevelGraph = async (kind: 'archi' | 'ddot', raw: ICruiseResult): Promise<string> => {
-  const result = await format(serverOnlyRawGraph(raw), { outputType: kind })
-  return reporterOutputToText(result.output)
-}
+const defaultFormatTopLevelGraph = async (kind: 'archi' | 'ddot', raw: ICruiseResult): Promise<string> =>
+  reporterOutputToText((await format(serverOnlyRawGraph(raw), { outputType: kind })).output)
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -173,13 +172,17 @@ export const renderDotToSvg = (dot: string, deps: DotDiscoveryDeps = {}): Promis
         }),
   )
 
-const defaultRenderDotToSvg = (dot: string): Promise<string> => renderDotToSvg(dot)
+const defaultPreflightDiagramRenderer = async (): Promise<void> => {
+  if ((await findDotExecutable()) === null) {
+    throw new Error('Graphviz dot executable not available on PATH or known fallback locations')
+  }
+}
+
+const noopPreflightDiagramRenderer = (): Promise<void> => Promise.resolve()
 
 const defaultRmDir = (dirPath: string): Promise<void> => rm(dirPath, { recursive: true, force: true })
 
-const defaultMkdirp = async (dirPath: string): Promise<void> => {
-  await mkdir(dirPath, { recursive: true })
-}
+const defaultMkdirp = (dirPath: string): Promise<void> => mkdir(dirPath, { recursive: true }).then(() => undefined)
 
 const defaultWriteTextFile = (filePath: string, content: string): Promise<void> => writeFile(filePath, content, 'utf8')
 
@@ -247,7 +250,10 @@ export const runArchitectureRefresh = async (
 ): Promise<void> => {
   const cruiseGraph = deps.cruiseGraph ?? defaultCruiseGraph
   const formatTopLevelGraph = deps.formatTopLevelGraph ?? defaultFormatTopLevelGraph
-  const renderDotToSvgFile = deps.renderDotToSvg ?? defaultRenderDotToSvg
+  const renderDotToSvgFile = deps.renderDotToSvg ?? renderDotToSvg
+  const preflightDiagramRenderer =
+    deps.preflightDiagramRenderer ??
+    (deps.renderDotToSvg === undefined ? defaultPreflightDiagramRenderer : noopPreflightDiagramRenderer)
   const formatGeneratedFiles = deps.formatGeneratedFiles ?? defaultFormatGeneratedFiles
   const rmDir = deps.rmDir ?? defaultRmDir
   const mkdirp = deps.mkdirp ?? defaultMkdirp
@@ -259,27 +265,23 @@ export const runArchitectureRefresh = async (
   } catch (error) {
     throw new Error(`Architecture refresh graph generation failed: ${errorMessage(error)}`, { cause: error })
   }
-
   let model: ArchitectureModel
   try {
     model = normalizeArchitectureGraph(raw)
   } catch (error) {
     throw new Error(`Architecture refresh normalization failed: ${errorMessage(error)}`, { cause: error })
   }
-
-  const outputRoot = path.join(process.cwd(), ARCHITECTURE_OUTPUT_DIR)
-  const outputFiles = buildArchitectureOutputFiles(model)
-
-  const writeManagedFile = async (relativePath: string, content: string): Promise<void> => {
-    const absolutePath = path.join(outputRoot, relativePath)
-    await mkdirp(path.dirname(absolutePath))
-    await writeTextFile(absolutePath, content)
-  }
-
+  const outputFiles = buildArchitectureOutputFiles(model),
+    outputRoot = path.join(process.cwd(), ARCHITECTURE_OUTPUT_DIR)
+  const writeManagedFile = async (relativePath: string, content: string): Promise<void> =>
+    writeTextFile(
+      await mkdirp(path.dirname(path.join(outputRoot, relativePath))).then(() => path.join(outputRoot, relativePath)),
+      content,
+    )
   try {
+    await preflightDiagramRenderer()
     await rmDir(outputRoot)
     await writeManagedFile('raw/dependency-cruiser.json', `${JSON.stringify(raw, null, 2)}\n`)
-
     await Promise.all(outputFiles.map((file) => writeManagedFile(file.relativePath, file.content)))
     await formatGeneratedFiles([
       path.join(outputRoot, 'raw/dependency-cruiser.json'),
@@ -291,6 +293,4 @@ export const runArchitectureRefresh = async (
   }
 }
 
-if (import.meta.main) {
-  await runArchitectureRefresh(process.argv.slice(2))
-}
+if (import.meta.main) await runArchitectureRefresh(process.argv.slice(2))
