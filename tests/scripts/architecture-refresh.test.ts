@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { constants } from 'node:fs'
+import path from 'node:path'
 
 import type { DependencyType, ICruiseResult, IDependency, IModule, ISummary } from 'dependency-cruiser'
 
@@ -43,18 +45,69 @@ const createSummary = (): ISummary => ({
   optionsUsed: { outputType: 'json' },
 })
 
-const createRawGraph = (): ICruiseResult => ({
+const createFullCommittedRawGraph = (): ICruiseResult => ({
   modules: [
-    createModule('src/chat/router.ts', ['src/tools/tools-builder.ts']),
-    createModule('src/tools/tools-builder.ts', []),
+    createModule('src/chat/router.ts', ['src/tools/tools-builder.ts', 'src/llm-orchestrator/index.ts']),
+    createModule('src/llm-orchestrator/index.ts', ['src/providers/registry.ts']),
+    createModule('src/tools/tools-builder.ts', ['src/identity/store.ts']),
+    createModule('src/providers/registry.ts', ['src/instances/store.ts']),
+    createModule('src/attachments/store.ts', ['src/instances/store.ts']),
+    createModule('src/message-queue/queue.ts', ['src/chat/router.ts']),
+    createModule('src/instances/store.ts', []),
+    createModule('src/identity/store.ts', ['src/settings/session.ts']),
+    createModule('src/deferred-prompts/scheduler.ts', ['src/memos.ts']),
+    createModule('src/memory/index.ts', ['src/web/fetch.ts']),
+    createModule('src/mcp/server.ts', ['src/web/fetch.ts']),
+    createModule('src/settings/session.ts', ['src/stats/collector.ts']),
+    createModule('src/stats/collector.ts', []),
     createModule('client/settings/App.svelte', ['src/settings/session.ts']),
-    createModule('src/settings/session.ts', []),
+    createModule('client/admin/App.svelte', ['src/settings/session.ts']),
+    createModule('client/debug/App.tsx', ['src/chat/router.ts']),
   ],
   summary: createSummary(),
 })
 
-const hasWrittenPath = (writePaths: readonly string[], expectedSuffix: string): boolean =>
-  writePaths.some((writePath) => writePath.includes(expectedSuffix))
+const expectedCommittedArtifactPaths = [
+  'docs/architecture/architecture-llm.json',
+  'docs/architecture/client/admin.svg',
+  'docs/architecture/client/debug.svg',
+  'docs/architecture/client/overview.md',
+  'docs/architecture/client/settings.svg',
+  'docs/architecture/diagrams/server-archi.svg',
+  'docs/architecture/diagrams/server-ddot.svg',
+  'docs/architecture/overview.md',
+  'docs/architecture/raw/dependency-cruiser.json',
+  'docs/architecture/server/attachments.md',
+  'docs/architecture/server/attachments.svg',
+  'docs/architecture/server/chat.md',
+  'docs/architecture/server/chat.svg',
+  'docs/architecture/server/deferred-prompts.md',
+  'docs/architecture/server/deferred-prompts.svg',
+  'docs/architecture/server/identity.md',
+  'docs/architecture/server/identity.svg',
+  'docs/architecture/server/instances.md',
+  'docs/architecture/server/instances.svg',
+  'docs/architecture/server/llm-orchestrator.md',
+  'docs/architecture/server/llm-orchestrator.svg',
+  'docs/architecture/server/mcp-web.md',
+  'docs/architecture/server/mcp-web.svg',
+  'docs/architecture/server/memory-memos.md',
+  'docs/architecture/server/memory-memos.svg',
+  'docs/architecture/server/message-queue.md',
+  'docs/architecture/server/message-queue.svg',
+  'docs/architecture/server/providers-plugins.md',
+  'docs/architecture/server/providers-plugins.svg',
+  'docs/architecture/server/settings-debug.md',
+  'docs/architecture/server/settings-debug.svg',
+  'docs/architecture/server/stats-usage.md',
+  'docs/architecture/server/stats-usage.svg',
+  'docs/architecture/server/tools.md',
+  'docs/architecture/server/tools.svg',
+] as const
+
+const expectedCommittedArtifactPathsInWorkspace = expectedCommittedArtifactPaths.map((relativePath) =>
+  path.join(process.cwd(), relativePath),
+)
 
 describe('runArchitectureRefresh', () => {
   let writes: Array<{ path: string; content: string }>
@@ -63,8 +116,8 @@ describe('runArchitectureRefresh', () => {
     writes = []
   })
 
-  test('writes the canonical raw graph, reduced json, top-level server diagrams, focused server docs, and client artifacts', async () => {
-    const rawGraph = createRawGraph()
+  test('writes the full committed Task 4 artifact set', async () => {
+    const rawGraph = createFullCommittedRawGraph()
 
     await runArchitectureRefresh([], {
       cruiseGraph: () => Promise.resolve(rawGraph),
@@ -73,23 +126,13 @@ describe('runArchitectureRefresh', () => {
       formatGeneratedFiles: () => Promise.resolve(),
       rmDir: () => Promise.resolve(),
       mkdirp: () => Promise.resolve(),
-      writeTextFile: (path, content) => {
-        writes.push({ path, content })
+      writeTextFile: (filePath, content) => {
+        writes.push({ path: filePath, content })
         return Promise.resolve()
       },
     })
 
-    const writePaths = writes.map((entry) => entry.path)
-
-    expect(hasWrittenPath(writePaths, 'docs/architecture/raw/dependency-cruiser.json')).toBe(true)
-    expect(hasWrittenPath(writePaths, 'docs/architecture/architecture-llm.json')).toBe(true)
-    expect(hasWrittenPath(writePaths, 'docs/architecture/overview.md')).toBe(true)
-    expect(hasWrittenPath(writePaths, 'docs/architecture/diagrams/server-archi.svg')).toBe(true)
-    expect(hasWrittenPath(writePaths, 'docs/architecture/diagrams/server-ddot.svg')).toBe(true)
-    expect(hasWrittenPath(writePaths, 'docs/architecture/server/chat.md')).toBe(true)
-    expect(hasWrittenPath(writePaths, 'docs/architecture/server/chat.svg')).toBe(true)
-    expect(hasWrittenPath(writePaths, 'docs/architecture/client/overview.md')).toBe(true)
-    expect(hasWrittenPath(writePaths, 'docs/architecture/client/settings.svg')).toBe(true)
+    expect(writes.map((entry) => entry.path).sort()).toEqual([...expectedCommittedArtifactPathsInWorkspace].sort())
   })
 
   test('resolves dot from PATH before falling back to hard-coded locations', async () => {
@@ -135,5 +178,53 @@ describe('runArchitectureRefresh', () => {
 
     expect(svg).toContain('Graphviz dot executable not available')
     expect(svg).toContain('digraph test {}')
+  })
+
+  test('prefers GRAPHVIZ_DOT before hard-coded fallback candidates', async () => {
+    const checkedPaths: string[] = []
+    const accessResults = [
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolve()
+        }, 10)
+      }),
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolve()
+        }, 0)
+      }),
+      new Promise<void>(() => {}),
+    ]
+
+    const executable = await findDotExecutable({
+      env: {
+        PATH: '/missing/bin',
+        GRAPHVIZ_DOT: '/custom/bin/dot',
+      },
+      whichExecutable: () => null,
+      accessPath: (candidate) => {
+        checkedPaths.push(candidate)
+        return accessResults.shift()!
+      },
+    })
+
+    expect(executable).toBe('/custom/bin/dot')
+    expect(checkedPaths).toEqual(['/custom/bin/dot'])
+  })
+
+  test('ignores readable-but-non-executable fallback candidates', async () => {
+    const accessPath = mock((_candidate: string, _mode?: number) => Promise.reject(new Error('not executable')))
+
+    const executable = await findDotExecutable({
+      env: {
+        PATH: '/missing/bin',
+        GRAPHVIZ_DOT: '/custom/bin/dot',
+      },
+      whichExecutable: () => null,
+      accessPath,
+    })
+
+    expect(executable).toBeNull()
+    expect(accessPath.mock.calls.map((call) => call[1])).toEqual([constants.X_OK, constants.X_OK, constants.X_OK])
   })
 })

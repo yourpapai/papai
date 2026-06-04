@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { spawn } from 'node:child_process'
+import { constants } from 'node:fs'
 import { access, mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -43,7 +44,7 @@ export interface RunArchitectureRefreshDeps {
 interface DotDiscoveryDeps {
   readonly env?: NodeJS.ProcessEnv
   readonly whichExecutable?: (command: string, options?: { PATH?: string }) => string | null
-  readonly accessPath?: (filePath: string) => Promise<void>
+  readonly accessPath?: (filePath: string, mode?: number) => Promise<void>
 }
 
 type ArchitectureModel = ReturnType<typeof normalizeArchitectureGraph>
@@ -120,7 +121,24 @@ const renderDotFallbackSvg = (dot: string): string => {
   ].join('\n')
 }
 
-export const findDotExecutable = async (deps: DotDiscoveryDeps = {}): Promise<string | null> => {
+const findExecutableCandidateInOrder = async (
+  candidatePaths: readonly string[],
+  accessPath: (filePath: string, mode?: number) => Promise<void>,
+): Promise<string | null> => {
+  const [candidate, ...remainingCandidates] = candidatePaths
+  if (candidate === undefined) {
+    return null
+  }
+
+  try {
+    await accessPath(candidate, constants.X_OK)
+    return candidate
+  } catch {
+    return findExecutableCandidateInOrder(remainingCandidates, accessPath)
+  }
+}
+
+export const findDotExecutable = (deps: DotDiscoveryDeps = {}): Promise<string | null> => {
   const env = deps.env ?? process.env
   const whichExecutable =
     deps.whichExecutable ??
@@ -129,21 +147,14 @@ export const findDotExecutable = async (deps: DotDiscoveryDeps = {}): Promise<st
   const pathResolvedDot = whichExecutable('dot', { PATH: env['PATH'] })
 
   if (pathResolvedDot !== null) {
-    return pathResolvedDot
+    return Promise.resolve(pathResolvedDot)
   }
 
   const candidatePaths = [env['GRAPHVIZ_DOT'], '/opt/homebrew/bin/dot', '/usr/local/bin/dot'].filter(
     (candidate): candidate is string => candidate !== undefined,
   )
 
-  const availableCandidate = await Promise.any(
-    candidatePaths.map(async (candidate): Promise<string> => {
-      await accessPath(candidate)
-      return candidate
-    }),
-  ).catch((): string | null => null)
-
-  return availableCandidate
+  return findExecutableCandidateInOrder(candidatePaths, accessPath)
 }
 
 export const renderDotToSvg = (dot: string, deps: DotDiscoveryDeps = {}): Promise<string> =>
