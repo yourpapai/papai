@@ -41,9 +41,21 @@ const committedClientSurfaces = (model: ArchitectureLlm): readonly ArchitectureL
   return sortBySlug(model.client.surfaces.filter((surface) => committedSurfaceIds.has(surface.id)))
 }
 
+const auxiliaryServerAreas = (model: ArchitectureLlm): readonly ArchitectureLlm['server']['areas'][number][] => {
+  const focusedAreaIds = new Set(model.server.focusedAreaIds)
+  return sortBySlug(model.server.areas.filter((area) => !focusedAreaIds.has(area.id)))
+}
+
+const auxiliaryClientSurfaces = (model: ArchitectureLlm): readonly ArchitectureLlm['client']['surfaces'][number][] => {
+  const committedSurfaceIds = new Set<string>(clientSurfaceIds)
+  return sortBySlug(model.client.surfaces.filter((surface) => !committedSurfaceIds.has(surface.id)))
+}
+
 const overviewForModel = (
   serverAreas: readonly ArchitectureLlm['server']['areas'][number][],
   clientSurfaces: readonly ArchitectureLlm['client']['surfaces'][number][],
+  auxiliaryAreas: readonly ArchitectureLlm['server']['areas'][number][],
+  auxiliarySurfaces: readonly ArchitectureLlm['client']['surfaces'][number][],
   model: ArchitectureLlm,
 ): string =>
   lines([
@@ -61,6 +73,11 @@ const overviewForModel = (
     '## Client Surfaces',
     '',
     ...clientSurfaces.map((surface) => `- ${surface.id} -> ${surface.dependsOn.join(', ') || 'none'}`),
+    '',
+    '## Auxiliary Runtime Buckets',
+    '',
+    ...auxiliaryAreas.map((area) => `- ${area.id} -> ${area.dependsOn.join(', ') || 'none'}`),
+    ...auxiliarySurfaces.map((surface) => `- ${surface.id} -> ${surface.dependsOn.join(', ') || 'none'}`),
     '',
     '## Canonical Raw Graph',
     '',
@@ -86,11 +103,18 @@ const serverAreaDoc = (area: ArchitectureLlm['server']['areas'][number]): string
     '',
   ])
 
-const clientOverviewDoc = (surfaces: readonly ArchitectureLlm['client']['surfaces'][number][]): string =>
+const clientOverviewDoc = (
+  surfaces: readonly ArchitectureLlm['client']['surfaces'][number][],
+  auxiliarySurfaces: readonly ArchitectureLlm['client']['surfaces'][number][],
+): string =>
   lines([
     '# Client Architecture Overview',
     '',
     ...surfaces.map((surface) => `- ${surface.id}: ${surface.paths.join(', ')}`),
+    '',
+    '## Auxiliary client buckets',
+    '',
+    ...auxiliarySurfaces.map((surface) => `- ${surface.id}: ${surface.paths.join(', ')}`),
     '',
   ])
 
@@ -132,6 +156,8 @@ export const renderClientSurfaceDot = (surfaceId: string, model: ArchitectureLlm
 export const buildArchitectureOutputFiles = (model: ArchitectureLlm): readonly ArchitectureOutputFile[] => {
   const serverAreas = committedServerAreas(model)
   const clientSurfaces = committedClientSurfaces(model)
+  const auxiliaryAreas = auxiliaryServerAreas(model)
+  const auxiliarySurfaces = auxiliaryClientSurfaces(model)
 
   return [
     {
@@ -140,7 +166,9 @@ export const buildArchitectureOutputFiles = (model: ArchitectureLlm): readonly A
     },
     {
       relativePath: 'overview.md',
-      content: withGeneratedMarkdownLicenseHeader(overviewForModel(serverAreas, clientSurfaces, model)),
+      content: withGeneratedMarkdownLicenseHeader(
+        overviewForModel(serverAreas, clientSurfaces, auxiliaryAreas, auxiliarySurfaces, model),
+      ),
     },
     ...serverAreas.map((area) => ({
       relativePath: `server/${area.slug}.md`,
@@ -148,7 +176,7 @@ export const buildArchitectureOutputFiles = (model: ArchitectureLlm): readonly A
     })),
     {
       relativePath: 'client/overview.md',
-      content: withGeneratedMarkdownLicenseHeader(clientOverviewDoc(clientSurfaces)),
+      content: withGeneratedMarkdownLicenseHeader(clientOverviewDoc(clientSurfaces, auxiliarySurfaces)),
     },
   ]
 }

@@ -116,12 +116,14 @@ describe('architecture refresh report', () => {
     ])
     expect(files[0]?.content).not.toContain('generatedAt')
     expect(overview?.content).toContain('chat -> tools')
-    expect(overview?.content).not.toContain('shared/runtime')
+    expect(overview?.content).toContain('Auxiliary Runtime Buckets')
+    expect(overview?.content).toContain('shared/runtime')
     expect(clientOverview?.content).toContain('settings: client/settings/App.svelte')
     expect(clientOverview?.content).toContain('admin: client/admin/App.svelte')
     expect(clientOverview?.content).toContain('debug: client/debug/App.tsx')
-    expect(clientOverview?.content).not.toContain('shared: client/shared/helpers.ts')
-    expect(clientOverview?.content).not.toContain('assets: client/assets/design-canvas.jsx')
+    expect(clientOverview?.content).toContain('Auxiliary client buckets')
+    expect(clientOverview?.content).toContain('shared: client/shared/helpers.ts')
+    expect(clientOverview?.content).toContain('assets: client/assets/design-canvas.jsx')
   })
 
   test('renders focused area dot with neighboring dependencies', () => {

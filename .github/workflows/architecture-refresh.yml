@@ -5,7 +5,13 @@ on:
     branches: [master]
     paths:
       - 'src/**'
-      - 'client/**'
+      - 'client/admin/**'
+      - 'client/debug/**'
+      - 'client/settings/**'
+      - 'client/shared/**'
+      - 'client/assets/**'
+      - '!client/**/*.stories.*'
+      - '!client/stories/**'
       - 'package.json'
       - 'bun.lock'
       - '.dependency-cruiser.mjs'
