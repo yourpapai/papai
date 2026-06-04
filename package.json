@@ -14,6 +14,7 @@
     "./plugin-types": "./src/providers/public-types.ts"
   },
   "scripts": {
+    "architecture:refresh": "bun scripts/architecture-refresh.ts",
     "benchmark:tool-surface": "bun scripts/tool-surface-benchmark.ts",
     "build:client": "bun scripts/build-client.ts",
     "storybook:prepare": "mkdir -p public && msw init public/ --no-save && cat client/shared/base.css client/shared/tokens.css client/admin/admin.css client/debug/debug.css > public/storybook-base.css",
@@ -99,6 +100,7 @@
     "@sveltejs/vite-plugin-svelte": "^4",
     "@types/bun": "1.3.14",
     "@typescript/native-preview": "^7.0.0-dev.20260516.1",
+    "dependency-cruiser": "^17.4.3",
     "drizzle-kit": "^0.31.10",
     "happy-dom": "^20.8.9",
     "jscpd": "^4.2.2",
