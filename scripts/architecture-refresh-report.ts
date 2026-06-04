@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { clientSurfaceIds } from './architecture-refresh-model.js'
 import type { ArchitectureLlm } from './architecture-refresh-model.js'
 
 export interface ArchitectureOutputFile {
@@ -18,7 +19,21 @@ const listOrNone = (items: readonly string[]): string =>
 const sortBySlug = <T extends { slug: string }>(items: readonly T[]): readonly T[] =>
   [...items].sort((left, right) => left.slug.localeCompare(right.slug))
 
-const overviewForModel = (model: ArchitectureLlm): string =>
+const committedServerAreas = (model: ArchitectureLlm): readonly ArchitectureLlm['server']['areas'][number][] => {
+  const focusedAreaIds = new Set(model.server.focusedAreaIds)
+  return sortBySlug(model.server.areas.filter((area) => focusedAreaIds.has(area.id)))
+}
+
+const committedClientSurfaces = (model: ArchitectureLlm): readonly ArchitectureLlm['client']['surfaces'][number][] => {
+  const committedSurfaceIds = new Set<string>(clientSurfaceIds)
+  return sortBySlug(model.client.surfaces.filter((surface) => committedSurfaceIds.has(surface.id)))
+}
+
+const overviewForModel = (
+  serverAreas: readonly ArchitectureLlm['server']['areas'][number][],
+  clientSurfaces: readonly ArchitectureLlm['client']['surfaces'][number][],
+  model: ArchitectureLlm,
+): string =>
   lines([
     '# Architecture Overview',
     '',
@@ -29,13 +44,11 @@ const overviewForModel = (model: ArchitectureLlm): string =>
     '',
     '## Server Areas',
     '',
-    ...sortBySlug(model.server.areas).map((area) => `- ${area.id} -> ${area.dependsOn.join(', ') || 'none'}`),
+    ...serverAreas.map((area) => `- ${area.id} -> ${area.dependsOn.join(', ') || 'none'}`),
     '',
     '## Client Surfaces',
     '',
-    ...sortBySlug(model.client.surfaces).map(
-      (surface) => `- ${surface.id} -> ${surface.dependsOn.join(', ') || 'none'}`,
-    ),
+    ...clientSurfaces.map((surface) => `- ${surface.id} -> ${surface.dependsOn.join(', ') || 'none'}`),
     '',
     '## Canonical Raw Graph',
     '',
@@ -61,11 +74,11 @@ const serverAreaDoc = (area: ArchitectureLlm['server']['areas'][number]): string
     '',
   ])
 
-const clientOverviewDoc = (model: ArchitectureLlm): string =>
+const clientOverviewDoc = (surfaces: readonly ArchitectureLlm['client']['surfaces'][number][]): string =>
   lines([
     '# Client Architecture Overview',
     '',
-    ...sortBySlug(model.client.surfaces).map((surface) => `- ${surface.id}: ${surface.paths.join(', ')}`),
+    ...surfaces.map((surface) => `- ${surface.id}: ${surface.paths.join(', ')}`),
     '',
   ])
 
@@ -104,21 +117,26 @@ export const renderClientSurfaceDot = (surfaceId: string, model: ArchitectureLlm
   ])
 }
 
-export const buildArchitectureOutputFiles = (model: ArchitectureLlm): readonly ArchitectureOutputFile[] => [
-  {
-    relativePath: 'architecture-llm.json',
-    content: `${JSON.stringify(model, null, 2)}\n`,
-  },
-  {
-    relativePath: 'overview.md',
-    content: overviewForModel(model),
-  },
-  ...sortBySlug(model.server.areas).map((area) => ({
-    relativePath: `server/${area.slug}.md`,
-    content: serverAreaDoc(area),
-  })),
-  {
-    relativePath: 'client/overview.md',
-    content: clientOverviewDoc(model),
-  },
-]
+export const buildArchitectureOutputFiles = (model: ArchitectureLlm): readonly ArchitectureOutputFile[] => {
+  const serverAreas = committedServerAreas(model)
+  const clientSurfaces = committedClientSurfaces(model)
+
+  return [
+    {
+      relativePath: 'architecture-llm.json',
+      content: `${JSON.stringify(model, null, 2)}\n`,
+    },
+    {
+      relativePath: 'overview.md',
+      content: overviewForModel(serverAreas, clientSurfaces, model),
+    },
+    ...serverAreas.map((area) => ({
+      relativePath: `server/${area.slug}.md`,
+      content: serverAreaDoc(area),
+    })),
+    {
+      relativePath: 'client/overview.md',
+      content: clientOverviewDoc(clientSurfaces),
+    },
+  ]
+}
