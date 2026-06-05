@@ -49,7 +49,7 @@ describe('normalizeArchitectureGraph', () => {
   test('collapses file-level modules into server and client area edges', () => {
     const model = normalizeArchitectureGraph(rawGraph)
 
-    expect(model.rawArtifact).toBe('raw/dependency-cruiser.json')
+    expect(model).not.toHaveProperty('rawArtifact')
     expect(model.server.areas.find((area) => area.id === 'shared/runtime')).toMatchObject({
       paths: ['src/commands/refresh.ts', 'src/index.ts'],
       dependsOn: ['chat'],
@@ -61,6 +61,25 @@ describe('normalizeArchitectureGraph', () => {
       dependsOn: ['settings'],
     })
     expect(model.client.surfaces.find((surface) => surface.id === 'settings')?.dependsOn).toEqual(['settings/debug'])
+  })
+
+  test('excludes client assets from runtime scope', () => {
+    const model = normalizeArchitectureGraph({
+      modules: [
+        {
+          source: 'client/assets/design-canvas.jsx',
+          dependencies: [{ resolved: 'client/settings/App.svelte' }],
+        },
+        {
+          source: 'client/settings/App.svelte',
+          dependencies: [],
+        },
+      ],
+      summary: { totalCruised: 2 },
+    })
+
+    expect(model.client.surfaces.some((surface) => surface.id === 'assets')).toBe(false)
+    expect(model.client.surfaces.find((surface) => surface.id === 'settings')?.dependedOnBy).toEqual([])
   })
 
   test('fails on uncategorized included runtime paths', () => {

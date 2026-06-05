@@ -45,7 +45,7 @@ describe('architecture refresh config', () => {
     })
 
     expect(result.exitCode).toBe(0)
-  })
+  }, 20_000)
 
   test('runs the public architecture:refresh script entrypoint successfully', () => {
     const result = Bun.spawnSync({
@@ -56,7 +56,7 @@ describe('architecture refresh config', () => {
     })
 
     expect(result.exitCode).toBe(0)
-  })
+  }, 20_000)
 
   test('includes src and client runtime files, but excludes non-runtime paths', () => {
     expect(isArchitectureRuntimePath('src/chat/router.ts')).toBe(true)
@@ -64,7 +64,8 @@ describe('architecture refresh config', () => {
     expect(isArchitectureRuntimePath('src/index.ts')).toBe(true)
     expect(isArchitectureRuntimePath('src/group-settings/registry.ts')).toBe(true)
     expect(isArchitectureRuntimePath('client/shared/Modal.svelte')).toBe(true)
-    expect(isArchitectureRuntimePath('client/assets/design-canvas.jsx')).toBe(true)
+    expect(isArchitectureRuntimePath('client/assets/design-canvas.jsx')).toBe(false)
+    expect(isArchitectureRuntimePath('client/settings/theme.css')).toBe(false)
     expect(isArchitectureRuntimePath('client/stories/Button.stories.svelte')).toBe(false)
     expect(isArchitectureRuntimePath('client/admin/AdminApp.stories.svelte')).toBe(false)
     expect(isArchitectureRuntimePath('tests/scripts/run-semgrep.test.ts')).toBe(false)
@@ -105,12 +106,12 @@ describe('architecture refresh config', () => {
 
     expect(CLIENT_SURFACE_IDS).toEqual(['settings', 'admin', 'debug'])
     expect(RUNTIME_SERVER_AREA_IDS).toContain('shared/runtime')
-    expect(RUNTIME_CLIENT_SURFACE_IDS).toEqual(['settings', 'admin', 'debug', 'shared', 'assets'])
+    expect(RUNTIME_CLIENT_SURFACE_IDS).toEqual(['settings', 'admin', 'debug', 'shared'])
     expect(clientSurfaceForPath('client/settings/App.svelte')).toBe('settings')
     expect(clientSurfaceForPath('client/admin/AdminApp.svelte')).toBe('admin')
     expect(clientSurfaceForPath('client/debug/DebugApp.svelte')).toBe('debug')
     expect(clientSurfaceForPath('client/shared/Modal.svelte')).toBe('shared')
-    expect(clientSurfaceForPath('client/assets/design-canvas.jsx')).toBe('assets')
+    expect(clientSurfaceForPath('client/assets/design-canvas.jsx')).toBeNull()
     expect(clientSurfaceForPath('client/unknown/new-runtime.ts')).toBeNull()
   })
 

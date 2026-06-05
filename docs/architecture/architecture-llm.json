@@ -1,9 +1,15 @@
 {
   "scope": {
     "includedRoots": ["src", "client"],
-    "excludedPrefixes": ["tests/", "scripts/", "review-loop/", "docs/architecture/", "client/stories/"]
+    "excludedPrefixes": [
+      "tests/",
+      "scripts/",
+      "review-loop/",
+      "docs/architecture/",
+      "client/stories/",
+      "client/assets/"
+    ]
   },
-  "rawArtifact": "raw/dependency-cruiser.json",
   "server": {
     "areas": [
       {

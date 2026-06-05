@@ -38,7 +38,6 @@ export const architectureLlmSchema = z.object({
     includedRoots: z.array(z.string()),
     excludedPrefixes: z.array(z.string()),
   }),
-  rawArtifact: z.literal('raw/dependency-cruiser.json'),
   server: z.object({
     areas: z.array(areaNodeSchema),
     focusedAreaIds: z.array(z.string()),

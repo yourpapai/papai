@@ -3,15 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
-import { constants } from 'node:fs'
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import path from 'node:path'
 
 import type { DependencyType, ICruiseResult, IDependency, IModule, ISummary } from 'dependency-cruiser'
 
-import { findDotExecutable, renderDotToSvg, runArchitectureRefresh } from '../../scripts/architecture-refresh.js'
+import { runArchitectureRefresh } from '../../scripts/architecture-refresh.js'
 
 const createDependency = (resolved: string): IDependency => ({
   circular: false,
@@ -71,63 +68,26 @@ const createFullCommittedRawGraph = (): ICruiseResult => ({
 
 const expectedCommittedArtifactPaths = [
   'docs/architecture/architecture-llm.json',
-  'docs/architecture/client/admin.svg',
-  'docs/architecture/client/debug.svg',
   'docs/architecture/client/overview.md',
-  'docs/architecture/client/settings.svg',
-  'docs/architecture/diagrams/server-archi.svg',
-  'docs/architecture/diagrams/server-ddot.svg',
   'docs/architecture/overview.md',
-  'docs/architecture/raw/dependency-cruiser.json',
   'docs/architecture/server/attachments.md',
-  'docs/architecture/server/attachments.svg',
   'docs/architecture/server/chat.md',
-  'docs/architecture/server/chat.svg',
   'docs/architecture/server/deferred-prompts.md',
-  'docs/architecture/server/deferred-prompts.svg',
   'docs/architecture/server/identity.md',
-  'docs/architecture/server/identity.svg',
   'docs/architecture/server/instances.md',
-  'docs/architecture/server/instances.svg',
   'docs/architecture/server/llm-orchestrator.md',
-  'docs/architecture/server/llm-orchestrator.svg',
   'docs/architecture/server/mcp-web.md',
-  'docs/architecture/server/mcp-web.svg',
   'docs/architecture/server/memory-memos.md',
-  'docs/architecture/server/memory-memos.svg',
   'docs/architecture/server/message-queue.md',
-  'docs/architecture/server/message-queue.svg',
   'docs/architecture/server/providers-plugins.md',
-  'docs/architecture/server/providers-plugins.svg',
   'docs/architecture/server/settings-debug.md',
-  'docs/architecture/server/settings-debug.svg',
   'docs/architecture/server/stats-usage.md',
-  'docs/architecture/server/stats-usage.svg',
   'docs/architecture/server/tools.md',
-  'docs/architecture/server/tools.svg',
 ] as const
 
 const expectedCommittedArtifactPathsInWorkspace = expectedCommittedArtifactPaths.map((relativePath) =>
   path.join(process.cwd(), relativePath),
 )
-
-const restorePathEnvVar = (value: string | undefined): void => {
-  if (value === undefined) {
-    delete process.env['PATH']
-    return
-  }
-
-  process.env['PATH'] = value
-}
-
-const restoreGraphvizDotEnvVar = (value: string | undefined): void => {
-  if (value === undefined) {
-    delete process.env['GRAPHVIZ_DOT']
-    return
-  }
-
-  process.env['GRAPHVIZ_DOT'] = value
-}
 
 describe('runArchitectureRefresh', () => {
   let writes: Array<{ path: string; content: string }>
@@ -136,13 +96,11 @@ describe('runArchitectureRefresh', () => {
     writes = []
   })
 
-  test('writes the full committed Task 4 artifact set', async () => {
+  test('writes only committed Markdown and LLM architecture artifacts', async () => {
     const rawGraph = createFullCommittedRawGraph()
 
     await runArchitectureRefresh([], {
       cruiseGraph: () => Promise.resolve(rawGraph),
-      formatTopLevelGraph: (kind) => Promise.resolve(`digraph ${kind} {}`),
-      renderDotToSvg: (dot) => Promise.resolve(`<svg>${dot}</svg>`),
       formatGeneratedFiles: () => Promise.resolve(),
       rmDir: () => Promise.resolve(),
       mkdirp: () => Promise.resolve(),
@@ -153,50 +111,8 @@ describe('runArchitectureRefresh', () => {
     })
 
     expect(writes.map((entry) => entry.path).sort()).toEqual([...expectedCommittedArtifactPathsInWorkspace].sort())
-  })
-
-  test('resolves dot from PATH before falling back to hard-coded locations', async () => {
-    const checkedPaths: string[] = []
-
-    const executable = await findDotExecutable({
-      env: { PATH: '/usr/bin:/bin' },
-      whichExecutable: (command, options) => {
-        expect(command).toBe('dot')
-        expect(options).toEqual({ PATH: '/usr/bin:/bin' })
-        return '/usr/bin/dot'
-      },
-      accessPath: (candidate) => {
-        checkedPaths.push(candidate)
-        return Promise.reject(new Error(`unexpected fallback access for ${candidate}`))
-      },
-    })
-
-    expect(executable).toBe('/usr/bin/dot')
-    expect(checkedPaths).toEqual([])
-  })
-
-  test('falls back to deterministic svg output when PATH and known dot locations are unavailable', async () => {
-    const checkedPaths: string[] = []
-
-    const executable = await findDotExecutable({
-      env: { PATH: '/missing/bin' },
-      whichExecutable: () => null,
-      accessPath: (candidate) => {
-        checkedPaths.push(candidate)
-        return Promise.reject(new Error(`missing ${candidate}`))
-      },
-    })
-
-    expect(executable).toBeNull()
-    expect(checkedPaths).toEqual(['/opt/homebrew/bin/dot', '/usr/local/bin/dot'])
-
-    await expect(
-      renderDotToSvg('digraph test {}', {
-        env: { PATH: '/missing/bin' },
-        whichExecutable: () => null,
-        accessPath: () => Promise.reject(new Error('missing dot')),
-      }),
-    ).rejects.toThrow('Graphviz dot executable not available on PATH or known fallback locations')
+    expect(writes.every((entry) => !entry.path.endsWith('.svg'))).toBe(true)
+    expect(writes.every((entry) => !entry.path.includes('/raw/'))).toBe(true)
   })
 
   test('wraps graph generation failures with stage-specific context', async () => {
@@ -220,164 +136,14 @@ describe('runArchitectureRefresh', () => {
   })
 
   test('wraps rendering failures with stage-specific context', async () => {
-    const rawGraph = createFullCommittedRawGraph()
-
     await expect(
       runArchitectureRefresh([], {
-        cruiseGraph: () => Promise.resolve(rawGraph),
-        formatTopLevelGraph: () => Promise.resolve('digraph broken {}'),
-        renderDotToSvg: () => Promise.reject(new Error('dot exited with code 1')),
+        cruiseGraph: () => Promise.resolve(createFullCommittedRawGraph()),
         formatGeneratedFiles: () => Promise.resolve(),
         rmDir: () => Promise.resolve(),
         mkdirp: () => Promise.resolve(),
-        writeTextFile: () => Promise.resolve(),
+        writeTextFile: () => Promise.reject(new Error('disk full')),
       }),
-    ).rejects.toThrow('Architecture refresh rendering failed: dot exited with code 1')
-  })
-
-  test('leaves the output tree untouched when graphviz is unavailable before rendering starts', async () => {
-    const rawGraph = createFullCommittedRawGraph()
-    const rmDir = mock((_dirPath: string) => Promise.resolve())
-    const mkdirp = mock((_dirPath: string) => Promise.resolve())
-    const writeTextFile = mock((_filePath: string, _content: string) => Promise.resolve())
-
-    await expect(
-      runArchitectureRefresh([], {
-        cruiseGraph: () => Promise.resolve(rawGraph),
-        formatTopLevelGraph: () => Promise.resolve('digraph ready {}'),
-        renderDotToSvg: (_dot) => Promise.resolve('<svg/>'),
-        preflightDiagramRenderer: () =>
-          Promise.reject(new Error('Graphviz dot executable not available on PATH or known fallback locations')),
-        formatGeneratedFiles: () => Promise.resolve(),
-        rmDir,
-        mkdirp,
-        writeTextFile,
-      }),
-    ).rejects.toThrow(
-      'Architecture refresh rendering failed: Graphviz dot executable not available on PATH or known fallback locations',
-    )
-
-    expect(rmDir).not.toHaveBeenCalled()
-    expect(mkdirp).not.toHaveBeenCalled()
-    expect(writeTextFile).not.toHaveBeenCalled()
-  })
-
-  test('proves the default graphviz preflight can render before mutating the output tree', async () => {
-    const rawGraph = createFullCommittedRawGraph()
-    const rmDir = mock((_dirPath: string) => Promise.resolve())
-    const mkdirp = mock((_dirPath: string) => Promise.resolve())
-    const writeTextFile = mock((_filePath: string, _content: string) => Promise.resolve())
-    const tempDir = await mkdtemp(path.join(tmpdir(), 'architecture-refresh-preflight-'))
-    const dotPath = path.join(tempDir, 'dot')
-    const originalPath = process.env['PATH']
-    const originalGraphvizDot = process.env['GRAPHVIZ_DOT']
-
-    try {
-      await writeFile(
-        dotPath,
-        ['#!/bin/sh', '/bin/cat >/dev/null', 'printf "broken dot\\n" >&2', 'exit 1', ''].join('\n'),
-        'utf8',
-      )
-      await chmod(dotPath, 0o755)
-
-      process.env['PATH'] = '/missing/bin'
-      process.env['GRAPHVIZ_DOT'] = dotPath
-
-      await expect(
-        runArchitectureRefresh([], {
-          cruiseGraph: () => Promise.resolve(rawGraph),
-          formatTopLevelGraph: () => Promise.resolve('digraph ready {}'),
-          formatGeneratedFiles: () => Promise.resolve(),
-          rmDir,
-          mkdirp,
-          writeTextFile,
-        }),
-      ).rejects.toThrow('Architecture refresh rendering failed: broken dot')
-
-      expect(rmDir).not.toHaveBeenCalled()
-      expect(mkdirp).not.toHaveBeenCalled()
-      expect(writeTextFile).not.toHaveBeenCalled()
-    } finally {
-      restorePathEnvVar(originalPath)
-      restoreGraphvizDotEnvVar(originalGraphvizDot)
-
-      await rm(tempDir, { recursive: true, force: true })
-    }
-  })
-
-  test('prefers GRAPHVIZ_DOT before hard-coded fallback candidates', async () => {
-    const checkedPaths: string[] = []
-    const accessResults = [
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          resolve()
-        }, 10)
-      }),
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          resolve()
-        }, 0)
-      }),
-      new Promise<void>(() => {}),
-    ]
-
-    const executable = await findDotExecutable({
-      env: {
-        PATH: '/missing/bin',
-        GRAPHVIZ_DOT: '/custom/bin/dot',
-      },
-      whichExecutable: () => null,
-      accessPath: (candidate) => {
-        checkedPaths.push(candidate)
-        return accessResults.shift()!
-      },
-    })
-
-    expect(executable).toBe('/custom/bin/dot')
-    expect(checkedPaths).toEqual(['/custom/bin/dot'])
-  })
-
-  test('ignores readable-but-non-executable fallback candidates', async () => {
-    const accessPath = mock((_candidate: string, _mode?: number) => Promise.reject(new Error('not executable')))
-
-    const executable = await findDotExecutable({
-      env: {
-        PATH: '/missing/bin',
-        GRAPHVIZ_DOT: '/custom/bin/dot',
-      },
-      whichExecutable: () => null,
-      accessPath,
-    })
-
-    expect(executable).toBeNull()
-    expect(accessPath.mock.calls.map((call) => call[1])).toEqual([constants.X_OK, constants.X_OK, constants.X_OK])
-  })
-
-  test('waits for graphviz stdout to close before resolving successful renders', async () => {
-    const tempDir = await mkdtemp(path.join(tmpdir(), 'architecture-refresh-'))
-    const dotPath = path.join(tempDir, 'dot')
-
-    try {
-      await writeFile(
-        dotPath,
-        ['#!/bin/sh', 'cat >/dev/null', '(sleep 0.05; printf "<svg>delayed output</svg>\\n") &', 'exit 0', ''].join(
-          '\n',
-        ),
-        'utf8',
-      )
-      await chmod(dotPath, 0o755)
-
-      const svg = await renderDotToSvg('digraph test {}', {
-        env: {
-          PATH: '/missing/bin',
-          GRAPHVIZ_DOT: dotPath,
-        },
-        whichExecutable: () => null,
-      })
-
-      expect(svg).toContain('<svg>delayed output</svg>')
-    } finally {
-      await rm(tempDir, { recursive: true, force: true })
-    }
+    ).rejects.toThrow('Architecture refresh rendering failed: disk full')
   })
 })
