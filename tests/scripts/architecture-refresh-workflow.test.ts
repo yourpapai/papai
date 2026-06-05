@@ -75,6 +75,7 @@ describe('architecture refresh workflow', () => {
     expectSectionToContainLines(checkoutStep, ['- uses: actions/checkout@v4'])
     expect(checkoutStep).not.toContain('ref:')
     expect(workflow).not.toContain('Install GraphViz')
+    expect(workflow).not.toContain('graphviz')
     expectSectionToContainLines(generateArtifactsStep, ['bun run architecture:refresh'])
     expectSectionToContainLines(createPullRequestStep, [
       'peter-evans/create-pull-request@v8',
@@ -88,11 +89,12 @@ describe('architecture refresh workflow', () => {
     ])
   })
 
-  test('does not install graphviz in the normal CI check job', async () => {
+  test('does not install graphviz in the normal CI check job before bun check:full', async () => {
     const workflow = await readFile('.github/workflows/ci.yml', 'utf8')
     const checkJob = getSection(workflow, /^\s{2}check:\n/mu, /^\s{2}e2e:\n/mu)
 
     expectSectionToContainLines(checkJob, ['name: Checks', 'run: bun check:full'])
     expect(checkJob).not.toContain('Install GraphViz')
+    expect(checkJob).not.toContain('graphviz')
   })
 })

@@ -61,31 +61,12 @@ const reporterOutputToCruiseResult = (output: IReporterOutput['output']): ICruis
   return output
 }
 
-const defaultCruiseGraph = async (files: readonly string[]): Promise<ICruiseResult> => {
-  if (files.length === 0) {
-    throw new Error('No tracked architecture runtime files found')
-  }
+const splitNullDelimitedPaths = (value: string): readonly string[] =>
+  value.split('\0').filter((relativePath) => relativePath.length > 0)
 
-  const cruiseOptions = await extractDepcruiseOptions(path.join(process.cwd(), DEPENDENCY_CRUISER_CONFIG_PATH))
-  const result = await cruise([...files], {
-    ...cruiseOptions,
-    ...dependencyCruiserApiOptions,
-  })
-  return reporterOutputToCruiseResult(result.output)
-}
-
-const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
-const nullSeparatedFilesToArchitecturePaths = (output: string): readonly string[] =>
-  output
-    .split('\0')
-    .filter((filePath) => filePath.length > 0)
-    .filter(isArchitectureRuntimePath)
-    .sort()
-
-const defaultListArchitectureFiles = (): Promise<readonly string[]> =>
-  new Promise<readonly string[]>((resolve, reject) => {
-    const child = spawn('git', ['ls-files', '-z', '--', 'src', 'client'], { stdio: ['ignore', 'pipe', 'pipe'] })
+const spawnText = (command: string, args: readonly string[]): Promise<string> =>
+  new Promise<string>((resolve, reject) => {
+    const child = spawn(command, [...args], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
 
@@ -100,13 +81,33 @@ const defaultListArchitectureFiles = (): Promise<readonly string[]> =>
     child.once('error', reject)
     child.once('close', (code) => {
       if (code === 0) {
-        resolve(nullSeparatedFilesToArchitecturePaths(stdout))
+        resolve(stdout)
         return
       }
 
-      reject(new Error(stderr.trim() || `git ls-files exited with code ${code ?? 1}`))
+      reject(new Error(stderr.trim() || `${command} exited with code ${code ?? 1}`))
     })
   })
+
+const defaultListArchitectureFiles = (): Promise<readonly string[]> =>
+  spawnText('git', ['ls-files', '-z', '--', 'src', 'client']).then((stdout) =>
+    splitNullDelimitedPaths(stdout).filter(isArchitectureRuntimePath).sort(),
+  )
+
+const defaultCruiseGraph = async (files: readonly string[]): Promise<ICruiseResult> => {
+  if (files.length === 0) {
+    throw new Error('No tracked architecture runtime files found')
+  }
+
+  const cruiseOptions = await extractDepcruiseOptions(path.join(process.cwd(), DEPENDENCY_CRUISER_CONFIG_PATH))
+  const result = await cruise([...files], {
+    ...cruiseOptions,
+    ...dependencyCruiserApiOptions,
+  })
+  return reporterOutputToCruiseResult(result.output)
+}
+
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 const defaultRmDir = (dirPath: string): Promise<void> => rm(dirPath, { recursive: true, force: true })
 

@@ -63,6 +63,25 @@ describe('normalizeArchitectureGraph', () => {
     expect(model.client.surfaces.find((surface) => surface.id === 'settings')?.dependsOn).toEqual(['settings/debug'])
   })
 
+  test('excludes client assets from runtime scope', () => {
+    const model = normalizeArchitectureGraph({
+      modules: [
+        {
+          source: 'client/assets/design-canvas.jsx',
+          dependencies: [{ resolved: 'client/settings/App.svelte' }],
+        },
+        {
+          source: 'client/settings/App.svelte',
+          dependencies: [],
+        },
+      ],
+      summary: { totalCruised: 2 },
+    })
+
+    expect(model.client.surfaces.some((surface) => surface.id === 'assets')).toBe(false)
+    expect(model.client.surfaces.find((surface) => surface.id === 'settings')?.dependedOnBy).toEqual([])
+  })
+
   test('fails on uncategorized included runtime paths', () => {
     expect(() =>
       normalizeArchitectureGraph({

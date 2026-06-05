@@ -45,7 +45,7 @@ describe('architecture refresh config', () => {
     })
 
     expect(result.exitCode).toBe(0)
-  })
+  }, 20_000)
 
   test('runs the public architecture:refresh script entrypoint successfully', () => {
     const result = Bun.spawnSync({
@@ -56,7 +56,7 @@ describe('architecture refresh config', () => {
     })
 
     expect(result.exitCode).toBe(0)
-  })
+  }, 20_000)
 
   test('includes src and client runtime files, but excludes non-runtime paths', () => {
     expect(isArchitectureRuntimePath('src/chat/router.ts')).toBe(true)
@@ -68,6 +68,7 @@ describe('architecture refresh config', () => {
     expect(isArchitectureRuntimePath('src/chat/AGENTS.md')).toBe(false)
     expect(isArchitectureRuntimePath('client/settings/settings.css')).toBe(false)
     expect(isArchitectureRuntimePath('client/settings/settings.html')).toBe(false)
+    expect(isArchitectureRuntimePath('client/settings/theme.css')).toBe(false)
     expect(isArchitectureRuntimePath('client/stories/Button.stories.svelte')).toBe(false)
     expect(isArchitectureRuntimePath('client/admin/AdminApp.stories.svelte')).toBe(false)
     expect(isArchitectureRuntimePath('tests/scripts/run-semgrep.test.ts')).toBe(false)

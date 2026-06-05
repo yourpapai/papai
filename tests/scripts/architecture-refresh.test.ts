@@ -112,6 +112,8 @@ describe('runArchitectureRefresh', () => {
     })
 
     expect(writes.map((entry) => entry.path).sort()).toEqual([...expectedCommittedArtifactPathsInWorkspace].sort())
+    expect(writes.every((entry) => !entry.path.endsWith('.svg'))).toBe(true)
+    expect(writes.every((entry) => !entry.path.includes('/raw/'))).toBe(true)
   })
 
   test('wraps graph generation failures with stage-specific context', async () => {
@@ -145,18 +147,16 @@ describe('runArchitectureRefresh', () => {
   })
 
   test('wraps rendering failures with stage-specific context', async () => {
-    const rawGraph = createFullCommittedRawGraph()
-
     await expect(
       runArchitectureRefresh([], {
         listArchitectureFiles: () => Promise.resolve(['src/chat/router.ts']),
-        cruiseGraph: () => Promise.resolve(rawGraph),
-        formatGeneratedFiles: () => Promise.reject(new Error('format failed')),
+        cruiseGraph: () => Promise.resolve(createFullCommittedRawGraph()),
+        formatGeneratedFiles: () => Promise.resolve(),
         rmDir: () => Promise.resolve(),
         mkdirp: () => Promise.resolve(),
-        writeTextFile: () => Promise.resolve(),
+        writeTextFile: () => Promise.reject(new Error('disk full')),
       }),
-    ).rejects.toThrow('Architecture refresh rendering failed: format failed')
+    ).rejects.toThrow('Architecture refresh rendering failed: disk full')
   })
 
   test('passes tracked runtime files to dependency-cruiser', async () => {
