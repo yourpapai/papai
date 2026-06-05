@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import { addAdminGroup, fetchAdminGroups, removeAdminGroup } from '../../admin-fetchers.js'
-  import type { AdminGroupRow } from '../../fetcher-schemas.js'
+  import type { AdminGroupRow, ObservedGroup } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
   import DataTable from '../../../shared/ui/DataTable.svelte'
   import Field from '../../../shared/ui/Field.svelte'
@@ -17,13 +17,16 @@
   let status: string | null = $state(null)
   let loading = $state(false)
   let newGroupId = $state('')
+  let observed: ObservedGroup[] = $state([])
 
   async function load(): Promise<void> {
     error = null
     status = null
     loading = true
     try {
-      groups = (await fetchAdminGroups()).groups
+      const res = await fetchAdminGroups()
+      groups = res.groups
+      observed = res.observed
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -41,6 +44,18 @@
       newGroupId = ''
       await load()
       status = 'Group added.'
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  async function authorize(contextId: string): Promise<void> {
+    error = null
+    status = null
+    try {
+      await addAdminGroup({ groupId: contextId })
+      await load()
+      status = 'Group authorized.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -92,8 +107,24 @@
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
+  {#if observed.length > 0}
+    <div class="settings-observed">
+      <h3>Observed groups</h3>
+      <ul class="settings-observed__list">
+        {#each observed as g (g.contextId)}
+          <li class="settings-observed__item">
+            <span class="settings-observed__name">{g.displayName}{g.parentName ? ` · ${g.parentName}` : ''}</span>
+            <Btn variant="ghost" size="sm" testid={`group-authorize-${g.contextId}`} onClick={() => void authorize(g.contextId)}>
+              {#snippet children()}Authorize{/snippet}
+            </Btn>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
   <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void add() }}>
-    <Field label="Group ID">
+    <Field label="Group ID or chat ID">
       {#snippet children()}
         <Input value={newGroupId} onInput={(v) => (newGroupId = v)} testid="group-add-input" />
       {/snippet}
@@ -102,6 +133,7 @@
       {#snippet children()}Add group{/snippet}
     </Btn>
   </form>
+  <p class="placeholder">Raw chat IDs are scoped to your platform instance automatically.</p>
 
   <div class="settings-table-wrap">
     {#snippet cell(row: GroupRow, col: { key: string; label: string })}

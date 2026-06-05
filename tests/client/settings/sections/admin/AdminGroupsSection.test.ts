@@ -20,6 +20,10 @@ const drain = async (): Promise<void> => {
 }
 
 const groupsPayload = { groups: [{ group_id: 'g-1', added_by: '1', added_at: '2026-05-01' }] }
+const observedPayload = {
+  groups: [],
+  observed: [{ contextId: 'pi:a:ctx:obs', displayName: 'Ops Room', parentName: null }],
+}
 
 let capturedPostBody: string | undefined
 let capturedDeleteBody: string | undefined
@@ -34,6 +38,14 @@ const captureGroupsMock = (url: string, init: RequestInit): Promise<Response> =>
     return Promise.resolve(json({ ok: true }))
   }
   return Promise.resolve(json(groupsPayload))
+}
+
+const captureObservedMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/groups') && init.method === 'POST') {
+    capturedPostBody = typeof init.body === 'string' ? init.body : undefined
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(observedPayload))
 }
 
 const postErrorMock = (url: string, init: RequestInit): Promise<Response> => {
@@ -121,6 +133,24 @@ describe('AdminGroupsSection', () => {
     expect(target.querySelector('[data-testid="group-add-input"]')?.closest('.ui-input')).not.toBeNull()
     expect(target.querySelector('[data-testid="group-add"]')?.classList.contains('ui-btn')).toBe(true)
     expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders observed groups and authorizes one by contextId', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureObservedMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminGroupsSection, { target })
+    await drain()
+
+    const authorizeBtn = target.querySelector<HTMLButtonElement>('[data-testid="group-authorize-pi:a:ctx:obs"]')!
+    expect(authorizeBtn).not.toBeNull()
+    expect(target.textContent).toContain('Ops Room')
+    authorizeBtn.click()
+    await drain()
+
+    expect(capturedPostBody).toBe(JSON.stringify({ groupId: 'pi:a:ctx:obs' }))
     void unmount(component)
   })
 })
