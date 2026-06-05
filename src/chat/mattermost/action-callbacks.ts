@@ -89,6 +89,7 @@ export async function handleMattermostActionRequest(
   const secret = deps.getSecret?.() ?? getMattermostActionSigningSecret()
   const verification = verifyMattermostActionContext(parsed.data.context, secret)
   if (!verification.ok) return actionError('This action is no longer valid.')
+  if (parsed.data.channel_id !== verification.value.channelId) return actionError('This action is no longer valid.')
 
   const dispatcher = dispatchers.get(verification.value.platformInstanceId)
   if (dispatcher === undefined) return json({ ephemeral_text: 'Action is no longer available.' })

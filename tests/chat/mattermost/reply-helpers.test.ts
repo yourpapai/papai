@@ -43,6 +43,7 @@ describe('createMattermostReplyFn', () => {
         return {
           version: 1,
           platformInstanceId: input.platformInstanceId,
+          channelId: input.channelId,
           callbackData: input.callbackData,
           sourceMessageText: input.sourceMessageText,
           expiresAt: input.expiresAt,
@@ -83,7 +84,7 @@ describe('createMattermostReplyFn', () => {
                   style: 'primary',
                   integration: {
                     url: 'https://bot.example/mattermost/actions',
-                    context: { callbackData: 'perm:a:abc12345', sourceMessageText: 'choose' },
+                    context: { channelId: 'chan-1', callbackData: 'perm:a:abc12345', sourceMessageText: 'choose' },
                   },
                 },
                 {
@@ -93,7 +94,7 @@ describe('createMattermostReplyFn', () => {
                   style: 'default',
                   integration: {
                     url: 'https://bot.example/mattermost/actions',
-                    context: { callbackData: 'perm:d:abc12345', sourceMessageText: 'choose' },
+                    context: { channelId: 'chan-1', callbackData: 'perm:d:abc12345', sourceMessageText: 'choose' },
                   },
                 },
               ],

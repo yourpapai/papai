@@ -46,6 +46,7 @@ const buildActions = (
   content: string,
   options: ButtonReplyOptions,
   platformInstanceId: string,
+  channelId: string,
   baseUrl: string,
   createActionContext: (input: MattermostActionContextInput) => MattermostSignedActionContext,
   threadId: string | undefined,
@@ -63,6 +64,7 @@ const buildActions = (
       url: callbackUrl(baseUrl),
       context: createActionContext({
         platformInstanceId,
+        channelId,
         callbackData: button.callbackData,
         sourceMessageText: content,
         ...(threadId === undefined ? {} : { threadId }),
@@ -75,6 +77,7 @@ const buildActions = (
 const createButtonsReply = (
   post: MattermostPostReply,
   platformInstanceId: string,
+  channelId: string,
   callbackBaseUrl: string | null,
   createActionContext: (input: MattermostActionContextInput) => MattermostSignedActionContext,
   threadId: string | undefined,
@@ -87,6 +90,7 @@ const createButtonsReply = (
       content,
       options,
       platformInstanceId,
+      channelId,
       callbackBaseUrl,
       createActionContext,
       options.threadId ?? threadId,
@@ -136,7 +140,7 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
     deleteMessage: async (messageId: string) => {
       await apiFetch('DELETE', `/api/v4/posts/${messageId}`, undefined)
     },
-    buttons: createButtonsReply(post, platformInstanceId, callbackBaseUrl, createActionContext, threadId),
+    buttons: createButtonsReply(post, platformInstanceId, channelId, callbackBaseUrl, createActionContext, threadId),
   }
 }
 

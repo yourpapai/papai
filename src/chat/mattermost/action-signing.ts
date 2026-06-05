@@ -12,6 +12,7 @@ const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/u
 
 export type MattermostActionContextInput = Readonly<{
   platformInstanceId: string
+  channelId: string
   callbackData: string
   sourceMessageText: string
   expiresAt: number
@@ -23,6 +24,7 @@ export type MattermostActionContextInput = Readonly<{
 export const MattermostSignedActionContextSchema = z.strictObject({
   version: z.literal(SIGNING_VERSION),
   platformInstanceId: z.string().min(1),
+  channelId: z.string().min(1),
   callbackData: z.string().min(1),
   sourceMessageText: z.string(),
   threadId: z.string().min(1).optional(),
@@ -42,6 +44,7 @@ const canonicalPayload = (context: Omit<MattermostSignedActionContext, 'signatur
   JSON.stringify({
     version: context.version,
     platformInstanceId: context.platformInstanceId,
+    channelId: context.channelId,
     callbackData: context.callbackData,
     sourceMessageText: context.sourceMessageText,
     threadId: context.threadId,
@@ -67,6 +70,7 @@ export function createMattermostActionContext(
   const unsigned = {
     version: SIGNING_VERSION,
     platformInstanceId: input.platformInstanceId,
+    channelId: input.channelId,
     callbackData: input.callbackData,
     sourceMessageText: input.sourceMessageText,
     threadId: input.threadId,
@@ -92,6 +96,7 @@ export function verifyMattermostActionContext(
     ok: true,
     value: {
       platformInstanceId: parsed.data.platformInstanceId,
+      channelId: parsed.data.channelId,
       callbackData: parsed.data.callbackData,
       sourceMessageText: parsed.data.sourceMessageText,
       ...(parsed.data.threadId === undefined ? {} : { threadId: parsed.data.threadId }),

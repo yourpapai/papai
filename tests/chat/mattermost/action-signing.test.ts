@@ -19,6 +19,7 @@ const createSignedContext = (): ReturnType<typeof createMattermostActionContext>
   createMattermostActionContext(
     {
       platformInstanceId: 'mattermost-main',
+      channelId: 'chan-1',
       callbackData: 'perm:a:abc12345',
       sourceMessageText: 'prompt',
       expiresAt: validExpiresAt,
@@ -45,6 +46,7 @@ describe('Mattermost action signing', () => {
     const context = createMattermostActionContext(
       {
         platformInstanceId: 'mattermost-main',
+        channelId: 'chan-1',
         callbackData: 'perm:a:abc12345',
         sourceMessageText: 'Run `delete_task`?\n\nReason',
         expiresAt: 1_900_000_000_000,
@@ -56,6 +58,7 @@ describe('Mattermost action signing', () => {
       ok: true,
       value: {
         platformInstanceId: 'mattermost-main',
+        channelId: 'chan-1',
         callbackData: 'perm:a:abc12345',
         sourceMessageText: 'Run `delete_task`?\n\nReason',
         expiresAt: 1_900_000_000_000,
@@ -66,6 +69,7 @@ describe('Mattermost action signing', () => {
   test('round-trips an optional thread id', () => {
     const input = {
       platformInstanceId: 'mattermost-main',
+      channelId: 'chan-1',
       callbackData: 'perm:a:abc12345',
       sourceMessageText: 'Run `delete_task`?\n\nReason',
       expiresAt: 1_900_000_000_000,
@@ -77,6 +81,7 @@ describe('Mattermost action signing', () => {
       ok: true,
       value: {
         platformInstanceId: 'mattermost-main',
+        channelId: 'chan-1',
         callbackData: 'perm:a:abc12345',
         sourceMessageText: 'Run `delete_task`?\n\nReason',
         expiresAt: 1_900_000_000_000,
@@ -94,6 +99,7 @@ describe('Mattermost action signing', () => {
 
   test.each([
     ['platform instance id', { platformInstanceId: 'mattermost-secondary' }],
+    ['channel id', { channelId: 'chan-2' }],
     ['source message text', { sourceMessageText: 'changed prompt' }],
     ['thread id', { threadId: 'other-root-post' }],
     ['expires at', { expiresAt: validExpiresAt + 1 }],
@@ -102,6 +108,7 @@ describe('Mattermost action signing', () => {
     const context = createMattermostActionContext(
       {
         platformInstanceId: 'mattermost-main',
+        channelId: 'chan-1',
         callbackData: 'perm:a:abc12345',
         sourceMessageText: 'prompt',
         expiresAt: validExpiresAt,
@@ -161,6 +168,7 @@ describe('Mattermost action signing', () => {
     const context = createMattermostActionContext(
       {
         platformInstanceId: 'mattermost-main',
+        channelId: 'chan-1',
         callbackData: 'perm:a:abc12345',
         sourceMessageText: 'prompt',
         expiresAt: 1000,
@@ -175,6 +183,7 @@ describe('Mattermost action signing', () => {
     const context = createMattermostActionContext(
       {
         platformInstanceId: 'mattermost-main',
+        channelId: 'chan-1',
         callbackData: 'perm:a:abc12345',
         sourceMessageText: 'prompt',
         expiresAt: 1000,
