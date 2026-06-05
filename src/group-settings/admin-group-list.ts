@@ -59,3 +59,25 @@ export function listAdminGroupContextsForUser(
   )
   return groups
 }
+
+export function listKnownGroupContextsForPlatform(platformInstanceId: string): KnownGroupContext[] {
+  log.debug({ platformInstanceId }, 'listKnownGroupContextsForPlatform called')
+
+  const groups = getDrizzleDb()
+    .select({
+      contextId: knownGroupContexts.contextId,
+      provider: knownGroupContexts.provider,
+      displayName: knownGroupContexts.displayName,
+      parentName: knownGroupContexts.parentName,
+      firstSeenAt: knownGroupContexts.firstSeenAt,
+      lastSeenAt: knownGroupContexts.lastSeenAt,
+    })
+    .from(knownGroupContexts)
+    .all()
+    .map((row) => toKnownGroupContext(row))
+    .filter((group) => matchesAdminPlatformInstance(group.contextId, platformInstanceId))
+    .toSorted((left, right) => left.displayName.localeCompare(right.displayName))
+
+  log.debug({ platformInstanceId, count: groups.length }, 'Listed known group contexts for platform')
+  return groups
+}
