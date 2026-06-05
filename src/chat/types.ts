@@ -170,11 +170,12 @@ export type IncomingInteraction = {
 } & Partial<{
   /** Platform-specific message ID of the interactive message */
   messageId: string
+  /** Original interactive message content when the adapter can provide it. */
+  sourceMessageText: string
   /** Platform thread ID (if in thread) */
   threadId: string
 }>
 
-/** Authorization result for message processing. */
 export type AuthorizationDenyReason = 'group_not_allowed' | 'group_member_not_allowed' | 'dm_not_allowed'
 
 /** Authorization result for message processing. */

@@ -3,30 +3,57 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { routeInteraction } from '../../src/chat/interaction-router.js'
-import type { AuthorizationResult, IncomingInteraction } from '../../src/chat/types.js'
+import { askPermissionViaChat, resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.js'
+import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
 import { createMockReply } from '../utils/test-helpers.js'
 
-const auth = (allowed: boolean): AuthorizationResult => ({
+const auth = (allowed: boolean, storageContextId = 'tg:u1'): AuthorizationResult => ({
   allowed,
   isBotAdmin: false,
   isGroupAdmin: false,
-  storageContextId: 'tg:u1',
+  storageContextId,
 })
 
-const interaction = (callbackData: string): IncomingInteraction => ({
+const interaction = (callbackData: string, contextId = 'tg:u1'): IncomingInteraction => ({
   kind: 'button',
   user: { id: 'u1', username: null, isAdmin: false },
-  contextId: 'tg:u1',
+  contextId,
   contextType: 'dm',
   platformInstanceId: 'tg',
-  storageContextId: 'tg:u1',
+  storageContextId: contextId,
   callbackData,
 })
 
+async function createPendingPermission(contextId = 'tg:u1'): Promise<{ id: string; decision: Promise<string> }> {
+  const calls: Array<{ options: { buttons?: Array<{ callbackData: string }> } }> = []
+  const reply: ReplyFn = {
+    text: () => Promise.resolve(),
+    formatted: () => Promise.resolve(),
+    typing: () => {},
+    buttons: (_content: string, options: { buttons?: Array<{ callbackData: string }> }) => {
+      calls.push({ options })
+      return Promise.resolve()
+    },
+  }
+  const decision = askPermissionViaChat(reply, contextId, { toolName: 'delete_task', reason: 'cleanup' })
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0)
+  })
+  return { id: calls[0]!.options.buttons![0]!.callbackData.replace('perm:a:', ''), decision }
+}
+
+async function createPendingPermissionId(contextId = 'tg:u1'): Promise<string> {
+  const { id } = await createPendingPermission(contextId)
+  return id
+}
+
 describe('routeInteraction (post-retirement)', () => {
+  beforeEach(() => resetPermissionPromptForTesting())
+  afterEach(() => resetPermissionPromptForTesting())
+
   test('rejects an unauthorized interaction', async () => {
     const { reply, getReplies } = createMockReply()
     const handled = await routeInteraction(interaction('anything'), reply, auth(false))
@@ -39,5 +66,90 @@ describe('routeInteraction (post-retirement)', () => {
     for (const data of ['cfg:edit:x', 'gsel:foo', 'wizard_confirm', 'plg:enable:p', 'tgl:dom:x', 'whatever']) {
       expect(await routeInteraction(interaction(data), reply, auth(true))).toBe(false)
     }
+  })
+
+  test('resolves allow permission callbacks and replaces the prompt when possible', async () => {
+    const id = await createPendingPermissionId()
+    const replacements: string[] = []
+    const { reply } = createMockReply()
+    reply.replaceText = (content: string): Promise<void> => {
+      replacements.push(content)
+      return Promise.resolve()
+    }
+
+    const handled = await routeInteraction(
+      { ...interaction(`perm:a:${id}`), sourceMessageText: 'Run `delete_task`?\n\ncleanup' },
+      reply,
+      auth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replacements).toEqual(['Run `delete_task`?\n\ncleanup\n\nAllowed.'])
+  })
+
+  test('resolves deny permission callbacks and replaces the prompt when possible', async () => {
+    const id = await createPendingPermissionId()
+    const replacements: string[] = []
+    const { reply } = createMockReply()
+    reply.replaceText = (content: string): Promise<void> => {
+      replacements.push(content)
+      return Promise.resolve()
+    }
+
+    const handled = await routeInteraction(
+      { ...interaction(`perm:d:${id}`), sourceMessageText: 'Run `delete_task`?\n\ncleanup' },
+      reply,
+      auth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replacements).toEqual(['Run `delete_task`?\n\ncleanup\n\nDenied.'])
+  })
+
+  test('reports missing permission requests as unavailable', async () => {
+    const { reply, getReplies } = createMockReply()
+    const handled = await routeInteraction(interaction('perm:a:missing1'), reply, auth(true))
+
+    expect(handled).toBe(true)
+    expect(getReplies()[0]).toContain('Action is no longer available')
+  })
+
+  test('does not resolve permission callbacks from another context', async () => {
+    const { id, decision } = await createPendingPermission('ctx-a')
+    const blockedReply = createMockReply()
+
+    const blocked = await routeInteraction(
+      interaction(`perm:a:${id}`, 'ctx-b'),
+      blockedReply.reply,
+      auth(true, 'ctx-b'),
+    )
+
+    expect(blocked).toBe(true)
+    expect(blockedReply.getReplies()[0]).toContain('Action is no longer available')
+
+    const allowedReply = createMockReply()
+    const allowed = await routeInteraction(
+      interaction(`perm:a:${id}`, 'ctx-a'),
+      allowedReply.reply,
+      auth(true, 'ctx-a'),
+    )
+
+    expect(allowed).toBe(true)
+    expect(await decision).toBe('allow')
+  })
+
+  test('falls back to text when replacing the permission prompt fails', async () => {
+    const id = await createPendingPermissionId()
+    const { reply, getReplies } = createMockReply()
+    reply.replaceText = (): Promise<void> => Promise.reject(new Error('edit failed'))
+
+    const handled = await routeInteraction(
+      { ...interaction(`perm:a:${id}`), sourceMessageText: 'Run `delete_task`?\n\ncleanup' },
+      reply,
+      auth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(getReplies()).toEqual(['Run `delete_task`?\n\ncleanup\n\nAllowed.'])
   })
 })

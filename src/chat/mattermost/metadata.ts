@@ -6,6 +6,8 @@
 import type { ChatCapability, ChatProviderConfigRequirement, ChatProviderTraits } from '../types.js'
 
 export const mattermostCapabilities: ReadonlySet<ChatCapability> = new Set<ChatCapability>([
+  'interactions.callbacks',
+  'messages.buttons',
   'messages.delete',
   'messages.files',
   'messages.reply-context',

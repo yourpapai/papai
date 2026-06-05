@@ -186,13 +186,9 @@ scheduler.startAll()
 
 const stopSweeper = startSweeper()
 
-let stopDebugServerFn: (() => void) | null = null
-
-if (process.env['DEBUG_SERVER'] === 'true') {
-  const { startDebugServer, stopDebugServer } = await import('./debug/server.js')
-  startDebugServer(adminUserId)
-  stopDebugServerFn = stopDebugServer
-}
+const { startDebugServer, stopDebugServer } = await import('./debug/server.js')
+startDebugServer(adminUserId, { debugEnabled: process.env['DEBUG_SERVER'] === 'true' })
+const stopDebugServerFn: (() => void) | null = stopDebugServer
 
 // Graceful shutdown handlers
 const shutdown = (signal: string): void => {

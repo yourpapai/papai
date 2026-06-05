@@ -75,6 +75,10 @@
     "src/usage/index.ts": ["exports"],
     // resetPermissionPromptForTesting is a test-only seam.
     "src/chat/permission-prompt.ts": ["exports"],
+    // Mattermost action context signing is created ahead of the action adapter integration.
+    "src/chat/mattermost/action-signing.ts": ["files"],
+    // Mattermost action callback route entry points are created ahead of the web server route wiring.
+    "src/chat/mattermost/action-callbacks.ts": ["exports"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.

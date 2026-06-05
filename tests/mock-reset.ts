@@ -11,7 +11,7 @@
  * Individual test files override in their own describe-level beforeEach.
  *
  * Order per test:
- *   global beforeEach (restore originals) -> file beforeEach (apply mocks) -> test -> global afterEach (restore spies)
+ *   global beforeEach (restore originals) -> file beforeEach (apply mocks) -> test -> global afterEach (restore spies/originals)
  */
 
 import { afterEach, beforeEach, mock } from 'bun:test'
@@ -42,6 +42,7 @@ import { resetDrizzleDbForTesting } from '../src/db/drizzle.js'
 import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
 import * as _chatRouterRuntime from '../src/debug/chat-router-runtime.js'
+import * as _debugServer from '../src/debug/server.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
 import * as _identityMapping from '../src/identity/mapping.js'
@@ -60,6 +61,7 @@ import * as _messageQueueIndex from '../src/message-queue/index.js'
 import * as _pluginDiscovery from '../src/plugins/discovery.js'
 import * as _pluginLoader from '../src/plugins/loader.js'
 import * as _pluginRegistry from '../src/plugins/registry.js'
+import * as _pluginStartupGuard from '../src/plugins/startup-guard.js'
 import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
@@ -89,6 +91,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/db/drizzle.js', { ..._dbDrizzle }],
   ['../src/db/index.js', { ..._dbIndex }],
   ['../src/debug/chat-router-runtime.js', { ..._chatRouterRuntime }],
+  ['../src/debug/server.js', { ..._debugServer }],
   ['../src/deferred-prompts/scheduled.js', { ..._scheduledPrompts }],
   ['../src/deferred-prompts/poller.js', { ..._poller }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
@@ -105,6 +108,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/plugins/discovery.js', { ..._pluginDiscovery }],
   ['../src/plugins/loader.js', { ..._pluginLoader }],
   ['../src/plugins/registry.js', { ..._pluginRegistry }],
+  ['../src/plugins/startup-guard.js', { ..._pluginStartupGuard }],
   ['../src/providers/resolver.js', { ..._taskProviderResolver }],
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],
@@ -115,19 +119,24 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/users.js', { ..._users }],
 ]
 
+const restoreOriginalModules = (): void => {
+  for (const [path, exports] of originals) {
+    void mock.module(path, () => ({ ...exports }))
+  }
+}
+
 beforeEach(() => {
   resetDrizzleDbForTesting()
   setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
   process.env['S3_BUCKET'] = 'test-bucket'
   process.env['S3_ACCESS_KEY_ID'] = 'test-key'
   process.env['S3_SECRET_ACCESS_KEY'] = 'test-secret'
-  for (const [path, exports] of originals) {
-    void mock.module(path, () => ({ ...exports }))
-  }
+  restoreOriginalModules()
 })
 
 afterEach(() => {
   mock.restore()
+  restoreOriginalModules()
   delete process.env['S3_BUCKET']
   delete process.env['S3_ACCESS_KEY_ID']
   delete process.env['S3_SECRET_ACCESS_KEY']

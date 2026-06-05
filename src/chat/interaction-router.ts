@@ -4,9 +4,37 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
+import {
+  formatPermissionDecisionText,
+  peekPermissionRequest,
+  resolvePermissionRequest,
+  type PermissionDecision,
+} from './permission-prompt.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:interaction-router' })
+const PERMISSION_CALLBACK_PATTERN = /^perm:(a|d):([A-Za-z0-9_-]+)$/u
+
+const permissionDecisionFromCode = (code: string): PermissionDecision => (code === 'a' ? 'allow' : 'deny')
+
+async function replyToPermissionDecision(
+  reply: ReplyFn,
+  sourceMessageText: string | undefined,
+  decision: PermissionDecision,
+): Promise<void> {
+  const fallback = decision === 'allow' ? 'Allowed.' : 'Denied.'
+  const content = sourceMessageText === undefined ? fallback : formatPermissionDecisionText(sourceMessageText, decision)
+  if (reply.replaceText !== undefined) {
+    try {
+      await reply.replaceText(content)
+      return
+    } catch {
+      await reply.text(content)
+      return
+    }
+  }
+  await reply.text(content)
+}
 
 /**
  * Interactive chat callbacks were retired with the move to the settings web UI.
@@ -14,14 +42,33 @@ const log = logger.child({ scope: 'chat:interaction-router' })
  * otherwise matches nothing. Kept as the single interaction entry point so adapters
  * that still emit interaction events have a safe sink.
  */
-export function routeInteraction(
+export async function routeInteraction(
   interaction: IncomingInteraction,
   reply: ReplyFn,
   auth: AuthorizationResult,
 ): Promise<boolean> {
   if (!auth.allowed) {
-    return reply.text('You are not authorized to use this bot.').then(() => true)
+    await reply.text('You are not authorized to use this bot.')
+    return true
   }
+
+  const permissionMatch = PERMISSION_CALLBACK_PATTERN.exec(interaction.callbackData)
+  if (permissionMatch !== null) {
+    const decision = permissionDecisionFromCode(permissionMatch[1]!)
+    const id = permissionMatch[2]!
+    const pending = peekPermissionRequest(id)
+    if (pending === null || pending.contextId !== auth.storageContextId) {
+      await reply.text('Action is no longer available.')
+      return true
+    }
+    if (!resolvePermissionRequest(id, decision)) {
+      await reply.text('Action is no longer available.')
+      return true
+    }
+    await replyToPermissionDecision(reply, interaction.sourceMessageText, decision)
+    return true
+  }
+
   log.debug({ callbackData: interaction.callbackData }, 'No route matched for interaction callback')
-  return Promise.resolve(false)
+  return false
 }

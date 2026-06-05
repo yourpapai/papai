@@ -25,7 +25,8 @@ import { normalizeArchitectureGraph } from './architecture-refresh-normalize.js'
 import { buildArchitectureOutputFiles } from './architecture-refresh-report.js'
 
 export interface RunArchitectureRefreshDeps {
-  readonly cruiseGraph?: () => Promise<ICruiseResult>
+  readonly listArchitectureFiles?: () => Promise<readonly string[]>
+  readonly cruiseGraph?: (files: readonly string[]) => Promise<ICruiseResult>
   readonly formatGeneratedFiles?: (filePaths: readonly string[]) => Promise<void>
   readonly rmDir?: (dirPath: string) => Promise<void>
   readonly mkdirp?: (dirPath: string) => Promise<void>
@@ -88,15 +89,18 @@ const spawnText = (command: string, args: readonly string[]): Promise<string> =>
     })
   })
 
-const listTrackedArchitectureInputs = (): Promise<readonly string[]> =>
+const defaultListArchitectureFiles = (): Promise<readonly string[]> =>
   spawnText('git', ['ls-files', '-z', '--', 'src', 'client']).then((stdout) =>
-    splitNullDelimitedPaths(stdout).filter(isArchitectureRuntimePath),
+    splitNullDelimitedPaths(stdout).filter(isArchitectureRuntimePath).sort(),
   )
 
-const defaultCruiseGraph = async (): Promise<ICruiseResult> => {
-  const trackedInputs = await listTrackedArchitectureInputs()
+const defaultCruiseGraph = async (files: readonly string[]): Promise<ICruiseResult> => {
+  if (files.length === 0) {
+    throw new Error('No tracked architecture runtime files found')
+  }
+
   const cruiseOptions = await extractDepcruiseOptions(path.join(process.cwd(), DEPENDENCY_CRUISER_CONFIG_PATH))
-  const result = await cruise([...trackedInputs], {
+  const result = await cruise([...files], {
     ...cruiseOptions,
     ...dependencyCruiserApiOptions,
   })
@@ -137,15 +141,22 @@ export const runArchitectureRefresh = async (
   _argv: readonly string[],
   deps: RunArchitectureRefreshDeps = {},
 ): Promise<void> => {
+  const listArchitectureFiles = deps.listArchitectureFiles ?? defaultListArchitectureFiles
   const cruiseGraph = deps.cruiseGraph ?? defaultCruiseGraph
   const formatGeneratedFiles = deps.formatGeneratedFiles ?? defaultFormatGeneratedFiles
   const rmDir = deps.rmDir ?? defaultRmDir
   const mkdirp = deps.mkdirp ?? defaultMkdirp
   const writeTextFile = deps.writeTextFile ?? defaultWriteTextFile
 
+  let architectureFiles: readonly string[]
+  try {
+    architectureFiles = await listArchitectureFiles()
+  } catch (error) {
+    throw new Error(`Architecture refresh tracked file discovery failed: ${errorMessage(error)}`, { cause: error })
+  }
   let raw: ICruiseResult
   try {
-    raw = await cruiseGraph()
+    raw = await cruiseGraph(architectureFiles)
   } catch (error) {
     throw new Error(`Architecture refresh graph generation failed: ${errorMessage(error)}`, { cause: error })
   }

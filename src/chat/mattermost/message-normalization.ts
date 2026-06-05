@@ -59,3 +59,14 @@ export function normalizeMattermostMessageText(message: string, botUsername: str
     commandInput: remainder.startsWith('/') ? remainder : null,
   }
 }
+
+export function determineMattermostThreadId(
+  post: { readonly id: string; readonly root_id?: string },
+  isMentioned: boolean,
+  contextType: 'dm' | 'group',
+  replyToMessageId: string | undefined,
+): string | undefined {
+  if (post.root_id !== undefined && post.root_id !== '') return post.root_id
+  if (isMentioned && contextType === 'group') return post.id
+  return replyToMessageId
+}

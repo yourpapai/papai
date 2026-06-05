@@ -91,6 +91,7 @@
     "@grammyjs/types": "^3.27.3",
     "@happy-dom/global-registrator": "^20.8.9",
     "@hughescr/stryker-bun-runner": "^1.2.2",
+    "@opencode-ai/plugin": "1.15.12",
     "@opencode-ai/sdk": "^1.15.2",
     "@storybook/addon-a11y": "^9",
     "@storybook/addon-svelte-csf": "^5",

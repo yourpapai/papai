@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import path from 'node:path'
 
 import type { DependencyType, ICruiseResult, IDependency, IModule, ISummary } from 'dependency-cruiser'
@@ -100,6 +100,7 @@ describe('runArchitectureRefresh', () => {
     const rawGraph = createFullCommittedRawGraph()
 
     await runArchitectureRefresh([], {
+      listArchitectureFiles: () => Promise.resolve(['src/chat/router.ts', 'client/settings/App.svelte']),
       cruiseGraph: () => Promise.resolve(rawGraph),
       formatGeneratedFiles: () => Promise.resolve(),
       rmDir: () => Promise.resolve(),
@@ -118,6 +119,7 @@ describe('runArchitectureRefresh', () => {
   test('wraps graph generation failures with stage-specific context', async () => {
     await expect(
       runArchitectureRefresh([], {
+        listArchitectureFiles: () => Promise.resolve(['src/chat/router.ts']),
         cruiseGraph: () => Promise.reject(new Error('depcruise exploded')),
       }),
     ).rejects.toThrow('Architecture refresh graph generation failed: depcruise exploded')
@@ -126,6 +128,7 @@ describe('runArchitectureRefresh', () => {
   test('wraps normalization failures with stage-specific context', async () => {
     await expect(
       runArchitectureRefresh([], {
+        listArchitectureFiles: () => Promise.resolve(['src/unknown/runtime.ts']),
         cruiseGraph: () =>
           Promise.resolve({
             modules: [createModule('src/unknown/runtime.ts', [])],
@@ -135,9 +138,18 @@ describe('runArchitectureRefresh', () => {
     ).rejects.toThrow('Architecture refresh normalization failed: Uncategorized runtime path: src/unknown/runtime.ts')
   })
 
+  test('wraps tracked file discovery failures with stage-specific context', async () => {
+    await expect(
+      runArchitectureRefresh([], {
+        listArchitectureFiles: () => Promise.reject(new Error('git ls-files failed')),
+      }),
+    ).rejects.toThrow('Architecture refresh tracked file discovery failed: git ls-files failed')
+  })
+
   test('wraps rendering failures with stage-specific context', async () => {
     await expect(
       runArchitectureRefresh([], {
+        listArchitectureFiles: () => Promise.resolve(['src/chat/router.ts']),
         cruiseGraph: () => Promise.resolve(createFullCommittedRawGraph()),
         formatGeneratedFiles: () => Promise.resolve(),
         rmDir: () => Promise.resolve(),
@@ -145,5 +157,21 @@ describe('runArchitectureRefresh', () => {
         writeTextFile: () => Promise.reject(new Error('disk full')),
       }),
     ).rejects.toThrow('Architecture refresh rendering failed: disk full')
+  })
+
+  test('passes tracked runtime files to dependency-cruiser', async () => {
+    const rawGraph = createFullCommittedRawGraph()
+    const cruiseGraph = mock((_files: readonly string[]) => Promise.resolve(rawGraph))
+
+    await runArchitectureRefresh([], {
+      listArchitectureFiles: () => Promise.resolve(['src/chat/router.ts', 'client/settings/App.svelte']),
+      cruiseGraph,
+      formatGeneratedFiles: () => Promise.resolve(),
+      rmDir: () => Promise.resolve(),
+      mkdirp: () => Promise.resolve(),
+      writeTextFile: () => Promise.resolve(),
+    })
+
+    expect(cruiseGraph).toHaveBeenCalledWith(['src/chat/router.ts', 'client/settings/App.svelte'])
   })
 })
