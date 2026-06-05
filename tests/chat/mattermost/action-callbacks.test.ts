@@ -63,6 +63,85 @@ describe('Mattermost action callbacks', () => {
     })
   })
 
+  test('returns original prompt plus decision update for permission callbacks', async () => {
+    const { askPermissionViaChat, resetPermissionPromptForTesting } =
+      await import('../../../src/chat/permission-prompt.js')
+    const { routeInteraction } = await import('../../../src/chat/interaction-router.js')
+    resetPermissionPromptForTesting()
+    try {
+      const calls: Array<{ options: { buttons?: Array<{ callbackData: string }> } }> = []
+      const promptReply = {
+        text: (): Promise<void> => Promise.resolve(),
+        formatted: (): Promise<void> => Promise.resolve(),
+        typing: (): void => {},
+        buttons: (_content: string, options: { buttons?: Array<{ callbackData: string }> }): Promise<void> => {
+          calls.push({ options })
+          return Promise.resolve()
+        },
+      }
+      void askPermissionViaChat(promptReply, 'chan-1', { toolName: 'delete_task', reason: 'cleanup' })
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0)
+      })
+      const callbackData = calls[0]!.options.buttons![0]!.callbackData
+      const context = createMattermostActionContext(
+        {
+          platformInstanceId: 'mattermost-main',
+          channelId: 'chan-1',
+          callbackData,
+          sourceMessageText: 'Run `delete_task`?\n\ncleanup',
+          expiresAt: Date.now() + 60_000,
+        },
+        secret,
+      )
+      registerMattermostActionDispatcher('mattermost-main', async (payload) => {
+        let response: { update: { message: string; props: Record<string, unknown> } } | { ephemeral_text: string } = {
+          ephemeral_text: 'not handled',
+        }
+        const reply = {
+          text: (content: string): Promise<void> => {
+            response = { ephemeral_text: content }
+            return Promise.resolve()
+          },
+          formatted: (content: string): Promise<void> => {
+            response = { ephemeral_text: content }
+            return Promise.resolve()
+          },
+          typing: (): void => {},
+          buttons: (): Promise<void> => Promise.resolve(),
+          replaceText: (content: string): Promise<void> => {
+            response = { update: { message: content, props: {} } }
+            return Promise.resolve()
+          },
+        }
+        await routeInteraction(
+          {
+            kind: 'button',
+            user: { id: payload.userId, username: null, isAdmin: false },
+            contextId: payload.channelId,
+            contextType: 'group',
+            platformInstanceId: payload.action.platformInstanceId,
+            storageContextId: payload.channelId,
+            callbackData: payload.action.callbackData,
+            messageId: payload.postId,
+            sourceMessageText: payload.action.sourceMessageText,
+          },
+          reply,
+          { allowed: true, isBotAdmin: false, isGroupAdmin: false, storageContextId: payload.channelId },
+        )
+        return response
+      })
+
+      const res = await handleMattermostActionRequest(requestWithContext(context), { getSecret: () => secret })
+
+      expect(await res.json()).toEqual({
+        update: { message: 'Run `delete_task`?\n\ncleanup\n\nAllowed.', props: {} },
+      })
+    } finally {
+      resetPermissionPromptForTesting()
+    }
+  })
+
   test('returns Mattermost error when request channel differs from signed context channel', async () => {
     const calls: unknown[] = []
     registerMattermostActionDispatcher('mattermost-main', (payload) => {
