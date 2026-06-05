@@ -106,7 +106,11 @@ describe('Mattermost action callbacks', () => {
         },
         secret,
       )
-      const routedInteractions: Array<{ storageContextId: string; threadId: string | undefined }> = []
+      const routedInteractions: Array<{
+        platformInstanceId: string
+        storageContextId: string
+        threadId: string | undefined
+      }> = []
       const apiCalls: string[] = []
       const apiResponses: Record<string, unknown> = {
         'GET /api/v4/channels/chan-1': { type: 'O' },
@@ -120,7 +124,11 @@ describe('Mattermost action callbacks', () => {
           return Promise.resolve(apiResponses[key])
         },
         interactionHandler: async (interaction, reply): Promise<void> => {
-          routedInteractions.push({ storageContextId: interaction.storageContextId, threadId: interaction.threadId })
+          routedInteractions.push({
+            platformInstanceId: interaction.platformInstanceId,
+            storageContextId: interaction.storageContextId,
+            threadId: interaction.threadId,
+          })
           await routeInteraction(interaction, reply, {
             allowed: true,
             isBotAdmin: false,
@@ -141,7 +149,9 @@ describe('Mattermost action callbacks', () => {
         update: { message: `${capturedContent}\n\nAllowed.`, props: {} },
       })
       expect(apiCalls).toEqual(['GET /api/v4/channels/chan-1', 'GET /api/v4/channels/chan-1/members/user-1'])
-      expect(routedInteractions).toEqual([{ storageContextId: expectedStorageContextId, threadId }])
+      expect(routedInteractions).toEqual([
+        { platformInstanceId: 'mattermost-main', storageContextId: expectedStorageContextId, threadId },
+      ])
     } finally {
       unregisterMattermostActionDispatcher('mattermost-main')
       resetPermissionPromptForTesting()
