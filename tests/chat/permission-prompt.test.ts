@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import {
   askPermissionViaChat,
+  formatPermissionDecisionText,
   resolvePermissionRequest,
   resetPermissionPromptForTesting,
 } from '../../src/chat/permission-prompt.js'
@@ -130,5 +131,19 @@ describe('askPermissionViaChat', () => {
     void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'no markdown' })
     await tickAsync()
     expect(getButtonCall()!.body).toContain('`delete_task`')
+  })
+})
+
+describe('formatPermissionDecisionText', () => {
+  test('keeps prompt text and appends allow decision', () => {
+    expect(formatPermissionDecisionText('Run `delete_task`?\n\nReason', 'allow')).toBe(
+      'Run `delete_task`?\n\nReason\n\nAllowed.',
+    )
+  })
+
+  test('keeps prompt text and appends deny decision', () => {
+    expect(formatPermissionDecisionText('Run `delete_task`?\n\nReason', 'deny')).toBe(
+      'Run `delete_task`?\n\nReason\n\nDenied.',
+    )
   })
 })

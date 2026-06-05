@@ -40,6 +40,11 @@ function formatPrompt(toolName: string, reason: string): string {
   return `🔐 Run \`${toolName}\`?\n\n${escapeMarkdown(reason)}`
 }
 
+export function formatPermissionDecisionText(sourceMessageText: string, decision: PermissionDecision): string {
+  const label = decision === 'allow' ? 'Allowed.' : 'Denied.'
+  return `${sourceMessageText.trimEnd()}\n\n${label}`
+}
+
 export async function askPermissionViaChat(
   reply: ReplyFn,
   contextId: string,
