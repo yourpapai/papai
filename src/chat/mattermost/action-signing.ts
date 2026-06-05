@@ -8,6 +8,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 
 const SIGNING_VERSION = 1
+const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/u
 
 export type MattermostActionContextInput = Readonly<{
   platformInstanceId: string
@@ -16,14 +17,14 @@ export type MattermostActionContextInput = Readonly<{
   expiresAt: number
 }>
 
-export const MattermostSignedActionContextSchema = z.object({
+export const MattermostSignedActionContextSchema = z.strictObject({
   version: z.literal(SIGNING_VERSION),
   platformInstanceId: z.string().min(1),
   callbackData: z.string().min(1),
   sourceMessageText: z.string(),
   expiresAt: z.number().int().positive(),
   nonce: z.string().min(16),
-  signature: z.string().min(43),
+  signature: z.string().regex(SIGNATURE_PATTERN),
 })
 
 export type MattermostSignedActionContext = z.infer<typeof MattermostSignedActionContextSchema>
