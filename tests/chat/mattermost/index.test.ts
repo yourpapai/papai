@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 
 import { fetchMattermostFiles } from '../../../src/chat/mattermost/file-helpers.js'
 import { MattermostChatProvider } from '../../../src/chat/mattermost/index.js'
+import { determineMattermostThreadId } from '../../../src/chat/mattermost/message-normalization.js'
 import { mattermostCapabilities } from '../../../src/chat/mattermost/metadata.js'
 import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
 import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
@@ -17,6 +18,7 @@ import { createMockReply, restoreFetch, setMockFetch } from '../../utils/test-he
 
 type BuiltPostedMessage = { readonly msg: IncomingMessage }
 type PostedEventHandler = (data: Record<string, unknown>) => Promise<void>
+type MattermostActionDispatch = (payload: unknown) => Promise<unknown>
 const TEST_PLATFORM_ID = 'mattermost-default'
 
 const createMattermostProvider = (): MattermostChatProvider =>
@@ -42,6 +44,10 @@ function isBuiltPostedMessage(value: unknown): value is BuiltPostedMessage {
 }
 
 function isPostedEventHandler(value: unknown): value is PostedEventHandler {
+  return typeof value === 'function'
+}
+
+function isMattermostActionDispatch(value: unknown): value is MattermostActionDispatch {
   return typeof value === 'function'
 }
 
@@ -459,6 +465,46 @@ describe('MattermostChatProvider', () => {
 
     assert.ok(result !== null)
     expect(result.msg.platformInstanceId).toBe('mattermost-default')
+  })
+
+  test('dispatches Mattermost action callbacks through onInteraction handler', async () => {
+    provider = createMattermostProvider()
+    const interactions: Array<{ callbackData: string; sourceMessageText: string | undefined }> = []
+    provider.onInteraction?.((interaction, reply): Promise<void> => {
+      interactions.push({ callbackData: interaction.callbackData, sourceMessageText: interaction.sourceMessageText })
+      const replaceText = reply.replaceText
+      assert(replaceText !== undefined)
+      return replaceText('updated')
+    })
+
+    const responses: Record<string, unknown> = {
+      'GET /api/v4/channels/chan-1': { type: 'O' },
+      'GET /api/v4/channels/chan-1/members/user-1': { roles: '' },
+    }
+    const apiFetch = (method: string, path: string, _body: unknown): Promise<unknown> => {
+      return Promise.resolve(responses[`${method} ${path}`])
+    }
+    Reflect.set(provider, 'apiFetch', apiFetch)
+
+    const dispatchValue = Reflect.get(provider as object, 'dispatchMattermostAction') as unknown
+    assert(isMattermostActionDispatch(dispatchValue), 'Expected Mattermost action dispatcher')
+    const response = await dispatchValue.call(provider, {
+      userId: 'user-1',
+      postId: 'post-1',
+      channelId: 'chan-1',
+      teamId: 'team-1',
+      action: {
+        platformInstanceId: TEST_PLATFORM_ID,
+        callbackData: 'perm:a:abc12345',
+        sourceMessageText: 'Run `delete_task`?\n\nReason',
+        expiresAt: Date.now() + 60_000,
+      },
+    })
+
+    expect(interactions).toEqual([
+      { callbackData: 'perm:a:abc12345', sourceMessageText: 'Run `delete_task`?\n\nReason' },
+    ])
+    expect(response).toEqual({ update: { message: 'updated', props: {} } })
   })
 
   describe('renderContext', () => {
@@ -1069,8 +1115,7 @@ describe('MattermostChatProvider', () => {
       restoreFetch()
     })
 
-    test('determineThreadId method directly - mentioned in group creates thread', () => {
-      provider = createMattermostProvider()
+    test('determineMattermostThreadId creates a thread for a mentioned group post', () => {
       const post: MattermostPost = {
         id: 'post789',
         user_id: 'user456',
@@ -1080,13 +1125,11 @@ describe('MattermostChatProvider', () => {
         parent_id: undefined,
       }
 
-      // @ts-expect-error - accessing private method for testing
-      const result = provider.determineThreadId(post, true, 'group', undefined)
+      const result = determineMattermostThreadId(post, true, 'group', undefined)
       expect(result).toBe('post789')
     })
 
-    test('determineThreadId method directly - existing thread uses root_id', () => {
-      provider = createMattermostProvider()
+    test('determineMattermostThreadId uses root_id for existing threads', () => {
       const post: MattermostPost = {
         id: 'reply456',
         user_id: 'user456',
@@ -1096,13 +1139,11 @@ describe('MattermostChatProvider', () => {
         parent_id: 'parent123',
       }
 
-      // @ts-expect-error - accessing private method for testing
-      const result = provider.determineThreadId(post, false, 'group', 'parent123')
+      const result = determineMattermostThreadId(post, false, 'group', 'parent123')
       expect(result).toBe('threadRoot')
     })
 
-    test('determineThreadId method directly - not mentioned uses replyToMessageId', () => {
-      provider = createMattermostProvider()
+    test('determineMattermostThreadId uses replyToMessageId when not mentioned', () => {
       const post: MattermostPost = {
         id: 'post789',
         user_id: 'user456',
@@ -1112,13 +1153,11 @@ describe('MattermostChatProvider', () => {
         parent_id: undefined,
       }
 
-      // @ts-expect-error - accessing private method for testing
-      const result = provider.determineThreadId(post, false, 'group', 'fallbackId')
+      const result = determineMattermostThreadId(post, false, 'group', 'fallbackId')
       expect(result).toBe('fallbackId')
     })
 
-    test('determineThreadId method directly - mentioned in DM does not create thread', () => {
-      provider = createMattermostProvider()
+    test('determineMattermostThreadId does not create threads for DM mentions', () => {
       const post: MattermostPost = {
         id: 'post789',
         user_id: 'user456',
@@ -1128,8 +1167,7 @@ describe('MattermostChatProvider', () => {
         parent_id: undefined,
       }
 
-      // @ts-expect-error - accessing private method for testing
-      const result = provider.determineThreadId(post, true, 'dm', undefined)
+      const result = determineMattermostThreadId(post, true, 'dm', undefined)
       expect(result).toBeUndefined()
     })
   })

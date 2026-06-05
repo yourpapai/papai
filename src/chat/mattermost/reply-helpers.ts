@@ -3,8 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ButtonReplyOptions, ReplyFn, ReplyOptions } from '../types.js'
+import type { ButtonReplyOptions, DeferredDeliveryTarget, ReplyFn, ReplyOptions } from '../types.js'
 import type { MattermostActionContextInput, MattermostSignedActionContext } from './action-signing.js'
+import { buildMattermostMentionPrefix } from './file-helpers.js'
+import { ChannelSchema } from './schema.js'
 
 const ACTION_TTL_MS = 5 * 60 * 1000
 const MATTERMOST_MAX_BUTTONS = 5
@@ -115,4 +117,28 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
       return post(content, options, { props: { attachments: [{ actions }] } })
     },
   }
+}
+
+export async function sendMattermostDeferredMessage(
+  botUserId: string | null,
+  target: DeferredDeliveryTarget,
+  markdown: string,
+  apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
+): Promise<void> {
+  if (target.contextType === 'dm') {
+    if (botUserId === null) throw new Error('Bot not started')
+    const dmData = await apiFetch('POST', '/api/v4/channels/direct', [botUserId, target.contextId])
+    const channelId = ChannelSchema.parse(dmData).id
+    await apiFetch('POST', '/api/v4/posts', { channel_id: channelId, message: markdown })
+    return
+  }
+  const mention =
+    target.audience === 'personal'
+      ? await buildMattermostMentionPrefix(target.mentionUserIds, target.createdByUsername, apiFetch)
+      : ''
+  await apiFetch('POST', '/api/v4/posts', {
+    channel_id: target.contextId,
+    message: `${mention}${markdown}`,
+    ...(target.threadId === null ? {} : { root_id: target.threadId }),
+  })
 }

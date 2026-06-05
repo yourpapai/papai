@@ -6,8 +6,11 @@
 import { z } from 'zod'
 
 import { logger } from '../../logger.js'
+import type { ContextType, IncomingInteraction, ReplyFn } from '../types.js'
 import { getMattermostActionSigningSecret } from './action-secret.js'
 import { verifyMattermostActionContext, type VerifiedMattermostActionContext } from './action-signing.js'
+import { checkChannelAdmin } from './channel-helpers.js'
+import { fetchMattermostChannelInfo, type MattermostApiFetch } from './context-metadata.js'
 
 const log = logger.child({ scope: 'chat:mattermost:actions' })
 
@@ -25,6 +28,13 @@ export type MattermostActionResponse =
   | { error: { message: string } }
 
 type MattermostActionDispatcher = (payload: MattermostActionPayload) => Promise<MattermostActionResponse>
+type MattermostInteractionHandler = (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>
+
+export type MattermostProviderActionDispatchDeps = Readonly<{
+  platformInstanceId: string
+  apiFetch: MattermostApiFetch
+  interactionHandler: MattermostInteractionHandler | null
+}>
 
 const MattermostActionRequestSchema = z.object({
   user_id: z.string().min(1),
@@ -51,6 +61,7 @@ const json = (body: MattermostActionResponse, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
 const actionError = (message: string): Response => json({ error: { message } })
+const noop = (): void => undefined
 
 export function isMattermostActionPath(_req: Request, url: URL): boolean {
   return url.pathname === '/mattermost/actions'
@@ -103,4 +114,54 @@ export async function handleMattermostActionRequest(
     )
     return actionError('Unable to process action.')
   }
+}
+
+const buildActionReply = (): { reply: ReplyFn; getResponse: () => MattermostActionResponse } => {
+  let response: MattermostActionResponse = { ephemeral_text: 'Action processed.' }
+  const setEphemeral = (content: string): Promise<void> => {
+    response = { ephemeral_text: content }
+    return Promise.resolve()
+  }
+  const setUpdate = (content: string): Promise<void> => {
+    response = { update: { message: content, props: {} } }
+    return Promise.resolve()
+  }
+  return {
+    reply: {
+      text: setEphemeral,
+      formatted: setEphemeral,
+      typing: noop,
+      buttons: setUpdate,
+      replaceText: setUpdate,
+      replaceButtons: setUpdate,
+    },
+    getResponse: () => response,
+  }
+}
+
+export async function dispatchMattermostProviderAction(
+  payload: MattermostActionPayload,
+  deps: MattermostProviderActionDispatchDeps,
+): Promise<MattermostActionResponse> {
+  const channelInfo = await fetchMattermostChannelInfo(deps.apiFetch, payload.channelId)
+  const contextType: ContextType = channelInfo.type === 'D' ? 'dm' : 'group'
+  const isAdmin = await checkChannelAdmin(payload.channelId, payload.userId, deps.apiFetch)
+  const incoming: IncomingInteraction = {
+    kind: 'button',
+    user: { id: payload.userId, username: null, isAdmin },
+    contextId: payload.channelId,
+    contextType,
+    platformInstanceId: deps.platformInstanceId,
+    storageContextId: contextType === 'dm' ? payload.userId : payload.channelId,
+    callbackData: payload.action.callbackData,
+    messageId: payload.postId,
+    sourceMessageText: payload.action.sourceMessageText,
+  }
+  const { reply, getResponse } = buildActionReply()
+  if (deps.interactionHandler === null) {
+    await reply.text('Action is no longer available.')
+    return getResponse()
+  }
+  await deps.interactionHandler(incoming, reply)
+  return getResponse()
 }
