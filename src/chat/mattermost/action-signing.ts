@@ -48,8 +48,9 @@ const sign = (payload: string, secret: string): string =>
   createHmac('sha256', secret).update(payload).digest('base64url')
 
 const signaturesMatch = (actual: string, expected: string): boolean => {
-  const actualBuffer = Buffer.from(actual, 'base64url')
-  const expectedBuffer = Buffer.from(expected, 'base64url')
+  if (!SIGNATURE_PATTERN.test(actual) || !SIGNATURE_PATTERN.test(expected)) return false
+  const actualBuffer = Buffer.from(actual, 'utf8')
+  const expectedBuffer = Buffer.from(expected, 'utf8')
   if (actualBuffer.length !== expectedBuffer.length) return false
   return timingSafeEqual(actualBuffer, expectedBuffer)
 }

@@ -13,6 +13,7 @@ import {
 const secret = 'test-secret'
 const validNow = 1_800_000_000_000
 const validExpiresAt = 1_900_000_000_000
+const base64urlAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'
 
 const createSignedContext = (): ReturnType<typeof createMattermostActionContext> =>
   createMattermostActionContext(
@@ -24,6 +25,20 @@ const createSignedContext = (): ReturnType<typeof createMattermostActionContext>
     },
     secret,
   )
+
+const replaceFinalSignatureCharWithLenientEquivalent = (signature: string): string => {
+  const decoded = Buffer.from(signature, 'base64url')
+  const alternateFinalChar = base64urlAlphabet.split('').find((candidate) => {
+    const candidateSignature = `${signature.slice(0, -1)}${candidate}`
+    return candidate !== signature.at(-1) && Buffer.from(candidateSignature, 'base64url').equals(decoded)
+  })
+
+  if (alternateFinalChar === undefined) {
+    throw new Error(`No lenient base64url equivalent final character found for ${signature}`)
+  }
+
+  return `${signature.slice(0, -1)}${alternateFinalChar}`
+}
 
 describe('Mattermost action signing', () => {
   test('round-trips a signed context', () => {
@@ -73,6 +88,17 @@ describe('Mattermost action signing', () => {
     const context = createSignedContext()
 
     expect(verifyMattermostActionContext(context, 'wrong-secret', validNow)).toEqual({
+      ok: false,
+      reason: 'bad_signature',
+    })
+  })
+
+  test('rejects a signature with a non-canonical final character', () => {
+    const context = createSignedContext()
+    const alternateSignature = replaceFinalSignatureCharWithLenientEquivalent(context.signature)
+
+    expect(Buffer.from(alternateSignature, 'base64url')).toEqual(Buffer.from(context.signature, 'base64url'))
+    expect(verifyMattermostActionContext({ ...context, signature: alternateSignature }, secret, validNow)).toEqual({
       ok: false,
       reason: 'bad_signature',
     })
