@@ -69,13 +69,13 @@ describe('Mattermost action callbacks', () => {
     const { routeInteraction } = await import('../../../src/chat/interaction-router.js')
     resetPermissionPromptForTesting()
     try {
-      const calls: Array<{ options: { buttons?: Array<{ callbackData: string }> } }> = []
+      const calls: Array<{ content: string; options: { buttons?: Array<{ callbackData: string }> } }> = []
       const promptReply = {
         text: (): Promise<void> => Promise.resolve(),
         formatted: (): Promise<void> => Promise.resolve(),
         typing: (): void => {},
-        buttons: (_content: string, options: { buttons?: Array<{ callbackData: string }> }): Promise<void> => {
-          calls.push({ options })
+        buttons: (content: string, options: { buttons?: Array<{ callbackData: string }> }): Promise<void> => {
+          calls.push({ content, options })
           return Promise.resolve()
         },
       }
@@ -83,13 +83,14 @@ describe('Mattermost action callbacks', () => {
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 0)
       })
+      const capturedContent = calls[0]!.content
       const callbackData = calls[0]!.options.buttons![0]!.callbackData
       const context = createMattermostActionContext(
         {
           platformInstanceId: 'mattermost-main',
           channelId: 'chan-1',
           callbackData,
-          sourceMessageText: 'Run `delete_task`?\n\ncleanup',
+          sourceMessageText: capturedContent,
           expiresAt: Date.now() + 60_000,
         },
         secret,
@@ -135,9 +136,10 @@ describe('Mattermost action callbacks', () => {
       const res = await handleMattermostActionRequest(requestWithContext(context), { getSecret: () => secret })
 
       expect(await res.json()).toEqual({
-        update: { message: 'Run `delete_task`?\n\ncleanup\n\nAllowed.', props: {} },
+        update: { message: `${capturedContent}\n\nAllowed.`, props: {} },
       })
     } finally {
+      unregisterMattermostActionDispatcher('mattermost-main')
       resetPermissionPromptForTesting()
     }
   })
