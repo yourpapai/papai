@@ -5,12 +5,16 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 
+import { routeInteraction } from '../../../src/chat/interaction-router.js'
 import {
+  dispatchMattermostProviderAction,
   handleMattermostActionRequest,
+  type MattermostProviderActionDispatchDeps,
   registerMattermostActionDispatcher,
   unregisterMattermostActionDispatcher,
 } from '../../../src/chat/mattermost/action-callbacks.js'
 import { createMattermostActionContext } from '../../../src/chat/mattermost/action-signing.js'
+import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 
 const secret = 'test-secret'
 
@@ -26,7 +30,7 @@ const validContext = (): ReturnType<typeof createMattermostActionContext> =>
     secret,
   )
 
-const requestWithContext = (context: unknown, channelId = 'chan-1'): Request =>
+const requestWithContext = (context: unknown, channelId = 'chan-1', threadId?: string): Request =>
   new Request('https://bot.example/mattermost/actions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -35,6 +39,7 @@ const requestWithContext = (context: unknown, channelId = 'chan-1'): Request =>
       post_id: 'post-1',
       channel_id: channelId,
       team_id: 'team-1',
+      ...(threadId === undefined ? {} : { root_id: threadId }),
       context,
     }),
   })
@@ -66,9 +71,14 @@ describe('Mattermost action callbacks', () => {
   test('returns original prompt plus decision update for permission callbacks', async () => {
     const { askPermissionViaChat, resetPermissionPromptForTesting } =
       await import('../../../src/chat/permission-prompt.js')
-    const { routeInteraction } = await import('../../../src/chat/interaction-router.js')
     resetPermissionPromptForTesting()
     try {
+      const threadId = 'root-post-1'
+      const expectedStorageContextId = toScopedThreadContextId({
+        platformInstanceId: 'mattermost-main',
+        nativeContextId: 'chan-1',
+        threadId,
+      })
       const calls: Array<{ content: string; options: { buttons?: Array<{ callbackData: string }> } }> = []
       const promptReply = {
         text: (): Promise<void> => Promise.resolve(),
@@ -79,7 +89,7 @@ describe('Mattermost action callbacks', () => {
           return Promise.resolve()
         },
       }
-      void askPermissionViaChat(promptReply, 'chan-1', { toolName: 'delete_task', reason: 'cleanup' })
+      void askPermissionViaChat(promptReply, expectedStorageContextId, { toolName: 'delete_task', reason: 'cleanup' })
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 0)
       })
@@ -91,53 +101,47 @@ describe('Mattermost action callbacks', () => {
           channelId: 'chan-1',
           callbackData,
           sourceMessageText: capturedContent,
+          threadId,
           expiresAt: Date.now() + 60_000,
         },
         secret,
       )
-      registerMattermostActionDispatcher('mattermost-main', async (payload) => {
-        let response: { update: { message: string; props: Record<string, unknown> } } | { ephemeral_text: string } = {
-          ephemeral_text: 'not handled',
-        }
-        const reply = {
-          text: (content: string): Promise<void> => {
-            response = { ephemeral_text: content }
-            return Promise.resolve()
-          },
-          formatted: (content: string): Promise<void> => {
-            response = { ephemeral_text: content }
-            return Promise.resolve()
-          },
-          typing: (): void => {},
-          buttons: (): Promise<void> => Promise.resolve(),
-          replaceText: (content: string): Promise<void> => {
-            response = { update: { message: content, props: {} } }
-            return Promise.resolve()
-          },
-        }
-        await routeInteraction(
-          {
-            kind: 'button',
-            user: { id: payload.userId, username: null, isAdmin: false },
-            contextId: payload.channelId,
-            contextType: 'group',
-            platformInstanceId: payload.action.platformInstanceId,
-            storageContextId: payload.channelId,
-            callbackData: payload.action.callbackData,
-            messageId: payload.postId,
-            sourceMessageText: payload.action.sourceMessageText,
-          },
-          reply,
-          { allowed: true, isBotAdmin: false, isGroupAdmin: false, storageContextId: payload.channelId },
-        )
-        return response
-      })
+      const routedInteractions: Array<{ storageContextId: string; threadId: string | undefined }> = []
+      const apiCalls: string[] = []
+      const apiResponses: Record<string, unknown> = {
+        'GET /api/v4/channels/chan-1': { type: 'O' },
+        'GET /api/v4/channels/chan-1/members/user-1': { roles: '' },
+      }
+      const deps = {
+        platformInstanceId: 'mattermost-main',
+        apiFetch: (method, path): Promise<unknown> => {
+          const key = `${method} ${path}`
+          apiCalls.push(key)
+          return Promise.resolve(apiResponses[key])
+        },
+        interactionHandler: async (interaction, reply): Promise<void> => {
+          routedInteractions.push({ storageContextId: interaction.storageContextId, threadId: interaction.threadId })
+          await routeInteraction(interaction, reply, {
+            allowed: true,
+            isBotAdmin: false,
+            isGroupAdmin: false,
+            storageContextId: interaction.storageContextId,
+          })
+        },
+      } satisfies MattermostProviderActionDispatchDeps
+      registerMattermostActionDispatcher('mattermost-main', (payload) =>
+        dispatchMattermostProviderAction(payload, deps),
+      )
 
-      const res = await handleMattermostActionRequest(requestWithContext(context), { getSecret: () => secret })
+      const res = await handleMattermostActionRequest(requestWithContext(context, 'chan-1', threadId), {
+        getSecret: () => secret,
+      })
 
       expect(await res.json()).toEqual({
         update: { message: `${capturedContent}\n\nAllowed.`, props: {} },
       })
+      expect(apiCalls).toEqual(['GET /api/v4/channels/chan-1', 'GET /api/v4/channels/chan-1/members/user-1'])
+      expect(routedInteractions).toEqual([{ storageContextId: expectedStorageContextId, threadId }])
     } finally {
       unregisterMattermostActionDispatcher('mattermost-main')
       resetPermissionPromptForTesting()
