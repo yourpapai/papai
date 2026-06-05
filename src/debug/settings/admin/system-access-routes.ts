@@ -6,7 +6,11 @@
 import { z } from 'zod'
 
 import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../../../authorized-groups.js'
-import { isScopedContextId, toScopedContextId } from '../../../chat/scoped-context.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  isScopedContextId,
+  toScopedContextId,
+} from '../../../chat/scoped-context.js'
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { addUser, listUsers, removeUser } from '../../../users.js'
@@ -103,7 +107,7 @@ async function handleGroups(req: Request, authed: AuthenticatedSettingsRequest):
     const raw = body.data.groupId.trim()
     if (raw === '') return settingsJson(422, { error: 'invalid request' })
     const groupId = isScopedContextId(raw)
-      ? raw
+      ? getConfigContextIdFromStorageContextId(raw)
       : toScopedContextId({ platformInstanceId: authed.principal.platformInstanceId, nativeContextId: raw })
     addAuthorizedGroup(groupId, authed.principal.platformUserId)
     return settingsJson(200, { ok: true })

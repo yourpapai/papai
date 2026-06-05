@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { z } from 'zod'
 
 import { listAuthorizedGroups } from '../../../../src/authorized-groups.js'
-import { isScopedContextId, toScopedContextId } from '../../../../src/chat/scoped-context.js'
+import { isScopedContextId, toScopedContextId, toScopedThreadContextId } from '../../../../src/chat/scoped-context.js'
 import { handleAdminSystemAccessRoutes } from '../../../../src/debug/settings/admin/system-access-routes.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
 import { addUser, listUsers } from '../../../../src/users.js'
@@ -229,6 +229,28 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/groups',
     )
     expect(listAuthorizedGroups().some((g) => g.group_id === scoped)).toBe(true)
+  })
+
+  test('POST groups normalizes a thread-scoped id to its main group context', async () => {
+    const main = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-t' })
+    const threaded = toScopedThreadContextId({
+      platformInstanceId: 'pi-1',
+      nativeContextId: 'chan-t',
+      threadId: 'topic-1',
+    })
+    const url = new URL('https://x/settings/api/admin/groups')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: threaded }),
+      }),
+      url,
+      '/settings/api/admin/groups',
+    )
+    expect(res.status).toBe(200)
+    expect(listAuthorizedGroups().some((g) => g.group_id === main)).toBe(true)
+    expect(listAuthorizedGroups().some((g) => g.group_id === threaded)).toBe(false)
   })
 
   test('POST groups rejects a whitespace-only id with 422', async () => {
