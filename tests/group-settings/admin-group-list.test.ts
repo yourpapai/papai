@@ -44,4 +44,15 @@ describe('listKnownGroupContextsForPlatform', () => {
     expect(result.map((g) => g.displayName)).toEqual(['Alpha', 'Beta'])
     expect(result.map((g) => g.contextId)).toEqual([scoped('pi-1', 'a'), scoped('pi-1', 'b')])
   })
+
+  test('returns an empty array when no groups match the platform instance', () => {
+    upsertKnownGroupContext({
+      contextId: scoped('pi-1', 'a'),
+      provider: 'mattermost',
+      displayName: 'Alpha',
+      parentName: null,
+    })
+
+    expect(listKnownGroupContextsForPlatform('pi-unknown')).toEqual([])
+  })
 })
