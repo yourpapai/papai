@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { z } from 'zod'
 
 import { listAuthorizedGroups } from '../../../../src/authorized-groups.js'
+import { isScopedContextId, toScopedContextId } from '../../../../src/chat/scoped-context.js'
 import { handleAdminSystemAccessRoutes } from '../../../../src/debug/settings/admin/system-access-routes.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
 import { addUser, listUsers } from '../../../../src/users.js'
@@ -159,14 +160,16 @@ describe('settings admin system/access routes', () => {
     )
     expect(postRes.status).toBe(200)
     OkResponseSchema.parse(await postRes.json())
+    const expected = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'g-1' })
     const groups = listAuthorizedGroups()
     assert(
-      groups.some((g) => g.group_id === 'g-1'),
-      'group g-1 should be listed after POST',
+      groups.some((g) => g.group_id === expected),
+      'group g-1 should be listed (scoped) after POST',
     )
   })
 
   test('admin DELETE groups removes the group', async () => {
+    const scopedDel = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'g-del' })
     const postUrl = new URL('https://x/settings/api/admin/groups')
     await handleAdminSystemAccessRoutes(
       new Request(postUrl, {
@@ -178,7 +181,7 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/groups',
     )
     assert(
-      listAuthorizedGroups().some((g) => g.group_id === 'g-del'),
+      listAuthorizedGroups().some((g) => g.group_id === scopedDel),
       'group should exist before delete',
     )
 
@@ -187,12 +190,58 @@ describe('settings admin system/access routes', () => {
       new Request(deleteUrl, {
         method: 'DELETE',
         headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groupId: 'g-del' }),
+        body: JSON.stringify({ groupId: scopedDel }),
       }),
       deleteUrl,
       '/settings/api/admin/groups',
     )
     expect(res.status).toBe(200)
-    expect(listAuthorizedGroups().some((g) => g.group_id === 'g-del')).toBe(false)
+    expect(listAuthorizedGroups().some((g) => g.group_id === scopedDel)).toBe(false)
+  })
+
+  test('POST groups scopes a raw native id to the admin platform instance', async () => {
+    const url = new URL('https://x/settings/api/admin/groups')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: 'rawchan' }),
+      }),
+      url,
+      '/settings/api/admin/groups',
+    )
+    expect(res.status).toBe(200)
+    const expected = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'rawchan' })
+    expect(listAuthorizedGroups().some((g) => g.group_id === expected)).toBe(true)
+  })
+
+  test('POST groups stores an already-scoped id unchanged', async () => {
+    const scoped = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-9' })
+    expect(isScopedContextId(scoped)).toBe(true)
+    const url = new URL('https://x/settings/api/admin/groups')
+    await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: scoped }),
+      }),
+      url,
+      '/settings/api/admin/groups',
+    )
+    expect(listAuthorizedGroups().some((g) => g.group_id === scoped)).toBe(true)
+  })
+
+  test('POST groups rejects a whitespace-only id with 422', async () => {
+    const url = new URL('https://x/settings/api/admin/groups')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: '   ' }),
+      }),
+      url,
+      '/settings/api/admin/groups',
+    )
+    expect(res.status).toBe(422)
   })
 })
