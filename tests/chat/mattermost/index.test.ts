@@ -277,12 +277,12 @@ describe('MattermostChatProvider', () => {
       expect(mattermostCapabilities.has('users.resolve')).toBe(true)
     })
 
-    test('does NOT advertise messages.buttons', () => {
-      expect(mattermostCapabilities.has('messages.buttons')).toBe(false)
+    test('advertises messages.buttons capability', () => {
+      expect(mattermostCapabilities.has('messages.buttons')).toBe(true)
     })
 
-    test('does NOT advertise interactions.callbacks', () => {
-      expect(mattermostCapabilities.has('interactions.callbacks')).toBe(false)
+    test('advertises interactions.callbacks capability', () => {
+      expect(mattermostCapabilities.has('interactions.callbacks')).toBe(true)
     })
 
     test('does NOT advertise commands.menu', () => {
