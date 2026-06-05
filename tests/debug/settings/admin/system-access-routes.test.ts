@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { listAuthorizedGroups } from '../../../../src/authorized-groups.js'
 import { isScopedContextId, toScopedContextId, toScopedThreadContextId } from '../../../../src/chat/scoped-context.js'
 import { handleAdminSystemAccessRoutes } from '../../../../src/debug/settings/admin/system-access-routes.js'
+import { upsertKnownGroupContext } from '../../../../src/group-settings/registry.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
 import { addUser, listUsers } from '../../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../../utils/test-helpers.js'
@@ -265,5 +266,60 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/groups',
     )
     expect(res.status).toBe(422)
+  })
+
+  test('GET groups returns observed unauthorized same-instance groups only', async () => {
+    const observedId = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'obs-1' })
+    const authorizedId = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'auth-1' })
+    const otherInstanceId = toScopedContextId({ platformInstanceId: 'pi-2', nativeContextId: 'obs-2' })
+    upsertKnownGroupContext({
+      contextId: observedId,
+      provider: 'mattermost',
+      displayName: 'Observed',
+      parentName: null,
+    })
+    upsertKnownGroupContext({
+      contextId: authorizedId,
+      provider: 'mattermost',
+      displayName: 'Authorized',
+      parentName: null,
+    })
+    upsertKnownGroupContext({
+      contextId: otherInstanceId,
+      provider: 'mattermost',
+      displayName: 'Other',
+      parentName: null,
+    })
+
+    const postUrl = new URL('https://x/settings/api/admin/groups')
+    await handleAdminSystemAccessRoutes(
+      new Request(postUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: authorizedId }),
+      }),
+      postUrl,
+      '/settings/api/admin/groups',
+    )
+
+    const url = new URL('https://x/settings/api/admin/groups')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, { method: 'GET', headers: authHeaders(adminSession) }),
+      url,
+      '/settings/api/admin/groups',
+    )
+    expect(res.status).toBe(200)
+    const body = z
+      .object({
+        groups: z.array(z.unknown()),
+        observed: z.array(
+          z.object({ contextId: z.string(), displayName: z.string(), parentName: z.string().nullable() }),
+        ),
+      })
+      .parse(await res.json())
+    const observedIds = body.observed.map((o) => o.contextId)
+    expect(observedIds).toContain(observedId)
+    expect(observedIds).not.toContain(authorizedId)
+    expect(observedIds).not.toContain(otherInstanceId)
   })
 })

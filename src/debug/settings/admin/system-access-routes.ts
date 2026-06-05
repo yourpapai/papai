@@ -5,12 +5,18 @@
 
 import { z } from 'zod'
 
-import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../../../authorized-groups.js'
+import {
+  addAuthorizedGroup,
+  isAuthorizedGroup,
+  listAuthorizedGroups,
+  removeAuthorizedGroup,
+} from '../../../authorized-groups.js'
 import {
   getConfigContextIdFromStorageContextId,
   isScopedContextId,
   toScopedContextId,
 } from '../../../chat/scoped-context.js'
+import { listKnownGroupContextsForPlatform } from '../../../group-settings/admin-group-list.js'
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { addUser, listUsers, removeUser } from '../../../users.js'
@@ -89,7 +95,10 @@ async function handleGroups(req: Request, authed: AuthenticatedSettingsRequest):
   if (req.method === 'GET') {
     const guard = requireAdmin(authed, 'read')
     if (guard !== null) return guard
-    return settingsJson(200, { groups: listAuthorizedGroups() })
+    const observed = listKnownGroupContextsForPlatform(authed.principal.platformInstanceId)
+      .filter((group) => !isAuthorizedGroup(group.contextId))
+      .map((group) => ({ contextId: group.contextId, displayName: group.displayName, parentName: group.parentName }))
+    return settingsJson(200, { groups: listAuthorizedGroups(), observed })
   }
   if (req.method !== 'POST' && req.method !== 'DELETE') {
     return settingsJson(405, { error: 'method not allowed' })
