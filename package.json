@@ -37,7 +37,7 @@
     "format:check": "oxfmt --check . --ignore-path=.oxfmtignore",
     "security": "bun run scripts/run-semgrep.ts",
     "security:ci": "bun run scripts/run-semgrep.ts --ci",
-    "test": "bun test",
+    "test": "bun test tests/",
     "test:client": "bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",

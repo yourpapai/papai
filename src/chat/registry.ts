@@ -5,107 +5,105 @@
 
 import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { DiscordChatProvider } from './discord/index.js'
-import { discordCapabilities, discordTraits } from './discord/metadata.js'
-import { KonturTalkChatProvider } from './kontur-talk/index.js'
-import { konturTalkCapabilities, konturTalkTraits } from './kontur-talk/metadata.js'
-import { MattermostChatProvider } from './mattermost/index.js'
-import { mattermostCapabilities, mattermostTraits } from './mattermost/metadata.js'
-import { TelegramChatProvider } from './telegram/index.js'
-import { telegramCapabilities, telegramTraits } from './telegram/metadata.js'
-import type { ChatProvider, ChatProviderDescriptor } from './types.js'
+import type { ChatProviderConfigField } from './provider-descriptor.js'
+import type {
+  ChatCapability,
+  ChatProvider,
+  ChatProviderDescriptor,
+  ChatProviderTraits,
+  ThreadCapabilities,
+} from './types.js'
 
 const log = logger.child({ scope: 'chat:registry' })
 
 type InstanceChatProviderFactory = (id: string, config: InstanceConfig) => ChatProvider
 
-const platformDescriptors = [
-  {
-    type: 'telegram',
-    displayName: 'Telegram',
-    source: 'builtin',
-    instanceConfigSchema: [
-      { key: 'token', label: 'Telegram Bot Token', required: true, sensitive: true, scope: 'instance' },
-    ],
-    contextConfigSchema: [],
-    capabilities: telegramCapabilities,
-    traits: telegramTraits,
-  },
-  {
-    type: 'mattermost',
-    displayName: 'Mattermost',
-    source: 'builtin',
-    instanceConfigSchema: [
-      { key: 'baseUrl', label: 'Mattermost URL', required: true, sensitive: false, scope: 'instance' },
-      { key: 'token', label: 'Mattermost Bot Token', required: true, sensitive: true, scope: 'instance' },
-    ],
-    contextConfigSchema: [],
-    capabilities: mattermostCapabilities,
-    traits: mattermostTraits,
-  },
-  {
-    type: 'discord',
-    displayName: 'Discord',
-    source: 'builtin',
-    instanceConfigSchema: [
-      { key: 'token', label: 'Discord Bot Token', required: true, sensitive: true, scope: 'instance' },
-    ],
-    contextConfigSchema: [],
-    capabilities: discordCapabilities,
-    traits: discordTraits,
-  },
-  {
-    type: 'kontur-talk',
-    displayName: 'Kontur Talk',
-    source: 'builtin',
-    instanceConfigSchema: [{ key: 'jwtToken', label: 'JWT Token', required: true, sensitive: true, scope: 'instance' }],
-    contextConfigSchema: [],
-    capabilities: konturTalkCapabilities,
-    traits: konturTalkTraits,
-  },
-] as const satisfies readonly ChatProviderDescriptor[]
+// --- Plugin-contributed chat provider types ---
 
-const instanceProviders = new Map<PlatformInstanceType, InstanceChatProviderFactory>([
-  [
-    'telegram',
-    (id, config): ChatProvider => new TelegramChatProvider({ token: config['token'], platformInstanceId: id }),
-  ],
-  [
-    'mattermost',
-    (id, config): ChatProvider =>
-      new MattermostChatProvider({ baseUrl: config['baseUrl'], token: config['token'], platformInstanceId: id }),
-  ],
-  [
-    'discord',
-    (id, config): ChatProvider => new DiscordChatProvider({ token: config['token'], platformInstanceId: id }),
-  ],
-  [
-    'kontur-talk',
-    (id, config): ChatProvider => new KonturTalkChatProvider({ jwtToken: config['jwtToken'], platformInstanceId: id }),
-  ],
-])
-
-export const listPlatformProviderTypes = (): readonly ChatProviderDescriptor[] => platformDescriptors
-
-const missingConfigMessage = (type: PlatformInstanceType): string => `Missing ${type} instance config`
-
-const isBlank = (value: string | undefined): boolean => value === undefined || value.trim() === ''
-
-const isMissingInstanceConfig = (type: PlatformInstanceType, config: InstanceConfig): boolean => {
-  const descriptor = platformDescriptors.find((candidate) => candidate.type === type)
-  if (descriptor === undefined) return true
-  return descriptor.instanceConfigSchema.some((field) => field.required && isBlank(config[field.key]))
+export type ContributedChatProviderEntry = {
+  pluginId: string
+  factory: InstanceChatProviderFactory
+  capabilities: ReadonlySet<ChatCapability>
+  traits: ChatProviderTraits
+  threadCapabilities: ThreadCapabilities
+  displayName: string
+  instanceConfigSchema: readonly ChatProviderConfigField[]
 }
 
+const pluginContributedChatProviderFactories = new Map<string, ContributedChatProviderEntry>()
+
+/** Register a plugin-contributed chat provider type. First-wins on duplicate type. */
+export function registerContributedChatProviderType(type: string, entry: ContributedChatProviderEntry): void {
+  const existing = pluginContributedChatProviderFactories.get(type)
+  if (existing !== undefined) {
+    log.error(
+      { type, existing: existing.pluginId, attempted: entry.pluginId },
+      'Duplicate chat provider type; keeping first registration',
+    )
+    return
+  }
+  pluginContributedChatProviderFactories.set(type, entry)
+  log.info({ type, pluginId: entry.pluginId }, 'Registered contributed chat provider type')
+}
+
+/** List contributed types owned by a plugin. */
+export function listContributedChatProviderTypesForPlugin(pluginId: string): string[] {
+  return [...pluginContributedChatProviderFactories.entries()]
+    .filter(([, entry]) => entry.pluginId === pluginId)
+    .map(([type]) => type)
+}
+
+/** Remove all contributed types owned by a plugin (deactivation / failure cleanup). */
+export function unregisterContributedChatProviderType(pluginId: string): string[] {
+  const removedTypes: string[] = []
+  for (const [type, entry] of pluginContributedChatProviderFactories) {
+    if (entry.pluginId === pluginId) {
+      pluginContributedChatProviderFactories.delete(type)
+      removedTypes.push(type)
+      log.debug({ type, pluginId }, 'Unregistered contributed chat provider type')
+    }
+  }
+  return removedTypes
+}
+
+/** Look up a single chat-provider type descriptor. */
+export function getChatProviderDescriptor(type: string): ChatProviderDescriptor | undefined {
+  return listPlatformProviderTypes().find((descriptor) => descriptor.type === type)
+}
+
+/** List all available chat provider types (plugin-contributed only). */
+export const listPlatformProviderTypes = (): ChatProviderDescriptor[] =>
+  [...pluginContributedChatProviderFactories.entries()].map(([type, entry]) => ({
+    type,
+    displayName: entry.displayName,
+    source: { plugin: entry.pluginId } as const,
+    instanceConfigSchema: entry.instanceConfigSchema,
+    contextConfigSchema: [] as readonly ChatProviderConfigField[],
+    capabilities: entry.capabilities,
+    traits: entry.traits,
+  }))
+
+/**
+ * Create a ChatProvider instance from config.
+ * All providers are now plugin-contributed; this function consults the plugin registry.
+ */
 export function createChatProviderFromConfig(
   id: string,
   type: PlatformInstanceType,
   config: InstanceConfig,
 ): ChatProvider {
-  const factory = instanceProviders.get(type)
-  if (factory === undefined || isMissingInstanceConfig(type, config)) {
-    log.error({ type, id }, 'Invalid chat provider instance config')
-    throw new Error(missingConfigMessage(type))
+  const contributed = pluginContributedChatProviderFactories.get(type)
+  if (contributed !== undefined) {
+    const hasBlank = contributed.instanceConfigSchema.some(
+      (field) => field.required && (config[field.key] === undefined || config[field.key]!.trim() === ''),
+    )
+    if (hasBlank) {
+      log.error({ type, id }, 'Invalid contributed chat provider instance config')
+      throw new Error(`Missing ${type} instance config`)
+    }
+    return contributed.factory(id, config)
   }
-  return factory(id, config)
+
+  log.error({ type, id }, 'Unknown chat provider type')
+  throw new Error(`Unknown chat provider type: ${type}`)
 }

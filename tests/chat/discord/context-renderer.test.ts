@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { renderDiscordContext } from '../../../src/chat/discord/context-renderer.js'
+import { renderDiscordContext } from '../../../plugins/chat-provider-discord/context-renderer.js'
 import type { ContextRendered } from '../../../src/chat/types.js'
 import { standardContextSnapshot } from '../fixtures/context-snapshot.js'
 

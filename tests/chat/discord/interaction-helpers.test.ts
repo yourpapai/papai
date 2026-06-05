@@ -8,7 +8,7 @@ import { describe, it, expect } from 'bun:test'
 import {
   buildDiscordInteraction,
   type DiscordInteractionContext,
-} from '../../../src/chat/discord/interaction-helpers.js'
+} from '../../../plugins/chat-provider-discord/interaction-helpers.js'
 
 describe('buildDiscordInteraction', () => {
   const platformInstanceId = 'discord-default'

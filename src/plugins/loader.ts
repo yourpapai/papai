@@ -5,9 +5,14 @@
 
 import pLimit from 'p-limit'
 
+import { getChatProviderDescriptor, registerContributedChatProviderType } from '../chat/registry.js'
 import { logger } from '../logger.js'
 import type { TaskProviderConfigValidator } from '../providers/registry.js'
 import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
+import {
+  deactivateContributedChatProviderTypes,
+  unregisterContributedChatProviderTypes,
+} from './chat-provider-lifecycle.js'
 import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { importPluginModule, resolveProviderConfigValidator, toPluginImportSpecifier } from './module-import.js'
@@ -82,6 +87,33 @@ function commitTaskProviderRegistration(
   }
 }
 
+function commitChatProviderRegistration(plugin: DiscoveredPlugin, ctx: ReturnType<typeof buildPluginContext>): void {
+  const registration = ctx.collected.chatProviderRegistration
+  if (registration === undefined) return
+
+  const { manifest } = plugin
+  const { type, ...entry } = registration
+  const before = getChatProviderDescriptor(type)
+  registerContributedChatProviderType(type, {
+    pluginId: manifest.id,
+    factory: entry.factory,
+    capabilities: entry.capabilities,
+    traits: entry.traits,
+    threadCapabilities: entry.threadCapabilities,
+    displayName: entry.displayName,
+    instanceConfigSchema: entry.instanceConfigSchema,
+  })
+  const after = getChatProviderDescriptor(type)
+  if (
+    before !== undefined ||
+    after === undefined ||
+    after.source === 'builtin' ||
+    after.source.plugin !== manifest.id
+  ) {
+    throw new Error(`Chat provider type '${type}' could not be registered for plugin '${manifest.id}'`)
+  }
+}
+
 async function activatePluginInstance(
   instance: PluginInstance | null,
   activationContext: ReturnType<typeof buildPluginContext>,
@@ -104,6 +136,7 @@ function finalizeSuccessfulActivation(
   const { collected } = activationContext
 
   commitTaskProviderRegistration(plugin, activationContext, validateConfig)
+  commitChatProviderRegistration(plugin, activationContext)
   contributionRegistry.register(manifest.id, collected, manifest)
   if (instance !== null) {
     activeInstances.set(manifest.id, instance)
@@ -123,6 +156,7 @@ function handleActivationFailure(pluginId: string, msg: string): false {
   activeInstances.delete(pluginId)
   contributionRegistry.deregister(pluginId)
   deactivateContributedTaskProviderTypes(pluginId)
+  deactivateContributedChatProviderTypes(pluginId)
   pluginRegistry.markError(pluginId, `Activation failed: ${msg}`)
   recordRuntimeEvent(pluginId, 'error', `Activation failed: ${msg}`)
   return false
@@ -197,6 +231,14 @@ const cleanupContributedTaskProviderTypes = (pluginId: string, options: Deactiva
   unregisterContributedTaskProviderTypes(pluginId)
 }
 
+const cleanupContributedChatProviderTypes = (pluginId: string, options: DeactivateAllPluginsOptions): void => {
+  if (options.retireContributedProviders === true) {
+    deactivateContributedChatProviderTypes(pluginId)
+    return
+  }
+  unregisterContributedChatProviderTypes(pluginId)
+}
+
 async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOptions): Promise<void> {
   const entry = pluginRegistry.getEntry(pluginId)
   if (entry === undefined || entry.state !== 'active') return
@@ -213,6 +255,7 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
     cleanupContributedTaskProviderTypes(pluginId, options)
+    cleanupContributedChatProviderTypes(pluginId, options)
     removeActivatedPluginId(pluginId)
     pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'deactivated')
@@ -223,6 +266,7 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
     cleanupContributedTaskProviderTypes(pluginId, options)
+    cleanupContributedChatProviderTypes(pluginId, options)
     removeActivatedPluginId(pluginId)
     pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'error', `Deactivation error: ${msg}`)
@@ -250,4 +294,5 @@ export function getActivatedPluginIds(): string[] {
   return [...activationOrder]
 }
 
+export { registerChatProviderFactories } from './chat-provider-factory-registration.js'
 export { toPluginImportSpecifier }

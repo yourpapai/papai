@@ -11,7 +11,7 @@ import {
   DISCORD_ROWS_PER_MESSAGE,
   isButtonInteraction,
   toActionRows,
-} from '../../../src/chat/discord/buttons.js'
+} from '../../../plugins/chat-provider-discord/buttons.js'
 
 describe('isButtonInteraction', () => {
   test('returns false for non-objects', () => {

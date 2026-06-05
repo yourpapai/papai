@@ -81,7 +81,7 @@ export const PlatformProviderTypeViewSchema = z.object({
   contextConfigSchema: z.array(ProviderConfigRequirementViewSchema),
   capabilities: z.array(z.string()),
   traits: ChatProviderTraitsSchema,
-  source: z.literal('builtin'),
+  source: z.union([z.literal('builtin'), z.string()]),
 })
 
 export const AdminInstanceViewSchema = z.object({

@@ -209,7 +209,7 @@ export type PlatformProviderTypeView = Readonly<{
   contextConfigSchema: readonly ProviderConfigRequirementView[]
   capabilities: readonly string[]
   traits: ChatProviderTraits
-  source: 'builtin'
+  source: string
 }>
 
 export type TaskProviderTypeView = Readonly<{

@@ -5,9 +5,8 @@
 
 import { z } from 'zod'
 
-import type { ChatCapability } from '../chat/types.js'
 import { mcpPluginConfigSchema } from '../mcp/types.js'
-import type { TaskCapability, TaskProviderTrait } from '../providers/types.js'
+import { CHAT_CAPABILITY_VALUES, TASK_CAPABILITY_VALUES, TASK_PROVIDER_TRAIT_VALUES } from './capability-constants.js'
 import {
   hasMatchingContextConfigKeys,
   hasProviderManifestPermission,
@@ -39,6 +38,7 @@ export const PLUGIN_PERMISSIONS = [
   'tasks.read',
   'tasks.write',
   'provider.task',
+  'provider.chat',
   'identity',
   'http',
 ] as const
@@ -47,65 +47,6 @@ export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]
 
 /** Runtime state machine states for a plugin. */
 export type PluginState = 'discovered' | 'approved' | 'rejected' | 'incompatible' | 'active' | 'error'
-
-/** All valid task capability strings (used for manifest validation). */
-const TASK_CAPABILITY_VALUES = [
-  'tasks.delete',
-  'tasks.count',
-  'tasks.relations',
-  'tasks.watchers',
-  'tasks.votes',
-  'tasks.visibility',
-  'tasks.commands',
-  'projects.read',
-  'projects.list',
-  'projects.create',
-  'projects.update',
-  'projects.delete',
-  'projects.team',
-  'comments.read',
-  'comments.create',
-  'comments.update',
-  'comments.delete',
-  'comments.reactions',
-  'labels.list',
-  'labels.create',
-  'labels.update',
-  'labels.delete',
-  'labels.assign',
-  'statuses.list',
-  'statuses.create',
-  'statuses.update',
-  'statuses.delete',
-  'statuses.reorder',
-  'attachments.list',
-  'attachments.upload',
-  'attachments.delete',
-  'workItems.list',
-  'workItems.create',
-  'workItems.update',
-  'workItems.delete',
-  'agiles.list',
-  'sprints.list',
-  'sprints.create',
-  'sprints.update',
-  'sprints.assign',
-  'activities.read',
-  'queries.saved',
-] as const satisfies readonly TaskCapability[]
-
-/** All valid chat capability strings (used for manifest validation). */
-const CHAT_CAPABILITY_VALUES = [
-  'commands.menu',
-  'interactions.callbacks',
-  'messages.buttons',
-  'messages.delete',
-  'messages.files',
-  'messages.redact',
-  'messages.reply-context',
-  'files.receive',
-  'users.resolve',
-] as const satisfies readonly ChatCapability[]
 
 const pluginIdSchema = z
   .string()
@@ -159,6 +100,7 @@ const pluginContributesSchema = z.strictObject({
   jobs: z.array(z.string().min(1).max(64)).optional().default([]),
   configKeys: z.array(configKeySchema).optional().default([]),
   taskProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
+  chatProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
 })
 
 const configRequirementBaseSchema = z.strictObject({
@@ -189,13 +131,7 @@ const mainPathSchema = z.string().refine(isValidMainPath, {
 })
 
 const taskCapabilityTuple = TASK_CAPABILITY_VALUES
-const taskProviderTraitTuple = [
-  'workspace-scoped',
-  'task-label-read-requires-provider-specific-api',
-  'supports-command-language',
-  'command-language:youtrack',
-  'custom-fields',
-] as const satisfies readonly TaskProviderTrait[]
+const taskProviderTraitTuple = TASK_PROVIDER_TRAIT_VALUES
 const chatCapabilityTuple = CHAT_CAPABILITY_VALUES
 const permissionTuple = PLUGIN_PERMISSIONS
 
@@ -217,6 +153,7 @@ export const pluginManifestSchema = z
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
+      chatProviderTypes: [],
     }),
     permissions: z.array(z.enum(permissionTuple)).optional().default([]),
     author: z.string().optional(),
@@ -231,6 +168,27 @@ export const pluginManifestSchema = z
     providerConfigSchema: z.array(providerInstanceConfigRequirementSchema).optional().default([]),
     providerContextConfigSchema: z.array(providerContextConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
+    chatProviderCapabilities: z.array(z.enum(chatCapabilityTuple)).optional().default([]),
+    chatProviderTraits: z
+      .strictObject({
+        observedGroupMessages: z.enum(['all', 'mentions_only']),
+        maxMessageLength: z.number().int().positive().optional(),
+        callbackDataMaxLength: z.number().int().positive().optional(),
+      })
+      .optional(),
+    chatProviderThreadCapabilities: z
+      .strictObject({
+        supportsThreads: z.boolean(),
+        canCreateThreads: z.boolean(),
+        threadScope: z.enum(['message', 'post']),
+      })
+      .optional(),
+    chatProviderFactory: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-zA-Z_$][a-zA-Z0-9_$]*$/u, 'Chat provider factory must be a valid identifier')
+      .optional(),
     providerConfigValidator: z
       .string()
       .min(1)
@@ -252,12 +210,20 @@ export const pluginManifestSchema = z
     message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",
     path: ['permissions'],
   })
+  .refine((m) => m.contributes.chatProviderTypes.length === 0 || m.permissions.includes('provider.chat'), {
+    message: "Declaring contributes.chatProviderTypes requires the 'provider.chat' permission",
+    path: ['permissions'],
+  })
   .refine((m) => m.providerConfigValidator === undefined || m.contributes.taskProviderTypes.length > 0, {
     message: 'providerConfigValidator requires contributes.taskProviderTypes',
     path: ['providerConfigValidator'],
   })
+  .refine((m) => m.chatProviderFactory === undefined || m.contributes.chatProviderTypes.length > 0, {
+    message: 'chatProviderFactory requires contributes.chatProviderTypes',
+    path: ['chatProviderFactory'],
+  })
   .refine(hasProviderManifestPermission, {
-    message: "Provider-only manifest fields require the 'provider.task' permission",
+    message: "Provider-only manifest fields require the 'provider.task' or 'provider.chat' permission",
     path: ['permissions'],
   })
   .refine(hasMatchingContextConfigKeys, {
@@ -273,9 +239,25 @@ export type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
 // Provider-plugin fields carry Zod `.default([])`, so a parsed manifest always has them.
 // They are optional on the hand-constructed type so test fixtures and non-provider plugins
 // may omit them.
-export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema' | 'providerTraits'> & {
+export type PluginManifest = Omit<
+  ParsedPluginManifest,
+  | 'providerContextConfigSchema'
+  | 'providerTraits'
+  | 'chatProviderTraits'
+  | 'chatProviderThreadCapabilities'
+  | 'chatProviderCapabilities'
+  | 'chatProviderFactory'
+  | 'contributes'
+> & {
   providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
   providerTraits?: ParsedPluginManifest['providerTraits']
+  chatProviderTraits?: ParsedPluginManifest['chatProviderTraits']
+  chatProviderThreadCapabilities?: ParsedPluginManifest['chatProviderThreadCapabilities']
+  chatProviderCapabilities?: ParsedPluginManifest['chatProviderCapabilities']
+  chatProviderFactory?: ParsedPluginManifest['chatProviderFactory']
+  contributes: Omit<ParsedPluginManifest['contributes'], 'chatProviderTypes'> & {
+    chatProviderTypes?: ParsedPluginManifest['contributes']['chatProviderTypes']
+  }
 }
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {

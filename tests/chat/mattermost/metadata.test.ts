@@ -9,7 +9,7 @@ import {
   mattermostCapabilities,
   mattermostConfigRequirements,
   mattermostTraits,
-} from '../../../src/chat/mattermost/metadata.js'
+} from '../../../plugins/chat-provider-mattermost/metadata.js'
 
 describe('mattermost metadata', () => {
   it('should export required config requirements', () => {

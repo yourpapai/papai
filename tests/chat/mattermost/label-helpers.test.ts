@@ -5,7 +5,7 @@
 
 import { expect, test } from 'bun:test'
 
-import { formatMattermostUserLabel } from '../../../src/chat/mattermost/label-helpers.js'
+import { formatMattermostUserLabel } from '../../../plugins/chat-provider-mattermost/label-helpers.js'
 
 test('formatMattermostUserLabel formats first+last name with username', () => {
   expect(formatMattermostUserLabel('itsmike', 'John', 'Johnson', '')).toBe('John Johnson (@itsmike)')

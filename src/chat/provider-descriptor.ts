@@ -23,7 +23,7 @@ export type ChatProviderConfigField = {
 export type ChatProviderDescriptor = {
   type: string
   displayName: string
-  source: 'builtin'
+  source: 'builtin' | { plugin: string }
   instanceConfigSchema: readonly ChatProviderConfigField[]
   contextConfigSchema: readonly ChatProviderConfigField[]
   capabilities: ReadonlySet<ChatCapability>

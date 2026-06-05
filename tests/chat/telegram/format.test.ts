@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { formatLlmOutput } from '../../../src/chat/telegram/format.js'
+import { formatLlmOutput } from '../../../plugins/chat-provider-telegram/format.js'
 
 describe('formatLlmOutput - preprocessTables', () => {
   test('table preserves surrounding paragraph separation', () => {

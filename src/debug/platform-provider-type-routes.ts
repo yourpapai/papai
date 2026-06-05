@@ -21,7 +21,7 @@ export type PlatformProviderTypeView = {
   readonly contextConfigSchema: readonly PlatformProviderConfigFieldView[]
   readonly capabilities: readonly string[]
   readonly traits: ChatProviderTraits
-  readonly source: 'builtin'
+  readonly source: string
 }
 
 const fieldView = (field: ChatProviderConfigField): PlatformProviderConfigFieldView => ({
@@ -38,7 +38,7 @@ const platformProviderTypeView = (descriptor: ChatProviderDescriptor): PlatformP
   contextConfigSchema: descriptor.contextConfigSchema.map((field) => fieldView(field)),
   capabilities: [...descriptor.capabilities],
   traits: descriptor.traits,
-  source: descriptor.source,
+  source: descriptor.source === 'builtin' ? 'builtin' : descriptor.source.plugin,
 })
 
 export const handlePlatformProviderTypes = (req: Request, url: URL): Response | null => {

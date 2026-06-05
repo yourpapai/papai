@@ -256,6 +256,36 @@ export function syncRegistryFromDb(discoveredPlugins: DiscoveredPlugin[]): void 
   log.info({ count: discoveredPlugins.length }, 'Registry synced from DB')
 }
 
+/** Plugin IDs for built-in chat providers that are auto-approved on first discovery. */
+const BUILTIN_CHAT_PROVIDER_PLUGIN_IDS = [
+  'chat-provider-telegram',
+  'chat-provider-mattermost',
+  'chat-provider-discord',
+  'chat-provider-kontur-talk',
+]
+
+/**
+ * Auto-approve built-in chat provider plugins on first run.
+ * This ensures existing deployments continue working without manual admin approval.
+ * Idempotent: if the plugin is already approved, this is a no-op.
+ */
+export function seedBuiltinChatProviderPlugins(): void {
+  if (typeof pluginRegistry.getEntry !== 'function') return
+  for (const pluginId of BUILTIN_CHAT_PROVIDER_PLUGIN_IDS) {
+    const entry = pluginRegistry.getEntry(pluginId)
+    // plugin not discovered
+    if (entry === undefined) continue
+
+    const adminState = getPluginAdminState(pluginId)
+    // already has admin state
+    if (adminState !== undefined) continue
+
+    const manifestHash = entry.discoveredPlugin.manifestHash
+    pluginRegistry.approve(pluginId, '__migration__', manifestHash)
+    log.info({ pluginId }, 'Auto-approved built-in chat provider plugin (migration seed)')
+  }
+}
+
 export function getPluginsForContext(contextId: string): DiscoveredPlugin[] {
   return pluginRegistry
     .getActivePlugins()

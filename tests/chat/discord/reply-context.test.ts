@@ -5,7 +5,10 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { buildDiscordReplyContext, type DiscordReplyMessageLike } from '../../../src/chat/discord/reply-context.js'
+import {
+  buildDiscordReplyContext,
+  type DiscordReplyMessageLike,
+} from '../../../plugins/chat-provider-discord/reply-context.js'
 import { mockLogger, mockMessageCache } from '../../utils/test-helpers.js'
 
 const fetchKnownParent = (

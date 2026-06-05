@@ -24,8 +24,13 @@ import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
 import { discoverPlugins } from './plugins/discovery.js'
-import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from './plugins/loader.js'
-import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
+import {
+  activatePlugins,
+  deactivateAllPlugins,
+  getActivatedPluginIds,
+  registerChatProviderFactories,
+} from './plugins/loader.js'
+import { pluginRegistry, seedBuiltinChatProviderPlugins, syncRegistryFromDb } from './plugins/registry.js'
 import { collectStartupCompatibilityInstances } from './plugins/startup-compatibility.js'
 import { evaluateStartupGuard } from './plugins/startup-guard.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
@@ -77,6 +82,29 @@ initializeMessageCache()
 
 const adminUserId = process.env['ADMIN_USER_ID']!
 
+// Phase 1: Discover plugins and register chat provider factories BEFORE ChatRouter construction.
+// This ensures plugin-contributed chat providers are available when the router creates instances.
+const pluginDir = 'plugins'
+const { plugins: discoveredPlugins, errors: pluginErrors, directoryMissing } = discoverPlugins(pluginDir)
+if (pluginErrors.length > 0) {
+  log.warn({ errors: pluginErrors.map((e) => e.reason) }, 'Some plugins failed discovery')
+}
+const guardDecision = evaluateStartupGuard({
+  directoryMissing,
+  debugServerEnabled: process.env['DEBUG_SERVER'] === 'true',
+})
+if (guardDecision.action === 'exit') {
+  log.fatal({ reason: guardDecision.reason }, 'Refusing to start: misconfigured deployment')
+  process.exit(1)
+}
+if (guardDecision.action === 'warn') {
+  log.warn({ reason: guardDecision.reason }, 'Starting in degraded mode')
+}
+syncRegistryFromDb(discoveredPlugins)
+seedBuiltinChatProviderPlugins()
+await registerChatProviderFactories(discoveredPlugins)
+
+// Phase 2: ChatRouter construction — now uses merged registry (builtin + plugin-contributed).
 const activePlatformResult = listActivePlatformInstancesSafe()
 for (const failure of activePlatformResult.failures) {
   log.warn(failure, 'Skipping unreadable active platform instance during startup')
@@ -117,24 +145,7 @@ const processMessage: BotDeps['processMessage'] = (...args) =>
 const stagedDownloadFn = createStagedDownloadFn()
 const botDeps: BotDeps = { processMessage, stagedDownloadFn }
 
-// Discover and activate plugins before command registration so contributed commands are registered.
-const pluginDir = 'plugins'
-const { plugins: discoveredPlugins, errors: pluginErrors, directoryMissing } = discoverPlugins(pluginDir)
-if (pluginErrors.length > 0) {
-  log.warn({ errors: pluginErrors.map((e) => e.reason) }, 'Some plugins failed discovery')
-}
-const guardDecision = evaluateStartupGuard({
-  directoryMissing,
-  debugServerEnabled: process.env['DEBUG_SERVER'] === 'true',
-})
-if (guardDecision.action === 'exit') {
-  log.fatal({ reason: guardDecision.reason }, 'Refusing to start: misconfigured deployment')
-  process.exit(1)
-}
-if (guardDecision.action === 'warn') {
-  log.warn({ reason: guardDecision.reason }, 'Starting in degraded mode')
-}
-syncRegistryFromDb(discoveredPlugins)
+// Phase 3: Plugin compatibility evaluation + full activation (after ChatRouter is ready).
 try {
   const taskInstanceResult = listTaskInstancesSafe()
   for (const failure of taskInstanceResult.failures) {

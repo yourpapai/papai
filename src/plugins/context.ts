@@ -6,11 +6,12 @@
 import { logger } from '../logger.js'
 import type { TaskProviderAutoProvision, TaskProviderFactory, TaskProviderProvision } from '../providers/registry.js'
 import type { ProviderConfigField } from '../providers/types.js'
+import { buildRegisterChatProviderType } from './chat-provider-registration.js'
 import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { buildActivationGuard, buildNamedRegistrationHandlers, type ActivationGuard } from './registration-support.js'
-import type { PluginContributions } from './runtime-types.js'
+import type { ChatProviderFactory, PluginContributions } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type { PluginManifest, PluginCommand, PluginTool, PluginPromptFragment, PluginScheduledJob } from './types.js'
 
@@ -55,6 +56,8 @@ export type PluginRegistration = {
   registerScheduledJob(job: PluginScheduledJob): void
   /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
   registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void
+  /** Register the plugin's single declared chat provider type. Requires the 'provider.chat' permission. */
+  registerChatProviderType?: (type: string, input: ChatProviderFactory | { factory: ChatProviderFactory }) => void
 }
 
 /** Full context passed to a plugin's activate() function. */
@@ -67,6 +70,8 @@ export type PluginContext = {
   readonly registration: PluginRegistration
   /** Present only when the 'provider.task' or 'http' permission is held. */
   readonly providerRuntime?: PluginProviderRuntime
+  /** Present only when the 'provider.chat' or 'http' permission is held. */
+  readonly chatProviderRuntime?: PluginProviderRuntime
   /** Present only when 'identity' is held and the plugin declares one task provider type. */
   readonly identity?: PluginIdentityLookupFacade
   readonly adminConfig: PluginAdminConfig
@@ -200,6 +205,7 @@ function buildRegistration(
       namedRegistrations.registerScheduledJob(job)
     },
     registerTaskProviderType: buildRegisterTaskProviderType(manifest, collected, activationGuard),
+    registerChatProviderType: buildRegisterChatProviderType(manifest, collected, activationGuard),
   })
 }
 
@@ -235,7 +241,10 @@ export function buildPluginContext(
     permissions.has('provider.task') || permissions.has('http')
       ? buildProviderRuntime(manifest.providerAllowedHosts, log)
       : undefined
-
+  const chatProviderRuntime =
+    permissions.has('provider.chat') || permissions.has('http')
+      ? buildProviderRuntime(manifest.providerAllowedHosts, log)
+      : undefined
   const declaredTypes = manifest.contributes.taskProviderTypes
   const [declaredProviderType] = declaredTypes
   const identity =
@@ -251,6 +260,7 @@ export function buildPluginContext(
     log,
     registration: buildRegistration(manifest, collected, activationGuard),
     providerRuntime,
+    chatProviderRuntime,
     identity,
     adminConfig: buildAdminConfig(manifest),
   })

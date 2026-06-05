@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { isBotMentioned, stripBotMention } from '../../../src/chat/discord/mention-helpers.js'
+import { isBotMentioned, stripBotMention } from '../../../plugins/chat-provider-discord/mention-helpers.js'
 
 describe('stripBotMention', () => {
   const botId = '1234567890123456'

@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { resolveKonturTalkConfig } from '../../../src/chat/kontur-talk/config.js'
+import { resolveKonturTalkConfig } from '../../../plugins/chat-provider-kontur-talk/config.js'
 
 describe('resolveKonturTalkConfig', () => {
   test('uses explicit constructor config only', () => {

@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { resolveKonturTalkUserLabel, resolveKonturTalkGroupLabel } from '../../../src/chat/kontur-talk/label-helpers.js'
+import {
+  resolveKonturTalkUserLabel,
+  resolveKonturTalkGroupLabel,
+} from '../../../plugins/chat-provider-kontur-talk/label-helpers.js'
 
 describe('resolveKonturTalkUserLabel', () => {
   test('returns user_id as-is when no display name API', async () => {

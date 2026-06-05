@@ -123,6 +123,10 @@
     "plugins/synthetic-web-search/index.ts": ["exports"],
     "plugins/task-provider-kaneo/index.ts": ["exports"],
     "plugins/task-provider-youtrack/index.ts": ["exports"],
+    "plugins/chat-provider-telegram/index.ts": ["exports"],
+    "plugins/chat-provider-mattermost/index.ts": ["exports"],
+    "plugins/chat-provider-discord/index.ts": ["exports"],
+    "plugins/chat-provider-kontur-talk/index.ts": ["exports"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.
@@ -136,6 +140,11 @@
     "plugins/task-provider-kaneo/client.ts": ["exports"],
     "plugins/task-provider-kaneo/provider.ts": ["exports"],
     "plugins/task-provider-youtrack/provider.ts": ["exports"],
+    // Chat provider createProvider exports are resolved dynamically from manifest chatProviderFactory.
+    "plugins/chat-provider-telegram/provider.ts": ["exports"],
+    "plugins/chat-provider-mattermost/provider.ts": ["exports"],
+    "plugins/chat-provider-discord/provider.ts": ["exports"],
+    "plugins/chat-provider-kontur-talk/provider.ts": ["exports"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
   },

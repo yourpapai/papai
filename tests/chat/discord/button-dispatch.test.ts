@@ -6,8 +6,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import type { ButtonInteractionLike } from '../../../plugins/chat-provider-discord/buttons.js'
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
-import type { ButtonInteractionLike } from '../../../src/chat/discord/buttons.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import type { CommandHandler } from '../../../src/chat/types.js'
 import { addGroupMember } from '../../../src/groups.js'
@@ -114,7 +114,7 @@ const requireCapturedAuth = (
 
 describe('routeButtonFallback', () => {
   const originalAdminUserId = process.env['ADMIN_USER_ID']
-  let routeButtonFallback: typeof import('../../../src/chat/discord/button-dispatch.js').routeButtonFallback
+  let routeButtonFallback: typeof import('../../../plugins/chat-provider-discord/button-dispatch.js').routeButtonFallback
   let capturedAuth: {
     allowed: boolean
     isBotAdmin: boolean
@@ -144,7 +144,7 @@ describe('routeButtonFallback', () => {
     addUser('admin-123', 'bot-admin', 'adminuser')
 
     // Import module under test
-    const module = await import('../../../src/chat/discord/button-dispatch.js')
+    const module = await import('../../../plugins/chat-provider-discord/button-dispatch.js')
     routeButtonFallback = module.routeButtonFallback
 
     capturedAuth = null
@@ -726,7 +726,7 @@ describe('routeButtonFallback', () => {
       const authorizedUserId = 'authorized-user'
       addUser(authorizedUserId, 'authorized', 'authorizeduser')
 
-      const { createFallbackMessage } = await import('../../../src/chat/discord/button-dispatch.js')
+      const { createFallbackMessage } = await import('../../../plugins/chat-provider-discord/button-dispatch.js')
 
       const interaction = createMockInteraction({
         userId: authorizedUserId,
@@ -740,7 +740,7 @@ describe('routeButtonFallback', () => {
     })
 
     test('uses the provided platform instance ID', async () => {
-      const { createFallbackMessage } = await import('../../../src/chat/discord/button-dispatch.js')
+      const { createFallbackMessage } = await import('../../../plugins/chat-provider-discord/button-dispatch.js')
       const interaction = createMockInteraction({ customId: '/help' })
 
       const result = createFallbackMessage(interaction, 'channel-123', 'group', false, 'discord-secondary')

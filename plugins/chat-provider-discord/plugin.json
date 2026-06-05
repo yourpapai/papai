@@ -1,0 +1,33 @@
+{
+  "id": "chat-provider-discord",
+  "name": "Discord",
+  "version": "1.0.0",
+  "description": "Discord chat platform integration.",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "permissions": ["provider.chat"],
+  "contributes": {
+    "chatProviderTypes": ["discord"]
+  },
+  "chatProviderCapabilities": [
+    "interactions.callbacks",
+    "messages.buttons",
+    "messages.redact",
+    "messages.reply-context",
+    "users.resolve"
+  ],
+  "chatProviderTraits": {
+    "observedGroupMessages": "mentions_only",
+    "maxMessageLength": 2000,
+    "callbackDataMaxLength": 100
+  },
+  "chatProviderThreadCapabilities": {
+    "supportsThreads": false,
+    "canCreateThreads": false,
+    "threadScope": "message"
+  },
+  "providerConfigSchema": [{ "key": "token", "label": "Discord Bot Token", "required": true, "sensitive": true }],
+  "providerAllowedHosts": [],
+  "chatProviderFactory": "createProvider",
+  "defaultEnabled": true
+}

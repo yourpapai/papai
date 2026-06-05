@@ -1,0 +1,35 @@
+{
+  "id": "chat-provider-telegram",
+  "name": "Telegram",
+  "version": "1.0.0",
+  "description": "Telegram chat platform integration.",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "permissions": ["provider.chat"],
+  "contributes": {
+    "chatProviderTypes": ["telegram"]
+  },
+  "chatProviderCapabilities": [
+    "commands.menu",
+    "interactions.callbacks",
+    "messages.buttons",
+    "messages.files",
+    "messages.redact",
+    "messages.reply-context",
+    "files.receive"
+  ],
+  "chatProviderTraits": {
+    "observedGroupMessages": "all",
+    "maxMessageLength": 4096,
+    "callbackDataMaxLength": 64
+  },
+  "chatProviderThreadCapabilities": {
+    "supportsThreads": true,
+    "canCreateThreads": true,
+    "threadScope": "message"
+  },
+  "providerConfigSchema": [{ "key": "token", "label": "Telegram Bot Token", "required": true, "sensitive": true }],
+  "providerAllowedHosts": ["api.telegram.org"],
+  "chatProviderFactory": "createProvider",
+  "defaultEnabled": true
+}

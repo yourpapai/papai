@@ -1,0 +1,35 @@
+{
+  "id": "chat-provider-mattermost",
+  "name": "Mattermost",
+  "version": "1.0.0",
+  "description": "Mattermost chat platform integration.",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "permissions": ["provider.chat"],
+  "contributes": {
+    "chatProviderTypes": ["mattermost"]
+  },
+  "chatProviderCapabilities": [
+    "messages.delete",
+    "messages.files",
+    "messages.reply-context",
+    "files.receive",
+    "users.resolve"
+  ],
+  "chatProviderTraits": {
+    "observedGroupMessages": "all",
+    "maxMessageLength": 16383
+  },
+  "chatProviderThreadCapabilities": {
+    "supportsThreads": true,
+    "canCreateThreads": true,
+    "threadScope": "post"
+  },
+  "providerConfigSchema": [
+    { "key": "baseUrl", "label": "Mattermost URL", "required": true, "sensitive": false },
+    { "key": "token", "label": "Mattermost Bot Token", "required": true, "sensitive": true }
+  ],
+  "providerAllowedHosts": [],
+  "chatProviderFactory": "createProvider",
+  "defaultEnabled": true
+}

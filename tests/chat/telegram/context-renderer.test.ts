@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { renderTelegramContext } from '../../../src/chat/telegram/context-renderer.js'
+import { renderTelegramContext } from '../../../plugins/chat-provider-telegram/context-renderer.js'
 import { standardContextSnapshot } from '../fixtures/context-snapshot.js'
 
 describe('renderTelegramContext', () => {

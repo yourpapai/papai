@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { extractReplyContext } from '../../../src/chat/telegram/index.js'
+import { extractReplyContext } from '../../../plugins/chat-provider-telegram/index.js'
 import { cacheMessage } from '../../../src/message-cache/index.js'
 import { clearMessageCache, mockMessageCache } from '../../utils/test-helpers.js'
 

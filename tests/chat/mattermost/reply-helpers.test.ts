@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { createMattermostReplyFn } from '../../../src/chat/mattermost/reply-helpers.js'
+import { createMattermostReplyFn } from '../../../plugins/chat-provider-mattermost/reply-helpers.js'
 import type { ReplyFn } from '../../../src/chat/types.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 

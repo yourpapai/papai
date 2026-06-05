@@ -9,6 +9,10 @@ See LICENSE in the project root for details.
 
 ## Paths
 
+- src/plugins/capability-constants.ts
+- src/plugins/chat-provider-factory-registration.ts
+- src/plugins/chat-provider-lifecycle.ts
+- src/plugins/chat-provider-registration.ts
 - src/plugins/command-contributions.ts
 - src/plugins/compatibility.ts
 - src/plugins/context.ts
@@ -51,6 +55,7 @@ See LICENSE in the project root for details.
 
 ## Depends On
 
+- chat
 - deferred-prompts
 - identity
 - instances

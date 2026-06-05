@@ -42,7 +42,7 @@ type FailureScenario = {
   readonly useDelete: boolean
 }
 
-type TelegramCommandsModule = typeof import('../../../src/chat/telegram/commands.js')
+type TelegramCommandsModule = typeof import('../../../plugins/chat-provider-telegram/commands.js')
 
 function requireCall(calls: readonly SetMyCommandsCall[], index: number): SetMyCommandsCall {
   const call = calls[index]
@@ -74,9 +74,11 @@ describe('registerTelegramCommands', () => {
   const trackedLogger: TrackedLoggerMock = createTrackedLoggerMock()
 
   async function loadRegisterTelegramCommands(): Promise<
-    typeof import('../../../src/chat/telegram/commands.js').registerTelegramCommands
+    typeof import('../../../plugins/chat-provider-telegram/commands.js').registerTelegramCommands
   > {
-    const module: unknown = await import(`../../../src/chat/telegram/commands.js?test=${crypto.randomUUID()}`)
+    const module: unknown = await import(
+      `../../../plugins/chat-provider-telegram/commands.js?test=${crypto.randomUUID()}`
+    )
 
     if (!isTelegramCommandsModule(module)) {
       throw new Error('Failed to load Telegram commands module for testing')
