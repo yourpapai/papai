@@ -160,7 +160,6 @@ export const normalizeArchitectureGraph = (raw: RawCruiseResult): ArchitectureLl
       includedRoots: [...INCLUDED_ROOTS],
       excludedPrefixes: [...EXCLUDED_PREFIXES],
     },
-    rawArtifact: 'raw/dependency-cruiser.json',
     server: {
       focusedAreaIds: [...FOCUSED_SERVER_AREA_IDS],
       areas: [...serverAreas.values()].map(serializeArea).filter((area) => area.paths.length > 0),

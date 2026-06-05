@@ -1,9 +1,15 @@
 {
   "scope": {
     "includedRoots": ["src", "client"],
-    "excludedPrefixes": ["tests/", "scripts/", "review-loop/", "docs/architecture/", "client/stories/"]
+    "excludedPrefixes": [
+      "tests/",
+      "scripts/",
+      "review-loop/",
+      "docs/architecture/",
+      "client/stories/",
+      "client/assets/"
+    ]
   },
-  "rawArtifact": "raw/dependency-cruiser.json",
   "server": {
     "areas": [
       {
@@ -960,48 +966,6 @@
         ],
         "dependsOn": [],
         "dependedOnBy": ["admin", "debug", "settings"]
-      },
-      {
-        "id": "assets",
-        "slug": "assets",
-        "label": "assets",
-        "kind": "client",
-        "paths": [
-          "client/assets/bs-admin-active-subjects.jsx",
-          "client/assets/bs-admin-billing-table.jsx",
-          "client/assets/bs-admin-credentials.jsx",
-          "client/assets/bs-admin-deferred.jsx",
-          "client/assets/bs-admin-distributions.jsx",
-          "client/assets/bs-admin-groups.jsx",
-          "client/assets/bs-admin-growth.jsx",
-          "client/assets/bs-admin-helpers.jsx",
-          "client/assets/bs-admin-identity.jsx",
-          "client/assets/bs-admin-memos.jsx",
-          "client/assets/bs-admin-overview-metrics.jsx",
-          "client/assets/bs-admin-recurring.jsx",
-          "client/assets/bs-admin-sidebar.jsx",
-          "client/assets/bs-admin-storage.jsx",
-          "client/assets/bs-admin-subject-detail.jsx",
-          "client/assets/bs-admin-surface-mix.jsx",
-          "client/assets/bs-admin-tool-calls.jsx",
-          "client/assets/bs-admin.jsx",
-          "client/assets/bs-debug-context.jsx",
-          "client/assets/bs-debug-failures.jsx",
-          "client/assets/bs-debug-logs.jsx",
-          "client/assets/bs-debug-notifications.jsx",
-          "client/assets/bs-debug-sessions.jsx",
-          "client/assets/bs-debug-traces.jsx",
-          "client/assets/bs-debug-turn-detail.jsx",
-          "client/assets/bs-debug-turns.jsx",
-          "client/assets/bs-debug.jsx",
-          "client/assets/bs-design-system.jsx",
-          "client/assets/bs-scenarios-admin-data.jsx",
-          "client/assets/bs-scenarios-data.jsx",
-          "client/assets/bs-tokens.jsx",
-          "client/assets/design-canvas.jsx"
-        ],
-        "dependsOn": [],
-        "dependedOnBy": []
       }
     ]
   }
