@@ -54,9 +54,21 @@ const postErrorMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(groupsPayload))
 }
 
+let authorizeFlowDone = false
+
+const authorizeFlowMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/groups') && init.method === 'POST') {
+    authorizeFlowDone = true
+    return Promise.resolve(json({ ok: true }))
+  }
+  const observed = authorizeFlowDone ? [] : [{ contextId: 'pi:a:ctx:obs', displayName: 'Ops Room', parentName: 'Team' }]
+  return Promise.resolve(json({ groups: [], observed }))
+}
+
 afterEach(() => {
   capturedPostBody = undefined
   capturedDeleteBody = undefined
+  authorizeFlowDone = false
   restoreFetch()
   setCsrfToken('')
 })
@@ -133,6 +145,23 @@ describe('AdminGroupsSection', () => {
     expect(target.querySelector('[data-testid="group-add-input"]')?.closest('.ui-input')).not.toBeNull()
     expect(target.querySelector('[data-testid="group-add"]')?.classList.contains('ui-btn')).toBe(true)
     expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('authorized observed group renders its parent and leaves the list after reload', async () => {
+    setCsrfToken('c')
+    setMockFetch(authorizeFlowMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminGroupsSection, { target })
+    await drain()
+
+    expect(target.textContent).toContain('Ops Room · Team')
+    target.querySelector<HTMLButtonElement>('[data-testid="group-authorize-pi:a:ctx:obs"]')!.click()
+    await drain()
+    await drain()
+
+    expect(target.querySelector('[data-testid="group-authorize-pi:a:ctx:obs"]')).toBeNull()
     void unmount(component)
   })
 
