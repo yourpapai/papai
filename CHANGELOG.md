@@ -5,6 +5,142 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0] - 2026-06-05
+
+### Added
+
+- **client/ui:** Map log levels and retriable in statusTone
+- **client/ui:** Map warn and info log levels in statusTone
+- Add providerless task tracker fallback
+- **client/ui:** Add multiline (textarea) mode to Input
+- **settings:** Bind context to task instance + HTTPS-gated session cookie
+- **scripts:** Add architecture refresh config
+- **scripts:** Render architecture refresh reports
+- **group-settings:** Add listKnownGroupContextsForPlatform reader
+- **settings:** Auto-scope raw group ids when authorizing a group
+- **settings:** Return observed unauthorized groups from admin groups GET
+- **settings:** Add observed groups to admin groups response schema
+- **settings:** Observed-group pick-list and raw-id field in AdminGroupsSection
+- **mattermost:** Add action signing secret
+- **mattermost:** Sign action contexts
+- **mattermost:** Render reply buttons
+- **chat:** Route permission button callbacks
+- **mattermost:** Add action callback registry
+- **mattermost:** Dispatch action callbacks
+- **mattermost:** Expose action callback route
+
+### Changed
+
+- **settings:** Dedup authorized-group lookup in admin groups GET
+
+### Documentation
+
+- **claude:** Condense CLAUDE.md to ~21k chars
+- Write ADR-0124 through ADR-0167 for implemented plans, archive specs and plans
+- Prune ADR 0001-0100, archive pre-May-20 specs; add commit hashes to ADR index
+- Add dependency-cruiser architecture refresh design
+- **settings:** Design spec for Admin Groups authorization UX
+- **settings:** Implementation plan for Admin Groups authorization UX
+- Add architecture refresh implementation plan
+- Add Mattermost buttons design
+- Add Mattermost implementation plan
+- **specs:** Tool-context reduction design (progressive disclosure + result compaction + semantic tool retrieval)
+- **plans:** Tool-context reduction implementation plans (part 1 flags+compaction, part 2 disclosure+retrieval)
+- Reduce architecture refresh artifacts
+- Reduce architecture refresh artifacts
+
+### Fixed
+
+- **telegram,tests:** Make dispatchCallbackQuery mockable, drop check.sh concurrency, tighten test isolation
+- **admin:** Render system summary via SummaryList (B6)
+- **debug:** Close control via Btn in DebugDetailRail
+- **debug:** LogExplorer via Panel/Toolbar/Select/Input/Btn
+- **debug:** NotificationsPanel via Panel/EmptyState/JsonCell
+- **debug:** ToolFailuresPanel via Panel/EmptyState/StatusPill
+- **debug:** LiveContextCard via Panel/EmptyState
+- **debug:** SessionsList via Panel
+- **debug:** TraceList via Panel/EmptyState + fmtNum duration
+- **debug:** Explicit StatusPill for SessionCard active state
+- **debug:** SessionDetail via SummaryList/KV/DataTable
+- **debug:** TraceDetail via SummaryList/StatusPill + fmtNum
+- **debug:** LogDetail meta via SummaryList with level pill
+- **debug:** TurnsPanel empty via EmptyState
+- **settings:** Adopt Secret/Input/Btn in ConfigFieldRow
+- **settings:** Adopt Btn/EmptyState in ProfileSection
+- **settings:** Adopt Btn/EmptyState/SummaryList/Secret in TaskProviderSection
+- **settings:** Adopt Btn/Pill/EmptyState in ToolsSection (expand stays raw for aria)
+- **settings:** Adopt Field/Input/Btn in IdentitySection
+- **settings:** Adopt Field/Input/Btn/DataTable in MembersSection
+- **settings:** Adopt Field/Select/Btn in GroupProviderSection
+- **settings:** Adopt Btn/Pill/Field/Input/EmptyState in PluginsSection
+- **settings:** Adopt Field/Input/Btn in McpSection (checkbox stays native)
+- **settings:** Adopt Field/Input/Btn/DataTable in AdminAdminsSection
+- **settings:** Adopt Field/Input/Btn/DataTable in AdminGroupsSection
+- **settings:** Adopt Field/Input/Btn/DataTable in AdminUsersSection
+- **settings:** Adopt multiline Input + Btn in AdminAnnounceSection
+- **settings:** Adopt DataTable/StatusPill/Btn in AdminPluginsApprovalSection
+- **settings:** Adopt Secret/Field/Input/Btn/EmptyState in AdminPluginsConfigSection
+- **settings:** Adopt Secret/Field/Input/Btn in AdminSystemSection
+- **settings:** Adopt Field/Input/Select/Btn/DataTable/StatusPill in AdminInstancesSection
+- **settings:** Migrate all section headers to PageHeader (B1)
+- **settings:** Show editor for unset secret config fields
+- **scripts:** Tighten architecture refresh scope
+- **scripts:** Restore architecture refresh runtime scope
+- **scripts:** Share depcruise config
+- **auth:** Key bot-admin DM context off user id, not channel id
+- **tests:** Assert depcruise options identity
+- **scripts:** Normalize architecture refresh graph
+- **scripts:** Keep shared runtime buckets in normalize
+- **tests:** Cover shared runtime allowlist
+- **scripts:** Curate architecture refresh outputs
+- **scripts:** Finalize architecture refresh generator
+- **scripts:** Resolve graphviz dot from PATH
+- **scripts:** Stabilize dot fallback selection
+- **scripts:** Wait for child stdio close
+- **scripts:** Fail architecture refresh without graphviz
+- **scripts:** Preflight graphviz before writes
+- **scripts:** Prove graphviz preflight render
+- **workflows:** Serialize architecture refresh runs
+- **workflows:** Watch architecture refresh inputs
+- **scripts:** Align architecture refresh CI and mapping
+- **scripts:** Align architecture refresh outputs
+- **workflows:** Align architecture refresh scope
+- **settings:** Normalize thread-scoped group ids to main context on authorize
+- **deps:** Bump vite to ^6.4.2 to patch GHSA-4w7w-66w2-5vf9
+- **server:** Start web UI server unconditionally
+- **mattermost:** Reference action signing secret
+- **mattermost:** Harden action signature verification
+- **mattermost:** Compare canonical action signatures
+- **chat:** Bind permission callbacks to context
+- **mattermost:** Preserve action thread context
+- **mattermost:** Bind actions to channel
+
+### Miscellaneous
+
+- Remove architecture inventory tooling
+- **settings:** Remove dead shadow-styling rules superseded by the kit
+- **knip:** Allow pending Mattermost action signing
+- **mattermost:** Mark pending action verifier internal
+- **mattermost:** Update action callback maintenance
+
+### Testing
+
+- **scripts:** Cover architecture refresh triggers
+- **scripts:** Assert architecture refresh PR base
+- **scripts:** Scope architecture refresh workflow checks
+- **group-settings:** Cover empty-result case for platform reader
+- **settings:** Assert observed group leaves list and renders parent after authorize
+- **startup:** Reset startup guard mock
+- **mattermost:** Update capability expectations
+- **mattermost:** Cover permission action callbacks
+- **mattermost:** Verify signed prompt content
+- **mattermost:** Cover provider action dispatch
+- **mattermost:** Assert action platform context
+- **startup:** Restore debug server mock
+
+### Ci
+
+- **workflows:** Add architecture refresh workflow
 ## [6.0.6] - 2026-06-02
 
 ### Fixed
