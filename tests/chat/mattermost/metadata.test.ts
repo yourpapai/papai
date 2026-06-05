@@ -20,6 +20,8 @@ describe('mattermost metadata', () => {
 
   it('should export capabilities as ReadonlySet', () => {
     expect(mattermostCapabilities.has('users.resolve')).toBe(true)
+    expect(mattermostCapabilities.has('messages.buttons')).toBe(true)
+    expect(mattermostCapabilities.has('interactions.callbacks')).toBe(true)
   })
 
   it('should export traits', () => {

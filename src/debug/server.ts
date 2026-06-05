@@ -6,6 +6,7 @@
 import path from 'node:path'
 
 import { removeAuthorizedGroup } from '../authorized-groups.js'
+import { handleMattermostActionRequest, isMattermostActionPath } from '../chat/mattermost/action-callbacks.js'
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
@@ -106,7 +107,7 @@ function handleLogs(url: URL): Response {
   return jsonResponse(results)
 }
 
-export type WebServerRouteOptions = Readonly<{ debugEnabled: boolean }>
+export type WebServerRouteOptions = Readonly<{ debugEnabled: boolean; mattermostActionSecretForTest?: string }>
 type WebServerStartOptions = Readonly<{ debugEnabled?: boolean; logLevel?: string }>
 const DEFAULT_ROUTE_OPTIONS: WebServerRouteOptions = { debugEnabled: true }
 const DEBUG_ONLY_PATHS = new Set(['/debug', '/debug.js', '/debug.css', '/events', '/logs', '/logs/stats', '/dashboard'])
@@ -140,9 +141,7 @@ function handleTurnLookup(url: URL): Response {
   return new Response('Not found', { status: 404 })
 }
 
-function handleAdminIdentityMappings(): Response {
-  return jsonResponse(listAllIdentityMappings())
-}
+const handleAdminIdentityMappings = (): Response => jsonResponse(listAllIdentityMappings())
 
 function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> | null {
   if (url.pathname === '/admin/system') {
@@ -209,11 +208,7 @@ function routeProtectedPaths(req: Request, url: URL): Response | Promise<Respons
   return null
 }
 
-/**
- * Public static serving for the settings SPA shell + assets. These are reachable
- * without DEBUG_TOKEN (the shell is public; the data behind it is settings-session
- * gated). Returns null for every non-static path so callers fall through.
- */
+/** Public settings SPA shell/assets; API remains settings-session gated. */
 export function routeSettingsStatic(pathname: string): Response | null {
   if (pathname === '/settings' || pathname === '/settings.js' || pathname === '/settings.css') {
     return handleClientFile('settings', pathname)
@@ -232,6 +227,13 @@ async function routeRequest(req: Request, options: WebServerRouteOptions = route
 
   const publicAuthResponse = routePublicAuthPaths(req, url)
   if (publicAuthResponse !== null) return publicAuthResponse
+
+  if (isMattermostActionPath(req, url)) {
+    return handleMattermostActionRequest(req, {
+      getSecret:
+        options.mattermostActionSecretForTest === undefined ? undefined : () => options.mattermostActionSecretForTest!,
+    })
+  }
 
   if (!options.debugEnabled && isDebugOnlyPath(url.pathname)) return new Response('Not found', { status: 404 })
 
