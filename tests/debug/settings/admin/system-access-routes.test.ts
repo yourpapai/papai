@@ -321,5 +321,8 @@ describe('settings admin system/access routes', () => {
     expect(observedIds).toContain(observedId)
     expect(observedIds).not.toContain(authorizedId)
     expect(observedIds).not.toContain(otherInstanceId)
+    const observedEntry = body.observed.find((o) => o.contextId === observedId)
+    expect(observedEntry?.displayName).toBe('Observed')
+    expect(observedEntry?.parentName).toBeNull()
   })
 })
