@@ -70,6 +70,7 @@ export function createMattermostActionContext(
   return { ...unsigned, signature: sign(canonicalPayload(unsigned), secret) }
 }
 
+/** @internal */
 export function verifyMattermostActionContext(
   value: unknown,
   secret: string,
