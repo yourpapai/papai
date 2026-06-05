@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { type DiscordMessageLike, mapDiscordMessage } from '../../../src/chat/discord/map-message.js'
+import { type DiscordMessageLike, mapDiscordMessage } from '../../../plugins/chat-provider-discord/map-message.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 describe('mapDiscordMessage', () => {

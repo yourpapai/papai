@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { buildTelegramInteraction } from '../../../src/chat/telegram/interaction-helpers.js'
+import { buildTelegramInteraction } from '../../../plugins/chat-provider-telegram/interaction-helpers.js'
 
 describe('buildTelegramInteraction', () => {
   const platformInstanceId = 'telegram-default'

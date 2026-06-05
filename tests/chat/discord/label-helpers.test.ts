@@ -10,7 +10,7 @@ import {
   getDiscordMemberDisplayName,
   getDiscordUserDisplayName,
   resolveDiscordUserLabel,
-} from '../../../src/chat/discord/label-helpers.js'
+} from '../../../plugins/chat-provider-discord/label-helpers.js'
 
 test('formatDiscordUserLabel formats display name with username when they differ', () => {
   expect(formatDiscordUserLabel('John Johnson', 'itsmike')).toBe('John Johnson (@itsmike)')

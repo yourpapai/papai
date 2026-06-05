@@ -1,0 +1,26 @@
+{
+  "id": "chat-provider-kontur-talk",
+  "name": "Kontur Talk",
+  "version": "1.0.0",
+  "description": "Kontur Talk chat platform integration.",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "permissions": ["provider.chat"],
+  "contributes": {
+    "chatProviderTypes": ["kontur-talk"]
+  },
+  "chatProviderCapabilities": ["messages.reply-context"],
+  "chatProviderTraits": {
+    "observedGroupMessages": "all",
+    "maxMessageLength": 4096
+  },
+  "chatProviderThreadCapabilities": {
+    "supportsThreads": true,
+    "canCreateThreads": true,
+    "threadScope": "message"
+  },
+  "providerConfigSchema": [{ "key": "jwtToken", "label": "JWT Token", "required": true, "sensitive": true }],
+  "providerAllowedHosts": [],
+  "chatProviderFactory": "createProvider",
+  "defaultEnabled": true
+}

@@ -19,6 +19,8 @@ import { afterEach, beforeEach, mock } from 'bun:test'
 import * as _openaiCompat from '@ai-sdk/openai-compatible'
 import * as _ai from 'ai'
 
+import * as _chatMattermost from '../plugins/chat-provider-mattermost/index.js'
+import * as _chatTelegram from '../plugins/chat-provider-telegram/index.js'
 import * as _provision from '../plugins/task-provider-kaneo/provision.js'
 // Additional modules mocked by tests/index.test.ts (graceful shutdown tests).
 // Bun's mock.module() is process-wide, so any module mocked there leaks into
@@ -33,11 +35,9 @@ import * as _stagedDownload from '../src/attachments/staged-download.js'
 import * as _authorizedGroups from '../src/authorized-groups.js'
 import * as _bot from '../src/bot.js'
 import * as _interactionRouter from '../src/chat/interaction-router.js'
-import * as _chatMattermost from '../src/chat/mattermost/index.js'
 import * as _chatRegistry from '../src/chat/registry.js'
 import * as _chatRouter from '../src/chat/router.js'
 import * as _chatStartup from '../src/chat/startup.js'
-import * as _chatTelegram from '../src/chat/telegram/index.js'
 import { resetDrizzleDbForTesting } from '../src/db/drizzle.js'
 import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
@@ -81,11 +81,11 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/attachments/staged-download.js', { ..._stagedDownload }],
   ['../src/authorized-groups.js', { ..._authorizedGroups }],
   ['../src/bot.js', { ..._bot }],
-  ['../src/chat/mattermost/index.js', { ..._chatMattermost }],
+  ['../plugins/chat-provider-mattermost/index.js', { ..._chatMattermost }],
   ['../src/chat/registry.js', { ..._chatRegistry }],
   ['../src/chat/router.js', { ..._chatRouter }],
   ['../src/chat/startup.js', { ..._chatStartup }],
-  ['../src/chat/telegram/index.js', { ..._chatTelegram }],
+  ['../plugins/chat-provider-telegram/index.js', { ..._chatTelegram }],
   ['../src/db/drizzle.js', { ..._dbDrizzle }],
   ['../src/db/index.js', { ..._dbIndex }],
   ['../src/debug/chat-router-runtime.js', { ..._chatRouterRuntime }],

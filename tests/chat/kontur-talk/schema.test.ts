@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { KonturTalkUpdateSchema, KonturTalkSendMessageResponseSchema } from '../../../src/chat/kontur-talk/schema.js'
+import {
+  KonturTalkUpdateSchema,
+  KonturTalkSendMessageResponseSchema,
+} from '../../../plugins/chat-provider-kontur-talk/schema.js'
 
 describe('Kontur Talk schemas', () => {
   describe('KonturTalkUpdateSchema', () => {

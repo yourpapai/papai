@@ -13,7 +13,7 @@ import {
   createForumTopicIfNeeded,
   clearForumStatusCacheForTesting,
   type ForumTopicContext,
-} from '../../../src/chat/telegram/forum-topic-helpers.js'
+} from '../../../plugins/chat-provider-telegram/forum-topic-helpers.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 /** Mock API interface */

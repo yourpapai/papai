@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import { KonturTalkChatProvider } from '../../../src/chat/kontur-talk/index.js'
+import { KonturTalkChatProvider } from '../../../plugins/chat-provider-kontur-talk/index.js'
 import type { DeferredDeliveryTarget, IncomingMessage } from '../../../src/chat/types.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 

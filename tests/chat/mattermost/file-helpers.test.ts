@@ -9,7 +9,10 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { resolveMattermostUserId, type MattermostApiFetch } from '../../../src/chat/mattermost/file-helpers.js'
+import {
+  resolveMattermostUserId,
+  type MattermostApiFetch,
+} from '../../../plugins/chat-provider-mattermost/file-helpers.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 describe('file-helpers', () => {

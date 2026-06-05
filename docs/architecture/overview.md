@@ -23,7 +23,7 @@ See LICENSE in the project root for details.
 - mcp/web -> shared/runtime, stats/usage
 - memory/memos -> settings/debug, shared/runtime
 - message-queue -> settings/debug, shared/runtime
-- providers/plugins -> deferred-prompts, identity, instances, mcp/web, settings/debug, shared/runtime, tools
+- providers/plugins -> chat, deferred-prompts, identity, instances, mcp/web, settings/debug, shared/runtime, tools
 - settings/debug -> chat, deferred-prompts, identity, instances, mcp/web, memory/memos, providers/plugins, shared/runtime, stats/usage, tools
 - stats/usage -> chat, settings/debug, shared/runtime
 - tools -> attachments, chat, deferred-prompts, identity, mcp/web, memory/memos, providers/plugins, shared/runtime

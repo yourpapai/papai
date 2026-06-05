@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import type { GuildLike, ReadyPayload } from '../../../src/chat/discord/client-factory.js'
+import type { GuildLike, ReadyPayload } from '../../../plugins/chat-provider-discord/client-factory.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 describe('client-factory', () => {
@@ -14,7 +14,7 @@ describe('client-factory', () => {
   })
 
   test('defaultClientFactory creates a discord.js Client instance with the required interface', async () => {
-    const { defaultClientFactory } = await import('../../../src/chat/discord/client-factory.js')
+    const { defaultClientFactory } = await import('../../../plugins/chat-provider-discord/client-factory.js')
     const client = defaultClientFactory()
     expect(typeof client.on).toBe('function')
     expect(typeof client.once).toBe('function')

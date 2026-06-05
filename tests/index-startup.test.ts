@@ -60,8 +60,10 @@ describe('index.ts startup', () => {
       }),
     }))
     void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
-    void mock.module('../src/chat/telegram/index.js', () => ({ getTelegramFileFetcher: (): undefined => undefined }))
-    void mock.module('../src/chat/mattermost/index.js', () => ({
+    void mock.module('../plugins/chat-provider-telegram/index.js', () => ({
+      getTelegramFileFetcher: (): undefined => undefined,
+    }))
+    void mock.module('../plugins/chat-provider-mattermost/index.js', () => ({
       getMattermostFileFetcher: (): undefined => undefined,
     }))
     void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
@@ -108,9 +110,11 @@ describe('index.ts startup', () => {
       activatePlugins: (): Promise<void> => Promise.resolve(),
       deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
       getActivatedPluginIds: (): unknown[] => [],
+      registerChatProviderFactories: (): Promise<void> => Promise.resolve(),
     }))
     void mock.module('../src/plugins/registry.js', () => ({
       syncRegistryFromDb: (): void => {},
+      seedBuiltinChatProviderPlugins: (): void => {},
       pluginRegistry: {
         evaluateCompatibilityAcrossInstances: (instances: readonly unknown[]): void => {
           evaluatedCompatibilityInstances = instances.length
@@ -175,8 +179,10 @@ describe('index.ts startup', () => {
       }),
     }))
     void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
-    void mock.module('../src/chat/telegram/index.js', () => ({ getTelegramFileFetcher: (): undefined => undefined }))
-    void mock.module('../src/chat/mattermost/index.js', () => ({
+    void mock.module('../plugins/chat-provider-telegram/index.js', () => ({
+      getTelegramFileFetcher: (): undefined => undefined,
+    }))
+    void mock.module('../plugins/chat-provider-mattermost/index.js', () => ({
       getMattermostFileFetcher: (): undefined => undefined,
     }))
     void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
@@ -235,9 +241,11 @@ describe('index.ts startup', () => {
       activatePlugins: (): Promise<void> => Promise.resolve(),
       deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
       getActivatedPluginIds: (): unknown[] => [],
+      registerChatProviderFactories: (): Promise<void> => Promise.resolve(),
     }))
     void mock.module('../src/plugins/registry.js', () => ({
       syncRegistryFromDb: (): void => {},
+      seedBuiltinChatProviderPlugins: (): void => {},
       pluginRegistry: {
         evaluateCompatibilityAcrossInstances: (instances: readonly unknown[]): void => {
           compatibilityEvaluated = true
@@ -297,8 +305,10 @@ describe('index.ts startup', () => {
       }),
     }))
     void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
-    void mock.module('../src/chat/telegram/index.js', () => ({ getTelegramFileFetcher: (): undefined => undefined }))
-    void mock.module('../src/chat/mattermost/index.js', () => ({
+    void mock.module('../plugins/chat-provider-telegram/index.js', () => ({
+      getTelegramFileFetcher: (): undefined => undefined,
+    }))
+    void mock.module('../plugins/chat-provider-mattermost/index.js', () => ({
       getMattermostFileFetcher: (): undefined => undefined,
     }))
     void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
@@ -337,9 +347,11 @@ describe('index.ts startup', () => {
       activatePlugins: (): Promise<void> => Promise.resolve(),
       deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
       getActivatedPluginIds: (): unknown[] => [],
+      registerChatProviderFactories: (): Promise<void> => Promise.resolve(),
     }))
     void mock.module('../src/plugins/registry.js', () => ({
       syncRegistryFromDb: (): void => {},
+      seedBuiltinChatProviderPlugins: (): void => {},
       pluginRegistry: {
         evaluateCompatibilityAcrossInstances: (): void => {
           compatibilityEvaluated = true

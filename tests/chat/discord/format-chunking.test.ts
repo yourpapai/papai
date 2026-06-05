@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { chunkForDiscord } from '../../../src/chat/discord/format-chunking.js'
+import { chunkForDiscord } from '../../../plugins/chat-provider-discord/format-chunking.js'
 
 const countFenceMarkers = (chunk: string): number => {
   const matches = chunk.match(/```/gu)

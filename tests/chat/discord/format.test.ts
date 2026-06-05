@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { formatLlmOutput } from '../../../src/chat/discord/format.js'
+import { formatLlmOutput } from '../../../plugins/chat-provider-discord/format.js'
 
 describe('formatLlmOutput (Discord)', () => {
   test('returns plain text unchanged for simple input', () => {

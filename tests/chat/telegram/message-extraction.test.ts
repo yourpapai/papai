@@ -16,7 +16,7 @@ import {
   logMessageExtraction,
   type CacheContext,
   type MinimalContext,
-} from '../../../src/chat/telegram/message-extraction.js'
+} from '../../../plugins/chat-provider-telegram/message-extraction.js'
 import { mockLogger, mockMessageCache } from '../../utils/test-helpers.js'
 
 describe('message-extraction', () => {

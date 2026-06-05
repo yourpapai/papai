@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { renderMattermostContext } from '../../../src/chat/mattermost/context-renderer.js'
+import { renderMattermostContext } from '../../../plugins/chat-provider-mattermost/context-renderer.js'
 import { standardContextSnapshot } from '../fixtures/context-snapshot.js'
 
 describe('renderMattermostContext', () => {

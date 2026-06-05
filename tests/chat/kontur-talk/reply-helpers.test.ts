@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { createKonturTalkReplyFn } from '../../../src/chat/kontur-talk/reply-helpers.js'
+import { createKonturTalkReplyFn } from '../../../plugins/chat-provider-kontur-talk/reply-helpers.js'
 import type { ReplyFn } from '../../../src/chat/types.js'
 
 function makeReplyFn(): { reply: ReplyFn; posts: unknown[] } {

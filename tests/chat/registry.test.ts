@@ -3,14 +3,90 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test, beforeEach } from 'bun:test'
 
-import { createChatProviderFromConfig, listPlatformProviderTypes } from '../../src/chat/registry.js'
+import {
+  createChatProviderFromConfig,
+  listPlatformProviderTypes,
+  registerContributedChatProviderType,
+  unregisterContributedChatProviderType,
+} from '../../src/chat/registry.js'
+import type { ChatCapability, ChatProvider } from '../../src/chat/types.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
+const makeMockChatProvider = (name: string): ChatProvider => ({
+  name,
+  threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+  capabilities: new Set<ChatCapability>(),
+  traits: { observedGroupMessages: 'all' },
+  configRequirements: [],
+  registerCommand: (): void => {},
+  onMessage: (): void => {},
+  sendMessage: async (): Promise<void> => {},
+  renderContext: (): { method: 'text'; content: string } => ({ method: 'text', content: '' }),
+  start: async (): Promise<void> => {},
+  stop: async (): Promise<void> => {},
+})
+
+const registerTestProviders = (): void => {
+  registerContributedChatProviderType('telegram', {
+    pluginId: 'chat-provider-telegram',
+    factory: (_id, _config) => makeMockChatProvider('telegram'),
+    capabilities: new Set(['commands.menu', 'messages.reply-context']),
+    traits: { observedGroupMessages: 'all', maxMessageLength: 4096 },
+    threadCapabilities: { supportsThreads: true, canCreateThreads: true, threadScope: 'message' },
+    displayName: 'Telegram',
+    instanceConfigSchema: [
+      { key: 'token', label: 'Telegram Bot Token', required: true, sensitive: true, scope: 'instance' },
+    ],
+  })
+  registerContributedChatProviderType('mattermost', {
+    pluginId: 'chat-provider-mattermost',
+    factory: (_id, _config) => makeMockChatProvider('mattermost'),
+    capabilities: new Set(['messages.reply-context', 'users.resolve']),
+    traits: { observedGroupMessages: 'all', maxMessageLength: 16383 },
+    threadCapabilities: { supportsThreads: true, canCreateThreads: true, threadScope: 'post' },
+    displayName: 'Mattermost',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'Mattermost URL', required: true, sensitive: false, scope: 'instance' },
+      { key: 'token', label: 'Mattermost Bot Token', required: true, sensitive: true, scope: 'instance' },
+    ],
+  })
+  registerContributedChatProviderType('discord', {
+    pluginId: 'chat-provider-discord',
+    factory: (_id, _config) => makeMockChatProvider('discord'),
+    capabilities: new Set(['messages.reply-context', 'users.resolve']),
+    traits: { observedGroupMessages: 'mentions_only', maxMessageLength: 2000 },
+    threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+    displayName: 'Discord',
+    instanceConfigSchema: [
+      { key: 'token', label: 'Discord Bot Token', required: true, sensitive: true, scope: 'instance' },
+    ],
+  })
+  registerContributedChatProviderType('kontur-talk', {
+    pluginId: 'chat-provider-kontur-talk',
+    factory: (_id, _config) => makeMockChatProvider('kontur-talk'),
+    capabilities: new Set(['messages.reply-context']),
+    traits: { observedGroupMessages: 'all', maxMessageLength: 4096 },
+    threadCapabilities: { supportsThreads: true, canCreateThreads: true, threadScope: 'message' },
+    displayName: 'Kontur Talk',
+    instanceConfigSchema: [{ key: 'jwtToken', label: 'JWT Token', required: true, sensitive: true, scope: 'instance' }],
+  })
+}
+
 describe('chat registry', () => {
-  test('createChatProviderFromConfig constructs adapters from typed instance config without env mapping', () => {
+  beforeEach(() => {
+    // Clean up any previously registered providers
+    unregisterContributedChatProviderType('chat-provider-telegram')
+    unregisterContributedChatProviderType('chat-provider-mattermost')
+    unregisterContributedChatProviderType('chat-provider-discord')
+    unregisterContributedChatProviderType('chat-provider-kontur-talk')
+  })
+
+  test('createChatProviderFromConfig constructs adapters from typed instance config', () => {
     mockLogger()
+    registerTestProviders()
+
     const telegram = createChatProviderFromConfig('telegram-default', 'telegram', { token: 'secret-token' })
     const mattermost = createChatProviderFromConfig('mattermost-default', 'mattermost', {
       baseUrl: 'https://mm.invalid',
@@ -20,75 +96,49 @@ describe('chat registry', () => {
     const konturTalk = createChatProviderFromConfig('kontur-talk-main', 'kontur-talk', { jwtToken: 'secret-token' })
 
     expect(telegram.name).toBe('telegram')
-    expect('start' in telegram).toBe(true)
     expect(mattermost.name).toBe('mattermost')
-    expect('start' in mattermost).toBe(true)
     expect(discord.name).toBe('discord')
-    expect('start' in discord).toBe(true)
     expect(konturTalk.name).toBe('kontur-talk')
-    expect('start' in konturTalk).toBe(true)
   })
 
-  test('createChatProviderFromConfig creates telegram from encrypted-row config token', () => {
-    const provider = createChatProviderFromConfig('telegram-default', 'telegram', { token: '123:test-token' })
+  test('createChatProviderFromConfig rejects missing config values', () => {
+    mockLogger()
+    registerTestProviders()
 
-    expect(provider.name).toBe('telegram')
-  })
-
-  test('createChatProviderFromConfig creates discord from encrypted-row config token', () => {
-    const provider = createChatProviderFromConfig('discord-default', 'discord', { token: 'discord-token' })
-
-    expect(provider.name).toBe('discord')
-  })
-
-  test('createChatProviderFromConfig creates mattermost from descriptor-shaped baseUrl and token', () => {
-    const provider = createChatProviderFromConfig('mattermost-default', 'mattermost', {
-      baseUrl: 'https://mattermost.example.test',
-      token: 'mattermost-token',
-    })
-
-    expect(provider.name).toBe('mattermost')
-  })
-
-  test('createChatProviderFromConfig rejects mattermost persisted legacy url without baseUrl', () => {
-    expect(() =>
-      createChatProviderFromConfig('mattermost-main', 'mattermost', {
-        url: 'https://mm.invalid',
-        token: 'secret',
-      }),
-    ).toThrow('Missing mattermost instance config')
-  })
-
-  test('createChatProviderFromConfig rejects missing config values before adapter construction', () => {
     expect(() =>
       createChatProviderFromConfig('mattermost-default', 'mattermost', { token: 'mattermost-token' }),
     ).toThrow('Missing mattermost instance config')
   })
 
-  test('createChatProviderFromConfig creates kontur talk from encrypted-row config jwtToken', () => {
-    const provider = createChatProviderFromConfig('kontur-talk-main', 'kontur-talk', { jwtToken: 'test-token' })
+  test('listPlatformProviderTypes returns registered provider descriptors', () => {
+    registerTestProviders()
 
-    expect(provider.name).toBe('kontur-talk')
-  })
-
-  test('createChatProviderFromConfig rejects kontur talk missing JWT token', () => {
-    expect(() => createChatProviderFromConfig('kontur-talk-main', 'kontur-talk', {})).toThrow(
-      'Missing kontur-talk instance config',
-    )
-  })
-
-  test('listPlatformProviderTypes exposes built-in descriptor metadata', () => {
     const descriptors = listPlatformProviderTypes()
-    const mattermost = descriptors.find((descriptor) => descriptor.type === 'mattermost')
+    const types = descriptors.map((d) => d.type)
 
-    expect(descriptors.map((descriptor) => descriptor.type)).toEqual([
-      'telegram',
-      'mattermost',
-      'discord',
-      'kontur-talk',
-    ])
-    expect(mattermost?.instanceConfigSchema.map((field) => field.key)).toEqual(['baseUrl', 'token'])
+    expect(types).toContain('telegram')
+    expect(types).toContain('mattermost')
+    expect(types).toContain('discord')
+    expect(types).toContain('kontur-talk')
+  })
+
+  test('listPlatformProviderTypes includes config schema and capabilities', () => {
+    registerTestProviders()
+
+    const descriptors = listPlatformProviderTypes()
+    const mattermost = descriptors.find((d) => d.type === 'mattermost')
+
+    expect(mattermost?.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl', 'token'])
     expect(mattermost?.capabilities.has('users.resolve')).toBe(true)
     expect(mattermost?.traits.observedGroupMessages).toBe('all')
+  })
+
+  test('listPlatformProviderTypes shows plugin source', () => {
+    registerTestProviders()
+
+    const descriptors = listPlatformProviderTypes()
+    const telegram = descriptors.find((d) => d.type === 'telegram')
+
+    expect(telegram?.source).toEqual({ plugin: 'chat-provider-telegram' })
   })
 })

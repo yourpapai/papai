@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { extractFileCandidatesFromContext, extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
+import {
+  extractFileCandidatesFromContext,
+  extractFilesFromContext,
+} from '../../../plugins/chat-provider-telegram/file-helpers.js'
 
 describe('extractFileCandidatesFromContext', () => {
   test('returns empty array when no files are present', () => {

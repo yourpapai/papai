@@ -6,7 +6,16 @@
 import type { ToolExecutionOptions } from 'ai'
 import type { z } from 'zod'
 
-import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../chat/types.js'
+import type { ChatProviderConfigField } from '../chat/provider-descriptor.js'
+import type {
+  AuthorizationResult,
+  ChatCapability,
+  ChatProviderTraits,
+  IncomingMessage,
+  ReplyFn,
+  ThreadCapabilities,
+} from '../chat/types.js'
+import type { InstanceConfig } from '../instances/types.js'
 import type {
   TaskProviderAutoProvision,
   TaskProviderConfigValidator,
@@ -72,6 +81,9 @@ export type PluginScheduledJob = {
   execute: (runtime: PluginScheduledJobRuntimeContext) => Promise<void> | void
 }
 
+/** Factory function for creating chat provider instances. */
+export type ChatProviderFactory = (id: string, config: InstanceConfig) => import('../chat/types.js').ChatProvider
+
 /** Registration result from a plugin's activate() call. */
 export type PluginContributions = {
   tools: PluginTool[]
@@ -89,6 +101,15 @@ export type PluginContributions = {
     instanceConfigSchema: readonly ProviderConfigField[]
     contextConfigSchema: readonly ProviderConfigField[]
     traits: ReadonlySet<TaskProviderTrait>
+  }
+  chatProviderRegistration?: {
+    type: string
+    factory: ChatProviderFactory
+    capabilities: ReadonlySet<ChatCapability>
+    traits: ChatProviderTraits
+    threadCapabilities: ThreadCapabilities
+    displayName: string
+    instanceConfigSchema: readonly ChatProviderConfigField[]
   }
 }
 

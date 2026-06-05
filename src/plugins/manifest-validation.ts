@@ -12,6 +12,8 @@ type ManifestValidationInput = {
   providerContextConfigSchema?: readonly unknown[]
   providerAllowedHosts: readonly string[]
   providerConfigValidator?: string
+  chatProviderCapabilities?: readonly unknown[]
+  chatProviderFactory?: string
   contributes: {
     configKeys: readonly string[]
     tools: readonly unknown[]
@@ -19,6 +21,7 @@ type ManifestValidationInput = {
     commands: readonly unknown[]
     jobs: readonly unknown[]
     taskProviderTypes: readonly unknown[]
+    chatProviderTypes: readonly unknown[]
   }
   configRequirements: readonly {
     key: string
@@ -41,16 +44,22 @@ export function isValidMainPath(path: string): boolean {
 export function hasProviderManifestPermission(m: ManifestValidationInput): boolean {
   const hasTaskProviderPermission =
     m.permissions.includes('provider.task') && m.contributes.taskProviderTypes.length > 0
+  const hasChatProviderPermission =
+    m.permissions.includes('provider.chat') && m.contributes.chatProviderTypes.length > 0
+  const hasAnyProviderPermission = hasTaskProviderPermission || hasChatProviderPermission
   const allowsProviderHosts =
-    m.providerAllowedHosts.length === 0 || m.permissions.includes('http') || hasTaskProviderPermission
+    m.providerAllowedHosts.length === 0 || m.permissions.includes('http') || hasAnyProviderPermission
   const allowsTaskProviderFields =
     (m.providerCapabilities.length === 0 &&
       m.providerConfigSchema.length === 0 &&
       (m.providerContextConfigSchema?.length ?? 0) === 0 &&
       m.providerConfigValidator === undefined) ||
     hasTaskProviderPermission
+  const allowsChatProviderFields =
+    ((m.chatProviderCapabilities?.length ?? 0) === 0 && m.chatProviderFactory === undefined) ||
+    hasChatProviderPermission
 
-  return allowsProviderHosts && allowsTaskProviderFields
+  return allowsProviderHosts && allowsTaskProviderFields && allowsChatProviderFields
 }
 
 export function hasMatchingContextConfigKeys(m: ManifestValidationInput): boolean {
@@ -68,13 +77,16 @@ export function hasRequiredMainForManifest(m: ManifestValidationInput): boolean 
     m.contributes.promptFragments.length +
     m.contributes.commands.length +
     m.contributes.jobs.length +
-    m.contributes.taskProviderTypes.length
+    m.contributes.taskProviderTypes.length +
+    m.contributes.chatProviderTypes.length
   const hasProviderMetadata =
     m.providerCapabilities.length > 0 ||
     m.providerConfigSchema.length > 0 ||
     (m.providerContextConfigSchema?.length ?? 0) > 0 ||
     m.providerAllowedHosts.length > 0 ||
-    m.providerConfigValidator !== undefined
+    m.providerConfigValidator !== undefined ||
+    (m.chatProviderCapabilities?.length ?? 0) > 0 ||
+    m.chatProviderFactory !== undefined
   const isMcpOnly = m.mcp !== undefined && runtimeContributionCount === 0 && !hasProviderMetadata
 
   if (isMcpOnly) return m.main === undefined

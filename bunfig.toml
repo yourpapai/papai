@@ -5,7 +5,7 @@
 # Exclude E2E and client tests from default test discovery
 # E2E tests require Docker setup; run with: bun test:e2e
 # Client tests require happy-dom DOM environment; run with: bun test:client
-pathIgnorePatterns = ["tests/e2e/**", "tests/client/**"]
+pathIgnorePatterns = ["tests/e2e/**", "tests/client/**", "plugins/**"]
 
 # Preload global setup (server-side tests only)
 preload = ["./tests/setup.ts", "./tests/mock-reset.ts"]

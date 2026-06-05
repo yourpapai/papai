@@ -5,7 +5,11 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { discordCapabilities, discordConfigRequirements, discordTraits } from '../../../src/chat/discord/metadata.js'
+import {
+  discordCapabilities,
+  discordConfigRequirements,
+  discordTraits,
+} from '../../../plugins/chat-provider-discord/metadata.js'
 
 describe('discord metadata', () => {
   test('capabilities include the core Discord features', () => {

@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { renderKonturTalkContext } from '../../../src/chat/kontur-talk/context-renderer.js'
+import { renderKonturTalkContext } from '../../../plugins/chat-provider-kontur-talk/context-renderer.js'
 import type { ContextSnapshot } from '../../../src/chat/types.js'
 
 const makeSnapshot = (overrides?: Partial<ContextSnapshot>): ContextSnapshot => ({

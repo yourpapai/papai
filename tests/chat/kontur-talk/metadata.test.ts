@@ -9,7 +9,7 @@ import {
   konturTalkCapabilities,
   konturTalkTraits,
   konturTalkConfigRequirements,
-} from '../../../src/chat/kontur-talk/metadata.js'
+} from '../../../plugins/chat-provider-kontur-talk/metadata.js'
 
 describe('Kontur Talk metadata', () => {
   test('capabilities include messages.reply-context', () => {

@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { createDiscordReplyFn, type SendableChannel } from '../../../src/chat/discord/reply-helpers.js'
+import { createDiscordReplyFn, type SendableChannel } from '../../../plugins/chat-provider-discord/reply-helpers.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 type SendArg = Partial<{

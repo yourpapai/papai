@@ -9,7 +9,7 @@ import {
   telegramCapabilities,
   telegramConfigRequirements,
   telegramTraits,
-} from '../../../src/chat/telegram/metadata.js'
+} from '../../../plugins/chat-provider-telegram/metadata.js'
 
 describe('telegram metadata', () => {
   test('capabilities include the core Telegram features', () => {

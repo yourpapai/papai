@@ -10,8 +10,8 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
-import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
+import { extractFilesFromContext } from '../../../plugins/chat-provider-telegram/file-helpers.js'
+import { TelegramChatProvider } from '../../../plugins/chat-provider-telegram/index.js'
 import {
   cacheTelegramMessage,
   extractContextInfo,
@@ -19,7 +19,7 @@ import {
   logMessageExtraction,
   type CacheContext,
   type MinimalContext,
-} from '../../../src/chat/telegram/message-extraction.js'
+} from '../../../plugins/chat-provider-telegram/message-extraction.js'
 import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { DeferredDeliveryTarget, IncomingMessage, ReplyFn } from '../../../src/chat/types.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'

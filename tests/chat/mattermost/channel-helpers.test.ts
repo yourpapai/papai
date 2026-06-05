@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { checkChannelAdmin } from '../../../src/chat/mattermost/channel-helpers.js'
+import { checkChannelAdmin } from '../../../plugins/chat-provider-mattermost/channel-helpers.js'
 
 describe('channel-helpers', () => {
   describe('checkChannelAdmin', () => {

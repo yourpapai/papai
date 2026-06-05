@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 
 import { InlineKeyboard } from 'grammy'
 
-import { formatLlmOutput } from '../../../src/chat/telegram/format.js'
+import { formatLlmOutput } from '../../../plugins/chat-provider-telegram/format.js'
 import {
   createReplyParamsBuilder,
   type ReplacementReplyContext,
@@ -20,7 +20,7 @@ import {
   type ReplyParamsBuilder,
   sendReplacementButtonReply,
   sendReplacementTextReply,
-} from '../../../src/chat/telegram/reply-helpers.js'
+} from '../../../plugins/chat-provider-telegram/reply-helpers.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 /** Create mock Context with message for tests */

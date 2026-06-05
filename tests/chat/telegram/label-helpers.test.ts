@@ -9,7 +9,7 @@ import {
   formatTelegramUserLabel,
   resolveTelegramGroupLabel,
   resolveTelegramUserLabel,
-} from '../../../src/chat/telegram/label-helpers.js'
+} from '../../../plugins/chat-provider-telegram/label-helpers.js'
 
 test('formatTelegramUserLabel formats full name with username', () => {
   expect(formatTelegramUserLabel('John', 'Johnson', 'itsmike')).toBe('John Johnson (@itsmike)')
