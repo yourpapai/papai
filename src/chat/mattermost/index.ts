@@ -16,6 +16,7 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../types.js'
+import { getMattermostActionSigningSecret } from './action-secret.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
@@ -79,6 +80,11 @@ export class MattermostChatProvider implements ChatProvider {
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
     this.messageHandler = handler
   }
+
+  getActionSigningSecret(): string {
+    return getMattermostActionSigningSecret()
+  }
+
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     if (target.contextType === 'dm') {
       if (this.botUserId === null) throw new Error('Bot not started')
