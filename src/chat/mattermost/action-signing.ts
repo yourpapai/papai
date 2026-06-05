@@ -15,13 +15,17 @@ export type MattermostActionContextInput = Readonly<{
   callbackData: string
   sourceMessageText: string
   expiresAt: number
-}>
+}> &
+  Partial<{
+    threadId: string
+  }>
 
 export const MattermostSignedActionContextSchema = z.strictObject({
   version: z.literal(SIGNING_VERSION),
   platformInstanceId: z.string().min(1),
   callbackData: z.string().min(1),
   sourceMessageText: z.string(),
+  threadId: z.string().min(1).optional(),
   expiresAt: z.number().int().positive(),
   nonce: z.string().min(16),
   signature: z.string().regex(SIGNATURE_PATTERN),
@@ -40,6 +44,7 @@ const canonicalPayload = (context: Omit<MattermostSignedActionContext, 'signatur
     platformInstanceId: context.platformInstanceId,
     callbackData: context.callbackData,
     sourceMessageText: context.sourceMessageText,
+    threadId: context.threadId,
     expiresAt: context.expiresAt,
     nonce: context.nonce,
   })
@@ -64,6 +69,7 @@ export function createMattermostActionContext(
     platformInstanceId: input.platformInstanceId,
     callbackData: input.callbackData,
     sourceMessageText: input.sourceMessageText,
+    threadId: input.threadId,
     expiresAt: input.expiresAt,
     nonce: randomBytes(16).toString('base64url'),
   } satisfies Omit<MattermostSignedActionContext, 'signature'>
@@ -88,6 +94,7 @@ export function verifyMattermostActionContext(
       platformInstanceId: parsed.data.platformInstanceId,
       callbackData: parsed.data.callbackData,
       sourceMessageText: parsed.data.sourceMessageText,
+      ...(parsed.data.threadId === undefined ? {} : { threadId: parsed.data.threadId }),
       expiresAt: parsed.data.expiresAt,
     },
   }

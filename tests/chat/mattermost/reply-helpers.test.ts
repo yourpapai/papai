@@ -19,7 +19,7 @@ describe('createMattermostReplyFn', () => {
     mockLogger()
   })
 
-  function makeReplyFn(callbackBaseUrl: string | null = 'https://bot.example'): ReplyFnResult {
+  function makeReplyFn(callbackBaseUrl: string | null = 'https://bot.example', threadId?: string): ReplyFnResult {
     const posts: unknown[] = []
     const apiFetch = (_method: string, _path: string, body: unknown): Promise<Record<string, string>> => {
       posts.push(body)
@@ -31,22 +31,26 @@ describe('createMattermostReplyFn', () => {
     const reply = createMattermostReplyFn({
       channelId: 'chan-1',
       postId: 'post-1',
-      threadId: undefined,
+      threadId,
       getWsSeq: () => 1,
       apiFetch,
       wsSend,
       uploadFile,
       platformInstanceId: 'mattermost-main',
       callbackBaseUrl,
-      createActionContext: (input) => ({
-        version: 1,
-        platformInstanceId: input.platformInstanceId,
-        callbackData: input.callbackData,
-        sourceMessageText: input.sourceMessageText,
-        expiresAt: input.expiresAt,
-        nonce: 'nonce-nonce-nonce',
-        signature: 'signature-signature-signature-signature-signature',
-      }),
+      createActionContext: (input) => {
+        const threadPatch = input.threadId === undefined ? {} : { threadId: input.threadId }
+        return {
+          version: 1,
+          platformInstanceId: input.platformInstanceId,
+          callbackData: input.callbackData,
+          sourceMessageText: input.sourceMessageText,
+          expiresAt: input.expiresAt,
+          nonce: 'nonce-nonce-nonce',
+          signature: 'signature-signature-signature-signature-signature',
+          ...threadPatch,
+        }
+      },
     })
 
     return { reply, posts }
@@ -107,6 +111,57 @@ describe('createMattermostReplyFn', () => {
           buttons: [{ text: 'Allow', callbackData: 'perm:a:abc12345' }],
         }),
       ).rejects.toThrow('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL')
+    })
+
+    test('includes the active thread id in action context', async () => {
+      const { reply, posts } = makeReplyFn('https://bot.example', 'root-post-1')
+
+      await reply.buttons('choose', {
+        buttons: [{ text: 'Allow', callbackData: 'perm:a:abc12345' }],
+      })
+
+      expect(posts[0]).toMatchObject({
+        root_id: 'root-post-1',
+        props: {
+          attachments: [
+            {
+              actions: [
+                {
+                  integration: {
+                    context: { threadId: 'root-post-1' },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      })
+    })
+
+    test('prefers an explicit reply thread id in action context', async () => {
+      const { reply, posts } = makeReplyFn('https://bot.example', 'root-post-1')
+
+      await reply.buttons('choose', {
+        threadId: 'root-post-2',
+        buttons: [{ text: 'Allow', callbackData: 'perm:a:abc12345' }],
+      })
+
+      expect(posts[0]).toMatchObject({
+        root_id: 'root-post-2',
+        props: {
+          attachments: [
+            {
+              actions: [
+                {
+                  integration: {
+                    context: { threadId: 'root-post-2' },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      })
     })
   })
 

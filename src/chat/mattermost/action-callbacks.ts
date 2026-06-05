@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { getThreadScopedStorageContextId } from '../../auth.js'
 import { logger } from '../../logger.js'
 import type { ContextType, IncomingInteraction, ReplyFn } from '../types.js'
 import { getMattermostActionSigningSecret } from './action-secret.js'
@@ -139,6 +140,17 @@ const buildActionReply = (): { reply: ReplyFn; getResponse: () => MattermostActi
   }
 }
 
+const getActionStorageContextId = (
+  payload: MattermostActionPayload,
+  contextType: ContextType,
+  platformInstanceId: string,
+): string => {
+  if (contextType === 'dm') {
+    return getThreadScopedStorageContextId(payload.userId, 'dm', undefined, platformInstanceId)
+  }
+  return getThreadScopedStorageContextId(payload.channelId, contextType, payload.action.threadId, platformInstanceId)
+}
+
 export async function dispatchMattermostProviderAction(
   payload: MattermostActionPayload,
   deps: MattermostProviderActionDispatchDeps,
@@ -146,16 +158,18 @@ export async function dispatchMattermostProviderAction(
   const channelInfo = await fetchMattermostChannelInfo(deps.apiFetch, payload.channelId)
   const contextType: ContextType = channelInfo.type === 'D' ? 'dm' : 'group'
   const isAdmin = await checkChannelAdmin(payload.channelId, payload.userId, deps.apiFetch)
+  const threadId = payload.action.threadId
   const incoming: IncomingInteraction = {
     kind: 'button',
     user: { id: payload.userId, username: null, isAdmin },
     contextId: payload.channelId,
     contextType,
     platformInstanceId: deps.platformInstanceId,
-    storageContextId: contextType === 'dm' ? payload.userId : payload.channelId,
+    storageContextId: getActionStorageContextId(payload, contextType, deps.platformInstanceId),
     callbackData: payload.action.callbackData,
     messageId: payload.postId,
     sourceMessageText: payload.action.sourceMessageText,
+    ...(threadId === undefined ? {} : { threadId }),
   }
   const { reply, getResponse } = buildActionReply()
   if (deps.interactionHandler === null) {

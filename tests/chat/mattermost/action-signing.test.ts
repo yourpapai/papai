@@ -63,6 +63,28 @@ describe('Mattermost action signing', () => {
     })
   })
 
+  test('round-trips an optional thread id', () => {
+    const input = {
+      platformInstanceId: 'mattermost-main',
+      callbackData: 'perm:a:abc12345',
+      sourceMessageText: 'Run `delete_task`?\n\nReason',
+      expiresAt: 1_900_000_000_000,
+      threadId: 'root-post-1',
+    }
+    const context = createMattermostActionContext(input, secret)
+
+    expect(verifyMattermostActionContext(context, secret, 1_800_000_000_000)).toEqual({
+      ok: true,
+      value: {
+        platformInstanceId: 'mattermost-main',
+        callbackData: 'perm:a:abc12345',
+        sourceMessageText: 'Run `delete_task`?\n\nReason',
+        expiresAt: 1_900_000_000_000,
+        threadId: 'root-post-1',
+      },
+    })
+  })
+
   test('rejects modified callback data', () => {
     const context = createSignedContext()
 
@@ -73,10 +95,20 @@ describe('Mattermost action signing', () => {
   test.each([
     ['platform instance id', { platformInstanceId: 'mattermost-secondary' }],
     ['source message text', { sourceMessageText: 'changed prompt' }],
+    ['thread id', { threadId: 'other-root-post' }],
     ['expires at', { expiresAt: validExpiresAt + 1 }],
     ['nonce', { nonce: 'tampered-nonce-value' }],
   ])('rejects tampered %s', (_, patch) => {
-    const context = createSignedContext()
+    const context = createMattermostActionContext(
+      {
+        platformInstanceId: 'mattermost-main',
+        callbackData: 'perm:a:abc12345',
+        sourceMessageText: 'prompt',
+        expiresAt: validExpiresAt,
+        threadId: 'root-post-1',
+      },
+      secret,
+    )
 
     expect(verifyMattermostActionContext({ ...context, ...patch }, secret, validNow)).toEqual({
       ok: false,

@@ -469,9 +469,19 @@ describe('MattermostChatProvider', () => {
 
   test('dispatches Mattermost action callbacks through onInteraction handler', async () => {
     provider = createMattermostProvider()
-    const interactions: Array<{ callbackData: string; sourceMessageText: string | undefined }> = []
+    const interactions: Array<{
+      callbackData: string
+      sourceMessageText: string | undefined
+      storageContextId: string
+      threadId: string | undefined
+    }> = []
     provider.onInteraction?.((interaction, reply): Promise<void> => {
-      interactions.push({ callbackData: interaction.callbackData, sourceMessageText: interaction.sourceMessageText })
+      interactions.push({
+        callbackData: interaction.callbackData,
+        sourceMessageText: interaction.sourceMessageText,
+        storageContextId: interaction.storageContextId,
+        threadId: interaction.threadId,
+      })
       const replaceText = reply.replaceText
       assert(replaceText !== undefined)
       return replaceText('updated')
@@ -498,11 +508,21 @@ describe('MattermostChatProvider', () => {
         callbackData: 'perm:a:abc12345',
         sourceMessageText: 'Run `delete_task`?\n\nReason',
         expiresAt: Date.now() + 60_000,
+        threadId: 'root-post-1',
       },
     })
 
     expect(interactions).toEqual([
-      { callbackData: 'perm:a:abc12345', sourceMessageText: 'Run `delete_task`?\n\nReason' },
+      {
+        callbackData: 'perm:a:abc12345',
+        sourceMessageText: 'Run `delete_task`?\n\nReason',
+        storageContextId: toScopedThreadContextId({
+          platformInstanceId: TEST_PLATFORM_ID,
+          nativeContextId: 'chan-1',
+          threadId: 'root-post-1',
+        }),
+        threadId: 'root-post-1',
+      },
     ])
     expect(response).toEqual({ update: { message: 'updated', props: {} } })
   })

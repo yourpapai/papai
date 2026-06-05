@@ -19,6 +19,8 @@ type MattermostButtonAction = Readonly<{
   integration: { url: string; context: MattermostSignedActionContext }
 }>
 
+type MattermostPostReply = (message: string, options?: ReplyOptions, extra?: Record<string, unknown>) => Promise<void>
+
 interface MattermostReplyHelpersParams {
   channelId: string
   postId?: string
@@ -46,6 +48,7 @@ const buildActions = (
   platformInstanceId: string,
   baseUrl: string,
   createActionContext: (input: MattermostActionContextInput) => MattermostSignedActionContext,
+  threadId: string | undefined,
 ): MattermostButtonAction[] => {
   const buttons = options.buttons ?? []
   if (buttons.length > MATTERMOST_MAX_BUTTONS) {
@@ -62,10 +65,34 @@ const buildActions = (
         platformInstanceId,
         callbackData: button.callbackData,
         sourceMessageText: content,
+        ...(threadId === undefined ? {} : { threadId }),
         expiresAt: Date.now() + ACTION_TTL_MS,
       }),
     },
   }))
+}
+
+const createButtonsReply = (
+  post: MattermostPostReply,
+  platformInstanceId: string,
+  callbackBaseUrl: string | null,
+  createActionContext: (input: MattermostActionContextInput) => MattermostSignedActionContext,
+  threadId: string | undefined,
+): ((content: string, options: ButtonReplyOptions) => Promise<void>) => {
+  return (content, options) => {
+    if (callbackBaseUrl === null) {
+      return Promise.reject(new Error('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL'))
+    }
+    const actions = buildActions(
+      content,
+      options,
+      platformInstanceId,
+      callbackBaseUrl,
+      createActionContext,
+      options.threadId ?? threadId,
+    )
+    return post(content, options, { props: { attachments: [{ actions }] } })
+  }
 }
 
 export function createMattermostReplyFn(params: MattermostReplyHelpersParams): ReplyFn {
@@ -109,13 +136,7 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
     deleteMessage: async (messageId: string) => {
       await apiFetch('DELETE', `/api/v4/posts/${messageId}`, undefined)
     },
-    buttons: (content: string, options: ButtonReplyOptions): Promise<void> => {
-      if (callbackBaseUrl === null) {
-        return Promise.reject(new Error('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL'))
-      }
-      const actions = buildActions(content, options, platformInstanceId, callbackBaseUrl, createActionContext)
-      return post(content, options, { props: { attachments: [{ actions }] } })
-    },
+    buttons: createButtonsReply(post, platformInstanceId, callbackBaseUrl, createActionContext, threadId),
   }
 }
 
