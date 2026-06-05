@@ -79,10 +79,6 @@ const overviewForModel = (
     ...auxiliaryAreas.map((area) => `- ${area.id} -> ${area.dependsOn.join(', ') || 'none'}`),
     ...auxiliarySurfaces.map((surface) => `- ${surface.id} -> ${surface.dependsOn.join(', ') || 'none'}`),
     '',
-    '## Canonical Raw Graph',
-    '',
-    `- ${model.rawArtifact}`,
-    '',
   ])
 
 const serverAreaDoc = (area: ArchitectureLlm['server']['areas'][number]): string =>
@@ -117,41 +113,6 @@ const clientOverviewDoc = (
     ...auxiliarySurfaces.map((surface) => `- ${surface.id}: ${surface.paths.join(', ')}`),
     '',
   ])
-
-export const renderFocusedAreaDot = (areaId: string, model: ArchitectureLlm): string => {
-  const area = model.server.areas.find((candidate) => candidate.id === areaId)
-  if (area === undefined) {
-    throw new Error(`Unknown focused area: ${areaId}`)
-  }
-
-  const edges = area.dependsOn.map((dependencyId) => `  "${area.id}" -> "${dependencyId}";`)
-  const reverseEdges = area.dependedOnBy.map((dependentId) => `  "${dependentId}" -> "${area.id}";`)
-
-  return lines([
-    'digraph focused_area {',
-    '  rankdir=LR;',
-    `  "${area.id}" [shape=box, style=filled, fillcolor="#d6f5de"];`,
-    ...edges,
-    ...reverseEdges,
-    '}',
-  ])
-}
-
-export const renderClientSurfaceDot = (surfaceId: string, model: ArchitectureLlm): string => {
-  const surface = model.client.surfaces.find((candidate) => candidate.id === surfaceId)
-  if (surface === undefined) {
-    throw new Error(`Unknown client surface: ${surfaceId}`)
-  }
-
-  return lines([
-    'digraph client_surface {',
-    '  rankdir=LR;',
-    `  "${surface.id}" [shape=box, style=filled, fillcolor="#dbeafe"];`,
-    ...surface.dependsOn.map((dependencyId) => `  "${surface.id}" -> "${dependencyId}";`),
-    ...surface.dependedOnBy.map((dependentId) => `  "${dependentId}" -> "${surface.id}";`),
-    '}',
-  ])
-}
 
 export const buildArchitectureOutputFiles = (model: ArchitectureLlm): readonly ArchitectureOutputFile[] => {
   const serverAreas = committedServerAreas(model)

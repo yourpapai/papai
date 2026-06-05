@@ -40,11 +40,6 @@ describe('architecture refresh workflow', () => {
       /^\s+- uses: oven-sh\/setup-bun@v2\n/mu,
     )
     const createPullRequestStep = getSection(workflow, /^\s+- name: Create or update architecture refresh PR\n/mu)
-    const installGraphvizStep = getSection(
-      workflow,
-      /^\s+- name: Install GraphViz\n/mu,
-      /^\s+- name: Install dependencies\n/mu,
-    )
     const generateArtifactsStep = getSection(
       workflow,
       /^\s+- name: Generate architecture artifacts\n/mu,
@@ -79,7 +74,7 @@ describe('architecture refresh workflow', () => {
     expect(concurrencySection).not.toContain('github.sha')
     expectSectionToContainLines(checkoutStep, ['- uses: actions/checkout@v4'])
     expect(checkoutStep).not.toContain('ref:')
-    expectSectionToContainLines(installGraphvizStep, ['graphviz'])
+    expect(workflow).not.toContain('Install GraphViz')
     expectSectionToContainLines(generateArtifactsStep, ['bun run architecture:refresh'])
     expectSectionToContainLines(createPullRequestStep, [
       'peter-evans/create-pull-request@v8',
@@ -93,16 +88,11 @@ describe('architecture refresh workflow', () => {
     ])
   })
 
-  test('installs graphviz in the normal CI check job before bun check:full', async () => {
+  test('does not install graphviz in the normal CI check job', async () => {
     const workflow = await readFile('.github/workflows/ci.yml', 'utf8')
     const checkJob = getSection(workflow, /^\s{2}check:\n/mu, /^\s{2}e2e:\n/mu)
-    const installGraphvizStep = getSection(
-      workflow,
-      /^\s+- name: Install GraphViz\n/mu,
-      /^\s+- name: Download build output\n/mu,
-    )
 
     expectSectionToContainLines(checkJob, ['name: Checks', 'run: bun check:full'])
-    expectSectionToContainLines(installGraphvizStep, ['graphviz'])
+    expect(checkJob).not.toContain('Install GraphViz')
   })
 })

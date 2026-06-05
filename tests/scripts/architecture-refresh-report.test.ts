@@ -6,18 +6,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { ArchitectureLlm } from '../../scripts/architecture-refresh-model.js'
-import {
-  buildArchitectureOutputFiles,
-  renderClientSurfaceDot,
-  renderFocusedAreaDot,
-} from '../../scripts/architecture-refresh-report.js'
+import { buildArchitectureOutputFiles } from '../../scripts/architecture-refresh-report.js'
 
 const model: ArchitectureLlm = {
   scope: {
     includedRoots: ['src', 'client'],
     excludedPrefixes: ['tests/', 'scripts/'],
   },
-  rawArtifact: 'raw/dependency-cruiser.json',
   server: {
     focusedAreaIds: ['chat', 'tools'],
     areas: [
@@ -88,15 +83,6 @@ const model: ArchitectureLlm = {
         dependsOn: [],
         dependedOnBy: ['settings'],
       },
-      {
-        id: 'assets',
-        slug: 'assets',
-        label: 'assets',
-        kind: 'client',
-        paths: ['client/assets/design-canvas.jsx'],
-        dependsOn: [],
-        dependedOnBy: [],
-      },
     ],
   },
 }
@@ -123,20 +109,6 @@ describe('architecture refresh report', () => {
     expect(clientOverview?.content).toContain('debug: client/debug/App.tsx')
     expect(clientOverview?.content).toContain('Auxiliary client buckets')
     expect(clientOverview?.content).toContain('shared: client/shared/helpers.ts')
-    expect(clientOverview?.content).toContain('assets: client/assets/design-canvas.jsx')
-  })
-
-  test('renders focused area dot with neighboring dependencies', () => {
-    const dot = renderFocusedAreaDot('chat', model)
-
-    expect(dot).toContain('digraph')
-    expect(dot).toContain('"chat" -> "tools"')
-  })
-
-  test('renders focused client surface dot', () => {
-    const dot = renderClientSurfaceDot('settings', model)
-
-    expect(dot).toContain('digraph')
-    expect(dot).toContain('"settings" -> "settings/debug"')
+    expect(overview?.content).not.toContain('Canonical Raw Graph')
   })
 })

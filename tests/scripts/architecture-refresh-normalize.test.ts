@@ -49,7 +49,7 @@ describe('normalizeArchitectureGraph', () => {
   test('collapses file-level modules into server and client area edges', () => {
     const model = normalizeArchitectureGraph(rawGraph)
 
-    expect(model.rawArtifact).toBe('raw/dependency-cruiser.json')
+    expect(model).not.toHaveProperty('rawArtifact')
     expect(model.server.areas.find((area) => area.id === 'shared/runtime')).toMatchObject({
       paths: ['src/commands/refresh.ts', 'src/index.ts'],
       dependsOn: ['chat'],

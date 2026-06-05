@@ -10,7 +10,7 @@ See LICENSE in the project root for details.
 ## Runtime Scope
 
 - Included roots: src, client
-- Excluded prefixes: tests/, scripts/, review-loop/, docs/architecture/, client/stories/
+- Excluded prefixes: tests/, scripts/, review-loop/, docs/architecture/, client/stories/, client/assets/
 
 ## Server Areas
 
@@ -37,9 +37,4 @@ See LICENSE in the project root for details.
 ## Auxiliary Runtime Buckets
 
 - shared/runtime -> attachments, chat, deferred-prompts, instances, llm-orchestrator, memory/memos, message-queue, providers/plugins, settings/debug, stats/usage, tools
-- assets -> none
 - shared -> none
-
-## Canonical Raw Graph
-
-- raw/dependency-cruiser.json

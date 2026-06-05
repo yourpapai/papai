@@ -19,12 +19,14 @@ export const EXCLUDED_PREFIXES = [
   'review-loop/',
   'docs/architecture/',
   'client/stories/',
+  'client/assets/',
 ] as const
 
+const RUNTIME_SOURCE_PATH_PATTERN = /\.(?:js|jsx|svelte|ts|tsx)$/u
 const NON_RUNTIME_PATH_PATTERNS = [/\.stories\.[^/]+$/u]
 const SHARED_SERVER_AREA_ID = 'shared/runtime' as const
 const runtimeServerAreaIds = [...focusedServerAreaIds, SHARED_SERVER_AREA_ID] as const
-const runtimeClientSurfaceIds = [...clientSurfaceIds, 'shared', 'assets'] as const
+const runtimeClientSurfaceIds = [...clientSurfaceIds, 'shared'] as const
 
 type RuntimeServerAreaId = (typeof runtimeServerAreaIds)[number]
 type RuntimeClientSurfaceId = (typeof runtimeClientSurfaceIds)[number]
@@ -102,7 +104,10 @@ export const isArchitectureRuntimePath = (relativePath: string): boolean => {
     return false
   }
 
-  return !NON_RUNTIME_PATH_PATTERNS.some((pattern) => pattern.test(relativePath))
+  return (
+    RUNTIME_SOURCE_PATH_PATTERN.test(relativePath) &&
+    !NON_RUNTIME_PATH_PATTERNS.some((pattern) => pattern.test(relativePath))
+  )
 }
 
 export const slugForArea = (areaId: string): string => areaId.replaceAll('/', '-')
@@ -133,10 +138,6 @@ export const clientSurfaceForPath = (relativePath: string): RuntimeClientSurface
 
   if (relativePath.startsWith('client/shared/') && isArchitectureRuntimePath(relativePath)) {
     return 'shared'
-  }
-
-  if (relativePath.startsWith('client/assets/') && isArchitectureRuntimePath(relativePath)) {
-    return 'assets'
   }
 
   return null
