@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../../logger.js'
+import { getSettingsPublicBaseUrl } from '../../settings/config.js'
 import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
   ChatProvider,
@@ -17,6 +18,7 @@ import type {
   ResolveUserContext,
 } from '../types.js'
 import { getMattermostActionSigningSecret } from './action-secret.js'
+import { createMattermostActionContext } from './action-signing.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
@@ -79,10 +81,6 @@ export class MattermostChatProvider implements ChatProvider {
 
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
     this.messageHandler = handler
-  }
-
-  getActionSigningSecret(): string {
-    return getMattermostActionSigningSecret()
   }
 
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
@@ -261,12 +259,14 @@ export class MattermostChatProvider implements ChatProvider {
       channelId,
       postId,
       threadId,
-      baseUrl: this.baseUrl,
       getWsSeq: () => this.wsSeq++,
       apiFetch: this.apiFetch.bind(this),
       wsSend: this.wsSend.bind(this),
       uploadFile: (uploadChannelId, content, filename) =>
         uploadMattermostFile(this.baseUrl, this.token, uploadChannelId, content, filename),
+      platformInstanceId: this.platformInstanceId,
+      callbackBaseUrl: getSettingsPublicBaseUrl(),
+      createActionContext: (input) => createMattermostActionContext(input, getMattermostActionSigningSecret()),
     })
   }
 
