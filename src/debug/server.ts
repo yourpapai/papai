@@ -106,7 +106,13 @@ function handleLogs(url: URL): Response {
   return jsonResponse(results)
 }
 
+export type WebServerRouteOptions = Readonly<{ debugEnabled: boolean }>
+type WebServerStartOptions = Readonly<{ debugEnabled?: boolean; logLevel?: string }>
+const DEFAULT_ROUTE_OPTIONS: WebServerRouteOptions = { debugEnabled: true }
+const DEBUG_ONLY_PATHS = new Set(['/debug', '/debug.js', '/debug.css', '/events', '/logs', '/logs/stats', '/dashboard'])
+
 let server: ReturnType<typeof Bun.serve> | null = null
+let routeOptions: WebServerRouteOptions = DEFAULT_ROUTE_OPTIONS
 
 function handleClientFile(prefix: 'debug' | 'admin' | 'settings', pathname: string): Response {
   if (pathname === `/${prefix}`) {
@@ -173,6 +179,8 @@ function routePublicAuthPaths(req: Request, url: URL): Response | null {
   return null
 }
 
+const isDebugOnlyPath = (pathname: string): boolean => DEBUG_ONLY_PATHS.has(pathname) || pathname.startsWith('/turns/')
+
 function routeProtectedPaths(req: Request, url: URL): Response | Promise<Response> | null {
   if (url.pathname === '/events') return handleEvents(req)
   if (url.pathname === '/logs') return handleLogs(url)
@@ -213,7 +221,7 @@ export function routeSettingsStatic(pathname: string): Response | null {
   return null
 }
 
-async function routeRequest(req: Request): Promise<Response> {
+async function routeRequest(req: Request, options: WebServerRouteOptions = routeOptions): Promise<Response> {
   const url = new URL(req.url)
   const settingsStatic = routeSettingsStatic(url.pathname)
   if (settingsStatic !== null) return settingsStatic
@@ -224,6 +232,9 @@ async function routeRequest(req: Request): Promise<Response> {
 
   const publicAuthResponse = routePublicAuthPaths(req, url)
   if (publicAuthResponse !== null) return publicAuthResponse
+
+  if (!options.debugEnabled && isDebugOnlyPath(url.pathname)) return new Response('Not found', { status: 404 })
+
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
   }
@@ -250,22 +261,27 @@ async function routeRequest(req: Request): Promise<Response> {
   return new Response('Not found', { status: 404 })
 }
 
-export function startDebugServer(adminUserId: string, ...args: [] | [string]): void {
-  init(adminUserId)
-  const logLevel = args.length === 0 ? getLogLevel() : args[0]
-  logMultistream.add({ stream: logBufferStream, level: logLevel })
+const resolveStartOptions = (options: WebServerStartOptions | string | undefined): Required<WebServerStartOptions> =>
+  typeof options === 'string'
+    ? { debugEnabled: true, logLevel: options }
+    : { debugEnabled: options?.debugEnabled ?? true, logLevel: options?.logLevel ?? getLogLevel() }
 
+export function startDebugServer(adminUserId: string, options?: WebServerStartOptions | string): void {
+  init(adminUserId)
+  const resolved = resolveStartOptions(options)
+  routeOptions = { debugEnabled: resolved.debugEnabled }
+  logMultistream.add({ stream: logBufferStream, level: resolved.logLevel })
   const port = getPort()
   const hostname = getHostname()
-
-  server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: routeRequest })
-
-  log.info({ port, hostname }, 'Debug server started (session auth)')
+  server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: (req) => routeRequest(req) })
+  log.info({ port, hostname, debugEnabled: resolved.debugEnabled }, 'Web server started (session auth)')
 }
 
-export const routeRequestForTest = (req: Request): Promise<Response> => routeRequest(req)
+export const routeRequestForTest = (req: Request, options?: Partial<WebServerRouteOptions>): Promise<Response> =>
+  routeRequest(req, { ...DEFAULT_ROUTE_OPTIONS, ...options })
 
 export function stopDebugServer(): void {
+  routeOptions = DEFAULT_ROUTE_OPTIONS
   if (server !== null) {
     void server.stop()
     server = null

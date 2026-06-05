@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { routeSettingsStatic } from '../../src/debug/server.js'
+import { routeRequestForTest, routeSettingsStatic } from '../../src/debug/server.js'
 
 describe('routeSettingsStatic', () => {
   test('serves the settings shell for /settings', () => {
@@ -33,4 +33,20 @@ describe('routeSettingsStatic', () => {
     expect(routeSettingsStatic('/settings/auth/exchange')).toBeNull()
     expect(routeSettingsStatic('/debug')).toBeNull()
   })
+})
+
+describe('routeRequestForTest debug gating', () => {
+  test('serves settings static routes when debug routes are disabled', async () => {
+    const res = await routeRequestForTest(new Request('http://bot.test/settings'), { debugEnabled: false })
+    expect(res.status).toBe(200)
+  })
+
+  test.each(['/debug', '/debug.js', '/debug.css', '/events', '/logs', '/logs/stats', '/turns/abc123'])(
+    'returns 404 for debug-only route %s when debug routes are disabled',
+    async (pathname) => {
+      const res = await routeRequestForTest(new Request(`http://bot.test${pathname}`), { debugEnabled: false })
+      expect(res.status).toBe(404)
+      await res.body?.cancel()
+    },
+  )
 })

@@ -5,12 +5,26 @@
 
 import { describe, expect, mock, test } from 'bun:test'
 
+import * as debugServerModule from '../src/debug/server.js'
+
 const restoreAdminUserId = (originalValue: string | undefined): void => {
   if (originalValue === undefined) {
     delete process.env['ADMIN_USER_ID']
     return
   }
   process.env['ADMIN_USER_ID'] = originalValue
+}
+
+const restoreDebugServerModule = (): void => {
+  void mock.module('../src/debug/server.js', () => ({ ...debugServerModule }))
+}
+
+const restoreDebugServerEnv = (originalValue: string | undefined): void => {
+  if (originalValue === undefined) {
+    delete process.env['DEBUG_SERVER']
+    return
+  }
+  process.env['DEBUG_SERVER'] = originalValue
 }
 
 describe('index.ts startup', () => {
@@ -69,6 +83,10 @@ describe('index.ts startup', () => {
     void mock.module('../src/debug/chat-router-runtime.js', () => ({
       setRuntimeChatRouter: (): void => {},
       clearRuntimeChatRouter: (): void => {},
+    }))
+    void mock.module('../src/debug/server.js', () => ({
+      startDebugServer: (): void => {},
+      stopDebugServer: (): void => {},
     }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (): void => {},
@@ -140,6 +158,7 @@ describe('index.ts startup', () => {
       await import(`../src/index.ts?startup-compatibility=${Date.now()}`)
     } finally {
       restoreAdminUserId(originalAdminUserId)
+      restoreDebugServerModule()
     }
 
     expect(evaluatedCompatibilityInstances).toBeGreaterThan(0)
@@ -184,6 +203,10 @@ describe('index.ts startup', () => {
     void mock.module('../src/debug/chat-router-runtime.js', () => ({
       setRuntimeChatRouter: (): void => {},
       clearRuntimeChatRouter: (): void => {},
+    }))
+    void mock.module('../src/debug/server.js', () => ({
+      startDebugServer: (): void => {},
+      stopDebugServer: (): void => {},
     }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (): void => {},
@@ -263,6 +286,7 @@ describe('index.ts startup', () => {
       await import(`../src/index.ts?startup-safe-task-compatibility=${Date.now()}`)
     } finally {
       restoreAdminUserId(originalAdminUserId)
+      restoreDebugServerModule()
     }
 
     expect(compatibilityEvaluated).toBe(true)
@@ -306,6 +330,10 @@ describe('index.ts startup', () => {
     void mock.module('../src/debug/chat-router-runtime.js', () => ({
       setRuntimeChatRouter: (): void => {},
       clearRuntimeChatRouter: (): void => {},
+    }))
+    void mock.module('../src/debug/server.js', () => ({
+      startDebugServer: (): void => {},
+      stopDebugServer: (): void => {},
     }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (): void => {},
@@ -364,8 +392,122 @@ describe('index.ts startup', () => {
       await import(`../src/index.ts?startup-health-safe=${Date.now()}`)
     } finally {
       restoreAdminUserId(originalAdminUserId)
+      restoreDebugServerModule()
     }
 
     expect(compatibilityEvaluated).toBe(true)
+  })
+
+  test('starts web server even when DEBUG_SERVER is false', async () => {
+    const originalAdminUserId = process.env['ADMIN_USER_ID']
+    const originalDebugServer = process.env['DEBUG_SERVER']
+    process.env['ADMIN_USER_ID'] = 'admin-1'
+    delete process.env['DEBUG_SERVER']
+    let startWebServerArgs: unknown[] | null = null
+
+    void mock.module('../src/announcements.js', () => ({ announceNewVersion: (): void => {} }))
+    void mock.module('../src/attachments/index.js', () => ({ isS3Configured: (): boolean => false }))
+    void mock.module('../src/attachments/staged-download.js', () => ({
+      createStagedDownloader: (): (() => Promise<null>) => () => Promise.resolve(null),
+    }))
+    void mock.module('../src/bot.js', () => ({ setupBot: (): void => {} }))
+    void mock.module('../src/chat/registry.js', () => ({
+      createChatProviderFromConfig: (): unknown => ({
+        name: 'mock',
+        threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+        capabilities: new Set(),
+        traits: { observedGroupMessages: 'all' },
+        configRequirements: [],
+        registerCommand: (): void => {},
+        onMessage: (): void => {},
+        sendMessage: (): Promise<void> => Promise.resolve(),
+        renderContext: (): unknown => ({ method: 'text', content: 'mock' }),
+        start: (): Promise<void> => Promise.resolve(),
+        stop: (): Promise<void> => Promise.resolve(),
+      }),
+    }))
+    void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
+    void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
+    void mock.module('../src/db/drizzle.js', () => ({ closeDrizzleDb: (): void => {} }))
+    void mock.module('../src/debug/chat-router-runtime.js', () => ({
+      setRuntimeChatRouter: (): void => {},
+      clearRuntimeChatRouter: (): void => {},
+    }))
+    void mock.module('../src/debug/server.js', () => ({
+      startDebugServer: (...args: unknown[]): void => {
+        startWebServerArgs = args
+      },
+      stopDebugServer: (): void => {},
+    }))
+    void mock.module('../src/deferred-prompts/poller.js', () => ({
+      startPollers: (): void => {},
+      stopPollers: (): void => {},
+    }))
+    void mock.module('../src/instances/bootstrap.js', () => ({
+      bootstrapInstancesFromEnv: (): unknown => ({ bootstrapped: false, reason: 'already-bootstrapped' }),
+    }))
+    void mock.module('../src/instances/platform-store.js', () => ({
+      listActivePlatformInstancesSafe: (): unknown => ({ instances: [], failures: [] }),
+    }))
+    void mock.module('../src/instances/task-store.js', () => ({
+      listTaskInstancesSafe: (): unknown => ({ instances: [], failures: [] }),
+    }))
+    void mock.module('../src/logger.js', () => ({
+      logger: {
+        child: (): unknown => ({
+          info: (): void => {},
+          error: (): void => {},
+          debug: (): void => {},
+          warn: (): void => {},
+          fatal: (): void => {},
+        }),
+      },
+    }))
+    void mock.module('../src/message-cache/index.js', () => ({ initializeMessageCache: (): void => {} }))
+    void mock.module('../src/message-queue/index.js', () => ({
+      flushOnShutdown: (): Promise<void> => Promise.resolve(),
+    }))
+    void mock.module('../src/plugins/discovery.js', () => ({
+      discoverPlugins: (): unknown => ({ plugins: [], errors: [] }),
+    }))
+    void mock.module('../src/plugins/loader.js', () => ({
+      activatePlugins: (): Promise<void> => Promise.resolve(),
+      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
+      getActivatedPluginIds: (): unknown[] => [],
+    }))
+    void mock.module('../src/plugins/registry.js', () => ({
+      syncRegistryFromDb: (): void => {},
+      pluginRegistry: {
+        evaluateCompatibilityAcrossInstances: (): void => {},
+        getApprovedCompatiblePlugins: (): unknown[] => [],
+      },
+    }))
+    void mock.module('../src/plugins/startup-guard.js', () => ({
+      evaluateStartupGuard: (): unknown => ({ action: 'continue' }),
+    }))
+    void mock.module('../src/providers/resolver.js', () => ({
+      defaultTaskProviderResolver: { resolve: (): null => null },
+    }))
+    void mock.module('../src/scheduler-instance.js', () => ({
+      scheduler: { startAll: (): void => {}, stopAll: (): void => {} },
+    }))
+    void mock.module('../src/scheduler.js', () => ({ startScheduler: (): void => {}, stopScheduler: (): void => {} }))
+    void mock.module('../src/system-config.js', () => ({
+      seedSystemConfigFromEnv: (): void => {},
+      missingSystemConfigKeys: (): string[] => [],
+    }))
+    void mock.module('../src/usage/index.js', () => ({ initUsageRecorder: (): void => {} }))
+
+    const getStartWebServerArgs = (): unknown[] | null => startWebServerArgs
+
+    try {
+      await import(`../src/index.ts?always-web-server=${Date.now()}`)
+    } finally {
+      restoreAdminUserId(originalAdminUserId)
+      restoreDebugServerEnv(originalDebugServer)
+      restoreDebugServerModule()
+    }
+
+    expect(getStartWebServerArgs()).toEqual(['admin-1', { debugEnabled: false }])
   })
 })
