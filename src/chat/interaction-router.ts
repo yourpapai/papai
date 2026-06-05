@@ -4,7 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import { formatPermissionDecisionText, resolvePermissionRequest, type PermissionDecision } from './permission-prompt.js'
+import {
+  formatPermissionDecisionText,
+  peekPermissionRequest,
+  resolvePermissionRequest,
+  type PermissionDecision,
+} from './permission-prompt.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:interaction-router' })
@@ -20,8 +25,13 @@ async function replyToPermissionDecision(
   const fallback = decision === 'allow' ? 'Allowed.' : 'Denied.'
   const content = sourceMessageText === undefined ? fallback : formatPermissionDecisionText(sourceMessageText, decision)
   if (reply.replaceText !== undefined) {
-    await reply.replaceText(content)
-    return
+    try {
+      await reply.replaceText(content)
+      return
+    } catch {
+      await reply.text(content)
+      return
+    }
   }
   await reply.text(content)
 }
@@ -46,6 +56,11 @@ export async function routeInteraction(
   if (permissionMatch !== null) {
     const decision = permissionDecisionFromCode(permissionMatch[1]!)
     const id = permissionMatch[2]!
+    const pending = peekPermissionRequest(id)
+    if (pending === null || pending.contextId !== auth.storageContextId) {
+      await reply.text('Action is no longer available.')
+      return true
+    }
     if (!resolvePermissionRequest(id, decision)) {
       await reply.text('Action is no longer available.')
       return true
