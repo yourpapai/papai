@@ -223,7 +223,16 @@ export type AdminUsersResponse = z.infer<typeof AdminUsersResponseSchema>
 export const AdminGroupRowSchema = z
   .object({ group_id: z.string(), added_by: z.string(), added_at: z.string() })
   .loose()
-export const AdminGroupsResponseSchema = z.object({ groups: z.array(AdminGroupRowSchema) })
+export const ObservedGroupSchema = z.object({
+  contextId: z.string(),
+  displayName: z.string(),
+  parentName: z.string().nullable().default(null),
+})
+export const AdminGroupsResponseSchema = z.object({
+  groups: z.array(AdminGroupRowSchema),
+  observed: z.array(ObservedGroupSchema).default([]),
+})
+export type ObservedGroup = z.infer<typeof ObservedGroupSchema>
 export type AdminGroupRow = z.infer<typeof AdminGroupRowSchema>
 export type AdminGroupsResponse = z.infer<typeof AdminGroupsResponseSchema>
 

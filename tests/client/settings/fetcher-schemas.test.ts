@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  AdminGroupsResponseSchema,
   AdminInstancesResponseSchema,
   BootstrapSchema,
   ConfigResponseSchema,
@@ -150,5 +151,21 @@ describe('fetcher-schemas', () => {
       ],
     })
     expect(parsed.providerTypes[0]?.instanceConfigSchema[0]?.storageKey).toBe('tracker_url')
+  })
+})
+
+describe('AdminGroupsResponseSchema', () => {
+  test('parses groups plus observed entries', () => {
+    const parsed = AdminGroupsResponseSchema.parse({
+      groups: [{ group_id: 'pi:a:ctx:b', added_by: 'admin', added_at: '2026-06-01' }],
+      observed: [{ contextId: 'pi:a:ctx:c', displayName: 'Ops', parentName: null }],
+    })
+    expect(parsed.observed[0]?.contextId).toBe('pi:a:ctx:c')
+    expect(parsed.observed[0]?.displayName).toBe('Ops')
+  })
+
+  test('defaults observed to an empty array when absent', () => {
+    const parsed = AdminGroupsResponseSchema.parse({ groups: [] })
+    expect(parsed.observed).toEqual([])
   })
 })
