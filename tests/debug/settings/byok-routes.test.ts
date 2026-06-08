@@ -12,6 +12,8 @@ import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import { enableByokForContext, getByokLlmConfig, updateByokLlmConfig } from '../../../src/byok-llm/store.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { maskSensitiveValue } from '../../../src/config.js'
+import { byokLlmCredentials } from '../../../src/db/byok-llm-schema.js'
+import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { handleByokRoutes } from '../../../src/debug/settings/byok-routes.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
 import { resolveSettingsPrincipal } from '../../../src/settings/principal.js'
@@ -23,6 +25,8 @@ const ByokResponseSchema = z.object({
   enabled: z.boolean(),
   complete: z.boolean(),
   missing: z.array(z.string()),
+  unreadable: z.literal(true).optional(),
+  error: z.string().optional(),
   fields: z.array(
     z.object({
       key: z.string(),
@@ -36,6 +40,19 @@ const ByokResponseSchema = z.object({
 })
 
 const PatchResponseSchema = z.object({ ok: z.literal(true), contextId: z.string() })
+
+const insertCorruptedByokRow = (contextId: string): void => {
+  getDrizzleDb()
+    .insert(byokLlmCredentials)
+    .values({
+      contextId,
+      enabled: true,
+      encryptedConfig: 'not-base64',
+      updatedAt: Date.now(),
+      updatedBy: 'seed-user',
+    })
+    .run()
+}
 
 describe('settings BYOK routes', () => {
   let session: SettingsSession
@@ -163,6 +180,52 @@ describe('settings BYOK routes', () => {
     const stored = getByokLlmConfig(personalConfigContextId)
     expect(stored?.llm_apikey).toBe(secret)
     expect(stored?.small_model).toBe('small-test')
+  })
+
+  test('PATCH clears optional model when client submits blank value', async () => {
+    enableByokForContext(personalConfigContextId, 'admin')
+    updateByokLlmConfig(
+      personalConfigContextId,
+      {
+        llm_apikey: 'sk-existing-8888',
+        llm_baseurl: 'https://old.example/v1',
+        main_model: 'old-model',
+        small_model: 'small-old',
+      },
+      'admin',
+    )
+    const url = new URL('https://x/settings/api/byok')
+
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: { small_model: '' } }),
+      }),
+      url,
+    )
+
+    expect(res.status).toBe(200)
+    expect(getByokLlmConfig(personalConfigContextId)?.small_model).toBeUndefined()
+  })
+
+  test('GET returns unreadable metadata for corrupted enabled context credentials', async () => {
+    insertCorruptedByokRow(personalConfigContextId)
+    const url = new URL('https://x/settings/api/byok')
+
+    const res = await handleByokRoutes(new Request(url, { headers: authHeaders(session) }), url)
+
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(text).not.toContain('not-base64')
+    const body = ByokResponseSchema.parse(JSON.parse(text))
+    expect(body).toMatchObject({
+      enabled: true,
+      complete: false,
+      missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
+      unreadable: true,
+      error: 'stored BYOK LLM credentials are unreadable',
+    })
   })
 
   test('GET and PATCH resolve authorized managed group context', async () => {

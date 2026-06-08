@@ -34,6 +34,7 @@
   const currentData = $derived(loadedContextId === contextId ? data : null)
   const fields = $derived(currentData?.fields ?? [])
   const missing = $derived(currentData?.missing ?? [])
+  const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
 
   function initialDrafts(nextFields: ByokField[]): Record<string, string> {
     return Object.fromEntries(nextFields.map((field) => [field.key, field.sensitive && field.hasValue ? '' : field.value]))
@@ -135,6 +136,9 @@
   {:else if currentData !== null && !currentData.enabled}
     <p class="placeholder">BYOK is not enabled for this context. Ask a bot admin to enable it first.</p>
   {:else if currentData !== null}
+    {#if unreadableError !== null}
+      <p class="status-error">Stored BYOK credentials are unreadable. Re-enter the values to repair this context.</p>
+    {/if}
     {#if !currentData.complete && missing.length > 0}
       <p class="status-error">Missing required fields: {missing.join(', ')}</p>
     {/if}

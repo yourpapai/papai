@@ -45,7 +45,7 @@ const fieldResponse = (contextId: string): unknown => {
     }
   })
 
-  return { enabled: state.enabled, complete: state.complete, missing: state.missing, fields }
+  return { ...state, fields }
 }
 
 const isAllowedKey = (key: string): key is ByokLlmKey => allowedKeys.has(key)

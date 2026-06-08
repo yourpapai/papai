@@ -29,6 +29,20 @@ describe('BYOK fetcher schemas', () => {
     expect(parsed.fields[0]?.sensitive).toBe(true)
   })
 
+  test('preserves context BYOK unreadable credential metadata', () => {
+    const parsed = ByokResponseSchema.parse({
+      enabled: true,
+      complete: false,
+      missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
+      unreadable: true,
+      error: 'stored BYOK LLM credentials are unreadable',
+      fields: [],
+    })
+
+    expect(parsed.unreadable).toBe(true)
+    expect(parsed.error).toBe('stored BYOK LLM credentials are unreadable')
+  })
+
   test('parses admin BYOK summaries', () => {
     const parsed = AdminByokResponseSchema.parse({
       contexts: [

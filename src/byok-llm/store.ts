@@ -35,6 +35,20 @@ const cleanConfig = (input: PartialByokLlmConfig): PartialByokLlmConfig =>
     }),
   ) as PartialByokLlmConfig
 
+const hasOwnConfigKey = (input: PartialByokLlmConfig, key: string): key is keyof PartialByokLlmConfig =>
+  Object.prototype.hasOwnProperty.call(input, key)
+
+const mergeConfigUpdate = (current: PartialByokLlmConfig, input: PartialByokLlmConfig): PartialByokLlmConfig => {
+  const merged: PartialByokLlmConfig = { ...current }
+  for (const key of BYOK_LLM_KEYS) {
+    if (!hasOwnConfigKey(input, key)) continue
+    const value = input[key]?.trim() ?? ''
+    if (value.length === 0) merged[key] = undefined
+    else merged[key] = value
+  }
+  return cleanConfig(merged)
+}
+
 const missingRequired = (config: PartialByokLlmConfig | null): ByokCredentialState['missing'] =>
   REQUIRED_BYOK_LLM_KEYS.filter((key) => {
     const value = config?.[key]?.trim()
@@ -110,8 +124,8 @@ export function disableByokForContext(contextId: string, updatedBy: string): voi
 
 export function updateByokLlmConfig(contextId: string, config: PartialByokLlmConfig, updatedBy: string): void {
   const current = getByokLlmConfig(contextId) ?? {}
-  const cleanedInput = cleanConfig(config)
-  const merged = cleanConfig({ ...current, ...cleanedInput })
+  const updatedKeys = BYOK_LLM_KEYS.filter((key) => hasOwnConfigKey(config, key))
+  const merged = mergeConfigUpdate(current, config)
   const encryptedConfig = encryptSecretPayload(toSecretPayload(merged))
 
   getDrizzleDb()
@@ -126,7 +140,7 @@ export function updateByokLlmConfig(contextId: string, config: PartialByokLlmCon
       },
     })
     .run()
-  log.info({ contextId, updatedBy, keys: Object.keys(cleanedInput) }, 'BYOK LLM config updated')
+  log.info({ contextId, updatedBy, keys: updatedKeys }, 'BYOK LLM config updated')
 }
 
 export function getByokLlmConfig(contextId: string): PartialByokLlmConfig | null {

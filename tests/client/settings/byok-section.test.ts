@@ -59,6 +59,15 @@ const rawSecretPayload = {
   ],
 }
 
+const unreadablePayload = {
+  enabled: true,
+  complete: false,
+  missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
+  unreadable: true,
+  error: 'stored BYOK LLM credentials are unreadable',
+  fields: [],
+}
+
 let capturedPatchBody = ''
 
 const resetSession = (): void => {
@@ -243,6 +252,19 @@ describe('ByokSection', () => {
 
     expect(target.textContent).toContain('Missing required fields')
     expect(target.textContent).toContain('embedding_model')
+    void unmount(component)
+  })
+
+  test('shows unreadable credential state distinctly', async () => {
+    setMockFetch(() => Promise.resolve(json(unreadablePayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+
+    await drain()
+
+    expect(target.textContent).toContain('Stored BYOK credentials are unreadable')
+    expect(target.textContent).not.toContain('not-base64')
     void unmount(component)
   })
 

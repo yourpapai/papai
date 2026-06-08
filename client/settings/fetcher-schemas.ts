@@ -53,6 +53,8 @@ export const ByokResponseSchema = z.object({
   enabled: z.boolean(),
   complete: z.boolean(),
   missing: z.array(z.string()),
+  unreadable: z.literal(true).optional(),
+  error: z.string().optional(),
   fields: z.array(ByokFieldSchema),
 })
 export type ByokField = z.infer<typeof ByokFieldSchema>
