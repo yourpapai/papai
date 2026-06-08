@@ -8,6 +8,7 @@
   import Field from '../../../shared/ui/Field.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
+  import Confirm from '../../../shared/Confirm.svelte'
   import { sendAnnounce } from '../../admin-fetchers.js'
   import type { AnnounceResult } from '../../fetcher-schemas.js'
 
@@ -15,6 +16,7 @@
   let error: string | null = $state(null)
   let result: AnnounceResult | null = $state(null)
   let sending = $state(false)
+  let confirming = $state(false)
 
   async function send(): Promise<void> {
     const text = message.trim()
@@ -31,6 +33,16 @@
       sending = false
     }
   }
+
+  function requestSend(): void {
+    if (message.trim() === '') return
+    confirming = true
+  }
+
+  async function confirmedSend(): Promise<void> {
+    confirming = false
+    await send()
+  }
 </script>
 
 <section id="announce" class="settings-section">
@@ -38,7 +50,7 @@
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
 
-  <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void send() }}>
+  <form class="settings-form" onsubmit={(event) => { event.preventDefault(); requestSend() }}>
     <Field label="Message">
       <Input value={message} onInput={(v) => (message = v)} testid="announce-message" multiline rows={3} />
     </Field>
@@ -53,3 +65,13 @@
     </p>
   {/if}
 </section>
+
+<Confirm
+  open={confirming}
+  title="Broadcast to all users"
+  danger
+  confirmLabel="Send to everyone"
+  onCancel={() => (confirming = false)}
+  onConfirm={() => void confirmedSend()}>
+  {#snippet body()}<p>This sends the message to every user. Continue?</p>{/snippet}
+</Confirm>

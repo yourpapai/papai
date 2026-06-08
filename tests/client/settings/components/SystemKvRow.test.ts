@@ -130,3 +130,37 @@ test('keeps the row in edit mode when the save fails', async () => {
   expect(target.querySelector('[data-testid="system-input-main_model"]')).not.toBeNull()
   void unmount(c)
 })
+
+test('saving a secret key requires confirmation', async () => {
+  let saved = ''
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SystemKvRow, {
+    target,
+    props: {
+      keyName: 'llm_apikey',
+      value: '****d2a0',
+      sensitive: true,
+      onSave: (v: string) => {
+        saved = v
+        return Promise.resolve(true)
+      },
+    },
+  })
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="system-edit-llm_apikey"]')!.click()
+  flushSync()
+  const input = target.querySelector<HTMLInputElement>('[data-testid="system-input-llm_apikey"]')!
+  input.value = 'new-secret'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="system-save-llm_apikey"]')!.click()
+  flushSync()
+  // not saved yet — dialog open
+  expect(saved).toBe('')
+  target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  flushSync()
+  expect(saved).toBe('new-secret')
+  void unmount(c)
+})

@@ -25,4 +25,7 @@ describe('settings.css', () => {
   test('focus ring uses accent at reduced alpha', () => {
     expect(css).toContain(':focus-visible')
   })
+  test('admin zone has a danger divider', () => {
+    expect(css).toContain('.settings-admin-zone')
+  })
 })

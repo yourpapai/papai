@@ -118,3 +118,22 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- admin danger zone ---- */
+.settings-admin-zone {
+  position: relative;
+  padding-top: var(--gap-section);
+  border-top: 1px solid var(--danger);
+}
+.settings-admin-zone::before {
+  content: 'ADMIN';
+  position: absolute;
+  top: -10px;
+  left: 0;
+  background: var(--bg);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 0 8px;
+}

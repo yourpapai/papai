@@ -38,6 +38,31 @@ afterEach(() => {
 })
 
 describe('AdminAnnounceSection', () => {
+  test('announce requires confirmation before sending', async () => {
+    setCsrfToken('c')
+    let posted = false
+    const announceMock = (_url: string, _init: RequestInit): Promise<Response> => {
+      posted = true
+      return Promise.resolve(json({ successCount: 1, failCount: 0, totalUsers: 1 }))
+    }
+    setMockFetch(announceMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const c = mount(AdminAnnounceSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLTextAreaElement>('[data-testid="announce-message"]')!
+    input.value = 'hello all'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="announce-send"]')!.click()
+    flushSync()
+    expect(posted).toBe(false)
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(posted).toBe(true)
+    void unmount(c)
+  })
+
   test('sends a message and shows result counts', async () => {
     setCsrfToken('c')
     setMockFetch(successMock)
@@ -50,6 +75,9 @@ describe('AdminAnnounceSection', () => {
     textarea.dispatchEvent(new Event('input', { bubbles: true }))
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="announce-send"]')!.click()
+    flushSync()
+    // confirm the dialog
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(capturedBody).toBe(JSON.stringify({ message: 'hello all' }))
     const resultEl = target.querySelector<HTMLElement>('[data-testid="announce-result"]')!
@@ -73,6 +101,9 @@ describe('AdminAnnounceSection', () => {
     textarea.dispatchEvent(new Event('input', { bubbles: true }))
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="announce-send"]')!.click()
+    flushSync()
+    // confirm the dialog
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     const errorEl = target.querySelector<HTMLElement>('.status-error')!
     expect(errorEl).not.toBeNull()

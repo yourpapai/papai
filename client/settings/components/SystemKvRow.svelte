@@ -6,6 +6,7 @@
 <script lang="ts">
   import Btn from '../../shared/ui/Btn.svelte'
   import Input from '../../shared/ui/Input.svelte'
+  import Confirm from '../../shared/Confirm.svelte'
   import { maskSecret } from '../lib/mask-secret.js'
 
   interface Props {
@@ -18,6 +19,7 @@
 
   let editing = $state(false)
   let draft = $state('')
+  let confirming = $state(false)
 
   const display = $derived(value === null ? null : sensitive ? maskSecret(value) : value)
 
@@ -30,6 +32,11 @@
       editing = false
       draft = ''
     }
+  }
+  function requestSave(): void {
+    if (draft.trim() === '') return
+    if (sensitive) { confirming = true; return }
+    void save()
   }
 </script>
 
@@ -51,7 +58,7 @@
   </td>
   <td class="kv-row__action">
     {#if editing}
-      <Btn variant="primary" size="sm" testid={`system-save-${keyName}`} onClick={() => void save()}>
+      <Btn variant="primary" size="sm" testid={`system-save-${keyName}`} onClick={requestSave}>
         {#snippet children()}Save{/snippet}
       </Btn>
       <Btn variant="secondary" size="sm" testid={`system-cancel-${keyName}`} onClick={cancel}>
@@ -64,6 +71,15 @@
     {/if}
   </td>
 </tr>
+<Confirm
+  open={confirming}
+  title="Change secret key"
+  danger
+  confirmLabel="Save secret"
+  onCancel={() => (confirming = false)}
+  onConfirm={() => { confirming = false; void save() }}>
+  {#snippet body()}<p>Update <code>{keyName}</code>? The new secret takes effect immediately.</p>{/snippet}
+</Confirm>
 
 <style>
   .kv-row__key { color: var(--text-muted); padding: 8px 12px; white-space: nowrap; vertical-align: middle; }
