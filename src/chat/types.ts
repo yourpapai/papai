@@ -151,7 +151,7 @@ export type IncomingMessage = {
   fileCandidates: IncomingFileCandidate[]
   /** Platform thread ID (if in thread) */
   threadId: string
-  /** message is a reply to one of the bot's own messages */
+  /** message is a reply to one of the bot's own messages; undefined when the adapter cannot determine this (treat as false) */
   isReplyToBot: boolean
 }>
 
