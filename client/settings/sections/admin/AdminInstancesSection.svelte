@@ -223,29 +223,33 @@
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
-  <h3>Platform instances</h3>
-  <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
-    <Field label="ID">
-      {#snippet children()}
-        <Input value={platformId} onInput={(v) => (platformId = v)} testid="platform-id" />
-      {/snippet}
-    </Field>
-    <Field label="Type">
-      {#snippet children()}
-        <Select value={platformType} options={platformTypes.map((t) => ({ value: t.type, label: t.displayName }))} onChange={(v) => (platformType = v)} />
-      {/snippet}
-    </Field>
-    {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
-      <Field label={`${field.label}${field.required ? ' *' : ''}`}>
+  <div class="instance-create" data-testid="platform-create-card">
+    <div class="t-subhead">Add platform instance</div>
+    <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
+      <Field label="ID">
         {#snippet children()}
-          <Input type={field.sensitive ? 'password' : 'text'} value={platformConfig[field.key] ?? ''} onInput={(v) => (platformConfig[field.key] = v)} />
+          <Input value={platformId} onInput={(v) => (platformId = v)} testid="platform-id" />
         {/snippet}
       </Field>
-    {/each}
-    <Btn variant="primary" type="submit">
-      {#snippet children()}Create{/snippet}
-    </Btn>
-  </form>
+      <Field label="Type">
+        {#snippet children()}
+          <Select value={platformType} options={platformTypes.map((t) => ({ value: t.type, label: t.displayName }))} onChange={(v) => (platformType = v)} />
+        {/snippet}
+      </Field>
+      {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
+        <Field label={`${field.label}${field.required ? ' *' : ''}`}>
+          {#snippet children()}
+            <Input type={field.sensitive ? 'password' : 'text'} value={platformConfig[field.key] ?? ''} onInput={(v) => (platformConfig[field.key] = v)} />
+          {/snippet}
+        </Field>
+      {/each}
+      <Btn variant="primary" type="submit" testid="platform-create">
+        {#snippet children()}+ Create{/snippet}
+      </Btn>
+    </form>
+  </div>
+
+  <div class="t-subhead">Platform instances</div>
   <div class="settings-table-wrap">
     {#snippet platformCell(row: InstanceRow, col: { key: string; label: string })}
       {#if col.key === 'status'}
@@ -271,29 +275,33 @@
     </p>
   {/if}
 
-  <h3>Task instances</h3>
-  <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
-    <Field label="ID">
-      {#snippet children()}
-        <Input value={taskId} onInput={(v) => (taskId = v)} testid="task-id" />
-      {/snippet}
-    </Field>
-    <Field label="Type">
-      {#snippet children()}
-        <Select value={taskType} options={taskTypes.map((t) => ({ value: t.type, label: t.displayName }))} onChange={(v) => (taskType = v)} />
-      {/snippet}
-    </Field>
-    {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
-      <Field label={`${field.label}${field.required ? ' *' : ''}`}>
+  <div class="instance-create" data-testid="task-create-card">
+    <div class="t-subhead">Add task instance</div>
+    <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
+      <Field label="ID">
         {#snippet children()}
-          <Input type={field.sensitive ? 'password' : 'text'} value={taskConfig[field.key] ?? ''} onInput={(v) => (taskConfig[field.key] = v)} />
+          <Input value={taskId} onInput={(v) => (taskId = v)} testid="task-id" />
         {/snippet}
       </Field>
-    {/each}
-    <Btn variant="primary" type="submit">
-      {#snippet children()}Create{/snippet}
-    </Btn>
-  </form>
+      <Field label="Type">
+        {#snippet children()}
+          <Select value={taskType} options={taskTypes.map((t) => ({ value: t.type, label: t.displayName }))} onChange={(v) => (taskType = v)} />
+        {/snippet}
+      </Field>
+      {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
+        <Field label={`${field.label}${field.required ? ' *' : ''}`}>
+          {#snippet children()}
+            <Input type={field.sensitive ? 'password' : 'text'} value={taskConfig[field.key] ?? ''} onInput={(v) => (taskConfig[field.key] = v)} />
+          {/snippet}
+        </Field>
+      {/each}
+      <Btn variant="primary" type="submit" testid="task-create">
+        {#snippet children()}+ Create{/snippet}
+      </Btn>
+    </form>
+  </div>
+
+  <div class="t-subhead">Task instances</div>
   <div class="settings-table-wrap">
     {#snippet taskCell(row: InstanceRow, col: { key: string; label: string })}
       {#if col.key === 'status'}
@@ -319,3 +327,13 @@
     </p>
   {/if}
 </section>
+
+<style>
+  .instance-create {
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: var(--gap-field);
+  }
+</style>

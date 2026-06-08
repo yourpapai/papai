@@ -339,4 +339,20 @@ describe('AdminInstancesSection', () => {
     expect(target.querySelector('[data-testid="platform-status-tg"]')?.classList.contains('ui-btn')).toBe(true)
     void unmount(component)
   })
+
+  test('separates the add-instance card from the instances table', async () => {
+    // The instanceColumns include { label: 'Status' } which DataTable renders as a <th>.
+    // The create card has only ID/Type field labels and the + Create button — no Status column header.
+    // We assert the card exists, has its own create button, and does NOT contain the 'Status' table header.
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const c = mount(AdminInstancesSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="platform-create-card"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="platform-create"]')).not.toBeNull()
+    const card = target.querySelector('[data-testid="platform-create-card"]')!
+    expect(card.textContent).not.toContain('Status')
+    void unmount(c)
+  })
 })
