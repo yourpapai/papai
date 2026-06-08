@@ -785,6 +785,76 @@ describe('TelegramChatProvider', () => {
       }).not.toThrow()
     })
   })
+
+  describe('isReplyToBot detection', () => {
+    test('sets isReplyToBot when reply targets bot own message', async () => {
+      const provider = createTelegramProvider()
+      const extractMessage: unknown = Reflect.get(provider, 'extractMessage')
+      assert(typeof extractMessage === 'function', 'extractMessage not available')
+
+      Reflect.set(provider, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(false))
+
+      const botUserId = 99999
+      const fakeCtx = {
+        from: { id: 42, username: 'alice' },
+        chat: { id: -100123, type: 'supergroup' },
+        me: { id: botUserId },
+        message: {
+          message_id: 50,
+          text: 'what did you mean?',
+          reply_to_message: {
+            message_id: 42,
+            from: { id: botUserId, username: 'mybot' },
+            text: 'Here is my answer',
+          },
+          entities: [],
+        },
+        api: {
+          getChat: (): Promise<{ type: string }> => Promise.resolve({ type: 'supergroup' }),
+          createForumTopic: (): Promise<{ message_thread_id: number }> => Promise.resolve({ message_thread_id: 1 }),
+        },
+      }
+
+      const result: unknown = await Promise.resolve(extractMessage.call(provider, fakeCtx, false))
+
+      assert(isIncomingMessage(result), 'Expected extractMessage to return an IncomingMessage')
+      expect(result.isReplyToBot).toBe(true)
+      expect(result.isMentioned).toBe(false)
+    })
+
+    test('sets isReplyToBot to false when reply targets non-bot user', async () => {
+      const provider = createTelegramProvider()
+      const extractMessage: unknown = Reflect.get(provider, 'extractMessage')
+      assert(typeof extractMessage === 'function', 'extractMessage not available')
+
+      Reflect.set(provider, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(false))
+
+      const fakeCtx = {
+        from: { id: 42, username: 'alice' },
+        chat: { id: -100123, type: 'supergroup' },
+        me: { id: 99999 },
+        message: {
+          message_id: 50,
+          text: 'reply to someone else',
+          reply_to_message: {
+            message_id: 30,
+            from: { id: 77, username: 'bob' },
+            text: 'original message',
+          },
+          entities: [],
+        },
+        api: {
+          getChat: (): Promise<{ type: string }> => Promise.resolve({ type: 'supergroup' }),
+          createForumTopic: (): Promise<{ message_thread_id: number }> => Promise.resolve({ message_thread_id: 1 }),
+        },
+      }
+
+      const result: unknown = await Promise.resolve(extractMessage.call(provider, fakeCtx, false))
+
+      assert(isIncomingMessage(result), 'Expected extractMessage to return an IncomingMessage')
+      expect(result.isReplyToBot).toBe(false)
+    })
+  })
 })
 
 describe('extractFilesFromContext', () => {
