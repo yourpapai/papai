@@ -15,9 +15,15 @@ import {
   type ByokAdminSummary,
   type ByokCredentialState,
   type PartialByokLlmConfig,
+  type RequiredByokLlmKey,
 } from './types.js'
 
 const log = logger.child({ scope: 'byok-llm:store' })
+const UNREADABLE_CONFIG_ERROR = 'BYOK LLM encrypted config is unreadable'
+
+type DecryptedConfigResult =
+  | { readonly kind: 'readable'; readonly config: PartialByokLlmConfig | null }
+  | { readonly kind: 'unreadable'; readonly error: string }
 
 const now = (): number => Date.now()
 
@@ -35,8 +41,43 @@ const missingRequired = (config: PartialByokLlmConfig | null): ByokCredentialSta
     return value === undefined || value.length === 0
   })
 
-const decryptConfig = (encryptedConfig: string | null): PartialByokLlmConfig | null =>
-  encryptedConfig === null ? null : cleanConfig(decryptSecretPayload(encryptedConfig) as PartialByokLlmConfig)
+const missingAllRequired = (): readonly RequiredByokLlmKey[] => [...REQUIRED_BYOK_LLM_KEYS]
+
+const sanitizeDecryptError = (error: unknown): string =>
+  error instanceof Error && error.message.length > 0
+    ? `${UNREADABLE_CONFIG_ERROR}: ${error.message}`
+    : UNREADABLE_CONFIG_ERROR
+
+const decryptConfig = (contextId: string, encryptedConfig: string | null): DecryptedConfigResult => {
+  if (encryptedConfig === null) return { kind: 'readable', config: null }
+
+  try {
+    return { kind: 'readable', config: cleanConfig(decryptSecretPayload(encryptedConfig) as PartialByokLlmConfig) }
+  } catch (error) {
+    const sanitizedError = sanitizeDecryptError(error)
+    log.warn({ contextId, error: sanitizedError }, 'BYOK LLM config could not be decrypted')
+    return { kind: 'unreadable', error: sanitizedError }
+  }
+}
+
+const stateForEnabledRow = (row: ByokLlmCredentialRow): ByokCredentialState => {
+  const decrypted = decryptConfig(row.contextId, row.encryptedConfig)
+  if (decrypted.kind === 'unreadable') {
+    return {
+      enabled: true,
+      complete: false,
+      missing: missingAllRequired(),
+      unreadable: true,
+      error: decrypted.error,
+    }
+  }
+
+  const missing = missingRequired(decrypted.config)
+  return { enabled: true, complete: missing.length === 0, missing }
+}
+
+const stateForRow = (row: ByokLlmCredentialRow): ByokCredentialState =>
+  row.enabled ? stateForEnabledRow(row) : { enabled: false, complete: false, missing: [] }
 
 const toSecretPayload = (config: PartialByokLlmConfig): SecretPayload =>
   Object.fromEntries(
@@ -97,14 +138,14 @@ export function updateByokLlmConfig(contextId: string, config: PartialByokLlmCon
 export function getByokLlmConfig(contextId: string): PartialByokLlmConfig | null {
   const row = findRow(contextId)
   if (row === undefined) return null
-  return decryptConfig(row.encryptedConfig)
+  const decrypted = decryptConfig(contextId, row.encryptedConfig)
+  return decrypted.kind === 'readable' ? decrypted.config : null
 }
 
 export function getByokCredentialState(contextId: string): ByokCredentialState {
   const row = findRow(contextId)
-  if (row === undefined || !row.enabled) return { enabled: false, complete: false, missing: [] }
-  const missing = missingRequired(decryptConfig(row.encryptedConfig))
-  return { enabled: true, complete: missing.length === 0, missing }
+  if (row === undefined) return { enabled: false, complete: false, missing: [] }
+  return stateForRow(row)
 }
 
 export function listByokAdminSummaries(): ByokAdminSummary[] {
@@ -113,12 +154,10 @@ export function listByokAdminSummaries(): ByokAdminSummary[] {
     .from(byokLlmCredentials)
     .all()
     .map((row): ByokAdminSummary => {
-      const missing = row.enabled ? missingRequired(decryptConfig(row.encryptedConfig)) : []
+      const state = stateForRow(row)
       return {
         contextId: row.contextId,
-        enabled: row.enabled,
-        complete: row.enabled && missing.length === 0,
-        missing,
+        ...state,
         updatedAt: row.updatedAt,
         updatedBy: row.updatedBy,
       }
