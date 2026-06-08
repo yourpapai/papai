@@ -19,17 +19,19 @@ See LICENSE in the project root for details.
 
 ## File Structure
 
-| File                                     | Change                                                                 |
-| ---------------------------------------- | ---------------------------------------------------------------------- |
-| `src/chat/types.ts`                      | Add `isReplyToBot?: boolean` to `IncomingMessage`                      |
-| `src/bot.ts`                             | Update `shouldIgnoreGroupMessage()` and `willQueueAuthorizedMessage()` |
-| `src/chat/telegram/index.ts`             | Set `isReplyToBot` in `extractMessage()`                               |
-| `src/chat/discord/map-message.ts`        | Add `isReplyToBot` parameter, relax group filter                       |
-| `src/chat/discord/index.ts`              | Pre-fetch parent message to check bot authorship                       |
-| `tests/bot.test.ts`                      | Tests for gate changes                                                 |
-| `tests/chat/telegram/index.test.ts`      | Test for Telegram `isReplyToBot`                                       |
-| `tests/chat/discord/map-message.test.ts` | Tests for `isReplyToBot` parameter                                     |
-| `tests/chat/discord/index.test.ts`       | Test for Discord dispatch with reply-to-bot                            |
+| File                                     | Change                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------- |
+| `src/chat/types.ts`                      | Add `isReplyToBot?: boolean` to `IncomingMessage`                          |
+| `src/bot.ts`                             | Update `shouldIgnoreGroupMessage()` and `willQueueAuthorizedMessage()`     |
+| `src/bot-group-observation.ts`           | Update `recordGroupObservation()` gate to include `isReplyToBot`           |
+| `src/chat/telegram/index.ts`             | Set `isReplyToBot` in `extractMessage()`                                   |
+| `src/chat/discord/map-message.ts`        | Add `isReplyToBot` parameter, relax group filter, export `CHANNEL_TYPE_DM` |
+| `src/chat/discord/index.ts`              | Pre-fetch parent (mention/DM short-circuit) to check bot authorship        |
+| `CLAUDE.md`, `src/chat/CLAUDE.md`        | Note Discord now processes replies to bot messages in groups               |
+| `tests/bot.test.ts`                      | Tests for gate + observation changes                                       |
+| `tests/chat/telegram/index.test.ts`      | Test for Telegram `isReplyToBot`                                           |
+| `tests/chat/discord/map-message.test.ts` | Tests for `isReplyToBot` parameter                                         |
+| `tests/chat/discord/index.test.ts`       | Test for Discord dispatch with reply-to-bot                                |
 
 ---
 
@@ -91,12 +93,15 @@ git commit -m "feat: add isReplyToBot field to IncomingMessage type"
 
 ---
 
-### Task 2: Update group message gate in `src/bot.ts`
+### Task 2: Update group message gates in `src/bot.ts` and `src/bot-group-observation.ts`
+
+The `!msg.isMentioned` group gate is duplicated across **three** sites. All three must change together, or a reply-to-bot message will be processed but inconsistently accounted for (Step 7 covers the third, easily-missed site: group observation).
 
 **Files:**
 
 - Modify: `src/bot.ts:126-130` (`shouldIgnoreGroupMessage`)
 - Modify: `src/bot.ts:160-165` (`willQueueAuthorizedMessage`)
+- Modify: `src/bot-group-observation.ts:15-17` (`recordGroupObservation`)
 - Test: `tests/bot.test.ts`
 
 - [ ] **Step 1: Write failing tests for the gate changes**
@@ -153,7 +158,55 @@ test('ignores group message when not mentioned and not replying to bot', async (
 
   expect(processMessageCallCount).toBe(0)
 })
+
+test('records group observation when user replies to bot without mention', async () => {
+  addAuthorizedGroupForPlatform('group-obs', ADMIN_ID)
+  addGroupMemberForPlatform('group-obs', 'obs-user', ADMIN_ID)
+  setupUserConfig('group-obs')
+
+  const messageHandler = getMessageHandler()
+  expect(messageHandler).not.toBeNull()
+
+  const groupMessage: IncomingMessage = {
+    user: { id: 'obs-user', username: 'obsuser', isAdmin: false },
+    contextId: 'group-obs',
+    contextType: 'group',
+    contextName: 'Obs Group',
+    contextParentName: 'Platform',
+    isMentioned: false,
+    isReplyToBot: true,
+    text: 'follow-up question',
+    platformInstanceId: 'test-instance',
+    replyToMessageId: 'bot-msg-9',
+  }
+
+  const { reply } = createMockReply()
+  await messageHandler!(groupMessage, reply)
+
+  const db = getDrizzleDb()
+  const knownGroup = db
+    .select()
+    .from(knownGroupContexts)
+    .where(and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, 'group-obs')))
+    .get()
+  const adminObservation = db
+    .select()
+    .from(groupAdminObservations)
+    .where(
+      and(
+        eq(groupAdminObservations.provider, 'mock'),
+        eq(groupAdminObservations.contextId, 'group-obs'),
+        eq(groupAdminObservations.userId, 'obs-user'),
+      ),
+    )
+    .get()
+
+  expect(knownGroup).toBeDefined()
+  expect(adminObservation).toBeDefined()
+})
 ```
+
+> Note: the existing test `'does not record group observations for ignored non-mentioned natural language'` (line 1081) asserts on `contextId: 'group-noise'` directly (not `scopedGroup('group-noise')`). Match whichever `contextId` convention you find in that sibling test when asserting the new observation, since both target the same registry.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -202,16 +255,36 @@ function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationRes
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 5: Update `recordGroupObservation()`** (the third, easily-missed gate site)
+
+In `src/bot-group-observation.ts`, change the early-return guard (line 17):
+
+```ts
+// Before
+export function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void {
+  if (msg.contextType !== 'group') return
+  if (msg.commandMatch === undefined && !msg.isMentioned) return
+  // ...
+
+// After
+export function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void {
+  if (msg.contextType !== 'group') return
+  if (msg.commandMatch === undefined && !msg.isMentioned && !msg.isReplyToBot) return
+  // ...
+```
+
+Without this, the `processes`/`records observation` tests both run, but a reply-to-bot user is processed yet never recorded in the group-settings registry.
+
+- [ ] **Step 6: Run tests to verify they pass**
 
 Run: `bun test tests/bot.test.ts`
-Expected: All tests pass, including the new ones
+Expected: All tests pass, including the new ones (including `records group observation when user replies to bot without mention`)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/bot.ts tests/bot.test.ts
-git commit -m "feat: process group messages that reply to bot"
+git add src/bot.ts src/bot-group-observation.ts tests/bot.test.ts
+git commit -m "feat: process and observe group messages that reply to bot"
 ```
 
 ---
@@ -402,6 +475,15 @@ Expected: FAIL — `isReplyToBot` not recognized, or group message still filtere
 
 In `src/chat/discord/map-message.ts`:
 
+Export the existing DM-channel-type constant so `dispatchMessage()` (Task 5) can reuse it instead of an inline `1` (line 26):
+
+```ts
+// Before
+const CHANNEL_TYPE_DM = 1
+// After
+export const CHANNEL_TYPE_DM = 1
+```
+
 Update the function signature (line 32):
 
 ```ts
@@ -471,7 +553,10 @@ In `tests/chat/discord/index.test.ts`, add a test for reply-to-bot dispatch:
 ```ts
 test('dispatches reply-to-bot message in group without @mention', async () => {
   const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-  const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
+  const provider = new DiscordChatProvider({
+    token: 'fake-discord-token',
+    platformInstanceId: TEST_PLATFORM_ID,
+  })
 
   const seen: IncomingMessage[] = []
   provider.onMessage((msg): Promise<void> => {
@@ -487,11 +572,24 @@ test('dispatches reply-to-bot message in group without @mention', async () => {
       id: 'c3',
       type: 0,
       send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-        Promise.resolve({ id: 'out3', edit: (): Promise<void> => Promise.resolve() }),
+        Promise.resolve({
+          id: 'out3',
+          edit: (): Promise<void> => Promise.resolve(),
+        }),
       sendTyping: (): Promise<void> => Promise.resolve(),
       messages: {
-        fetch: (id: string): Promise<{ id: string; author: { id: string; username: string }; content: string }> =>
-          Promise.resolve({ id, author: { id: 'bot_id', username: 'mybot' }, content: 'previous bot message' }),
+        fetch: (
+          id: string,
+        ): Promise<{
+          id: string
+          author: { id: string; username: string }
+          content: string
+        }> =>
+          Promise.resolve({
+            id,
+            author: { id: 'bot_id', username: 'mybot' },
+            content: 'previous bot message',
+          }),
       },
     },
     mentions: { has: (): boolean => false },
@@ -514,13 +612,22 @@ Expected: FAIL — message is dropped (returns null from `mapDiscordMessage`)
 
 - [ ] **Step 3: Update `dispatchMessage()` to pre-check reply-to-bot**
 
-In `src/chat/discord/index.ts`, update `dispatchMessage()` (line 225):
+In `src/chat/discord/index.ts`, add `isBotMentioned` and `CHANNEL_TYPE_DM` to the existing import from `./map-message.js` (verify the exact import line; `mapDiscordMessage` is already imported there). `isBotMentioned` is exported from `./mention-helpers.js`:
+
+```ts
+import { CHANNEL_TYPE_DM, mapDiscordMessage } from './map-message.js'
+import { isBotMentioned } from './mention-helpers.js'
+```
+
+Then update `dispatchMessage()` (line 225):
 
 ```ts
 private async dispatchMessage(message: DispatchableMessage, botId: string): Promise<void> {
-  // Pre-check: is this a reply to the bot's own message?
+  // Pre-check: is this a reply to the bot's own message? Skip the fetch when
+  // already mentioned (it passes the filter regardless) or in a DM channel.
   let isReplyToBot = false
-  if (message.reference?.messageId !== undefined && message.channel.type !== 1) {
+  const mentioned = isBotMentioned(message.mentions, botId, 'group')
+  if (message.reference?.messageId !== undefined && message.channel.type !== CHANNEL_TYPE_DM && !mentioned) {
     const messages = message.channel.messages
     if (messages !== undefined) {
       try {
@@ -536,6 +643,8 @@ private async dispatchMessage(message: DispatchableMessage, botId: string): Prom
   if (mapped === null) return
   // ... rest unchanged ...
 ```
+
+`isBotMentioned(message.mentions, botId, 'group')` reuses the same mention check `mapDiscordMessage()` runs; `'group'` is fixed here because the short-circuit only matters in non-DM channels (DMs are excluded by the `CHANNEL_TYPE_DM` guard anyway).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -556,7 +665,28 @@ git commit -m "feat(discord): pre-fetch parent to detect reply-to-bot in groups"
 
 ---
 
-### Task 6: Final verification
+### Task 6: Update documentation
+
+The current docs state Discord only observes DMs + `@mention`. Reply-to-bot is a new group-processing path and must be reflected.
+
+- [ ] **Step 1: Update `src/chat/CLAUDE.md`**
+
+Find the "Group behavior differs by provider" line ("Discord observes DMs plus `@bot` mentions in guild channels") and amend it to note Discord also processes **replies to the bot's own messages** in guild channels.
+
+- [ ] **Step 2: Update root `CLAUDE.md`**
+
+In the "Notable non-obvious behaviors" / group-context discussion, add a one-line note that Telegram and Discord process replies to bot messages in groups as equivalent to an `@mention` (Mattermost/Kontur Talk excluded).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add CLAUDE.md src/chat/CLAUDE.md
+git commit -m "docs: note reply-to-bot group processing for telegram and discord"
+```
+
+---
+
+### Task 7: Final verification
 
 - [ ] **Step 1: Run full typecheck**
 

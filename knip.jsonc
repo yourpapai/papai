@@ -79,6 +79,9 @@
     "src/chat/mattermost/action-signing.ts": ["files"],
     // Mattermost action callback route entry points are created ahead of the web server route wiring.
     "src/chat/mattermost/action-callbacks.ts": ["exports"],
+    // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
+    "src/byok-llm/store.ts": ["files", "exports"],
+    "src/byok-llm/types.ts": ["files", "types"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.

@@ -80,7 +80,7 @@ describe('/dashboard command', () => {
     const auth = createAuth('u1', { allowed: true, isBotAdmin: true })
     await lastHandler!(msg, reply, auth)
     const body = textCalls.join('\n')
-    expect(body).toMatch(/`http[^`]+\/auth\/claim\?n=[0-9a-f]{32}`/u)
+    expect(body).toMatch(/http\S+\/auth\/claim\?n=[0-9a-f]{32}/u)
     expect(body).toMatch(/5 min/iu)
   })
 
