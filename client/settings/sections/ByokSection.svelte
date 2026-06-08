@@ -29,27 +29,43 @@
   let savingKey: string | null = $state(null)
   let drafts: Record<string, string> = $state({})
   let replacing: Record<string, boolean> = $state({})
+  let loadedContextId: string | null = $state(null)
 
-  const fields = $derived(data?.fields ?? [])
-  const missing = $derived(data?.missing ?? [])
+  const currentData = $derived(loadedContextId === contextId ? data : null)
+  const fields = $derived(currentData?.fields ?? [])
+  const missing = $derived(currentData?.missing ?? [])
 
   function initialDrafts(nextFields: ByokField[]): Record<string, string> {
     return Object.fromEntries(nextFields.map((field) => [field.key, field.sensitive && field.hasValue ? '' : field.value]))
   }
 
+  function clearContextState(): void {
+    data = null
+    drafts = {}
+    replacing = {}
+    loadedContextId = null
+  }
+
+  function displaySecret(value: string): string {
+    return value.includes('*') ? maskSecret(value) : '••••••••'
+  }
+
   async function load(id: string): Promise<void> {
     error = null
     status = null
+    if (id !== loadedContextId) clearContextState()
     loading = true
     try {
       const next = await fetchByok(id)
+      if (id !== contextId) return
       data = next
+      loadedContextId = id
       drafts = initialDrafts(next.fields)
       replacing = {}
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) error = err instanceof Error ? err.message : String(err)
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
@@ -73,6 +89,7 @@
   }
 
   async function save(field: ByokField): Promise<void> {
+    if (loading || loadedContextId !== contextId || !fields.some((candidate) => candidate.key === field.key)) return
     error = null
     status = null
     savingKey = field.key
@@ -88,7 +105,10 @@
   }
 
   $effect(() => {
-    void load(contextId)
+    const id = contextId
+    untrack(() => {
+      void load(id)
+    })
   })
 
   $effect(() => {
@@ -110,12 +130,12 @@
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
-  {#if data === null && loading}
+  {#if currentData === null && loading}
     <p class="placeholder">Loading…</p>
-  {:else if data !== null && !data.enabled}
+  {:else if currentData !== null && !currentData.enabled}
     <p class="placeholder">BYOK is not enabled for this context. Ask a bot admin to enable it first.</p>
-  {:else if data !== null}
-    {#if !data.complete && missing.length > 0}
+  {:else if currentData !== null}
+    {#if !currentData.complete && missing.length > 0}
       <p class="status-error">Missing required fields: {missing.join(', ')}</p>
     {/if}
 
@@ -125,7 +145,7 @@
           <div class="settings-field__head">
             <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
             {#if field.sensitive && field.hasValue && !editorOpen(field)}
-              <Secret value={maskSecret(field.value)} />
+              <Secret value={displaySecret(field.value)} />
               <Btn variant="secondary" size="sm" testid={`byok-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
                 {#snippet children()}Replace{/snippet}
               </Btn>
@@ -144,7 +164,12 @@
                     testid={`byok-input-${field.key}`} />
                 {/snippet}
               </Field>
-              <Btn variant="primary" size="sm" testid={`byok-save-${field.key}`} disabled={savingKey === field.key} onClick={() => void save(field)}>
+              <Btn
+                variant="primary"
+                size="sm"
+                testid={`byok-save-${field.key}`}
+                disabled={savingKey === field.key || loading}
+                onClick={() => void save(field)}>
                 {#snippet children()}{savingKey === field.key ? 'Saving…' : 'Save'}{/snippet}
               </Btn>
               {#if field.sensitive && field.hasValue}

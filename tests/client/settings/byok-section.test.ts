@@ -9,6 +9,8 @@ import { flushSync, mount, unmount } from 'svelte'
 
 import { setCsrfToken } from '../../../client/settings/fetchers.js'
 import ByokSection from '../../../client/settings/sections/ByokSection.svelte'
+import { settingsSession } from '../../../client/settings/session.svelte.js'
+import SettingsApp from '../../../client/settings/SettingsApp.svelte'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const json = (payload: unknown): Response =>
@@ -41,7 +43,96 @@ const enabledPayload = {
   ],
 }
 
+const rawSecretPayload = {
+  enabled: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'llm_apikey',
+      label: 'LLM API key',
+      required: true,
+      sensitive: true,
+      hasValue: true,
+      value: 'sk-test-raw-secret',
+    },
+  ],
+}
+
 let capturedPatchBody = ''
+
+const resetSession = (): void => {
+  settingsSession.status = 'loading'
+  settingsSession.display = ''
+  settingsSession.isBotAdmin = false
+  settingsSession.isSuperAdmin = false
+  settingsSession.contexts = []
+  settingsSession.activeContextId = ''
+}
+
+const seedTwoContextSession = (): void => {
+  settingsSession.status = 'ready'
+  settingsSession.display = 'alice'
+  settingsSession.isBotAdmin = false
+  settingsSession.isSuperAdmin = false
+  settingsSession.contexts = [
+    { kind: 'personal', contextId: 'user:a', label: 'Context A' },
+    { kind: 'personal', contextId: 'user:b', label: 'Context B' },
+  ]
+  settingsSession.activeContextId = 'user:a'
+}
+
+const jsonForSettingsEndpoint = (url: string): Response => {
+  const parsed = new URL(url, 'https://settings.invalid')
+  const contextId = parsed.searchParams.get('contextId') ?? 'user:a'
+  if (parsed.pathname.endsWith('/settings/api/config')) return json({ contextId, fields: [] })
+  if (parsed.pathname.endsWith('/settings/api/context/task-instance'))
+    return json({ contextId, taskInstanceId: null, available: [] })
+  if (parsed.pathname.endsWith('/settings/api/tools')) return json({ contextId, domains: [] })
+  if (parsed.pathname.endsWith('/settings/api/identity'))
+    return json({ contextId, providerName: 'provider', mapping: null })
+  if (parsed.pathname.endsWith('/settings/api/mcp')) return json({ contextId, endpoints: [] })
+  if (parsed.pathname.endsWith('/settings/api/plugins')) return json({ contextId, plugins: [] })
+  return json({})
+}
+
+const routeSettingsWithByok =
+  (
+    byok: (contextId: string) => Promise<Response>,
+    onPatch: (body: unknown) => void = () => {},
+  ): ((url: string, init?: RequestInit) => Promise<Response>) =>
+  (url, init): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (method === 'PATCH') {
+      onPatch(typeof init?.body === 'string' ? JSON.parse(init.body) : null)
+      return Promise.resolve(json({ ok: true }))
+    }
+    const parsed = new URL(url, 'https://settings.invalid')
+    if (parsed.pathname.endsWith('/settings/api/byok')) return byok(parsed.searchParams.get('contextId') ?? '')
+    return Promise.resolve(jsonForSettingsEndpoint(url))
+  }
+
+interface PendingByokState {
+  requestedContext: string
+  resolveSecondLoad: ((response: Response) => void) | null
+}
+
+const pendingUserBByok =
+  (state: PendingByokState) =>
+  (contextId: string): Promise<Response> => {
+    state.requestedContext = contextId
+    if (contextId === 'user:b') {
+      return new Promise<Response>((resolve) => {
+        state.resolveSecondLoad = resolve
+      })
+    }
+    return Promise.resolve(json(enabledPayload))
+  }
+
+const failUserBByok = (contextId: string): Promise<Response> =>
+  contextId === 'user:b'
+    ? Promise.resolve(new Response('failed to load BYOK', { status: 500 }))
+    : Promise.resolve(json(enabledPayload))
 
 const routeByokMock = (url: string, init?: RequestInit): Promise<Response> => {
   if (url.includes('/settings/api/byok') && (init?.method ?? 'GET') === 'PATCH') {
@@ -53,6 +144,7 @@ const routeByokMock = (url: string, init?: RequestInit): Promise<Response> => {
 
 afterEach(() => {
   capturedPatchBody = ''
+  resetSession()
   restoreFetch()
   setCsrfToken('')
 })
@@ -72,7 +164,7 @@ describe('ByokSection', () => {
   })
 
   test('renders enabled fields with a masked API key and no raw secret text', async () => {
-    setMockFetch(() => Promise.resolve(json(enabledPayload)))
+    setMockFetch(() => Promise.resolve(json(rawSecretPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
@@ -80,14 +172,64 @@ describe('ByokSection', () => {
     await drain()
 
     expect(target.textContent).toContain('LLM API key')
-    expect(target.textContent).toContain('LLM base URL')
-    expect(target.textContent).toContain('Main model')
-    expect(target.textContent).toContain('Small model')
-    expect(target.textContent).toContain('Embedding model')
-    expect(target.textContent).toContain('••••1234')
+    expect(target.textContent).toContain('••••••••')
     expect(target.textContent).toContain('Replace')
     expect(target.textContent).not.toContain('sk-test-raw-secret')
     expect(target.querySelector('[data-testid="byok-input-llm_apikey"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('clears previous context fields during a context switch load', async () => {
+    const pending: PendingByokState = { requestedContext: '', resolveSecondLoad: null }
+    setMockFetch(routeSettingsWithByok(pendingUserBByok(pending)))
+    seedTwoContextSession()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    history.replaceState(null, '', '/settings')
+    const component = mount(SettingsApp, { target })
+
+    await drain()
+    expect(target.querySelector('[data-testid="byok-save-main_model"]')).not.toBeNull()
+    settingsSession.activeContextId = 'user:b'
+    await drain()
+
+    const staleSaveVisible = target.querySelector('[data-testid="byok-save-main_model"]') !== null
+    const loadingVisible = target.textContent.includes('Loading…')
+    const resolveLoad = pending.resolveSecondLoad
+    expect(resolveLoad).not.toBeNull()
+    resolveLoad!(json(disabledPayload))
+    await drain()
+    expect(pending.requestedContext).toBe('user:b')
+    expect(staleSaveVisible).toBe(false)
+    expect(loadingVisible).toBe(true)
+    void unmount(component)
+  })
+
+  test('failed context switch does not PATCH the new context with a stale draft', async () => {
+    setCsrfToken('c')
+    let capturedPatch: unknown = null
+    setMockFetch(
+      routeSettingsWithByok(failUserBByok, (body) => {
+        capturedPatch = body
+      }),
+    )
+    seedTwoContextSession()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    history.replaceState(null, '', '/settings')
+    const component = mount(SettingsApp, { target })
+
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
+    input.value = 'stale-main-model'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    settingsSession.activeContextId = 'user:b'
+    await drain()
+
+    expect(target.textContent).toContain('request failed with status 500')
+    expect(target.querySelector('[data-testid="byok-save-main_model"]')).toBeNull()
+    expect(capturedPatch).toBeNull()
     void unmount(component)
   })
 
