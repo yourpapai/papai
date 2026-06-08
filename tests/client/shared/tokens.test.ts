@@ -41,7 +41,7 @@ describe('design tokens', () => {
     }
   })
   test('keeps legacy aliases so debug/admin SPAs still resolve', () => {
-    for (const t of ['--surface:', '--raised:', '--fg2:', '--s4:']) {
+    for (const t of ['--surface:', '--raised:', '--hair:', '--fg:', '--fg2:', '--fg3:', '--fg4:', '--s4:']) {
       expect(css).toContain(t)
     }
   })

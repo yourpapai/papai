@@ -25,7 +25,7 @@
   --accent-fg: #08160d;
   --accent-soft: rgba(82, 224, 138, 0.1);
   --accent-dim: rgba(82, 224, 138, 0.55);
-  --state-active: #52e08a;
+  --state-active: var(--accent);
   --warn: #e0b452;
   --warn-soft: rgba(224, 180, 82, 0.1);
   --danger: #ff5d5d;
@@ -67,5 +67,5 @@
   --fg: var(--text);
   --fg2: var(--text-muted);
   --fg3: var(--text-dim);
-  --fg4: var(--text-dim);
+  --fg4: #3a4248;
 }
