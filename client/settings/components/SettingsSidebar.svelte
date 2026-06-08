@@ -33,7 +33,7 @@
           <a
             class="settings-sidebar__link"
             class:settings-sidebar__link--active={activeId === item.id}
-            aria-current={activeId === item.id ? 'true' : undefined}
+            aria-current={activeId === item.id ? 'page' : undefined}
             href={`#${item.id}`}>
             {item.label}
           </a>

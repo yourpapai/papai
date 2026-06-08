@@ -22,6 +22,7 @@
   let newUserId = $state('')
   let newUsername = $state('')
   let pendingRemoval: string | null = $state(null)
+  const pendingRemovalLabel = $derived(pendingRemoval ?? '')
 
   async function load(): Promise<void> {
     error = null
@@ -141,6 +142,6 @@
     confirmLabel="Remove"
     onCancel={() => (pendingRemoval = null)}
     onConfirm={() => { const id = pendingRemoval; pendingRemoval = null; if (id !== null) void remove(id) }}>
-    {#snippet body()}<p>Remove user {pendingRemoval}? This cannot be undone.</p>{/snippet}
+    {#snippet body()}<p>Remove user {pendingRemovalLabel}? This cannot be undone.</p>{/snippet}
   </Confirm>
 </section>

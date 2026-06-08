@@ -18,6 +18,18 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+test('does not show ✓ when clipboard API is unavailable', () => {
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(CopyButton, { target, props: { value: 'secret', label: 'Copy' } })
+  flushSync()
+  const btn = target.querySelector<HTMLButtonElement>('button')!
+  btn.click()
+  expect(btn.textContent?.trim()).toBe('⧉')
+  void unmount(c)
+})
+
 test('copies the value to the clipboard on click', () => {
   Object.defineProperty(navigator, 'clipboard', {
     value: {

@@ -47,7 +47,7 @@ describe('SettingsSidebar', () => {
     const c = mount(SettingsSidebar, { target, props: { groups, activeId: 'tools' } })
     flushSync()
     const active = target.querySelector('a[href="#tools"]')!
-    expect(active.getAttribute('aria-current')).toBe('true')
+    expect(active.getAttribute('aria-current')).toBe('page')
     expect(target.querySelector('a[href="#profile"]')!.getAttribute('aria-current')).toBeNull()
     void unmount(c)
   })

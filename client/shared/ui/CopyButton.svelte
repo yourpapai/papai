@@ -12,8 +12,9 @@
   let done = $state(false)
 
   async function copy(): Promise<void> {
+    if (navigator.clipboard === undefined) { done = false; return }
     try {
-      await navigator.clipboard?.writeText(value)
+      await navigator.clipboard.writeText(value)
       done = true
       setTimeout(() => {
         done = false
