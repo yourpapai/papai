@@ -44,6 +44,7 @@ export const userConfig = sqliteTable(
 export { systemConfig } from './system-config-schema.js'
 export { llmUsageEvents, type LlmUsageEventRow } from './llm-usage-events-schema.js'
 export { toolCallEvents, type ToolCallEventRow } from './tool-call-events-schema.js'
+export { byokLlmCredentials, type ByokLlmCredentialRow } from './byok-llm-schema.js'
 
 export const conversationHistory = sqliteTable('conversation_history', {
   userId: text('user_id').primaryKey(),
