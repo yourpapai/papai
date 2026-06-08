@@ -21,8 +21,7 @@
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
     event.preventDefault()
     const delta = event.key === 'ArrowRight' ? 1 : -1
-    const next = options[(index + delta + options.length) % options.length]
-    if (next) onChange(next.value)
+    onChange(options[(index + delta + options.length) % options.length]!.value)
   }
 </script>
 
