@@ -64,8 +64,14 @@ async function resolveIsReplyToBot(message: DispatchableMessage, botId: string, 
   try {
     const parent = await messages.fetch(message.reference.messageId)
     return parent.author.id === botId
-  } catch {
-    // Parent fetch failed — not a blocker, treat as non-reply
+  } catch (error: unknown) {
+    log.warn(
+      {
+        messageId: message.reference.messageId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'failed to fetch parent message for reply-to-bot detection',
+    )
     return false
   }
 }

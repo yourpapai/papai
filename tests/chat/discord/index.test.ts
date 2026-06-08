@@ -275,6 +275,90 @@ describe('DiscordChatProvider', () => {
     expect(seen[0]!.text).toBe('what did you mean by that?')
   })
 
+  test('drops group reply when parent was authored by a non-bot user', async () => {
+    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+    const provider = new DiscordChatProvider({
+      token: 'fake-discord-token',
+      platformInstanceId: TEST_PLATFORM_ID,
+    })
+
+    const seen: IncomingMessage[] = []
+    provider.onMessage((msg): Promise<void> => {
+      seen.push(msg)
+      return Promise.resolve()
+    })
+
+    const fakeMessage = {
+      id: 'm-reply-nonbot',
+      author: { id: 'u3', username: 'charlie', bot: false },
+      content: 'what did you mean by that?',
+      channel: {
+        id: 'c-reply-nonbot',
+        type: 0,
+        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+          Promise.resolve({
+            id: 'out-reply-nonbot',
+            edit: (): Promise<void> => Promise.resolve(),
+          }),
+        sendTyping: (): Promise<void> => Promise.resolve(),
+        messages: {
+          fetch: (id: string): Promise<{ id: string; author: { id: string; username: string }; content: string }> =>
+            Promise.resolve({
+              id,
+              author: { id: 'someone_else', username: 'otheruser' },
+              content: 'some other message',
+            }),
+        },
+      },
+      mentions: { has: (): boolean => false },
+      reference: { messageId: 'other-msg-99' },
+      type: 0,
+    }
+    await provider.testDispatchMessage(fakeMessage, 'bot_id')
+
+    expect(seen).toHaveLength(0)
+  })
+
+  test('drops group reply and does not throw when parent fetch rejects', async () => {
+    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+    const provider = new DiscordChatProvider({
+      token: 'fake-discord-token',
+      platformInstanceId: TEST_PLATFORM_ID,
+    })
+
+    const seen: IncomingMessage[] = []
+    provider.onMessage((msg): Promise<void> => {
+      seen.push(msg)
+      return Promise.resolve()
+    })
+
+    const fakeMessage = {
+      id: 'm-reply-fetchfail',
+      author: { id: 'u3', username: 'charlie', bot: false },
+      content: 'what did you mean by that?',
+      channel: {
+        id: 'c-reply-fetchfail',
+        type: 0,
+        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+          Promise.resolve({
+            id: 'out-reply-fetchfail',
+            edit: (): Promise<void> => Promise.resolve(),
+          }),
+        sendTyping: (): Promise<void> => Promise.resolve(),
+        messages: {
+          fetch: (_id: string): Promise<{ id: string; author: { id: string; username: string }; content: string }> =>
+            Promise.reject(new Error('fetch failed')),
+        },
+      },
+      mentions: { has: (): boolean => false },
+      reference: { messageId: 'missing-msg-42' },
+      type: 0,
+    }
+    await expect(provider.testDispatchMessage(fakeMessage, 'bot_id')).resolves.toBeUndefined()
+
+    expect(seen).toHaveLength(0)
+  })
+
   test('bot-authored messages are ignored', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
     const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
