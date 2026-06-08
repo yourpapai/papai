@@ -39,6 +39,37 @@ export type ConfigField = z.infer<typeof ConfigFieldSchema>
 export const ConfigResponseSchema = z.object({ contextId: z.string(), fields: z.array(ConfigFieldSchema) })
 export type ConfigResponse = z.infer<typeof ConfigResponseSchema>
 
+// --- BYOK ---
+
+export const ByokFieldSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  required: z.boolean(),
+  sensitive: z.boolean(),
+  hasValue: z.boolean(),
+  value: z.string(),
+})
+export const ByokResponseSchema = z.object({
+  enabled: z.boolean(),
+  complete: z.boolean(),
+  missing: z.array(z.string()),
+  fields: z.array(ByokFieldSchema),
+})
+export type ByokField = z.infer<typeof ByokFieldSchema>
+export type ByokResponse = z.infer<typeof ByokResponseSchema>
+
+export const AdminByokContextSchema = z.object({
+  contextId: z.string(),
+  enabled: z.boolean(),
+  complete: z.boolean(),
+  missing: z.array(z.string()),
+  updatedAt: z.number(),
+  updatedBy: z.string(),
+})
+export const AdminByokResponseSchema = z.object({ contexts: z.array(AdminByokContextSchema) })
+export type AdminByokContext = z.infer<typeof AdminByokContextSchema>
+export type AdminByokResponse = z.infer<typeof AdminByokResponseSchema>
+
 // --- Tools ---
 
 export const ToolRiskSchema = z.enum(['read', 'write', 'destructive', 'open-world'])
@@ -256,33 +287,3 @@ export const AnnounceResultSchema = z.object({
   failCount: z.number(),
 })
 export type AnnounceResult = z.infer<typeof AnnounceResultSchema>
-
-// --- Admin: plugin config ---
-
-export const AdminPluginConfigKeyStateSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  value: z.string().nullable(),
-  sensitive: z.boolean(),
-  required: z.boolean(),
-})
-export type AdminPluginConfigKeyState = z.infer<typeof AdminPluginConfigKeyStateSchema>
-
-export const AdminPluginConfigEntrySchema = z.object({
-  pluginId: z.string(),
-  keys: z.array(AdminPluginConfigKeyStateSchema),
-})
-export type AdminPluginConfigEntry = z.infer<typeof AdminPluginConfigEntrySchema>
-
-export const AdminPluginConfigSnapshotSchema = z.object({
-  plugins: z.array(AdminPluginConfigEntrySchema),
-})
-export type AdminPluginConfigSnapshot = z.infer<typeof AdminPluginConfigSnapshotSchema>
-
-export const AdminPluginConfigUpdateResultSchema = z.object({
-  ok: z.literal(true),
-  pluginId: z.string(),
-  key: z.string(),
-  updatedAt: z.number(),
-})
-export type AdminPluginConfigUpdateResult = z.infer<typeof AdminPluginConfigUpdateResultSchema>
