@@ -4,38 +4,52 @@
 /* See LICENSE in the project root for details. */
 
 :root {
-  /* canvas, surfaces */
-  --bg: #0b0e10;
-  --surface: #14181b;
-  --raised: #1a1f23;
+  /* ---- canvas & surfaces (spec names canonical) ---- */
+  --bg: #0a0c0a;
+  --surface-1: #111512;
+  --surface-2: #171c18;
+  --surface-hover: #1c221d;
   --inset: #0e1214;
 
-  /* borders */
-  --hair: #1f262a;
-  --border: #2a3338;
+  /* ---- borders ---- */
+  --border: #222a24;
   --strong: #3a464d;
 
-  /* foreground */
-  --fg: #e6ebee;
-  --fg2: #9aa5ac;
-  --fg3: #5e6970;
-  --fg4: #3a4248;
+  /* ---- foreground ---- */
+  --text: #e6efe8;
+  --text-muted: #9aa79d;
+  --text-dim: #6b766e;
 
-  /* accent + semantic */
-  --accent: #5dd97a;
-  --accent-soft: rgba(93, 217, 122, 0.1);
-  --accent-dim: rgba(93, 217, 122, 0.55);
-  --warn: #e5a93a;
-  --warn-soft: rgba(229, 169, 58, 0.1);
-  --danger: #e85c5c;
-  --danger-soft: rgba(232, 92, 92, 0.1);
+  /* ---- accent + semantic ---- */
+  --accent: #52e08a;
+  --accent-fg: #08160d;
+  --accent-soft: rgba(82, 224, 138, 0.1);
+  --accent-dim: rgba(82, 224, 138, 0.55);
+  --state-active: #52e08a;
+  --warn: #e0b452;
+  --warn-soft: rgba(224, 180, 82, 0.1);
+  --danger: #ff5d5d;
+  --danger-soft: rgba(255, 93, 93, 0.1);
+  --danger-surface: #1d1010;
   --info: #6cb6ff;
   --info-soft: rgba(108, 182, 255, 0.1);
+  --success: var(--accent); /* fixes prior undefined --success ref in settings.css */
 
-  /* type */
+  /* ---- type ---- */
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, Menlo, monospace;
 
-  /* spacing scale (4px base) */
+  /* ---- layout & sizing ---- */
+  --content-max: 760px;
+  --table-max: 1100px;
+  --gap-group: 64px;
+  --gap-section: 40px;
+  --gap-field: 20px;
+  --gap-inline: 12px;
+  --radius: 6px;
+  --radius-pill: 999px;
+  --row-h: 44px;
+
+  /* ---- spacing scale (4px base, legacy) ---- */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -45,4 +59,13 @@
   --s7: 32px;
   --s8: 40px;
   --s9: 48px;
+
+  /* ---- legacy aliases: debug/admin SPAs reference these names ---- */
+  --surface: var(--surface-1);
+  --raised: var(--surface-2);
+  --hair: var(--border);
+  --fg: var(--text);
+  --fg2: var(--text-muted);
+  --fg3: var(--text-dim);
+  --fg4: var(--text-dim);
 }
