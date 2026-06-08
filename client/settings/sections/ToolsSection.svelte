@@ -9,9 +9,16 @@
   import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
+  import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
 
   import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolRisk } from '../fetcher-schemas.js'
   import { fetchTools, setToolPermission } from '../fetchers.js'
+
+  const PERM_OPTIONS = [
+    { value: 'allow', label: 'Allow' },
+    { value: 'ask', label: 'Ask' },
+    { value: 'deny', label: 'Deny' },
+  ] as const
 
   interface Props {
     contextId: string
@@ -121,16 +128,13 @@
                 <li class="settings-tools__tool">
                   <span class="settings-tools__name">{tool.name}</span>
                   <Pill tone={riskTone(tool.risk)}>{#snippet children()}{tool.risk}{/snippet}</Pill>
-                  <div class="settings-tools__perm-group" role="group" aria-label={`Permission for ${tool.name}`}>
-                    <Btn variant={tool.permission === 'allow' ? 'primary' : 'secondary'} size="sm" testid={`tool-perm-allow-${tool.name}`} onClick={() => void onSetToolPermission(tool.name, 'allow')}>
-                      {#snippet children()}Allow{/snippet}
-                    </Btn>
-                    <Btn variant={tool.permission === 'ask' ? 'primary' : 'secondary'} size="sm" testid={`tool-perm-ask-${tool.name}`} onClick={() => void onSetToolPermission(tool.name, 'ask')}>
-                      {#snippet children()}Ask{/snippet}
-                    </Btn>
-                    <Btn variant={tool.permission === 'deny' ? 'primary' : 'secondary'} size="sm" testid={`tool-perm-deny-${tool.name}`} onClick={() => void onSetToolPermission(tool.name, 'deny')}>
-                      {#snippet children()}Deny{/snippet}
-                    </Btn>
+                  <div class="settings-tools__perm">
+                    <SegmentedControl
+                      options={PERM_OPTIONS}
+                      value={tool.permission}
+                      ariaLabel={`Permission for ${tool.name}`}
+                      onChange={(p) => void onSetToolPermission(tool.name, p as ToolPermission)}
+                      testidPrefix={`tool-perm-${tool.name}`} />
                   </div>
                 </li>
               {/each}
@@ -188,9 +192,5 @@
   .settings-tools__domain-toggle {
     margin-left: auto;
   }
-  .settings-tools__perm-group {
-    margin-left: auto;
-    display: flex;
-    gap: 2px;
-  }
+  .settings-tools__perm { margin-left: auto; }
 </style>

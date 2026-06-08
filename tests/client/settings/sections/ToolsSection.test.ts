@@ -75,7 +75,7 @@ describe('ToolsSection', () => {
     void unmount(component)
   })
 
-  test('renders three-state permission labels for tools', async () => {
+  test('per-tool permission renders a segmented control with the active state checked', async () => {
     setMockFetch(() => Promise.resolve(json(toolsPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -83,13 +83,11 @@ describe('ToolsSection', () => {
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-task"]')!.click()
     flushSync()
-    // Tool controls should show Allow / Ask / Deny options
-    const allowBtn = target.querySelector('[data-testid="tool-perm-allow-create_task"]')
-    const askBtn = target.querySelector('[data-testid="tool-perm-ask-create_task"]')
-    const denyBtn = target.querySelector('[data-testid="tool-perm-deny-create_task"]')
-    expect(allowBtn).not.toBeNull()
-    expect(askBtn).not.toBeNull()
-    expect(denyBtn).not.toBeNull()
+    const allow = target.querySelector('[data-testid="tool-perm-create_task-allow"]')!
+    expect(allow.getAttribute('aria-checked')).toBe('true')
+    expect(target.querySelector('[data-testid="tool-perm-delete_task-deny"]')!.getAttribute('aria-checked')).toBe(
+      'true',
+    )
     void unmount(component)
   })
 
@@ -102,7 +100,7 @@ describe('ToolsSection', () => {
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-task"]')!.click()
     flushSync()
-    target.querySelector<HTMLButtonElement>('[data-testid="tool-perm-deny-create_task"]')!.click()
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-perm-create_task-deny"]')!.click()
     await drain()
     const parsed = ToggleBodySchema.parse(capturedBody)
     expect(parsed.kind).toBe('tool')
@@ -165,7 +163,7 @@ describe('ToolsSection', () => {
     void unmount(component)
   })
 
-  test('renders domain summary as a Pill and per-tool permission Btns', async () => {
+  test('renders domain summary as a Pill and per-tool permission segmented control', async () => {
     setMockFetch(() => Promise.resolve(json(toolsPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -175,13 +173,15 @@ describe('ToolsSection', () => {
     const summaryEl = target.querySelector('[data-testid="domain-summary-task"]')
     expect(summaryEl).not.toBeNull()
     expect(summaryEl!.querySelector('.ui-pill')).not.toBeNull()
-    // Expand domain to reveal per-tool permission buttons
+    // Expand domain to reveal per-tool segmented control
     target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-task"]')!.click()
     flushSync()
-    // Per-tool permission buttons should be rendered as Btns (have ui-btn class)
-    const allowBtn = target.querySelector('[data-testid="tool-perm-allow-create_task"]')
+    // Per-tool permission rendered as segmented control with radiogroup role
+    const radiogroup = target.querySelector('[role="radiogroup"]')
+    expect(radiogroup).not.toBeNull()
+    const allowBtn = target.querySelector('[data-testid="tool-perm-create_task-allow"]')
     expect(allowBtn).not.toBeNull()
-    expect(allowBtn!.classList.contains('ui-btn')).toBe(true)
+    expect(allowBtn!.getAttribute('role')).toBe('radio')
     void unmount(component)
   })
 })
