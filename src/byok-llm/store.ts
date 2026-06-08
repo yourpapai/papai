@@ -19,7 +19,7 @@ import {
 } from './types.js'
 
 const log = logger.child({ scope: 'byok-llm:store' })
-const UNREADABLE_CONFIG_ERROR = 'BYOK LLM encrypted config is unreadable'
+const UNREADABLE_BYOK_CONFIG_ERROR = 'stored BYOK LLM credentials are unreadable'
 
 type DecryptedConfigResult =
   | { readonly kind: 'readable'; readonly config: PartialByokLlmConfig | null }
@@ -43,20 +43,14 @@ const missingRequired = (config: PartialByokLlmConfig | null): ByokCredentialSta
 
 const missingAllRequired = (): readonly RequiredByokLlmKey[] => [...REQUIRED_BYOK_LLM_KEYS]
 
-const sanitizeDecryptError = (error: unknown): string =>
-  error instanceof Error && error.message.length > 0
-    ? `${UNREADABLE_CONFIG_ERROR}: ${error.message}`
-    : UNREADABLE_CONFIG_ERROR
-
 const decryptConfig = (contextId: string, encryptedConfig: string | null): DecryptedConfigResult => {
   if (encryptedConfig === null) return { kind: 'readable', config: null }
 
   try {
     return { kind: 'readable', config: cleanConfig(decryptSecretPayload(encryptedConfig) as PartialByokLlmConfig) }
-  } catch (error) {
-    const sanitizedError = sanitizeDecryptError(error)
-    log.warn({ contextId, error: sanitizedError }, 'BYOK LLM config could not be decrypted')
-    return { kind: 'unreadable', error: sanitizedError }
+  } catch {
+    log.warn({ contextId }, 'BYOK LLM config is unreadable')
+    return { kind: 'unreadable', error: UNREADABLE_BYOK_CONFIG_ERROR }
   }
 }
 

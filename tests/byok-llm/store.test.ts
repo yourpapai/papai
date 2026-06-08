@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createCipheriv, randomBytes } from 'node:crypto'
 
 import {
   disableByokForContext,
@@ -15,9 +16,13 @@ import {
 } from '../../src/byok-llm/store.js'
 import { byokLlmCredentials } from '../../src/db/byok-llm-schema.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { resolveInstanceConfigKey } from '../../src/instances/config-key.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const originalKey = process.env['INSTANCE_CONFIG_KEY']
+const ivLength = 12
+const tagLength = 16
+const unreadableByokConfigError = 'stored BYOK LLM credentials are unreadable'
 
 const completeConfig = {
   llm_apikey: 'sk-byok-recovered',
@@ -33,6 +38,27 @@ const insertCorruptedByokRow = (contextId: string): void => {
       enabled: true,
       encryptedConfig: 'not-base64',
       updatedAt: Date.now(),
+      updatedBy: 'seed-user',
+    })
+    .run()
+}
+
+const encryptMalformedPlaintext = (plain: unknown): string => {
+  const key = resolveInstanceConfigKey()
+  const iv = randomBytes(ivLength)
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: tagLength })
+  const ciphertext = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(plain), 'utf8')), cipher.final()])
+  return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString('base64')
+}
+
+const insertMalformedEncryptedByokRow = (contextId: string, plain: unknown): void => {
+  getDrizzleDb()
+    .insert(byokLlmCredentials)
+    .values({
+      contextId,
+      enabled: true,
+      encryptedConfig: encryptMalformedPlaintext(plain),
+      updatedAt: 1_700_000_000_000,
       updatedBy: 'seed-user',
     })
     .run()
@@ -169,8 +195,29 @@ describe('byok-llm store', () => {
       updatedBy: 'seed-user',
     })
     expect(typeof summaries[0]?.error).toBe('string')
+    expect(summaries[0]?.error).toBe(unreadableByokConfigError)
     expect(JSON.stringify(summaries)).not.toContain('not-base64')
     expect(JSON.stringify(summaries)).not.toContain('sk-byok')
+  })
+
+  test('admin summaries hide decrypted validation details for malformed encrypted payloads', () => {
+    insertMalformedEncryptedByokRow('ctx-bad', { leaky_secret_field: 123 })
+
+    const summaries = listByokAdminSummaries()
+    const serialized = JSON.stringify(summaries)
+
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]).toMatchObject({
+      contextId: 'ctx-bad',
+      enabled: true,
+      complete: false,
+      missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
+      unreadable: true,
+      updatedBy: 'seed-user',
+    })
+    expect(summaries[0]?.error).toBe(unreadableByokConfigError)
+    expect(serialized).not.toContain('leaky_secret_field')
+    expect(serialized).not.toContain('123')
   })
 
   test('update overwrites unreadable payloads with submitted complete config', () => {
