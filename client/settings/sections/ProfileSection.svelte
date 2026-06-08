@@ -7,8 +7,8 @@
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
   import type { ConfigField } from '../fetcher-schemas.js'
   import { fetchConfig } from '../fetchers.js'
-  import Btn from '../../shared/ui/Btn.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
 
   interface Props {
@@ -45,9 +45,7 @@
 <section id="profile" class="settings-section">
   <PageHeader eyebrow="Personal" title="Profile">
     {#snippet action()}
-      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
-        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-      </Btn>
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="profile-refresh" />
     {/snippet}
   </PageHeader>
 

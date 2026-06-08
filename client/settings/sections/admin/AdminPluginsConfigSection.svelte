@@ -9,6 +9,7 @@
   import Btn from '../../../shared/ui/Btn.svelte'
   import EmptyState from '../../../shared/ui/EmptyState.svelte'
   import Field from '../../../shared/ui/Field.svelte'
+  import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Secret from '../../../shared/ui/Secret.svelte'
@@ -60,9 +61,7 @@
 <section id="plugin-config" class="settings-section">
   <PageHeader eyebrow="Admin · Plugins" title="Plugin config">
     {#snippet action()}
-      <Btn variant="ghost" size="sm" onClick={() => void load()}>
-        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-      </Btn>
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="plugin-config-refresh" />
     {/snippet}
   </PageHeader>
 

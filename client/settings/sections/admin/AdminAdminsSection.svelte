@@ -9,6 +9,7 @@
   import Btn from '../../../shared/ui/Btn.svelte'
   import DataTable from '../../../shared/ui/DataTable.svelte'
   import Field from '../../../shared/ui/Field.svelte'
+  import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
 
@@ -89,9 +90,7 @@
 <section id="admins" class="settings-section">
   <PageHeader eyebrow="Admin · Roster" title="Admins">
     {#snippet action()}
-      <Btn variant="ghost" size="sm" onClick={() => void load()}>
-        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-      </Btn>
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="admins-refresh" />
     {/snippet}
   </PageHeader>
 

@@ -8,6 +8,7 @@
   import { deleteIdentity, fetchIdentity, putIdentity } from '../fetchers.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import Field from '../../shared/ui/Field.svelte'
+  import IconButton from '../../shared/ui/IconButton.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
 
@@ -86,9 +87,7 @@
 <section id="identity" class="settings-section">
   <PageHeader title={headerTitle}>
     {#snippet action()}
-      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
-        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-      </Btn>
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="identity-refresh" />
     {/snippet}
   </PageHeader>
 

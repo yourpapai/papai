@@ -131,12 +131,12 @@ describe('TaskProviderSection', () => {
     void unmount(component)
   })
 
-  test('renders refresh + provision as kit Btns', () => {
+  test('renders refresh icon button and provision Btn', () => {
     setMockFetch(routeMock(boundInstancePayload))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'ctx' } })
-    expect(target.querySelector('.ui-page-header__action .ui-btn')).not.toBeNull()
+    expect(target.querySelector('[data-testid="task-provider-refresh"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="provision-kaneo"]')?.classList.contains('ui-btn')).toBe(true)
     void unmount(component)
   })

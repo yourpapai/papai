@@ -85,12 +85,12 @@ describe('ProfileSection', () => {
     void unmount(component)
   })
 
-  test('renders the refresh control as a kit Btn', () => {
+  test('renders the refresh control as an icon button', () => {
     setMockFetch(() => Promise.resolve(json(configPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(ProfileSection, { target, props: { contextId: 'ctx' } })
-    expect(target.querySelector('.ui-page-header__action .ui-btn')).not.toBeNull()
+    expect(target.querySelector('[data-testid="profile-refresh"]')).not.toBeNull()
     void unmount(component)
   })
 

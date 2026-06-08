@@ -6,6 +6,7 @@
 <script lang="ts">
   import Btn from '../../shared/ui/Btn.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
 
@@ -84,7 +85,7 @@
 <section id="tools" class="settings-section">
   <PageHeader title="Tools">
     {#snippet action()}
-      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>{#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}</Btn>
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="tools-refresh" />
     {/snippet}
   </PageHeader>
 

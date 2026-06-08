@@ -9,6 +9,7 @@
   import type { PluginEntry } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
   import DataTable from '../../../shared/ui/DataTable.svelte'
+  import IconButton from '../../../shared/ui/IconButton.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import StatusPill from '../../../shared/ui/StatusPill.svelte'
 
@@ -70,9 +71,7 @@
 <section id="plugin-approval" class="settings-section">
   <PageHeader eyebrow="Admin · Plugins" title="Plugin approval">
     {#snippet action()}
-      <Btn variant="ghost" size="sm" onClick={() => void load()}>
-        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-      </Btn>
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="plugin-approval-refresh" />
     {/snippet}
   </PageHeader>
 

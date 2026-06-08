@@ -8,6 +8,7 @@
   import type { AdminSystemResponse } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
   import Field from '../../../shared/ui/Field.svelte'
+  import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Secret from '../../../shared/ui/Secret.svelte'
@@ -57,9 +58,7 @@
 <section id="system" class="settings-section">
   <PageHeader eyebrow="Admin · System" title="System (LLM)">
     {#snippet action()}
-      <Btn variant="ghost" size="sm" onClick={() => void load()}>
-        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-      </Btn>
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="system-refresh" />
     {/snippet}
   </PageHeader>
 

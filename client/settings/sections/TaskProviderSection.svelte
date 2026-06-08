@@ -8,6 +8,7 @@
 
   import Btn from '../../shared/ui/Btn.svelte'
   import Field from '../../shared/ui/Field.svelte'
+  import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import Select from '../../shared/ui/Select.svelte'
@@ -102,9 +103,7 @@
 <section id="task-provider" class="settings-section">
   <PageHeader title="Task provider">
     {#snippet action()}
-      <Btn variant="ghost" size="sm" onClick={() => void load(contextId)}>
-        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
-      </Btn>
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="task-provider-refresh" />
     {/snippet}
   </PageHeader>
 
@@ -150,9 +149,11 @@
   <div class="settings-provision">
     <h3>Kaneo auto-provision</h3>
     <p class="placeholder">Creates a Kaneo account and stores its API key for this context. Credentials are shown once.</p>
-    <Btn variant="primary" testid="provision-kaneo" disabled={provisioning} onClick={() => void provision()}>
-      {#snippet children()}{provisioning ? 'Provisioning…' : 'Provision Kaneo'}{/snippet}
-    </Btn>
+    <div class="provision-actions">
+      <Btn variant="primary" testid="provision-kaneo" disabled={provisioning} onClick={() => void provision()}>
+        {#snippet children()}{provisioning ? 'Provisioning…' : 'Provision Kaneo'}{/snippet}
+      </Btn>
+    </div>
     {#if provisionError !== null}
       <p class="status-error">{provisionError}</p>
     {/if}
@@ -184,6 +185,7 @@
     padding-top: 8px;
     border-top: 1px solid var(--border);
   }
+  .provision-actions { display: flex; }
   .settings-provision__secret {
     display: flex;
     align-items: center;
