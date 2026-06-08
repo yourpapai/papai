@@ -10,11 +10,15 @@ export type ByokLlmKey = (typeof BYOK_LLM_KEYS)[number]
 export type RequiredByokLlmKey = (typeof REQUIRED_BYOK_LLM_KEYS)[number]
 export type ByokLlmConfig = Partial<Record<ByokLlmKey, string>> & Record<RequiredByokLlmKey, string>
 export type PartialByokLlmConfig = Partial<Record<ByokLlmKey, string>>
+export type ByokUnreadablePayloadMetadata = {
+  readonly unreadable: true
+  readonly error: string
+}
 export type ByokCredentialState = {
   readonly enabled: boolean
   readonly complete: boolean
   readonly missing: readonly RequiredByokLlmKey[]
-}
+} & Partial<ByokUnreadablePayloadMetadata>
 export type ByokAdminSummary = ByokCredentialState & {
   readonly contextId: string
   readonly updatedAt: number

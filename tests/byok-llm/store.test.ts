@@ -19,6 +19,25 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const originalKey = process.env['INSTANCE_CONFIG_KEY']
 
+const completeConfig = {
+  llm_apikey: 'sk-byok-recovered',
+  llm_baseurl: 'https://byok.invalid/v1',
+  main_model: 'byok-main',
+}
+
+const insertCorruptedByokRow = (contextId: string): void => {
+  getDrizzleDb()
+    .insert(byokLlmCredentials)
+    .values({
+      contextId,
+      enabled: true,
+      encryptedConfig: 'not-base64',
+      updatedAt: Date.now(),
+      updatedBy: 'seed-user',
+    })
+    .run()
+}
+
 beforeEach(async () => {
   mockLogger()
   process.env['INSTANCE_CONFIG_KEY'] = 'c'.repeat(64)
@@ -120,5 +139,46 @@ describe('byok-llm store', () => {
       main_model: 'byok-main',
       small_model: 'small',
     })
+  })
+
+  test('credential state and config tolerate unreadable encrypted payloads', () => {
+    insertCorruptedByokRow('ctx-bad')
+
+    expect(getByokCredentialState('ctx-bad')).toMatchObject({
+      enabled: true,
+      complete: false,
+      missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
+      unreadable: true,
+    })
+    expect(typeof getByokCredentialState('ctx-bad').error).toBe('string')
+    expect(getByokLlmConfig('ctx-bad')).toBeNull()
+  })
+
+  test('admin summaries include unreadable rows without exposing secrets or payloads', () => {
+    insertCorruptedByokRow('ctx-bad')
+
+    const summaries = listByokAdminSummaries()
+
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]).toMatchObject({
+      contextId: 'ctx-bad',
+      enabled: true,
+      complete: false,
+      missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
+      unreadable: true,
+      updatedBy: 'seed-user',
+    })
+    expect(typeof summaries[0]?.error).toBe('string')
+    expect(JSON.stringify(summaries)).not.toContain('not-base64')
+    expect(JSON.stringify(summaries)).not.toContain('sk-byok')
+  })
+
+  test('update overwrites unreadable payloads with submitted complete config', () => {
+    insertCorruptedByokRow('ctx-bad')
+
+    updateByokLlmConfig('ctx-bad', completeConfig, 'user-1')
+
+    expect(getByokLlmConfig('ctx-bad')).toEqual(completeConfig)
+    expect(getByokCredentialState('ctx-bad')).toEqual({ enabled: true, complete: true, missing: [] })
   })
 })
