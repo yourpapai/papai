@@ -18,8 +18,13 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('040_platform_instances')
   })
 
-  test('051_legacy_context_id_backfill is the last migration', () => {
+  test('includes migration 051_legacy_context_id_backfill', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('051_legacy_context_id_backfill')
+  })
+
+  test('052_byok_llm_credentials is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('051_legacy_context_id_backfill')
+    expect(lastMigration.id).toBe('052_byok_llm_credentials')
   })
 })
