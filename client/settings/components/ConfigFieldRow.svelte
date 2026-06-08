@@ -8,6 +8,7 @@
 
   import type { ConfigField } from '../fetcher-schemas.js'
   import { patchConfig } from '../fetchers.js'
+  import { maskSecret } from '../lib/mask-secret.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
@@ -58,10 +59,10 @@
 
 <div class="settings-field" data-testid={`cfg-row-${field.key}`}>
   <div class="settings-field__head">
-    <span class="settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
+    <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
     {#if field.sensitive && field.hasValue && !replacing}
-      <Secret value={field.value} />
-      <Btn variant="ghost" size="sm" testid={`cfg-replace-${field.key}`} onClick={() => (replacing = true)}>
+      <Secret value={maskSecret(field.value)} />
+      <Btn variant="secondary" size="sm" testid={`cfg-replace-${field.key}`} onClick={() => (replacing = true)}>
         {#snippet children()}Replace{/snippet}
       </Btn>
     {/if}

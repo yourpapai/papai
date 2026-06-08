@@ -87,7 +87,7 @@ describe('ConfigFieldRow', () => {
       onSaved: () => undefined,
     })
     flushSync()
-    expect(target.textContent).toContain('****1234')
+    expect(target.textContent).toContain('••••1234')
     expect(target.querySelector('[data-testid="cfg-replace-kaneo_apikey"]')).not.toBeNull()
     void unmount(component)
   })
@@ -219,6 +219,26 @@ describe('ConfigFieldRow', () => {
     void unmount(component)
   })
 
+  test('renders bullet-masked secret and a secondary Replace button', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const field = {
+      key: 'token',
+      storageKey: 'plugin:task-provider-youtrack:provider:token',
+      label: 'Token',
+      value: '****WvfQ',
+      sensitive: true,
+      hasValue: true,
+      required: false,
+      kind: 'provider-context',
+    }
+    const c = mount(ConfigFieldRow, { target, props: { contextId: 'user:1', field, onSaved: () => {} } })
+    flushSync()
+    expect(target.textContent).toContain('••••WvfQ')
+    expect(target.querySelector('[data-testid="cfg-replace-token"]')!.className).toContain('ui-btn--secondary')
+    void unmount(c)
+  })
+
   test('cancel resets the sensitive replace editor', () => {
     setMockFetch(() => Promise.resolve(json({})))
     const { component, target } = render({
@@ -244,7 +264,7 @@ describe('ConfigFieldRow', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="cfg-cancel-kaneo_apikey"]')!.click()
     flushSync()
-    expect(target.textContent).toContain('****1234')
+    expect(target.textContent).toContain('••••1234')
     expect(target.querySelector('[data-testid="cfg-input-kaneo_apikey"]')).toBeNull()
     void unmount(component)
   })
