@@ -78,6 +78,34 @@ const mockFetchWithCreateFailure = (url: string, init?: RequestInit): Promise<Re
   return Promise.resolve(json({}))
 }
 
+const createPlatformStatusMock = (onPatch: () => void) => {
+  const responses = new Map<string, Response>([
+    [
+      'GET /settings/api/admin/platform-instances',
+      json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }] }),
+    ],
+    [
+      'GET /settings/api/admin/task-instances',
+      json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }] }),
+    ],
+    [
+      'GET /settings/api/admin/platform-provider-types',
+      json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+    ],
+    [
+      'GET /settings/api/admin/task-provider-types',
+      json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] }),
+    ],
+    ['PATCH /settings/api/admin/platform-instances/tg', json({ ok: true, id: 'tg' })],
+  ])
+
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const call = `${requestMethod(init)} ${url}`
+    if (call === 'PATCH /settings/api/admin/platform-instances/tg') onPatch()
+    return Promise.resolve(responseFor(responses, call))
+  }
+}
+
 const createTaskStatusMock = (onPatch: () => void) => {
   const responses = new Map<string, Response>([
     [
@@ -262,7 +290,7 @@ describe('AdminInstancesSection', () => {
     void unmount(component)
   })
 
-  test('renders a task status button and calls PATCH when clicked', async () => {
+  test('renders a task status button and stop is confirm-gated: no PATCH until modal confirmed', async () => {
     setCsrfToken('c')
     let taskPatchSeen = false
     setMockFetch(
@@ -276,10 +304,43 @@ describe('AdminInstancesSection', () => {
     const component = mount(AdminInstancesSection, { target })
     await drain()
 
+    // click Stop on active instance — no PATCH yet
     target.querySelector<HTMLButtonElement>('[data-testid="task-status-k"]')!.click()
+    flushSync()
+    expect(taskPatchSeen).toBe(false)
+
+    // confirm via the modal danger button
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
 
     expect(taskPatchSeen).toBe(true)
+    void unmount(component)
+  })
+
+  test('stopping a platform instance is confirm-gated: no PATCH until modal confirmed', async () => {
+    setCsrfToken('c')
+    let platformPatchSeen = false
+    setMockFetch(
+      createPlatformStatusMock(() => {
+        platformPatchSeen = true
+      }),
+    )
+
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+
+    // click Stop on active platform instance — no PATCH yet
+    target.querySelector<HTMLButtonElement>('[data-testid="platform-status-tg"]')!.click()
+    flushSync()
+    expect(platformPatchSeen).toBe(false)
+
+    // confirm via the modal danger button
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
+    expect(platformPatchSeen).toBe(true)
     void unmount(component)
   })
 

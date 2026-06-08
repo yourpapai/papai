@@ -11,13 +11,20 @@
   let { value, label = 'Copy' }: Props = $props()
   let done = $state(false)
 
-  function copy(): void {
-    void navigator.clipboard?.writeText(value)
-    done = true
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard?.writeText(value)
+      done = true
+      setTimeout(() => {
+        done = false
+      }, 2000)
+    } catch {
+      done = false
+    }
   }
 </script>
 
-<button type="button" class="ui-copy" aria-label={label} title={label} onclick={copy}>
+<button type="button" class="ui-copy" aria-label={label} title={label} onclick={() => void copy()}>
   {done ? '✓' : '⧉'}
 </button>
 

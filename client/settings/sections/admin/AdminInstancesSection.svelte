@@ -48,6 +48,9 @@
   type PendingDelete = { kind: 'platform' | 'task'; id: string } | null
   let pendingDelete: PendingDelete = $state(null)
 
+  type PendingStop = { kind: 'platform' | 'task'; row: AdminInstanceRow } | null
+  let pendingStop: PendingStop = $state(null)
+
   const selectedPlatformType = $derived(platformTypes.find((t) => t.type === platformType))
   const selectedTaskType = $derived(taskTypes.find((t) => t.type === taskType))
 
@@ -214,6 +217,8 @@
   const pendingDeleteLabel = $derived(
     pendingDelete !== null ? `${pendingDelete.kind} instance ${pendingDelete.id}` : '',
   )
+
+  const pendingStopId = $derived(pendingStop?.row.id ?? '')
 </script>
 
 <section id="instances" class="settings-section">
@@ -260,7 +265,7 @@
       {:else if col.key === 'status'}
         <StatusPill status={row.status} />
       {:else if col.key === 'actions'}
-        <Btn variant="outline" size="sm" testid={`platform-status-${row.id}`} onClick={() => void toggleStatus(platforms.find((p) => p.id === row.id)!)}>
+        <Btn variant="outline" size="sm" testid={`platform-status-${row.id}`} onClick={() => (row.status === 'active' ? (pendingStop = { kind: 'platform', row: platforms.find((p) => p.id === row.id)! }) : void toggleStatus(platforms.find((p) => p.id === row.id)!))}>
           {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
         </Btn>
         <Btn variant="danger" size="sm" testid={`platform-delete-${row.id}`} onClick={() => (pendingDelete = { kind: 'platform', id: row.id })}>
@@ -314,7 +319,7 @@
       {:else if col.key === 'status'}
         <StatusPill status={row.status} />
       {:else if col.key === 'actions'}
-        <Btn variant="outline" size="sm" testid={`task-status-${row.id}`} onClick={() => void toggleTaskStatus(tasks.find((t) => t.id === row.id)!)}>
+        <Btn variant="outline" size="sm" testid={`task-status-${row.id}`} onClick={() => (row.status === 'active' ? (pendingStop = { kind: 'task', row: tasks.find((t) => t.id === row.id)! }) : void toggleTaskStatus(tasks.find((t) => t.id === row.id)!))}>
           {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
         </Btn>
         <Btn variant="danger" size="sm" testid={`task-delete-${row.id}`} onClick={() => (pendingDelete = { kind: 'task', id: row.id })}>
@@ -342,6 +347,23 @@
     onCancel={() => (pendingDelete = null)}
     onConfirm={() => void confirmDelete()}>
     {#snippet body()}<p>Delete {pendingDeleteLabel}? This cannot be undone.</p>{/snippet}
+  </Confirm>
+
+  <Confirm
+    open={pendingStop !== null}
+    title="Stop instance"
+    danger
+    confirmLabel="Stop"
+    onCancel={() => (pendingStop = null)}
+    onConfirm={() => {
+      const p = pendingStop
+      pendingStop = null
+      if (p !== null) {
+        if (p.kind === 'platform') void toggleStatus(p.row)
+        else void toggleTaskStatus(p.row)
+      }
+    }}>
+    {#snippet body()}<p>Stop instance {pendingStopId}? Active conversations on it will be interrupted.</p>{/snippet}
   </Confirm>
 </section>
 
