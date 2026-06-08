@@ -3,22 +3,25 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import {
+  AdminPluginConfigSnapshotSchema,
+  SubmitAdminPluginConfigResponseSchema,
+} from '../admin/plugin-config-fetcher-schemas.js'
+import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
+  AdminByokResponseSchema,
   AdminGroupsResponseSchema,
   AdminInstancesResponseSchema,
-  AdminPluginConfigSnapshotSchema,
-  AdminPluginConfigUpdateResultSchema,
   AdminRosterResponseSchema,
   AdminSystemResponseSchema,
   AdminUsersResponseSchema,
   AnnounceResultSchema,
   PluginApprovalResultSchema,
   ProviderTypesResponseSchema,
+  type AdminByokResponse,
   type AdminGroupsResponse,
   type AdminInstancesResponse,
-  type AdminPluginConfigSnapshot,
-  type AdminPluginConfigUpdateResult,
   type AdminRosterResponse,
   type AdminSystemResponse,
   type AdminUsersResponse,
@@ -27,6 +30,8 @@ import {
   type ProviderTypesResponse,
 } from './fetcher-schemas.js'
 import { getJson, settingsFetch, writeJson } from './fetchers.js'
+
+type AdminPluginConfigUpdateResult = SubmitAdminPluginConfigResponse
 
 // --- Admin: instances ---
 
@@ -92,6 +97,12 @@ export const fetchAdminSystem = (): Promise<AdminSystemResponse> =>
 export const submitAdminSystem = (input: { key: string; value: string }): Promise<unknown> =>
   writeJson('/settings/api/admin/system', 'POST', input, (b) => b)
 
+export const fetchAdminByok = (): Promise<AdminByokResponse> =>
+  getJson('/settings/api/admin/byok', (b) => AdminByokResponseSchema.parse(b))
+
+export const patchAdminByok = (input: { contextId: string; enabled: boolean }): Promise<unknown> =>
+  writeJson('/settings/api/admin/byok', 'PATCH', input, (b) => b)
+
 export const fetchAdminUsers = (): Promise<AdminUsersResponse> =>
   getJson('/settings/api/admin/users', (b) => AdminUsersResponseSchema.parse(b))
 
@@ -136,4 +147,4 @@ export const patchAdminPluginConfig = (input: {
   key: string
   value: string
 }): Promise<AdminPluginConfigUpdateResult> =>
-  writeJson('/settings/api/admin/plugin-config', 'PATCH', input, (b) => AdminPluginConfigUpdateResultSchema.parse(b))
+  writeJson('/settings/api/admin/plugin-config', 'PATCH', input, (b) => SubmitAdminPluginConfigResponseSchema.parse(b))

@@ -39,4 +39,22 @@ describe('routeSettingsApi', () => {
     expect(res).not.toBeNull()
     expect(res?.status).toBe(401)
   })
+
+  test('routes /settings/api/byok (401 without a session)', async () => {
+    const res = await routeSettingsApi(
+      new Request('https://x/settings/api/byok'),
+      new URL('https://x/settings/api/byok'),
+    )
+    expect(res).not.toBeNull()
+    expect(res?.status).toBe(401)
+  })
+
+  test('routes /settings/api/admin/byok (401 without a session)', async () => {
+    const res = await routeSettingsApi(
+      new Request('https://x/settings/api/admin/byok'),
+      new URL('https://x/settings/api/admin/byok'),
+    )
+    expect(res).not.toBeNull()
+    expect(res?.status).toBe(401)
+  })
 })

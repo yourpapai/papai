@@ -5,6 +5,7 @@
 
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
+  ByokResponseSchema,
   BootstrapSchema,
   ConfigResponseSchema,
   ContextTaskInstanceResponseSchema,
@@ -15,6 +16,7 @@ import {
   PluginsResponseSchema,
   ProvisionResultSchema,
   ToolsResponseSchema,
+  type ByokResponse,
   type BootstrapData,
   type ConfigResponse,
   type ContextTaskInstanceResponse,
@@ -108,6 +110,14 @@ export const fetchConfig = (contextId: string): Promise<ConfigResponse> =>
 
 export const patchConfig = (input: { key: string; value: string; contextId: string }): Promise<unknown> =>
   writeJson('/settings/api/config', 'PATCH', input, (b) => b)
+
+// --- BYOK ---
+
+export const fetchByok = (contextId: string): Promise<ByokResponse> =>
+  getJson(`/settings/api/byok?${ctxQuery(contextId)}`, (b) => ByokResponseSchema.parse(b))
+
+export const patchByok = (input: { contextId: string; values: Record<string, string> }): Promise<unknown> =>
+  writeJson('/settings/api/byok', 'PATCH', input, (b) => b)
 
 // --- Tools ---
 

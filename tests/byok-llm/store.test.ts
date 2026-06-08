@@ -149,21 +149,27 @@ describe('byok-llm store', () => {
     expect(JSON.stringify(summaries)).not.toContain('sk-byok-9999')
   })
 
-  test('update merges fields and ignores empty values', () => {
+  test('update merges fields and clears submitted empty values', () => {
     enableByokForContext('ctx-1', 'admin-1')
     updateByokLlmConfig(
       'ctx-1',
-      { llm_apikey: 'sk-byok-original', llm_baseurl: 'https://byok.invalid/v1', main_model: 'byok-main' },
+      {
+        llm_apikey: 'sk-byok-original',
+        llm_baseurl: 'https://byok.invalid/v1',
+        main_model: 'byok-main',
+        small_model: 'small-original',
+        embedding_model: 'embed-original',
+      },
       'user-1',
     )
 
-    updateByokLlmConfig('ctx-1', { small_model: 'small', llm_apikey: '' }, 'user-2')
+    updateByokLlmConfig('ctx-1', { small_model: '', embedding_model: 'embed-next' }, 'user-2')
 
     expect(getByokLlmConfig('ctx-1')).toEqual({
       llm_apikey: 'sk-byok-original',
       llm_baseurl: 'https://byok.invalid/v1',
       main_model: 'byok-main',
-      small_model: 'small',
+      embedding_model: 'embed-next',
     })
   })
 

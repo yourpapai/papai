@@ -68,7 +68,7 @@ describe('SettingsApp', () => {
     seed({})
     const component = mountApp()
     await drain()
-    for (const id of ['profile', 'task-provider', 'tools', 'mcp', 'plugins', 'identity']) {
+    for (const id of ['profile', 'task-provider', 'tools', 'byok', 'mcp', 'plugins', 'identity']) {
       expect(document.querySelector(`#${id}`)).not.toBeNull()
     }
     expect(document.querySelector('#members')).toBeNull()
@@ -100,6 +100,7 @@ describe('SettingsApp', () => {
     for (const id of [
       'instances',
       'system',
+      'byok-admin',
       'plugin-config',
       'users',
       'groups',
@@ -118,6 +119,7 @@ describe('SettingsApp', () => {
     const component = mountApp()
     await drain()
     expect(document.querySelector('#instances')).not.toBeNull()
+    expect(document.querySelector('#byok-admin')).not.toBeNull()
     expect(document.querySelector('#plugin-config')).not.toBeNull()
     expect(document.querySelector('#admins')).toBeNull()
     expect(document.querySelector('#plugin-approval')).toBeNull()

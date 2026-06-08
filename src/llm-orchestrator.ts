@@ -67,6 +67,7 @@ const persistFactsFromResults = (contextId: string, result: unknown): void => {
 
 const appendAssistantHistory = (
   contextId: string,
+  configId: string,
   history: readonly ModelMessage[],
   assistantMessages: ModelMessage[],
 ): void => {
@@ -75,7 +76,7 @@ const appendAssistantHistory = (
     log.debug({ contextId, assistantMessagesCount: assistantMessages.length }, 'Assistant response appended to history')
   }
   if (shouldTriggerTrim([...history, ...assistantMessages])) {
-    void runTrimInBackground(contextId, [...history, ...assistantMessages])
+    void runTrimInBackground(contextId, [...history, ...assistantMessages], undefined, configId)
   }
 }
 
@@ -282,7 +283,7 @@ export const processMessage = async (
       resolvedLlm,
       turnId: resolvedTurnId,
     })
-    appendAssistantHistory(contextId, [...turn.baseHistory, turn.historyMessage], result.response.messages)
+    appendAssistantHistory(contextId, configId, [...turn.baseHistory, turn.historyMessage], result.response.messages)
   } catch (error) {
     await handleLlmTurnError({
       reply,

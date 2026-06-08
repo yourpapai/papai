@@ -251,10 +251,11 @@ describe('dispatchExecution', () => {
       context_snapshot: 'Discussed Q2 sprint priorities',
     }
 
-    test('uses main_model', async () => {
-      setupUserConfig()
+    test('uses main_model even when small_model is configured', async () => {
+      setupUserConfig({ smallModel: 'small-model' })
       await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
       expect(generateTextCalls[0]!.model).toContain('main-model')
+      expect(generateTextCalls[0]!.model).not.toContain('small-model')
     })
 
     test('loads conversation history', async () => {
