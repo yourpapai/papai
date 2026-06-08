@@ -9,8 +9,11 @@ import assert from 'node:assert/strict'
 import { APICallError } from '@ai-sdk/provider'
 import type { ModelMessage } from 'ai'
 
+import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
 import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import type { ReplyFn } from '../src/chat/types.js'
+import { byokLlmCredentials } from '../src/db/byok-llm-schema.js'
+import { getDrizzleDb } from '../src/db/drizzle.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
 import { defaultDeps, processMessage, resolveAiOutputSettingsContextId } from '../src/llm-orchestrator.js'
@@ -216,6 +219,19 @@ const seedConfigForContext = (ctxId: string): void => {
 
 const seedConfig = (): void => seedConfigForContext(CTX_ID)
 
+const insertUnreadableByokConfig = (contextId: string): void => {
+  getDrizzleDb()
+    .insert(byokLlmCredentials)
+    .values({
+      contextId,
+      enabled: true,
+      encryptedConfig: 'not-base64',
+      updatedAt: Date.now(),
+      updatedBy: 'admin-1',
+    })
+    .run()
+}
+
 const createReplyWithTypingSpy = (): { reply: ReplyFn; textCalls: string[]; typingCalls: number[] } => {
   const { reply: baseReply, textCalls } = createMockReply()
   const typingCalls: number[] = []
@@ -391,6 +407,89 @@ describe('processMessage', () => {
       expect(typingCalls).toHaveLength(0)
       expect(textCalls[0]).toContain('not fully configured')
       expect(textCalls[0]).toContain('/config')
+    })
+
+    test('uses complete BYOK config to build the model for the resolved config context', async () => {
+      const configContextId = 'cfg-byok'
+      seedConfigForContext(configContextId)
+      updateByokLlmConfig(
+        configContextId,
+        { llm_apikey: 'sk-byok', llm_baseurl: 'https://byok.invalid/v1', main_model: 'byok-main' },
+        'admin-1',
+      )
+      let generateCalls = 0
+      const buildCalls: Array<{ apiKey: string; baseURL: string; model: string }> = []
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => {
+          generateCalls += 1
+          return defaultDeps.generateText(...args)
+        },
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: (apiKey, baseURL) => {
+          const provider = buildMockOpenAI(apiKey, baseURL)
+          return Object.assign((model: string) => {
+            buildCalls.push({ apiKey, baseURL, model })
+            return provider(model)
+          }, provider)
+        },
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
+
+      expect(buildCalls).toEqual([{ apiKey: 'sk-byok', baseURL: 'https://byok.invalid/v1', model: 'byok-main' }])
+      expect(generateCalls).toBe(1)
+      expect(textCalls).toContain('Hello!')
+    })
+
+    test('blocks incomplete BYOK setup before model invocation', async () => {
+      const configContextId = 'cfg-byok-incomplete'
+      seedConfigForContext(configContextId)
+      enableByokForContext(configContextId, 'admin-1')
+      let generateCalls = 0
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => {
+          generateCalls += 1
+          return defaultDeps.generateText(...args)
+        },
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
+
+      expect(textCalls[0]).toContain('BYOK is enabled for this context')
+      expect(generateCalls).toBe(0)
+      expect(getCachedHistory(CTX_ID)).toHaveLength(0)
+    })
+
+    test('blocks unreadable BYOK setup before model invocation', async () => {
+      const configContextId = 'cfg-byok-unreadable'
+      seedConfigForContext(configContextId)
+      insertUnreadableByokConfig(configContextId)
+      let generateCalls = 0
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => {
+          generateCalls += 1
+          return defaultDeps.generateText(...args)
+        },
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
+
+      expect(textCalls[0]).toContain('BYOK credentials for this context are unreadable')
+      expect(generateCalls).toBe(0)
+      expect(getCachedHistory(CTX_ID)).toHaveLength(0)
     })
 
     test('does not fail early on missing YouTrack provider config when providerless fallback can answer', async () => {
