@@ -33,7 +33,8 @@ import {
 import { matchDiscordCommand } from './commands.js'
 import { renderDiscordContext } from './context-renderer.js'
 import { resolveDiscordGroupLabel, resolveDiscordGuildFromContext, resolveDiscordUserLabel } from './label-helpers.js'
-import { mapDiscordMessage } from './map-message.js'
+import { CHANNEL_TYPE_DM, mapDiscordMessage } from './map-message.js'
+import { isBotMentioned } from './mention-helpers.js'
 import { discordCapabilities, discordConfigRequirements, discordTraits } from './metadata.js'
 import { buildDiscordReplyContext } from './reply-context.js'
 import { createDiscordReplyFn } from './reply-helpers.js'
@@ -48,6 +49,27 @@ type DiscordConstructorConfig = {
   readonly token?: string
   readonly platformInstanceId: string
 }
+
+/**
+ * Determine if an unmentioned group message is a reply to the bot's own message.
+ * Skips the fetch when the bot is already mentioned (passes the group filter regardless)
+ * or when the message is in a DM channel.
+ */
+async function resolveIsReplyToBot(message: DispatchableMessage, botId: string, mentioned: boolean): Promise<boolean> {
+  if (message.reference?.messageId === undefined) return false
+  if (message.channel.type === CHANNEL_TYPE_DM) return false
+  if (mentioned) return false
+  const messages = message.channel.messages
+  if (messages === undefined) return false
+  try {
+    const parent = await messages.fetch(message.reference.messageId)
+    return parent.author.id === botId
+  } catch {
+    // Parent fetch failed — not a blocker, treat as non-reply
+    return false
+  }
+}
+
 export class DiscordChatProvider implements ChatProvider {
   readonly name = 'discord'
   readonly threadCapabilities: ThreadCapabilities = {
@@ -223,7 +245,10 @@ export class DiscordChatProvider implements ChatProvider {
   }
 
   private async dispatchMessage(message: DispatchableMessage, botId: string): Promise<void> {
-    const mapped = mapDiscordMessage(message, botId, this.platformInstanceId)
+    const mentioned = isBotMentioned(message.mentions, botId, 'group')
+    const isReplyToBot = await resolveIsReplyToBot(message, botId, mentioned)
+
+    const mapped = mapDiscordMessage(message, botId, this.platformInstanceId, isReplyToBot)
     if (mapped === null) return
     const reply = createDiscordReplyFn({
       channel: message.channel,

@@ -222,6 +222,59 @@ describe('DiscordChatProvider', () => {
     expect(seen[0]!.platformInstanceId).toBe('discord-default')
   })
 
+  test('dispatches reply-to-bot message in group without @mention', async () => {
+    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+    const provider = new DiscordChatProvider({
+      token: 'fake-discord-token',
+      platformInstanceId: TEST_PLATFORM_ID,
+    })
+
+    const seen: IncomingMessage[] = []
+    provider.onMessage((msg): Promise<void> => {
+      seen.push(msg)
+      return Promise.resolve()
+    })
+
+    const fakeMessage = {
+      id: 'm-reply-bot',
+      author: { id: 'u3', username: 'charlie', bot: false },
+      content: 'what did you mean by that?',
+      channel: {
+        id: 'c-reply',
+        type: 0,
+        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+          Promise.resolve({
+            id: 'out-reply',
+            edit: (): Promise<void> => Promise.resolve(),
+          }),
+        sendTyping: (): Promise<void> => Promise.resolve(),
+        messages: {
+          fetch: (
+            id: string,
+          ): Promise<{
+            id: string
+            author: { id: string; username: string }
+            content: string
+          }> =>
+            Promise.resolve({
+              id,
+              author: { id: 'bot_id', username: 'mybot' },
+              content: 'previous bot message',
+            }),
+        },
+      },
+      mentions: { has: (): boolean => false },
+      reference: { messageId: 'bot-msg-42' },
+      type: 0,
+    }
+    await provider.testDispatchMessage(fakeMessage, 'bot_id')
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.isReplyToBot).toBe(true)
+    expect(seen[0]!.isMentioned).toBe(false)
+    expect(seen[0]!.text).toBe('what did you mean by that?')
+  })
+
   test('bot-authored messages are ignored', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
     const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
