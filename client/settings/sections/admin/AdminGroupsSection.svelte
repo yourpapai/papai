@@ -6,12 +6,14 @@
 <script lang="ts">
   import { addAdminGroup, fetchAdminGroups, removeAdminGroup } from '../../admin-fetchers.js'
   import type { AdminGroupRow, ObservedGroup } from '../../fetcher-schemas.js'
+  import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import SettingsTable from '../../components/SettingsTable.svelte'
+  import IdCell from '../../components/IdCell.svelte'
 
   let groups: AdminGroupRow[] = $state([])
   let error: string | null = $state(null)
@@ -19,6 +21,7 @@
   let loading = $state(false)
   let newGroupId = $state('')
   let observed: ObservedGroup[] = $state([])
+  let pendingRemoval: string | null = $state(null)
 
   async function load(): Promise<void> {
     error = null
@@ -137,9 +140,11 @@
   <div class="settings-table-wrap">
     {#snippet cell(row: GroupRow, col: { key: string; label: string })}
       {#if col.key === 'actions'}
-        <Btn variant="ghost" size="sm" testid={`group-remove-${row.group_id}`} onClick={() => void remove(row.group_id)}>
+        <Btn variant="danger" size="sm" testid={`group-remove-${row.group_id}`} onClick={() => (pendingRemoval = row.group_id)}>
           {#snippet children()}Remove{/snippet}
         </Btn>
+      {:else if col.key === 'group_id'}
+        <IdCell value={row.group_id} />
       {:else}
         {String(row[col.key as keyof GroupRow] ?? '')}
       {/if}
@@ -153,4 +158,14 @@
       {#snippet empty()}No groups{/snippet}
     </SettingsTable>
   </div>
+
+  <Confirm
+    open={pendingRemoval !== null}
+    title="Remove group"
+    danger
+    confirmLabel="Remove"
+    onCancel={() => (pendingRemoval = null)}
+    onConfirm={() => { const id = pendingRemoval; pendingRemoval = null; if (id !== null) void remove(id) }}>
+    {#snippet body()}<p>Remove group {pendingRemoval}? This cannot be undone.</p>{/snippet}
+  </Confirm>
 </section>

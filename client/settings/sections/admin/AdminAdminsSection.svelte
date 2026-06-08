@@ -6,12 +6,14 @@
 <script lang="ts">
   import { addRosterAdmin, fetchAdminRoster, removeRosterAdmin } from '../../admin-fetchers.js'
   import type { AdminRosterRow } from '../../fetcher-schemas.js'
+  import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import SettingsTable from '../../components/SettingsTable.svelte'
+  import IdCell from '../../components/IdCell.svelte'
 
   let admins: AdminRosterRow[] = $state([])
   let error: string | null = $state(null)
@@ -19,6 +21,9 @@
   let loading = $state(false)
   let userId = $state('')
   let platformInstanceId = $state('')
+
+  type PendingRemoval = { userId: string; platformInstanceId: string } | null
+  let pendingRemoval: PendingRemoval = $state(null)
 
   async function load(): Promise<void> {
     error = null
@@ -85,6 +90,10 @@
     { key: 'platformInstanceId' as const, label: 'Platform instance' },
     { key: 'actions' as const, label: '', align: 'right' as const },
   ]
+
+  const pendingLabel = $derived(
+    pendingRemoval !== null ? `${pendingRemoval.userId} / ${pendingRemoval.platformInstanceId}` : '',
+  )
 </script>
 
 <section id="admins" class="settings-section">
@@ -116,9 +125,11 @@
   <div class="settings-table-wrap">
     {#snippet cell(row: AdminRow, col: { key: string; label: string })}
       {#if col.key === 'actions'}
-        <Btn variant="ghost" size="sm" testid={`admin-remove-${row.userId}`} onClick={() => void remove({ userId: row.userId, platformInstanceId: row.platformInstanceId })}>
+        <Btn variant="danger" size="sm" testid={`admin-remove-${row.userId}`} onClick={() => (pendingRemoval = { userId: row.userId, platformInstanceId: row.platformInstanceId })}>
           {#snippet children()}Remove{/snippet}
         </Btn>
+      {:else if col.key === 'userId'}
+        <IdCell value={row.userId} />
       {:else}
         {String(row[col.key as keyof AdminRow] ?? '')}
       {/if}
@@ -132,4 +143,14 @@
       {#snippet empty()}No admins{/snippet}
     </SettingsTable>
   </div>
+
+  <Confirm
+    open={pendingRemoval !== null}
+    title="Remove admin"
+    danger
+    confirmLabel="Remove"
+    onCancel={() => (pendingRemoval = null)}
+    onConfirm={() => { const row = pendingRemoval; pendingRemoval = null; if (row !== null) void remove(row) }}>
+    {#snippet body()}<p>Remove admin {pendingLabel}? This cannot be undone.</p>{/snippet}
+  </Confirm>
 </section>

@@ -17,6 +17,7 @@
     updateAdminPlatformInstance,
     updateAdminTaskInstance,
   } from '../../admin-fetchers.js'
+  import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
   import DataTable from '../../../shared/ui/DataTable.svelte'
   import Field from '../../../shared/ui/Field.svelte'
@@ -25,6 +26,7 @@
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Select from '../../../shared/ui/Select.svelte'
   import StatusPill from '../../../shared/ui/StatusPill.svelte'
+  import IdCell from '../../components/IdCell.svelte'
 
   let platforms: AdminInstanceRow[] = $state([])
   let tasks: AdminInstanceRow[] = $state([])
@@ -42,6 +44,9 @@
   let taskId = $state('')
   let taskType = $state('')
   let taskConfig: Record<string, string> = $state({})
+
+  type PendingDelete = { kind: 'platform' | 'task'; id: string } | null
+  let pendingDelete: PendingDelete = $state(null)
 
   const selectedPlatformType = $derived(platformTypes.find((t) => t.type === platformType))
   const selectedTaskType = $derived(taskTypes.find((t) => t.type === taskType))
@@ -169,24 +174,18 @@
     }
   }
 
-  async function deletePlatform(id: string): Promise<void> {
-    if (!window.confirm(`Delete platform instance ${id}?`)) return
+  async function confirmDelete(): Promise<void> {
+    const pending = pendingDelete
+    pendingDelete = null
+    if (pending === null) return
     error = null
     status = null
     try {
-      await deleteAdminPlatformInstance(id)
-      await load()
-    } catch (err) {
-      setErr(err)
-    }
-  }
-
-  async function deleteTask(id: string): Promise<void> {
-    if (!window.confirm(`Delete task instance ${id}?`)) return
-    error = null
-    status = null
-    try {
-      await deleteAdminTaskInstance(id)
+      if (pending.kind === 'platform') {
+        await deleteAdminPlatformInstance(pending.id)
+      } else {
+        await deleteAdminTaskInstance(pending.id)
+      }
       await load()
     } catch (err) {
       setErr(err)
@@ -211,6 +210,10 @@
     { key: 'status' as const, label: 'Status' },
     { key: 'actions' as const, label: '', align: 'right' as const },
   ]
+
+  const pendingDeleteLabel = $derived(
+    pendingDelete !== null ? `${pendingDelete.kind} instance ${pendingDelete.id}` : '',
+  )
 </script>
 
 <section id="instances" class="settings-section">
@@ -252,13 +255,15 @@
   <div class="t-subhead">Platform instances</div>
   <div class="settings-table-wrap">
     {#snippet platformCell(row: InstanceRow, col: { key: string; label: string })}
-      {#if col.key === 'status'}
+      {#if col.key === 'id'}
+        <IdCell value={row.id} />
+      {:else if col.key === 'status'}
         <StatusPill status={row.status} />
       {:else if col.key === 'actions'}
         <Btn variant="outline" size="sm" testid={`platform-status-${row.id}`} onClick={() => void toggleStatus(platforms.find((p) => p.id === row.id)!)}>
           {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
         </Btn>
-        <Btn variant="danger" size="sm" testid={`platform-delete-${row.id}`} onClick={() => void deletePlatform(row.id)}>
+        <Btn variant="danger" size="sm" testid={`platform-delete-${row.id}`} onClick={() => (pendingDelete = { kind: 'platform', id: row.id })}>
           {#snippet children()}Delete{/snippet}
         </Btn>
       {:else}
@@ -304,13 +309,15 @@
   <div class="t-subhead">Task instances</div>
   <div class="settings-table-wrap">
     {#snippet taskCell(row: InstanceRow, col: { key: string; label: string })}
-      {#if col.key === 'status'}
+      {#if col.key === 'id'}
+        <IdCell value={row.id} />
+      {:else if col.key === 'status'}
         <StatusPill status={row.status} />
       {:else if col.key === 'actions'}
         <Btn variant="outline" size="sm" testid={`task-status-${row.id}`} onClick={() => void toggleTaskStatus(tasks.find((t) => t.id === row.id)!)}>
           {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
         </Btn>
-        <Btn variant="danger" size="sm" testid={`task-delete-${row.id}`} onClick={() => void deleteTask(row.id)}>
+        <Btn variant="danger" size="sm" testid={`task-delete-${row.id}`} onClick={() => (pendingDelete = { kind: 'task', id: row.id })}>
           {#snippet children()}Delete{/snippet}
         </Btn>
       {:else}
@@ -326,6 +333,16 @@
       Unreadable task instances hidden: {taskUnreadable.map((failure) => failure.id).join(', ')}
     </p>
   {/if}
+
+  <Confirm
+    open={pendingDelete !== null}
+    title="Delete instance"
+    danger
+    confirmLabel="Delete"
+    onCancel={() => (pendingDelete = null)}
+    onConfirm={() => void confirmDelete()}>
+    {#snippet body()}<p>Delete {pendingDeleteLabel}? This cannot be undone.</p>{/snippet}
+  </Confirm>
 </section>
 
 <style>

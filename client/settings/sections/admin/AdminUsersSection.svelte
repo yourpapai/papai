@@ -6,12 +6,14 @@
 <script lang="ts">
   import { addAdminUser, fetchAdminUsers, removeAdminUser } from '../../admin-fetchers.js'
   import type { AdminUserRow } from '../../fetcher-schemas.js'
+  import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import SettingsTable from '../../components/SettingsTable.svelte'
+  import IdCell from '../../components/IdCell.svelte'
 
   let users: AdminUserRow[] = $state([])
   let error: string | null = $state(null)
@@ -19,6 +21,7 @@
   let loading = $state(false)
   let newUserId = $state('')
   let newUsername = $state('')
+  let pendingRemoval: string | null = $state(null)
 
   async function load(): Promise<void> {
     error = null
@@ -111,9 +114,11 @@
   <div class="settings-table-wrap">
     {#snippet cell(row: UserRow, col: { key: string; label: string })}
       {#if col.key === 'actions'}
-        <Btn variant="ghost" size="sm" testid={`user-remove-${row.platform_user_id}`} onClick={() => void remove(row.platform_user_id)}>
+        <Btn variant="danger" size="sm" testid={`user-remove-${row.platform_user_id}`} onClick={() => (pendingRemoval = row.platform_user_id)}>
           {#snippet children()}Remove{/snippet}
         </Btn>
+      {:else if col.key === 'platform_user_id'}
+        <IdCell value={row.platform_user_id} />
       {:else}
         {String(row[col.key as keyof UserRow] ?? '')}
       {/if}
@@ -128,4 +133,14 @@
       {#snippet empty()}No users{/snippet}
     </SettingsTable>
   </div>
+
+  <Confirm
+    open={pendingRemoval !== null}
+    title="Remove user"
+    danger
+    confirmLabel="Remove"
+    onCancel={() => (pendingRemoval = null)}
+    onConfirm={() => { const id = pendingRemoval; pendingRemoval = null; if (id !== null) void remove(id) }}>
+    {#snippet body()}<p>Remove user {pendingRemoval}? This cannot be undone.</p>{/snippet}
+  </Confirm>
 </section>

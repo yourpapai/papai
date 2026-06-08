@@ -203,6 +203,33 @@ const createUnreadableDiagnosticsMock = () => {
   }
 }
 
+const createDeleteMock = (onDelete: (url: string) => void) => {
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const method = requestMethod(init)
+    if (method === 'DELETE') {
+      onDelete(url)
+      return Promise.resolve(json({ ok: true }))
+    }
+    if (url.includes('/admin/platform-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/task-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/platform-provider-types'))
+      return Promise.resolve(
+        json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+      )
+    if (url.includes('/admin/task-provider-types'))
+      return Promise.resolve(
+        json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] }),
+      )
+    return Promise.resolve(json({}))
+  }
+}
+
 describe('AdminInstancesSection', () => {
   test('renders platform and task instance rows', async () => {
     installFetch()
@@ -354,5 +381,51 @@ describe('AdminInstancesSection', () => {
     const card = target.querySelector('[data-testid="platform-create-card"]')!
     expect(card.textContent).not.toContain('Status')
     void unmount(c)
+  })
+
+  test('deleting a platform instance requires confirmation before DELETE fires', async () => {
+    setCsrfToken('c')
+    let deletedUrl: string | undefined
+    setMockFetch(
+      createDeleteMock((url) => {
+        deletedUrl = url
+      }),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    // click Delete — no DELETE yet
+    target.querySelector<HTMLButtonElement>('[data-testid="platform-delete-tg"]')!.click()
+    flushSync()
+    expect(deletedUrl).toBeUndefined()
+    // confirm via the modal danger button
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(deletedUrl).toContain('tg')
+    void unmount(component)
+  })
+
+  test('deleting a task instance requires confirmation before DELETE fires', async () => {
+    setCsrfToken('c')
+    let deletedUrl: string | undefined
+    setMockFetch(
+      createDeleteMock((url) => {
+        deletedUrl = url
+      }),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    // click Delete — no DELETE yet
+    target.querySelector<HTMLButtonElement>('[data-testid="task-delete-k"]')!.click()
+    flushSync()
+    expect(deletedUrl).toBeUndefined()
+    // confirm via the modal danger button
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(deletedUrl).toContain('k')
+    void unmount(component)
   })
 })

@@ -89,14 +89,19 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
-  test('removing a user sends a DELETE with userId', async () => {
+  test('removing a user requires confirmation before DELETE fires', async () => {
     setCsrfToken('c')
     setMockFetch(captureUsersMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminUsersSection, { target })
     await drain()
+    // click Remove — no DELETE yet
     target.querySelector<HTMLButtonElement>('[data-testid="user-remove-42"]')!.click()
+    flushSync()
+    expect(capturedDeleteBody).toBeUndefined()
+    // confirm via the modal danger button
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(capturedDeleteBody).toBe(JSON.stringify({ userId: '42' }))
     void unmount(component)

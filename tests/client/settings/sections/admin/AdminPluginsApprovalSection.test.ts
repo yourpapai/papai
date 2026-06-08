@@ -78,14 +78,19 @@ describe('AdminPluginsApprovalSection', () => {
     void unmount(component)
   })
 
-  test('rejecting a plugin posts action=reject and shows the status', async () => {
+  test('rejecting a plugin requires confirmation before the POST fires', async () => {
     setCsrfToken('c')
     setMockFetch(captureRejectionMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminPluginsApprovalSection, { target, props: { catalogContextId: 'user:1' } })
     await drain()
+    // click Reject — no POST yet
     target.querySelector<HTMLButtonElement>('[data-testid="plugin-reject-hello-world"]')!.click()
+    flushSync()
+    expect(capturedApprovalBody).toBeUndefined()
+    // confirm via the modal danger button
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     await drain()
     expect(capturedApprovalBody).toBe(JSON.stringify({ pluginId: 'hello-world', action: 'reject' }))

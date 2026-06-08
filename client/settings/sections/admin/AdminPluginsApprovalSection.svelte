@@ -7,6 +7,7 @@
   import { setPluginApproval } from '../../admin-fetchers.js'
   import { fetchPlugins } from '../../fetchers.js'
   import type { PluginEntry } from '../../fetcher-schemas.js'
+  import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
@@ -23,6 +24,7 @@
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
+  let pendingReject: string | null = $state(null)
 
   async function load(): Promise<void> {
     error = null
@@ -47,6 +49,12 @@
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
+  }
+
+  async function confirmReject(): Promise<void> {
+    const id = pendingReject
+    pendingReject = null
+    if (id !== null) await decide(id, 'reject')
   }
 
   $effect(() => {
@@ -88,7 +96,7 @@
         <Btn variant="primary" size="sm" testid={`plugin-approve-${row.id}`} onClick={() => void decide(row.id, 'approve')}>
           {#snippet children()}Approve{/snippet}
         </Btn>
-        <Btn variant="danger" size="sm" testid={`plugin-reject-${row.id}`} onClick={() => void decide(row.id, 'reject')}>
+        <Btn variant="danger" size="sm" testid={`plugin-reject-${row.id}`} onClick={() => (pendingReject = row.id)}>
           {#snippet children()}Reject{/snippet}
         </Btn>
       {/if}
@@ -102,4 +110,14 @@
       {#snippet empty()}No plugins{/snippet}
     </SettingsTable>
   </div>
+
+  <Confirm
+    open={pendingReject !== null}
+    title="Reject plugin"
+    danger
+    confirmLabel="Reject"
+    onCancel={() => (pendingReject = null)}
+    onConfirm={() => void confirmReject()}>
+    {#snippet body()}<p>Reject plugin {pendingReject}? This will prevent it from activating.</p>{/snippet}
+  </Confirm>
 </section>

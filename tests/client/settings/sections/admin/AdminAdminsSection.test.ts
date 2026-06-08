@@ -71,14 +71,19 @@ describe('AdminAdminsSection', () => {
     void unmount(component)
   })
 
-  test('removing an admin sends a DELETE with userId + platformInstanceId', async () => {
+  test('removing an admin requires confirmation before DELETE fires', async () => {
     setCsrfToken('c')
     setMockFetch(captureRosterMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminAdminsSection, { target })
     await drain()
+    // click Remove — no DELETE yet
     target.querySelector<HTMLButtonElement>('[data-testid="admin-remove-1"]')!.click()
+    flushSync()
+    expect(capturedDeleteBody).toBeNull()
+    // confirm via the modal danger button
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(capturedDeleteBody).toBe(JSON.stringify({ userId: '1', platformInstanceId: 'tg' }))
     void unmount(component)
