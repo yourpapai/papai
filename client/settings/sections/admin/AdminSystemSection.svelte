@@ -6,17 +6,13 @@
 <script lang="ts">
   import { fetchAdminSystem, submitAdminSystem } from '../../admin-fetchers.js'
   import type { AdminSystemResponse } from '../../fetcher-schemas.js'
-  import Btn from '../../../shared/ui/Btn.svelte'
-  import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
-  import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
-  import Secret from '../../../shared/ui/Secret.svelte'
+  import SystemKvRow from '../../components/SystemKvRow.svelte'
 
   const SENSITIVE_SYSTEM_KEYS = new Set<string>(['llm_apikey'])
 
   let config: AdminSystemResponse['config'] = $state({})
-  let drafts: Record<string, string> = $state({})
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
@@ -24,35 +20,22 @@
   const keys = $derived(Object.keys(config))
 
   async function load(): Promise<void> {
-    error = null
-    status = null
-    loading = true
-    try {
-      config = (await fetchAdminSystem()).config
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    } finally {
-      loading = false
-    }
+    error = null; status = null; loading = true
+    try { config = (await fetchAdminSystem()).config }
+    catch (err) { error = err instanceof Error ? err.message : String(err) }
+    finally { loading = false }
   }
 
-  async function save(key: string): Promise<void> {
-    error = null
-    status = null
-    if ((drafts[key] ?? '').trim() === '') return
+  async function save(key: string, value: string): Promise<void> {
+    error = null; status = null
     try {
-      await submitAdminSystem({ key, value: drafts[key] ?? '' })
-      drafts[key] = ''
+      await submitAdminSystem({ key, value })
       await load()
       status = `${key} updated.`
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    }
+    } catch (err) { error = err instanceof Error ? err.message : String(err) }
   }
 
-  $effect(() => {
-    void load()
-  })
+  $effect(() => { void load() })
 </script>
 
 <section id="system" class="settings-section">
@@ -65,64 +48,24 @@
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
-  <div class="settings-field-list">
-    {#each keys as key (key)}
-      <div class="settings-field" data-testid={`system-row-${key}`}>
-        <div class="settings-field__head">
-          <span class="settings-field__label">{key}</span>
-          {#if config[key]?.value !== null}
-            <Secret value={config[key]?.value ?? ''} />
-          {:else}
-            <span class="placeholder">unset</span>
-          {/if}
-        </div>
-        <Field label="New value">
-          <div class="settings-field__editor-row">
-            <Input
-              type={SENSITIVE_SYSTEM_KEYS.has(key) ? 'password' : 'text'}
-              value={drafts[key] ?? ''}
-              placeholder="enter a new value"
-              onInput={(v) => (drafts[key] = v)}
-              testid={`system-input-${key}`} />
-            <Btn
-              variant="primary"
-              size="sm"
-              testid={`system-save-${key}`}
-              onClick={() => void save(key)}>
-              {#snippet children()}Save{/snippet}
-            </Btn>
-          </div>
-        </Field>
-      </div>
-    {/each}
-  </div>
+  <table class="system-kv">
+    <thead>
+      <tr><th class="t-label">Key</th><th class="t-label">Value</th><th class="t-label system-kv__th-action">Action</th></tr>
+    </thead>
+    <tbody>
+      {#each keys as key (key)}
+        <SystemKvRow
+          keyName={key}
+          value={config[key]?.value ?? null}
+          sensitive={SENSITIVE_SYSTEM_KEYS.has(key)}
+          onSave={(v) => void save(key, v)} />
+      {/each}
+    </tbody>
+  </table>
 </section>
 
 <style>
-  .settings-field-list {
-    display: grid;
-    gap: 12px;
-  }
-  .settings-field {
-    display: grid;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .settings-field__head {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
-  .settings-field__label {
-    color: var(--fg2);
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }
-  .settings-field__editor-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
+  .system-kv { width: 100%; border-collapse: collapse; font-family: var(--font-mono); }
+  .system-kv th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .system-kv__th-action { text-align: right; }
 </style>

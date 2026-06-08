@@ -59,19 +59,48 @@ describe('AdminSystemSection', () => {
     await drain()
     expect(target.querySelector('#system')).not.toBeNull()
     expect(target.textContent).toContain('llm_apikey')
-    expect(target.textContent).toContain('****1234')
-    expect(target.textContent).toContain('gpt-main')
+    expect(target.textContent).toContain('main_model')
     void unmount(component)
   })
 
-  test('llm_apikey input is type password', async () => {
+  test('renders masked secret value and plain value in table', async () => {
     setMockFetch(() => Promise.resolve(json(systemPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminSystemSection, { target })
     await drain()
+    expect(target.textContent).toContain('••••1234')
+    expect(target.textContent).toContain('gpt-main')
+    void unmount(component)
+  })
+
+  test('renders one kv table with Edit per key and no standing inputs', async () => {
+    setMockFetch(() => Promise.resolve(json(systemPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const c = mount(AdminSystemSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="system-edit-main_model"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="system-input-main_model"]')).toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="system-edit-main_model"]')!.click()
+    flushSync()
+    expect(target.querySelector('[data-testid="system-input-main_model"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="system-input-llm_apikey"]')).toBeNull()
+    void unmount(c)
+  })
+
+  test('llm_apikey input is type password after Edit', async () => {
+    setMockFetch(() => Promise.resolve(json(systemPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminSystemSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="system-edit-llm_apikey"]')!.click()
+    flushSync()
     const apikeyInput = target.querySelector<HTMLInputElement>('[data-testid="system-input-llm_apikey"]')!
     expect(apikeyInput.type).toBe('password')
+    target.querySelector<HTMLButtonElement>('[data-testid="system-edit-main_model"]')!.click()
+    flushSync()
     const modelInput = target.querySelector<HTMLInputElement>('[data-testid="system-input-main_model"]')!
     expect(modelInput.type).toBe('text')
     void unmount(component)
@@ -84,6 +113,8 @@ describe('AdminSystemSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminSystemSection, { target })
     await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="system-edit-main_model"]')!.click()
+    flushSync()
     const input = target.querySelector<HTMLInputElement>('[data-testid="system-input-main_model"]')!
     input.value = 'gpt-next'
     input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -101,6 +132,8 @@ describe('AdminSystemSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminSystemSection, { target })
     await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="system-edit-main_model"]')!.click()
+    flushSync()
     const input = target.querySelector<HTMLInputElement>('[data-testid="system-input-main_model"]')!
     input.value = 'bad-value'
     input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -119,18 +152,6 @@ describe('AdminSystemSection', () => {
     const component = mount(AdminSystemSection, { target })
     await drain()
     expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('System (LLM)')
-    void unmount(component)
-  })
-
-  test('renders masked system value via Secret and editor via Field/Input/Btn', async () => {
-    setMockFetch(() => Promise.resolve(json(systemPayload)))
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(AdminSystemSection, { target })
-    await drain()
-    expect(target.querySelector('.ui-secret')).not.toBeNull()
-    expect(target.querySelector('[data-testid="system-input-llm_apikey"]')?.closest('.ui-input')).not.toBeNull()
-    expect(target.querySelector('[data-testid="system-save-llm_apikey"]')?.classList.contains('ui-btn')).toBe(true)
     void unmount(component)
   })
 })
