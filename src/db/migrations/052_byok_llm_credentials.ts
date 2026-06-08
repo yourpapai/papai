@@ -13,7 +13,7 @@ const log = logger.child({ scope: 'migration:052' })
 const up = (db: Database): void => {
   db.run(`
     CREATE TABLE IF NOT EXISTS byok_llm_credentials (
-      context_id TEXT PRIMARY KEY,
+      context_id TEXT NOT NULL PRIMARY KEY,
       enabled INTEGER NOT NULL DEFAULT 0,
       encrypted_config TEXT,
       updated_at INTEGER NOT NULL,
