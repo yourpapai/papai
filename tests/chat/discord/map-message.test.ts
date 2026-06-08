@@ -124,4 +124,33 @@ describe('mapDiscordMessage', () => {
     expect(result).not.toBeNull()
     expect(result!.platformInstanceId).toBe('discord-secondary')
   })
+
+  test('passes group message with isReplyToBot even without mention', () => {
+    const msg = makeMsg({
+      content: 'what about this?',
+      mentions: { has: () => false },
+      reference: { messageId: 'bot-msg-1' },
+    })
+    const result = mapDiscordMessage(msg, botId, platformInstanceId, true)
+    expect(result).not.toBeNull()
+    expect(result!.isReplyToBot).toBe(true)
+    expect(result!.isMentioned).toBe(false)
+    expect(result!.replyToMessageId).toBe('bot-msg-1')
+  })
+
+  test('still returns null for group message without mention and without isReplyToBot', () => {
+    const msg = makeMsg({
+      content: 'unrelated chatter',
+      mentions: { has: () => false },
+    })
+    const result = mapDiscordMessage(msg, botId, platformInstanceId, false)
+    expect(result).toBeNull()
+  })
+
+  test('defaults isReplyToBot to false when parameter omitted', () => {
+    const msg = makeMsg({ content: `<@${botId}> hello` })
+    const result = mapDiscordMessage(msg, botId, platformInstanceId)
+    expect(result).not.toBeNull()
+    expect(result!.isReplyToBot).toBe(false)
+  })
 })
