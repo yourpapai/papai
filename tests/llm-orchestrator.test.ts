@@ -10,7 +10,11 @@ import { APICallError } from '@ai-sdk/provider'
 import type { ModelMessage } from 'ai'
 
 import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
-import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  toScopedContextId,
+  toScopedThreadContextId,
+} from '../src/chat/scoped-context.js'
 import type { ReplyFn } from '../src/chat/types.js'
 import { byokLlmCredentials } from '../src/db/byok-llm-schema.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
@@ -26,6 +30,7 @@ import {
   resetSystemConfigCacheForTesting,
   seedCommonTestPlatformInstances,
   setupTestDb,
+  flushMicrotasks,
 } from './utils/test-helpers.js'
 
 // Capture real modules before mocking (file-level, stays at top)
@@ -142,6 +147,7 @@ import {
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { setConfigValue } from '../src/config.js'
+import { appendHistory } from '../src/history.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
@@ -442,6 +448,91 @@ describe('processMessage', () => {
       expect(buildCalls).toEqual([{ apiKey: 'sk-byok', baseURL: 'https://byok.invalid/v1', model: 'byok-main' }])
       expect(generateCalls).toBe(1)
       expect(textCalls).toContain('Hello!')
+    })
+
+    test('passes resolved config context to normal conversation background trim', async () => {
+      const storageContextId = toScopedThreadContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+        threadId: '42',
+      })
+      const configContextId = toScopedContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+      })
+      seedConfigForContext(configContextId)
+      updateByokLlmConfig(
+        configContextId,
+        {
+          llm_apikey: 'sk-byok-normal-trim',
+          llm_baseurl: 'https://byok-normal-trim.invalid/v1',
+          main_model: 'byok-main-trim',
+          small_model: 'byok-small-trim',
+        },
+        'admin-1',
+      )
+      const buildCalls: Array<{ apiKey: string; baseURL: string; model: string }> = []
+      void mock.module('@ai-sdk/openai-compatible', () => ({
+        createOpenAICompatible:
+          (opts: { apiKey: string; baseURL: string }): ((model: string) => string) =>
+          (model: string): string => {
+            buildCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, model })
+            return `mock:${model}`
+          },
+      }))
+      const generateTextResults: readonly Promise<GenerateTextResult>[] = [
+        Promise.resolve({
+          text: 'Hello!',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        }),
+        Promise.resolve({
+          text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        }),
+      ]
+      let generateCallIndex = 0
+      generateTextImpl = (): Promise<GenerateTextResult> => {
+        const result = generateTextResults[generateCallIndex]!
+        generateCallIndex += 1
+        return result
+      }
+      appendHistory(
+        storageContextId,
+        Array.from({ length: 98 }, (_, index): ModelMessage => ({ role: 'assistant', content: `old ${index}` })),
+      )
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply } = createMockReply()
+      await processMessage(reply, storageContextId, 'user-1', null, 'hello', 'group', configContextId, deps)
+      await flushMicrotasks()
+
+      expect(buildCalls).toContainEqual({
+        apiKey: 'sk-byok-normal-trim',
+        baseURL: 'https://byok-normal-trim.invalid/v1',
+        model: 'byok-small-trim',
+      })
     })
 
     test('blocks incomplete BYOK setup before model invocation', async () => {
