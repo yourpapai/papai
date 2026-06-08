@@ -154,7 +154,7 @@ async function invokeWithContext(
   const config = getLlmConfig(configContextId)
   if (typeof config === 'string') return config
 
-  const model = deps.buildModel(config, config.smallModel)
+  const model = deps.buildModel(config, config.mainModel)
   const history = getCachedHistory(storageContextId)
   const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history)
   const messages: ModelMessage[] = [
@@ -166,7 +166,7 @@ async function invokeWithContext(
   log.debug(
     {
       userId: createdByUserId,
-      smallModel: config.smallModel,
+      mainModel: config.mainModel,
       historyLength: history.length,
       mode: 'context',
     },
