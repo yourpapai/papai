@@ -44,7 +44,10 @@
           { id: 'tools', label: 'Tools' },
           { id: 'identity', label: 'Identity' },
           ...(isGroup
-            ? [{ id: 'members', label: 'Members' }, { id: 'group-provider', label: 'Group provider' }]
+            ? [
+                { id: 'members', label: 'Members' },
+                { id: 'group-provider', label: 'Group provider' },
+              ]
             : []),
         ],
       },
@@ -67,6 +70,7 @@
         { id: 'announce', label: 'Announce' },
       ]
     }
+    // super admins are always bot admins, so admin.items already has the bot-admin entries here
     if (settingsSession.isSuperAdmin) {
       admin.items = [...admin.items, { id: 'admins', label: 'Admins' }, { id: 'plugin-approval', label: 'Plugin approval' }]
     }

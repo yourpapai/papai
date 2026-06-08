@@ -129,9 +129,12 @@ describe('SettingsApp', () => {
     seed({ isBotAdmin: true, isSuperAdmin: true })
     const component = mountApp()
     await drain()
-    expect(document.body.textContent).toContain('Personal')
-    expect(document.body.textContent).toContain('Integrations')
-    expect(document.body.textContent).toContain('Admin')
+    const sidebar = document.querySelector<HTMLElement>('.settings-sidebar')!
+    const kickers = Array.from(sidebar.querySelectorAll<HTMLElement>('.settings-sidebar__kicker'))
+    expect(kickers).toHaveLength(3)
+    expect(kickers[0]!.textContent).toContain('Personal')
+    expect(kickers[1]!.textContent).toContain('Integrations')
+    expect(kickers[2]!.textContent).toContain('Admin')
     void unmount(component)
   })
 
@@ -140,7 +143,11 @@ describe('SettingsApp', () => {
     seed({ isBotAdmin: false, isSuperAdmin: false })
     const component = mountApp()
     await drain()
-    expect(document.body.textContent).not.toContain('Admin')
+    const sidebar = document.querySelector<HTMLElement>('.settings-sidebar')!
+    const kickers = Array.from(sidebar.querySelectorAll<HTMLElement>('.settings-sidebar__kicker'))
+    expect(kickers).toHaveLength(2)
+    expect(kickers[0]!.textContent).toContain('Personal')
+    expect(kickers[1]!.textContent).toContain('Integrations')
     void unmount(component)
   })
 })
