@@ -7,10 +7,9 @@ import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
-import { tryGetEmbedding } from '../embeddings.js'
+import { getEmbeddingForContext } from '../embeddings.js'
 import { logger } from '../logger.js'
 import { saveMemo, updateMemoEmbedding } from '../memos.js'
-import { getSystemConfig } from '../system-config.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
@@ -31,27 +30,22 @@ export function makeSaveMemoTool(userId: string): ToolSet[string] {
       const memo = saveMemo(userId, content, tags ?? [], summary)
       log.info({ userId, memoId: memo.id, tags: memo.tags }, 'Memo saved via tool')
 
-      const apiKey = getSystemConfig('llm_apikey')
-      const baseUrl = getSystemConfig('llm_baseurl')
-      const embeddingModel = getSystemConfig('embedding_model')
-      if (apiKey !== null && baseUrl !== null && embeddingModel !== null) {
-        void tryGetEmbedding(content, apiKey, baseUrl, embeddingModel, {
-          storageContextId: userId,
-          contextType: 'dm',
-          chatUserId: userId,
+      void getEmbeddingForContext(content, userId, {
+        storageContextId: userId,
+        contextType: 'dm',
+        chatUserId: userId,
+      })
+        .then((embedding) => {
+          if (embedding !== null) {
+            updateMemoEmbedding(userId, memo.id, new Float32Array(embedding))
+          }
         })
-          .then((embedding) => {
-            if (embedding !== null) {
-              updateMemoEmbedding(userId, memo.id, new Float32Array(embedding))
-            }
-          })
-          .catch((error: unknown) => {
-            log.error(
-              { memoId: memo.id, error: error instanceof Error ? error.message : String(error) },
-              'Embedding failed',
-            )
-          })
-      }
+        .catch((error: unknown) => {
+          log.error(
+            { memoId: memo.id, error: error instanceof Error ? error.message : String(error) },
+            'Embedding failed',
+          )
+        })
 
       return { id: memo.id, content: memo.content, tags: memo.tags, createdAt: memo.createdAt }
     },

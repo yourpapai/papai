@@ -11,9 +11,9 @@ import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.j
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
+import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
-import { getSystemConfig } from '../system-config.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
@@ -58,22 +58,40 @@ const defaultProactiveLlmDeps: ProactiveLlmDeps = {
 
 export type BuildProviderFn = (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
 
-type LlmConfig = { apiKey: string; baseURL: string; mainModel: string }
+type LlmConfig = { apiKey: string; baseURL: string; mainModel: string; smallModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
 
-function getLlmConfigFromSystem(): LlmConfig | string {
-  const apiKey = getSystemConfig('llm_apikey')
-  const baseURL = getSystemConfig('llm_baseurl')
-  const mainModel = getSystemConfig('main_model')
-  if (apiKey === null || baseURL === null || mainModel === null) {
+function getLlmConfig(configContextId: string): LlmConfig | string {
+  const resolved = resolveEffectiveLlmConfig(configContextId)
+  if (!resolved.ok) {
     log.warn(
-      { hasApiKey: apiKey !== null, hasBaseUrl: baseURL !== null, hasModel: mainModel !== null },
-      'Missing LLM system_config for deferred prompt',
+      {
+        configContextId,
+        source: resolved.source,
+        type: resolved.type,
+        missing: resolved.type === 'missing' ? resolved.missing : undefined,
+        error: resolved.type === 'error' ? resolved.error : undefined,
+      },
+      'Missing LLM config for deferred prompt',
     )
-    return 'Deferred prompt skipped: the bot is not fully configured. The administrator has been notified.'
+    if (resolved.source === 'global') {
+      return 'Deferred prompt skipped: the bot is not fully configured. The administrator has been notified.'
+    }
+    if (resolved.type === 'missing') {
+      return 'Deferred prompt skipped: BYOK is enabled for this context, but required LLM settings are missing. Use /config to complete setup.'
+    }
+    return 'Deferred prompt skipped: BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.'
   }
-  return { apiKey, baseURL, mainModel }
+  return {
+    apiKey: resolved.llmApiKey,
+    baseURL: resolved.llmBaseUrl,
+    mainModel: resolved.mainModel,
+    smallModel: resolved.smallModel,
+  }
 }
+
+const getConfigContextId = (execCtx: DeferredExecutionContext): string =>
+  getConfigContextIdFromStorageContextId(getStorageContextId(execCtx.deliveryTarget))
 
 const resolveDeps = (deps: ProactiveLlmDeps | undefined): ProactiveLlmDeps => {
   if (deps === undefined) return defaultProactiveLlmDeps
@@ -89,12 +107,12 @@ async function invokeLightweight(
 ): Promise<string> {
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
+  const configContextId = getConfigContextId(execCtx)
   log.debug({ userId: createdByUserId, mode: 'lightweight' }, 'invokeLightweight called')
-  const config = getLlmConfigFromSystem()
+  const config = getLlmConfig(configContextId)
   if (typeof config === 'string') return config
 
-  const smallModel = getSystemConfig('small_model')
-  const modelId = modelIdForLightweight(smallModel, config.mainModel)
+  const modelId = modelIdForLightweight(config.smallModel, config.mainModel)
   const model = deps.buildModel(config, modelId)
   const messages: ModelMessage[] = [...buildMetadataMessages(metadata), { role: 'user', content: wrapPrompt(prompt) }]
 
@@ -116,7 +134,8 @@ async function invokeLightweight(
       'Lightweight response appended to history',
     )
     const updatedHistory = [...history, ...assistantMessages]
-    if (shouldTriggerTrim(updatedHistory)) void runTrimInBackground(storageContextId, updatedHistory)
+    if (shouldTriggerTrim(updatedHistory))
+      void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
   }
   return resultTextOrDone(result.text)
 }
@@ -130,11 +149,12 @@ async function invokeWithContext(
 ): Promise<string> {
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
+  const configContextId = getConfigContextId(execCtx)
   log.debug({ userId: createdByUserId, mode: 'context' }, 'invokeWithContext called')
-  const config = getLlmConfigFromSystem()
+  const config = getLlmConfig(configContextId)
   if (typeof config === 'string') return config
 
-  const model = deps.buildModel(config, config.mainModel)
+  const model = deps.buildModel(config, config.smallModel)
   const history = getCachedHistory(storageContextId)
   const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history)
   const messages: ModelMessage[] = [
@@ -146,7 +166,7 @@ async function invokeWithContext(
   log.debug(
     {
       userId: createdByUserId,
-      mainModel: config.mainModel,
+      smallModel: config.smallModel,
       historyLength: history.length,
       mode: 'context',
     },
@@ -164,7 +184,8 @@ async function invokeWithContext(
   if (assistantMessages.length > 0) {
     appendHistory(storageContextId, assistantMessages)
     const updatedHistory = [...history, ...assistantMessages]
-    if (shouldTriggerTrim(updatedHistory)) void runTrimInBackground(storageContextId, updatedHistory)
+    if (shouldTriggerTrim(updatedHistory))
+      void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
   }
   return resultTextOrDone(result.text)
 }
@@ -235,7 +256,7 @@ async function invokeFull(
   const storageContextId = getStorageContextId(deliveryTarget)
   const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
   log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
-  const config = getLlmConfigFromSystem()
+  const config = getLlmConfig(configContextId)
   if (typeof config === 'string') return config
 
   const provider = await resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)

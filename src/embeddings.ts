@@ -6,6 +6,7 @@
 import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/openai-compatible'
 import { embed } from 'ai'
 
+import { resolveEffectiveLlmConfig } from './llm-config-resolver.js'
 import { logger } from './logger.js'
 import { recordUsage } from './usage/recorder.js'
 import type { ContextType } from './usage/types.js'
@@ -136,4 +137,28 @@ export async function tryGetEmbedding(
     log.warn({ error: error instanceof Error ? error.message : String(error), model }, 'Embedding generation failed')
     return null
   }
+}
+
+export function getEmbeddingForContext(
+  text: string,
+  configContextId: string,
+  context?: EmbeddingCallContext,
+  deps: EmbeddingsDeps = defaultEmbeddingsDeps,
+): Promise<number[] | null> {
+  const resolved = resolveEffectiveLlmConfig(configContextId)
+  if (!resolved.ok) {
+    log.warn(
+      {
+        configContextId,
+        source: resolved.source,
+        type: resolved.type,
+        missing: resolved.type === 'missing' ? resolved.missing : undefined,
+        error: resolved.type === 'error' ? resolved.error : undefined,
+      },
+      'LLM config not available for embedding',
+    )
+    return Promise.resolve(null)
+  }
+
+  return tryGetEmbedding(text, resolved.llmApiKey, resolved.llmBaseUrl, resolved.embeddingModel, context, deps)
 }

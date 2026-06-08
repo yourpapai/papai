@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { llmUsageEvents } from '../../src/db/schema.js'
 import { setSystemConfig } from '../../src/system-config.js'
@@ -22,6 +23,7 @@ type DistillWebContent = (
     goal?: string
     contextType?: 'dm' | 'group'
     chatUserId?: string
+    configContextId?: string
   },
   deps?: {
     generateText: (options: {
@@ -63,6 +65,7 @@ describe('distillWebContent', () => {
 
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     await setupTestDb()
     ;({ distillWebContent } = await import('../../src/web/distill.js'))
   })
@@ -136,6 +139,47 @@ describe('distillWebContent', () => {
     expect(result.truncated).toBe(true)
     expect(result.summary).toContain('Paragraph one summary candidate.')
     expect(result.excerpt).toBe('B'.repeat(MAX_EXCERPT_CHARS))
+  })
+
+  test('uses BYOK small model for context distillation without global config', async () => {
+    const runDistill = getDistillWebContent(distillWebContent)
+    updateByokLlmConfig(
+      'ctx-distill-byok',
+      {
+        llm_apikey: 'sk-byok-distill',
+        llm_baseurl: 'https://byok-distill.invalid/v1',
+        main_model: 'byok-main-distill',
+        small_model: 'byok-small-distill',
+      },
+      'admin-1',
+    )
+
+    const builtModels: Array<{ apiKey: string; baseUrl: string; modelId: string }> = []
+
+    const result = await runDistill(
+      {
+        storageContextId: 'ctx-distill-storage',
+        configContextId: 'ctx-distill-byok',
+        title: 'Large page',
+        content: createLongContent(),
+      },
+      {
+        buildModel: (apiKey: string, baseUrl: string, modelId: string) => {
+          builtModels.push({ apiKey, baseUrl, modelId })
+          return { id: modelId }
+        },
+        generateText: () => Promise.resolve({ text: 'summary\n\nexcerpt' }),
+      },
+    )
+
+    expect(builtModels).toEqual([
+      {
+        apiKey: 'sk-byok-distill',
+        baseUrl: 'https://byok-distill.invalid/v1',
+        modelId: 'byok-small-distill',
+      },
+    ])
+    expect(result).toEqual({ summary: 'summary', excerpt: 'excerpt', truncated: true })
   })
 
   test('uses a single-paragraph model response as both summary and excerpt', async () => {

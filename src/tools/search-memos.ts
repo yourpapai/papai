@@ -7,11 +7,10 @@ import { tool, cosineSimilarity } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
-import { tryGetEmbedding } from '../embeddings.js'
+import { getEmbeddingForContext } from '../embeddings.js'
 import { logger } from '../logger.js'
 import type { Memo } from '../memos.js'
 import { keywordSearchMemos, loadEmbeddingsForUser, getMemo } from '../memos.js'
-import { getSystemConfig } from '../system-config.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
@@ -87,12 +86,7 @@ async function trySemanticMode(
   query: string,
   limit: number,
 ): Promise<{ available: true; result: SearchResult } | { available: false }> {
-  const apiKey = getSystemConfig('llm_apikey')
-  const baseUrl = getSystemConfig('llm_baseurl')
-  const embeddingModel = getSystemConfig('embedding_model')
-  if (apiKey === null || baseUrl === null || embeddingModel === null) return { available: false }
-
-  const queryVec = await tryGetEmbedding(query, apiKey, baseUrl, embeddingModel, {
+  const queryVec = await getEmbeddingForContext(query, userId, {
     storageContextId: userId,
     contextType: 'dm',
     chatUserId: userId,
