@@ -42,7 +42,7 @@ test('navigating sets the location hash', () => {
   flushSync()
   const select = target.querySelector('select')!
   select.value = 'system'
-  select.dispatchEvent(new Event('change'))
+  select.dispatchEvent(new Event('change', { bubbles: true }))
   flushSync()
   expect(window.location.hash).toBe('#system')
   void unmount(c)

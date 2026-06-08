@@ -13,24 +13,15 @@
 
   let { groups, activeId }: Props = $props()
 
-  let selectEl: HTMLSelectElement | undefined = $state()
-
-  $effect(() => {
-    if (selectEl === undefined) return
-    function onChange(event: Event): void {
-      const id = (event.target as HTMLSelectElement).value
-      window.location.hash = `#${id}`
-    }
-    selectEl.addEventListener('change', onChange)
-    return () => {
-      selectEl?.removeEventListener('change', onChange)
-    }
-  })
+  function onChange(event: Event): void {
+    const id = (event.target as HTMLSelectElement).value
+    window.location.hash = `#${id}`
+  }
 </script>
 
 <div class="settings-jump">
   <label class="t-label" for="settings-jump-select">Jump to</label>
-  <select id="settings-jump-select" value={activeId} bind:this={selectEl}>
+  <select id="settings-jump-select" value={activeId} onchange={onChange}>
     {#each groups as group (group.kicker)}
       <optgroup label={group.kicker}>
         {#each group.items as item (item.id)}
