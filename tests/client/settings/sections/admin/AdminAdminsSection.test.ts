@@ -94,6 +94,7 @@ describe('AdminAdminsSection', () => {
     expect(target.querySelector('[data-testid="admin-user-input"]')?.closest('.ui-input')).not.toBeNull()
     expect(target.querySelector('[data-testid="admin-add"]')?.classList.contains('ui-btn')).toBe(true)
     expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    expect(target.querySelector('[data-testid="settings-table-search"]')).not.toBeNull()
     void unmount(component)
   })
 

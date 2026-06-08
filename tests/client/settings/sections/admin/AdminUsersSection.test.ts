@@ -58,6 +58,17 @@ describe('AdminUsersSection', () => {
     await drain()
     expect(target.querySelector('#users')).not.toBeNull()
     expect(target.textContent).toContain('jane')
+    expect(target.querySelectorAll('tbody tr').length).toBe(1)
+    void unmount(component)
+  })
+
+  test('renders search box for users table', async () => {
+    setMockFetch(() => Promise.resolve(json(usersPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="settings-table-search"]')).not.toBeNull()
     void unmount(component)
   })
 

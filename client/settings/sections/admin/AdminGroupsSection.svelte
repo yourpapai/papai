@@ -7,11 +7,11 @@
   import { addAdminGroup, fetchAdminGroups, removeAdminGroup } from '../../admin-fetchers.js'
   import type { AdminGroupRow, ObservedGroup } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
-  import DataTable from '../../../shared/ui/DataTable.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
+  import SettingsTable from '../../components/SettingsTable.svelte'
 
   let groups: AdminGroupRow[] = $state([])
   let error: string | null = $state(null)
@@ -144,8 +144,13 @@
         {String(row[col.key as keyof GroupRow] ?? '')}
       {/if}
     {/snippet}
-    <DataTable columns={groupColumns} rows={groupRows} {cell} rowKey="group_id">
+    <SettingsTable
+      columns={groupColumns}
+      rows={groupRows}
+      rowKey="group_id"
+      searchKeys={['group_id', 'added_by']}
+      {cell}>
       {#snippet empty()}No groups{/snippet}
-    </DataTable>
+    </SettingsTable>
   </div>
 </section>

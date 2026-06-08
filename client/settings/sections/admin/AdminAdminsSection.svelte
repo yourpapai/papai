@@ -7,11 +7,11 @@
   import { addRosterAdmin, fetchAdminRoster, removeRosterAdmin } from '../../admin-fetchers.js'
   import type { AdminRosterRow } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
-  import DataTable from '../../../shared/ui/DataTable.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
+  import SettingsTable from '../../components/SettingsTable.svelte'
 
   let admins: AdminRosterRow[] = $state([])
   let error: string | null = $state(null)
@@ -123,8 +123,13 @@
         {String(row[col.key as keyof AdminRow] ?? '')}
       {/if}
     {/snippet}
-    <DataTable columns={adminColumns} rows={adminRows} {cell} rowKey="rowKey">
+    <SettingsTable
+      columns={adminColumns}
+      rows={adminRows}
+      rowKey="rowKey"
+      searchKeys={['userId', 'platformInstanceId']}
+      {cell}>
       {#snippet empty()}No admins{/snippet}
-    </DataTable>
+    </SettingsTable>
   </div>
 </section>

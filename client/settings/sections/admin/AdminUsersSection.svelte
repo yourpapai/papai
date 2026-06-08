@@ -7,11 +7,11 @@
   import { addAdminUser, fetchAdminUsers, removeAdminUser } from '../../admin-fetchers.js'
   import type { AdminUserRow } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
-  import DataTable from '../../../shared/ui/DataTable.svelte'
   import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
+  import SettingsTable from '../../components/SettingsTable.svelte'
 
   let users: AdminUserRow[] = $state([])
   let error: string | null = $state(null)
@@ -118,8 +118,14 @@
         {String(row[col.key as keyof UserRow] ?? '')}
       {/if}
     {/snippet}
-    <DataTable columns={userColumns} rows={userRows} {cell} rowKey="platform_user_id">
+    <SettingsTable
+      columns={userColumns}
+      rows={userRows}
+      rowKey="platform_user_id"
+      searchKeys={['platform_user_id', 'username']}
+      {cell}
+      searchPlaceholder="Search users by ID or name…">
       {#snippet empty()}No users{/snippet}
-    </DataTable>
+    </SettingsTable>
   </div>
 </section>

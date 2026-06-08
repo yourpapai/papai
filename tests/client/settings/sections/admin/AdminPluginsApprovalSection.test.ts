@@ -131,6 +131,7 @@ describe('AdminPluginsApprovalSection', () => {
     expect(target.querySelector('.ui-pill')).not.toBeNull()
     expect(target.querySelector('[data-testid="plugin-approve-hello-world"]')?.classList.contains('ui-btn')).toBe(true)
     expect(target.querySelector('[data-testid="plugin-reject-hello-world"]')?.classList.contains('ui-btn')).toBe(true)
+    expect(target.querySelector('[data-testid="settings-table-search"]')).not.toBeNull()
     void unmount(component)
   })
 

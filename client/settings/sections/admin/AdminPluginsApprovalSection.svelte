@@ -8,10 +8,10 @@
   import { fetchPlugins } from '../../fetchers.js'
   import type { PluginEntry } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
-  import DataTable from '../../../shared/ui/DataTable.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import StatusPill from '../../../shared/ui/StatusPill.svelte'
+  import SettingsTable from '../../components/SettingsTable.svelte'
 
   interface Props {
     catalogContextId: string
@@ -93,8 +93,13 @@
         </Btn>
       {/if}
     {/snippet}
-    <DataTable columns={approvalColumns} rows={approvalRows} {cell} rowKey="id">
+    <SettingsTable
+      columns={approvalColumns}
+      rows={approvalRows}
+      rowKey="id"
+      searchKeys={['id', 'name']}
+      {cell}>
       {#snippet empty()}No plugins{/snippet}
-    </DataTable>
+    </SettingsTable>
   </div>
 </section>

@@ -145,6 +145,7 @@ describe('AdminGroupsSection', () => {
     expect(target.querySelector('[data-testid="group-add-input"]')?.closest('.ui-input')).not.toBeNull()
     expect(target.querySelector('[data-testid="group-add"]')?.classList.contains('ui-btn')).toBe(true)
     expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    expect(target.querySelector('[data-testid="settings-table-search"]')).not.toBeNull()
     void unmount(component)
   })
 
