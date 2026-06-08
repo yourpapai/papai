@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.1] - 2026-06-08
+
+### Added
+
+- **settings:** Rename design tokens to spec vocabulary with legacy aliases
+- **settings:** Add type-scale utilities, content-cap and rhythm layout classes
+- **settings:** Grouped sidebar rail with aria-current + responsive jump menu
+- **settings:** Group sections into Personal/Integrations/Admin with grouped rail
+- **settings:** Collapse per-section Refresh to icon button; normalize Provision Kaneo
+- **settings:** Approve=primary, reject=danger; audit status pills for green-only-primary
+- **settings:** Segmented control for 3-state tool permissions
+- **settings:** Bullet-mask secrets and use secondary Replace button
+- **settings:** Compact System (LLM) kv inline-edit table
+- **settings:** Separate instance create-card from instances table
+- **settings:** Reusable SettingsTable with search, pagination, sticky header, hover
+- **settings:** Destructive confirmations + middle-truncated copyable IDs
+- **settings:** Admin danger zone + confirm steps for announce and secret keys
+- **settings:** Eyebrow/contrast/focus consistency pass
+
+### Changed
+
+- **settings:** Use declarative onchange in jump menu; bubble change in test
+
+### Documentation
+
+- Add byok llm credentials design
+
+### Fixed
+
+- **settings:** Preserve --fg4 ghost shade, drift-proof --state-active, widen alias test
+- **settings:** Keep LLM edit row open on save failure; cover cancel/empty/error paths
+- **settings:** Confirm Instances stop; CopyButton awaits clipboard write
+- **settings:** Guard CopyButton without clipboard; aria-current=page; stable confirm labels
+
+### Miscellaneous
+
+- Remove docs/architecture and architecture-refresh system
+- **knip:** Ignore .svelte-only exports for settings mask/truncate utils
+
+### Testing
+
+- **settings:** Assert sidebar kickers specifically; clarify super-admin path
+- **settings:** Cover SegmentedControl arrow-key cycling
 ## [6.1.0] - 2026-06-05
 
 ### Added
