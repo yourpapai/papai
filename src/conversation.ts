@@ -8,9 +8,9 @@ import type { LanguageModel, ModelMessage } from 'ai'
 
 import { getCachedHistory, setCachedHistory } from './cache.js'
 import { emitUser } from './debug/event-bus.js'
+import { resolveEffectiveLlmConfig } from './llm-config-resolver.js'
 import { logger } from './logger.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
-import { getSystemConfig } from './system-config.js'
 
 const log = logger.child({ scope: 'conversation' })
 
@@ -35,6 +35,24 @@ type MessagesWithMemory = {
   memoryMsg: { role: 'system'; content: string } | null
 }
 
+const logTrimConfigFailure = (
+  userId: string,
+  configContextId: string,
+  resolved: Exclude<ReturnType<typeof resolveEffectiveLlmConfig>, { readonly ok: true }>,
+): void => {
+  log.warn(
+    {
+      userId,
+      configContextId,
+      source: resolved.source,
+      type: resolved.type,
+      missing: resolved.type === 'missing' ? resolved.missing : undefined,
+      error: resolved.type === 'error' ? resolved.error : undefined,
+    },
+    'LLM config not available for background trim',
+  )
+}
+
 export const buildMessagesWithMemory = (userId: string, history: readonly ModelMessage[]): MessagesWithMemory => {
   const summary = loadSummary(userId)
   const facts = loadFacts(userId)
@@ -53,6 +71,7 @@ export const runTrimInBackground = async (
   userId: string,
   history: readonly ModelMessage[],
   deps: ConversationDeps = defaultConversationDeps,
+  configContextId = userId,
 ): Promise<void> => {
   const userMessageCount = history.filter((m) => m.role === 'user').length
   const reason =
@@ -60,38 +79,36 @@ export const runTrimInBackground = async (
   log.warn({ userId, historyLength: history.length, reason }, 'Smart trim triggered (running in background)')
   emitUser('trim:start', userId, { historyLength: history.length, reason })
 
-  const llmApiKey = getSystemConfig('llm_apikey')
-  const llmBaseUrl = getSystemConfig('llm_baseurl')
-  const mainModel = getSystemConfig('main_model')
-  const smallModel = getSystemConfig('small_model') ?? mainModel
+  const resolved = resolveEffectiveLlmConfig(configContextId)
 
-  if (llmApiKey !== null && llmBaseUrl !== null && smallModel !== null) {
-    try {
-      const existing = loadSummary(userId)
-      const model = deps.buildModel(llmApiKey, llmBaseUrl, smallModel)
-      const { trimmedMessages, summary } = await trimWithMemoryModel(history, TRIM_MIN, TRIM_MAX, existing, model)
-      // Preserve any messages added to history while the async trim was running
-      const currentHistory = getCachedHistory(userId)
-      const newMessages = currentHistory.slice(history.length)
-      saveSummary(userId, summary)
-      setCachedHistory(userId, [...trimmedMessages, ...newMessages])
-      log.info({ userId, retained: trimmedMessages.length, preserved: newMessages.length }, 'Smart trim complete')
-      emitUser('trim:end', userId, {
-        kept: trimmedMessages.length,
-        dropped: history.length - trimmedMessages.length,
-        success: true,
-      })
-    } catch (error) {
-      log.warn(
-        { userId, error: error instanceof Error ? error.message : String(error) },
-        'Smart trim failed in background',
-      )
-      emitUser('trim:end', userId, {
-        error: error instanceof Error ? error.message : String(error),
-        success: false,
-      })
-    }
-  } else {
-    log.warn({ userId }, 'LLM config not available for background trim')
+  if (!resolved.ok) {
+    logTrimConfigFailure(userId, configContextId, resolved)
+    return
+  }
+
+  try {
+    const existing = loadSummary(userId)
+    const model = deps.buildModel(resolved.llmApiKey, resolved.llmBaseUrl, resolved.smallModel)
+    const { trimmedMessages, summary } = await trimWithMemoryModel(history, TRIM_MIN, TRIM_MAX, existing, model)
+    // Preserve any messages added to history while the async trim was running
+    const currentHistory = getCachedHistory(userId)
+    const newMessages = currentHistory.slice(history.length)
+    saveSummary(userId, summary)
+    setCachedHistory(userId, [...trimmedMessages, ...newMessages])
+    log.info({ userId, retained: trimmedMessages.length, preserved: newMessages.length }, 'Smart trim complete')
+    emitUser('trim:end', userId, {
+      kept: trimmedMessages.length,
+      dropped: history.length - trimmedMessages.length,
+      success: true,
+    })
+  } catch (error) {
+    log.warn(
+      { userId, error: error instanceof Error ? error.message : String(error) },
+      'Smart trim failed in background',
+    )
+    emitUser('trim:end', userId, {
+      error: error instanceof Error ? error.message : String(error),
+      success: false,
+    })
   }
 }

@@ -11,8 +11,8 @@ import { z } from 'zod'
 
 import { getCachedHistory } from '../cache.js'
 import { getMainContextIdFromThreadContextId } from '../chat/scoped-context.js'
+import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { logger } from '../logger.js'
-import { getSystemConfig } from '../system-config.js'
 
 const log = logger.child({ scope: 'tools:lookup-group-history' })
 
@@ -29,7 +29,7 @@ export type LookupGroupHistoryDeps = {
     model: LanguageModel
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   }) => Promise<GenerateTextResult>
-  getSmallModel: () => LanguageModel | null
+  getSmallModel: (configContextId: string) => LanguageModel | null
 }
 
 const buildUserPrompt = (queries: string[], history: readonly ModelMessage[]): string =>
@@ -46,20 +46,28 @@ const defaultDeps: LookupGroupHistoryDeps = {
     const result = await generateText(options)
     return { text: result.text }
   },
-  getSmallModel: () => {
-    const llmApiKey = getSystemConfig('llm_apikey')
-    const llmBaseUrl = getSystemConfig('llm_baseurl')
-    const smallModel = getSystemConfig('small_model') ?? getSystemConfig('main_model')
+  getSmallModel: (configContextId) => {
+    const resolved = resolveEffectiveLlmConfig(configContextId)
 
-    if (llmApiKey === null || llmBaseUrl === null || smallModel === null) {
+    if (!resolved.ok) {
+      log.warn(
+        {
+          configContextId,
+          source: resolved.source,
+          type: resolved.type,
+          missing: resolved.type === 'missing' ? resolved.missing : undefined,
+          error: resolved.type === 'error' ? resolved.error : undefined,
+        },
+        'LLM config not available for lookup_group_history',
+      )
       return null
     }
 
     return createOpenAICompatible({
       name: 'openai-compatible',
-      apiKey: llmApiKey,
-      baseURL: llmBaseUrl,
-    })(smallModel)
+      apiKey: resolved.llmApiKey,
+      baseURL: resolved.llmBaseUrl,
+    })(resolved.smallModel)
   },
 }
 
@@ -80,7 +88,8 @@ export async function executeLookupGroupHistory(
     return 'No messages found in the main chat.'
   }
 
-  const smallModel = deps.getSmallModel()
+  const configContextId = getMainContextIdFromThreadContextId(groupId)
+  const smallModel = deps.getSmallModel(configContextId)
   if (smallModel === null) {
     log.warn({ userId }, 'No LLM config available for lookup_group_history')
     return 'Unable to search: LLM not configured.'

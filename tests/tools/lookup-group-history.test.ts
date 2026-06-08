@@ -8,12 +8,14 @@ import assert from 'node:assert/strict'
 
 import type { LanguageModel, ModelMessage } from 'ai'
 
+import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import {
   getMainContextIdFromThreadContextId,
   toScopedContextId,
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { appendHistory } from '../../src/history.js'
+import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
 
 type GenerateTextResult = {
   text: string
@@ -25,11 +27,14 @@ type LookupGroupHistoryInput = {
 }
 
 let generateTextImpl: () => Promise<GenerateTextResult>
+let builtModelCalls: Array<{ apiKey: string; baseURL: string; model: string }>
 
 describe('makeLookupGroupHistoryTool', () => {
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     await setupTestDb()
+    builtModelCalls = []
 
     generateTextImpl = (): Promise<GenerateTextResult> => Promise.resolve({ text: 'test response' })
 
@@ -39,8 +44,11 @@ describe('makeLookupGroupHistoryTool', () => {
 
     void mock.module('@ai-sdk/openai-compatible', () => ({
       createOpenAICompatible:
-        (): ((_model: string) => unknown) =>
-        (_model: string): unknown => ({}),
+        (opts: { apiKey: string; baseURL: string }): ((_model: string) => unknown) =>
+        (model: string): unknown => {
+          builtModelCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, model })
+          return { model }
+        },
     }))
   })
 
@@ -98,7 +106,9 @@ describe('makeLookupGroupHistoryTool', () => {
 describe('executeLookupGroupHistory', () => {
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     await setupTestDb()
+    builtModelCalls = []
 
     // Default implementation returns a simple result
     generateTextImpl = (): Promise<GenerateTextResult> => Promise.resolve({ text: 'test response' })
@@ -111,8 +121,11 @@ describe('executeLookupGroupHistory', () => {
     // Mock the openai-compatible module
     void mock.module('@ai-sdk/openai-compatible', () => ({
       createOpenAICompatible:
-        (): ((_model: string) => unknown) =>
-        (_model: string): unknown => ({}),
+        (opts: { apiKey: string; baseURL: string }): ((_model: string) => unknown) =>
+        (model: string): unknown => {
+          builtModelCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, model })
+          return { model }
+        },
     }))
   })
 
@@ -133,7 +146,9 @@ describe('executeLookupGroupHistory', () => {
 describe('executeLookupGroupHistory with history', () => {
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     await setupTestDb()
+    builtModelCalls = []
 
     generateTextImpl = (): Promise<GenerateTextResult> =>
       Promise.resolve({ text: 'The team decided to use REST for the API.' })
@@ -145,8 +160,11 @@ describe('executeLookupGroupHistory with history', () => {
     // Mock the openai-compatible module
     void mock.module('@ai-sdk/openai-compatible', () => ({
       createOpenAICompatible:
-        (): ((_model: string) => unknown) =>
-        (_model: string): unknown => ({}),
+        (opts: { apiKey: string; baseURL: string }): ((_model: string) => unknown) =>
+        (model: string): unknown => {
+          builtModelCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, model })
+          return { model }
+        },
     }))
   })
 
@@ -164,6 +182,33 @@ describe('executeLookupGroupHistory with history', () => {
       getSmallModel: () => 'test-model' as LanguageModel,
     })
     expect(result).toBe('The team decided to use REST for the API.')
+  })
+
+  it('uses BYOK small model for the enabled main group context without global config', async () => {
+    const { executeLookupGroupHistory } = await import('../../src/tools/lookup-group-history.js')
+    const groupId = 'group-byok-history'
+    updateByokLlmConfig(
+      groupId,
+      {
+        llm_apikey: 'sk-byok-history',
+        llm_baseurl: 'https://byok-history.invalid/v1',
+        main_model: 'byok-main-history',
+        small_model: 'byok-small-history',
+      },
+      'admin-1',
+    )
+    appendHistory(groupId, [{ role: 'user', content: 'The group picked REST.' }])
+
+    const result = await executeLookupGroupHistory('user123', groupId, ['API decision'])
+
+    expect(result).toBe('The team decided to use REST for the API.')
+    expect(builtModelCalls).toEqual([
+      {
+        apiKey: 'sk-byok-history',
+        baseURL: 'https://byok-history.invalid/v1',
+        model: 'byok-small-history',
+      },
+    ])
   })
 
   it('should return error when LLM not configured', async () => {

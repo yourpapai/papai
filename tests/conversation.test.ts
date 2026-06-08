@@ -7,11 +7,12 @@ import { mock, describe, expect, test, beforeEach, afterEach, spyOn } from 'bun:
 
 import type { ModelMessage } from 'ai'
 
+import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
 import * as cacheModule from '../src/cache.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
 import { logger } from '../src/logger.js'
 import * as systemConfigModule from '../src/system-config.js'
-import { flushMicrotasks } from './utils/test-helpers.js'
+import { flushMicrotasks, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
 // Helper type for spy instances that need cleanup
 type SpyInstance = { mockRestore: () => void }
@@ -200,6 +201,7 @@ describe('runTrimInBackground', () => {
   const mockSummaries = new Map<string, string>()
   const mockHistories = new Map<string, ModelMessage[]>()
   const mockConfigs = new Map<string, Map<string, string | null>>()
+  const modelBuildCalls: Array<{ apiKey: string; baseUrl: string; modelName: string }> = []
   const spies: SpyInstance[] = []
 
   const spySystemConfigFromMockConfigs = (): void => {
@@ -215,19 +217,24 @@ describe('runTrimInBackground', () => {
     return spy
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await setupTestDb()
+    resetSystemConfigCacheForTesting()
     generateTextImpl = defaultGenerateTextImpl
     mockSummaries.clear()
     mockHistories.clear()
     mockConfigs.clear()
+    modelBuildCalls.length = 0
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
     }))
     void mock.module('@ai-sdk/openai-compatible', () => ({
       createOpenAICompatible:
-        (): ((_model: string) => string) =>
-        (_model: string): string =>
-          'mock-model',
+        (opts: { apiKey: string; baseURL: string }): ((_model: string) => string) =>
+        (modelName: string): string => {
+          modelBuildCalls.push({ apiKey: opts.apiKey, baseUrl: opts.baseURL, modelName })
+          return 'mock-model'
+        },
     }))
   })
 
@@ -250,6 +257,7 @@ describe('runTrimInBackground', () => {
       new Map([
         ['llm_apikey', 'test-key'],
         ['llm_baseurl', 'http://test.com'],
+        ['main_model', 'main-model'],
         ['small_model', 'test-model'],
       ]),
     )
@@ -275,6 +283,78 @@ describe('runTrimInBackground', () => {
     expect(mockSummaries.get('user1')).toBe('Updated summary text')
   })
 
+  test('uses BYOK small model for supplied config context', async () => {
+    const history: ModelMessage[] = [
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi' },
+      { role: 'user', content: 'How are you?' },
+    ]
+    mockHistories.set('user1', [...history])
+    updateByokLlmConfig(
+      'ctx-byok-trim',
+      {
+        llm_apikey: 'sk-byok-trim',
+        llm_baseurl: 'https://byok-trim.invalid/v1',
+        main_model: 'byok-main-trim',
+        small_model: 'byok-small-trim',
+      },
+      'admin-1',
+    )
+
+    trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
+    trackSpy(
+      spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
+        mockHistories.set(userId, [...messages])
+      }),
+    )
+    trackSpy(
+      spyOn(cacheModule, 'setCachedSummary').mockImplementation((userId: string, summary: string) => {
+        mockSummaries.set(userId, summary)
+      }),
+    )
+    trackSpy(spyOn(cacheModule, 'getCachedSummary').mockReturnValue(null))
+
+    await runTrimInBackground('user1', history, undefined, 'ctx-byok-trim')
+    await flushMicrotasks()
+
+    expect(modelBuildCalls).toEqual([
+      {
+        apiKey: 'sk-byok-trim',
+        baseUrl: 'https://byok-trim.invalid/v1',
+        modelName: 'byok-small-trim',
+      },
+    ])
+    expect(mockSummaries.get('user1')).toBe('Updated summary text')
+  })
+
+  test('skips incomplete BYOK without falling back to global config or mutating history', async () => {
+    const history: ModelMessage[] = [{ role: 'user', content: 'Hello' }]
+    mockHistories.set('user1', [...history])
+    enableByokForContext('ctx-byok-incomplete-trim', 'admin-1')
+    resetSystemConfigCacheForTesting()
+    systemConfigModule.setSystemConfig('llm_apikey', 'sk-global-trim', 'env')
+    systemConfigModule.setSystemConfig('llm_baseurl', 'https://global-trim.invalid/v1', 'env')
+    systemConfigModule.setSystemConfig('main_model', 'global-main-trim', 'env')
+    systemConfigModule.setSystemConfig('small_model', 'global-small-trim', 'env')
+    let historyWrites = 0
+
+    trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
+    trackSpy(
+      spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
+        historyWrites += 1
+        mockHistories.set(userId, [...messages])
+      }),
+    )
+    trackSpy(spyOn(cacheModule, 'setCachedSummary').mockImplementation(() => {}))
+
+    await runTrimInBackground('user1', history, undefined, 'ctx-byok-incomplete-trim')
+    await flushMicrotasks()
+
+    expect(modelBuildCalls).toHaveLength(0)
+    expect(historyWrites).toBe(0)
+    expect(mockHistories.get('user1')).toEqual(history)
+  })
+
   test('preserves new messages added during async trim', async () => {
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
@@ -286,6 +366,7 @@ describe('runTrimInBackground', () => {
       new Map([
         ['llm_apikey', 'test-key'],
         ['llm_baseurl', 'http://test.com'],
+        ['main_model', 'main-model'],
         ['small_model', 'test-model'],
       ]),
     )
@@ -337,6 +418,7 @@ describe('runTrimInBackground', () => {
       new Map([
         ['llm_apikey', 'test-key'],
         ['llm_baseurl', 'http://test.com'],
+        ['main_model', 'main-model'],
         ['small_model', 'test-model'],
       ]),
     )
@@ -374,6 +456,7 @@ describe('runTrimInBackground', () => {
       new Map([
         ['llm_apikey', 'test-key'],
         ['llm_baseurl', 'http://test.com'],
+        ['main_model', 'main-model'],
         ['small_model', 'test-model'],
       ]),
     )

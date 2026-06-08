@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.js'
 import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
@@ -34,6 +35,7 @@ type GenerateTextResult = {
   response: { messages: ModelMessage[] }
 }
 type GenerateTextCall = { model: string; system: string; messages: ModelMessage[]; tools: unknown }
+type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
 
 // Helper defined outside test blocks — no-conditional-in-test requires predicate helpers at module scope
 function messageIncludesText(msgs: readonly ModelMessage[], text: string): boolean {
@@ -95,6 +97,7 @@ function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): v
 
 describe('dispatchExecution', () => {
   const generateTextCalls: GenerateTextCall[] = []
+  const buildModelCalls: BuildModelCall[] = []
 
   let generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
     generateTextCalls.push(args)
@@ -109,7 +112,9 @@ describe('dispatchExecution', () => {
 
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     generateTextCalls.length = 0
+    buildModelCalls.length = 0
     generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
       generateTextCalls.push(args)
       return Promise.resolve({
@@ -128,8 +133,10 @@ describe('dispatchExecution', () => {
     void mock.module('@ai-sdk/openai-compatible', () => ({
       createOpenAICompatible:
         (opts: { name: string; apiKey: string; baseURL: string }): ((modelId: string) => string) =>
-        (modelId: string): string =>
-          `${opts.name}:${modelId}`,
+        (modelId: string): string => {
+          buildModelCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, modelId })
+          return `${opts.name}:${modelId}`
+        },
     }))
     await setupTestDb()
   })
@@ -287,6 +294,31 @@ describe('dispatchExecution', () => {
       const provider = createMockProvider()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
       expect(generateTextCalls[0]!.model).toContain('main-model')
+    })
+
+    test('uses complete BYOK config for full generation without global config', async () => {
+      setConfig(USER_ID, 'timezone', 'UTC')
+      updateByokLlmConfig(
+        USER_ID,
+        {
+          llm_apikey: 'sk-byok-deferred',
+          llm_baseurl: 'https://byok-deferred.invalid/v1',
+          main_model: 'byok-main-deferred',
+        },
+        'admin-1',
+      )
+      const provider = createMockProvider()
+
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      expect(buildModelCalls).toEqual([
+        {
+          apiKey: 'sk-byok-deferred',
+          baseURL: 'https://byok-deferred.invalid/v1',
+          modelId: 'byok-main-deferred',
+        },
+      ])
+      expect(generateTextCalls[0]!.model).toBe('openai-compatible:byok-main-deferred')
     })
 
     test('includes tools with proactive mode', async () => {
