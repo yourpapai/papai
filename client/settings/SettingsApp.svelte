@@ -7,7 +7,8 @@
   import Shell from '../shared/ui/Shell.svelte'
 
   import SettingsSidebar from './components/SettingsSidebar.svelte'
-  import type { SidebarItem } from './components/SettingsSidebar.svelte'
+  import type { SidebarGroup } from './components/SettingsSidebar.svelte'
+  import SettingsJumpMenu from './components/SettingsJumpMenu.svelte'
   import SettingsTopBar from './components/SettingsTopBar.svelte'
   import { tick, untrack } from 'svelte'
   import { useScrollSpy } from './scrollspy.js'
@@ -33,47 +34,59 @@
 
   const isGroup = $derived(activeContext()?.kind === 'group')
 
-  const items = $derived.by((): SidebarItem[] => {
-    const list: SidebarItem[] = [
-      { id: 'profile', label: 'Profile' },
-      { id: 'task-provider', label: 'Task provider' },
-      { id: 'tools', label: 'Tools' },
-      { id: 'mcp', label: 'MCP' },
-      { id: 'plugins', label: 'Plugins' },
-      { id: 'identity', label: 'Identity' },
+  const groups = $derived.by((): SidebarGroup[] => {
+    const list: SidebarGroup[] = [
+      {
+        kicker: 'Personal',
+        items: [
+          { id: 'profile', label: 'Profile' },
+          { id: 'task-provider', label: 'Task provider' },
+          { id: 'tools', label: 'Tools' },
+          { id: 'identity', label: 'Identity' },
+          ...(isGroup
+            ? [{ id: 'members', label: 'Members' }, { id: 'group-provider', label: 'Group provider' }]
+            : []),
+        ],
+      },
+      {
+        kicker: 'Integrations',
+        items: [
+          { id: 'mcp', label: 'MCP' },
+          { id: 'plugins', label: 'Plugins' },
+        ],
+      },
     ]
-    if (isGroup) {
-      list.push({ id: 'members', label: 'Members' }, { id: 'group-provider', label: 'Group provider' })
-    }
+    const admin: SidebarGroup = { kicker: 'Admin', danger: true, items: [] }
     if (settingsSession.isBotAdmin) {
-      list.push(
+      admin.items = [
         { id: 'instances', label: 'Instances' },
         { id: 'system', label: 'System' },
         { id: 'plugin-config', label: 'Plugin config' },
         { id: 'users', label: 'Users' },
         { id: 'groups', label: 'Groups' },
         { id: 'announce', label: 'Announce' },
-      )
+      ]
     }
     if (settingsSession.isSuperAdmin) {
-      list.push({ id: 'admins', label: 'Admins' }, { id: 'plugin-approval', label: 'Plugin approval' })
+      admin.items = [...admin.items, { id: 'admins', label: 'Admins' }, { id: 'plugin-approval', label: 'Plugin approval' }]
     }
+    if (admin.items.length > 0) list.push(admin)
     return list
   })
+
+  const sectionIds = $derived(groups.flatMap((g) => g.items.map((i) => i.id)))
 
   const ctx = $derived(settingsSession.activeContextId)
 
   $effect(() => {
-    const ids = items.map((item) => item.id)
     untrack(() => {
-      if (ids.length > 0 && !ids.includes(activeId)) activeId = ids[0]
+      if (sectionIds.length > 0 && !sectionIds.includes(activeId)) activeId = sectionIds[0]
     })
   })
 
   $effect(() => {
     if (settingsSession.status !== 'ready') return
-    const ids = items.map((item) => item.id)
-    const spy = useScrollSpy(ids, (id) => {
+    const spy = useScrollSpy(sectionIds, (id) => {
       activeId = id
       if (window.location.hash !== `#${id}`) window.history.replaceState(null, '', `#${id}`)
     })
@@ -95,30 +108,39 @@
       <SettingsTopBar />
     {/snippet}
     {#snippet children()}
+      <SettingsJumpMenu {groups} {activeId} />
       <div class="settings-grid">
-        <SettingsSidebar {items} {activeId} />
+        <SettingsSidebar {groups} {activeId} />
         <main class="settings-grid__main">
-          <ProfileSection contextId={ctx} />
-          <TaskProviderSection contextId={ctx} />
-          <ToolsSection contextId={ctx} />
-          <McpSection contextId={ctx} />
-          <PluginsSection contextId={ctx} />
-          <IdentitySection contextId={ctx} />
-          {#if isGroup}
-            <MembersSection contextId={ctx} />
-            <GroupProviderSection contextId={ctx} />
-          {/if}
-          {#if settingsSession.isBotAdmin}
-            <AdminInstancesSection />
-            <AdminSystemSection />
-            <AdminPluginsConfigSection />
-            <AdminUsersSection />
-            <AdminGroupsSection />
-            <AdminAnnounceSection />
-          {/if}
-          {#if settingsSession.isSuperAdmin}
-            <AdminAdminsSection />
-            <AdminPluginsApprovalSection catalogContextId={ctx} />
+          <div class="settings-group">
+            <ProfileSection contextId={ctx} />
+            <TaskProviderSection contextId={ctx} />
+            <ToolsSection contextId={ctx} />
+            <IdentitySection contextId={ctx} />
+            {#if isGroup}
+              <MembersSection contextId={ctx} />
+              <GroupProviderSection contextId={ctx} />
+            {/if}
+          </div>
+          <div class="settings-group">
+            <McpSection contextId={ctx} />
+            <PluginsSection contextId={ctx} />
+          </div>
+          {#if settingsSession.isBotAdmin || settingsSession.isSuperAdmin}
+            <div class="settings-group settings-group--wide settings-admin-zone">
+              {#if settingsSession.isBotAdmin}
+                <AdminInstancesSection />
+                <AdminSystemSection />
+                <AdminPluginsConfigSection />
+                <AdminUsersSection />
+                <AdminGroupsSection />
+                <AdminAnnounceSection />
+              {/if}
+              {#if settingsSession.isSuperAdmin}
+                <AdminAdminsSection />
+                <AdminPluginsApprovalSection catalogContextId={ctx} />
+              {/if}
+            </div>
           {/if}
         </main>
       </div>

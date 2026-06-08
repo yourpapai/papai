@@ -123,4 +123,24 @@ describe('SettingsApp', () => {
     expect(document.querySelector('#plugin-approval')).toBeNull()
     void unmount(component)
   })
+
+  test('renders three group kickers for an admin session', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({ isBotAdmin: true, isSuperAdmin: true })
+    const component = mountApp()
+    await drain()
+    expect(document.body.textContent).toContain('Personal')
+    expect(document.body.textContent).toContain('Integrations')
+    expect(document.body.textContent).toContain('Admin')
+    void unmount(component)
+  })
+
+  test('non-admin session omits the Admin group', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({ isBotAdmin: false, isSuperAdmin: false })
+    const component = mountApp()
+    await drain()
+    expect(document.body.textContent).not.toContain('Admin')
+    void unmount(component)
+  })
 })
