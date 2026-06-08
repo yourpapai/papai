@@ -24,7 +24,7 @@ import { setSystemConfig } from '../../src/system-config.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import { flushMicrotasks, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
 
 // Track generateText calls
 type GenerateTextResult = {
@@ -445,6 +445,82 @@ describe('dispatchExecution', () => {
       expect(resolvedContextIds).toEqual([scopedMainContextId])
       expect(loadFacts(scopedThreadContextId)).toEqual([
         expect.objectContaining({ identifier: '#21', title: 'Scoped thread task', url: '' }),
+      ])
+    })
+
+    test('full mode background trim uses scoped main config context instead of thread storage', async () => {
+      setConfig(USER_ID, 'timezone', 'UTC')
+      const scopedThreadContextId = toScopedThreadContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+        threadId: '42',
+      })
+      const scopedMainContextId = toScopedContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+      })
+      updateByokLlmConfig(
+        scopedMainContextId,
+        {
+          llm_apikey: 'sk-byok-full-trim',
+          llm_baseurl: 'https://byok-full-trim.invalid/v1',
+          main_model: 'byok-full-main',
+          small_model: 'byok-full-small',
+        },
+        'admin-1',
+      )
+      appendHistory(
+        scopedThreadContextId,
+        Array.from({ length: 99 }, (_, index): ModelMessage => ({ role: 'assistant', content: `old ${index}` })),
+      )
+      const generateTextResults: readonly Promise<GenerateTextResult>[] = [
+        Promise.resolve({
+          text: 'Thread response',
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          response: { messages: [{ role: 'assistant', content: 'new response' }] },
+        }),
+        Promise.resolve({
+          text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          response: { messages: [] },
+        }),
+      ]
+      let callIndex = 0
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        const result = generateTextResults[callIndex]!
+        callIndex += 1
+        return result
+      }
+
+      await dispatchExecution(
+        {
+          createdByUserId: USER_ID,
+          deliveryTarget: {
+            contextId: '-1001',
+            storageContextId: scopedThreadContextId,
+            contextType: 'group',
+            threadId: '42',
+            audience: 'personal',
+            mentionUserIds: [USER_ID],
+            createdByUserId: USER_ID,
+            createdByUsername: null,
+          },
+        },
+        'scheduled',
+        'check overdue',
+        metadata,
+        () => createMockProvider(),
+      )
+      await flushMicrotasks()
+
+      expect(buildModelCalls).toEqual([
+        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-main' },
+        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
       ])
     })
 

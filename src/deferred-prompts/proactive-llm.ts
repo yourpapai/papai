@@ -208,7 +208,8 @@ async function runFullGeneration(
   prompt: string,
   metadata: ExecutionMetadata,
   matchedTasksSummary: string | undefined,
-  config: { apiKey: string; baseURL: string; mainModel: string },
+  config: LlmConfig,
+  configContextId: string,
   provider: Awaited<ReturnType<BuildProviderFn>>,
   deps: ProactiveLlmDeps,
 ): Promise<string> {
@@ -239,7 +240,13 @@ async function runFullGeneration(
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
-  persistProactiveResults(createdByUserId, storageContextId, result, getCachedHistory(storageContextId))
+  persistProactiveResults(
+    createdByUserId,
+    storageContextId,
+    configContextId,
+    result,
+    getCachedHistory(storageContextId),
+  )
   return resultTextOrDone(result.text)
 }
 
@@ -260,7 +267,17 @@ async function invokeFull(
   if (typeof config === 'string') return config
 
   const provider = await resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)
-  return runFullGeneration(execCtx, type, prompt, metadata, matchedTasksSummary, config, provider, deps)
+  return runFullGeneration(
+    execCtx,
+    type,
+    prompt,
+    metadata,
+    matchedTasksSummary,
+    config,
+    configContextId,
+    provider,
+    deps,
+  )
 }
 
 export function dispatchExecution(...args: DispatchExecutionArgs): Promise<string> {
