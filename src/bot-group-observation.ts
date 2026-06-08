@@ -14,7 +14,7 @@ import {
 
 export function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void {
   if (msg.contextType !== 'group') return
-  if (msg.commandMatch === undefined && !msg.isMentioned) return
+  if (msg.commandMatch === undefined && !msg.isMentioned && msg.isReplyToBot !== true) return
   const provider = resolveSourceProviderName(chat, msg.platformInstanceId)
   const storageContextId = toScopedContextId({
     platformInstanceId: msg.platformInstanceId,

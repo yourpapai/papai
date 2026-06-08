@@ -126,7 +126,7 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
 function shouldIgnoreGroupMessage(msg: IncomingMessage): boolean {
   if (msg.contextType !== 'group') return false
   if (msg.commandMatch !== undefined && msg.commandMatch !== '') return false
-  return !msg.isMentioned
+  return !msg.isMentioned && msg.isReplyToBot !== true
 }
 async function handleMessage(
   chat: ChatProvider,
@@ -161,7 +161,7 @@ function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationRes
   if (!auth.allowed) return false
   if (msg.contextType !== 'group') return true
   if (msg.commandMatch !== undefined) return true
-  return msg.isMentioned
+  return msg.isMentioned || msg.isReplyToBot === true
 }
 function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, storageContextId: string): void {
   if (msg.contextType !== 'group' || msg.fileCandidates === undefined || msg.fileCandidates.length === 0) return
