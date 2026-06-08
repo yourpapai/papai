@@ -89,6 +89,7 @@ type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCal
 export function persistProactiveResults(
   creatorId: string,
   storageContextId: string,
+  configContextId: string,
   result: LlmResult,
   history: readonly ModelMessage[],
 ): void {
@@ -104,7 +105,7 @@ export function persistProactiveResults(
   if (msgs.length > 0) {
     appendHistory(storageContextId, msgs)
     const updated = [...history, ...msgs]
-    if (shouldTriggerTrim(updated)) void runTrimInBackground(storageContextId, updated)
+    if (shouldTriggerTrim(updated)) void runTrimInBackground(storageContextId, updated, undefined, configContextId)
   }
   log.debug({ userId: creatorId, toolCalls: toolCallCount(result) }, 'Proactive LLM response received')
 }
