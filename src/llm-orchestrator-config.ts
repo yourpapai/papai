@@ -6,7 +6,7 @@
 import { getCachedConfig } from './cache.js'
 import { getRequiredProviderConfigKeysForContext } from './config-keys.js'
 import { getConfig, getConfigValue } from './config.js'
-import { getSystemConfig } from './system-config.js'
+import { resolveEffectiveLlmConfig } from './llm-config-resolver.js'
 
 export interface LlmConfig {
   llmApiKey: string
@@ -25,14 +25,15 @@ export const checkRequiredProviderConfig = (contextId: string): string[] => {
   return requiredKeys.filter((key) => getConfigValue(contextId, key) === null)
 }
 
-export const getLlmConfig = (): LlmConfig => {
-  const llmApiKey = getSystemConfig('llm_apikey')
-  const llmBaseUrl = getSystemConfig('llm_baseurl')
-  const mainModel = getSystemConfig('main_model')
-  if (llmApiKey === null || llmBaseUrl === null || mainModel === null) {
-    throw new Error('system_config is incomplete: required LLM keys are missing')
+export const getLlmConfig = (configContextId = ''): LlmConfig => {
+  const resolved = resolveEffectiveLlmConfig(configContextId)
+  if (!resolved.ok) {
+    if (resolved.type === 'missing') {
+      throw new Error(`${resolved.source} LLM config is incomplete: missing ${resolved.missing.join(', ')}`)
+    }
+    throw new Error(`${resolved.source} LLM config is unreadable: ${resolved.error}`)
   }
-  return { llmApiKey, llmBaseUrl, mainModel }
+  return { llmApiKey: resolved.llmApiKey, llmBaseUrl: resolved.llmBaseUrl, mainModel: resolved.mainModel }
 }
 
 export const resolveConfigId = (contextId: string, configContextId: string | undefined): string => {
