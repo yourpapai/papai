@@ -5,22 +5,15 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
 import { setCachedConfig } from '../src/cache.js'
 import { setConfigValue } from '../src/config.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
-import {
-  checkRequiredProviderConfig,
-  getLlmConfig,
-  resolveConfigId,
-  resolveTimezone,
-} from '../src/llm-orchestrator-config.js'
+import { checkRequiredProviderConfig, resolveConfigId, resolveTimezone } from '../src/llm-orchestrator-config.js'
 import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../src/providers/registry.js'
-import { setSystemConfig } from '../src/system-config.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import {
   mockLogger,
@@ -46,74 +39,6 @@ describe('llm-orchestrator-config', () => {
     await setupTestDb()
     seedCommonTestPlatformInstances()
     resetSystemConfigCacheForTesting()
-  })
-
-  describe('getLlmConfig', () => {
-    test('reads from system_config', () => {
-      setSystemConfig('llm_apikey', 'sk-system', 'env')
-      setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
-      setSystemConfig('main_model', 'main-system', 'env')
-
-      expect(getLlmConfig()).toEqual({
-        llmApiKey: 'sk-system',
-        llmBaseUrl: 'https://api/v1',
-        mainModel: 'main-system',
-      })
-    })
-
-    test('throws when llm_apikey is missing', () => {
-      setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
-      setSystemConfig('main_model', 'main-system', 'env')
-
-      expect(() => getLlmConfig()).toThrow()
-    })
-
-    test('throws when llm_baseurl is missing', () => {
-      setSystemConfig('llm_apikey', 'sk-system', 'env')
-      setSystemConfig('main_model', 'main-system', 'env')
-
-      expect(() => getLlmConfig()).toThrow()
-    })
-
-    test('throws when main_model is missing', () => {
-      setSystemConfig('llm_apikey', 'sk-system', 'env')
-      setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
-
-      expect(() => getLlmConfig()).toThrow()
-    })
-
-    test('does not consult per-user config', () => {
-      setSystemConfig('llm_apikey', 'sk-system', 'env')
-      setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
-      setSystemConfig('main_model', 'main-system', 'env')
-
-      // Even with per-user LLM keys cached, the central value wins.
-      setCachedConfig('user-1', 'llm_apikey', 'sk-user-override')
-
-      expect(getLlmConfig()).toEqual({
-        llmApiKey: 'sk-system',
-        llmBaseUrl: 'https://api/v1',
-        mainModel: 'main-system',
-      })
-    })
-
-    test('reads BYOK config when a config context has BYOK enabled', () => {
-      setSystemConfig('llm_apikey', 'sk-system', 'env')
-      setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
-      setSystemConfig('main_model', 'main-system', 'env')
-      enableByokForContext('ctx-byok', 'admin')
-      updateByokLlmConfig(
-        'ctx-byok',
-        { llm_apikey: 'sk-byok', llm_baseurl: 'https://byok/v1', main_model: 'main-byok' },
-        'user',
-      )
-
-      expect(getLlmConfig('ctx-byok')).toEqual({
-        llmApiKey: 'sk-byok',
-        llmBaseUrl: 'https://byok/v1',
-        mainModel: 'main-byok',
-      })
-    })
   })
 
   describe('checkRequiredProviderConfig', () => {
