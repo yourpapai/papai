@@ -35,7 +35,7 @@ describe('migration052ByokLlmCredentials', () => {
     migration052ByokLlmCredentials.up(db)
 
     const sql = tableSql(db, 'byok_llm_credentials')
-    expect(sql).toContain('context_id TEXT PRIMARY KEY')
+    expect(sql).toContain('context_id TEXT NOT NULL PRIMARY KEY')
     expect(sql).toContain('enabled INTEGER NOT NULL DEFAULT 0')
     expect(sql).toContain('encrypted_config TEXT')
     expect(sql).toContain('updated_at INTEGER NOT NULL')
@@ -54,5 +54,16 @@ describe('migration052ByokLlmCredentials', () => {
     expect(db.query(`SELECT encrypted_config FROM byok_llm_credentials WHERE context_id = 'ctx-1'`).get()).toEqual({
       encrypted_config: null,
     })
+  })
+
+  test('rejects rows with null context id', () => {
+    migration052ByokLlmCredentials.up(db)
+
+    expect(() =>
+      db.run(
+        `INSERT INTO byok_llm_credentials (context_id, enabled, encrypted_config, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)`,
+        [null, 1, null, 1710000000000, 'admin-1'],
+      ),
+    ).toThrow()
   })
 })
