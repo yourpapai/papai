@@ -26,13 +26,17 @@
     finally { loading = false }
   }
 
-  async function save(key: string, value: string): Promise<void> {
+  async function save(key: string, value: string): Promise<boolean> {
     error = null; status = null
     try {
       await submitAdminSystem({ key, value })
       await load()
       status = `${key} updated.`
-    } catch (err) { error = err instanceof Error ? err.message : String(err) }
+      return true
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+      return false
+    }
   }
 
   $effect(() => { void load() })
@@ -50,7 +54,7 @@
 
   <table class="system-kv">
     <thead>
-      <tr><th class="t-label">Key</th><th class="t-label">Value</th><th class="t-label system-kv__th-action">Action</th></tr>
+      <tr><th scope="col" class="t-label">Key</th><th scope="col" class="t-label">Value</th><th scope="col" class="t-label system-kv__th-action">Action</th></tr>
     </thead>
     <tbody>
       {#each keys as key (key)}
@@ -58,7 +62,7 @@
           keyName={key}
           value={config[key]?.value ?? null}
           sensitive={SENSITIVE_SYSTEM_KEYS.has(key)}
-          onSave={(v) => void save(key, v)} />
+          onSave={(v) => save(key, v)} />
       {/each}
     </tbody>
   </table>

@@ -12,7 +12,7 @@
     keyName: string
     value: string | null
     sensitive: boolean
-    onSave: (value: string) => void
+    onSave: (value: string) => Promise<boolean>
   }
   let { keyName, value, sensitive, onSave }: Props = $props()
 
@@ -21,13 +21,15 @@
 
   const display = $derived(value === null ? null : sensitive ? maskSecret(value) : value)
 
-  function start(): void { editing = true; draft = '' }
+  function start(): void { editing = true; draft = sensitive ? '' : (value ?? '') }
   function cancel(): void { editing = false; draft = '' }
-  function save(): void {
+  async function save(): Promise<void> {
     if (draft.trim() === '') return
-    onSave(draft)
-    editing = false
-    draft = ''
+    const ok = await onSave(draft)
+    if (ok) {
+      editing = false
+      draft = ''
+    }
   }
 </script>
 
@@ -49,7 +51,7 @@
   </td>
   <td class="kv-row__action">
     {#if editing}
-      <Btn variant="primary" size="sm" testid={`system-save-${keyName}`} onClick={save}>
+      <Btn variant="primary" size="sm" testid={`system-save-${keyName}`} onClick={() => void save()}>
         {#snippet children()}Save{/snippet}
       </Btn>
       <Btn variant="secondary" size="sm" testid={`system-cancel-${keyName}`} onClick={cancel}>
@@ -66,6 +68,6 @@
 <style>
   .kv-row__key { color: var(--text-muted); padding: 8px 12px; white-space: nowrap; vertical-align: middle; }
   .kv-row__val { padding: 8px 12px; vertical-align: middle; }
-  .kv-row__action { padding: 8px 12px; text-align: right; white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; }
+  .kv-row__action { padding: 8px 12px; white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; }
   .kv-row { border-bottom: 1px solid var(--border); }
 </style>

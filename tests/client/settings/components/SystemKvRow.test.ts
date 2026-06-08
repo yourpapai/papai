@@ -18,7 +18,7 @@ test('shows masked value for a secret key and no input until Edit', () => {
   const target = document.querySelector<HTMLElement>('#root')!
   const c = mount(SystemKvRow, {
     target,
-    props: { keyName: 'llm_apikey', value: '****d2a0', sensitive: true, onSave: () => {} },
+    props: { keyName: 'llm_apikey', value: '****d2a0', sensitive: true, onSave: () => Promise.resolve(true) },
   })
   flushSync()
   expect(target.textContent).toContain('••••d2a0')
@@ -26,7 +26,7 @@ test('shows masked value for a secret key and no input until Edit', () => {
   void unmount(c)
 })
 
-test('Edit reveals an input and Save emits the draft', () => {
+test('Edit reveals an input and Save emits the draft', async () => {
   let saved = ''
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.querySelector<HTMLElement>('#root')!
@@ -38,6 +38,7 @@ test('Edit reveals an input and Save emits the draft', () => {
       sensitive: false,
       onSave: (v: string) => {
         saved = v
+        return Promise.resolve(true)
       },
     },
   })
@@ -49,6 +50,83 @@ test('Edit reveals an input and Save emits the draft', () => {
   input.dispatchEvent(new Event('input', { bubbles: true }))
   flushSync()
   target.querySelector<HTMLButtonElement>('[data-testid="system-save-main_model"]')!.click()
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  flushSync()
   expect(saved).toBe('claude')
+  void unmount(c)
+})
+
+test('Cancel returns to view mode without calling onSave', () => {
+  let calls = 0
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SystemKvRow, {
+    target,
+    props: {
+      keyName: 'main_model',
+      value: 'gpt',
+      sensitive: false,
+      onSave: () => {
+        calls++
+        return Promise.resolve(true)
+      },
+    },
+  })
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="system-edit-main_model"]')!.click()
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="system-cancel-main_model"]')!.click()
+  flushSync()
+  expect(target.querySelector('[data-testid="system-input-main_model"]')).toBeNull()
+  expect(calls).toBe(0)
+  void unmount(c)
+})
+
+test('Save with an empty draft is a no-op', async () => {
+  let calls = 0
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  // sensitive row so Edit opens a blank draft
+  const c = mount(SystemKvRow, {
+    target,
+    props: {
+      keyName: 'llm_apikey',
+      value: '****d2a0',
+      sensitive: true,
+      onSave: () => {
+        calls++
+        return Promise.resolve(true)
+      },
+    },
+  })
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="system-edit-llm_apikey"]')!.click()
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="system-save-llm_apikey"]')!.click()
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  flushSync()
+  expect(calls).toBe(0)
+  void unmount(c)
+})
+
+test('keeps the row in edit mode when the save fails', async () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SystemKvRow, {
+    target,
+    props: { keyName: 'main_model', value: 'gpt', sensitive: false, onSave: () => Promise.resolve(false) },
+  })
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="system-edit-main_model"]')!.click()
+  flushSync()
+  const input = target.querySelector<HTMLInputElement>('[data-testid="system-input-main_model"]')!
+  input.value = 'claude'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="system-save-main_model"]')!.click()
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  flushSync()
+  // failed save → still editing, input still present
+  expect(target.querySelector('[data-testid="system-input-main_model"]')).not.toBeNull()
   void unmount(c)
 })
