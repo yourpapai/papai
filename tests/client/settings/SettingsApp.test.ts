@@ -150,4 +150,18 @@ describe('SettingsApp', () => {
     expect(kickers[1]!.textContent).toContain('Integrations')
     void unmount(component)
   })
+
+  test('personal and integrations sections carry group eyebrows in their headers', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({ isBotAdmin: false, isSuperAdmin: false })
+    const component = mountApp()
+    await drain()
+    const target = document.querySelector<HTMLElement>('#root')!
+    const eyebrowText = Array.from(target.querySelectorAll('.ui-page-header .ui-caption'))
+      .map((e) => e.textContent)
+      .join(' ')
+    expect(eyebrowText).toContain('Personal')
+    expect(eyebrowText).toContain('Integrations')
+    void unmount(component)
+  })
 })

@@ -77,7 +77,7 @@
             class="settings-field"
             data-testid={`plugin-config-key-${plugin.pluginId}-${keyState.key}`}>
             <div class="settings-field__head">
-              <span class="settings-field__label">{keyState.label}</span>
+              <span class="t-label settings-field__label">{keyState.label}</span>
               {#if keyState.value !== null}
                 <Secret value={keyState.value} />
               {:else}

@@ -101,7 +101,7 @@
 </script>
 
 <section id="task-provider" class="settings-section">
-  <PageHeader title="Task provider">
+  <PageHeader eyebrow="Personal" title="Task provider">
     {#snippet action()}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="task-provider-refresh" />
     {/snippet}

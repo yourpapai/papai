@@ -85,7 +85,7 @@
 </script>
 
 <section id="identity" class="settings-section">
-  <PageHeader title={headerTitle}>
+  <PageHeader eyebrow="Personal" title={headerTitle}>
     {#snippet action()}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="identity-refresh" />
     {/snippet}

@@ -90,7 +90,7 @@
 </script>
 
 <section id="tools" class="settings-section">
-  <PageHeader title="Tools">
+  <PageHeader eyebrow="Personal" title="Tools">
     {#snippet action()}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="tools-refresh" />
     {/snippet}

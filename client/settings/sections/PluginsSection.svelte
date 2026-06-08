@@ -90,7 +90,7 @@
 </script>
 
 <section id="plugins" class="settings-section">
-  <PageHeader title="Plugins">
+  <PageHeader eyebrow="Integrations" title="Plugins">
     {#snippet action()}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="plugins-refresh" />
     {/snippet}
