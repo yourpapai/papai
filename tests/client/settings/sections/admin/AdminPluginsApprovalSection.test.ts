@@ -133,4 +133,20 @@ describe('AdminPluginsApprovalSection', () => {
     expect(target.querySelector('[data-testid="plugin-reject-hello-world"]')?.classList.contains('ui-btn')).toBe(true)
     void unmount(component)
   })
+
+  test('approve is a primary button and reject is a danger button', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureApprovalMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsApprovalSection, { target, props: { catalogContextId: 'user:1' } })
+    await drain()
+    const approve = target.querySelector('[data-testid="plugin-approve-hello-world"]')!
+    const reject = target.querySelector('[data-testid="plugin-reject-hello-world"]')!
+    expect(approve).not.toBeNull()
+    expect(reject).not.toBeNull()
+    expect(approve.className).toContain('ui-btn--primary')
+    expect(reject.className).toContain('ui-btn--danger')
+    void unmount(component)
+  })
 })

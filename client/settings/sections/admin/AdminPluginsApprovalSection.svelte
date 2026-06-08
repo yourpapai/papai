@@ -88,7 +88,7 @@
         <Btn variant="primary" size="sm" testid={`plugin-approve-${row.id}`} onClick={() => void decide(row.id, 'approve')}>
           {#snippet children()}Approve{/snippet}
         </Btn>
-        <Btn variant="ghost" size="sm" testid={`plugin-reject-${row.id}`} onClick={() => void decide(row.id, 'reject')}>
+        <Btn variant="danger" size="sm" testid={`plugin-reject-${row.id}`} onClick={() => void decide(row.id, 'reject')}>
           {#snippet children()}Reject{/snippet}
         </Btn>
       {/if}
