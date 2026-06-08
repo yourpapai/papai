@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
 import { setCachedConfig } from '../src/cache.js'
 import { setConfigValue } from '../src/config.js'
 import { setContextSettings } from '../src/instances/context-store.js'
@@ -41,6 +42,7 @@ const assignYoutrackContext = (contextId: string): void => {
 describe('llm-orchestrator-config', () => {
   beforeEach(async () => {
     mockLogger()
+    process.env['INSTANCE_CONFIG_KEY'] = 'd'.repeat(64)
     await setupTestDb()
     seedCommonTestPlatformInstances()
     resetSystemConfigCacheForTesting()
@@ -92,6 +94,24 @@ describe('llm-orchestrator-config', () => {
         llmApiKey: 'sk-system',
         llmBaseUrl: 'https://api/v1',
         mainModel: 'main-system',
+      })
+    })
+
+    test('reads BYOK config when a config context has BYOK enabled', () => {
+      setSystemConfig('llm_apikey', 'sk-system', 'env')
+      setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
+      setSystemConfig('main_model', 'main-system', 'env')
+      enableByokForContext('ctx-byok', 'admin')
+      updateByokLlmConfig(
+        'ctx-byok',
+        { llm_apikey: 'sk-byok', llm_baseurl: 'https://byok/v1', main_model: 'main-byok' },
+        'user',
+      )
+
+      expect(getLlmConfig('ctx-byok')).toEqual({
+        llmApiKey: 'sk-byok',
+        llmBaseUrl: 'https://byok/v1',
+        mainModel: 'main-byok',
       })
     })
   })
