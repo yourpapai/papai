@@ -16,6 +16,7 @@
   import ProfileSection from './sections/ProfileSection.svelte'
   import TaskProviderSection from './sections/TaskProviderSection.svelte'
   import ToolsSection from './sections/ToolsSection.svelte'
+  import ByokSection from './sections/ByokSection.svelte'
   import McpSection from './sections/McpSection.svelte'
   import PluginsSection from './sections/PluginsSection.svelte'
   import IdentitySection from './sections/IdentitySection.svelte'
@@ -23,6 +24,7 @@
   import GroupProviderSection from './sections/GroupProviderSection.svelte'
   import AdminInstancesSection from './sections/admin/AdminInstancesSection.svelte'
   import AdminSystemSection from './sections/admin/AdminSystemSection.svelte'
+  import AdminByokSection from './sections/admin/AdminByokSection.svelte'
   import AdminUsersSection from './sections/admin/AdminUsersSection.svelte'
   import AdminGroupsSection from './sections/admin/AdminGroupsSection.svelte'
   import AdminAdminsSection from './sections/admin/AdminAdminsSection.svelte'
@@ -42,6 +44,7 @@
           { id: 'profile', label: 'Profile' },
           { id: 'task-provider', label: 'Task provider' },
           { id: 'tools', label: 'Tools' },
+          { id: 'byok', label: 'BYOK LLM' },
           { id: 'identity', label: 'Identity' },
           ...(isGroup
             ? [
@@ -64,6 +67,7 @@
       admin.items = [
         { id: 'instances', label: 'Instances' },
         { id: 'system', label: 'System' },
+        { id: 'byok-admin', label: 'BYOK LLM' },
         { id: 'plugin-config', label: 'Plugin config' },
         { id: 'users', label: 'Users' },
         { id: 'groups', label: 'Groups' },
@@ -120,6 +124,7 @@
             <ProfileSection contextId={ctx} />
             <TaskProviderSection contextId={ctx} />
             <ToolsSection contextId={ctx} />
+            <ByokSection contextId={ctx} />
             <IdentitySection contextId={ctx} />
             {#if isGroup}
               <MembersSection contextId={ctx} />
@@ -135,6 +140,7 @@
               {#if settingsSession.isBotAdmin}
                 <AdminInstancesSection />
                 <AdminSystemSection />
+                <AdminByokSection />
                 <AdminPluginsConfigSection />
                 <AdminUsersSection />
                 <AdminGroupsSection />
