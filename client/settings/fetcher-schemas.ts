@@ -65,6 +65,8 @@ export const AdminByokContextSchema = z.object({
   missing: z.array(z.string()),
   updatedAt: z.number(),
   updatedBy: z.string(),
+  unreadable: z.literal(true).optional(),
+  error: z.string().optional(),
 })
 export const AdminByokResponseSchema = z.object({ contexts: z.array(AdminByokContextSchema) })
 export type AdminByokContext = z.infer<typeof AdminByokContextSchema>

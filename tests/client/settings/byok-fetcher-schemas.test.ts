@@ -46,4 +46,24 @@ describe('BYOK fetcher schemas', () => {
     expect(parsed.contexts[0]?.contextId).toBe('ctx-1')
     expect(parsed.contexts[0]?.updatedBy).toBe('admin')
   })
+
+  test('preserves admin BYOK unreadable credential metadata', () => {
+    const parsed = AdminByokResponseSchema.parse({
+      contexts: [
+        {
+          contextId: 'ctx-bad',
+          enabled: true,
+          complete: false,
+          missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
+          updatedAt: 2,
+          updatedBy: 'admin',
+          unreadable: true,
+          error: 'stored BYOK LLM credentials are unreadable',
+        },
+      ],
+    })
+
+    expect(parsed.contexts[0]?.unreadable).toBe(true)
+    expect(parsed.contexts[0]?.error).toBe('stored BYOK LLM credentials are unreadable')
+  })
 })
