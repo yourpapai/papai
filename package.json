@@ -14,7 +14,6 @@
     "./plugin-types": "./src/providers/public-types.ts"
   },
   "scripts": {
-    "architecture:refresh": "bun scripts/architecture-refresh.ts",
     "benchmark:tool-surface": "bun scripts/tool-surface-benchmark.ts",
     "build:client": "bun scripts/build-client.ts",
     "storybook:prepare": "mkdir -p public && msw init public/ --no-save && cat client/shared/base.css client/shared/tokens.css client/admin/admin.css client/debug/debug.css > public/storybook-base.css",
