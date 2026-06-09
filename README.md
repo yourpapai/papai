@@ -70,12 +70,12 @@ The bot interprets natural-language requests, invokes capability-gated tools thr
 
 ### Platform Support
 
-| Platform        | Group Message Model                | Threads                                                                  | Command Menu | Buttons      | File Receive | File Replies | Notes                                                                                      |
-| --------------- | ---------------------------------- | ------------------------------------------------------------------------ | ------------ | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------------------ |
-| **Telegram**    | Sees group messages directly       | Forum topics supported and can create a topic on mention in forum groups | Yes          | Yes          | Yes          | Yes          | Best support for bot command menus and forum-topic flows                                   |
-| **Mattermost**  | Sees group messages directly       | Thread/root-post aware                                                   | No           | No callbacks | Yes          | Yes          | Username resolution supported                                                              |
-| **Discord**     | DMs plus guild-channel `@mentions` | No separate thread-scoped support today                                  | No           | Yes          | No           | No           | Uses embeds for rich `/context` output; requires Message Content intent for content access |
-| **Kontur Talk** | Sees group messages directly       | Message-scoped threads supported                                         | No           | No           | No           | No           | JWT-authenticated; reply-context aware; minimal interaction surface                        |
+| Platform        | Group Message Model                                                   | Threads                                                                  | Command Menu | Buttons      | File Receive | File Replies | Notes                                                                                      |
+| --------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------ | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------------------ |
+| **Telegram**    | Sees group messages directly                                          | Forum topics supported and can create a topic on mention in forum groups | Yes          | Yes          | Yes          | Yes          | Best support for bot command menus and forum-topic flows                                   |
+| **Mattermost**  | Sees group messages directly                                          | Thread/root-post aware                                                   | No           | No callbacks | Yes          | Yes          | Username resolution supported                                                              |
+| **Discord**     | DMs, guild-channel `@mentions`, and replies to the bot's own messages | No separate thread-scoped support today                                  | No           | Yes          | No           | No           | Uses embeds for rich `/context` output; requires Message Content intent for content access |
+| **Kontur Talk** | Sees group messages directly                                          | Message-scoped threads supported                                         | No           | No           | No           | No           | JWT-authenticated; reply-context aware; minimal interaction surface                        |
 
 ### Task Provider Support
 
@@ -420,7 +420,7 @@ Typical flow:
 
 Important behavior:
 
-- Telegram and Mattermost can observe regular group messages; Discord group use is mention-driven.
+- Telegram and Mattermost can observe regular group messages; Discord group use is mention-driven. On Telegram and Discord, a user's reply to one of the bot's own messages in a group is treated like an `@mention` and processed without an explicit mention.
 - Group configuration is done in the settings web UI (launched via `/config` in DM).
 - Thread contexts are isolated. In Telegram forum topics and Mattermost threads, the bot stores thread-scoped history separately from the main group chat.
 - In thread-scoped group contexts, the bot can use `lookup_group_history` to search the main group discussion when needed.

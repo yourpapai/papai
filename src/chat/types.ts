@@ -151,6 +151,8 @@ export type IncomingMessage = {
   fileCandidates: IncomingFileCandidate[]
   /** Platform thread ID (if in thread) */
   threadId: string
+  /** message is a reply to one of the bot's own messages; undefined when the adapter cannot determine this (treat as false) */
+  isReplyToBot: boolean
 }>
 
 /** An incoming button interaction from a user. */
@@ -224,38 +226,22 @@ export type EmbedOptions = {
   color: number
 }>
 
-type ReplyTextFn = {
-  (content: string): Promise<void>
-  (content: string, options: ReplyOptions): Promise<void>
-}
-type ReplyFormattedFn = {
-  (markdown: string): Promise<void>
-  (markdown: string, options: ReplyOptions): Promise<void>
-}
-type ReplyFileFn = {
-  (file: ChatFile): Promise<void>
-  (file: ChatFile, options: ReplyOptions): Promise<void>
-}
-type RedactMessageFn = (replacementText: string) => Promise<void>
-type ReplyButtonsFn = (content: string, options: ButtonReplyOptions) => Promise<void>
-type ReplyEmbedFn = (options: EmbedOptions) => Promise<void>
-
 /** Reply function injected into handlers — the only way to send messages back to the user. */
 export type ReplyFn = {
-  text: ReplyTextFn
-  formatted: ReplyFormattedFn
+  text: { (content: string): Promise<void>; (content: string, options: ReplyOptions): Promise<void> }
+  formatted: { (markdown: string): Promise<void>; (markdown: string, options: ReplyOptions): Promise<void> }
   typing: () => void
-  buttons: ReplyButtonsFn
+  buttons: (content: string, options: ButtonReplyOptions) => Promise<void>
 } & Partial<{
   /** Replaces the current interactive message in place. Prefer only for button interaction flows; fall back to `text` when unavailable. */
-  replaceText: ReplyTextFn
-  file: ReplyFileFn
-  redactMessage: RedactMessageFn
+  replaceText: { (content: string): Promise<void>; (content: string, options: ReplyOptions): Promise<void> }
+  file: { (file: ChatFile): Promise<void>; (file: ChatFile, options: ReplyOptions): Promise<void> }
+  redactMessage: (replacementText: string) => Promise<void>
   deleteMessage: (messageId: string) => Promise<void>
   /** Replaces the current interactive message in place. Prefer only for button interaction flows; fall back to `buttons` when unavailable. */
-  replaceButtons: ReplyButtonsFn
+  replaceButtons: (content: string, options: ButtonReplyOptions) => Promise<void>
   /** Optional: send a structured embed. Only Discord implements this today. */
-  embed: ReplyEmbedFn
+  embed: (options: EmbedOptions) => Promise<void>
 }>
 
 /** Result of `ChatProvider.renderContext` — describes how the handler should send the output. */

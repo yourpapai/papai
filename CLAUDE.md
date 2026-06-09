@@ -11,6 +11,7 @@ Notable non-obvious behaviors:
 - Telegram and Mattermost group contexts are thread-aware via thread-scoped storage context IDs; **Discord group contexts are not thread-scoped**.
 - Chat startup runs through `ChatRouter`, which manages DB-backed platform instances and tags incoming messages/interactions with `platformInstanceId`.
 - **All configuration happens in the settings web UI**, not in chat. `/config` (DM only) issues a single-use link to it; `SETTINGS_PUBLIC_BASE_URL` must be set or `/config` refuses. The `/plugin` and `/set` chat commands are retired. Chat callback config flows (`gsel:`/`cfg:`/`wizard_`/`plg:`/`tgl:`) were removed; `interaction-router.ts` is now a near-empty safe sink.
+- **Telegram and Discord** treat a user's reply to the **bot's own message** in a group as equivalent to an `@mention` — the bot processes it without an explicit mention. Mattermost and Kontur Talk are not affected by this path.
 - Supports incoming files, file-to-task relay, identity mapping, memo search, recurring tasks, deferred prompts, public web fetch.
 
 ## Commands

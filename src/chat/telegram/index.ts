@@ -196,6 +196,7 @@ export class TelegramChatProvider implements ChatProvider {
     logMessageExtraction(id, contextId, messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText)
     cacheTelegramMessage(ctx, id, contextId, messageIdStr, text, replyToMessageIdStr)
     const replyContext = extractReplyContext(ctx, contextId)
+    const isReplyToBot = replyContext?.authorId !== undefined && String(ctx.me.id) === replyContext.authorId
     const threadId = await resolveThreadId(ctx, isMentioned, contextType, this.bot.api)
     const from = ctx.from
     const chat = ctx.chat
@@ -209,6 +210,7 @@ export class TelegramChatProvider implements ChatProvider {
       contextType,
       contextName,
       isMentioned,
+      isReplyToBot,
       text,
       platformInstanceId: this.platformInstanceId,
       messageId: messageIdStr,

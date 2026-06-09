@@ -1123,6 +1123,102 @@ describe('Bot Authorization Gate (setupBot)', () => {
     expect(processMessageCallCount).toBe(0)
   })
 
+  test('processes group message when user replies to bot message', async () => {
+    addAuthorizedGroupForPlatform('group-reply', ADMIN_ID)
+    addGroupMemberForPlatform('group-reply', 'reply-user', ADMIN_ID)
+    setupUserConfig('group-reply')
+
+    const messageHandler = getMessageHandler()
+    expect(messageHandler).not.toBeNull()
+
+    const groupMessage: IncomingMessage = {
+      user: { id: 'reply-user', username: 'replyuser', isAdmin: false },
+      contextId: 'group-reply',
+      contextType: 'group',
+      contextName: 'Reply Group',
+      isMentioned: false,
+      isReplyToBot: true,
+      text: 'what about this one?',
+      platformInstanceId: 'test-instance',
+      replyToMessageId: 'bot-msg-123',
+    }
+
+    const { reply } = createMockReply()
+    await messageHandler!(groupMessage, reply)
+
+    expect(processMessageCallCount).toBe(1)
+  })
+
+  test('ignores group message when not mentioned and not replying to bot', async () => {
+    addAuthorizedGroupForPlatform('group-ignore', ADMIN_ID)
+    addGroupMemberForPlatform('group-ignore', 'ignore-user', ADMIN_ID)
+    setupUserConfig('group-ignore')
+
+    const messageHandler = getMessageHandler()
+    expect(messageHandler).not.toBeNull()
+
+    const groupMessage: IncomingMessage = {
+      user: { id: 'ignore-user', username: 'ignoreuser', isAdmin: false },
+      contextId: 'group-ignore',
+      contextType: 'group',
+      isMentioned: false,
+      isReplyToBot: false,
+      text: 'random chatter',
+      platformInstanceId: 'test-instance',
+    }
+
+    const { reply } = createMockReply()
+    await messageHandler!(groupMessage, reply)
+
+    expect(processMessageCallCount).toBe(0)
+  })
+
+  test('records group observation when user replies to bot without mention', async () => {
+    addAuthorizedGroupForPlatform('group-obs', ADMIN_ID)
+    addGroupMemberForPlatform('group-obs', 'obs-user', ADMIN_ID)
+    setupUserConfig('group-obs')
+
+    const messageHandler = getMessageHandler()
+    expect(messageHandler).not.toBeNull()
+
+    const groupMessage: IncomingMessage = {
+      user: { id: 'obs-user', username: 'obsuser', isAdmin: false },
+      contextId: 'group-obs',
+      contextType: 'group',
+      contextName: 'Obs Group',
+      contextParentName: 'Platform',
+      isMentioned: false,
+      isReplyToBot: true,
+      text: 'follow-up question',
+      platformInstanceId: 'test-instance',
+      replyToMessageId: 'bot-msg-9',
+    }
+
+    const { reply } = createMockReply()
+    await messageHandler!(groupMessage, reply)
+
+    const db = getDrizzleDb()
+    const knownGroup = db
+      .select()
+      .from(knownGroupContexts)
+      .where(and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, scopedGroup('group-obs'))))
+      .get()
+    const adminObservation = db
+      .select()
+      .from(groupAdminObservations)
+      .where(
+        and(
+          eq(groupAdminObservations.provider, 'mock'),
+          eq(groupAdminObservations.contextId, scopedGroup('group-obs')),
+          eq(groupAdminObservations.userId, 'obs-user'),
+        ),
+      )
+      .get()
+
+    expect(knownGroup).toBeDefined()
+    expect(adminObservation).toBeDefined()
+  })
+
   test('setupBot registers chat interaction handler when supported', () => {
     addUser('auth-user', ADMIN_ID)
     setupUserConfig('auth-user')
