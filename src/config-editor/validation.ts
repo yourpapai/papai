@@ -33,7 +33,7 @@ export function validateConfigField(field: ConfigField, value: string): Validati
     return { valid: false, error: `${field.label} cannot be empty` }
   }
   if (field.storageKey === 'timezone') return validateTimezone(value)
-  if (field.options !== undefined && !field.options.some((option) => option.value === value)) {
+  if (field.options !== undefined && value !== '' && !field.options.some((option) => option.value === value)) {
     const allowed = field.options.map((option) => option.value).join(', ')
     return { valid: false, error: `${field.label} must be one of: ${allowed}` }
   }

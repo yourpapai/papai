@@ -64,6 +64,10 @@ describe('config-editor validation', () => {
       const bad = validateConfigField(enumField, 'verbose')
       expect(bad.valid).toBe(false)
       expect(bad.error).toContain('must be one of')
+      expect(bad.error).toContain('sanitized, raw')
+
+      // An optional enum field treats empty string as "unset" and accepts it.
+      expect(validateConfigField(enumField, '').valid).toBe(true)
     })
 
     test('validates timezone - must be valid IANA or UTC offset', () => {
