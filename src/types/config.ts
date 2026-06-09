@@ -20,13 +20,21 @@ export type PreferenceConfigKey = 'timezone'
 // MCP endpoint config keys
 export type McpConfigKey = 'mcp_endpoints'
 
+// AI output visibility config keys (always available)
+export type AiOutputConfigKey = 'ai_tool_visibility' | 'ai_reasoning_visibility' | 'ai_output_detail_level'
+
 // Static per-user config keys. Provider-specific keys ('kaneo_apikey',
 // 'kaneo_workspace_id', 'youtrack_token', etc.) are no longer part of this
 // union; they are plugin-namespaced dynamic keys handled via
 // setConfigValue/getConfigValue + isAllowedDynamicConfigKey.
 // LLM credentials live in `system_config` (see `src/system-config.ts`)
 // and are owned by the bot admin, not per-user.
-export type ConfigKey = PreferenceConfigKey | McpConfigKey
+export type ConfigKey = PreferenceConfigKey | McpConfigKey | AiOutputConfigKey
+
+export type ConfigFieldOption = {
+  readonly value: string
+  readonly label: string
+}
 
 export type ConfigField = {
   readonly key: string
@@ -34,12 +42,20 @@ export type ConfigField = {
   readonly label: string
   readonly required: boolean
   readonly sensitive: boolean
-  readonly kind: 'preference' | 'provider-context' | 'plugin-context'
+  readonly kind: 'preference' | 'provider-context' | 'plugin-context' | 'ai-output'
+  readonly control?: 'text' | 'toggle' | 'select'
+  readonly options?: readonly ConfigFieldOption[]
 }
 
 // All valid static config keys (preference and MCP only; provider keys are
 // handled via the dynamic-config path).
-export const ALL_CONFIG_KEYS: readonly ConfigKey[] = ['timezone', 'mcp_endpoints']
+export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
+  'timezone',
+  'mcp_endpoints',
+  'ai_tool_visibility',
+  'ai_reasoning_visibility',
+  'ai_output_detail_level',
+]
 
 /**
  * Check if a string is a valid ConfigKey

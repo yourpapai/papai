@@ -14,8 +14,14 @@ import { ALL_CONFIG_KEYS, isAllowedDynamicConfigKey, isConfigKey, type ConfigKey
 
 describe('config types', () => {
   describe('ALL_CONFIG_KEYS', () => {
-    test('ALL_CONFIG_KEYS contains only static (non-provider) keys', () => {
-      expect(ALL_CONFIG_KEYS).toEqual(['timezone', 'mcp_endpoints'])
+    test('ALL_CONFIG_KEYS contains the static preference and AI-output keys', () => {
+      expect(ALL_CONFIG_KEYS).toEqual([
+        'timezone',
+        'mcp_endpoints',
+        'ai_tool_visibility',
+        'ai_reasoning_visibility',
+        'ai_output_detail_level',
+      ])
     })
   })
 
@@ -66,6 +72,12 @@ describe('config types', () => {
     test('accepts static config keys', () => {
       expect(isAllowedDynamicConfigKey('timezone')).toBe(true)
       expect(isAllowedDynamicConfigKey('mcp_endpoints')).toBe(true)
+    })
+
+    test('accepts the AI-output config keys', () => {
+      expect(isAllowedDynamicConfigKey('ai_tool_visibility')).toBe(true)
+      expect(isAllowedDynamicConfigKey('ai_reasoning_visibility')).toBe(true)
+      expect(isAllowedDynamicConfigKey('ai_output_detail_level')).toBe(true)
     })
 
     test('rejects unknown keys', () => {
