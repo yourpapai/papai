@@ -268,4 +268,74 @@ describe('ConfigFieldRow', () => {
     expect(target.querySelector('[data-testid="cfg-input-kaneo_apikey"]')).toBeNull()
     void unmount(component)
   })
+
+  test('an enum field renders a SegmentedControl and PATCHes on change', async () => {
+    setCsrfToken('c')
+    let body = ''
+    setMockFetch((_url, init) => {
+      body = bodyString(init)
+      return Promise.resolve(json({ ok: true, contextId: 'user:1' }))
+    })
+    let saved = false
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_tool_visibility',
+        storageKey: 'ai_tool_visibility',
+        label: 'Show tool calls',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'toggle',
+        options: [
+          { value: 'off', label: 'Off' },
+          { value: 'on', label: 'On' },
+        ],
+        hasValue: false,
+        value: 'off',
+      },
+      onSaved: () => {
+        saved = true
+      },
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_tool_visibility-on"]')!.click()
+    await drain()
+    expect(body).toBe(JSON.stringify({ key: 'ai_tool_visibility', value: 'on', contextId: 'user:1' }))
+    expect(saved).toBe(true)
+    void unmount(component)
+  })
+
+  test('an enum field reverts to the previous value when the PATCH fails', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(new Response('nope', { status: 500 })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Sanitized' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    const sanitizedBtn = target.querySelector<HTMLButtonElement>(
+      '[data-testid="cfg-seg-ai_output_detail_level-sanitized"]',
+    )!
+    expect(sanitizedBtn.getAttribute('aria-checked')).toBe('true')
+    void unmount(component)
+  })
 })
