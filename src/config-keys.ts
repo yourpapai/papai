@@ -3,18 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import {
+  AI_OUTPUT_DETAIL_LEVEL_KEY,
+  AI_REASONING_VISIBILITY_KEY,
+  AI_TOOL_VISIBILITY_KEY,
+} from './ai-output-settings.js'
 import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
 import { pluginRegistry } from './plugins/registry.js'
 import { getTaskProviderDescriptor, listTaskProviderTypes } from './providers/registry.js'
-import {
-  isAllowedDynamicConfigKey,
-  KANEO_PLUGIN_WORKSPACE_KEY,
-  type ConfigField,
-  type ConfigKey,
-} from './types/config.js'
+import { isAllowedDynamicConfigKey, KANEO_PLUGIN_WORKSPACE_KEY, type ConfigField } from './types/config.js'
 
-const PREFERENCE_KEYS: readonly ConfigKey[] = ['timezone', 'mcp_endpoints']
 const PREFERENCE_FIELDS: readonly ConfigField[] = [
   {
     key: 'timezone',
@@ -31,6 +30,48 @@ const PREFERENCE_FIELDS: readonly ConfigField[] = [
     required: false,
     sensitive: false,
     kind: 'preference',
+  },
+]
+
+const AI_OUTPUT_FIELDS: readonly ConfigField[] = [
+  {
+    key: 'ai_tool_visibility',
+    storageKey: AI_TOOL_VISIBILITY_KEY,
+    label: 'Show tool calls',
+    required: false,
+    sensitive: false,
+    kind: 'ai-output',
+    control: 'toggle',
+    options: [
+      { value: 'off', label: 'Off' },
+      { value: 'on', label: 'On' },
+    ],
+  },
+  {
+    key: 'ai_reasoning_visibility',
+    storageKey: AI_REASONING_VISIBILITY_KEY,
+    label: 'Show reasoning',
+    required: false,
+    sensitive: false,
+    kind: 'ai-output',
+    control: 'toggle',
+    options: [
+      { value: 'off', label: 'Off' },
+      { value: 'on', label: 'On' },
+    ],
+  },
+  {
+    key: 'ai_output_detail_level',
+    storageKey: AI_OUTPUT_DETAIL_LEVEL_KEY,
+    label: 'Detail level',
+    required: false,
+    sensitive: false,
+    kind: 'ai-output',
+    control: 'select',
+    options: [
+      { value: 'sanitized', label: 'Sanitized' },
+      { value: 'raw', label: 'Raw' },
+    ],
   },
 ]
 
@@ -69,13 +110,14 @@ function getPluginContextFields(): readonly ConfigField[] {
 export function getConfigFieldsForContext(contextId: string): readonly ConfigField[] {
   const pluginFields = getPluginContextFields()
   const settings = getContextSettings(contextId)
-  if (settings === null) return [...pluginFields, ...PREFERENCE_FIELDS]
+  if (settings === null) return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
 
   const instance = getTaskInstance(settings.taskInstanceId)
-  if (instance === null || instance.status !== 'active') return [...pluginFields, ...PREFERENCE_FIELDS]
+  if (instance === null || instance.status !== 'active')
+    return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
 
   const descriptor = getTaskProviderDescriptor(instance.type)
-  if (descriptor === undefined) return [...pluginFields, ...PREFERENCE_FIELDS]
+  if (descriptor === undefined) return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
 
   const providerFields = descriptor.contextConfigSchema
     .map(
@@ -90,14 +132,14 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
     )
     .filter((field) => field.storageKey !== KANEO_PLUGIN_WORKSPACE_KEY)
 
-  return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS]
+  return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
 }
 
 export function getConfigKeysForContext(contextId: string): readonly string[] {
   const keys = getConfigFieldsForContext(contextId)
     .map((field) => field.storageKey)
     .filter((key) => isAllowedDynamicConfigKey(key))
-  return keys.length === 0 ? PREFERENCE_KEYS : keys
+  return keys
 }
 
 export function getRequiredProviderConfigKeysForContext(contextId: string): string[] {

@@ -69,7 +69,13 @@ describe('getConfigKeysForContext', () => {
   })
 
   test('returns preferences only for an unassigned context', () => {
-    expect(getConfigKeysForContext('ctx-unassigned')).toEqual(['timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-unassigned')).toEqual([
+      'timezone',
+      'mcp_endpoints',
+      'ai_tool_visibility',
+      'ai_reasoning_visibility',
+      'ai_output_detail_level',
+    ])
   })
 
   test('returns preferences only for an active Kaneo assignment (kaneo is now plugin-contributed)', () => {
@@ -83,7 +89,13 @@ describe('getConfigKeysForContext', () => {
     })
     setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-kaneo')).toEqual([
+      'timezone',
+      'mcp_endpoints',
+      'ai_tool_visibility',
+      'ai_reasoning_visibility',
+      'ai_output_detail_level',
+    ])
   })
 
   test('returns plugin-namespaced token key for an active YouTrack assignment (contributed)', () => {
@@ -96,6 +108,9 @@ describe('getConfigKeysForContext', () => {
       'plugin:task-provider-youtrack:provider:token',
       'timezone',
       'mcp_endpoints',
+      'ai_tool_visibility',
+      'ai_reasoning_visibility',
+      'ai_output_detail_level',
     ])
   })
 
@@ -104,7 +119,13 @@ describe('getConfigKeysForContext', () => {
     setContextSettings({ contextId: 'ctx-missing', taskInstanceId: 'missing', platformInstanceId: 'telegram-default' })
     getTestDb().delete(taskInstances).where(eq(taskInstances.id, 'missing')).run()
 
-    expect(getConfigKeysForContext('ctx-missing')).toEqual(['timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-missing')).toEqual([
+      'timezone',
+      'mcp_endpoints',
+      'ai_tool_visibility',
+      'ai_reasoning_visibility',
+      'ai_output_detail_level',
+    ])
   })
 
   test('returns preferences only when assigned instance is inactive', () => {
@@ -120,7 +141,13 @@ describe('getConfigKeysForContext', () => {
       platformInstanceId: 'telegram-default',
     })
 
-    expect(getConfigKeysForContext('ctx-stopped')).toEqual(['timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-stopped')).toEqual([
+      'timezone',
+      'mcp_endpoints',
+      'ai_tool_visibility',
+      'ai_reasoning_visibility',
+      'ai_output_detail_level',
+    ])
   })
 
   test('returns dynamic provider keys for an active contributed assignment', () => {
@@ -143,6 +170,9 @@ describe('getConfigKeysForContext', () => {
       'plugin:demo-plugin:provider:token',
       'timezone',
       'mcp_endpoints',
+      'ai_tool_visibility',
+      'ai_reasoning_visibility',
+      'ai_output_detail_level',
     ])
   })
 
@@ -235,6 +265,29 @@ describe('getConfigFieldsForContext', () => {
     expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:custom_token')
     expect(fields.map((field) => field.storageKey)).not.toContain('plugin:plugin-tracker:provider:token')
     expect(fields.map((field) => field.storageKey)).not.toContain('custom_token')
+  })
+
+  test('includes the three AI-output fields as enum controls in any context', () => {
+    const fields = getConfigFieldsForContext('ctx-any')
+    const byKey = new Map(fields.map((field) => [field.storageKey, field]))
+
+    const tool = byKey.get('ai_tool_visibility')
+    expect(tool?.kind).toBe('ai-output')
+    expect(tool?.required).toBe(false)
+    expect(tool?.control).toBe('toggle')
+    expect(tool?.options).toEqual([
+      { value: 'off', label: 'Off' },
+      { value: 'on', label: 'On' },
+    ])
+
+    expect(byKey.get('ai_reasoning_visibility')?.control).toBe('toggle')
+
+    const detail = byKey.get('ai_output_detail_level')
+    expect(detail?.control).toBe('select')
+    expect(detail?.options).toEqual([
+      { value: 'sanitized', label: 'Sanitized' },
+      { value: 'raw', label: 'Raw' },
+    ])
   })
 
   test('provider context field label comes from the descriptor field, not a hardcoded map', () => {
