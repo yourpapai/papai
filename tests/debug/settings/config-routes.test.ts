@@ -102,6 +102,28 @@ describe('settings config routes', () => {
     expect(res.status).toBe(422)
   })
 
+  test('PATCH persists an AI-output enum field', async () => {
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_tool_visibility', value: 'on' }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+    expect(res.status).toBe(200)
+    const body = PatchResponseSchema.parse(await res.json())
+    expect(getConfigValue(body.contextId, 'ai_tool_visibility')).toBe('on')
+  })
+
+  test('PATCH rejects an invalid AI-output enum value with 422', async () => {
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_output_detail_level', value: 'verbose' }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+    expect(res.status).toBe(422)
+  })
+
   test('PATCH without CSRF is 403', async () => {
     const req = new Request('https://x/settings/api/config', {
       method: 'PATCH',
