@@ -144,7 +144,7 @@ export function getConfigKeysForContext(contextId: string): readonly string[] {
 
 export function getRequiredProviderConfigKeysForContext(contextId: string): string[] {
   return getConfigFieldsForContext(contextId)
-    .filter((field) => field.required && field.kind !== 'preference')
+    .filter((field) => field.required && field.kind !== 'preference' && field.kind !== 'ai-output')
     .map((field) => field.storageKey)
 }
 
