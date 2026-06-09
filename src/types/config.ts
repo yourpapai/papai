@@ -44,6 +44,7 @@ export type ConfigField = {
   readonly sensitive: boolean
   readonly kind: 'preference' | 'provider-context' | 'plugin-context' | 'ai-output'
   readonly control?: 'text' | 'toggle' | 'select'
+  // Only meaningful for 'toggle'/'select' controls; ignored for 'text'.
   readonly options?: readonly ConfigFieldOption[]
 }
 

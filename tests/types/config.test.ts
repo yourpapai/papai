@@ -34,6 +34,12 @@ describe('config types', () => {
       }
     })
 
+    test('returns true for the AI-output keys', () => {
+      for (const key of ['ai_tool_visibility', 'ai_reasoning_visibility', 'ai_output_detail_level'] as const) {
+        expect(isConfigKey(key)).toBe(true)
+      }
+    })
+
     test('isConfigKey rejects the legacy flat provider keys', () => {
       expect(isConfigKey('kaneo_apikey')).toBe(false)
       expect(isConfigKey('youtrack_token')).toBe(false)
