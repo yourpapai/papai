@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.3] - 2026-06-09
+
+### Added
+
+- **config:** Add AI-output keys and typed ConfigField controls
+- **config:** Validate enum config fields against their options
+- **config:** Surface AI-output fields from getConfigFieldsForContext
+- **settings:** Forward control/options in config GET response
+- **settings:** Parse control/options on client ConfigField schema
+- **settings:** Render enum config controls via SegmentedControl
+- **settings:** Add AI output settings section
+- **settings:** Register AI output section in settings SPA
+
+### Changed
+
+- **config:** Exclude ai-output kind from required provider keys
+
+### Documentation
+
+- **spec:** AI output settings UI design
+- **plan:** AI output settings UI implementation plan
+- **adr:** Correct AI-output write-path reference (settings UI)
+- Document AI output visibility settings (CLAUDE.md, README)
+
+### Fixed
+
+- **config:** Accept empty value for optional enum fields
+- **settings:** Guard enum save re-entrancy; strengthen ConfigFieldRow tests
+
+### Testing
+
+- **config:** Cover isConfigKey for AI-output keys; clarify options field
+- **settings:** Broaden AiOutputSection coverage; scope detail hint
+- **settings:** Cover AI-output enum PATCH round-trip; fix plan doc
 ## [6.1.2] - 2026-06-09
 
 ### Added
