@@ -72,7 +72,7 @@ Fix the underlying issue rather than bypassing linting or hook policy.
 
 **Dashboard (`DEBUG_SERVER=true`):** the dashboard requires a session cookie minted via the bot — DM `/dashboard` for a one-time sign-in link. `DASHBOARD_BASE_URL` (default `SETTINGS_PUBLIC_BASE_URL`, else `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`), `DASHBOARD_SESSION_TTL_SECONDS` (default `28800`), `DASHBOARD_CLAIM_TTL_SECONDS` (default `300`). See `docs/deployment/dashboard-access.md`.
 
-**Per-user runtime config keys** (managed in the settings UI): `timezone`; `mcp_endpoints` (JSON array of external MCP endpoints `{ id, url (https only), label?, headers?, enabled, toolFilter? }`, registered in `src/config-keys.ts`); Kaneo `plugin:task-provider-kaneo:provider:{credential,workspaceId}`; YouTrack `plugin:task-provider-youtrack:provider:token`.
+**Per-user runtime config keys** (managed in the settings UI): `timezone`; `mcp_endpoints` (JSON array of external MCP endpoints `{ id, url (https only), label?, headers?, enabled, toolFilter? }`, registered in `src/config-keys.ts`); Kaneo `plugin:task-provider-kaneo:provider:{credential,workspaceId}`; YouTrack `plugin:task-provider-youtrack:provider:token`; AI output visibility `ai_tool_visibility` / `ai_reasoning_visibility` (`on`/`off`, default `off`) and `ai_output_detail_level` (`sanitized`/`raw`, default `sanitized`) — surfaced as enum `ConfigField`s (`kind: 'ai-output'`) in the settings UI "AI output" section, read by `getAiOutputSettings` (`src/ai-output-settings.ts`).
 
 ## Architecture
 
