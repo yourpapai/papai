@@ -145,11 +145,16 @@ Restrict raw detail level to bot administrators only.
 
 Key modules:
 
-| File                          | Role                                                                                           |
-| ----------------------------- | ---------------------------------------------------------------------------------------------- |
-| `src/ai-output-settings.ts`   | Setting keys, value unions, defaults, parsers, `getAiOutputSettings()`, `setAiOutputSetting()` |
-| `src/ai-progress-reporter.ts` | Buffered `AiProgressReporter`: tool start/finish, reasoning, sanitization, flush               |
-| `src/ai-output-config-ui.ts`  | `/config` section rendering, `cfg:ai:*` callback serialization/parsing, callback handling      |
+| File                          | Role                                                                                      |
+| ----------------------------- | ----------------------------------------------------------------------------------------- |
+| `src/ai-output-settings.ts`   | Setting keys, value unions, defaults, parsers, `getAiOutputSettings()` (read side)        |
+| `src/ai-progress-reporter.ts` | Buffered `AiProgressReporter`: tool start/finish, reasoning, sanitization, flush          |
+| `src/ai-output-config-ui.ts`  | `/config` section rendering, `cfg:ai:*` callback serialization/parsing, callback handling |
+
+The write path is the settings web UI: the **AI output** section
+(`client/settings/sections/AiOutputSection.svelte`) reads and writes the three
+keys through the generic config route (`/settings/api/config`), which validates
+enum values and persists them via `setConfigValue`.
 
 Integration points:
 
