@@ -20,6 +20,7 @@ const field = (storageKey: string, overrides?: Partial<ConfigField>): ConfigFiel
   required: overrides?.required ?? true,
   sensitive: overrides?.sensitive ?? false,
   kind: overrides?.kind ?? 'provider-context',
+  ...overrides,
 })
 
 describe('config-editor validation', () => {
@@ -44,6 +45,25 @@ describe('config-editor validation', () => {
 
       const result2 = validateConfigField(field('youtrack_token'), 'valid-token')
       expect(result2.valid).toBe(true)
+    })
+
+    test('validates enum fields against their options', () => {
+      const enumField = field('ai_output_detail_level', {
+        kind: 'ai-output',
+        required: false,
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Sanitized' },
+          { value: 'raw', label: 'Raw' },
+        ],
+      })
+
+      expect(validateConfigField(enumField, 'raw').valid).toBe(true)
+      expect(validateConfigField(enumField, 'sanitized').valid).toBe(true)
+
+      const bad = validateConfigField(enumField, 'verbose')
+      expect(bad.valid).toBe(false)
+      expect(bad.error).toContain('must be one of')
     })
 
     test('validates timezone - must be valid IANA or UTC offset', () => {
