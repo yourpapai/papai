@@ -35,6 +35,8 @@ function handleGet(req: Request, url: URL): Response {
       required: field.required,
       sensitive: field.sensitive,
       kind: field.kind,
+      control: field.control,
+      options: field.options,
       hasValue,
       value: hasValue && field.sensitive ? maskSensitiveValue(raw) : (raw ?? ''),
     }
