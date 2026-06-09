@@ -72,7 +72,9 @@
       {#each visible as field (field.key)}
         <ConfigFieldRow {contextId} {field} onSaved={() => void load(contextId)} />
       {/each}
-      <p class="ai-output-hint">Raw detail shows unredacted tool inputs/outputs and reasoning in chat.</p>
+      {#if visible.some((field) => field.key === 'ai_output_detail_level')}
+        <p class="ai-output-hint">Raw detail shows unredacted tool inputs/outputs and reasoning in chat.</p>
+      {/if}
     </div>
   {/if}
 </section>

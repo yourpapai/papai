@@ -47,6 +47,21 @@ const configPayload = {
       value: '',
     },
     {
+      key: 'ai_reasoning_visibility',
+      storageKey: 'ai_reasoning_visibility',
+      label: 'Show reasoning',
+      required: false,
+      sensitive: false,
+      kind: 'ai-output',
+      control: 'toggle',
+      options: [
+        { value: 'off', label: 'Off' },
+        { value: 'on', label: 'On' },
+      ],
+      hasValue: false,
+      value: '',
+    },
+    {
       key: 'ai_output_detail_level',
       storageKey: 'ai_output_detail_level',
       label: 'Detail level',
@@ -79,6 +94,7 @@ describe('AiOutputSection', () => {
     expect(target.querySelector('#ai-output')).not.toBeNull()
     expect(target.querySelector('[data-testid="cfg-row-ai_tool_visibility"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="cfg-row-ai_output_detail_level"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="cfg-row-ai_reasoning_visibility"]')).not.toBeNull()
     // preference fields are excluded
     expect(target.querySelector('[data-testid="cfg-row-timezone"]')).toBeNull()
 
@@ -99,6 +115,26 @@ describe('AiOutputSection', () => {
     const component = mount(AiOutputSection, { target, props: { contextId: 'user:1' } })
     await drain()
     expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.ui-empty')).toBeNull()
+    void unmount(component)
+  })
+
+  test('renders the refresh control as an icon button', () => {
+    setMockFetch(() => Promise.resolve(json(configPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AiOutputSection, { target, props: { contextId: 'ctx' } })
+    expect(target.querySelector('[data-testid="ai-output-refresh"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders section header via PageHeader', async () => {
+    setMockFetch(() => Promise.resolve(json(configPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AiOutputSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('AI output')
     void unmount(component)
   })
 })
