@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.2] - 2026-06-09
+
+### Added
+
+- **byok:** Add llm credentials schema
+- **byok:** Add encrypted llm credential store
+- **byok:** Resolve effective llm config by context
+- **byok:** Use context llm config in orchestrator
+- **byok:** Use context llm config in helper calls
+- Add isReplyToBot field to IncomingMessage type
+- Process and observe group messages that reply to bot
+- **telegram:** Set isReplyToBot when reply targets bot message
+- **discord:** Add isReplyToBot parameter to mapDiscordMessage
+- **discord:** Pre-fetch parent to detect reply-to-bot in groups
+- **byok:** Add llm credentials schema
+- **byok:** Add encrypted llm credential store
+- **byok:** Resolve effective llm config by context
+- **byok:** Use context llm config in orchestrator
+- **byok:** Use context llm config in helper calls
+- **settings:** Add byok llm api routes
+- **settings:** Add byok client fetchers
+- **settings:** Add byok llm UI
+
+### Changed
+
+- **instances:** Share encrypted secret payload crypto
+- Remove getLlmConfig, update dashboard link format, revise reply-to-bot plan
+- **instances:** Share encrypted secret payload crypto
+- Remove getLlmConfig, update dashboard link format, revise reply-to-bot plan
+
+### Documentation
+
+- Add superpowers plans
+- Clarify isReplyToBot undefined semantics
+- Note reply-to-bot group processing for telegram and discord
+- Note reply-to-bot group processing in README platform support
+- Add superpowers plans
+
+### Fixed
+
+- **byok:** Require credential context id
+- **byok:** Handle unreadable credential payloads
+- **byok:** Sanitize unreadable credential errors
+- **byok:** Pass config context to helper llm calls
+- **discord:** Log parent-fetch failure and cover reply-to-bot negative branches
+- **byok:** Require credential context id
+- **byok:** Handle unreadable credential payloads
+- **byok:** Sanitize unreadable credential errors
+- **byok:** Pass config context to helper llm calls
+- **byok:** Pass config context to conversation trim
+- **byok:** Keep deferred context mode on main model
+- **settings:** Preserve byok unreadable metadata
+- **settings:** Clear byok drafts on context changes
+- **byok:** Handle optional clears and unreadable context state
+
+### Testing
+
+- **byok:** Cover llm credential regressions
 ## [6.1.1] - 2026-06-08
 
 ### Added
