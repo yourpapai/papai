@@ -65,6 +65,7 @@ The bot interprets natural-language requests, invokes capability-gated tools thr
 | **Recurring Tasks**  | Template schedules                              | Reusable recurring task automation                                   |
 | **Deferred Prompts** | One-shot, delayed, cron                         | Scheduled proactive assistance                                       |
 | **Instructions**     | Context-specific guidance                       | Per-chat custom instructions                                         |
+| **AI Output**        | Show tool calls / reasoning; sanitized or raw   | Per-context control of the execution detail the bot posts to chat    |
 | **Plugins**          | Trusted local extensions                        | Discover, approve, and enable first-party plugins per context        |
 | **MCP Servers**      | External tools via Model Context Protocol       | Merge tools from per-context or plugin-declared MCP servers          |
 

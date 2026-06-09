@@ -23,7 +23,16 @@ import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/t
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
 
 const GetResponseSchema = z.object({
-  fields: z.array(z.object({ key: z.string(), sensitive: z.boolean(), hasValue: z.boolean(), value: z.string() })),
+  fields: z.array(
+    z.object({
+      key: z.string(),
+      sensitive: z.boolean(),
+      hasValue: z.boolean(),
+      value: z.string(),
+      control: z.string().optional(),
+      options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
+    }),
+  ),
 })
 const PatchResponseSchema = z.object({ contextId: z.string() })
 const PatchUnchangedResponseSchema = z.object({ ok: z.literal(true), unchanged: z.literal(true) })
@@ -88,6 +97,28 @@ describe('settings config routes', () => {
       method: 'PATCH',
       headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'timezone', value: 'Not/AZone' }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+    expect(res.status).toBe(422)
+  })
+
+  test('PATCH persists an AI-output enum field', async () => {
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_tool_visibility', value: 'on' }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+    expect(res.status).toBe(200)
+    const body = PatchResponseSchema.parse(await res.json())
+    expect(getConfigValue(body.contextId, 'ai_tool_visibility')).toBe('on')
+  })
+
+  test('PATCH rejects an invalid AI-output enum value with 422', async () => {
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ai_output_detail_level', value: 'verbose' }),
     })
     const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
     expect(res.status).toBe(422)
@@ -164,6 +195,22 @@ describe('settings config routes', () => {
     })
     const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
     expect(res.status).toBe(422)
+  })
+
+  test('GET forwards control and options for AI-output fields', async () => {
+    const res = await handleConfigRoutes(
+      new Request('https://x/settings/api/config', { headers: authHeaders(session) }),
+      new URL('https://x/settings/api/config'),
+    )
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    const detail = body.fields.find((f) => f.key === 'ai_output_detail_level')
+    assert(detail, 'expected ai_output_detail_level field in GET response')
+    expect(detail.control).toBe('select')
+    expect(detail.options).toEqual([
+      { value: 'sanitized', label: 'Sanitized' },
+      { value: 'raw', label: 'Raw' },
+    ])
   })
 
   test('PATCH sensitive field with masked value echoed back returns unchanged=true without overwriting stored secret', async () => {

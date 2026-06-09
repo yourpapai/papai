@@ -12,6 +12,7 @@
   import Btn from '../../shared/ui/Btn.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
+  import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
 
   interface Props {
     contextId: string
@@ -26,6 +27,8 @@
   let draft = $state(field.sensitive ? '' : field.value)
   let error: string | null = $state(null)
   let saving = $state(false)
+  const isEnum = $derived(field.control === 'toggle' || field.control === 'select')
+  let current = $state(field.value)
 
   // An unset secret (no stored value) has nothing to mask, so open the editor
   // directly — otherwise there is no Replace button and no way to enter a first value.
@@ -38,6 +41,7 @@
     void field.key
     untrack(() => {
       draft = sensitive ? '' : value
+      current = value
       replacing = false
     })
   })
@@ -55,42 +59,76 @@
       saving = false
     }
   }
+
+  async function saveEnum(next: string): Promise<void> {
+    if (saving) return
+    const previous = current
+    current = next
+    error = null
+    saving = true
+    try {
+      await patchConfig({ key: field.key, value: next, contextId })
+      onSaved()
+    } catch (err) {
+      current = previous
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      saving = false
+    }
+  }
 </script>
 
-<div class="settings-field" data-testid={`cfg-row-${field.key}`}>
-  <div class="settings-field__head">
-    <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
-    {#if field.sensitive && field.hasValue && !replacing}
-      <Secret value={maskSecret(field.value)} />
-      <Btn variant="secondary" size="sm" testid={`cfg-replace-${field.key}`} onClick={() => (replacing = true)}>
-        {#snippet children()}Replace{/snippet}
-      </Btn>
+{#if isEnum}
+  <div class="settings-field" data-testid={`cfg-row-${field.key}`}>
+    <div class="settings-field__head">
+      <span class="t-label settings-field__label">{field.label}</span>
+      <SegmentedControl
+        options={field.options ?? []}
+        value={current}
+        ariaLabel={field.label}
+        onChange={(v) => void saveEnum(v)}
+        testidPrefix={`cfg-seg-${field.key}`} />
+    </div>
+    {#if error !== null}
+      <p class="status-error">{error}</p>
     {/if}
   </div>
-
-  {#if editorOpen}
-    <div class="settings-field__editor">
-      <Input
-        type={field.sensitive ? 'password' : 'text'}
-        value={draft}
-        placeholder={field.sensitive ? 'enter a new value' : ''}
-        onInput={(v) => (draft = v)}
-        testid={`cfg-input-${field.key}`} />
-      <Btn variant="primary" size="sm" testid={`cfg-save-${field.key}`} disabled={saving} onClick={() => void save()}>
-        {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
-      </Btn>
-      {#if field.sensitive && field.hasValue}
-        <Btn variant="ghost" size="sm" testid={`cfg-cancel-${field.key}`} onClick={() => { replacing = false; draft = '' }}>
-          {#snippet children()}Cancel{/snippet}
+{:else}
+  <div class="settings-field" data-testid={`cfg-row-${field.key}`}>
+    <div class="settings-field__head">
+      <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
+      {#if field.sensitive && field.hasValue && !replacing}
+        <Secret value={maskSecret(field.value)} />
+        <Btn variant="secondary" size="sm" testid={`cfg-replace-${field.key}`} onClick={() => (replacing = true)}>
+          {#snippet children()}Replace{/snippet}
         </Btn>
       {/if}
     </div>
-  {/if}
 
-  {#if error !== null}
-    <p class="status-error">{error}</p>
-  {/if}
-</div>
+    {#if editorOpen}
+      <div class="settings-field__editor">
+        <Input
+          type={field.sensitive ? 'password' : 'text'}
+          value={draft}
+          placeholder={field.sensitive ? 'enter a new value' : ''}
+          onInput={(v) => (draft = v)}
+          testid={`cfg-input-${field.key}`} />
+        <Btn variant="primary" size="sm" testid={`cfg-save-${field.key}`} disabled={saving} onClick={() => void save()}>
+          {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
+        </Btn>
+        {#if field.sensitive && field.hasValue}
+          <Btn variant="ghost" size="sm" testid={`cfg-cancel-${field.key}`} onClick={() => { replacing = false; draft = '' }}>
+            {#snippet children()}Cancel{/snippet}
+          </Btn>
+        {/if}
+      </div>
+    {/if}
+
+    {#if error !== null}
+      <p class="status-error">{error}</p>
+    {/if}
+  </div>
+{/if}
 
 <style>
   .settings-field {

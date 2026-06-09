@@ -68,7 +68,7 @@ describe('SettingsApp', () => {
     seed({})
     const component = mountApp()
     await drain()
-    for (const id of ['profile', 'task-provider', 'tools', 'byok', 'mcp', 'plugins', 'identity']) {
+    for (const id of ['profile', 'task-provider', 'tools', 'ai-output', 'byok', 'mcp', 'plugins', 'identity']) {
       expect(document.querySelector(`#${id}`)).not.toBeNull()
     }
     expect(document.querySelector('#members')).toBeNull()

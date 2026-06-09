@@ -15,6 +15,7 @@
   import { activeContext, settingsSession } from './session.svelte.js'
   import ProfileSection from './sections/ProfileSection.svelte'
   import TaskProviderSection from './sections/TaskProviderSection.svelte'
+  import AiOutputSection from './sections/AiOutputSection.svelte'
   import ToolsSection from './sections/ToolsSection.svelte'
   import ByokSection from './sections/ByokSection.svelte'
   import McpSection from './sections/McpSection.svelte'
@@ -44,6 +45,7 @@
           { id: 'profile', label: 'Profile' },
           { id: 'task-provider', label: 'Task provider' },
           { id: 'tools', label: 'Tools' },
+          { id: 'ai-output', label: 'AI output' },
           { id: 'byok', label: 'BYOK LLM' },
           { id: 'identity', label: 'Identity' },
           ...(isGroup
@@ -124,6 +126,7 @@
             <ProfileSection contextId={ctx} />
             <TaskProviderSection contextId={ctx} />
             <ToolsSection contextId={ctx} />
+            <AiOutputSection contextId={ctx} />
             <ByokSection contextId={ctx} />
             <IdentitySection contextId={ctx} />
             {#if isGroup}
