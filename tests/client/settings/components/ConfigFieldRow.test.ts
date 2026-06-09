@@ -303,12 +303,15 @@ describe('ConfigFieldRow', () => {
     await drain()
     expect(body).toBe(JSON.stringify({ key: 'ai_tool_visibility', value: 'on', contextId: 'user:1' }))
     expect(saved).toBe(true)
+    const onBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_tool_visibility-on"]')!
+    expect(onBtn.getAttribute('aria-checked')).toBe('true')
     void unmount(component)
   })
 
   test('an enum field reverts to the previous value when the PATCH fails', async () => {
     setCsrfToken('c')
     setMockFetch(() => Promise.resolve(new Response('nope', { status: 500 })))
+    let saved = false
     const { component, target } = render({
       contextId: 'user:1',
       field: {
@@ -326,7 +329,9 @@ describe('ConfigFieldRow', () => {
         hasValue: false,
         value: 'sanitized',
       },
-      onSaved: () => undefined,
+      onSaved: () => {
+        saved = true
+      },
     })
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
@@ -336,6 +341,7 @@ describe('ConfigFieldRow', () => {
       '[data-testid="cfg-seg-ai_output_detail_level-sanitized"]',
     )!
     expect(sanitizedBtn.getAttribute('aria-checked')).toBe('true')
+    expect(saved).toBe(false)
     void unmount(component)
   })
 })

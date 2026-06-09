@@ -61,6 +61,7 @@
   }
 
   async function saveEnum(next: string): Promise<void> {
+    if (saving) return
     const previous = current
     current = next
     error = null
