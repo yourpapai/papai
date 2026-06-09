@@ -49,6 +49,31 @@ describe('fetcher-schemas', () => {
     expect(parsed.fields[0]!.kind).toBe('preference')
   })
 
+  test('ConfigResponseSchema parses enum control fields', () => {
+    const parsed = ConfigResponseSchema.parse({
+      contextId: 'user:1',
+      fields: [
+        {
+          key: 'ai_output_detail_level',
+          storageKey: 'ai_output_detail_level',
+          label: 'Detail level',
+          required: false,
+          sensitive: false,
+          kind: 'ai-output',
+          control: 'select',
+          options: [
+            { value: 'sanitized', label: 'Sanitized' },
+            { value: 'raw', label: 'Raw' },
+          ],
+          hasValue: false,
+          value: '',
+        },
+      ],
+    })
+    expect(parsed.fields[0]!.control).toBe('select')
+    expect(parsed.fields[0]!.options).toHaveLength(2)
+  })
+
   test('ToolsResponseSchema parses domains and tool risk (three-state model)', () => {
     const parsed = ToolsResponseSchema.parse({
       contextId: 'user:1',

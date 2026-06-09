@@ -31,6 +31,8 @@ export const ConfigFieldSchema = z.object({
   required: z.boolean(),
   sensitive: z.boolean(),
   kind: z.string(),
+  control: z.enum(['text', 'toggle', 'select']).optional(),
+  options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
   hasValue: z.boolean(),
   value: z.string(),
 })
