@@ -89,7 +89,11 @@ export function extendSchemaForAsk(schema: unknown): FlexibleSchema {
   return jsonSchema(merged)
 }
 
-export type AskPermissionFn = (req: { toolName: string; reason: string }) => Promise<'allow' | 'deny'>
+export type AskPermissionFn = (req: {
+  toolName: string
+  reason: string
+  args: Record<string, unknown>
+}) => Promise<'allow' | 'deny'>
 
 export type ExecuteFn<O> = (input: unknown, options: ToolExecutionOptions) => Promise<O>
 
@@ -120,7 +124,7 @@ export function gatedExecute<O>(
     }
     const reason = extractReason(inputRecord)
     const cleaned = omitReasonField(inputRecord)
-    const decision = await askPermission({ toolName, reason })
+    const decision = await askPermission({ toolName, reason, args: cleaned })
     if (decision === 'deny') {
       return buildPermissionDenied(`User denied execution of '${toolName}'.`)
     }

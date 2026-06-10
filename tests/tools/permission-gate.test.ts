@@ -131,14 +131,14 @@ describe('gatedExecute', () => {
     })
   })
 
-  test('passes toolName and reason to askPermission', async () => {
-    let captured: { toolName: string; reason: string } | null = null
+  test('passes toolName, reason, and args to askPermission', async () => {
+    let captured: { toolName: string; reason: string; args: Record<string, unknown> } | null = null
     const ask: AskPermissionFn = (req) => {
       captured = req
       return Promise.resolve('allow')
     }
     const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
     await gated({ id: 'X', _permission_reason: 'cleanup' }, toolOpts)
-    expect(captured).toMatchObject({ toolName: 'demo_tool', reason: 'cleanup' })
+    expect(captured).toMatchObject({ toolName: 'demo_tool', reason: 'cleanup', args: { id: 'X' } })
   })
 })
