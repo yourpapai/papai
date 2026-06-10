@@ -6,12 +6,13 @@
 import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from './cache.js'
 import { getConfigKeysForContext, isSensitiveProviderStorageKey } from './config-keys.js'
 import { logger } from './logger.js'
+import { REDUCTION_FLAGS_CONFIG_KEY } from './tools/feature-flags.js'
 import { isAllowedDynamicConfigKey, isConfigKey as isKnownConfigKey, type ConfigKey } from './types/config.js'
 import { normalizeTimezoneValue } from './utils/timezone.js'
 
 const log = logger.child({ scope: 'config' })
 
-const TOOL_ASSEMBLY_CONFIG_KEYS: ReadonlySet<string> = new Set(['mcp_endpoints'])
+const TOOL_ASSEMBLY_CONFIG_KEYS: ReadonlySet<string> = new Set(['mcp_endpoints', REDUCTION_FLAGS_CONFIG_KEY])
 
 function clearToolCacheIfToolAssemblyConfig(contextId: string, key: string): void {
   if (TOOL_ASSEMBLY_CONFIG_KEYS.has(key)) clearCachedToolsByPrefix(contextId)

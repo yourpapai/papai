@@ -35,6 +35,11 @@ describe('expand_result registration', () => {
     mockLogger()
     await setupTestDb()
     resolveReductionFlags.mockReset()
+    resolveReductionFlags.mockImplementation(() => ({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    }))
   })
 
   it('omits expand_result when compaction flag is OFF', () => {

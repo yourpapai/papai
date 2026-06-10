@@ -86,6 +86,10 @@ describe('config types', () => {
       expect(isAllowedDynamicConfigKey('ai_output_detail_level')).toBe(true)
     })
 
+    test('accepts the system-reserved reduction-flags key', () => {
+      expect(isAllowedDynamicConfigKey('tool_context_flags')).toBe(true)
+    })
+
     test('rejects unknown keys', () => {
       expect(isAllowedDynamicConfigKey('kaneo_apikey')).toBe(false)
       expect(isAllowedDynamicConfigKey('youtrack_token')).toBe(false)
