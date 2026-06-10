@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { COMPACTION_THRESHOLD_BYTES } from '../../../src/tools/compaction/constants.js'
 import { evaluateForCompaction } from '../../../src/tools/compaction/size-gate.js'
 
 describe('evaluateForCompaction', () => {
@@ -19,6 +20,19 @@ describe('evaluateForCompaction', () => {
     expect(out.compact).toBe(true)
     assert.ok(out.compact)
     expect(out.totalBytes).toBeGreaterThan(8_000)
+    expect(Buffer.byteLength(out.serialized, 'utf8')).toBe(out.totalBytes)
+    expect(() => JSON.parse(out.serialized) as unknown).not.toThrow()
+  })
+
+  it('does not compact a result at exactly the byte threshold', () => {
+    // JSON quotes add 2 bytes
+    const atLimit = 'x'.repeat(COMPACTION_THRESHOLD_BYTES - 2)
+    expect(evaluateForCompaction(atLimit).compact).toBe(false)
+  })
+
+  it('compacts a result one byte over the threshold', () => {
+    const oneBeyond = 'x'.repeat(COMPACTION_THRESHOLD_BYTES - 1)
+    expect(evaluateForCompaction(oneBeyond).compact).toBe(true)
   })
 
   it('never compacts a tool-failure result', () => {
@@ -52,5 +66,9 @@ describe('evaluateForCompaction', () => {
   it('skips null and undefined', () => {
     expect(evaluateForCompaction(null).compact).toBe(false)
     expect(evaluateForCompaction(undefined).compact).toBe(false)
+  })
+
+  it('skips a top-level symbol value (JSON.stringify returns undefined without throwing)', () => {
+    expect(evaluateForCompaction(Symbol('x')).compact).toBe(false)
   })
 })
