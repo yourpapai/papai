@@ -48,6 +48,20 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
   or truncation preview + handle). The companion `expand_result` tool (registered in
   `provider-independent-tools-builder.ts` only when the flag is ON) pages the stored raw
   result and is itself never wrapped. Flag OFF returns the toolset reference unchanged.
+- **Progressive disclosure is also not part of `makeTools()`.** `maybeApplyDisclosure`
+  (`src/tools/disclosure/wire.ts`) runs in `buildFullToolSet` after `applyResultCompaction`,
+  gated by `resolveReductionFlags(contextId).progressiveDisclosure`. When ON it copies the
+  toolset, injects `search_tools` (ranked schema-less briefs via a `ToolRetriever` — embedding
+  with lexical fallback when `semanticToolRetrieval` is ON, else lexical) and `load_tool`
+  (batch activation), both bound to one turn-scoped `DisclosureSession` (`registry.ts`, never
+  cached). `invokeModel` attaches `createDisclosurePrepareStep` (`prepare-step.ts`) so per-step
+  `activeTools` = core ∪ meta ∪ loaded, intersected with registered names; after
+  `DISCLOSURE_STALL_STEPS` (2) with no real loads it returns `{}` (all tools) and emits
+  `disclosure:fallback` once — loading always-on names does not count. Meta tools are added
+  on top of the compacted set so they are never compaction-wrapped; ask/deny preferences were
+  already applied, so a loaded tool keeps its `ask` wrapper. Debug events
+  (`disclosure:search`/`disclosure:load`/`disclosure:fallback`) carry counts/lengths only —
+  never query text or tool schemas. Flag OFF returns the toolset reference unchanged.
 
 `MakeToolsOptions` controls tool exposure:
 
