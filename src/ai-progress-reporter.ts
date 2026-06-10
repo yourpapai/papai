@@ -177,7 +177,9 @@ export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSetti
       )
       const allMessages = [...startedMessages, ...toolMessages, ...reasoningMessages]
       if (allMessages.length === 0) return
-      await Promise.all(allMessages.map((message) => reply.formatted(message)))
+      for (const message of allMessages) {
+        await reply.formatted(message) // eslint-disable-line no-await-in-loop -- sequential sends preserve message ordering
+      }
       pendingToolStarts.clear()
       toolMessages.length = 0
       reasoningMessages.length = 0
