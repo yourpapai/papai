@@ -58,7 +58,7 @@ This is Part 2 of 2. **Depends on Part 1** (`feature-flags.ts`, `compaction/*`, 
 - Create: `src/tools/disclosure/core.ts`
 - Test: `tests/tools/disclosure/core.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/core.test.ts
@@ -92,12 +92,12 @@ describe('disclosure core constants', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/core.test.ts`
 Expected: FAIL with "Cannot find module".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 // src/tools/disclosure/core.ts
@@ -118,12 +118,12 @@ export const ALWAYS_ON_TOOL_NAMES: ReadonlySet<string> = new Set([...CORE_TOOL_N
 export const DISCLOSURE_STALL_STEPS = 2
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/core.test.ts`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/core.ts tests/tools/disclosure/core.test.ts
@@ -141,7 +141,7 @@ git commit -m "feat(disclosure): core/meta tool-name constants and stall thresho
 
 `buildBriefs(tools)` maps each tool to `{ name, summary, domain }`: `summary` = first sentence of the tool's `.description` (capped at 160 chars; empty when no description), `domain` = `getToolMetadata(name)?.domain ?? 'other'`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/tool-brief.test.ts
@@ -180,12 +180,12 @@ describe('buildBriefs', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/tool-brief.test.ts`
 Expected: FAIL with "Cannot find module".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 // src/tools/disclosure/tool-brief.ts
@@ -229,12 +229,12 @@ export function buildBriefs(tools: ToolSet): ToolBrief[] {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/tool-brief.test.ts`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/tool-brief.ts tests/tools/disclosure/tool-brief.test.ts
@@ -252,7 +252,7 @@ git commit -m "feat(disclosure): tool-brief builder from descriptions + metadata
 
 Lexical scoring: lowercase token overlap across `name + summary + domain`, plus a small substring bonus. Deterministic ordering; empty query → `[]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/lexical-retriever.test.ts
@@ -286,12 +286,12 @@ describe('LexicalToolRetriever', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/lexical-retriever.test.ts`
 Expected: FAIL with "Cannot find module".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 // src/tools/disclosure/tool-retriever.ts
@@ -336,12 +336,12 @@ export class LexicalToolRetriever implements ToolRetriever {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/lexical-retriever.test.ts`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/tool-retriever.ts tests/tools/disclosure/lexical-retriever.test.ts
@@ -359,7 +359,7 @@ git commit -m "feat(disclosure): ToolRetriever interface + lexical implementatio
 
 `EmbeddingToolRetriever` takes `{ embed, lexical, cache }` where `embed(text) => Promise<number[] | null>`. It embeds the query (null → fall back to lexical), embeds each brief (cached by `name` in the provided `Map`), and ranks by `cosineSimilarity`. If no brief embeds, falls back to lexical. `getToolRetriever()` returns an `EmbeddingToolRetriever` wired to `tryGetEmbedding` when `embedding_model` + creds are present, else a `LexicalToolRetriever`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/embedding-retriever.test.ts
@@ -424,12 +424,12 @@ describe('EmbeddingToolRetriever', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/embedding-retriever.test.ts`
 Expected: FAIL — `EmbeddingToolRetriever` / `getToolRetriever` not exported yet.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `src/tools/disclosure/tool-retriever.ts`:
 
@@ -491,12 +491,12 @@ export function getToolRetriever(): ToolRetriever {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/embedding-retriever.test.ts`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/tool-retriever.ts tests/tools/disclosure/embedding-retriever.test.ts
@@ -512,7 +512,7 @@ git commit -m "feat(disclosure): embedding-backed retriever with lexical fallbac
 - Create: `src/tools/disclosure/registry.ts`
 - Test: `tests/tools/disclosure/registry.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/registry.test.ts
@@ -567,12 +567,12 @@ describe('DisclosureSession', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/registry.test.ts`
 Expected: FAIL with "Cannot find module".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 // src/tools/disclosure/registry.ts
@@ -629,12 +629,12 @@ export function createDisclosureSession(fullTools: ToolSet, coreNames: ReadonlyS
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/registry.test.ts`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/registry.ts tests/tools/disclosure/registry.test.ts
@@ -652,7 +652,7 @@ git commit -m "feat(disclosure): turn-scoped DisclosureSession registry"
 
 Returns ranked briefs (`{ name, summary, domain, alreadyLoaded }`) with **no input schemas**. Emits `disclosure:search` (query length + result count only — never the query text or content). Briefs are built from the session's registered tools minus the always-on set (no point surfacing always-active tools).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/search-tools.test.ts
@@ -716,12 +716,12 @@ describe('search_tools', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/search-tools.test.ts`
 Expected: FAIL with "Cannot find module".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 // src/tools/disclosure/search-tools.ts
@@ -780,12 +780,12 @@ export function makeSearchToolsTool(
 
 Adjust the test's `makeSearchToolsTool(session, new LexicalToolRetriever(), 'ctx-1')` call to pass the tools as the 4th arg: `makeSearchToolsTool(session, new LexicalToolRetriever(), 'ctx-1', tools)`. Update both `exec` setups in the test accordingly before running.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/search-tools.test.ts`
 Expected: PASS (2 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/search-tools.ts tests/tools/disclosure/search-tools.test.ts
@@ -803,7 +803,7 @@ git commit -m "feat(disclosure): search_tools tool returning ranked schema-less 
 
 Batch load. Emits `disclosure:load` (counts only). Returns `{ loaded, unknown, nowActive }`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/load-tool.test.ts
@@ -853,12 +853,12 @@ describe('load_tool', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/load-tool.test.ts`
 Expected: FAIL with "Cannot find module".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 // src/tools/disclosure/load-tool.ts
@@ -906,12 +906,12 @@ export function makeLoadToolTool(session: DisclosureSession, contextId: string):
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/load-tool.test.ts`
 Expected: PASS (1 test).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/load-tool.ts tests/tools/disclosure/load-tool.test.ts
@@ -929,7 +929,7 @@ git commit -m "feat(disclosure): load_tool batch activation tool"
 
 Returns a function `({ stepNumber }) => { activeTools } | {}`. Normally returns `{ activeTools: session.activeToolNames() }`. If the model has not loaded anything by `DISCLOSURE_STALL_STEPS`, returns `{}` (all tools active) and emits `disclosure:fallback` once.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/prepare-step.test.ts
@@ -989,12 +989,12 @@ describe('createDisclosurePrepareStep', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/prepare-step.test.ts`
 Expected: FAIL with "Cannot find module".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 // src/tools/disclosure/prepare-step.ts
@@ -1032,12 +1032,12 @@ export function createDisclosurePrepareStep(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/prepare-step.test.ts`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/prepare-step.ts tests/tools/disclosure/prepare-step.test.ts
@@ -1055,7 +1055,7 @@ git commit -m "feat(disclosure): prepareStep factory with stall fallback"
 
 `maybeApplyDisclosure(tools, contextId, retriever)`: if `resolveReductionFlags(contextId).progressiveDisclosure` is OFF → `{ tools, disclosure: undefined }`. If ON → add `search_tools` + `load_tool` to a copy of `tools`, create the session over that full set, and return `{ tools: withMeta, disclosure: session }`. The retriever is chosen by the caller (Task 11) so `semantic_tool_retrieval` can downgrade it to lexical.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/wire.test.ts
@@ -1114,12 +1114,12 @@ describe('maybeApplyDisclosure', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/tools/disclosure/wire.test.ts`
 Expected: FAIL with "Cannot find module".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 // src/tools/disclosure/wire.ts
@@ -1155,12 +1155,12 @@ export function maybeApplyDisclosure(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/tools/disclosure/wire.test.ts`
 Expected: PASS (2 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/tools/disclosure/wire.ts tests/tools/disclosure/wire.test.ts
@@ -1176,7 +1176,7 @@ git commit -m "feat(disclosure): maybeApplyDisclosure wiring helper"
 - Modify: `src/system-prompt.ts` — add a `DISCLOSURE` preamble constant, include it via an `AssembleOptions.progressiveDisclosure` flag, and add the option to `buildSystemPrompt` / `buildProviderlessSystemPrompt`.
 - Test: `tests/system-prompt-disclosure.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/system-prompt-disclosure.test.ts
@@ -1207,12 +1207,12 @@ describe('discovery preamble', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/system-prompt-disclosure.test.ts`
 Expected: FAIL — `progressiveDisclosure` option not accepted / preamble absent.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/system-prompt.ts`:
 
@@ -1244,12 +1244,12 @@ if (options.progressiveDisclosure === true) parts.push(DISCLOSURE)
 
 (d) Extend the public builders to accept and forward the flag. Replace the `buildSystemPrompt` overload that takes options and the `buildProviderlessSystemPrompt` signature so the options object includes `progressiveDisclosure?: boolean`, and pass it into `assembleSystemPrompt`'s options. Concretely, change the options type in both places from `{ askPermissionAvailable: boolean }` to `{ askPermissionAvailable: boolean; progressiveDisclosure?: boolean }`, and where `AssembleOptions` is constructed set `progressiveDisclosure: args[1]?.progressiveDisclosure` (in `buildSystemPrompt`) and `progressiveDisclosure: options.progressiveDisclosure` (in `buildProviderlessSystemPrompt`).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/system-prompt-disclosure.test.ts`
 Expected: PASS (2 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/system-prompt.ts tests/system-prompt-disclosure.test.ts
@@ -1270,7 +1270,7 @@ git commit -m "feat(disclosure): discovery preamble in system prompt behind opti
 
 The retriever choice honors `semantic_tool_retrieval`: when OFF, force `LexicalToolRetriever`; when ON, `getToolRetriever()`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/llm-orchestrator-disclosure-wiring.test.ts
@@ -1366,12 +1366,12 @@ describe('prepareLlmInvocation disclosure wiring', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/llm-orchestrator-disclosure-wiring.test.ts`
 Expected: FAIL — `out.disclosure` undefined / `search_tools` missing.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 (a) `src/llm-orchestrator-types.ts` — add to `InvokeModelArgs`:
 
@@ -1464,12 +1464,12 @@ const result = await deps.generateText({
 })
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test tests/llm-orchestrator-disclosure-wiring.test.ts`
 Expected: PASS (2 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/llm-orchestrator-types.ts src/llm-orchestrator-tools.ts src/llm-orchestrator.ts src/llm-orchestrator-invoke.ts tests/llm-orchestrator-disclosure-wiring.test.ts
@@ -1486,7 +1486,7 @@ git commit -m "feat(disclosure): thread DisclosureSession into generateText prep
 
 Drive a `prepareStep` + session through a simulated multi-step loop and assert: step 0 active = always-on only; after `load_tool` the active set widens; the model's hallucinated call to an unloaded tool is excluded from active.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/tools/disclosure/disclosure-loop.test.ts
@@ -1531,12 +1531,12 @@ describe('disclosure loop', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails or passes**
+- [x] **Step 2: Run test to verify it fails or passes**
 
 Run: `bun test tests/tools/disclosure/disclosure-loop.test.ts`
 Expected: PASS (relies on Tasks 5+8; if FAIL, fix the offending unit).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/tools/disclosure/disclosure-loop.test.ts
@@ -1551,7 +1551,7 @@ git commit -m "test(disclosure): activeTools widening across a scripted loop"
 
 - Test: `tests/llm-orchestrator-disclosure-wiring.test.ts` (add a case)
 
-- [ ] **Step 1: Add the failing/confirming test**
+- [x] **Step 1: Add the failing/confirming test**
 
 ```ts
 // add inside the describe block
@@ -1578,12 +1578,12 @@ it('OFF: enabledToolNames equals the descriptor tools (no meta injected)', async
 })
 ```
 
-- [ ] **Step 2: Run test to verify**
+- [x] **Step 2: Run test to verify**
 
 Run: `bun test tests/llm-orchestrator-disclosure-wiring.test.ts`
 Expected: PASS. (When `disclosure` is undefined, `invokeModel` omits `prepareStep`, so the SDK leaves all tools active — today's behavior.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/llm-orchestrator-disclosure-wiring.test.ts
@@ -1596,17 +1596,17 @@ git commit -m "test(disclosure): flag-off keeps full eager tool set"
 
 **Files:** none (verification) + optional `docs/deployment` note.
 
-- [ ] **Step 1: Run all new suites**
+- [x] **Step 1: Run all new suites**
 
 Run: `bun test tests/tools/disclosure/ tests/system-prompt-disclosure.test.ts tests/llm-orchestrator-disclosure-wiring.test.ts`
 Expected: all PASS.
 
-- [ ] **Step 2: Lint / typecheck / format on changed files**
+- [x] **Step 2: Lint / typecheck / format on changed files**
 
 Run: `bun run lint && bun run typecheck && bun run format:check`
 Expected: PASS for files created/modified by this plan. (Unrelated pre-existing WIP failures are out of scope — do not modify those files.)
 
-- [ ] **Step 3: Mutation-test the pure cores**
+- [x] **Step 3: Mutation-test the pure cores**
 
 Run: `bun test:mutate:file src/tools/disclosure/registry.ts src/tools/disclosure/tool-retriever.ts src/tools/disclosure/prepare-step.ts`
 Expected: surviving mutants addressed or justified.
@@ -1615,7 +1615,7 @@ Expected: surviving mutants addressed or justified.
 
 Set a test context's flags JSON to `{ "progressive_disclosure": true, "result_compaction": true, "semantic_tool_retrieval": true }` and confirm in `/debug`: step-0 request carries ~4 tool schemas; `disclosure:search`/`disclosure:load` events fire; a large `list_tasks`/`web_fetch` result shows `compaction:applied`. Toggle the flag OFF and confirm the full eager tool set returns.
 
-- [ ] **Step 5: Final commit**
+- [x] **Step 5: Final commit**
 
 ```bash
 git add -A
@@ -1645,9 +1645,19 @@ git commit -m "chore(disclosure): gate + mutation cleanup for part 2"
 
 ## Drift Log
 
-| Date       | Category               | Item                                                                                                                                                                                                | Decision                                                                                                                                                                                |
-| ---------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-06-10 | In-plan, stale anchors | Task 11(b) insertion point in `src/llm-orchestrator-tools.ts`                                                                                                                                       | Part 1 placed compaction wiring inside `buildFullToolSet` (which already resolves `flags`); rewrote step to apply disclosure there and thread `disclosure` outward                      |
-| 2026-06-10 | In-plan, stale anchors | Task 11 test mock set                                                                                                                                                                               | Mirrored `tests/llm-orchestrator-tools-compaction.test.ts`: added `getCachedConfig`/`setCachedConfig`/`clearCachedToolsByPrefix` to the `cache.js` mock and a `src/tools/index.js` mock |
-| 2026-06-10 | Verified, no change    | All other anchors (feature-flags shape, `tryGetEmbedding`, `getSystemConfig`, `getToolMetadata`, `emitUser`, system-prompt builders, AI SDK 6.0.184 `prepareStep`/`activeTools`/`cosineSimilarity`) | Confirmed against current code 2026-06-10; no edits needed                                                                                                                              |
-| 2026-06-10 | Out-of-plan audit      | Branch diff vs master (29 files)                                                                                                                                                                    | Entirely Part 1 (compaction) output — this plan's declared dependency, tracked by the Part 1 plan; not drift                                                                            |
+| Date       | Category               | Item                                                                                                                                                                                                | Decision                                                                                                                                                                                                                                            |
+| ---------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-10 | In-plan, stale anchors | Task 11(b) insertion point in `src/llm-orchestrator-tools.ts`                                                                                                                                       | Part 1 placed compaction wiring inside `buildFullToolSet` (which already resolves `flags`); rewrote step to apply disclosure there and thread `disclosure` outward                                                                                  |
+| 2026-06-10 | In-plan, stale anchors | Task 11 test mock set                                                                                                                                                                               | Mirrored `tests/llm-orchestrator-tools-compaction.test.ts`: added `getCachedConfig`/`setCachedConfig`/`clearCachedToolsByPrefix` to the `cache.js` mock and a `src/tools/index.js` mock                                                             |
+| 2026-06-10 | Verified, no change    | All other anchors (feature-flags shape, `tryGetEmbedding`, `getSystemConfig`, `getToolMetadata`, `emitUser`, system-prompt builders, AI SDK 6.0.184 `prepareStep`/`activeTools`/`cosineSimilarity`) | Confirmed against current code 2026-06-10; no edits needed                                                                                                                                                                                          |
+| 2026-06-10 | Out-of-plan audit      | Branch diff vs master (29 files)                                                                                                                                                                    | Entirely Part 1 (compaction) output — this plan's declared dependency, tracked by the Part 1 plan; not drift                                                                                                                                        |
+| 2026-06-10 | In-plan, divergent     | Task 3 lexical scoring                                                                                                                                                                              | Plan's score>0 filter contradicted its own length-2 test; resolved in favor of the test: fill-to-limit with zero-score padding when any brief matches, [] otherwise. Distinct-term Set scoring added in review                                      |
+| 2026-06-10 | In-plan, divergent     | Task 4 file layout                                                                                                                                                                                  | `EmbeddingToolRetriever` + `getToolRetriever` live in new `src/tools/disclosure/embedding-tool-retriever.ts` (single-responsibility split); Task 11 imports updated accordingly. Review added per-model embedding caches + dimension-mismatch guard |
+| 2026-06-10 | Review-driven addition | Task 2 summary extraction                                                                                                                                                                           | First-sentence regex gained `(?<!\b[A-Za-z])` guard so `e.g.`/`i.e.` abbreviations don't truncate summaries                                                                                                                                         |
+| 2026-06-10 | In-plan, divergent     | Task 9 session construction                                                                                                                                                                         | Placeholder-key single-session variant replaced the plan's create-twice dance; `toolsForBriefs` made a required param of `makeSearchToolsTool`                                                                                                      |
+| 2026-06-10 | Review-driven addition | Task 10 preamble                                                                                                                                                                                    | `expand_result` advertised only when registered (disclosure ON + compaction OFF no longer prompts a nonexistent tool)                                                                                                                               |
+| 2026-06-10 | Review-driven addition | Task 11 observability                                                                                                                                                                               | `turnId` threaded into `createDisclosurePrepareStep` → `disclosure:fallback` event                                                                                                                                                                  |
+| 2026-06-10 | Review-driven addition | Final review                                                                                                                                                                                        | `markLoaded` no longer counts always-on names toward `hasLoaded()` (stall-guard bypass); `search_tools` execute wrapped in structured tool-failure handling                                                                                         |
+| 2026-06-10 | Deferred cleanup       | `resolveReductionFlags` called twice per turn when disclosure ON (`buildFullToolSet` + inside `maybeApplyDisclosure`)                                                                               | Harmless cached read; left as-is to keep `wire.ts` self-contained. Candidate for a later cleanup                                                                                                                                                    |
+| 2026-06-10 | Deferred cleanup       | `buildSystemPrompt` 3-arg overload cannot carry `progressiveDisclosure`                                                                                                                             | In-spec (only the options overload was extended); overload-collapse suggested by review left for a future refactor                                                                                                                                  |
+| 2026-06-10 | Pending human step     | Task 14 Step 4 manual smoke (real model, `/debug` event verification)                                                                                                                               | Requires a live bot + LLM credentials; left unchecked in the plan                                                                                                                                                                                   |
