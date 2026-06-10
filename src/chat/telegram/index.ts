@@ -167,9 +167,15 @@ export class TelegramChatProvider implements ChatProvider {
   async stop(): Promise<void> {
     await this.bot.stop()
   }
-  resolveUserId(username: string, _context: ResolveUserContext): Promise<string | null> {
+  async resolveUserId(username: string, _context: ResolveUserContext): Promise<string | null> {
     const clean = username.startsWith('@') ? username.slice(1) : username
-    return Promise.resolve(/^\d+$/u.test(clean) ? clean : null)
+    if (/^\d+$/u.test(clean)) return clean
+    try {
+      const chat = await this.bot.api.getChat(`@${clean}`)
+      return String(chat.id)
+    } catch {
+      return null
+    }
   }
   resolveGroupLabel(groupId: string): Promise<string | null> {
     return resolveTelegramGroupLabel((chatId) => this.bot.api.getChat(chatId), groupId)
