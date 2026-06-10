@@ -15,6 +15,10 @@ import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
 import type { TaskProvider } from './providers/types.js'
 import { applyResultCompaction } from './tools/compaction/wrap-compaction.js'
+import { getToolRetriever } from './tools/disclosure/embedding-tool-retriever.js'
+import type { DisclosureSession } from './tools/disclosure/registry.js'
+import { LexicalToolRetriever } from './tools/disclosure/tool-retriever.js'
+import { maybeApplyDisclosure } from './tools/disclosure/wire.js'
 import { resolveReductionFlags } from './tools/feature-flags.js'
 import { applyToolPreferences, buildProviderlessToolDescriptors, buildToolDescriptors } from './tools/index.js'
 import type { AskPermissionFn } from './tools/permission-gate.js'
@@ -105,7 +109,7 @@ export function buildLlmInvocationOpts(
 
 const buildFullToolSet = async (
   opts: LlmInvocationOptions,
-): Promise<{ tools: ToolSet; enabledToolNames: Set<string> }> => {
+): Promise<{ tools: ToolSet; enabledToolNames: Set<string>; disclosure: DisclosureSession | undefined }> => {
   const { contextId, chatUserId, username, contextType, provider, userText, stagedDownloadFn, askPermission } = opts
   const descriptors = await getOrCreateDescriptors(
     contextId,
@@ -117,13 +121,15 @@ const buildFullToolSet = async (
   )
   const prefTools = applyToolPreferences(descriptors, contextId, askPermission)
   const flags = resolveReductionFlags(contextId)
-  const tools = applyResultCompaction(prefTools, {
+  const compacted = applyResultCompaction(prefTools, {
     storageContextId: contextId,
     userIntent: userText,
     enabled: flags.resultCompaction,
   })
-  log.debug({ contextId, toolCount: Object.keys(tools).length }, 'Prepared tool set for LLM invocation')
-  return { tools, enabledToolNames: new Set(Object.keys(tools)) }
+  const retriever = flags.semanticToolRetrieval ? getToolRetriever() : new LexicalToolRetriever()
+  const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(compacted, contextId, retriever)
+  log.debug({ contextId, toolCount: Object.keys(disclosedTools).length }, 'Prepared tool set for LLM invocation')
+  return { tools: disclosedTools, enabledToolNames: new Set(Object.keys(disclosedTools)), disclosure }
 }
 
 export const prepareLlmInvocation = async (
@@ -132,9 +138,10 @@ export const prepareLlmInvocation = async (
   tools: ToolSet
   validatedMessages: ModelMessage[]
   enabledToolNames: ReadonlySet<string>
+  disclosure: DisclosureSession | undefined
 }> => {
   const { contextId, configId, history } = opts
-  const { tools, enabledToolNames } = await buildFullToolSet(opts)
+  const { tools, enabledToolNames, disclosure } = await buildFullToolSet(opts)
   const timezone = resolveTimezone(configId)
   const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history)
   const validatedMessages = validateToolResults(messagesWithMemory)
@@ -142,5 +149,5 @@ export const prepareLlmInvocation = async (
     { contextId, historyLength: history.length, hasMemory: memoryMsg !== null, timezone },
     'Calling generateText',
   )
-  return { tools, validatedMessages, enabledToolNames }
+  return { tools, validatedMessages, enabledToolNames, disclosure }
 }

@@ -10,6 +10,7 @@ import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ReplyFn } from './chat/types.js'
 import type { TaskProvider } from './providers/types.js'
+import type { DisclosureSession } from './tools/disclosure/registry.js'
 
 export type LlmOrchestratorDeps = {
   generateText: typeof generateText
@@ -59,7 +60,8 @@ export type InvokeModelArgs = {
   enabledToolNames: ReadonlySet<string>
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
-} & Partial<Record<'progressReporter', AiProgressReporter>>
+} & Partial<Record<'progressReporter', AiProgressReporter>> &
+  Partial<Record<'disclosure', DisclosureSession>>
 
 export type StepOutput = {
   stepNumber: number

@@ -205,9 +205,8 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     await ensureRequiredConfig(reply, contextId, configId)
     await maybeAutoLinkIdentity(chatUserId, username, provider)
   }
-  const { tools, validatedMessages, enabledToolNames } = await prepareLlmInvocation(
-    buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn),
-  )
+  const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
+  const { tools, validatedMessages, enabledToolNames, disclosure } = await prepareLlmInvocation(invocationOpts)
   const progressReporter = createProgressReporterForContext(reply, contextId)
   const result = await invokeModelWithTyping(reply, {
     contextId,
@@ -221,6 +220,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     messages: validatedMessages,
     deps,
     progressReporter,
+    disclosure,
     turnId,
   })
   const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
