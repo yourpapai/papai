@@ -8,8 +8,7 @@ import { cosineSimilarity } from 'ai'
 import { tryGetEmbedding } from '../../embeddings.js'
 import { getSystemConfig } from '../../system-config.js'
 import type { ToolBrief } from './tool-brief.js'
-import { LexicalToolRetriever } from './tool-retriever.js'
-import type { RankedBrief, ToolRetriever } from './tool-retriever.js'
+import { LexicalToolRetriever, type RankedBrief, type ToolRetriever } from './tool-retriever.js'
 
 export interface EmbeddingRetrieverDeps {
   embed: (text: string) => Promise<number[] | null>
@@ -32,6 +31,7 @@ export class EmbeddingToolRetriever implements ToolRetriever {
     for (let i = 0; i < briefs.length; i++) {
       const vec = vecs[i]
       if (vec === null || vec === undefined) continue
+      if (vec.length !== queryVec.length) continue
       scored.push({ ...briefs[i]!, score: cosineSimilarity(queryVec, vec) })
     }
     if (scored.length === 0) return this.deps.lexical.rank(query, briefs, limit)
@@ -49,7 +49,7 @@ export class EmbeddingToolRetriever implements ToolRetriever {
   }
 }
 
-const briefEmbeddingCache = new Map<string, number[]>()
+const briefEmbeddingCaches = new Map<string, Map<string, number[]>>()
 
 export function getToolRetriever(): ToolRetriever {
   const apiKey = getSystemConfig('llm_apikey')
@@ -57,9 +57,14 @@ export function getToolRetriever(): ToolRetriever {
   const embeddingModel = getSystemConfig('embedding_model')
   const lexical = new LexicalToolRetriever()
   if (apiKey === null || baseUrl === null || embeddingModel === null) return lexical
+  let cache = briefEmbeddingCaches.get(embeddingModel)
+  if (cache === undefined) {
+    cache = new Map<string, number[]>()
+    briefEmbeddingCaches.set(embeddingModel, cache)
+  }
   return new EmbeddingToolRetriever({
     embed: (text) => tryGetEmbedding(text, apiKey, baseUrl, embeddingModel),
     lexical,
-    cache: briefEmbeddingCache,
+    cache,
   })
 }
