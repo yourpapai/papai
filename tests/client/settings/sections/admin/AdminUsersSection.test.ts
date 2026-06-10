@@ -15,7 +15,7 @@ const json = (payload: unknown): Response =>
   new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
 const drain = async (): Promise<void> => {
-  for (let i = 0; i < 10; i++) await Promise.resolve()
+  for (let i = 0; i < 20; i++) await Promise.resolve()
   flushSync()
 }
 
@@ -39,6 +39,21 @@ const captureUsersMock = (url: string, init: RequestInit): Promise<Response> => 
 const postErrorMock = (url: string, init: RequestInit): Promise<Response> => {
   if (url.includes('/admin/users') && init.method === 'POST')
     return Promise.resolve(new Response('Internal Server Error', { status: 500 }))
+  return Promise.resolve(json(usersPayload))
+}
+
+const pendingPayload = {
+  users: [
+    {
+      platform_user_id: 'placeholder-123e4567-e89b-12d3-a456-426614174000',
+      platform_instance_id: 'tg',
+      username: 'ghost',
+    },
+  ],
+}
+
+const pendingAddMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/users') && init.method === 'POST') return Promise.resolve(json({ ok: true, pending: true }))
   return Promise.resolve(json(usersPayload))
 }
 
@@ -166,6 +181,36 @@ describe('AdminUsersSection', () => {
     expect(target.querySelector('[data-testid="user-add-input"]')?.closest('.ui-input')).not.toBeNull()
     expect(target.querySelector('[data-testid="user-add"]')?.classList.contains('ui-btn')).toBe(true)
     expect(target.querySelector('.ui-datatable')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders a pending badge instead of the placeholder id', async () => {
+    setMockFetch(() => Promise.resolve(json(pendingPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="user-pending-badge"]')).not.toBeNull()
+    expect(target.textContent).toContain('ghost')
+    // the only row is pending → no IdCell rendered
+    expect(target.querySelector('.id-cell')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a pending add shows the first-contact status message', async () => {
+    setCsrfToken('c')
+    setMockFetch(pendingAddMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="user-add-input"]')!
+    input.value = '@ghost'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-success')?.textContent).toContain('first message the bot')
     void unmount(component)
   })
 })

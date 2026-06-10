@@ -44,11 +44,12 @@
     if (userId === '') return
     try {
       const username = newUsername.trim()
-      await addAdminUser(username === '' ? { userId } : { userId, username })
+      const result = await addAdminUser(username === '' ? { userId } : { userId, username })
       newUserId = ''
       newUsername = ''
       await load()
-      status = 'User added.'
+      status =
+        result.pending === true ? "User added — they'll be authorized when they first message the bot." : 'User added.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -97,7 +98,7 @@
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
   <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void add() }}>
-    <Field label="User ID or @username" hint="For Telegram, you can use @username instead of numeric ID">
+    <Field label="User ID or @username" hint="For Telegram, @username adds a pending entry that activates when the user first messages the bot">
       {#snippet children()}
         <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="user-add-input" placeholder="123456789 or @username" />
       {/snippet}
@@ -119,7 +120,11 @@
           {#snippet children()}Remove{/snippet}
         </Btn>
       {:else if col.key === 'platform_user_id'}
-        <IdCell value={row.platform_user_id} />
+        {#if row.platform_user_id.startsWith('placeholder-')}
+          <span class="pending-badge" data-testid="user-pending-badge">pending</span>
+        {:else}
+          <IdCell value={row.platform_user_id} />
+        {/if}
       {:else}
         {String(row[col.key as keyof UserRow] ?? '')}
       {/if}
@@ -145,3 +150,13 @@
     {#snippet body()}<p>Remove user {pendingRemovalLabel}? This cannot be undone.</p>{/snippet}
   </Confirm>
 </section>
+
+<style>
+  .pending-badge {
+    font-size: 10px;
+    color: var(--fg2);
+    border: 1px solid var(--border);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+</style>
