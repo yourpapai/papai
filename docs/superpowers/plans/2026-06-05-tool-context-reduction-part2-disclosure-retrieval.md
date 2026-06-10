@@ -156,8 +156,14 @@ const t = (description: string): ToolSet[string] =>
 
 describe('buildBriefs', () => {
   it('uses the first sentence of the description as the summary', () => {
-    const briefs = buildBriefs({ list_tasks: t('List tasks in a project. Supports filters and paging.') })
-    expect(briefs[0]).toEqual({ name: 'list_tasks', summary: 'List tasks in a project.', domain: 'task' })
+    const briefs = buildBriefs({
+      list_tasks: t('List tasks in a project. Supports filters and paging.'),
+    })
+    expect(briefs[0]).toEqual({
+      name: 'list_tasks',
+      summary: 'List tasks in a project.',
+      domain: 'task',
+    })
   })
 
   it('derives mcp domain for namespaced tools and tolerates empty descriptions', () => {
@@ -368,7 +374,12 @@ const briefs: ToolBrief[] = [
 ]
 
 // Fake embeddings: tasks → [1,0]; web → [0,1]; query "tasks" → [1,0].
-const vectors: Record<string, number[]> = { list_tasks: [1, 0], web_fetch: [0, 1], q_tasks: [1, 0], q_web: [0, 1] }
+const vectors: Record<string, number[]> = {
+  list_tasks: [1, 0],
+  web_fetch: [0, 1],
+  q_tasks: [1, 0],
+  q_web: [0, 1],
+}
 
 describe('EmbeddingToolRetriever', () => {
   it('ranks by cosine similarity to the query embedding', async () => {
@@ -377,7 +388,11 @@ describe('EmbeddingToolRetriever', () => {
       if (text.includes('Fetch web')) return vectors['web_fetch']!
       return vectors['q_tasks']!
     })
-    const r = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: new Map() })
+    const r = new EmbeddingToolRetriever({
+      embed,
+      lexical: new LexicalToolRetriever(),
+      cache: new Map(),
+    })
     const out = await r.rank('show my tasks', briefs, 2)
     expect(out[0]!.name).toBe('list_tasks')
   })
@@ -387,7 +402,11 @@ describe('EmbeddingToolRetriever', () => {
       text.includes('Fetch web') ? vectors['web_fetch']! : vectors['list_tasks']!,
     )
     const cache = new Map<string, number[]>()
-    const r = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache })
+    const r = new EmbeddingToolRetriever({
+      embed,
+      lexical: new LexicalToolRetriever(),
+      cache,
+    })
     await r.rank('tasks', briefs, 2)
     const callsAfterFirst = embed.mock.calls.length
     await r.rank('tasks again', briefs, 2)
@@ -504,7 +523,12 @@ import { z } from 'zod'
 import { createDisclosureSession } from '../../../src/tools/disclosure/registry.js'
 import { CORE_TOOL_NAMES } from '../../../src/tools/disclosure/core.js'
 
-const stub = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: async () => ({}) })
+const stub = (): ToolSet[string] =>
+  tool({
+    description: 'x',
+    inputSchema: z.object({}),
+    execute: async () => ({}),
+  })
 
 function sessionWith(names: string[]) {
   const tools: ToolSet = {}
@@ -646,7 +670,11 @@ const { LexicalToolRetriever } = await import('../../../src/tools/disclosure/too
 const { getToolExecutor } = await import('../../utils/test-helpers.js')
 
 const d = (desc: string): ToolSet[string] =>
-  tool({ description: desc, inputSchema: z.object({}), execute: async () => ({}) })
+  tool({
+    description: desc,
+    inputSchema: z.object({}),
+    execute: async () => ({}),
+  })
 
 describe('search_tools', () => {
   it('returns ranked briefs without input schemas', async () => {
@@ -659,7 +687,9 @@ describe('search_tools', () => {
     }
     const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
     const exec = getToolExecutor(makeSearchToolsTool(session, new LexicalToolRetriever(), 'ctx-1'))
-    const out = (await exec({ query: 'list tasks', limit: 5 })) as { results: Array<Record<string, unknown>> }
+    const out = (await exec({ query: 'list tasks', limit: 5 })) as {
+      results: Array<Record<string, unknown>>
+    }
     expect(out.results[0]).toEqual({
       name: 'list_tasks',
       summary: 'List tasks in a project.',
@@ -671,10 +701,16 @@ describe('search_tools', () => {
   })
 
   it('does not surface always-on tools as discoverable', async () => {
-    const tools: ToolSet = { get_current_time: d('Get the time now.'), search_tools: d('search'), load_tool: d('load') }
+    const tools: ToolSet = {
+      get_current_time: d('Get the time now.'),
+      search_tools: d('search'),
+      load_tool: d('load'),
+    }
     const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
     const exec = getToolExecutor(makeSearchToolsTool(session, new LexicalToolRetriever(), 'ctx-1'))
-    const out = (await exec({ query: 'time', limit: 5 })) as { results: unknown[] }
+    const out = (await exec({ query: 'time', limit: 5 })) as {
+      results: unknown[]
+    }
     expect(out.results).toEqual([])
   })
 })
@@ -729,7 +765,10 @@ export function makeSearchToolsTool(
         domain: b.domain,
         alreadyLoaded: loadedNow.has(b.name),
       }))
-      emitUser('disclosure:search', contextId, { queryLength: query.length, resultCount: results.length })
+      emitUser('disclosure:search', contextId, {
+        queryLength: query.length,
+        resultCount: results.length,
+      })
       log.debug({ contextId, queryLength: query.length, resultCount: results.length }, 'search_tools served')
       return { results }
     },
@@ -780,14 +819,27 @@ const { createDisclosureSession } = await import('../../../src/tools/disclosure/
 const { CORE_TOOL_NAMES } = await import('../../../src/tools/disclosure/core.js')
 const { getToolExecutor } = await import('../../utils/test-helpers.js')
 
-const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: async () => ({}) })
+const d = (): ToolSet[string] =>
+  tool({
+    description: 'x',
+    inputSchema: z.object({}),
+    execute: async () => ({}),
+  })
 
 describe('load_tool', () => {
   it('loads known tools and reports unknown ones, returning the new active count', async () => {
-    const tools: ToolSet = { get_current_time: d(), search_tools: d(), load_tool: d(), list_tasks: d(), get_task: d() }
+    const tools: ToolSet = {
+      get_current_time: d(),
+      search_tools: d(),
+      load_tool: d(),
+      list_tasks: d(),
+      get_task: d(),
+    }
     const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
     const exec = getToolExecutor(makeLoadToolTool(session, 'ctx-1'))
-    const out = (await exec({ names: ['list_tasks', 'get_task', 'bogus'] })) as {
+    const out = (await exec({
+      names: ['list_tasks', 'get_task', 'bogus'],
+    })) as {
       loaded: string[]
       unknown: string[]
       nowActive: number
@@ -834,8 +886,20 @@ export function makeLoadToolTool(session: DisclosureSession, contextId: string):
     execute: async ({ names }) => {
       const { loaded, unknown } = session.markLoaded(names)
       const nowActive = session.activeToolNames().length
-      emitUser('disclosure:load', contextId, { loadedCount: loaded.length, unknownCount: unknown.length, nowActive })
-      log.debug({ contextId, loadedCount: loaded.length, unknownCount: unknown.length, nowActive }, 'load_tool served')
+      emitUser('disclosure:load', contextId, {
+        loadedCount: loaded.length,
+        unknownCount: unknown.length,
+        nowActive,
+      })
+      log.debug(
+        {
+          contextId,
+          loadedCount: loaded.length,
+          unknownCount: unknown.length,
+          nowActive,
+        },
+        'load_tool served',
+      )
       return { loaded, unknown, nowActive }
     },
   })
@@ -880,10 +944,20 @@ const { createDisclosurePrepareStep } = await import('../../../src/tools/disclos
 const { createDisclosureSession } = await import('../../../src/tools/disclosure/registry.js')
 const { CORE_TOOL_NAMES } = await import('../../../src/tools/disclosure/core.js')
 
-const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: async () => ({}) })
+const d = (): ToolSet[string] =>
+  tool({
+    description: 'x',
+    inputSchema: z.object({}),
+    execute: async () => ({}),
+  })
 
 function freshSession() {
-  const tools: ToolSet = { get_current_time: d(), search_tools: d(), load_tool: d(), list_tasks: d() }
+  const tools: ToolSet = {
+    get_current_time: d(),
+    search_tools: d(),
+    load_tool: d(),
+    list_tasks: d(),
+  }
   return createDisclosureSession(tools, CORE_TOOL_NAMES)
 }
 
@@ -1002,7 +1076,12 @@ mock.module('../../../src/tools/feature-flags.js', () => ({
 const { maybeApplyDisclosure } = await import('../../../src/tools/disclosure/wire.js')
 const { LexicalToolRetriever } = await import('../../../src/tools/disclosure/tool-retriever.js')
 
-const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: async () => ({}) })
+const d = (): ToolSet[string] =>
+  tool({
+    description: 'x',
+    inputSchema: z.object({}),
+    execute: async () => ({}),
+  })
 
 describe('maybeApplyDisclosure', () => {
   beforeEach(() => resolveReductionFlags.mockReset())
@@ -1207,14 +1286,31 @@ mock.module('../src/tools/feature-flags.js', () => ({
   REDUCTION_FLAGS_CONFIG_KEY: 'tool_context_flags',
 }))
 mock.module('../src/cache.js', () => ({
-  getCachedTools: () => ({ list_tasks: { description: 'List tasks.', execute: async () => ({}) } }),
+  getCachedTools: () => ({
+    list_tasks: { description: 'List tasks.', execute: async () => ({}) },
+  }),
   setCachedTools: () => {},
+  getCachedConfig: () => null,
+  setCachedConfig: () => {},
+  clearCachedToolsByPrefix: () => {},
+}))
+mock.module('../src/tools/index.js', () => ({
+  buildToolDescriptors: async () => ({}),
+  buildProviderlessToolDescriptors: async () => ({}),
+  applyToolPreferences: (tools: unknown) => tools,
 }))
 mock.module('../src/conversation.js', () => ({
-  buildMessagesWithMemory: (_c: string, h: unknown) => ({ messages: h, memoryMsg: null }),
+  buildMessagesWithMemory: (_c: string, h: unknown) => ({
+    messages: h,
+    memoryMsg: null,
+  }),
 }))
-mock.module('../src/llm-orchestrator-validation.js', () => ({ validateToolResults: (m: unknown) => m }))
-mock.module('../src/llm-orchestrator-config.js', () => ({ resolveTimezone: () => 'UTC' }))
+mock.module('../src/llm-orchestrator-validation.js', () => ({
+  validateToolResults: (m: unknown) => m,
+}))
+mock.module('../src/llm-orchestrator-config.js', () => ({
+  resolveTimezone: () => 'UTC',
+}))
 
 const { prepareLlmInvocation } = await import('../src/llm-orchestrator-tools.js')
 
@@ -1297,22 +1393,25 @@ import { getToolRetriever, LexicalToolRetriever } from './tools/disclosure/tool-
 import type { DisclosureSession } from './tools/disclosure/registry.js'
 ```
 
-Change the return type and body. After the compaction wiring from Part 1 (the `fullTools` line), insert:
+Part 1 landed the compaction wiring inside the `buildFullToolSet` helper (not directly in `prepareLlmInvocation`). It already resolves `const flags = resolveReductionFlags(contextId)` before its `applyResultCompaction` call and ends with `return { tools, enabledToolNames: new Set(Object.keys(tools)) }`. Apply disclosure there, after `applyResultCompaction` (the `flags` const is already in scope — do not resolve it twice):
 
 ```ts
-const flags = resolveReductionFlags(contextId)
 const retriever = flags.semanticToolRetrieval ? getToolRetriever() : new LexicalToolRetriever()
-const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(fullTools, contextId, retriever)
-const enabledToolNames = new Set(Object.keys(disclosedTools))
+const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(tools, contextId, retriever)
+return {
+  tools: disclosedTools,
+  enabledToolNames: new Set(Object.keys(disclosedTools)),
+  disclosure,
+}
 ```
 
-(replacing the previous `const enabledToolNames = new Set(Object.keys(fullTools))`), and return `disclosure`:
+(replacing the previous `return { tools, enabledToolNames: new Set(Object.keys(tools)) }`). Widen `buildFullToolSet`'s declared return type with `disclosure: DisclosureSession | undefined`. Then in `prepareLlmInvocation`, destructure `disclosure` from the `buildFullToolSet(opts)` result and return it:
 
 ```ts
-return { tools: disclosedTools, validatedMessages, enabledToolNames, disclosure }
+return { tools, validatedMessages, enabledToolNames, disclosure }
 ```
 
-Update the function's declared return type to include `disclosure: DisclosureSession | undefined`.
+Update `prepareLlmInvocation`'s declared return type to include `disclosure: DisclosureSession | undefined`.
 
 (c) `src/llm-orchestrator.ts` — destructure and pass through:
 
@@ -1401,11 +1500,22 @@ const { createDisclosureSession } = await import('../../../src/tools/disclosure/
 const { createDisclosurePrepareStep } = await import('../../../src/tools/disclosure/prepare-step.js')
 const { CORE_TOOL_NAMES } = await import('../../../src/tools/disclosure/core.js')
 
-const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: async () => ({}) })
+const d = (): ToolSet[string] =>
+  tool({
+    description: 'x',
+    inputSchema: z.object({}),
+    execute: async () => ({}),
+  })
 
 describe('disclosure loop', () => {
   it('widens activeTools only after load and never includes unloaded tools', () => {
-    const tools: ToolSet = { get_current_time: d(), search_tools: d(), load_tool: d(), list_tasks: d(), web_fetch: d() }
+    const tools: ToolSet = {
+      get_current_time: d(),
+      search_tools: d(),
+      load_tool: d(),
+      list_tasks: d(),
+      web_fetch: d(),
+    }
     const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
 
@@ -1532,3 +1642,12 @@ git commit -m "chore(disclosure): gate + mutation cleanup for part 2"
 **Type consistency:** `ToolBrief {name,summary,domain}` and `RankedBrief = ToolBrief & {score}` consistent Tasks 2/3/4/6. `DisclosureSession` methods (`activeToolNames`, `markLoaded`, `hasLoaded`, `allNames`) consistent Tasks 5/6/7/8/9/12. `createDisclosurePrepareStep(session, contextId)` consistent Tasks 8/11/12. `maybeApplyDisclosure(tools, contextId, retriever) → {tools, disclosure}` consistent Tasks 9/11. `prepareLlmInvocation` return gains `disclosure` consistently Tasks 11/13. Flag field names (`progressiveDisclosure`, `semanticToolRetrieval`) match Part 1's `ReductionFlags`.
 
 **Open items to confirm during execution:** the AI SDK v6 `prepareStep` parameter object also carries `steps`/`messages`/`model`; the factory only reads `stepNumber` and returns `{ activeTools }` | `{}`, which is assignment-compatible — confirm against the installed `ai` types and widen the param type if the compiler requires the full shape. Anchor edits on function names and quoted surrounding lines, not absolute line numbers.
+
+## Drift Log
+
+| Date       | Category               | Item                                                                                                                                                                                                | Decision                                                                                                                                                                                |
+| ---------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-10 | In-plan, stale anchors | Task 11(b) insertion point in `src/llm-orchestrator-tools.ts`                                                                                                                                       | Part 1 placed compaction wiring inside `buildFullToolSet` (which already resolves `flags`); rewrote step to apply disclosure there and thread `disclosure` outward                      |
+| 2026-06-10 | In-plan, stale anchors | Task 11 test mock set                                                                                                                                                                               | Mirrored `tests/llm-orchestrator-tools-compaction.test.ts`: added `getCachedConfig`/`setCachedConfig`/`clearCachedToolsByPrefix` to the `cache.js` mock and a `src/tools/index.js` mock |
+| 2026-06-10 | Verified, no change    | All other anchors (feature-flags shape, `tryGetEmbedding`, `getSystemConfig`, `getToolMetadata`, `emitUser`, system-prompt builders, AI SDK 6.0.184 `prepareStep`/`activeTools`/`cosineSimilarity`) | Confirmed against current code 2026-06-10; no edits needed                                                                                                                              |
+| 2026-06-10 | Out-of-plan audit      | Branch diff vs master (29 files)                                                                                                                                                                    | Entirely Part 1 (compaction) output — this plan's declared dependency, tracked by the Part 1 plan; not drift                                                                            |
