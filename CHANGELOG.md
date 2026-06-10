@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.4] - 2026-06-10
+
+### Added
+
+- **telegram:** Resolve usernames via getChat API
+- **settings:** Support @username for member addition
+
+### Changed
+
+- Memoize expensive derivations in config-key, recurrence, and oracle
+- Rewrite ai-progress-reporter formatting to use fenced code blocks and per-tool messages
+
+### Documentation
+
+- Add plans and specs for recent features
+
+### Fixed
+
+- Resolve no-await-in-loop lint error in progress reporter
+- Restore formatError/formatErrorValue, sequential sends, formatCodeBlock reuse
+- Update llm-orchestrator tests for new progress reporter format
+
+### Miscellaneous
+
+- **lint:** Remove papai-policy oxlint plugin and strict config
+
+### Testing
+
+- Enable parallel execution by default and fix isolation issues
+- Add config-key memoization and recurrence edge-case coverage
+- Eliminate fixed sleeps and public/ races in slow suites
+- Cut fixed waits and per-test exec scans in slow suites
+- Update ai-progress-reporter tests for new per-message format
 ## [6.1.3] - 2026-06-09
 
 ### Added
