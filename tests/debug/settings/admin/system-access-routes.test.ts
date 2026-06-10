@@ -122,6 +122,26 @@ describe('settings admin system/access routes', () => {
     expect(pendingRow!.added_by).toBe('admin-1')
   })
 
+  test('POST users with unresolvable username of an existing real user returns ok without pending', async () => {
+    addUser({ userId: '4242', platformInstanceId: 'pi-1', addedBy: 'admin-1', username: 'ghostjane' })
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@ghostjane' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), pending: z.boolean().optional() }).parse(await res.json())
+    expect(body.pending).toBeUndefined()
+    const ghostjaneRows = listUsers('pi-1').filter((u) => u.username === 'ghostjane')
+    expect(ghostjaneRows).toHaveLength(1)
+    expect(ghostjaneRows[0]!.platform_user_id.startsWith('placeholder-')).toBe(false)
+  })
+
   test('POST users without a chat router creates a pending entry', async () => {
     clearRuntimeChatRouter()
     const url = new URL('https://x/settings/api/admin/users')

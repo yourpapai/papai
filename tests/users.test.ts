@@ -541,7 +541,7 @@ describe('addPendingUser', () => {
       platformInstanceId: TEST_PLATFORM_ID,
       addedBy: 'admin-1',
     })
-    expect(added).toBe(true)
+    expect(added).toBe('created')
     const rows = listUsers(TEST_PLATFORM_ID).filter((u) => u.username === 'f4dev')
     expect(rows).toHaveLength(1)
     const row = requireDefined(rows[0])
@@ -556,14 +556,14 @@ describe('addPendingUser', () => {
         platformInstanceId: TEST_PLATFORM_ID,
         addedBy: 'admin-1',
       }),
-    ).toBe(false)
+    ).toBe('invalid')
     expect(
       addPendingUser({
         username: '   ',
         platformInstanceId: TEST_PLATFORM_ID,
         addedBy: 'admin-1',
       }),
-    ).toBe(false)
+    ).toBe('invalid')
     expect(listUsers(TEST_PLATFORM_ID)).toHaveLength(0)
   })
 
@@ -574,14 +574,14 @@ describe('addPendingUser', () => {
         platformInstanceId: TEST_PLATFORM_ID,
         addedBy: 'admin-1',
       }),
-    ).toBe(true)
+    ).toBe('created')
     expect(
       addPendingUser({
         username: 'f4dev',
         platformInstanceId: TEST_PLATFORM_ID,
         addedBy: 'admin-1',
       }),
-    ).toBe(true)
+    ).toBe('pending_exists')
     expect(listUsers(TEST_PLATFORM_ID)).toHaveLength(1)
   })
 
@@ -598,17 +598,19 @@ describe('addPendingUser', () => {
         platformInstanceId: TEST_PLATFORM_ID,
         addedBy: 'admin-1',
       }),
-    ).toBe(true)
+    ).toBe('already_resolved')
     expect(listUsers(TEST_PLATFORM_ID)).toHaveLength(1)
     expect(requireDefined(listUsers(TEST_PLATFORM_ID)[0]).platform_user_id).toBe('111')
   })
 
   test('pending entry binds and authorizes on first contact', () => {
-    addPendingUser({
-      username: '@f4dev',
-      platformInstanceId: TEST_PLATFORM_ID,
-      addedBy: 'admin-1',
-    })
+    expect(
+      addPendingUser({
+        username: '@f4dev',
+        platformInstanceId: TEST_PLATFORM_ID,
+        addedBy: 'admin-1',
+      }),
+    ).toBe('created')
     expect(resolveUserByUsername('424242', 'f4dev', TEST_PLATFORM_ID)).toBe(true)
     expect(isAuthorized('424242', TEST_PLATFORM_ID)).toBe(true)
   })

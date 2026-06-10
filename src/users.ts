@@ -42,18 +42,20 @@ export type AddPendingUserInput = Readonly<{
   addedBy: string
 }>
 
+export type AddPendingUserResult = 'created' | 'pending_exists' | 'already_resolved' | 'invalid'
+
 const usernameMatchesInsensitive = (username: string): SQL => sql`lower(${users.username}) = ${username.toLowerCase()}`
 
 /**
  * Authorize a user the platform cannot resolve to an ID yet (e.g. Telegram @username).
  * Stores a placeholder row that resolveUserByUsername() rebinds on first DM contact.
  */
-export function addPendingUser(input: AddPendingUserInput): boolean {
+export function addPendingUser(input: AddPendingUserInput): AddPendingUserResult {
   const stripped = input.username.startsWith('@') ? input.username.slice(1) : input.username
   const username = stripped.trim()
   if (username === '') {
     log.warn({ platformInstanceId: input.platformInstanceId }, 'addPendingUser called with empty username')
-    return false
+    return 'invalid'
   }
   const db = getDrizzleDb()
   const existing = db
@@ -64,10 +66,10 @@ export function addPendingUser(input: AddPendingUserInput): boolean {
   if (existing !== undefined) {
     if (isPlaceholderUserId(existing.platformUserId)) {
       log.info({ platformInstanceId: input.platformInstanceId }, 'Pending user already present')
-    } else {
-      log.info({ platformInstanceId: input.platformInstanceId }, 'Username already held by resolved user')
+      return 'pending_exists'
     }
-    return true
+    log.info({ platformInstanceId: input.platformInstanceId }, 'Username already held by resolved user')
+    return 'already_resolved'
   }
   db.insert(users)
     .values({
@@ -78,7 +80,7 @@ export function addPendingUser(input: AddPendingUserInput): boolean {
     })
     .run()
   log.info({ platformInstanceId: input.platformInstanceId }, 'Pending user added')
-  return true
+  return 'created'
 }
 
 export function addUser(input: AddUserInput): void {

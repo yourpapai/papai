@@ -57,6 +57,14 @@ const pendingAddMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(usersPayload))
 }
 
+const pendingDeleteMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/users') && init.method === 'DELETE') {
+    capturedDeleteBody = typeof init.body === 'string' ? init.body : undefined
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(pendingPayload))
+}
+
 afterEach(() => {
   capturedPostBody = undefined
   capturedDeleteBody = undefined
@@ -194,6 +202,23 @@ describe('AdminUsersSection', () => {
     expect(target.textContent).toContain('ghost')
     // the only row is pending → no IdCell rendered
     expect(target.querySelector('.id-cell')).toBeNull()
+    void unmount(component)
+  })
+
+  test('removing a pending user sends the placeholder id', async () => {
+    setCsrfToken('c')
+    setMockFetch(pendingDeleteMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target
+      .querySelector<HTMLButtonElement>('[data-testid="user-remove-placeholder-123e4567-e89b-12d3-a456-426614174000"]')!
+      .click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(capturedDeleteBody).toBe(JSON.stringify({ userId: 'placeholder-123e4567-e89b-12d3-a456-426614174000' }))
     void unmount(component)
   })
 

@@ -76,12 +76,19 @@ async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): 
   if (req.method === 'POST') {
     const resolution = await resolveSettingsUserId(body.data.userId, authed.principal)
     if (resolution.kind === 'unresolved') {
-      const added = addPendingUser({
+      const result = addPendingUser({
         username: resolution.username,
         platformInstanceId: authed.principal.platformInstanceId,
         addedBy: authed.principal.platformUserId,
       })
-      if (!added) return settingsJson(422, { error: 'invalid request' })
+      if (result === 'invalid') return settingsJson(422, { error: 'invalid request' })
+      if (result === 'already_resolved') {
+        log.info(
+          { platformInstanceId: authed.principal.platformInstanceId },
+          'Settings admin add matched existing user',
+        )
+        return settingsJson(200, { ok: true })
+      }
       log.info({ platformInstanceId: authed.principal.platformInstanceId }, 'Settings admin added pending user')
       return settingsJson(200, { ok: true, pending: true })
     }
