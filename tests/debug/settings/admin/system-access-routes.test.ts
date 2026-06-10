@@ -3,13 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
 import { listAuthorizedGroups } from '../../../../src/authorized-groups.js'
+import { ChatRouter } from '../../../../src/chat/router.js'
 import { isScopedContextId, toScopedContextId, toScopedThreadContextId } from '../../../../src/chat/scoped-context.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../../../src/debug/chat-router-runtime.js'
 import { handleAdminSystemAccessRoutes } from '../../../../src/debug/settings/admin/system-access-routes.js'
 import { upsertKnownGroupContext } from '../../../../src/group-settings/registry.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
@@ -23,11 +25,17 @@ const mockResolveUserId = mock((username: string) =>
   Promise.resolve(/^\d+$/u.test(username) ? username : `resolved-${username}`),
 )
 
-void mock.module('../../../../src/debug/chat-router-runtime.js', () => ({
-  getRuntimeChatRouter: (): { resolveUserId: typeof mockResolveUserId } => ({
-    resolveUserId: mockResolveUserId,
-  }),
-}))
+class MockChatRouter extends ChatRouter {
+  constructor() {
+    super(() => {
+      throw new Error('unused test factory')
+    })
+  }
+
+  override resolveUserId(username: string): Promise<string | null> {
+    return mockResolveUserId(username)
+  }
+}
 
 describe('settings admin system/access routes', () => {
   let adminSession: SettingsSession
@@ -43,6 +51,11 @@ describe('settings admin system/access routes', () => {
     adminSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'admin-1' })
     userSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'user-1' })
     mockResolveUserId.mockClear()
+    setRuntimeChatRouter(new MockChatRouter())
+  })
+
+  afterEach(() => {
+    clearRuntimeChatRouter()
   })
 
   test('GET system returns an LLM snapshot with masked api key', async () => {
