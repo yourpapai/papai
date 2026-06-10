@@ -108,4 +108,26 @@ describe('prepareLlmInvocation disclosure wiring', () => {
     expect(out.disclosure).toBeUndefined()
     expect(out.tools['search_tools']).toBeUndefined()
   })
+
+  it('OFF: enabledToolNames equals the descriptor tools (no meta injected)', async () => {
+    resolveReductionFlags.mockReturnValue({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    })
+    const out = await prepareLlmInvocation({
+      contextId: 'ctx-1',
+      configId: 'ctx-1',
+      chatUserId: 'u1',
+      username: null,
+      contextType: 'dm',
+      provider: null,
+      history: [],
+      userText: 'hi',
+      stagedDownloadFn: undefined,
+      askPermission: undefined,
+    })
+    expect([...out.enabledToolNames].toSorted()).toEqual(['list_tasks'])
+    expect(out.disclosure).toBeUndefined()
+  })
 })
