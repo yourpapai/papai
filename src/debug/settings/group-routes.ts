@@ -14,7 +14,7 @@ import { listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { requireScope } from '../../settings/scope-guard.js'
-import { getRuntimeChatRouter } from '../chat-router-runtime.js'
+import { resolveSettingsUserId } from './resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-group' })
@@ -54,24 +54,6 @@ function handleMembersGet(authed: AuthenticatedSettingsRequest, url: URL): Respo
 
 const MemberBodySchema = z.object({ userId: z.string().min(1), contextId: z.string().min(1) })
 
-async function resolveUserIdIfNeeded(
-  rawUserId: string,
-  adminUserId: string,
-  platformInstanceId: string,
-): Promise<{ userId: string; error: null } | { error: string }> {
-  const clean = rawUserId.startsWith('@') ? rawUserId.slice(1) : rawUserId
-  if (/^\d+$/u.test(clean)) return { userId: rawUserId, error: null }
-  const router = getRuntimeChatRouter()
-  if (router === null) return { error: 'chat router not available for username resolution' }
-  const resolved = await router.resolveUserId(rawUserId, {
-    contextId: adminUserId,
-    contextType: 'dm',
-    platformInstanceId,
-  })
-  if (resolved === null) return { error: `could not resolve "${rawUserId}" to a user ID` }
-  return { userId: resolved, error: null }
-}
-
 async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
@@ -83,13 +65,13 @@ async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsReq
   if (!outcome.ok) return outcome.response
 
   if (req.method === 'POST') {
-    const result = await resolveUserIdIfNeeded(
-      body.data.userId,
-      authed.principal.platformUserId,
-      authed.principal.platformInstanceId,
-    )
-    if (result.error !== null) return settingsJson(422, { error: result.error })
-    addGroupMember(outcome.group.contextId, result.userId, authed.principal.platformUserId)
+    const resolution = await resolveSettingsUserId(body.data.userId, authed.principal)
+    if (resolution.kind === 'unresolved') {
+      return settingsJson(422, {
+        error: `could not resolve "${body.data.userId}" to a user ID — use the numeric user ID`,
+      })
+    }
+    addGroupMember(outcome.group.contextId, resolution.userId, authed.principal.platformUserId)
     log.info({ contextId: outcome.group.contextId }, 'Settings group member added')
   } else {
     removeGroupMember(outcome.group.contextId, body.data.userId)
