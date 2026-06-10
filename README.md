@@ -240,6 +240,8 @@ To find your Telegram numeric user ID, message [@userinfobot](https://t.me/useri
 
 For Mattermost and Discord, use the platform user ID string the bot receives, not a display name or `@username`.
 
+Authorized users added later through the settings UI admin area can be entered as `@username`: if the platform cannot resolve it to an ID (the Telegram Bot API cannot look up user accounts by username), the bot stores a pending entry and authorizes the user automatically the first time they message it.
+
 </details>
 
 <details>
