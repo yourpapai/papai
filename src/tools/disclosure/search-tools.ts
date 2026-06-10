@@ -19,8 +19,9 @@ export function makeSearchToolsTool(
   session: DisclosureSession,
   retriever: ToolRetriever,
   contextId: string,
-  toolsForBriefs: ToolSet = {},
+  toolsForBriefs: ToolSet,
 ): ToolSet[string] {
+  const discoverable = buildBriefs(toolsForBriefs).filter((b) => !ALWAYS_ON_TOOL_NAMES.has(b.name))
   return tool({
     description:
       'Find tools by intent. Most tools are NOT loaded; call this with a short natural-language query, then load_tool the names you need before using them.',
@@ -29,7 +30,6 @@ export function makeSearchToolsTool(
       limit: z.number().int().min(1).max(20).default(8).describe('Maximum tools to return'),
     }),
     execute: async ({ query, limit }) => {
-      const discoverable = buildBriefs(toolsForBriefs).filter((b) => !ALWAYS_ON_TOOL_NAMES.has(b.name))
       const ranked = await retriever.rank(query, discoverable, limit)
       const loadedNow = new Set(session.activeToolNames())
       const results = ranked.map((b) => ({
