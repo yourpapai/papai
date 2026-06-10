@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
@@ -13,7 +13,7 @@ void mock.module('../../../src/debug/event-bus.js', () => ({ emitUser }))
 
 const { createDisclosurePrepareStep } = await import('../../../src/tools/disclosure/prepare-step.js')
 const { createDisclosureSession } = await import('../../../src/tools/disclosure/registry.js')
-const { CORE_TOOL_NAMES } = await import('../../../src/tools/disclosure/core.js')
+const { CORE_TOOL_NAMES, DISCLOSURE_STALL_STEPS } = await import('../../../src/tools/disclosure/core.js')
 
 const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
 
@@ -23,20 +23,30 @@ function freshSession(): ReturnType<typeof createDisclosureSession> {
 }
 
 describe('createDisclosurePrepareStep', () => {
+  beforeEach(() => {
+    emitUser.mockReset()
+  })
+
   it('returns the active tool subset on early steps', () => {
     const session = freshSession()
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
-    const out = prep({ stepNumber: 0 }) as { activeTools?: string[] }
+    const out = prep({ stepNumber: 0 })
     expect(out.activeTools).toBeDefined()
     expect(out.activeTools!.toSorted()).toEqual(['get_current_time', 'load_tool', 'search_tools'])
+  })
+
+  it('returns defined activeTools one step before the stall boundary', () => {
+    const session = freshSession()
+    const prep = createDisclosurePrepareStep(session, 'ctx-1')
+    const out = prep({ stepNumber: DISCLOSURE_STALL_STEPS - 1 })
+    expect(out.activeTools).toBeDefined()
   })
 
   it('opens all tools (returns {}) once stalled with no loads, emitting fallback once', () => {
     const session = freshSession()
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
-    emitUser.mockReset()
-    expect(prep({ stepNumber: 2 })).toEqual({})
-    expect(prep({ stepNumber: 3 })).toEqual({})
+    expect(prep({ stepNumber: DISCLOSURE_STALL_STEPS })).toEqual({})
+    expect(prep({ stepNumber: DISCLOSURE_STALL_STEPS + 1 })).toEqual({})
     expect(emitUser).toHaveBeenCalledTimes(1)
   })
 
@@ -44,7 +54,7 @@ describe('createDisclosurePrepareStep', () => {
     const session = freshSession()
     session.markLoaded(['list_tasks'])
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
-    const out = prep({ stepNumber: 5 }) as { activeTools?: string[] }
+    const out = prep({ stepNumber: 5 })
     expect(out.activeTools).toContain('list_tasks')
   })
 })
