@@ -61,10 +61,10 @@ describe('createAiProgressReporter', () => {
     await reporter.flush()
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('AI execution details')
-    expect(textCalls[0]).toContain('create_task')
+    expect(textCalls[0]).toContain('Tool `create_task` success in 42ms')
     expect(textCalls[0]).toContain('Visible title')
-    expect(textCalls[0]).toContain('42ms')
+    expect(textCalls[0]).toContain('```json')
+    expect(textCalls[0]).not.toContain('AI execution details')
     expect(textCalls[0]).not.toContain('started')
     expect(textCalls[0]).not.toContain('secret-key')
     expect(textCalls[0]).not.toContain('secret-token')
@@ -85,7 +85,9 @@ describe('createAiProgressReporter', () => {
     })
     await reporter.flush()
 
+    expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('failed')
+    expect(textCalls[0]).toContain('```json')
     expect(textCalls[0]).not.toContain('secret-token')
     expect(textCalls[0]).toContain('[redacted]')
   })
@@ -104,7 +106,9 @@ describe('createAiProgressReporter', () => {
     })
     await reporter.flush()
 
+    expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('Visible failure metadata')
+    expect(textCalls[0]).toContain('```json')
     expect(textCalls[0]).not.toContain('secret-token')
     expect(textCalls[0]).toContain('[redacted]')
   })
@@ -123,7 +127,9 @@ describe('createAiProgressReporter', () => {
     })
     await reporter.flush()
 
+    expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('failed')
+    expect(textCalls[0]).toContain('```json')
     expect(textCalls[0]).not.toContain('secret-token')
     expect(textCalls[0]).toContain('[redacted]')
   })
@@ -174,8 +180,10 @@ describe('createAiProgressReporter', () => {
     })
     await reporter.flush()
 
+    expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('Visible title')
     expect(textCalls[0]).toContain('Visible query')
+    expect(textCalls[0]).toContain('```json')
     expect(textCalls[0]).not.toContain('example.invalid')
     expect(textCalls[0]).not.toContain('private.txt')
     expect(textCalls[0]).not.toContain('private file bytes')
@@ -202,8 +210,10 @@ describe('createAiProgressReporter', () => {
     })
     await reporter.flush()
 
+    expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('secret query')
     expect(textCalls[0]).toContain('secret result')
+    expect(textCalls[0]).toContain('```json')
   })
 
   test('emits sanitized reasoning availability without provider reasoning text', async () => {
@@ -221,6 +231,7 @@ describe('createAiProgressReporter', () => {
     expect(textCalls[0]).toContain('Reasoning')
     expect(textCalls[0]).toContain('Provider reasoning available')
     expect(textCalls[0]).toContain('Enable raw detail to view')
+    expect(textCalls[0]).toContain('```json')
     expect(textCalls[0]).not.toContain('copied task title')
     expect(textCalls[0]).not.toContain('user content')
     expect(textCalls[0]).not.toContain('attachment text')
@@ -240,6 +251,7 @@ describe('createAiProgressReporter', () => {
     expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('Reasoning')
     expect(textCalls[0]).toContain('Provider reasoning available')
+    expect(textCalls[0]).toContain('```json')
     expect(textCalls[0]).not.toContain('secret-token')
     expect(textCalls[0]).not.toContain('https://private.example/path')
   })
@@ -259,6 +271,7 @@ describe('createAiProgressReporter', () => {
     expect(textCalls[0]).toContain('search_tasks')
     expect(textCalls[0]).toContain('started')
     expect(textCalls[0]).toContain('Visible query')
+    expect(textCalls[0]).toContain('```json')
   })
 
   test('does not duplicate a started tool when the same call finishes', async () => {
@@ -283,6 +296,7 @@ describe('createAiProgressReporter', () => {
     expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('success in 9ms')
     expect(textCalls[0]).not.toContain('started')
+    expect(textCalls[0]).toContain('```json')
   })
 
   test('raw detail level uses raw provider reasoning when supplied', async () => {
@@ -296,7 +310,9 @@ describe('createAiProgressReporter', () => {
     reporter.reasoning('Provider reasoning text', [{ type: 'reasoning', text: 'raw reasoning payload' }])
     await reporter.flush()
 
+    expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('raw reasoning payload')
+    expect(textCalls[0]).toContain('```json')
   })
 
   test('raw detail level uses raw provider reasoning text when no raw payload is supplied', async () => {
@@ -310,7 +326,9 @@ describe('createAiProgressReporter', () => {
     reporter.reasoning('Raw provider reasoning text')
     await reporter.flush()
 
+    expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('Raw provider reasoning text')
+    expect(textCalls[0]).toContain('```json')
   })
 
   test('does not emit an empty reasoning section', async () => {
@@ -327,5 +345,34 @@ describe('createAiProgressReporter', () => {
     await reporter.flush()
 
     expect(textCalls).toHaveLength(0)
+  })
+
+  test('sends multiple tool calls as separate messages', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-1',
+      input: { title: 'Task 1' },
+      durationMs: 10,
+      success: true,
+      output: { id: 'T-1' },
+    })
+    reporter.toolFinished({
+      toolName: 'search_tasks',
+      toolCallId: 'call-2',
+      input: { query: 'test' },
+      durationMs: 20,
+      success: true,
+      output: [{ id: 'T-1' }],
+    })
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(2)
+    expect(textCalls[0]).toContain('create_task')
+    expect(textCalls[0]).toContain('```json')
+    expect(textCalls[1]).toContain('search_tasks')
+    expect(textCalls[1]).toContain('```json')
   })
 })
