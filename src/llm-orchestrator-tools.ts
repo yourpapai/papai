@@ -14,6 +14,8 @@ import { resolveTimezone } from './llm-orchestrator-config.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
 import type { TaskProvider } from './providers/types.js'
+import { applyResultCompaction } from './tools/compaction/wrap-compaction.js'
+import { resolveReductionFlags } from './tools/feature-flags.js'
 import { applyToolPreferences, buildProviderlessToolDescriptors, buildToolDescriptors } from './tools/index.js'
 import type { AskPermissionFn } from './tools/permission-gate.js'
 
@@ -101,15 +103,10 @@ export function buildLlmInvocationOpts(
   }
 }
 
-export const prepareLlmInvocation = async (
+const buildFullToolSet = async (
   opts: LlmInvocationOptions,
-): Promise<{
-  tools: ToolSet
-  validatedMessages: ModelMessage[]
-  enabledToolNames: ReadonlySet<string>
-}> => {
-  const { contextId, configId, chatUserId, username, contextType, provider, history, stagedDownloadFn, askPermission } =
-    opts
+): Promise<{ tools: ToolSet; enabledToolNames: Set<string> }> => {
+  const { contextId, chatUserId, username, contextType, provider, userText, stagedDownloadFn, askPermission } = opts
   const descriptors = await getOrCreateDescriptors(
     contextId,
     chatUserId,
@@ -118,15 +115,26 @@ export const prepareLlmInvocation = async (
     contextType,
     stagedDownloadFn,
   )
-  const fullTools = applyToolPreferences(descriptors, contextId, askPermission)
-  const enabledToolNames = new Set(Object.keys(fullTools))
-  log.debug(
-    {
-      contextId,
-      toolCount: Object.keys(fullTools).length,
-    },
-    'Prepared tool set for LLM invocation',
-  )
+  const prefTools = applyToolPreferences(descriptors, contextId, askPermission)
+  const flags = resolveReductionFlags(contextId)
+  const tools = applyResultCompaction(prefTools, {
+    storageContextId: contextId,
+    userIntent: userText,
+    enabled: flags.resultCompaction,
+  })
+  log.debug({ contextId, toolCount: Object.keys(tools).length }, 'Prepared tool set for LLM invocation')
+  return { tools, enabledToolNames: new Set(Object.keys(tools)) }
+}
+
+export const prepareLlmInvocation = async (
+  opts: LlmInvocationOptions,
+): Promise<{
+  tools: ToolSet
+  validatedMessages: ModelMessage[]
+  enabledToolNames: ReadonlySet<string>
+}> => {
+  const { contextId, configId, history } = opts
+  const { tools, enabledToolNames } = await buildFullToolSet(opts)
   const timezone = resolveTimezone(configId)
   const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history)
   const validatedMessages = validateToolResults(messagesWithMemory)
@@ -134,5 +142,5 @@ export const prepareLlmInvocation = async (
     { contextId, historyLength: history.length, hasMemory: memoryMsg !== null, timezone },
     'Calling generateText',
   )
-  return { tools: fullTools, validatedMessages, enabledToolNames }
+  return { tools, validatedMessages, enabledToolNames }
 }
