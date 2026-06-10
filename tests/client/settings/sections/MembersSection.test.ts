@@ -133,4 +133,25 @@ describe('MembersSection', () => {
     expect(target.querySelector('.ui-datatable')).not.toBeNull()
     void unmount(component)
   })
+
+  test('shows helper text for username support', async () => {
+    setMockFetch(() => Promise.resolve(json(membersPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.textContent).toContain('@username')
+    void unmount(component)
+  })
+
+  test('input has placeholder for username format', async () => {
+    setMockFetch(() => Promise.resolve(json(membersPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="member-add-input"]')
+    expect(input?.placeholder).toBe('123456789 or @username')
+    void unmount(component)
+  })
 })

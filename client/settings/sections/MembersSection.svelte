@@ -91,9 +91,9 @@
   {#if error !== null}<p class="status-error">{error}</p>{/if}
 
   <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void add() }}>
-    <Field label="User ID">
+    <Field label="User ID or @username" hint="For Telegram, you can use @username instead of numeric ID">
       {#snippet children()}
-        <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="member-add-input" />
+        <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="member-add-input" placeholder="123456789 or @username" />
       {/snippet}
     </Field>
     <Btn variant="primary" type="submit" testid="member-add">
