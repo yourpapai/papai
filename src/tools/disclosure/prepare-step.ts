@@ -16,14 +16,15 @@ type PrepareStepResult = { activeTools?: string[] }
 export function createDisclosurePrepareStep(
   session: DisclosureSession,
   contextId: string,
+  turnId?: string,
 ): (arg: PrepareStepArg) => PrepareStepResult {
   let fallbackEmitted = false
   return ({ stepNumber }) => {
     if (!session.hasLoaded() && stepNumber >= DISCLOSURE_STALL_STEPS) {
       if (!fallbackEmitted) {
         fallbackEmitted = true
-        emitUser('disclosure:fallback', contextId, { stepNumber })
-        log.warn({ contextId, stepNumber }, 'Disclosure stalled with no loads; opening all tools')
+        emitUser('disclosure:fallback', contextId, { stepNumber }, turnId)
+        log.warn({ contextId, stepNumber, turnId }, 'Disclosure stalled with no loads; opening all tools')
       }
       return {}
     }

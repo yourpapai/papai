@@ -50,6 +50,13 @@ describe('createDisclosurePrepareStep', () => {
     expect(emitUser).toHaveBeenCalledTimes(1)
   })
 
+  it('passes turnId as 4th arg to emitUser on fallback when provided', () => {
+    const session = freshSession()
+    const prep = createDisclosurePrepareStep(session, 'ctx-1', 'turn-42')
+    prep({ stepNumber: DISCLOSURE_STALL_STEPS })
+    expect(emitUser).toHaveBeenCalledWith('disclosure:fallback', 'ctx-1', expect.anything(), 'turn-42')
+  })
+
   it('does not fall back once a tool has been loaded', () => {
     const session = freshSession()
     session.markLoaded(['list_tasks'])

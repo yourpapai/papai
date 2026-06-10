@@ -246,7 +246,7 @@ export const invokeModel = async (
     stopWhen: deps.stepCountIs(25),
     experimental_onToolCallStart: buildToolCallStartHandler(ctx),
     experimental_onToolCallFinish: buildToolCallFinishHandler(ctx),
-    ...(disclosure === undefined ? {} : { prepareStep: createDisclosurePrepareStep(disclosure, contextId) }),
+    ...(disclosure === undefined ? {} : { prepareStep: createDisclosurePrepareStep(disclosure, contextId, turnId) }),
   })
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId)
   return result
