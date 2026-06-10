@@ -119,6 +119,27 @@ const fieldMatches = (field: CronField, value: number): boolean => {
   return field.values.includes(value)
 }
 
+// Intl.DateTimeFormat construction costs ~40x a formatToParts call, and
+// nextCronOccurrence probes per-minute/per-day; cache one formatter per timezone.
+const formatterCache = new Map<string, Intl.DateTimeFormat>()
+
+const getFormatter = (tz: string): Intl.DateTimeFormat => {
+  const cached = formatterCache.get(tz)
+  if (cached !== undefined) return cached
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    weekday: 'short',
+    hour12: false,
+  })
+  formatterCache.set(tz, fmt)
+  return fmt
+}
+
 /**
  * Get the local time components for a Date in a given IANA timezone.
  * Falls back to UTC if the timezone is invalid.
@@ -128,17 +149,7 @@ const getLocalParts = (
   tz: string,
 ): { minute: number; hour: number; day: number; month: number; weekday: number } => {
   try {
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      weekday: 'short',
-      hour12: false,
-    })
-    const parts = fmt.formatToParts(date)
+    const parts = getFormatter(tz).formatToParts(date)
     const get = (t: Intl.DateTimeFormatPartTypes): number =>
       Number.parseInt(parts.find((p) => p.type === t)?.value ?? '0', 10)
 

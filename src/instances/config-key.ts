@@ -37,7 +37,19 @@ const defaultKeyDeps: InstanceConfigKeyDeps = {
   homeDir: homedir,
 }
 
-const deriveKey = (secret: string, salt: string): Buffer => scryptSync(secret, salt, 32)
+// scryptSync costs ~25ms per call by design; resolve* runs on every config
+// encrypt/decrypt, so derivation is memoized per (salt, secret). The cached
+// Buffer is shared — callers must treat it as read-only.
+const derivedKeyCache = new Map<string, Buffer>()
+
+const deriveKey = (secret: string, salt: string): Buffer => {
+  const cacheKey = `${salt}\0${secret}`
+  const cached = derivedKeyCache.get(cacheKey)
+  if (cached !== undefined) return cached
+  const key = scryptSync(secret, salt, 32)
+  derivedKeyCache.set(cacheKey, key)
+  return key
+}
 
 const hostFallbackMaterial = (deps: InstanceConfigKeyDeps): string => `${deps.hostname()}\n${deps.homeDir()}`
 

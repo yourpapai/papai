@@ -72,11 +72,39 @@ export const parseRrule = (args: CompiledRecurrence): ParseResult => {
   }
 }
 
+// RRuleTemporal.next() enumerates every occurrence from DTSTART on each call
+// and throws past its maxIterations cap (10k), so aged-dtstart rules get slower
+// over time and dense ones (DAILY ~27y, HOURLY ~14mo) eventually throw.
+// between() instead fast-forwards to the window start when the rule has no
+// COUNT, so probe expanding windows anchored at `after` first.  The widest
+// window exceeds the sparsest generatable gap (YEARLY incl. leap years);
+// COUNT rules must enumerate from DTSTART anyway, as do the no-match cases
+// that fall through to next() (e.g. UNTIL in the past), all of which COUNT
+// or UNTIL keep bounded.  The first window stays under 7 days so a MINUTELY
+// rule (1,440/day) fits inside the same iteration cap.
+const NEXT_WINDOW_DAYS = [6, 90, 1464]
+const DAY_MS = 24 * 60 * 60 * 1000
+
 export const nextOccurrence = (args: CompiledRecurrence, after: Date): Date | null => {
   const parsed = parseRrule(args)
   if (!parsed.ok) return null
-  const next = parsed.iter.next(after)
-  return next === null ? null : new Date(next.epochMilliseconds)
+  try {
+    if (!/(?:^|;)COUNT=/u.test(args.rrule)) {
+      for (const days of NEXT_WINDOW_DAYS) {
+        const windowEnd = new Date(after.getTime() + days * DAY_MS)
+        const first = parsed.iter.between(after, windowEnd, false)[0]
+        if (first !== undefined) return new Date(first.epochMilliseconds)
+      }
+    }
+    const next = parsed.iter.next(after)
+    return next === null ? null : new Date(next.epochMilliseconds)
+  } catch (error) {
+    // Typically the library's maxIterations cap on a rule that never matches
+    // (e.g. BYMONTHDAY=30 in February); degrade like a parse failure.
+    const reason = error instanceof Error ? error.message : String(error)
+    log.warn({ rrule: args.rrule, reason }, 'nextOccurrence failed')
+    return null
+  }
 }
 
 export const occurrencesBetween = (args: CompiledRecurrence, after: Date, before: Date, limit = 100): Date[] => {
