@@ -31,7 +31,7 @@ const TaskInstanceGetSchema = z.object({
   available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
 })
 
-const mockResolveUserId = mock((username: string) =>
+const mockResolveUserId = mock((username: string, _context?: unknown) =>
   Promise.resolve(/^\d+$/u.test(username) ? username : `resolved-${username}`),
 )
 
@@ -42,8 +42,8 @@ class MockChatRouter extends ChatRouter {
     })
   }
 
-  override resolveUserId(username: string): Promise<string | null> {
-    return mockResolveUserId(username)
+  override resolveUserId(username: string, context?: unknown): Promise<string | null> {
+    return mockResolveUserId(username, context)
   }
 }
 
@@ -165,6 +165,23 @@ describe('settings group routes', () => {
     expect(getRes.status).toBe(200)
     const body = MembersDetailSchema.parse(await getRes.json())
     expect(body.members.some((m) => m.user_id === 'resolved-member-1')).toBe(true)
+  })
+
+  test('members POST with @username passes platformInstanceId to resolver', async () => {
+    const contextId = seedManageableGroup()
+
+    const postUrl = new URL('https://x/settings/api/group/members')
+    const postRes = await handleGroupRoutes(
+      new Request(postUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@someuser', contextId }),
+      }),
+      postUrl,
+      '/settings/api/group/members',
+    )
+    expect(postRes.status).toBe(200)
+    expect(mockResolveUserId).toHaveBeenCalledWith('@someuser', expect.objectContaining({ platformInstanceId: 'pi-1' }))
   })
 
   test('members DELETE then GET — removed member no longer present', async () => {

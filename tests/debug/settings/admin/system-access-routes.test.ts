@@ -21,7 +21,7 @@ import { authHeaders, establishSession, type SettingsSession } from '../helpers.
 
 const OkResponseSchema = z.object({ ok: z.literal(true) })
 
-const mockResolveUserId = mock((username: string) =>
+const mockResolveUserId = mock((username: string, _context?: unknown) =>
   Promise.resolve(/^\d+$/u.test(username) ? username : `resolved-${username}`),
 )
 
@@ -32,8 +32,8 @@ class MockChatRouter extends ChatRouter {
     })
   }
 
-  override resolveUserId(username: string): Promise<string | null> {
-    return mockResolveUserId(username)
+  override resolveUserId(username: string, context?: unknown): Promise<string | null> {
+    return mockResolveUserId(username, context)
   }
 }
 
@@ -83,6 +83,22 @@ describe('settings admin system/access routes', () => {
     )
     expect(res.status).toBe(200)
     expect(listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-newbie')).toBe(true)
+  })
+
+  test('POST users with username passes platformInstanceId to resolver', async () => {
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@f4dev' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(200)
+    expect(mockResolveUserId).toHaveBeenCalledWith('@f4dev', expect.objectContaining({ platformInstanceId: 'pi-1' }))
+    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-@f4dev')).toBe(true)
   })
 
   test('non-admin POST users returns 403', async () => {

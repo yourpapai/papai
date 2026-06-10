@@ -58,12 +58,17 @@ async function handleSystem(req: Request, authed: AuthenticatedSettingsRequest):
 async function resolveUserIdIfNeeded(
   rawUserId: string,
   adminUserId: string,
+  platformInstanceId: string,
 ): Promise<{ userId: string; error: null } | { error: string }> {
   const clean = rawUserId.startsWith('@') ? rawUserId.slice(1) : rawUserId
   if (/^\d+$/u.test(clean)) return { userId: rawUserId, error: null }
   const router = getRuntimeChatRouter()
   if (router === null) return { error: 'chat router not available for username resolution' }
-  const resolved = await router.resolveUserId(rawUserId, { contextId: adminUserId, contextType: 'dm' })
+  const resolved = await router.resolveUserId(rawUserId, {
+    contextId: adminUserId,
+    contextType: 'dm',
+    platformInstanceId,
+  })
   if (resolved === null) return { error: `could not resolve "${rawUserId}" to a user ID` }
   return { userId: resolved, error: null }
 }
@@ -87,7 +92,11 @@ async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): 
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   if (req.method === 'POST') {
-    const result = await resolveUserIdIfNeeded(body.data.userId, authed.principal.platformUserId)
+    const result = await resolveUserIdIfNeeded(
+      body.data.userId,
+      authed.principal.platformUserId,
+      authed.principal.platformInstanceId,
+    )
     if (result.error !== null) return settingsJson(422, { error: result.error })
     addUser({
       userId: result.userId,
