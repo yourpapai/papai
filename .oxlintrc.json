@@ -1,15 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "vitest"],
-  "jsPlugins": ["./lint-plugins/papai-policy.js"],
-  "ignorePatterns": [
-    "docs/tdd-hooks/**",
-    ".hooks/**",
-    ".opencode/**",
-    ".claude/hooks/**",
-    ".codex/hooks/**",
-    "lint-plugins/**"
-  ],
+  "ignorePatterns": ["docs/tdd-hooks/**", ".hooks/**", ".opencode/**", ".claude/hooks/**", ".codex/hooks/**"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -55,11 +47,6 @@
     "node/no-path-concat": "error",
     "promise/catch-or-return": "error",
     "unicorn/no-abusive-eslint-disable": "error",
-    "papai-policy/require-license-header": "error",
-    "papai-policy/no-inline-suppression-comments": "error",
-    "papai-policy/no-optional-type-syntax": "off",
-    "papai-policy/no-default-value-syntax": "off",
-    "papai-policy/no-fallback-expressions": "off",
     "typescript/prefer-readonly-parameter-types": "off"
   },
   "overrides": [

@@ -479,7 +479,6 @@ bun build:client
 # Code quality
 bun lint
 bun lint:fix
-bun lint:agent-strict -- src/file.ts tests/file.test.ts
 bun format
 bun format:check
 bun typecheck

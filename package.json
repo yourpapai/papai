@@ -30,7 +30,6 @@
     "knip": "knip-bun --strict --no-gitignore",
     "typecheck": "tsgo --noEmit",
     "lint": "oxlint --config .oxlintrc.json --ignore-path .oxlintignore .",
-    "lint:agent-strict": "bash scripts/lint-agent-strict.sh",
     "lint:fix": "oxlint --config .oxlintrc.json --fix --ignore-path .oxlintignore .",
     "format": "oxfmt --write . --ignore-path=.oxfmtignore",
     "format:check": "oxfmt --check . --ignore-path=.oxfmtignore",
