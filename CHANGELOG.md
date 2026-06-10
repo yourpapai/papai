@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.5] - 2026-06-10
+
+### Added
+
+- **tools:** Add args to AskPermissionFn type
+- **settings:** Support @username in admin users section
+- **chat:** Add argument formatting functions
+- **chat:** Update formatPrompt to include arguments
+- Resolve @username to user ID server-side for admin and group member endpoints
+
+### Fixed
+
+- Add missing return type and void operator in test file
+- Update tests for server-side username resolution
+
+### Testing
+
+- **chat:** Add unit tests for argument formatting
+- **chat:** Update interaction router tests for args
 ## [6.1.4] - 2026-06-10
 
 ### Added
