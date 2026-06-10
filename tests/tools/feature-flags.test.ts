@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-// tests/tools/feature-flags.test.ts
 import { describe, expect, it, mock, beforeEach } from 'bun:test'
+
+import { toScopedThreadContextId, getConfigContextIdFromStorageContextId } from '../../src/chat/scoped-context.js'
 
 const getCachedConfig = mock((_c: string, _k: string): string | null => null)
 void mock.module('../../src/cache.js', () => ({ getCachedConfig }))
@@ -45,6 +46,21 @@ describe('resolveReductionFlags', () => {
 
   it('ignores corrupt JSON and returns all-false', () => {
     getCachedConfig.mockImplementation(() => '{not json')
-    expect(resolveReductionFlags('ctx-1').resultCompaction).toBe(false)
+    expect(resolveReductionFlags('ctx-1')).toEqual({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    })
+  })
+
+  it('passes the derived config context id (not the thread-scoped id) to getCachedConfig', () => {
+    const threadScopedId = toScopedThreadContextId({
+      platformInstanceId: 'plat-1',
+      nativeContextId: 'grp-42',
+      threadId: 'thread-7',
+    })
+    const expectedConfigContextId = getConfigContextIdFromStorageContextId(threadScopedId)
+    resolveReductionFlags(threadScopedId)
+    expect(getCachedConfig).toHaveBeenCalledWith(expectedConfigContextId, REDUCTION_FLAGS_CONFIG_KEY)
   })
 })
