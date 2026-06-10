@@ -101,6 +101,18 @@ function formatValue(value: unknown, settings: AiOutputSettings): string {
   return stableStringify(settings.detailLevel === 'raw' ? value : sanitizeRootValue(value))
 }
 
+function formatError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  return stableStringify(error)
+}
+
+function formatErrorValue(error: unknown, settings: AiOutputSettings): string {
+  if (settings.detailLevel === 'raw') return stableStringify(formatError(error))
+  if (error instanceof Error || typeof error === 'string') return stableStringify('[redacted]')
+  return formatValue(error, settings)
+}
+
 function formatCodeBlock(value: unknown, settings: AiOutputSettings): string {
   const formatted = formatValue(value, settings)
   return '```json\n' + formatted + '\n```'
@@ -115,7 +127,7 @@ function formatToolFinishedMessage(event: ToolFinishedEvent, settings: AiOutputS
     lines.push('', 'Output:', formatCodeBlock(event.output, settings))
   }
   if (event.error !== undefined) {
-    lines.push('', 'Error:', formatCodeBlock(event.error, settings))
+    lines.push('', 'Error:', '```json\n' + formatErrorValue(event.error, settings) + '\n```')
   }
   return lines.join('\n')
 }
@@ -153,7 +165,7 @@ export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSetti
       const [text, raw] = args
       if (settings.reasoningVisibility !== 'on') return
       if (settings.detailLevel === 'raw' && raw !== undefined) {
-        reasoningMessages.push('Reasoning\n\n```json\n' + formatValue(raw, settings) + '\n```')
+        reasoningMessages.push('Reasoning\n\n' + formatCodeBlock(raw, settings))
         return
       }
       if (text === undefined || text.trim() === '') return
