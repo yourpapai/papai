@@ -42,12 +42,6 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === null
 }
 
-function formatError(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return stableStringify(error)
-}
-
 function sanitizeString(value: string): string {
   if (SECRET_VALUE_PATTERN.test(value)) return '[redacted]'
   if (URL_VALUE_PATTERN.test(value)) return '[redacted]'
@@ -107,34 +101,43 @@ function formatValue(value: unknown, settings: AiOutputSettings): string {
   return stableStringify(settings.detailLevel === 'raw' ? value : sanitizeRootValue(value))
 }
 
-function formatErrorValue(error: unknown, settings: AiOutputSettings): string {
-  if (settings.detailLevel === 'raw') return stableStringify(formatError(error))
-  if (error instanceof Error || typeof error === 'string') return stableStringify('[redacted]')
-  return formatValue(error, settings)
+function formatCodeBlock(value: unknown, settings: AiOutputSettings): string {
+  const formatted = formatValue(value, settings)
+  return '```json\n' + formatted + '\n```'
 }
 
-function appendToolFinished(lines: string[], event: ToolFinishedEvent, settings: AiOutputSettings): void {
+function formatToolFinishedMessage(event: ToolFinishedEvent, settings: AiOutputSettings): string {
   const status = event.success ? 'success' : 'failed'
   const duration = event.durationMs === undefined ? '' : ` in ${event.durationMs}ms`
-  lines.push(`- Tool \`${event.toolName}\` ${status}${duration}`)
-  lines.push(`  Input: \`${formatValue(event.input, settings)}\``)
-  if (event.output !== undefined) lines.push(`  Output: \`${formatValue(event.output, settings)}\``)
-  if (event.error !== undefined) lines.push(`  Error: \`${formatErrorValue(event.error, settings)}\``)
+  const lines = [`Tool \`${event.toolName}\` ${status}${duration}`, '']
+  lines.push('Input:', formatCodeBlock(event.input, settings))
+  if (event.output !== undefined) {
+    lines.push('', 'Output:', formatCodeBlock(event.output, settings))
+  }
+  if (event.error !== undefined) {
+    lines.push('', 'Error:', formatCodeBlock(event.error, settings))
+  }
+  return lines.join('\n')
 }
 
-function formatToolStarted(event: ToolStartedEvent, settings: AiOutputSettings): readonly string[] {
-  return [`- Tool \`${event.toolName}\` started`, `  Input: \`${formatValue(event.input, settings)}\``]
+function formatToolStartedMessage(event: ToolStartedEvent, settings: AiOutputSettings): string {
+  const lines = [`Tool \`${event.toolName}\` started`, '']
+  lines.push('Input:', formatCodeBlock(event.input, settings))
+  return lines.join('\n')
 }
 
-function formatReasoningText(text: string, settings: AiOutputSettings): string {
-  if (settings.detailLevel === 'raw') return text.trim()
-  return `Provider reasoning available (${text.trim().length} characters). Enable raw detail to view.`
+function formatReasoningMessage(text: string, settings: AiOutputSettings): string {
+  const content =
+    settings.detailLevel === 'raw'
+      ? text.trim()
+      : `Provider reasoning available (${text.trim().length} characters). Enable raw detail to view.`
+  return 'Reasoning\n\n```json\n' + JSON.stringify(content) + '\n```'
 }
 
 export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSettings): AiProgressReporter {
   const pendingToolStarts = new Map<string, ToolStartedEvent>()
-  const toolLines: string[] = []
-  const reasoningLines: string[] = []
+  const toolMessages: string[] = []
+  const reasoningMessages: string[] = []
 
   return {
     toolStarted: (event) => {
@@ -144,31 +147,28 @@ export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSetti
     toolFinished: (event) => {
       if (settings.toolVisibility !== 'on') return
       pendingToolStarts.delete(event.toolCallId)
-      appendToolFinished(toolLines, event, settings)
+      toolMessages.push(formatToolFinishedMessage(event, settings))
     },
     reasoning: (...args) => {
       const [text, raw] = args
       if (settings.reasoningVisibility !== 'on') return
       if (settings.detailLevel === 'raw' && raw !== undefined) {
-        reasoningLines.push(formatValue(raw, settings))
+        reasoningMessages.push('Reasoning\n\n```json\n' + formatValue(raw, settings) + '\n```')
         return
       }
       if (text === undefined || text.trim() === '') return
-      reasoningLines.push(formatReasoningText(text, settings))
+      reasoningMessages.push(formatReasoningMessage(text, settings))
     },
     flush: async () => {
-      const startedToolLines = Array.from(pendingToolStarts.values()).flatMap((event) =>
-        formatToolStarted(event, settings),
+      const startedMessages = Array.from(pendingToolStarts.values()).map((event) =>
+        formatToolStartedMessage(event, settings),
       )
-      if (startedToolLines.length === 0 && toolLines.length === 0 && reasoningLines.length === 0) return
-      const lines = ['AI execution details']
-      if (startedToolLines.length > 0 || toolLines.length > 0)
-        lines.push('', 'Tool calls', ...startedToolLines, ...toolLines)
-      if (reasoningLines.length > 0) lines.push('', 'Reasoning', ...reasoningLines)
-      await reply.formatted(lines.join('\n'))
+      const allMessages = [...startedMessages, ...toolMessages, ...reasoningMessages]
+      if (allMessages.length === 0) return
+      await Promise.all(allMessages.map((message) => reply.formatted(message)))
       pendingToolStarts.clear()
-      toolLines.length = 0
-      reasoningLines.length = 0
+      toolMessages.length = 0
+      reasoningMessages.length = 0
     },
   }
 }
