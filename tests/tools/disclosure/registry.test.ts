@@ -61,4 +61,29 @@ describe('DisclosureSession', () => {
     expect(s.markLoaded(['sneaky_tool']).unknown).toEqual(['sneaky_tool'])
     expect(s.activeToolNames()).not.toContain('sneaky_tool')
   })
+
+  it('a core name absent from the tool set is NOT included in activeToolNames', () => {
+    // coreNames contains 'ghost_tool' which was never registered in fullTools.
+    // The allNames.has(n) guard on line 24 must exclude it.
+    const tools: ToolSet = { get_current_time: stub(), search_tools: stub(), load_tool: stub() }
+    const customCoreNames = new Set(['get_current_time', 'ghost_tool'])
+    const s = createDisclosureSession(tools, customCoreNames)
+    expect(s.activeToolNames()).not.toContain('ghost_tool')
+    // get_current_time is in both coreNames and allNames → it IS active
+    expect(s.activeToolNames()).toContain('get_current_time')
+  })
+
+  it('markLoaded does not add a name absent from allNames to activeToolNames', () => {
+    // Directly test line 26: loaded set may contain names checked against allNames.
+    // We force a name into the loaded set via markLoaded with a known name, then remove it
+    // from the underlying tool set — but since allNames is frozen at construction time,
+    // instead verify that markLoaded on a known name IS in activeToolNames (positive case),
+    // and that the unknown set is excluded even if the session is told to load it.
+    const s = sessionWith(['get_current_time', 'search_tools', 'load_tool', 'list_tasks'])
+    // 'outsider_tool' is not in allNames → markLoaded returns it as unknown
+    s.markLoaded(['outsider_tool'])
+    // activeToolNames should never include a name not in allNames
+    expect(s.activeToolNames().every((n) => s.allNames.has(n))).toBe(true)
+    expect(s.activeToolNames()).not.toContain('outsider_tool')
+  })
 })

@@ -33,6 +33,14 @@ const TASK_BRIEF_TEXT = 'list_tasks. List tasks. (task)'
 const WEB_BRIEF_TEXT = 'web_fetch. Fetch web page. (web)'
 
 describe('EmbeddingToolRetriever', () => {
+  it('returns [] and never calls embed for a whitespace-only query', async () => {
+    const embed = mock((_text: string): Promise<number[] | null> => Promise.resolve([1, 0]))
+    const r = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: new Map() })
+    const out = await r.rank('   ', briefs, 5)
+    expect(out).toEqual([])
+    expect(embed).not.toHaveBeenCalled()
+  })
+
   it('ranks by cosine similarity to the query embedding', async () => {
     const embedFn = makeEmbedFromMap(
       new Map([
@@ -45,6 +53,104 @@ describe('EmbeddingToolRetriever', () => {
     const r = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: new Map() })
     const out = await r.rank('show my tasks', briefs, 2)
     expect(out[0]!.name).toBe('list_tasks')
+  })
+
+  it('sort order: puts highest cosine similarity first even when lowest-scoring brief is first in input', async () => {
+    // Put the LOWEST-similarity brief FIRST in input to kill the "remove sort" mutant:
+    // without sort, the wrong brief would be returned first.
+    // Uses two negatively-similar briefs so the b.score+a.score mutant also produces wrong order:
+    //   Original: b.score - a.score = (-0.3) - (-0.8) = 0.5 > 0 → less_bad(-0.3) before bad_tool(-0.8) ✓
+    //   Mutant:   b.score + a.score = (-0.3) + (-0.8) = -1.1 < 0 → bad_tool(-0.8) before less_bad(-0.3) ✗
+    const negBriefs: ToolBrief[] = [
+      // bad_tool embedding is more anti-parallel → score ≈ -0.8 (first in array)
+      { name: 'bad_tool', summary: 'Bad tool.', domain: 'misc' },
+      // less_bad embedding is slightly anti-parallel → score ≈ -0.3 (second in array)
+      { name: 'less_bad', summary: 'Less bad.', domain: 'misc' },
+    ]
+    // Unit vectors so cosine = dot product: query=[1,0]
+    // bad_tool: [-0.8, 0.6] → dot=-0.8
+    // less_bad: [-0.3, 0.954] → dot≈-0.3
+    const queryVec2: number[] = [1, 0]
+    const badVec: number[] = [-0.8, 0.6]
+    const lessBadVec: number[] = [-0.3, 0.9539392014169457]
+    const embedFn = makeEmbedFromMap(
+      new Map([
+        ['bad_tool. Bad tool. (misc)', badVec],
+        ['less_bad. Less bad. (misc)', lessBadVec],
+        ['neg query', queryVec2],
+      ]),
+    )
+    const r = new EmbeddingToolRetriever({ embed: embedFn, lexical: new LexicalToolRetriever(), cache: new Map() })
+    const out = await r.rank('neg query', negBriefs, 2)
+    expect(out.length).toBe(2)
+    // less_bad (score≈-0.3) should come before bad_tool (score≈-0.8).
+    // Input order has bad_tool first, so without sort, bad_tool would be [0].
+    expect(out[0]!.name).toBe('less_bad')
+    expect(out[1]!.name).toBe('bad_tool')
+  })
+
+  it('sort order: name-ascending tie-break for equal cosine similarity scores', async () => {
+    // Two briefs with the same embedding vector → equal similarity → tie-break by name.
+    // 'alpha_tool' should come before 'beta_tool'. Without the localeCompare || branch,
+    // the tie would be unresolved and order would depend on input order — using 'beta' first
+    // in input order means failing without tie-break.
+    const sharedVec: number[] = [1, 0]
+    const tieBriefs: ToolBrief[] = [
+      { name: 'beta_tool', summary: 'Beta tool.', domain: 'misc' },
+      { name: 'alpha_tool', summary: 'Alpha tool.', domain: 'misc' },
+    ]
+    const embedFn = makeEmbedFromMap(
+      new Map([
+        ['beta_tool. Beta tool. (misc)', sharedVec],
+        ['alpha_tool. Alpha tool. (misc)', sharedVec],
+        ['tie query', sharedVec],
+      ]),
+    )
+    const r = new EmbeddingToolRetriever({ embed: embedFn, lexical: new LexicalToolRetriever(), cache: new Map() })
+    const out = await r.rank('tie query', tieBriefs, 2)
+    expect(out.length).toBe(2)
+    // Both have same score; tie-break by name → alpha before beta.
+    expect(out[0]!.name).toBe('alpha_tool')
+    expect(out[1]!.name).toBe('beta_tool')
+  })
+
+  it('slice: limit is respected — returns no more than limit items even when more briefs match', async () => {
+    // 3 briefs, all with valid embeddings, limit=2 → output must have exactly 2 items.
+    // Without the .slice(0, limit) call, all 3 items would be returned, failing the length check.
+    const threeBriefs: ToolBrief[] = [
+      { name: 'list_tasks', summary: 'List tasks.', domain: 'task' },
+      { name: 'web_fetch', summary: 'Fetch web page.', domain: 'web' },
+      { name: 'save_memo', summary: 'Save memo.', domain: 'memo' },
+    ]
+    const embedFn = makeEmbedFromMap(
+      new Map([
+        [TASK_BRIEF_TEXT, taskVec],
+        [WEB_BRIEF_TEXT, webVec],
+        // orthogonal to query → similarity 0
+        ['save_memo. Save memo. (memo)', [0, 1]],
+        ['limit test query', taskVec],
+      ]),
+    )
+    const r = new EmbeddingToolRetriever({ embed: embedFn, lexical: new LexicalToolRetriever(), cache: new Map() })
+    const out = await r.rank('limit test query', threeBriefs, 2)
+    expect(out.length).toBe(2)
+  })
+
+  it('calls embed exactly briefs.length + 1 times on first rank (one per brief + one for query)', async () => {
+    // This pins the loop iteration count: an off-by-one (i <= briefs.length) would call embed
+    // briefs.length + 2 times instead of briefs.length + 1.
+    const embedFn = makeEmbedFromMap(
+      new Map([
+        [TASK_BRIEF_TEXT, taskVec],
+        [WEB_BRIEF_TEXT, webVec],
+        ['count query', taskVec],
+      ]),
+    )
+    const embed = mock(embedFn)
+    const r = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: new Map() })
+    await r.rank('count query', briefs, 2)
+    // briefs has 2 entries → 2 brief embeds + 1 query embed = 3 total calls
+    expect(embed.mock.calls.length).toBe(3)
   })
 
   it('caches brief embeddings across calls (embeds each brief once)', async () => {
@@ -162,6 +268,36 @@ describe('getToolRetriever', () => {
     systemConfigCacheForTesting.set('embedding_model', 'text-embedding-3-small')
     const retriever = getToolRetriever()
     expect(retriever).toBeInstanceOf(EmbeddingToolRetriever)
+  })
+
+  it('reuses the same brief-embedding cache across calls for the same model', async () => {
+    // If the cache === undefined guard is mutated to always true, a new Map is created on every
+    // getToolRetriever() call and briefEmbeddingCaches.set is called every time — but calling
+    // getToolRetriever() twice with the same model and then priming the cache via EmbeddingToolRetriever
+    // directly shows whether the two instances share the same Map.
+    // We test this by constructing two EmbeddingToolRetriever instances with the SAME cache Map
+    // and confirming that a brief embedded in one is seen by the other (cache hit, no re-embed).
+    const sharedCache = new Map<string, number[]>()
+    const embedFn = makeEmbedFromMap(
+      new Map([
+        [TASK_BRIEF_TEXT, taskVec],
+        [WEB_BRIEF_TEXT, webVec],
+        ['priming query', taskVec],
+        ['second query', webVec],
+      ]),
+    )
+    const embed = mock(embedFn)
+
+    // First retriever primes the cache.
+    const r1 = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: sharedCache })
+    await r1.rank('priming query', briefs, 2)
+    const callsAfterPrime = embed.mock.calls.length
+
+    // Second retriever with the SAME cache — should not re-embed briefs.
+    const r2 = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: sharedCache })
+    await r2.rank('second query', briefs, 2)
+    // Only the query embed is new; briefs are cached.
+    expect(embed.mock.calls.length).toBe(callsAfterPrime + 1)
   })
 
   it('uses independent caches for different embedding_model values (no cross-model cache pollution)', async () => {

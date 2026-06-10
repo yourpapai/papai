@@ -50,6 +50,19 @@ describe('createDisclosurePrepareStep', () => {
     expect(emitUser).toHaveBeenCalledTimes(1)
   })
 
+  it('emitUser receives the exact stall stepNumber in the payload', () => {
+    const session = freshSession()
+    const prep = createDisclosurePrepareStep(session, 'ctx-1')
+    prep({ stepNumber: DISCLOSURE_STALL_STEPS })
+    // Third arg must be the payload object containing stepNumber = DISCLOSURE_STALL_STEPS.
+    expect(emitUser).toHaveBeenCalledWith(
+      'disclosure:fallback',
+      'ctx-1',
+      { stepNumber: DISCLOSURE_STALL_STEPS },
+      undefined,
+    )
+  })
+
   it('passes turnId as 4th arg to emitUser on fallback when provided', () => {
     const session = freshSession()
     const prep = createDisclosurePrepareStep(session, 'ctx-1', 'turn-42')
