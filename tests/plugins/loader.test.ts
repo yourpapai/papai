@@ -29,7 +29,7 @@ import {
   getTaskProviderConfigValidator,
   getTaskProviderDescriptor,
 } from '../../src/providers/registry.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupTestDb, waitFor } from '../utils/test-helpers.js'
 
 declare global {
   var papaiDeactivateOrder: string[] | undefined
@@ -221,7 +221,7 @@ describe('activatePlugins', () => {
               } catch (error) {
                 globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
               }
-            }, 50)
+            }, 10)
             ctx.registration.registerTool({
               name: 'registered_tool',
               description: 'Registered tool',
@@ -244,9 +244,7 @@ describe('activatePlugins', () => {
     approvePlugin(plugin)
 
     await activatePlugins([plugin])
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 100)
-    })
+    await waitFor(() => globalThis.papaiLateRegistrationError !== undefined)
 
     expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
     expect(
@@ -403,9 +401,7 @@ describe('activatePlugins', () => {
     approvePlugin(plugin)
 
     await activatePlugins([plugin])
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 200)
-    })
+    await waitFor(() => globalThis.papaiLateRegistrationError !== undefined)
 
     expect(
       requireValue(pluginRegistry.getEntry('late-timeout-plugin'), 'late timeout plugin registry entry').state,
@@ -447,9 +443,7 @@ describe('activatePlugins', () => {
     approvePlugin(plugin)
 
     await activatePlugins([plugin])
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 200)
-    })
+    await waitFor(() => globalThis.papaiLateRegistrationError !== undefined)
 
     expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
     expect(getTaskProviderDescriptor('late-timeout-provider')).toBeUndefined()
@@ -750,7 +744,7 @@ describe('activatePlugins', () => {
         return {
           activate() {},
           async deactivate() {
-            await new Promise((resolve) => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 10))
             globalThis.papaiDeactivateOrder.push('second-plugin')
           },
         }

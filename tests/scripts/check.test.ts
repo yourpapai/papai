@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 // Integration tests for ../../scripts/check.js (check.sh — no TS module; shell script under test)
-import { describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -64,22 +64,21 @@ const writeExecutable = (filePath: string, content: string): void => {
   chmodSync(filePath, 0o755)
 }
 
-const createTempRepo = (): Readonly<{ repoDir: string; binDir: string; logFile: string }> => {
-  const repoDir = mkdtempSync(path.join(tmpdir(), 'check-script-'))
-  const scriptsDir = path.join(repoDir, 'scripts')
-  const binDir = path.join(repoDir, 'bin')
-  const logFile = path.join(repoDir, 'calls.log')
+// The stub bun/bunx executables are written once and shared across tests:
+// macOS scans every freshly written executable on its first exec
+// (syspolicyd/XProtect, 200-600ms per new inode), so per-test stubs dominated
+// this suite's runtime. The stubs are stateless — each test parameterizes them
+// via its own CHECK_LOG_FILE env value.
+let sharedBinDir = ''
 
-  mkdirSync(scriptsDir, { recursive: true })
-  mkdirSync(binDir, { recursive: true })
-
-  writeExecutable(path.join(scriptsDir, 'check.sh'), readFileSync(CHECK_SCRIPT_PATH, 'utf8'))
+beforeAll(() => {
+  sharedBinDir = mkdtempSync(path.join(tmpdir(), 'check-script-bin-'))
   writeExecutable(
-    path.join(binDir, 'bun'),
+    path.join(sharedBinDir, 'bun'),
     ['#!/bin/bash', 'set -euo pipefail', 'printf "bun %s\\n" "$*" >> "$CHECK_LOG_FILE"', 'exit 0', ''].join('\n'),
   )
   writeExecutable(
-    path.join(binDir, 'bunx'),
+    path.join(sharedBinDir, 'bunx'),
     [
       '#!/bin/bash',
       'set -euo pipefail',
@@ -124,10 +123,23 @@ const createTempRepo = (): Readonly<{ repoDir: string; binDir: string; logFile: 
       '',
     ].join('\n'),
   )
+})
+
+afterAll(() => {
+  rmSync(sharedBinDir, { recursive: true, force: true })
+})
+
+const createTempRepo = (): Readonly<{ repoDir: string; binDir: string; logFile: string }> => {
+  const repoDir = mkdtempSync(path.join(tmpdir(), 'check-script-'))
+  const scriptsDir = path.join(repoDir, 'scripts')
+  const logFile = path.join(repoDir, 'calls.log')
+
+  mkdirSync(scriptsDir, { recursive: true })
+  writeExecutable(path.join(scriptsDir, 'check.sh'), readFileSync(CHECK_SCRIPT_PATH, 'utf8'))
 
   expectSuccess(runCommand(repoDir, ['git', 'init']))
 
-  return { repoDir, binDir, logFile }
+  return { repoDir, binDir: sharedBinDir, logFile }
 }
 
 describe('check.sh --staged', () => {
