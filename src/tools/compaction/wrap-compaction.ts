@@ -70,7 +70,7 @@ async function compact(
     summary,
     totalBytes: decision.totalBytes,
     preview,
-    hint: 'This result was compacted. Call expand_result with this handle (offset/limit) to read the full raw content.',
+    hint: 'This result was compacted. Call expand_result with this handle to read the full raw content. offset/limit are character offsets, not bytes — use nextOffset from each response as the next offset.',
   }
   return envelope
 }

@@ -50,4 +50,18 @@ describe('result-store', () => {
     expect(getResultPage('ctx-1', handles[0]!, 0, 4)).toEqual({ found: false })
     expect(getResultPage('ctx-1', handles[64]!, 0, 4).found).toBe(true)
   })
+
+  it('allows a fresh put and correct paging after TTL-expiry evicts the sole entry for a context', () => {
+    const handle = putResult('ctx-ttl', 'hello')
+    // Expire the entry by advancing the clock past TTL
+    now += 30 * 60_000 + 1
+    expect(getResultPage('ctx-ttl', handle, 0, 5)).toEqual({ found: false })
+
+    // Reset clock and store a new entry under the same context
+    now = 1_000
+    setResultStoreClockForTesting(() => now)
+    const handle2 = putResult('ctx-ttl', 'world')
+    expect(getResultPage('ctx-ttl', handle2, 0, 5)).toEqual({ found: true, chunk: 'world', nextOffset: 5, done: true })
+    expect(getResultPage('ctx-ttl', handle2, 0, 3)).toEqual({ found: true, chunk: 'wor', nextOffset: 3, done: false })
+  })
 })

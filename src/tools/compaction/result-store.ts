@@ -53,6 +53,7 @@ export function getResultPage(contextId: string, handle: string, offset: number,
   if (m === undefined || entry === undefined) return { found: false }
   if (clock() - entry.createdAt > RESULT_STORE_TTL_MS) {
     m.delete(handle)
+    if (m.size === 0) store.delete(contextId)
     return { found: false }
   }
   const start = Math.max(0, offset)
