@@ -73,4 +73,10 @@ describe('resolveSettingsUserId', () => {
     expect(await resolveSettingsUserId('f4dev', PRINCIPAL)).toEqual({ kind: 'resolved', userId: '99' })
     expect(mockResolveUserId).toHaveBeenCalledWith('f4dev', expect.objectContaining({ contextType: 'dm' }))
   })
+
+  test('bare @ is unresolved without consulting the router', async () => {
+    mockResolveUserId.mockImplementation(() => Promise.resolve('99'))
+    expect(await resolveSettingsUserId('@', PRINCIPAL)).toEqual({ kind: 'unresolved', username: '' })
+    expect(mockResolveUserId).not.toHaveBeenCalled()
+  })
 })

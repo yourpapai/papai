@@ -136,7 +136,9 @@ describe('settings admin system/access routes', () => {
     )
     expect(res.status).toBe(200)
     z.object({ ok: z.literal(true), pending: z.literal(true) }).parse(await res.json())
-    expect(listUsers('pi-1').some((u) => u.username === 'offline')).toBe(true)
+    const offlineRow = listUsers('pi-1').find((u) => u.username === 'offline')
+    expect(offlineRow).toBeDefined()
+    expect(offlineRow!.platform_user_id.startsWith('placeholder-')).toBe(true)
   })
 
   test('POST users with only "@" returns 422', async () => {

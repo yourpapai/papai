@@ -22,6 +22,7 @@ export async function resolveSettingsUserId(
   principal: Readonly<{ platformUserId: string; platformInstanceId: string }>,
 ): Promise<SettingsUserIdResolution> {
   const clean = rawUserId.startsWith('@') ? rawUserId.slice(1) : rawUserId
+  if (clean === '') return { kind: 'unresolved', username: '' }
   if (/^\d+$/u.test(clean)) return { kind: 'id', userId: clean }
   const router = getRuntimeChatRouter()
   if (router === null) return { kind: 'unresolved', username: clean }
