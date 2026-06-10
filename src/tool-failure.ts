@@ -15,7 +15,7 @@ import {
 } from './errors.js'
 
 export type ToolFailureType = AppError['type'] | 'tool-execution'
-export type ToolFailureCode = AppError['code'] | 'interrupted' | 'unknown'
+export type ToolFailureCode = AppError['code'] | 'interrupted' | 'unknown' | 'expired'
 
 export interface ToolFailureResult {
   [key: string]: JSONValue | undefined
