@@ -63,6 +63,11 @@ const { prepareLlmInvocation } = await import('../src/llm-orchestrator-tools.js'
 describe('prepareLlmInvocation compaction wiring', () => {
   beforeEach(() => {
     resolveReductionFlagsMock.mockReset()
+    resolveReductionFlagsMock.mockReturnValue({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    })
     applyResultCompactionMock.mockReset()
     applyResultCompactionMock.mockImplementation((tools: ToolSet): ToolSet => tools)
   })
@@ -109,6 +114,7 @@ describe('prepareLlmInvocation compaction wiring', () => {
       stagedDownloadFn: undefined,
       askPermission: undefined,
     })
+    expect(applyResultCompactionMock).toHaveBeenCalledTimes(1)
     const ctxArg: CompactionContext = applyResultCompactionMock.mock.calls[0]![1]
     expect(ctxArg.enabled).toBe(false)
   })
