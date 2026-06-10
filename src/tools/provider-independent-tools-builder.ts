@@ -10,9 +10,11 @@ import type { StagedFileDownloadFn } from '../attachments/types.js'
 import { getConfigContextIdFromStorageContextId, hasThreadContextId } from '../chat/scoped-context.js'
 import type { ContextType } from '../chat/types.js'
 import { makeArchiveMemosTool } from './archive-memos.js'
+import { makeExpandResultTool } from './compaction/expand-result.js'
 import { makeCreateRecurringTaskTool } from './create-recurring-task.js'
 import { addDeferredPromptTools } from './deferred-tools-builder.js'
 import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
+import { resolveReductionFlags } from './feature-flags.js'
 import { makeGetCurrentTimeTool } from './get-current-time.js'
 import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructionTool } from './instructions.js'
 import { makeListMemosTool } from './list-memos.js'
@@ -81,6 +83,9 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
   const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
 
   tools['get_current_time'] = makeGetCurrentTimeTool(storageOwnerId)
+  if (contextId !== undefined && resolveReductionFlags(contextId).resultCompaction) {
+    tools['expand_result'] = makeExpandResultTool(contextId)
+  }
   if (contextId !== undefined && isS3Configured()) {
     tools['list_files'] = makeListFilesTool(contextId)
     tools['delete_file'] = makeDeleteFileTool(contextId)
