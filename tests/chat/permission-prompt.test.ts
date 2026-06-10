@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import {
   askPermissionViaChat,
+  formatArguments,
   formatPermissionDecisionText,
+  formatPrompt,
   resolvePermissionRequest,
   resetPermissionPromptForTesting,
 } from '../../src/chat/permission-prompt.js'
@@ -146,5 +148,76 @@ describe('formatPermissionDecisionText', () => {
     expect(formatPermissionDecisionText('Run `delete_task`?\n\nReason', 'deny')).toBe(
       'Run `delete_task`?\n\nReason\n\nDenied.',
     )
+  })
+})
+
+describe('formatArguments', () => {
+  test('formats flat object', () => {
+    expect(formatArguments({ id: 'task-123', name: 'Test' })).toBe('id: task-123\nname: Test')
+  })
+
+  test('flattens nested objects', () => {
+    expect(formatArguments({ assignee: { name: 'John' } })).toBe('assignee.name: John')
+  })
+
+  test('formats arrays as comma-separated', () => {
+    expect(formatArguments({ tags: ['bug', 'urgent'] })).toBe('tags: bug, urgent')
+  })
+
+  test('masks sensitive values', () => {
+    expect(formatArguments({ apiKey: 'sk-abc123def' })).toBe('apiKey: sk-...def')
+  })
+
+  test('masks sensitive field names', () => {
+    expect(formatArguments({ token: 'abc123def456' })).toBe('token: abc...456')
+  })
+
+  test('handles empty args', () => {
+    expect(formatArguments({})).toBe('')
+  })
+
+  test('flattens up to 3 levels, then shows [Object]', () => {
+    const deep = { a: { b: { c: { d: 'value' } } } }
+    expect(formatArguments(deep)).toBe('a.b.c.d: value')
+  })
+
+  test('shows [Object] for deeply nested objects beyond 3 levels', () => {
+    const veryDeep = { a: { b: { c: { d: { e: 'value' } } } } }
+    expect(formatArguments(veryDeep)).toBe('a.b.c.d: [Object]')
+  })
+
+  test('handles null values', () => {
+    expect(formatArguments({ id: null })).toBe('id: (empty)')
+  })
+
+  test('handles undefined values', () => {
+    expect(formatArguments({ id: undefined })).toBe('id: (empty)')
+  })
+
+  test('handles boolean values', () => {
+    expect(formatArguments({ active: true })).toBe('active: true')
+  })
+
+  test('handles numeric values', () => {
+    expect(formatArguments({ count: 42 })).toBe('count: 42')
+  })
+})
+
+describe('formatPrompt', () => {
+  test('includes arguments before reason', () => {
+    const result = formatPrompt('delete_task', 'cleanup', { id: 'task-123' })
+    expect(result).toContain('**Arguments:**\nid: task-123')
+    expect(result.indexOf('**Arguments:**')).toBeLessThan(result.indexOf('cleanup'))
+  })
+
+  test('skips arguments section when args empty', () => {
+    const result = formatPrompt('delete_task', 'cleanup', {})
+    expect(result).not.toContain('**Arguments:**')
+    expect(result).toContain('🔐 Run `delete_task`?\n\ncleanup')
+  })
+
+  test('escapes markdown in reason', () => {
+    const result = formatPrompt('delete_task', 'cleanup *task*', { id: 'task-123' })
+    expect(result).toContain('cleanup \\*task\\*')
   })
 })

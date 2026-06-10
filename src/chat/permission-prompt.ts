@@ -104,7 +104,7 @@ function escapeMarkdown(text: string): string {
   return text.replace(MARKDOWN_ESCAPE_PATTERN, (ch) => `\\${ch}`)
 }
 
-function formatPrompt(toolName: string, reason: string, args: Record<string, unknown>): string {
+export function formatPrompt(toolName: string, reason: string, args: Record<string, unknown>): string {
   const argsSection = formatArguments(args)
   const parts = [`🔐 Run \`${toolName}\`?`]
 
