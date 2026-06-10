@@ -6,22 +6,31 @@
 import { describe, expect, it, mock } from 'bun:test'
 import type { Mock } from 'bun:test'
 
+import type { LlmConfigMissing } from '../../../src/llm-config-resolver.js'
+
+void mock.module('../../../src/llm-config-resolver.js', () => ({
+  resolveEffectiveLlmConfig: (): LlmConfigMissing => ({
+    ok: false,
+    type: 'missing',
+    source: 'global',
+    missing: ['llm_apikey'],
+  }),
+}))
+
 import { summarizeResult, type SummarizerDeps } from '../../../src/tools/compaction/summarizer.js'
 
-type GenerateOpts = { model: unknown; system: string; prompt: string }
+type GenerateOpts = { system: string; prompt: string }
 type GenerateFn = (opts: GenerateOpts) => Promise<{ text: string }>
 
 function depsReturning(text: string): { deps: SummarizerDeps; generateMock: Mock<GenerateFn> } {
   const generateMock: Mock<GenerateFn> = mock(
-    (opts: GenerateOpts): Promise<{ text: string }> =>
-      Promise.resolve({ text, _system: opts.system } as { text: string }),
+    (_opts: GenerateOpts): Promise<{ text: string }> => Promise.resolve({ text }),
   )
-  return { deps: { model: 'stub-model', generate: generateMock }, generateMock }
+  return { deps: { generate: generateMock }, generateMock }
 }
 
 function depsThrowing(): SummarizerDeps {
   return {
-    model: 'stub-model',
     generate: mock((_opts: GenerateOpts): Promise<{ text: string }> => Promise.reject(new Error('model down'))),
   }
 }
@@ -52,6 +61,11 @@ describe('summarizeResult', () => {
   it('returns summary:null when the model returns empty text', async () => {
     const { deps } = depsReturning('   ')
     const out = await summarizeResult({ serialized: 'x', totalBytes: 9, toolName: 't', userIntent: 'i' }, deps)
+    expect(out.summary).toBeNull()
+  })
+
+  it('returns summary:null without throwing when LLM config is missing and no deps provided', async () => {
+    const out = await summarizeResult({ serialized: 'x', totalBytes: 9, toolName: 't', userIntent: 'i' })
     expect(out.summary).toBeNull()
   })
 })

@@ -21,8 +21,7 @@ const SYSTEM = [
 ].join(' ')
 
 export interface SummarizerDeps {
-  model: unknown
-  generate: (opts: { model: unknown; system: string; prompt: string }) => Promise<{ text: string }>
+  generate: (opts: { system: string; prompt: string }) => Promise<{ text: string }>
 }
 
 export interface SummarizeInput {
@@ -43,7 +42,6 @@ function buildDefaultDeps(): SummarizerDeps | null {
   })(resolved.smallModel)
 
   return {
-    model: builtModel,
     generate: async (opts) => {
       const result = await generateText({ model: builtModel, system: opts.system, prompt: opts.prompt })
       return { text: result.text }
@@ -68,7 +66,7 @@ export async function summarizeResult(
   ].join('\n')
 
   try {
-    const { text } = await resolvedDeps.generate({ model: resolvedDeps.model, system: SYSTEM, prompt })
+    const { text } = await resolvedDeps.generate({ system: SYSTEM, prompt })
     const trimmed = text.trim()
     return { summary: trimmed === '' ? null : trimmed }
   } catch (error) {
