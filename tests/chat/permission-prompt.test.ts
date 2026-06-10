@@ -53,7 +53,7 @@ describe('askPermissionViaChat', () => {
 
   test('posts an Allow/Deny prompt and resolves on allow', async () => {
     const { reply, getButtonCall } = makeReply()
-    const promise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'cleanup T-123' })
+    const promise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'cleanup T-123', args: {} })
 
     await tickAsync()
     const call = getButtonCall()
@@ -71,7 +71,7 @@ describe('askPermissionViaChat', () => {
 
   test('resolves on deny', async () => {
     const { reply, getButtonCall } = makeReply()
-    const promise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'r' })
+    const promise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'r', args: {} })
     await tickAsync()
     const btns = extractButtons(getButtonCall()!)
     const id = btns[0]!.callbackData.replace('perm:a:', '')
@@ -85,7 +85,7 @@ describe('askPermissionViaChat', () => {
 
   test('callback data uses 8-char base64url id', async () => {
     const { reply, getButtonCall } = makeReply()
-    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'r' })
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'r', args: {} })
     await tickAsync()
     const btns = extractButtons(getButtonCall()!)
     const id = btns[0]!.callbackData.replace('perm:a:', '')
@@ -94,7 +94,7 @@ describe('askPermissionViaChat', () => {
 
   test('prompt body contains tool name and reason', async () => {
     const { reply, getButtonCall } = makeReply()
-    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'cleanup' })
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'cleanup', args: {} })
     await tickAsync()
     const call = getButtonCall()!
     expect(call.body).toContain('delete_task')
@@ -106,6 +106,7 @@ describe('askPermissionViaChat', () => {
     void askPermissionViaChat(reply, 'ctx-1', {
       toolName: 'delete_task',
       reason: '*click here* [tap](https://attacker.example) `code` _italic_',
+      args: {},
     })
     await tickAsync()
     const body = getButtonCall()!.body
@@ -121,14 +122,14 @@ describe('askPermissionViaChat', () => {
 
   test('reason without special characters is unchanged', async () => {
     const { reply, getButtonCall } = makeReply()
-    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'plain text reason' })
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'plain text reason', args: {} })
     await tickAsync()
     expect(getButtonCall()!.body).toContain('plain text reason')
   })
 
   test('tool name backticks in template still render as code span', async () => {
     const { reply, getButtonCall } = makeReply()
-    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'no markdown' })
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'no markdown', args: {} })
     await tickAsync()
     expect(getButtonCall()!.body).toContain('`delete_task`')
   })

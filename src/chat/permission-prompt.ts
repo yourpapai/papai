@@ -104,8 +104,20 @@ function escapeMarkdown(text: string): string {
   return text.replace(MARKDOWN_ESCAPE_PATTERN, (ch) => `\\${ch}`)
 }
 
-function formatPrompt(toolName: string, reason: string): string {
-  return `🔐 Run \`${toolName}\`?\n\n${escapeMarkdown(reason)}`
+function formatPrompt(toolName: string, reason: string, args: Record<string, unknown>): string {
+  const argsSection = formatArguments(args)
+  const parts = [`🔐 Run \`${toolName}\`?`]
+
+  if (argsSection) {
+    parts.push('')
+    parts.push('**Arguments:**')
+    parts.push(argsSection)
+  }
+
+  parts.push('')
+  parts.push(escapeMarkdown(reason))
+
+  return parts.join('\n')
 }
 
 export function formatPermissionDecisionText(sourceMessageText: string, decision: PermissionDecision): string {
@@ -116,10 +128,10 @@ export function formatPermissionDecisionText(sourceMessageText: string, decision
 export async function askPermissionViaChat(
   reply: ReplyFn,
   contextId: string,
-  req: { toolName: string; reason: string },
+  req: { toolName: string; reason: string; args: Record<string, unknown> },
 ): Promise<PermissionDecision> {
   const id = generateRequestId()
-  const body = formatPrompt(req.toolName, req.reason)
+  const body = formatPrompt(req.toolName, req.reason, req.args)
   await reply.buttons(body, {
     buttons: [
       { text: '✅ Allow', callbackData: `perm:a:${id}`, style: 'primary' },
