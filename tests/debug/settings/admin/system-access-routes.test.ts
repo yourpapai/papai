@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { z } from 'zod'
@@ -19,6 +19,16 @@ import { authHeaders, establishSession, type SettingsSession } from '../helpers.
 
 const OkResponseSchema = z.object({ ok: z.literal(true) })
 
+const mockResolveUserId = mock((username: string) =>
+  Promise.resolve(/^\d+$/u.test(username) ? username : `resolved-${username}`),
+)
+
+void mock.module('../../../../src/debug/chat-router-runtime.js', () => ({
+  getRuntimeChatRouter: (): { resolveUserId: typeof mockResolveUserId } => ({
+    resolveUserId: mockResolveUserId,
+  }),
+}))
+
 describe('settings admin system/access routes', () => {
   let adminSession: SettingsSession
   let userSession: SettingsSession
@@ -32,6 +42,7 @@ describe('settings admin system/access routes', () => {
     addAdmin('admin-1', 'pi-1')
     adminSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'admin-1' })
     userSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'user-1' })
+    mockResolveUserId.mockClear()
   })
 
   test('GET system returns an LLM snapshot with masked api key', async () => {
@@ -58,7 +69,7 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/users',
     )
     expect(res.status).toBe(200)
-    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'newbie')).toBe(true)
+    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-newbie')).toBe(true)
   })
 
   test('non-admin POST users returns 403', async () => {
@@ -117,7 +128,7 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/users',
     )
     assert(
-      listUsers('pi-1').some((u) => u.platform_user_id === 'to-remove'),
+      listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-to-remove'),
       'user should exist before delete',
     )
 
@@ -126,14 +137,14 @@ describe('settings admin system/access routes', () => {
       new Request(deleteUrl, {
         method: 'DELETE',
         headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'to-remove' }),
+        body: JSON.stringify({ userId: 'resolved-to-remove' }),
       }),
       deleteUrl,
       '/settings/api/admin/users',
     )
     expect(res.status).toBe(200)
     OkResponseSchema.parse(await res.json())
-    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'to-remove')).toBe(false)
+    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-to-remove')).toBe(false)
   })
 
   test('admin GET groups returns 200 with groups array', async () => {
