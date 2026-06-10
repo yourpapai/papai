@@ -21,6 +21,7 @@ describe('LexicalToolRetriever', () => {
     const out = await r.rank('list my tasks', briefs, 2)
     expect(out[0]!.name).toBe('list_tasks')
     expect(out.length).toBe(2)
+    expect(out[1]!.score).toBe(0)
   })
 
   it('returns empty for an empty query', async () => {

@@ -8,6 +8,11 @@ import type { ToolBrief } from './tool-brief.js'
 export type RankedBrief = ToolBrief & { score: number }
 
 export interface ToolRetriever {
+  /**
+   * Returns up to `limit` briefs sorted by relevance descending (name asc tie-break).
+   * When any brief scores > 0, zero-score briefs may fill the remainder up to `limit`.
+   * Returns [] when the query is empty or no brief scores > 0.
+   */
   rank(query: string, briefs: ToolBrief[], limit: number): Promise<RankedBrief[]>
 }
 
@@ -26,7 +31,7 @@ export class LexicalToolRetriever implements ToolRetriever {
     const scored: RankedBrief[] = []
     for (const brief of briefs) {
       const haystack = `${brief.name} ${brief.summary} ${brief.domain}`.toLowerCase()
-      const hTokens = tokenize(haystack)
+      const hTokens = new Set(tokenize(haystack))
       let overlap = 0
       for (const tok of hTokens) if (qTokens.has(tok)) overlap += 1
       const substringBonus = qText.length > 2 && haystack.includes(qText) ? 1 : 0

@@ -11,7 +11,8 @@ import type { ToolRetriever, RankedBrief } from '../../../src/tools/disclosure/t
 describe('tool-retriever module exports', () => {
   it('exports LexicalToolRetriever that implements ToolRetriever', () => {
     const r: ToolRetriever = new LexicalToolRetriever()
-    expect(r).toBeDefined()
+    expect(typeof r.rank).toBe('function')
+    expect(r.rank('x', [], 1)).toBeInstanceOf(Promise)
   })
 
   it('RankedBrief includes score on top of ToolBrief shape', async () => {
