@@ -51,4 +51,16 @@ describe('load_tool', () => {
     expect(out.nowActive).toBe(session.activeToolNames().length)
     expect(emitUser).toHaveBeenCalled()
   })
+
+  it('reports an all-unknown batch without activating anything', async () => {
+    const tools: ToolSet = { get_current_time: d(), search_tools: d(), load_tool: d() }
+    const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const baseline = session.activeToolNames().length
+    const exec = getToolExecutor(makeLoadToolTool(session, 'ctx-1'))
+    const out: unknown = await exec({ names: ['nope1', 'nope2'] })
+    assert.ok(isLoadOut(out))
+    expect(out.loaded).toEqual([])
+    expect(out.unknown).toEqual(['nope1', 'nope2'])
+    expect(out.nowActive).toBe(baseline)
+  })
 })

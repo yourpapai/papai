@@ -15,7 +15,7 @@ const log = logger.child({ scope: 'tool:load_tool' })
 export function makeLoadToolTool(session: DisclosureSession, contextId: string): ToolSet[string] {
   return tool({
     description:
-      'Activate one or more tools by name so you can call them. Pass every tool you expect to need in one call to avoid extra round-trips.',
+      'Activate one or more tools by name so you can call them. Already-active tools are accepted without error. Pass every tool you expect to need in one call to avoid extra round-trips.',
     inputSchema: z.object({
       names: z.array(z.string().min(1)).min(1).describe('Tool names from search_tools results to activate'),
     }),
