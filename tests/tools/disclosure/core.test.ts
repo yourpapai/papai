@@ -24,7 +24,12 @@ describe('disclosure core constants', () => {
   it('ALWAYS_ON is the union of core and meta', () => {
     expect(ALWAYS_ON_TOOL_NAMES.has('get_current_time')).toBe(true)
     expect(ALWAYS_ON_TOOL_NAMES.has('search_tools')).toBe(true)
-    expect(ALWAYS_ON_TOOL_NAMES.size).toBe(4)
+    expect([...ALWAYS_ON_TOOL_NAMES].toSorted()).toEqual([
+      'expand_result',
+      'get_current_time',
+      'load_tool',
+      'search_tools',
+    ])
   })
 
   it('uses a small positive stall threshold', () => {
