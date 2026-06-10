@@ -16,7 +16,9 @@ const { makeSearchToolsTool } = await import('../../../src/tools/disclosure/sear
 const { createDisclosureSession } = await import('../../../src/tools/disclosure/registry.js')
 const { CORE_TOOL_NAMES } = await import('../../../src/tools/disclosure/core.js')
 const { LexicalToolRetriever } = await import('../../../src/tools/disclosure/tool-retriever.js')
+import type { ToolRetriever } from '../../../src/tools/disclosure/tool-retriever.js'
 const { getToolExecutor } = await import('../../utils/test-helpers.js')
+const { isToolFailureResult } = await import('../../../src/tool-failure.js')
 
 const d = (desc: string): ToolSet[string] => tool({ description: desc, inputSchema: z.object({}), execute: () => ({}) })
 
@@ -67,5 +69,19 @@ describe('search_tools', () => {
     const out: unknown = await exec({ query: 'time', limit: 5 })
     assert.ok(isSearchOut(out))
     expect(out.results).toEqual([])
+  })
+
+  it('returns a structured failure result when the retriever throws', async () => {
+    const tools: ToolSet = { get_current_time: d('Get the time.'), list_tasks: d('List tasks.') }
+    const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const throwingRetriever: ToolRetriever = {
+      rank: () => Promise.reject(new Error('retriever edge case')),
+    }
+    const exec = getToolExecutor(makeSearchToolsTool(session, throwingRetriever, 'ctx-1', tools))
+    const out: unknown = await exec({ query: 'tasks', limit: 5 })
+    assert.ok(isToolFailureResult(out), `expected ToolFailureResult, got: ${JSON.stringify(out)}`)
+    expect(out.success).toBe(false)
+    expect(out.error).toContain('retriever edge case')
+    expect(out.toolName).toBe('search_tools')
   })
 })

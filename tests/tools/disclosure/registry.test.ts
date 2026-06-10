@@ -86,4 +86,22 @@ describe('DisclosureSession', () => {
     expect(s.activeToolNames().every((n) => s.allNames.has(n))).toBe(true)
     expect(s.activeToolNames()).not.toContain('outsider_tool')
   })
+
+  it('markLoaded(["search_tools"]) returns search_tools in loaded array but hasLoaded stays false', () => {
+    // Always-on name is "accepted" (returned in loaded[]) but does NOT count as a meaningful load.
+    const s = sessionWith(['get_current_time', 'search_tools', 'load_tool', 'list_tasks'])
+    const res = s.markLoaded(['search_tools'])
+    expect(res.loaded).toContain('search_tools')
+    expect(res.unknown).toEqual([])
+    expect(s.hasLoaded()).toBe(false)
+  })
+
+  it('markLoaded with an always-on name plus a real tool counts as loaded', () => {
+    // When a real (non-always-on) tool is included, hasLoaded must be true.
+    const s = sessionWith(['get_current_time', 'search_tools', 'load_tool', 'list_tasks'])
+    const res = s.markLoaded(['search_tools', 'list_tasks'])
+    expect(res.loaded).toContain('search_tools')
+    expect(res.loaded).toContain('list_tasks')
+    expect(s.hasLoaded()).toBe(true)
+  })
 })

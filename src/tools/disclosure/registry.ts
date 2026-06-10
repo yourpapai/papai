@@ -32,7 +32,11 @@ export function createDisclosureSession(fullTools: ToolSet, coreNames: ReadonlyS
     const unknown: string[] = []
     for (const n of names) {
       if (allNames.has(n)) {
-        if (!loaded.has(n)) loaded.add(n)
+        // Always-on names are accepted (returned in `loaded`) so the model isn't confused,
+        // but they must NOT be added to the internal `loaded` set — doing so would flip
+        // `hasLoaded()` to true and silently defeat the stall-fallback safety valve in
+        // prepare-step.ts that guards against a search-but-never-load loop.
+        if (!ALWAYS_ON_TOOL_NAMES.has(n) && !loaded.has(n)) loaded.add(n)
         ok.push(n)
       } else {
         unknown.push(n)

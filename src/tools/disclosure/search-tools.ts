@@ -8,6 +8,7 @@ import { z } from 'zod'
 
 import { emitUser } from '../../debug/event-bus.js'
 import { logger } from '../../logger.js'
+import { buildToolFailureResult } from '../../tool-failure.js'
 import { ALWAYS_ON_TOOL_NAMES } from './core.js'
 import type { DisclosureSession } from './registry.js'
 import { buildBriefs } from './tool-brief.js'
@@ -29,18 +30,24 @@ export function makeSearchToolsTool(
       query: z.string().min(1).describe('What you are trying to do, e.g. "list overdue tasks"'),
       limit: z.number().int().min(1).max(20).default(8).describe('Maximum tools to return'),
     }),
-    execute: async ({ query, limit }) => {
-      const ranked = await retriever.rank(query, discoverable, limit)
-      const loadedNow = new Set(session.activeToolNames())
-      const results = ranked.map((b) => ({
-        name: b.name,
-        summary: b.summary,
-        domain: b.domain,
-        alreadyLoaded: loadedNow.has(b.name),
-      }))
-      emitUser('disclosure:search', contextId, { queryLength: query.length, resultCount: results.length })
-      log.debug({ contextId, queryLength: query.length, resultCount: results.length }, 'search_tools served')
-      return { results }
+    execute: async ({ query, limit }, opts) => {
+      try {
+        const ranked = await retriever.rank(query, discoverable, limit)
+        const loadedNow = new Set(session.activeToolNames())
+        const results = ranked.map((b) => ({
+          name: b.name,
+          summary: b.summary,
+          domain: b.domain,
+          alreadyLoaded: loadedNow.has(b.name),
+        }))
+        emitUser('disclosure:search', contextId, { queryLength: query.length, resultCount: results.length })
+        log.debug({ contextId, queryLength: query.length, resultCount: results.length }, 'search_tools served')
+        return { results }
+      } catch (error) {
+        const failure = buildToolFailureResult(error, 'search_tools', opts?.toolCallId ?? '')
+        log.error({ contextId, tool: 'search_tools', error: failure.error }, 'search_tools execution failed')
+        return failure
+      }
     },
   })
 }
