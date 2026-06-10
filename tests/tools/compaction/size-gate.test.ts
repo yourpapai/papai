@@ -57,6 +57,19 @@ describe('evaluateForCompaction', () => {
     expect(evaluateForCompaction(env).compact).toBe(false)
   })
 
+  it('never re-compacts a large already-compacted envelope (covers isCompactedEnvelope early-return)', () => {
+    // Large enough to exceed COMPACTION_THRESHOLD_BYTES if the early-return were skipped.
+    const env = {
+      _compacted: true as const,
+      handle: 'res_abc123',
+      summary: 'x'.repeat(10_000),
+      totalBytes: 99_999,
+      preview: 'y'.repeat(600),
+      hint: 'This result was compacted. Call expand_result with this handle to read the full content.',
+    }
+    expect(evaluateForCompaction(env).compact).toBe(false)
+  })
+
   it('skips non-serializable results', () => {
     const circular: Record<string, unknown> = {}
     circular['self'] = circular

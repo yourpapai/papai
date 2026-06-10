@@ -34,6 +34,67 @@ describe('resolveReductionFlags', () => {
     expect(getCachedConfig).toHaveBeenCalledWith(expect.any(String), REDUCTION_FLAGS_CONFIG_KEY)
   })
 
+  it('reads progressive_disclosure flag independently', () => {
+    getCachedConfig.mockReturnValue(JSON.stringify({ progressive_disclosure: true }))
+    const flags = resolveReductionFlags('ctx-1')
+    expect(flags.progressiveDisclosure).toBe(true)
+    expect(flags.resultCompaction).toBe(false)
+    expect(flags.semanticToolRetrieval).toBe(false)
+  })
+
+  it('reads semantic_tool_retrieval flag independently', () => {
+    getCachedConfig.mockReturnValue(JSON.stringify({ semantic_tool_retrieval: true }))
+    const flags = resolveReductionFlags('ctx-1')
+    expect(flags.semanticToolRetrieval).toBe(true)
+    expect(flags.progressiveDisclosure).toBe(false)
+    expect(flags.resultCompaction).toBe(false)
+  })
+
+  it('returns all-false when config value is a JSON array (not a record)', () => {
+    getCachedConfig.mockReturnValue(JSON.stringify([{ result_compaction: true }]))
+    expect(resolveReductionFlags('ctx-1')).toEqual({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    })
+  })
+
+  it('returns all-false when config value is a JSON string (not a record)', () => {
+    getCachedConfig.mockReturnValue(JSON.stringify('result_compaction'))
+    expect(resolveReductionFlags('ctx-1')).toEqual({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    })
+  })
+
+  it('returns all-false when config value is an empty string', () => {
+    getCachedConfig.mockReturnValue('')
+    expect(resolveReductionFlags('ctx-1')).toEqual({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    })
+  })
+
+  it('returns all-false when config value is whitespace-only', () => {
+    getCachedConfig.mockReturnValue('   ')
+    expect(resolveReductionFlags('ctx-1')).toEqual({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    })
+  })
+
+  it('treats non-boolean true values as false for flags', () => {
+    getCachedConfig.mockReturnValue(JSON.stringify({ result_compaction: 'yes', progressive_disclosure: 1 }))
+    expect(resolveReductionFlags('ctx-1')).toEqual({
+      progressiveDisclosure: false,
+      resultCompaction: false,
+      semanticToolRetrieval: false,
+    })
+  })
+
   it('kill switch forces every flag OFF regardless of config', () => {
     process.env['TOOL_CONTEXT_REDUCTION_DISABLED'] = 'true'
     getCachedConfig.mockImplementation(() => JSON.stringify({ result_compaction: true, progressive_disclosure: true }))
