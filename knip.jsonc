@@ -147,6 +147,8 @@
     "plugins/task-provider-youtrack/provider.ts": ["exports"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
+    // temporary: addPendingUser consumed by settings admin route (pending-username plan Task 3); remove when it lands
+    "src/users.ts": ["exports"],
   },
 
   // Report unused exports even in entry files

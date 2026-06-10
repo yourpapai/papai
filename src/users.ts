@@ -62,7 +62,11 @@ export function addPendingUser(input: AddPendingUserInput): boolean {
     .where(and(eq(users.platformInstanceId, input.platformInstanceId), usernameMatchesInsensitive(username)))
     .get()
   if (existing !== undefined) {
-    log.info({ platformInstanceId: input.platformInstanceId }, 'Pending user already present')
+    if (isPlaceholderUserId(existing.platformUserId)) {
+      log.info({ platformInstanceId: input.platformInstanceId }, 'Pending user already present')
+    } else {
+      log.info({ platformInstanceId: input.platformInstanceId }, 'Username already held by resolved user')
+    }
     return true
   }
   db.insert(users)
