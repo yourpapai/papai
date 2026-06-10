@@ -38,7 +38,11 @@ async function createPendingPermission(contextId = 'tg:u1'): Promise<{ id: strin
       return Promise.resolve()
     },
   }
-  const decision = askPermissionViaChat(reply, contextId, { toolName: 'delete_task', reason: 'cleanup' })
+  const decision = askPermissionViaChat(reply, contextId, {
+    toolName: 'delete_task',
+    reason: 'cleanup',
+    args: { id: 'task-123' },
+  })
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0)
   })
