@@ -324,7 +324,7 @@ else
         done < <(git ls-files 2>/dev/null || true)
         run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
       elif [ "$check" = "test" ]; then
-        bun test >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun test --parallel >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       elif [ "$check" = "test:client" ]; then
         bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       elif [ "$check" = "review-loop:test" ]; then

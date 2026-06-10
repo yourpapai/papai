@@ -106,24 +106,41 @@ export function hasCachedMessage(contextId: string, messageId: string): boolean 
 let testDb: ReturnType<typeof drizzle<typeof schema>> | null = null
 let testSqlite: Database | null = null
 
-async function setupMigratedTestDb(
-  migrations: readonly { id: string; up: (db: Database) => void }[],
-): Promise<ReturnType<typeof drizzle<typeof schema>>> {
-  const { Database } = await import('bun:sqlite')
-  const { drizzle } = await import('drizzle-orm/bun-sqlite')
-  const { runMigrations } = await import('../../src/db/migrate.js')
+// Cache of pre-migrated in-memory DB images, keyed by the migration set (by
+// reference identity). Replaying the ~50 migrations per test costs ~17ms each;
+// deserializing a snapshot is ~190x faster (~0.1ms), so we migrate once per
+// distinct migration set and clone the resulting image for every later setup.
+type MigrationSet = readonly { id: string; up: (db: Database) => void }[]
+const migratedSnapshotCache = new Map<MigrationSet, Uint8Array>()
 
+async function buildMigratedSnapshot(migrations: MigrationSet): Promise<Uint8Array> {
+  const cached = migratedSnapshotCache.get(migrations)
+  if (cached !== undefined) return cached
+
+  const { runMigrations } = await import('../../src/db/migrate.js')
+  const template = new Database(':memory:')
+  template.run('PRAGMA foreign_keys=ON')
+  runMigrations(template, migrations)
+  // serialize() copies the schema into a standalone image; deserialize() below
+  // copies it back into a fresh private DB, so the cached buffer is never mutated.
+  const snapshot = template.serialize()
+  template.close()
+  migratedSnapshotCache.set(migrations, snapshot)
+  return snapshot
+}
+
+async function setupMigratedTestDb(migrations: MigrationSet): Promise<ReturnType<typeof drizzle<typeof schema>>> {
   // Clear the in-memory user cache to prevent config/session bleed between tests
   const { userCachesForTesting } = await import('../../src/cache.js')
   userCachesForTesting.clear()
   const { resetPluginRegistryForTesting } = await import('../../src/plugins/registry.js')
   resetPluginRegistryForTesting()
 
-  testSqlite = new Database(':memory:')
+  const snapshot = await buildMigratedSnapshot(migrations)
+  testSqlite = Database.deserialize(snapshot)
+  // foreign_keys is a per-connection pragma, not part of the serialized image.
   testSqlite.run('PRAGMA foreign_keys=ON')
   testDb = drizzle(testSqlite, { schema })
-
-  runMigrations(testSqlite, migrations)
   setDrizzleDbForTesting(testDb)
   return testDb
 }

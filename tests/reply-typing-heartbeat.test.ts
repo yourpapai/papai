@@ -15,6 +15,23 @@ function wait(ms: number): Promise<void> {
   })
 }
 
+/**
+ * Poll until `predicate` is true or the timeout elapses. Used instead of a
+ * fixed `wait()` + immediate lower-bound assertion: under parallel test
+ * execution the event loop can be starved, so a "heartbeat fired at least N
+ * times" assertion taken at a fixed wall-clock instant flakes. Polling still
+ * fails (via the thrown timeout) if the behavior never happens.
+ */
+async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now()
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('waitFor: condition not met within timeout')
+    }
+    await wait(5)
+  }
+}
+
 /** Returns a typing fn that rejects once, then records calls normally. */
 function makeTypingWithOneInitialError(typingCalls: number[]): () => Promise<void> {
   const queue: Array<() => Promise<void>> = [(): Promise<void> => Promise.reject(new Error('Typing failed'))]
@@ -74,9 +91,8 @@ describe('reply typing heartbeat', () => {
     await withReplyTypingHeartbeat(
       reply,
       async () => {
-        await wait(55)
+        await waitFor(() => typingCalls.length >= 2)
 
-        expect(typingCalls.length).toBeGreaterThanOrEqual(2)
         expect(textCalls).toHaveLength(0)
       },
       { intervalMs: 20 },
@@ -129,9 +145,8 @@ describe('reply typing heartbeat', () => {
     await withReplyTypingHeartbeat(
       reply,
       async (wrappedReply) => {
-        await wait(25)
         // Should have retried typing after initial failure
-        expect(typingCalls.length).toBeGreaterThanOrEqual(1)
+        await waitFor(() => typingCalls.length >= 1)
         await wrappedReply.text('done')
       },
       { intervalMs: 20 },
@@ -160,9 +175,8 @@ describe('reply typing heartbeat', () => {
     await withReplyTypingHeartbeat(
       reply,
       async (wrappedReply) => {
-        await wait(100)
         // Should continue despite errors and eventually succeed
-        expect(typingCalls.length).toBeGreaterThanOrEqual(1)
+        await waitFor(() => typingCalls.length >= 1)
         await wrappedReply.text('done')
       },
       { intervalMs: 20 },
@@ -224,8 +238,7 @@ describe('reply typing heartbeat', () => {
     await withReplyTypingHeartbeat(
       reply,
       async (wrappedReply) => {
-        await wait(25)
-        expect(typingCalls.length).toBeGreaterThanOrEqual(1)
+        await waitFor(() => typingCalls.length >= 1)
         await wrappedReply.text('done')
       },
       { intervalMs: 20 },

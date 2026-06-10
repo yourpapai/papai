@@ -20,7 +20,7 @@ Run scripts as `bun <script>`. Full list is in `package.json`; below are only th
 
 - `bun start` / `bun start:debug` — build debug/admin clients, then run the bot (TS runs directly under Bun, no backend build). `:debug` sets `DEBUG_SERVER=true`.
 - `bun build:client` — bundle `client/{debug,admin,settings}/` to `public/`.
-- `bun test` — all server-side suites; **excludes client and E2E** via `bunfig.toml`.
+- `bun run test` — all server-side suites; **excludes client and E2E** via `bunfig.toml`. Runs `bun test --parallel` (one worker process per file, implies `--isolate`), the project default and what CI uses (`scripts/check.sh`). On a 12-core machine this is ~2.5x faster than serial. Bare `bun test` (Bun's built-in runner, not the script) still runs **serially** — Bun has no `bunfig.toml` key for `--parallel`, so use `bun run test` or `bun test --parallel` for the fast path. `bun test:serial` is the explicit serial escape hatch for debugging isolation-sensitive failures. Note: tests must be isolation-clean (no cross-file shared state, no fixed-wall-clock timing assertions — poll for conditions instead) since each file runs in its own process.
 - `bun test:client` — `tests/client/` with happy-dom (`tests/client-setup.ts`).
 - `bun test:e2e` — Docker-backed Kaneo E2E (`tests/e2e/bun-test-setup.ts`).
 - `bun test:mutate:changed` — paired mutation run vs `origin/master`; this is what CI uses.

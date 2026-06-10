@@ -39,6 +39,13 @@ const collectOracle = (cron: string, anchor: Date, tz: string, n: number): strin
 
 const ANCHOR = new Date('2026-06-15T12:00:00Z')
 
+// The oracle-equivalence tests below iterate the legacy cron oracle day-by-day
+// (sparse patterns like "15th that is a Monday" scan many days per occurrence).
+// They run in well under a second normally, but under parallel-worker CPU
+// starvation can exceed Bun's 5s per-test default. A generous explicit timeout
+// guards against false flakes while still failing on a genuine hang/regression.
+const ORACLE_TIMEOUT_MS = 30_000
+
 describe('cronToRrule — frequency heuristic', () => {
   it('constrained month with wildcard dom produces DAILY+BYMONTH, not YEARLY', () => {
     const out = cronToRrule('0 9 * 1 *', 'UTC', TS)
@@ -74,10 +81,14 @@ describe('cronToRrule — dom+dow combination (AND semantics)', () => {
 
   // Oracle equivalence only in UTC for MONTHLY: oracle's 366-day limit can't reach YEARLY occurrences
   // (Jan 15 + Monday happens ~every 5-6 years), and the oracle has known issues with non-UTC offsets.
-  it('dom+dow 15th-and-Monday oracle equivalence in UTC', () => {
-    const out = cronToRrule('0 9 15 * 1', 'UTC', TS)!
-    expect(collectNext(out.rrule, ANCHOR, 'UTC', 5)).toEqual(collectOracle('0 9 15 * 1', ANCHOR, 'UTC', 5))
-  })
+  it(
+    'dom+dow 15th-and-Monday oracle equivalence in UTC',
+    () => {
+      const out = cronToRrule('0 9 15 * 1', 'UTC', TS)!
+      expect(collectNext(out.rrule, ANCHOR, 'UTC', 5)).toEqual(collectOracle('0 9 15 * 1', ANCHOR, 'UTC', 5))
+    },
+    ORACLE_TIMEOUT_MS,
+  )
 })
 
 describe('cronToRrule — out-of-range field rejection', () => {
@@ -106,14 +117,22 @@ describe('cronToRrule — out-of-range field rejection', () => {
 
 describe('cronToRrule — oracle equivalence for constrained-month patterns', () => {
   for (const tz of ['UTC', 'America/New_York', 'Asia/Tokyo']) {
-    it(`every day in January 09:00 in ${tz}`, () => {
-      const out = cronToRrule('0 9 * 1 *', tz, TS)!
-      expect(collectNext(out.rrule, ANCHOR, tz, 10)).toEqual(collectOracle('0 9 * 1 *', ANCHOR, tz, 10))
-    })
+    it(
+      `every day in January 09:00 in ${tz}`,
+      () => {
+        const out = cronToRrule('0 9 * 1 *', tz, TS)!
+        expect(collectNext(out.rrule, ANCHOR, tz, 10)).toEqual(collectOracle('0 9 * 1 *', ANCHOR, tz, 10))
+      },
+      ORACLE_TIMEOUT_MS,
+    )
 
-    it(`MWF in January 14:30 in ${tz}`, () => {
-      const out = cronToRrule('30 14 * 1 1,3,5', tz, TS)!
-      expect(collectNext(out.rrule, ANCHOR, tz, 10)).toEqual(collectOracle('30 14 * 1 1,3,5', ANCHOR, tz, 10))
-    })
+    it(
+      `MWF in January 14:30 in ${tz}`,
+      () => {
+        const out = cronToRrule('30 14 * 1 1,3,5', tz, TS)!
+        expect(collectNext(out.rrule, ANCHOR, tz, 10)).toEqual(collectOracle('30 14 * 1 1,3,5', ANCHOR, tz, 10))
+      },
+      ORACLE_TIMEOUT_MS,
+    )
   }
 })

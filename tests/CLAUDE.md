@@ -2,6 +2,25 @@
 
 Runtime: **Bun** test runner (`bun:test`). No Jest or Vitest.
 
+## Parallel Execution & Isolation
+
+The default server-side run (`bun run test` / CI) is `bun test --parallel`: each test
+file runs in its own worker process (implies `--isolate`). Tests **must** be
+isolation-clean:
+
+- No reliance on cross-file shared module/global state or test ordering.
+- No fixed-wall-clock timing assertions (e.g. `await wait(100); expect(count).toBeGreaterThanOrEqual(1)`).
+  Under worker CPU contention the event loop starves and these flake. Poll for the
+  condition instead (`waitFor(() => count >= 1)`), which still fails if the behavior
+  never happens but tolerates scheduling jitter. For upper-bound "didn't hang" checks,
+  keep the bound generous.
+- Real HTTP servers must bind a unique port per file (avoid cross-worker collisions).
+
+`setupTestDb()` deserializes a once-migrated in-memory snapshot rather than replaying
+all migrations per test (~190x cheaper per call); the snapshot is cached by migration
+set in `tests/utils/test-helpers.ts`. Use `bun test:serial` to debug isolation-sensitive
+failures.
+
 ## Test Helpers
 
 Use helpers from `tests/utils/test-helpers.ts` unless a test already follows a local pattern for a specialized reason.

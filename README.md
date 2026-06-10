@@ -491,7 +491,8 @@ bun security
 bun security:ci
 
 # Testing
-bun test
+bun run test       # parallel (one worker process per file); the default and what CI runs
+bun test:serial    # serial run, for debugging isolation-sensitive failures
 bun test:client
 bun test:watch
 bun test:coverage
@@ -515,7 +516,7 @@ Notes:
 
 - `bun start` builds the debug/admin clients first, then starts the bot.
 - `bun start:debug` also enables the local debug server.
-- `bun test` excludes client and E2E suites (configured in `bunfig.toml`); run `bun test:client` and `bun test:e2e` separately.
+- `bun run test` excludes client and E2E suites (configured in `bunfig.toml`); run `bun test:client` and `bun test:e2e` separately. It runs `bun test --parallel` (one isolated worker process per file) — the project default, also used by CI. Bare `bun test` (Bun's built-in runner) stays serial; use `bun run test` or `bun test:serial` accordingly.
 - `bun check` runs staged-file checks, while `bun check:full` runs the wider repo checks.
 
 ---
@@ -525,10 +526,12 @@ Notes:
 ### Unit and Integration Tests
 
 ```bash
-bun test
+bun run test
 ```
 
 Runs all server-side Bun test suites (excludes client and E2E via `bunfig.toml`).
+Defaults to `bun test --parallel` (one isolated worker process per file), which CI
+also uses. Use `bun test:serial` to debug isolation-sensitive failures.
 
 ### Client Tests
 

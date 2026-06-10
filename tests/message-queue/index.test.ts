@@ -103,8 +103,12 @@ describe('flushOnShutdown', () => {
     await flushOnShutdown({ timeoutMs })
     const elapsed = Date.now() - startTime
 
-    // Should complete close to timeout, not hang indefinitely
-    expect(elapsed).toBeLessThan(timeoutMs + 100)
+    // Lower bound proves the timeout was actually awaited (didn't resolve
+    // instantly while the handler hangs). The upper bound only proves it is
+    // bounded, not hanging indefinitely; it is generous because wall-clock
+    // measurement is sensitive to event-loop starvation under parallel test
+    // execution. A genuine hang fails the test's own timeout regardless.
     expect(elapsed).toBeGreaterThanOrEqual(timeoutMs - 50)
+    expect(elapsed).toBeLessThan(timeoutMs + 2000)
   })
 })
