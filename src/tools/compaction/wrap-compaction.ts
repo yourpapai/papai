@@ -27,6 +27,7 @@ const defaultDeps: WrapCompactionDeps = {
   summarize: (input) => summarizeResult(input),
 }
 
+// expand_result serves pages of an already-compacted result; wrapping it would re-compact its own output
 const NEVER_COMPACT = new Set(['expand_result'])
 
 async function compact(
@@ -38,12 +39,21 @@ async function compact(
   const decision = evaluateForCompaction(result)
   if (!decision.compact) return result
   const handle = putResult(ctx.storageContextId, decision.serialized)
-  const { summary } = await deps.summarize({
-    serialized: decision.serialized,
-    totalBytes: decision.totalBytes,
-    toolName,
-    userIntent: ctx.userIntent,
-  })
+  let summary: string | null = null
+  try {
+    const summarized = await deps.summarize({
+      serialized: decision.serialized,
+      totalBytes: decision.totalBytes,
+      toolName,
+      userIntent: ctx.userIntent,
+    })
+    summary = summarized.summary
+  } catch (err) {
+    log.warn(
+      { tool: toolName, error: err instanceof Error ? err.message : String(err) },
+      'Summarizer dep threw; falling back to truncation',
+    )
+  }
   const preview = decision.serialized.slice(0, COMPACTION_PREVIEW_BYTES)
   log.info(
     {

@@ -79,4 +79,24 @@ describe('applyResultCompaction', () => {
     const out = await getToolExecutor(wrapped['expand_result']!)({})
     expect(isCompactedEnvelope(out)).toBe(false)
   })
+
+  it('falls back to truncation envelope when summarizer dep rejects', async () => {
+    summarizerDeps.summarize.mockImplementation(() => Promise.reject(new Error('summarizer exploded')))
+    const wrapped = applyResultCompaction({ t: toolReturning(big) }, ctx, summarizerDeps)
+    const out = await getToolExecutor(wrapped['t']!)({})
+    expect(isCompactedEnvelope(out)).toBe(true)
+    assert.ok(isCompactedEnvelope(out))
+    expect(out.summary).toBeNull()
+    expect(out.preview.length).toBeGreaterThan(0)
+  })
+
+  it('propagates rejection when the inner tool execute rejects', async () => {
+    const base = toolReturning(big)
+    const rejectingTool = {
+      ...base,
+      execute: (): Promise<unknown> => Promise.reject(new Error('tool blew up')),
+    }
+    const wrapped = applyResultCompaction({ t: rejectingTool }, ctx, summarizerDeps)
+    await expect(getToolExecutor(wrapped['t']!)({})).rejects.toThrow('tool blew up')
+  })
 })
