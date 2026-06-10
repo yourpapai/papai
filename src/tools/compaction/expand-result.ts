@@ -7,10 +7,11 @@ import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../../logger.js'
+import type { ToolFailureResult } from '../../tool-failure.js'
 import { EXPAND_DEFAULT_LIMIT_BYTES } from './constants.js'
 import { getResultPage } from './result-store.js'
 
-const log = logger.child({ scope: 'tool:expand_result' })
+const log = logger.child({ scope: 'tool:expand-result' })
 
 export function makeExpandResultTool(contextId: string): ToolSet[string] {
   return tool({
@@ -28,23 +29,25 @@ export function makeExpandResultTool(contextId: string): ToolSet[string] {
         .describe('Maximum characters to return'),
     }),
     execute: ({ handle, offset, limit }) => {
+      // getToolExecutor and some SDK paths bypass schema parsing, so defaults are applied here too
       const resolvedOffset = offset ?? 0
       const resolvedLimit = limit ?? EXPAND_DEFAULT_LIMIT_BYTES
       const page = getResultPage(contextId, handle, resolvedOffset, resolvedLimit)
       if (!page.found) {
         log.warn({ contextId, handle }, 'expand_result handle not found or expired')
-        return {
-          success: false as const,
+        const failure: ToolFailureResult = {
+          success: false,
           error: 'Result handle not found or expired',
           toolName: 'expand_result',
           toolCallId: handle,
           timestamp: new Date().toISOString(),
-          errorType: 'tool-execution' as const,
-          errorCode: 'expired' as const,
+          errorType: 'tool-execution',
+          errorCode: 'expired',
           userMessage: 'That cached result is no longer available.',
           agentMessage: 'The compacted result expired. Re-run the original tool to get fresh data.',
           retryable: true,
         }
+        return failure
       }
       log.debug({ contextId, handle, nextOffset: page.nextOffset, done: page.done }, 'expand_result page served')
       return { chunk: page.chunk, nextOffset: page.nextOffset, done: page.done }

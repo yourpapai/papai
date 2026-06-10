@@ -6,6 +6,7 @@
 import { describe, expect, it, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { RESULT_STORE_TTL_MS } from '../../../src/tools/compaction/constants.js'
 import { makeExpandResultTool } from '../../../src/tools/compaction/expand-result.js'
 import {
   putResult,
@@ -23,9 +24,12 @@ function isFailureResult(v: unknown): v is { success: boolean; errorCode: string
 }
 
 describe('expand_result tool', () => {
+  let now = 1_000
+
   beforeEach(() => {
     clearResultStoreForTesting()
-    setResultStoreClockForTesting(() => 1_000)
+    now = 1_000
+    setResultStoreClockForTesting(() => now)
   })
 
   it('pages a stored result', async () => {
@@ -40,6 +44,17 @@ describe('expand_result tool', () => {
   it('returns a structured failure for an unknown handle', async () => {
     const exec = getToolExecutor(makeExpandResultTool('ctx-1'))
     const out: unknown = await exec({ handle: 'res_missing' })
+    assert(isFailureResult(out), 'Expected a structured failure result')
+    expect(out.success).toBe(false)
+    expect(out.errorCode).toBe('expired')
+    expect(out.retryable).toBe(true)
+  })
+
+  it('returns a structured failure for a TTL-expired handle', async () => {
+    const handle = putResult('ctx-1', 'some data')
+    now += RESULT_STORE_TTL_MS + 1
+    const exec = getToolExecutor(makeExpandResultTool('ctx-1'))
+    const out: unknown = await exec({ handle })
     assert(isFailureResult(out), 'Expected a structured failure result')
     expect(out.success).toBe(false)
     expect(out.errorCode).toBe('expired')
