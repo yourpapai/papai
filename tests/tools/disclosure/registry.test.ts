@@ -13,6 +13,13 @@ import { createDisclosureSession, type DisclosureSession } from '../../../src/to
 
 const stub = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
 
+function forceAddToSet(set: ReadonlySet<string>, value: string): void {
+  const mutable: unknown = set
+  if (mutable instanceof Set) {
+    mutable.add(value)
+  }
+}
+
 function sessionWith(names: string[]): DisclosureSession {
   const tools: ToolSet = {}
   for (const n of names) tools[n] = stub()
@@ -46,5 +53,12 @@ describe('DisclosureSession', () => {
     const s = sessionWith(['get_current_time', 'search_tools', 'load_tool'])
     s.markLoaded(['unknown_only'])
     expect(s.hasLoaded()).toBe(false)
+  })
+
+  it('mutating the exposed allNames does not affect session behavior', () => {
+    const s = sessionWith(['get_current_time', 'search_tools', 'load_tool'])
+    forceAddToSet(s.allNames, 'sneaky_tool')
+    expect(s.markLoaded(['sneaky_tool']).unknown).toEqual(['sneaky_tool'])
+    expect(s.activeToolNames()).not.toContain('sneaky_tool')
   })
 })

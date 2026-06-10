@@ -43,7 +43,7 @@ export function createDisclosureSession(fullTools: ToolSet, coreNames: ReadonlyS
 
   return {
     coreNames,
-    allNames,
+    allNames: new Set(allNames),
     activeToolNames,
     markLoaded,
     hasLoaded: () => loaded.size > 0,
