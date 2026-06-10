@@ -64,6 +64,12 @@ const DEFERRED = `DEFERRED PROMPTS — The user can set up automated tasks and a
 - For daily briefings, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0] }.
 - PROMPT CONTENT: When creating a deferred prompt, the prompt field should describe the deliverable action, not the scheduling. Write it as what to DO when it fires, not what to SCHEDULE. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles timing; the prompt handles content.`
 
+const DISCLOSURE = `TOOL DISCOVERY — Most tools are not loaded right now. To use a tool you must first find and load it:
+1. Call search_tools with a short natural-language description of what you want to do.
+2. Call load_tool with the names you need (pass several at once to avoid extra steps).
+3. Then call the loaded tool(s) normally.
+Always-available tools: get_current_time, search_tools, load_tool, expand_result. If a result says it was compacted, use expand_result with its handle to read more.`
+
 const PROVIDERLESS_DEFERRED = `DEFERRED PROMPTS — The user can set up automated scheduled tasks:
 - SCHEDULED PROMPTS: Use create_deferred_prompt with a schedule to set up one-time or recurring LLM tasks.
   - One-time: provide schedule.fire_at as { date: "YYYY-MM-DD", time: "HH:MM" } in local time — tool converts to UTC.
@@ -184,6 +190,7 @@ function buildAskToolsLine(prefs: ToolPrefs, exposed: ReadonlySet<string>): stri
 interface AssembleOptions {
   readonly askPermissionAvailable: boolean
   readonly deferredFragmentText?: string
+  readonly progressiveDisclosure?: boolean
 }
 
 function assembleSystemPrompt(
@@ -194,6 +201,7 @@ function assembleSystemPrompt(
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const parts: string[] = [intro]
+  if (options.progressiveDisclosure === true) parts.push(DISCLOSURE)
   for (const fragment of FRAGMENTS) {
     if (!fragmentIncluded(fragment, enabledToolNames)) continue
     if (fragment.text === DEFERRED && options.deferredFragmentText !== undefined) {
@@ -255,15 +263,20 @@ export function buildSystemPrompt(
   provider: TaskProvider,
   contextId: string,
   enabledToolNames: ReadonlySet<string>,
-  options: { askPermissionAvailable: boolean },
+  options: { askPermissionAvailable: boolean; progressiveDisclosure?: boolean },
 ): string
 export function buildSystemPrompt(
   provider: TaskProvider,
   contextId: string,
-  ...args: readonly [ReadonlySet<string>, { askPermissionAvailable: boolean }?] | readonly []
+  ...args:
+    | readonly [ReadonlySet<string>, { askPermissionAvailable: boolean; progressiveDisclosure?: boolean }?]
+    | readonly []
 ): string {
   const enabledToolNames = args[0]
-  const options: AssembleOptions = { askPermissionAvailable: args[1]?.askPermissionAvailable ?? true }
+  const options: AssembleOptions = {
+    askPermissionAvailable: args[1]?.askPermissionAvailable ?? true,
+    progressiveDisclosure: args[1]?.progressiveDisclosure,
+  }
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const basePrompt = assembleSystemPrompt(CORE_INTRO, contextId, enabledToolNames, options)
   return appendPluginPromptSection(appendPromptAddendum(basePrompt, provider.getPromptAddendum()), sharedContextId)
@@ -272,7 +285,7 @@ export function buildSystemPrompt(
 export function buildProviderlessSystemPrompt(
   contextId: string,
   enabledToolNames: ReadonlySet<string>,
-  options: { askPermissionAvailable: boolean } = { askPermissionAvailable: true },
+  options: { askPermissionAvailable: boolean; progressiveDisclosure?: boolean } = { askPermissionAvailable: true },
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const basePrompt = assembleSystemPrompt(PROVIDERLESS_INTRO, contextId, enabledToolNames, {
