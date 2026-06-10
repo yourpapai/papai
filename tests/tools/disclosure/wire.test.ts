@@ -54,5 +54,7 @@ describe('maybeApplyDisclosure', () => {
     assert.ok(out.disclosure !== undefined)
     expect(out.disclosure.allNames.has('list_tasks')).toBe(true)
     expect(out.disclosure.allNames.has('search_tools')).toBe(true)
+    expect(out.disclosure.allNames.has('load_tool')).toBe(true)
+    expect(out.tools).not.toBe(tools)
   })
 })
