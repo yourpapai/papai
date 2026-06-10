@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, inArray, or } from 'drizzle-orm'
+import { and, eq, inArray, or, sql, type SQL } from 'drizzle-orm'
 
 import { evictUser } from './cache.js'
 import { toScopedContextId } from './chat/scoped-context.js'
@@ -35,6 +35,47 @@ export type AddUserInput = Readonly<{
   addedBy: string
 }> &
   (Readonly<{ username: string | undefined }> | AddUserInputWithoutUsername)
+
+export type AddPendingUserInput = Readonly<{
+  username: string
+  platformInstanceId: string
+  addedBy: string
+}>
+
+const usernameMatchesInsensitive = (username: string): SQL => sql`lower(${users.username}) = ${username.toLowerCase()}`
+
+/**
+ * Authorize a user the platform cannot resolve to an ID yet (e.g. Telegram @username).
+ * Stores a placeholder row that resolveUserByUsername() rebinds on first DM contact.
+ */
+export function addPendingUser(input: AddPendingUserInput): boolean {
+  const stripped = input.username.startsWith('@') ? input.username.slice(1) : input.username
+  const username = stripped.trim()
+  if (username === '') {
+    log.warn({ platformInstanceId: input.platformInstanceId }, 'addPendingUser called with empty username')
+    return false
+  }
+  const db = getDrizzleDb()
+  const existing = db
+    .select({ platformUserId: users.platformUserId })
+    .from(users)
+    .where(and(eq(users.platformInstanceId, input.platformInstanceId), usernameMatchesInsensitive(username)))
+    .get()
+  if (existing !== undefined) {
+    log.info({ platformInstanceId: input.platformInstanceId }, 'Pending user already present')
+    return true
+  }
+  db.insert(users)
+    .values({
+      platformUserId: `placeholder-${crypto.randomUUID()}`,
+      platformInstanceId: input.platformInstanceId,
+      username,
+      addedBy: input.addedBy,
+    })
+    .run()
+  log.info({ platformInstanceId: input.platformInstanceId }, 'Pending user added')
+  return true
+}
 
 export function addUser(input: AddUserInput): void {
   const username = 'username' in input && input.username !== undefined ? input.username : null
@@ -128,7 +169,7 @@ export function resolveUserByUsername(userId: string, username: string, platform
   const row = db
     .select({ platformUserId: users.platformUserId, platformInstanceId: users.platformInstanceId })
     .from(users)
-    .where(and(eq(users.username, username), eq(users.platformInstanceId, platformInstanceId)))
+    .where(and(usernameMatchesInsensitive(username), eq(users.platformInstanceId, platformInstanceId)))
     .get()
 
   if (row === undefined) return false
