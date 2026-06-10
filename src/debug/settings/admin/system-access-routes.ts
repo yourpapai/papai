@@ -14,9 +14,9 @@ import {
 import { listKnownGroupContextsForPlatform } from '../../../group-settings/admin-group-list.js'
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
-import { addUser, listUsers, removeUser } from '../../../users.js'
+import { addPendingUser, addUser, listUsers, removeUser } from '../../../users.js'
 import { applyAdminLlmUpdate, getAdminLlmSnapshot } from '../../admin-llm.js'
-import { getRuntimeChatRouter } from '../../chat-router-runtime.js'
+import { resolveSettingsUserId } from '../resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
 import { requireAdmin } from './admin-guard.js'
 
@@ -55,24 +55,6 @@ async function handleSystem(req: Request, authed: AuthenticatedSettingsRequest):
   return settingsJson(405, { error: 'method not allowed' })
 }
 
-async function resolveUserIdIfNeeded(
-  rawUserId: string,
-  adminUserId: string,
-  platformInstanceId: string,
-): Promise<{ userId: string; error: null } | { error: string }> {
-  const clean = rawUserId.startsWith('@') ? rawUserId.slice(1) : rawUserId
-  if (/^\d+$/u.test(clean)) return { userId: rawUserId, error: null }
-  const router = getRuntimeChatRouter()
-  if (router === null) return { error: 'chat router not available for username resolution' }
-  const resolved = await router.resolveUserId(rawUserId, {
-    contextId: adminUserId,
-    contextType: 'dm',
-    platformInstanceId,
-  })
-  if (resolved === null) return { error: `could not resolve "${rawUserId}" to a user ID` }
-  return { userId: resolved, error: null }
-}
-
 async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   if (req.method === 'GET') {
     const guard = requireAdmin(authed, 'read')
@@ -92,14 +74,19 @@ async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): 
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   if (req.method === 'POST') {
-    const result = await resolveUserIdIfNeeded(
-      body.data.userId,
-      authed.principal.platformUserId,
-      authed.principal.platformInstanceId,
-    )
-    if (result.error !== null) return settingsJson(422, { error: result.error })
+    const resolution = await resolveSettingsUserId(body.data.userId, authed.principal)
+    if (resolution.kind === 'unresolved') {
+      const added = addPendingUser({
+        username: resolution.username,
+        platformInstanceId: authed.principal.platformInstanceId,
+        addedBy: authed.principal.platformUserId,
+      })
+      if (!added) return settingsJson(422, { error: 'invalid request' })
+      log.info({ platformInstanceId: authed.principal.platformInstanceId }, 'Settings admin added pending user')
+      return settingsJson(200, { ok: true, pending: true })
+    }
     addUser({
-      userId: result.userId,
+      userId: resolution.userId,
       platformInstanceId: authed.principal.platformInstanceId,
       addedBy: authed.principal.platformUserId,
       username: body.data.username,

@@ -21,9 +21,10 @@ import { authHeaders, establishSession, type SettingsSession } from '../helpers.
 
 const OkResponseSchema = z.object({ ok: z.literal(true) })
 
-const mockResolveUserId = mock((username: string, _context?: unknown) =>
-  Promise.resolve(/^\d+$/u.test(username) ? username : `resolved-${username}`),
-)
+const mockResolveUserId = mock((username: string, _context?: unknown) => {
+  if (username.includes('ghost')) return Promise.resolve<string | null>(null)
+  return Promise.resolve<string | null>(/^\d+$/u.test(username) ? username : `resolved-${username}`)
+})
 
 class MockChatRouter extends ChatRouter {
   constructor() {
@@ -99,6 +100,59 @@ describe('settings admin system/access routes', () => {
     expect(res.status).toBe(200)
     expect(mockResolveUserId).toHaveBeenCalledWith('@f4dev', expect.objectContaining({ platformInstanceId: 'pi-1' }))
     expect(listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-@f4dev')).toBe(true)
+  })
+
+  test('POST users with unresolvable username creates a pending entry', async () => {
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@ghost' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), pending: z.literal(true) }).parse(await res.json())
+    expect(body.pending).toBe(true)
+    const pendingRow = listUsers('pi-1').find((u) => u.username === 'ghost')
+    expect(pendingRow).toBeDefined()
+    expect(pendingRow!.platform_user_id.startsWith('placeholder-')).toBe(true)
+    expect(pendingRow!.added_by).toBe('admin-1')
+  })
+
+  test('POST users without a chat router creates a pending entry', async () => {
+    clearRuntimeChatRouter()
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@offline' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(200)
+    z.object({ ok: z.literal(true), pending: z.literal(true) }).parse(await res.json())
+    expect(listUsers('pi-1').some((u) => u.username === 'offline')).toBe(true)
+  })
+
+  test('POST users with only "@" returns 422', async () => {
+    // no router → unresolved with empty username
+    clearRuntimeChatRouter()
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(422)
   })
 
   test('non-admin POST users returns 403', async () => {
