@@ -6,13 +6,16 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { ChatRouter } from '../../../src/chat/router.js'
+import type { ResolveUserContext } from '../../../src/chat/types.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../../src/debug/chat-router-runtime.js'
 import { resolveSettingsUserId } from '../../../src/debug/settings/resolve-user-id.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 const PRINCIPAL = { platformUserId: 'admin-1', platformInstanceId: 'pi-1' }
 
-const mockResolveUserId = mock((_username: string, _context?: unknown) => Promise.resolve<string | null>(null))
+const mockResolveUserId = mock((_username: string, _context: ResolveUserContext) =>
+  Promise.resolve<string | null>(null),
+)
 
 class MockChatRouter extends ChatRouter {
   constructor() {
@@ -21,7 +24,7 @@ class MockChatRouter extends ChatRouter {
     })
   }
 
-  override resolveUserId(username: string, context?: unknown): Promise<string | null> {
+  override resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
     return mockResolveUserId(username, context)
   }
 }
@@ -63,5 +66,11 @@ describe('resolveSettingsUserId', () => {
   test('missing chat router returns unresolved', async () => {
     clearRuntimeChatRouter()
     expect(await resolveSettingsUserId('f4dev', PRINCIPAL)).toEqual({ kind: 'unresolved', username: 'f4dev' })
+  })
+
+  test('non-@ username is passed to router and resolved', async () => {
+    mockResolveUserId.mockImplementation(() => Promise.resolve('99'))
+    expect(await resolveSettingsUserId('f4dev', PRINCIPAL)).toEqual({ kind: 'resolved', userId: '99' })
+    expect(mockResolveUserId).toHaveBeenCalledWith('f4dev', expect.objectContaining({ contextType: 'dm' }))
   })
 })
