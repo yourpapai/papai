@@ -14,6 +14,7 @@ import { listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { requireScope } from '../../settings/scope-guard.js'
+import { getRuntimeChatRouter } from '../chat-router-runtime.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-group' })
@@ -53,6 +54,19 @@ function handleMembersGet(authed: AuthenticatedSettingsRequest, url: URL): Respo
 
 const MemberBodySchema = z.object({ userId: z.string().min(1), contextId: z.string().min(1) })
 
+async function resolveUserIdIfNeeded(
+  rawUserId: string,
+  adminUserId: string,
+): Promise<{ userId: string; error: null } | { error: string }> {
+  const clean = rawUserId.startsWith('@') ? rawUserId.slice(1) : rawUserId
+  if (/^\d+$/u.test(clean)) return { userId: rawUserId, error: null }
+  const router = getRuntimeChatRouter()
+  if (router === null) return { error: 'chat router not available for username resolution' }
+  const resolved = await router.resolveUserId(rawUserId, { contextId: adminUserId, contextType: 'dm' })
+  if (resolved === null) return { error: `could not resolve "${rawUserId}" to a user ID` }
+  return { userId: resolved, error: null }
+}
+
 async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
@@ -64,7 +78,9 @@ async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsReq
   if (!outcome.ok) return outcome.response
 
   if (req.method === 'POST') {
-    addGroupMember(outcome.group.contextId, body.data.userId, authed.principal.platformUserId)
+    const result = await resolveUserIdIfNeeded(body.data.userId, authed.principal.platformUserId)
+    if (result.error !== null) return settingsJson(422, { error: result.error })
+    addGroupMember(outcome.group.contextId, result.userId, authed.principal.platformUserId)
     log.info({ contextId: outcome.group.contextId }, 'Settings group member added')
   } else {
     removeGroupMember(outcome.group.contextId, body.data.userId)
