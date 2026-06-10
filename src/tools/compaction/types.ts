@@ -32,6 +32,7 @@ export function isCompactedEnvelope(value: unknown): value is CompactedEnvelope 
     '_compacted' in value &&
     value['_compacted'] === true &&
     'handle' in value &&
-    typeof value['handle'] === 'string'
+    typeof value['handle'] === 'string' &&
+    value['handle'].length > 0
   )
 }

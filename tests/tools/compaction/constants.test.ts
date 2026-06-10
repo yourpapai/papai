@@ -20,6 +20,7 @@ describe('compaction constants', () => {
     expect(RESULT_STORE_MAX_ENTRIES).toBeGreaterThan(0)
     expect(RESULT_STORE_TTL_MS).toBeGreaterThan(0)
     expect(EXPAND_DEFAULT_LIMIT_BYTES).toBeGreaterThan(0)
+    expect(Number.isInteger(RESULT_STORE_MAX_ENTRIES)).toBe(true)
   })
 
   it('has preview bytes smaller than threshold bytes', () => {

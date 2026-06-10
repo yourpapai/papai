@@ -31,5 +31,7 @@ describe('isCompactedEnvelope', () => {
     expect(isCompactedEnvelope({ ok: true })).toBe(false)
     expect(isCompactedEnvelope(null)).toBe(false)
     expect(isCompactedEnvelope({ _compacted: false })).toBe(false)
+    expect(isCompactedEnvelope({ _compacted: true })).toBe(false)
+    expect(isCompactedEnvelope({ _compacted: true, handle: '' })).toBe(false)
   })
 })
