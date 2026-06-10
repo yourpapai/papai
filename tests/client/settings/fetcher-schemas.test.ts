@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  AddAdminUserResponseSchema,
   AdminGroupsResponseSchema,
   AdminInstancesResponseSchema,
   BootstrapSchema,
@@ -176,6 +177,16 @@ describe('fetcher-schemas', () => {
       ],
     })
     expect(parsed.providerTypes[0]?.instanceConfigSchema[0]?.storageKey).toBe('tracker_url')
+  })
+})
+
+describe('AddAdminUserResponseSchema', () => {
+  test('accepts a plain ok response', () => {
+    expect(AddAdminUserResponseSchema.parse({ ok: true })).toEqual({ ok: true })
+  })
+
+  test('accepts and preserves the pending flag', () => {
+    expect(AddAdminUserResponseSchema.parse({ ok: true, pending: true })).toEqual({ ok: true, pending: true })
   })
 })
 
