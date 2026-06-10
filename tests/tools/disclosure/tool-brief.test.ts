@@ -29,5 +29,23 @@ describe('buildBriefs', () => {
     const long = `${'word '.repeat(60)}done`
     const briefs = buildBriefs({ web_fetch: t(long) })
     expect(briefs[0]!.summary.length).toBeLessThanOrEqual(160)
+    expect(briefs[0]!.summary.endsWith('…')).toBe(true)
+  })
+
+  it('does not truncate at inline abbreviations like e.g.', () => {
+    const briefs = buildBriefs({
+      create_task_relation: t(
+        'Create a directed relation between two tasks (e.g. one blocks another, or marks a duplicate).',
+      ),
+    })
+    expect(briefs[0]!.summary).toBe(
+      'Create a directed relation between two tasks (e.g. one blocks another, or marks a duplicate).',
+    )
+  })
+
+  it('returns empty summary for a tool without a description', () => {
+    const noDesc = tool({ inputSchema: z.object({}), execute: () => ({}) })
+    const briefs = buildBriefs({ some_tool: noDesc })
+    expect(briefs[0]!.summary).toBe('')
   })
 })

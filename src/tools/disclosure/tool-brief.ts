@@ -19,7 +19,7 @@ function firstSentence(description: string | undefined): string {
   if (description === undefined) return ''
   const trimmed = description.trim()
   if (trimmed === '') return ''
-  const match = trimmed.match(/^.*?[.!?](\s|$)/su)
+  const match = trimmed.match(/^.*?(?<!\b[A-Za-z])[.!?](\s|$)/su)
   const sentence = (match === null ? trimmed : match[0]).trim()
   return sentence.length > SUMMARY_CAP ? `${sentence.slice(0, SUMMARY_CAP - 1)}…` : sentence
 }
