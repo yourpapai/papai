@@ -9,7 +9,7 @@ import { describe, expect, it, mock, beforeEach } from 'bun:test'
 const getCachedConfig = mock((_c: string, _k: string): string | null => null)
 void mock.module('../../src/cache.js', () => ({ getCachedConfig }))
 
-const { resolveReductionFlags } = await import('../../src/tools/feature-flags.js')
+const { resolveReductionFlags, REDUCTION_FLAGS_CONFIG_KEY } = await import('../../src/tools/feature-flags.js')
 
 describe('resolveReductionFlags', () => {
   beforeEach(() => {
@@ -30,6 +30,7 @@ describe('resolveReductionFlags', () => {
   it('reads per-context overrides from the reserved key', () => {
     getCachedConfig.mockReturnValue(JSON.stringify({ result_compaction: true }))
     expect(resolveReductionFlags('ctx-1').resultCompaction).toBe(true)
+    expect(getCachedConfig).toHaveBeenCalledWith(expect.any(String), REDUCTION_FLAGS_CONFIG_KEY)
   })
 
   it('kill switch forces every flag OFF regardless of config', () => {
