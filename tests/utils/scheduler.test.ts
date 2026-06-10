@@ -16,6 +16,7 @@ import {
   TaskNotFoundError,
 } from '../../src/utils/scheduler.errors.js'
 import type { ErrorEvent, FatalErrorEvent, RetryEvent, TickEvent } from '../../src/utils/scheduler.types.js'
+import { waitFor } from '../utils/test-helpers.js'
 
 // Simple mock logger type that matches what we need
 interface MockLogger {
@@ -169,15 +170,12 @@ describe('createScheduler', () => {
         handler: (): void => {
           executed = true
         },
-        interval: 100,
+        interval: 25,
       })
 
       scheduler.start('test-task')
 
-      // Wait for execution
-      await new Promise((resolve) => {
-        setTimeout(resolve, 150)
-      })
+      await waitFor(() => executed)
 
       expect(executed).toBe(true)
       scheduler.stop('test-task')
@@ -208,21 +206,20 @@ describe('createScheduler', () => {
         handler: (): void => {
           task1Executed = true
         },
-        interval: 100,
+        interval: 25,
       })
 
       scheduler.register('task-2', {
         handler: (): void => {
           task2Executed = true
         },
-        interval: 100,
+        interval: 25,
       })
 
       scheduler.startAll()
 
-      await new Promise((resolve) => {
-        setTimeout(resolve, 150)
-      })
+      await waitFor(() => task1Executed)
+      await waitFor(() => task2Executed)
 
       expect(task1Executed).toBe(true)
       expect(task2Executed).toBe(true)
@@ -262,14 +259,12 @@ describe('createScheduler', () => {
 
       scheduler.register('test-task', {
         handler: (): void => {},
-        interval: 50,
+        interval: 25,
       })
 
       scheduler.start('test-task')
 
-      await new Promise((resolve) => {
-        setTimeout(resolve, 100)
-      })
+      await waitFor(() => tickEvents.length > 0)
 
       expect(tickEvents.length).toBeGreaterThan(0)
       expect(tickEvents[0]!.name).toBe('test-task')
@@ -290,15 +285,13 @@ describe('createScheduler', () => {
         handler: (): void => {
           throw new Error('Test error')
         },
-        interval: 50,
+        interval: 25,
         options: { retries: 0 },
       })
 
       scheduler.start('test-task')
 
-      await new Promise((resolve) => {
-        setTimeout(resolve, 100)
-      })
+      await waitFor(() => errorEvents.length > 0)
 
       expect(errorEvents.length).toBeGreaterThan(0)
       expect(errorEvents[0]!.name).toBe('test-task')
@@ -320,20 +313,14 @@ describe('createScheduler', () => {
           throw new RetryableError('Retryable error')
         },
         interval: 1000,
-        options: { retries: 1 },
+        // The retry event is emitted synchronously when the retry is
+        // scheduled, so immediate execution is enough to observe it.
+        options: { retries: 1, immediate: true },
       })
 
       scheduler.start('test-task')
 
-      // Trigger execution and wait for retry
-      await new Promise((resolve) => {
-        setTimeout(resolve, 50)
-      })
-
-      // Wait for retry scheduling
-      await new Promise((resolve) => {
-        setTimeout(resolve, 1100)
-      })
+      await waitFor(() => retryEvents.length > 0)
 
       expect(retryEvents.length).toBeGreaterThan(0)
       expect(retryEvents[0]!.name).toBe('test-task')
@@ -361,10 +348,7 @@ describe('createScheduler', () => {
 
       scheduler.start('test-task')
 
-      // Wait for execution
-      await new Promise((resolve) => {
-        setTimeout(resolve, 100)
-      })
+      await waitFor(() => fatalErrorEvents.length > 0)
 
       expect(fatalErrorEvents.length).toBeGreaterThan(0)
       expect(fatalErrorEvents[0]!.name).toBe('test-task')
@@ -390,10 +374,7 @@ describe('createScheduler', () => {
 
       scheduler.start('test-task')
 
-      // Wait for execution
-      await new Promise((resolve) => {
-        setTimeout(resolve, 100)
-      })
+      await waitFor(() => fatalErrorEvents.length > 0)
 
       expect(fatalErrorEvents.length).toBeGreaterThan(0)
       expect(fatalErrorEvents[0]!.name).toBe('test-task')
@@ -409,7 +390,10 @@ describe('createScheduler', () => {
 
   describe('retry logic', () => {
     test('should retry on RetryableError', async () => {
-      const scheduler = createScheduler()
+      // Cap backoff so the retry fires within milliseconds instead of the
+      // default ~2s first-retry delay. The long interval keeps the second
+      // attempt attributable to the retry path, not the next interval tick.
+      const scheduler = createScheduler({ maxRetryDelay: 25 })
       let attempts = 0
 
       scheduler.register('test-task', {
@@ -418,20 +402,12 @@ describe('createScheduler', () => {
           throwOnFirstAttempt(attempts)
         },
         interval: 1000,
-        options: { retries: 3 },
+        options: { retries: 3, immediate: true },
       })
 
       scheduler.start('test-task')
 
-      // Trigger first execution
-      await new Promise((resolve) => {
-        setTimeout(resolve, 50)
-      })
-
-      // Wait for retry
-      await new Promise((resolve) => {
-        setTimeout(resolve, 2500)
-      })
+      await waitFor(() => attempts >= 2)
 
       // Should have retried and succeeded on second attempt
       expect(attempts).toBeGreaterThanOrEqual(2)
@@ -454,12 +430,9 @@ describe('createScheduler', () => {
 
       scheduler.start('test-task')
 
-      // Wait for initial execution + retries (backoff: ~2000ms + ~4000ms but capped at 100ms)
-      // Actually with maxRetryDelay: 100, delays are capped at 100ms
-      // So: initial (0ms) + retry1 (~100ms) + retry2 (~100ms) = ~200ms
-      await new Promise((resolve) => {
-        setTimeout(resolve, 500)
-      })
+      // With maxRetryDelay: 100 the backoff is capped, so the task exhausts
+      // its retries and stops itself within a few hundred ms at most.
+      await waitFor(() => !scheduler.getTaskState('test-task')!.running)
 
       // Should have stopped after max retries
       const state = scheduler.getTaskState('test-task')
@@ -483,10 +456,7 @@ describe('createScheduler', () => {
         options: { immediate: true },
       })
 
-      // Wait for immediate execution
-      await new Promise((resolve) => {
-        setTimeout(resolve, 50)
-      })
+      await waitFor(() => executed)
 
       expect(executed).toBe(true)
 
@@ -507,7 +477,7 @@ describe('createScheduler', () => {
       expect(scheduler.hasTask('test-task')).toBe(true)
     })
 
-    test('should respect custom scheduler options', async () => {
+    test('should respect custom scheduler options', () => {
       const scheduler = createScheduler({
         defaultRetries: 5,
         maxRetryDelay: 120000,
@@ -522,10 +492,6 @@ describe('createScheduler', () => {
       })
 
       scheduler.start('test-task')
-
-      await new Promise((resolve) => {
-        setTimeout(resolve, 100)
-      })
 
       // Task should use default retries from scheduler options
       expect(scheduler.hasTask('test-task')).toBe(true)
@@ -690,10 +656,7 @@ describe('createScheduler', () => {
 
       scheduler.start('cron-task')
 
-      // Wait for immediate execution
-      await new Promise((resolve) => {
-        setTimeout(resolve, 50)
-      })
+      await waitFor(() => executed)
 
       expect(executed).toBe(true)
       scheduler.stop('cron-task')

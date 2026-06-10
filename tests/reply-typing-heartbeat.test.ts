@@ -7,29 +7,12 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ReplyFn } from '../src/chat/types.js'
 import { withReplyTypingHeartbeat } from '../src/reply-typing-heartbeat.js'
-import { mockLogger } from './utils/test-helpers.js'
+import { mockLogger, waitFor } from './utils/test-helpers.js'
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
-}
-
-/**
- * Poll until `predicate` is true or the timeout elapses. Used instead of a
- * fixed `wait()` + immediate lower-bound assertion: under parallel test
- * execution the event loop can be starved, so a "heartbeat fired at least N
- * times" assertion taken at a fixed wall-clock instant flakes. Polling still
- * fails (via the thrown timeout) if the behavior never happens.
- */
-async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
-  const start = Date.now()
-  while (!predicate()) {
-    if (Date.now() - start > timeoutMs) {
-      throw new Error('waitFor: condition not met within timeout')
-    }
-    await wait(5)
-  }
 }
 
 /** Returns a typing fn that rejects once, then records calls normally. */

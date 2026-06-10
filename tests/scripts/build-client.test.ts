@@ -5,20 +5,24 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 import { PUBLIC_DIR } from '../../scripts/build-client.js'
 
 describe('build-client', () => {
+  // Build into a temp dir (via CLIENT_BUILD_OUTDIR) instead of the real
+  // public/: other test files serve the repo's public/ bundles in parallel
+  // workers, so wiping or rebuilding it here would race with them.
+  let outDir: string
+
   beforeAll(() => {
-    // Clean output dir
-    if (fs.existsSync(PUBLIC_DIR)) {
-      fs.rmSync(PUBLIC_DIR, { recursive: true })
-    }
+    outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'build-client-test-'))
 
     // Run the build script
     const proc = Bun.spawnSync(['bun', 'scripts/build-client.ts'], {
       cwd: path.resolve(import.meta.dir, '../..'),
+      env: { ...process.env, CLIENT_BUILD_OUTDIR: outDir },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -28,18 +32,21 @@ describe('build-client', () => {
   })
 
   afterAll(() => {
-    // Clean up
-    if (fs.existsSync(PUBLIC_DIR)) {
-      fs.rmSync(PUBLIC_DIR, { recursive: true })
-    }
+    fs.rmSync(outDir, { recursive: true, force: true })
   })
 
-  test('creates public/ directory', () => {
-    expect(fs.existsSync(PUBLIC_DIR)).toBe(true)
+  test('PUBLIC_DIR defaults to the repo public/ dir when no override is set', () => {
+    // This test process has no CLIENT_BUILD_OUTDIR, so the imported constant
+    // must point at the real public/ output dir used in production builds.
+    expect(PUBLIC_DIR).toBe(path.resolve(import.meta.dir, '../../public'))
+  })
+
+  test('creates the output directory', () => {
+    expect(fs.existsSync(outDir)).toBe(true)
   })
 
   test.each([['debug.js'], ['admin.js']])('outputs %s as IIFE', (jsName) => {
-    const jsPath = path.join(PUBLIC_DIR, jsName)
+    const jsPath = path.join(outDir, jsName)
     expect(fs.existsSync(jsPath)).toBe(true)
     const content = fs.readFileSync(jsPath, 'utf8')
     expect(content.length).toBeGreaterThan(0)
@@ -55,7 +62,7 @@ describe('build-client', () => {
     ['debug.html', 'debug.js'],
     ['admin.html', 'admin.js'],
   ])('copies %s', (htmlName, jsName) => {
-    const htmlPath = path.join(PUBLIC_DIR, htmlName)
+    const htmlPath = path.join(outDir, htmlName)
     expect(fs.existsSync(htmlPath)).toBe(true)
     const content = fs.readFileSync(htmlPath, 'utf8')
     expect(content).toContain('<!doctype html>')
@@ -66,7 +73,7 @@ describe('build-client', () => {
   })
 
   test.each([['debug.css'], ['admin.css']])('copies %s', (cssName) => {
-    const cssPath = path.join(PUBLIC_DIR, cssName)
+    const cssPath = path.join(outDir, cssName)
     expect(fs.existsSync(cssPath)).toBe(true)
     const content = fs.readFileSync(cssPath, 'utf8')
     expect(content).toContain('{')

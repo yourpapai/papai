@@ -983,3 +983,23 @@ export async function flushMicrotasks(): Promise<void> {
     }, 0)
   })
 }
+
+/**
+ * Poll until `predicate` returns true, throwing after `timeoutMs`.
+ *
+ * Use this instead of a fixed `setTimeout` wait + assertion: under parallel
+ * test execution the event loop can be starved, so fixed-wall-clock timing
+ * assertions flake. Polling waits only as long as the behavior actually
+ * takes, and still fails (via the thrown timeout) if it never happens.
+ */
+export async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now()
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('waitFor: condition not met within timeout')
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 5)
+    })
+  }
+}

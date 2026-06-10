@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import * as fsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -85,9 +85,25 @@ async function loadBehaviorAuditEntryPoint(tag: string): Promise<void> {
   })
 }
 
+/**
+ * Spawn env for git: skip host/system config reads (faster and isolates the
+ * test from the developer's gitconfig, e.g. gpgsign or fsmonitor hooks) and
+ * provide commit identity so `-c user.*` flags are unnecessary.
+ */
+const GIT_SPAWN_ENV = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_CONFIG_SYSTEM: '/dev/null',
+  GIT_AUTHOR_NAME: 'Test User',
+  GIT_AUTHOR_EMAIL: 'test@example.com',
+  GIT_COMMITTER_NAME: 'Test User',
+  GIT_COMMITTER_EMAIL: 'test@example.com',
+}
+
 async function runCommand(command: string[], cwd: string): Promise<string> {
   const proc = Bun.spawn(command, {
     cwd,
+    env: GIT_SPAWN_ENV,
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -104,45 +120,38 @@ async function runCommand(command: string[], cwd: string): Promise<string> {
   return stdout.trim()
 }
 
+/**
+ * Lazily created template repo (git init + one empty commit), built once per
+ * file. Tests get a repo by copying its `.git` directory instead of paying
+ * two git subprocess spawns each.
+ */
+let gitTemplateDir: string | null = null
+
+async function ensureGitTemplate(): Promise<string> {
+  if (gitTemplateDir === null) {
+    const dir = mkdtempSync(path.join(tmpdir(), 'behavior-audit-git-template-'))
+    await runCommand(['git', 'init', '-q'], dir)
+    await runCommand(['git', 'commit', '--allow-empty', '-m', 'init', '-q'], dir)
+    gitTemplateDir = dir
+  }
+  return gitTemplateDir
+}
+
+afterAll(() => {
+  if (gitTemplateDir !== null) {
+    rmSync(gitTemplateDir, { recursive: true, force: true })
+    gitTemplateDir = null
+  }
+})
+
 async function initializeGitRepo(root: string): Promise<void> {
-  await runCommand(['git', 'init', '-q'], root)
-  await runCommand(
-    [
-      'git',
-      '-c',
-      'user.name=Test User',
-      '-c',
-      'user.email=test@example.com',
-      '-c',
-      'commit.gpgsign=false',
-      'commit',
-      '--allow-empty',
-      '-m',
-      'init',
-      '-q',
-    ],
-    root,
-  )
+  const template = await ensureGitTemplate()
+  cpSync(path.join(template, '.git'), path.join(root, '.git'), { recursive: true })
 }
 
 async function commitAll(root: string, message: string): Promise<void> {
   await runCommand(['git', 'add', '.'], root)
-  await runCommand(
-    [
-      'git',
-      '-c',
-      'user.name=Test User',
-      '-c',
-      'user.email=test@example.com',
-      '-c',
-      'commit.gpgsign=false',
-      'commit',
-      '-m',
-      message,
-      '-q',
-    ],
-    root,
-  )
+  await runCommand(['git', 'commit', '-m', message, '-q'], root)
 }
 
 function isSavedManifest(

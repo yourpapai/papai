@@ -490,6 +490,7 @@ bun security
 bun security:ci
 
 # Testing
+bun build:client   # required once on a clean checkout: server tests serve public/ bundles
 bun run test       # parallel (one worker process per file); the default and what CI runs
 bun test:serial    # serial run, for debugging isolation-sensitive failures
 bun test:client

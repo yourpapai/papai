@@ -29,6 +29,11 @@ const PINO_LEVEL_VALUES: Record<string, number> = {
 const TEST_PORT = 19100
 const PUBLIC_DIR = path.resolve(import.meta.dir, '../../public')
 
+/**
+ * Fail fast when client bundles are missing instead of building them here:
+ * a full client build inside a test worker silently adds many seconds to
+ * this file's runtime (CI provides prebuilt `public/` via the build job).
+ */
 function ensurePublicBuilt(): void {
   const required = [
     'debug.js',
@@ -41,17 +46,12 @@ function ensurePublicBuilt(): void {
     'settings.html',
     'settings.css',
   ]
-  const missing = required.some((f) => !fs.existsSync(path.join(PUBLIC_DIR, f)))
-  if (!missing) return
+  const missing = required.filter((f) => !fs.existsSync(path.join(PUBLIC_DIR, f)))
+  if (missing.length === 0) return
 
-  const proc = Bun.spawnSync(['bun', 'scripts/build-client.ts'], {
-    cwd: path.resolve(import.meta.dir, '../..'),
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-
-  if (proc.exitCode !== 0) {
-    throw new Error(`Build failed: ${proc.stderr.toString()}`)
-  }
+  throw new Error(
+    `Missing client bundles in public/ (${missing.join(', ')}). Run \`bun build:client\` before running this suite.`,
+  )
 }
 
 /** Narrow a parsed JSON body to an array, throwing if it is not one. */
