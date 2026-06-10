@@ -22,9 +22,12 @@ describe('discovery preamble', () => {
       askPermissionAvailable: false,
       progressiveDisclosure: true,
     })
+    expect(prompt).toContain('TOOL DISCOVERY')
     expect(prompt).toContain('search_tools')
     expect(prompt).toContain('load_tool')
     expect(prompt.toLowerCase()).toContain('not loaded')
+    // expand_result is NOT in the enabled set, so it must not be advertised
+    expect(prompt).not.toContain('expand_result')
   })
 
   it('omits the preamble when progressiveDisclosure is false', () => {
@@ -33,5 +36,15 @@ describe('discovery preamble', () => {
       progressiveDisclosure: false,
     })
     expect(prompt.toLowerCase()).not.toContain('most tools are not loaded')
+  })
+
+  it('advertises expand_result only when it is in the enabled tool set', () => {
+    const enabledWithExpand = new Set(['get_current_time', 'search_tools', 'load_tool', 'expand_result'])
+    const prompt = buildProviderlessSystemPrompt('ctx-1', enabledWithExpand, {
+      askPermissionAvailable: false,
+      progressiveDisclosure: true,
+    })
+    expect(prompt).toContain('expand_result')
+    expect(prompt).toContain('use expand_result with its handle to read more')
   })
 })
