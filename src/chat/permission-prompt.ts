@@ -12,6 +12,74 @@ const log = logger.child({ scope: 'chat:permission-prompt' })
 
 const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function flattenArguments(obj: Record<string, unknown>, prefix = '', depth = 0): [string, unknown][] {
+  const result: [string, unknown][] = []
+  for (const [key, value] of Object.entries(obj)) {
+    const fullKey = prefix ? `${prefix}.${key}` : key
+    if (isPlainObject(value) && depth < 3) {
+      result.push(...flattenArguments(value, fullKey, depth + 1))
+    } else if (isPlainObject(value)) {
+      result.push([fullKey, '[Object]'])
+    } else {
+      result.push([fullKey, value])
+    }
+  }
+  return result
+}
+
+function formatArray(arr: unknown[]): string {
+  return arr.map((item) => String(item)).join(', ')
+}
+
+function isSensitiveFieldName(name: string): boolean {
+  return /api[_-]?key|token|password|secret|credential/iu.test(name)
+}
+
+function maskValue(value: string): string {
+  if (value.length <= 7) return '***'
+  return value.slice(0, 3) + '...' + value.slice(-3)
+}
+
+function maskSensitive(value: string): string {
+  if (/^(sk-|token-|password-|secret-|key-)/iu.test(value)) {
+    return value.slice(0, 4) + '...' + value.slice(-3)
+  }
+  return value
+}
+
+function formatValue(value: unknown, fieldName?: string): string {
+  if (value === null || value === undefined) return '(empty)'
+  if (Array.isArray(value)) return formatArray(value)
+  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'function') return '[Function]'
+  if (typeof value === 'symbol') return value.toString()
+  if (typeof value === 'bigint') return applyMasking(value.toString(), fieldName)
+  if (typeof value === 'boolean') return applyMasking(value ? 'true' : 'false', fieldName)
+  if (typeof value === 'number') return applyMasking(value.toString(), fieldName)
+  if (typeof value === 'string') return applyMasking(value, fieldName)
+  return '(unknown)'
+}
+
+function applyMasking(str: string, fieldName?: string): string {
+  return fieldName !== undefined && isSensitiveFieldName(fieldName) ? maskValue(str) : maskSensitive(str)
+}
+
+export function formatArguments(args: Record<string, unknown>): string {
+  const entries = flattenArguments(args)
+  if (entries.length === 0) return ''
+
+  const lines = entries.map(([key, value]) => {
+    const formatted = formatValue(value, key)
+    return `${key}: ${formatted}`
+  })
+
+  return lines.join('\n')
+}
+
 export type PermissionDecision = 'allow' | 'deny'
 
 interface PendingRequest {
