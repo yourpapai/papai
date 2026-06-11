@@ -25,6 +25,15 @@ describe('AdminFeatureFlagStateSchema', () => {
     const result = AdminFeatureFlagStateSchema.safeParse({ result_compaction: true })
     expect(result.success).toBe(false)
   })
+
+  test('rejects wrong-type field', () => {
+    const result = AdminFeatureFlagStateSchema.safeParse({
+      result_compaction: 'true',
+      progressive_disclosure: false,
+      semantic_tool_retrieval: false,
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('AdminFeatureFlagRowSchema', () => {
