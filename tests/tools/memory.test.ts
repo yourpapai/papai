@@ -14,7 +14,7 @@ import {
   makeRememberMemoryTool,
   makeSearchMemoryTool,
 } from '../../src/tools/memory.js'
-import { getToolExecutor, setupTestDb } from '../utils/test-helpers.js'
+import { getToolExecutor, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 
 const memoryRecordInput = (overrides: Partial<MemoryRecordInput>): MemoryRecordInput => ({
   id: 'mem-existing',
@@ -85,6 +85,23 @@ describe('memory tools', () => {
     })
   })
 
+  test('remember_memory rejects too many tags and oversized tag strings', () => {
+    const tool = makeRememberMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+    const baseInput = {
+      content: 'User prefers release summaries grouped by customer impact.',
+      kind: 'preference',
+    }
+
+    expect(
+      schemaValidates(tool, { ...baseInput, tags: Array.from({ length: 10 }, (_, index) => `tag-${index}`) }),
+    ).toBe(true)
+    expect(
+      schemaValidates(tool, { ...baseInput, tags: Array.from({ length: 11 }, (_, index) => `tag-${index}`) }),
+    ).toBe(false)
+    expect(schemaValidates(tool, { ...baseInput, tags: ['a'.repeat(40)] })).toBe(true)
+    expect(schemaValidates(tool, { ...baseInput, tags: ['a'.repeat(41)] })).toBe(false)
+  })
+
   test('search_memory returns active scoped keyword matches', async () => {
     saveMemoryRecord(
       memoryRecordInput({ id: 'mem-user-match', scopeId: 'user-1', content: 'Use concise release notes.' }),
@@ -128,6 +145,13 @@ describe('memory tools', () => {
     expect(
       listMemoryRecords({ scopeId: 'user-1', scopeType: 'personal', status: 'archived' }).map((r) => r.id),
     ).toEqual(['mem-target'])
+  })
+
+  test('forget_memory rejects oversized memory ids', () => {
+    const tool = makeForgetMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+
+    expect(schemaValidates(tool, { memory_id: 'a'.repeat(128) })).toBe(true)
+    expect(schemaValidates(tool, { memory_id: 'a'.repeat(129) })).toBe(false)
   })
 
   test('forget_memory archives a query match only in the current scope', async () => {

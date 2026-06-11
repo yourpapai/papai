@@ -27,7 +27,8 @@ export type MemoryToolContext = Readonly<{
 }>
 
 const tagsSchema = z
-  .array(z.string().min(1).max(80))
+  .array(z.string().min(1).max(40))
+  .max(10)
   .default([])
   .describe('Optional short tags for grouping the memory')
 
@@ -166,7 +167,7 @@ export function makeForgetMemoryTool(input: MemoryToolContext): ToolSet[string] 
   return tool({
     description: 'Archive one long-term memory in the current user or group scope by memory ID or keyword query.',
     inputSchema: z.object({
-      memory_id: z.string().optional().describe('Exact memory record ID to archive'),
+      memory_id: z.string().max(128).optional().describe('Exact memory record ID to archive'),
       query: z.string().min(1).max(500).optional().describe('Keyword query used when memory_id is not available'),
     }),
     execute: ({ memory_id: memoryId, query }) => {
