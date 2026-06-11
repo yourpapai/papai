@@ -127,7 +127,9 @@ const buildFullToolSet = async (
     enabled: flags.resultCompaction,
   })
   const retriever = flags.semanticToolRetrieval ? getToolRetriever() : new LexicalToolRetriever()
-  const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(compacted, contextId, retriever)
+  const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(compacted, contextId, retriever, {
+    enabled: flags.progressiveDisclosure,
+  })
   log.debug({ contextId, toolCount: Object.keys(disclosedTools).length }, 'Prepared tool set for LLM invocation')
   return { tools: disclosedTools, enabledToolNames: new Set(Object.keys(disclosedTools)), disclosure }
 }

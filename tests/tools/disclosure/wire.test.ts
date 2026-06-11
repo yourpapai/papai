@@ -29,26 +29,16 @@ describe('maybeApplyDisclosure', () => {
     resolveReductionFlags.mockReset()
   })
 
-  it('is a pass-through when the flag is OFF', () => {
-    resolveReductionFlags.mockReturnValue({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+  it('is a pass-through when enabled is false', () => {
     const tools: ToolSet = { get_current_time: d(), list_tasks: d() }
-    const out = maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever())
+    const out = maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever(), { enabled: false })
     expect(out.tools).toBe(tools)
     expect(out.disclosure).toBeUndefined()
   })
 
-  it('adds meta tools and a session when the flag is ON', () => {
-    resolveReductionFlags.mockReturnValue({
-      progressiveDisclosure: true,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+  it('adds meta tools and a session when enabled is true', () => {
     const tools: ToolSet = { get_current_time: d(), list_tasks: d() }
-    const out = maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever())
+    const out = maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever(), { enabled: true })
     expect(out.tools['search_tools']).toBeDefined()
     expect(out.tools['load_tool']).toBeDefined()
     assert.ok(out.disclosure !== undefined)
@@ -56,5 +46,12 @@ describe('maybeApplyDisclosure', () => {
     expect(out.disclosure.allNames.has('search_tools')).toBe(true)
     expect(out.disclosure.allNames.has('load_tool')).toBe(true)
     expect(out.tools).not.toBe(tools)
+  })
+
+  it('never re-resolves reduction flags itself', () => {
+    const tools: ToolSet = { get_current_time: d() }
+    maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever(), { enabled: true })
+    maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever(), { enabled: false })
+    expect(resolveReductionFlags).not.toHaveBeenCalled()
   })
 })

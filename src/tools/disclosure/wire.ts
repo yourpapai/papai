@@ -6,7 +6,6 @@
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
-import { resolveReductionFlags } from '../feature-flags.js'
 import { CORE_TOOL_NAMES } from './core.js'
 import { makeLoadToolTool } from './load-tool.js'
 import { createDisclosureSession, type DisclosureSession } from './registry.js'
@@ -22,8 +21,9 @@ export function maybeApplyDisclosure(
   tools: ToolSet,
   contextId: string,
   retriever: ToolRetriever,
+  opts: { enabled: boolean },
 ): { tools: ToolSet; disclosure: DisclosureSession | undefined } {
-  if (!resolveReductionFlags(contextId).progressiveDisclosure) return { tools, disclosure: undefined }
+  if (!opts.enabled) return { tools, disclosure: undefined }
   // Pre-populate meta-tool keys so that the session's allNames snapshot includes them.
   const withMeta: ToolSet = { ...tools, search_tools: makePlaceholder(), load_tool: makePlaceholder() }
   const session = createDisclosureSession(withMeta, CORE_TOOL_NAMES)
