@@ -18,19 +18,19 @@ import type {
 } from './types.js'
 
 export type ListMemoryRecordsFilter = Readonly<{
-  scopeId: string
   status?: MemoryStatus
   kind?: MemoryKind
   limit?: number
-}>
+}> &
+  MemoryScope
 
 export type SearchMemoryRecordsFilter = Readonly<{
-  scopeId: string
   query: string
   includeStale?: boolean
   kind?: MemoryKind
   limit?: number
-}>
+}> &
+  MemoryScope
 
 const DEFAULT_LIST_LIMIT = 50
 const DEFAULT_SEARCH_LIMIT = 10
@@ -38,14 +38,22 @@ const DEFAULT_SEARCH_LIMIT = 10
 type MemoryRecordValues = typeof memoryRecords.$inferInsert
 
 const parseTags = (json: string): readonly string[] => {
-  const parsed: unknown = JSON.parse(json)
-  return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === 'string') : []
+  try {
+    const parsed: unknown = JSON.parse(json)
+    return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === 'string') : []
+  } catch {
+    return []
+  }
 }
 
 const parseEvidence = (json: string): MemoryEvidence => {
-  const parsed: unknown = JSON.parse(json)
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-  return parsed as MemoryEvidence
+  try {
+    const parsed: unknown = JSON.parse(json)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return parsed as MemoryEvidence
+  } catch {
+    return {}
+  }
 }
 
 const sanitizeFtsQuery = (query: string): string => `"${query.replace(/"/gu, '""')}"`
@@ -193,7 +201,7 @@ export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord {
 }
 
 export function listMemoryRecords(filter: ListMemoryRecordsFilter): readonly MemoryRecord[] {
-  const conditions: SQL[] = [eq(memoryRecords.scopeId, filter.scopeId)]
+  const conditions: SQL[] = [eq(memoryRecords.scopeId, filter.scopeId), eq(memoryRecords.scopeType, filter.scopeType)]
   if (filter.status !== undefined) conditions.push(eq(memoryRecords.status, filter.status))
   if (filter.kind !== undefined) conditions.push(eq(memoryRecords.kind, filter.kind))
 
@@ -215,6 +223,7 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
       : eq(memoryRecords.status, 'active')
   const conditions: SQL[] = [
     eq(memoryRecords.scopeId, filter.scopeId),
+    eq(memoryRecords.scopeType, filter.scopeType),
     statusFilter,
     sql`${memoryRecords.id} IN (
       SELECT m.id
@@ -222,6 +231,7 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
       INNER JOIN memory_records_fts f ON m.rowid = f.rowid
       WHERE f.memory_records_fts MATCH ${safeQuery}
         AND m.scope_id = ${filter.scopeId}
+        AND m.scope_type = ${filter.scopeType}
     )`,
   ]
   if (filter.kind !== undefined) conditions.push(eq(memoryRecords.kind, filter.kind))
@@ -236,11 +246,17 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
     .map(rowToRecord)
 }
 
-export function archiveMemoryRecord(scopeId: string, recordId: string, now: string): boolean {
+export function archiveMemoryRecord(scope: MemoryScope, recordId: string, now: string): boolean {
   const rows = getDrizzleDb()
     .update(memoryRecords)
     .set({ status: 'archived', updatedAt: now })
-    .where(and(eq(memoryRecords.scopeId, scopeId), eq(memoryRecords.id, recordId)))
+    .where(
+      and(
+        eq(memoryRecords.scopeId, scope.scopeId),
+        eq(memoryRecords.scopeType, scope.scopeType),
+        eq(memoryRecords.id, recordId),
+      ),
+    )
     .returning({ id: memoryRecords.id })
     .all()
   return rows.length > 0
