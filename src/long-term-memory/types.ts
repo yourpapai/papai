@@ -30,3 +30,40 @@ export type MemoryStatus = z.infer<typeof MemoryStatusSchema>
 
 export const MemorySourceSchema = z.enum(['background', 'explicit', 'tool_result', 'admin_edit'])
 export type MemorySource = z.infer<typeof MemorySourceSchema>
+
+export type MemoryProfile = MemoryScope &
+  Readonly<{
+    profile: string
+    enabled: boolean
+    version: number
+    updatedAt: string
+  }>
+
+export type MemoryEvidence = Readonly<{
+  messageIds?: readonly string[]
+  actorIds?: readonly string[]
+  timestamps?: readonly string[]
+  contextId?: string
+}>
+
+export type MemoryRecord = MemoryScope &
+  Readonly<{
+    id: string
+    kind: MemoryKind
+    content: string
+    summary: string | null
+    tags: readonly string[]
+    confidence: number
+    status: MemoryStatus
+    source: MemorySource
+    evidence: MemoryEvidence
+    createdAt: string
+    updatedAt: string
+    lastSeenAt: string
+    validFrom?: string | null
+    validUntil?: string | null
+    expiresAt?: string | null
+    embedding?: Float32Array | null
+  }>
+
+export type MemoryRecordInput = Omit<MemoryRecord, 'embedding'> & Readonly<{ embedding?: Float32Array | null }>
