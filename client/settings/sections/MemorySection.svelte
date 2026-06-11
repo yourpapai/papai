@@ -4,6 +4,9 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { untrack } from 'svelte'
+
+  import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
   import Field from '../../shared/ui/Field.svelte'
@@ -35,8 +38,11 @@
   let savingProfile = $state(false)
   let mutating = $state(false)
   let initialLoad = $state(true)
+  let loadedContextId: string | null = $state(null)
+  let pendingClear = $state(false)
 
-  const activeRecords = $derived(memory?.records.filter((record) => record.status === 'active') ?? [])
+  const currentMemory = $derived(loadedContextId === contextId ? memory : null)
+  const activeRecords = $derived(currentMemory?.records.filter((record) => record.status === 'active') ?? [])
 
   function messageFrom(err: unknown): string {
     return err instanceof Error ? err.message : String(err)
@@ -45,6 +51,14 @@
   function applyMemory(next: MemoryResponse): void {
     memory = next
     profileDraft = next.profile
+    loadedContextId = next.contextId
+  }
+
+  function clearContextState(): void {
+    memory = null
+    profileDraft = ''
+    loadedContextId = null
+    pendingClear = false
   }
 
   function shortDate(value: string): string {
@@ -55,29 +69,36 @@
     return record.summary ?? record.content
   }
 
-  async function load(id: string): Promise<void> {
+  async function load(id: string): Promise<boolean> {
     error = null
     status = null
+    if (id !== loadedContextId) clearContextState()
     loading = true
     try {
-      applyMemory(await fetchMemory(id))
+      const next = await fetchMemory(id)
+      if (id !== contextId) return false
+      applyMemory(next)
       initialLoad = false
+      return true
     } catch (err) {
-      memory = null
-      error = messageFrom(err)
-      initialLoad = false
+      if (id === contextId) {
+        clearContextState()
+        error = messageFrom(err)
+        initialLoad = false
+      }
+      return false
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
   async function toggleCapture(): Promise<void> {
-    if (memory === null) return
+    if (currentMemory === null) return
     error = null
     status = null
     mutating = true
     try {
-      await setMemoryCapture({ contextId, enabled: !memory.enabled })
+      await setMemoryCapture({ contextId, enabled: !currentMemory.enabled })
       await load(contextId)
     } catch (err) {
       error = messageFrom(err)
@@ -92,8 +113,7 @@
     savingProfile = true
     try {
       await updateMemoryProfile({ contextId, profile: profileDraft })
-      await load(contextId)
-      status = 'Saved.'
+      if (await load(contextId)) status = 'Saved.'
     } catch (err) {
       error = messageFrom(err)
     } finally {
@@ -130,21 +150,24 @@
   }
 
   $effect(() => {
-    initialLoad = true
-    void load(contextId)
+    const id = contextId
+    untrack(() => {
+      initialLoad = true
+      void load(id)
+    })
   })
 </script>
 
 <section id="memory" class="settings-section">
-  <PageHeader eyebrow={memory?.scopeType === 'group' ? 'Group' : 'Personal'} title="Memory">
+  <PageHeader eyebrow={currentMemory?.scopeType === 'group' ? 'Group' : 'Personal'} title="Memory">
     {#snippet action()}
       <Btn
-        variant={memory?.enabled ? 'outline' : 'primary'}
+        variant={currentMemory?.enabled ? 'outline' : 'primary'}
         size="sm"
-        disabled={memory === null || loading || mutating}
+        disabled={currentMemory === null || loading || mutating}
         testid="memory-capture-toggle"
         onClick={() => void toggleCapture()}>
-        {#snippet children()}{memory?.enabled ? 'Disable capture' : 'Enable capture'}{/snippet}
+        {#snippet children()}{currentMemory?.enabled ? 'Disable capture' : 'Enable capture'}{/snippet}
       </Btn>
     {/snippet}
   </PageHeader>
@@ -154,7 +177,7 @@
 
   {#if initialLoad && loading}
     <p class="placeholder">Loading…</p>
-  {:else if memory !== null}
+  {:else if currentMemory !== null}
     <div class="settings-memory">
       <div class="settings-memory__profile">
         <Field label="Pinned profile">
@@ -174,7 +197,7 @@
             onClick={() => void saveProfile()}>
             {#snippet children()}{savingProfile ? 'Saving…' : 'Save profile'}{/snippet}
           </Btn>
-          <Btn variant="danger" size="sm" disabled={mutating} testid="memory-clear" onClick={() => void clearRecords()}>
+          <Btn variant="danger" size="sm" disabled={mutating} testid="memory-clear" onClick={() => (pendingClear = true)}>
             {#snippet children()}Clear memory{/snippet}
           </Btn>
         </div>
@@ -218,6 +241,16 @@
       {/if}
     </div>
   {/if}
+
+  <Confirm
+    open={pendingClear}
+    title="Clear all memory records"
+    danger
+    confirmLabel="Clear memory"
+    onCancel={() => (pendingClear = false)}
+    onConfirm={() => { pendingClear = false; void clearRecords() }}>
+    {#snippet body()}<p>Clear all memory records for this context? This cannot be undone.</p>{/snippet}
+  </Confirm>
 </section>
 
 <style>

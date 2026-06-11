@@ -9,6 +9,8 @@ import { flushSync, mount, unmount } from 'svelte'
 
 import { setCsrfToken } from '../../../../client/settings/fetchers.js'
 import MemorySection from '../../../../client/settings/sections/MemorySection.svelte'
+import { settingsSession } from '../../../../client/settings/session.svelte.js'
+import SettingsApp from '../../../../client/settings/SettingsApp.svelte'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 const json = (payload: unknown, status = 200): Response =>
@@ -77,9 +79,96 @@ const emptyMemoryPayload = {
   records: [],
 }
 
+const userAMemoryPayload = {
+  ...memoryPayload,
+  contextId: 'user:a',
+  profile: 'Profile from context A.',
+  records: [{ ...memoryPayload.records[0], id: 'rec-a', summary: 'Record from context A.' }],
+}
+
+const userBMemoryPayload = {
+  ...memoryPayload,
+  contextId: 'user:b',
+  profile: 'Profile from context B.',
+  records: [{ ...memoryPayload.records[0], id: 'rec-b', summary: 'Record from context B.' }],
+}
+
+interface PendingMemoryState {
+  resolveUserA: ((response: Response) => void) | null
+}
+
+const resetSession = (): void => {
+  settingsSession.status = 'loading'
+  settingsSession.display = ''
+  settingsSession.isBotAdmin = false
+  settingsSession.isSuperAdmin = false
+  settingsSession.contexts = []
+  settingsSession.activeContextId = ''
+}
+
+const seedTwoContextSession = (): void => {
+  settingsSession.status = 'ready'
+  settingsSession.display = 'alice'
+  settingsSession.isBotAdmin = false
+  settingsSession.isSuperAdmin = false
+  settingsSession.contexts = [
+    { kind: 'personal', contextId: 'user:a', label: 'Context A' },
+    { kind: 'personal', contextId: 'user:b', label: 'Context B' },
+  ]
+  settingsSession.activeContextId = 'user:a'
+}
+
+const jsonForSettingsEndpoint = (url: string): Response => {
+  const parsed = new URL(url, 'https://settings.invalid')
+  const contextId = parsed.searchParams.get('contextId') ?? 'user:a'
+  if (parsed.pathname.endsWith('/settings/api/config')) return json({ contextId, fields: [] })
+  if (parsed.pathname.endsWith('/settings/api/context/task-instance'))
+    return json({ contextId, taskInstanceId: null, available: [] })
+  if (parsed.pathname.endsWith('/settings/api/tools')) return json({ contextId, domains: [] })
+  if (parsed.pathname.endsWith('/settings/api/byok'))
+    return json({ contextId, enabled: false, complete: false, missing: [], fields: [] })
+  if (parsed.pathname.endsWith('/settings/api/identity'))
+    return json({ contextId, providerName: 'provider', mapping: null })
+  if (parsed.pathname.endsWith('/settings/api/mcp')) return json({ contextId, endpoints: [] })
+  if (parsed.pathname.endsWith('/settings/api/plugins')) return json({ contextId, plugins: [] })
+  return json({})
+}
+
+const routeSettingsWithMemory =
+  (memory: (contextId: string) => Promise<Response>): ((url: string, init: RequestInit) => Promise<Response>) =>
+  (url): Promise<Response> => {
+    const parsed = new URL(url, 'https://settings.invalid')
+    if (parsed.pathname.endsWith('/settings/api/memory')) return memory(parsed.searchParams.get('contextId') ?? '')
+    return Promise.resolve(jsonForSettingsEndpoint(url))
+  }
+
+const pendingUserAMemory =
+  (state: PendingMemoryState) =>
+  (contextId: string): Promise<Response> => {
+    if (contextId === 'user:a') {
+      return new Promise<Response>((resolve) => {
+        state.resolveUserA = resolve
+      })
+    }
+    return Promise.resolve(json(userBMemoryPayload))
+  }
+
+const routeProfilePatchThenReloadFailure = (): ((url: string, init: RequestInit) => Promise<Response>) => {
+  let memoryFetchCount = 0
+  return (url): Promise<Response> => {
+    if (url.startsWith('/settings/api/memory?')) {
+      memoryFetchCount += 1
+      if (memoryFetchCount === 1) return Promise.resolve(json(memoryPayload))
+      return Promise.resolve(new Response('reload failed', { status: 500 }))
+    }
+    return Promise.resolve(json({ ok: true }))
+  }
+}
+
 afterEach(() => {
   restoreFetch()
   setCsrfToken('')
+  resetSession()
 })
 
 describe('MemorySection', () => {
@@ -148,6 +237,26 @@ describe('MemorySection', () => {
     void unmount(component)
   })
 
+  test('does not show success when profile reload fails after PATCH', async () => {
+    setCsrfToken('c')
+    setMockFetch(routeProfilePatchThenReloadFailure())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const input = target.querySelector<HTMLTextAreaElement>('[data-testid="memory-profile"]')!
+    input.value = 'Updated pinned profile.'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-profile-save"]')!.click()
+    await drain()
+    await drain()
+
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.status-success')).toBeNull()
+    void unmount(component)
+  })
+
   test('archive record sends DELETE to encoded record path with body contextId and reloads', async () => {
     setCsrfToken('c')
     const calls: CapturedCall[] = []
@@ -170,7 +279,7 @@ describe('MemorySection', () => {
     void unmount(component)
   })
 
-  test('clear sends POST and reloads', async () => {
+  test('clear memory requires confirmation before POST and reloads after confirmation', async () => {
     setCsrfToken('c')
     const calls: CapturedCall[] = []
     setMockFetch((url, init) => {
@@ -185,10 +294,51 @@ describe('MemorySection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="memory-clear"]')!.click()
     await drain()
 
+    expect(calls.find((call) => call.url === '/settings/api/memory/clear')).toBeUndefined()
+    expect(target.textContent).toContain('Clear all memory records')
+
+    const confirmButtons = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).filter((button) =>
+      button.textContent?.includes('Clear memory'),
+    )
+    const confirmButton = confirmButtons.at(-1)
+    expect(confirmButton).not.toBeUndefined()
+    confirmButton!.click()
+    await drain()
+
     const write = calls.find((call) => call.url === '/settings/api/memory/clear')
     expect(write?.method).toBe('POST')
     expect(write?.body).toEqual({ contextId: 'user:1' })
     expect(calls.filter((call) => call.url.startsWith('/settings/api/memory?')).length).toBe(2)
+    void unmount(component)
+  })
+
+  test('stale slower load for old context does not overwrite newer context state', async () => {
+    const pending: PendingMemoryState = { resolveUserA: null }
+    setMockFetch(routeSettingsWithMemory(pendingUserAMemory(pending)))
+    seedTwoContextSession()
+    document.body.innerHTML = '<div id="root"></div>'
+    history.replaceState(null, '', '/settings')
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(SettingsApp, { target })
+
+    await drain()
+    settingsSession.activeContextId = 'user:b'
+    await drain()
+    expect(target.querySelector<HTMLTextAreaElement>('[data-testid="memory-profile"]')!.value).toBe(
+      'Profile from context B.',
+    )
+    expect(target.textContent).toContain('Record from context B.')
+
+    const resolveUserA = pending.resolveUserA
+    expect(resolveUserA).not.toBeNull()
+    resolveUserA!(json(userAMemoryPayload))
+    await drain()
+
+    expect(target.querySelector<HTMLTextAreaElement>('[data-testid="memory-profile"]')!.value).toBe(
+      'Profile from context B.',
+    )
+    expect(target.textContent).toContain('Record from context B.')
+    expect(target.textContent).not.toContain('Record from context A.')
     void unmount(component)
   })
 
