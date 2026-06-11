@@ -392,4 +392,17 @@ describe('ask-tools instruction', () => {
     expect(prompt).toContain('_permission_reason')
     expect(prompt).toContain('create_task')
   })
+
+  test('ask line omits injected meta-tools but keeps expand_result', () => {
+    const contextId = 'frag-ask-meta-ctx'
+    setToolPrefs(contextId, {
+      domainDefaults: {},
+      toolOverrides: { search_tools: 'ask', load_tool: 'ask', expand_result: 'ask' },
+    })
+    const enabled = new Set(['create_task', 'get_current_time', 'search_tools', 'load_tool', 'expand_result'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled)
+    expect(prompt).toContain('expand_result')
+    expect(prompt).not.toContain('- search_tools')
+    expect(prompt).not.toContain('- load_tool')
+  })
 })

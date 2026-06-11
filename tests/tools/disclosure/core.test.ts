@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test'
 
 import {
   CORE_TOOL_NAMES,
+  DISCLOSURE_INJECTED_TOOL_NAMES,
   META_TOOL_NAMES,
   ALWAYS_ON_TOOL_NAMES,
   DISCLOSURE_STALL_STEPS,
@@ -34,5 +35,9 @@ describe('disclosure core constants', () => {
 
   it('uses a small positive stall threshold', () => {
     expect(DISCLOSURE_STALL_STEPS).toBe(2)
+  })
+
+  it('DISCLOSURE_INJECTED_TOOL_NAMES is exactly the post-preferences injected names', () => {
+    expect([...DISCLOSURE_INJECTED_TOOL_NAMES].toSorted()).toEqual(['load_tool', 'search_tools'])
   })
 })
