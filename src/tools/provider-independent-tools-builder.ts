@@ -83,7 +83,8 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
   const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
 
   tools['get_current_time'] = makeGetCurrentTimeTool(storageOwnerId)
-  if (contextId !== undefined && resolveReductionFlags(contextId).resultCompaction) {
+  // Proactive runs never apply result compaction, so the pager must not be offered there.
+  if (contextId !== undefined && mode === 'normal' && resolveReductionFlags(contextId).resultCompaction) {
     tools['expand_result'] = makeExpandResultTool(contextId)
   }
   if (contextId !== undefined && isS3Configured()) {

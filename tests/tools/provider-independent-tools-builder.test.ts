@@ -63,4 +63,15 @@ describe('expand_result registration', () => {
     addProviderIndependentTools(tools, baseOpts)
     expect(tools['expand_result']).toBeDefined()
   })
+
+  it('omits expand_result in proactive mode even when compaction flag is ON', () => {
+    resolveReductionFlags.mockReturnValue({
+      progressiveDisclosure: false,
+      resultCompaction: true,
+      semanticToolRetrieval: false,
+    })
+    const tools: ToolSet = {}
+    addProviderIndependentTools(tools, { ...baseOpts, mode: 'proactive' as const })
+    expect(tools['expand_result']).toBeUndefined()
+  })
 })
