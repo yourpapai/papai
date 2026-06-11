@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { generateText, type LanguageModel } from 'ai'
+import { generateText } from 'ai'
 
 import { resolveEffectiveLlmConfig } from '../../llm-config-resolver.js'
+import { buildChatModel } from '../../llm-model-builder.js'
 import { logger } from '../../logger.js'
 
 const log = logger.child({ scope: 'compaction:summarizer' })
@@ -31,19 +31,14 @@ export interface SummarizeInput {
   userIntent: string
 }
 
-function buildDefaultDeps(): SummarizerDeps | null {
-  const resolved = resolveEffectiveLlmConfig('global')
+/** Resolves per-context (BYOK-aware) credentials once; callers should build this once per turn. */
+export function buildSummarizerDeps(configContextId: string): SummarizerDeps | null {
+  const resolved = resolveEffectiveLlmConfig(configContextId)
   if (!resolved.ok) return null
-
-  const builtModel: LanguageModel = createOpenAICompatible({
-    name: 'openai-compatible',
-    apiKey: resolved.llmApiKey,
-    baseURL: resolved.llmBaseUrl,
-  })(resolved.smallModel)
-
+  const model = buildChatModel(resolved.llmApiKey, resolved.llmBaseUrl, resolved.smallModel)
   return {
     generate: async (opts) => {
-      const result = await generateText({ model: builtModel, system: opts.system, prompt: opts.prompt })
+      const result = await generateText({ model, system: opts.system, prompt: opts.prompt })
       return { text: result.text }
     },
   }
@@ -51,10 +46,9 @@ function buildDefaultDeps(): SummarizerDeps | null {
 
 export async function summarizeResult(
   input: SummarizeInput,
-  deps?: SummarizerDeps,
+  deps: SummarizerDeps | null,
 ): Promise<{ summary: string | null }> {
-  const resolvedDeps = deps ?? buildDefaultDeps()
-  if (resolvedDeps === null) return { summary: null }
+  if (deps === null) return { summary: null }
 
   const slice = input.serialized.slice(0, PROMPT_INPUT_BUDGET)
   const prompt = [
@@ -66,7 +60,7 @@ export async function summarizeResult(
   ].join('\n')
 
   try {
-    const { text } = await resolvedDeps.generate({ system: SYSTEM, prompt })
+    const { text } = await deps.generate({ system: SYSTEM, prompt })
     const trimmed = text.trim()
     return { summary: trimmed === '' ? null : trimmed }
   } catch (error) {

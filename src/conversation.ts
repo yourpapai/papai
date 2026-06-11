@@ -3,26 +3,23 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel, ModelMessage } from 'ai'
 
 import { getCachedHistory, setCachedHistory } from './cache.js'
 import { emitUser } from './debug/event-bus.js'
 import { resolveEffectiveLlmConfig } from './llm-config-resolver.js'
+import { buildChatModel } from './llm-model-builder.js'
 import { logger } from './logger.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
 
 const log = logger.child({ scope: 'conversation' })
-
-const buildModel = (apiKey: string, baseUrl: string, modelName: string): LanguageModel =>
-  createOpenAICompatible({ name: 'openai-compatible', apiKey, baseURL: baseUrl })(modelName)
 
 export interface ConversationDeps {
   buildModel: (apiKey: string, baseUrl: string, modelName: string) => LanguageModel
 }
 
 const defaultConversationDeps: ConversationDeps = {
-  buildModel: (apiKey, baseUrl, modelName) => buildModel(apiKey, baseUrl, modelName),
+  buildModel: (apiKey, baseUrl, modelName) => buildChatModel(apiKey, baseUrl, modelName),
 }
 
 const WORKING_MEMORY_CAP = 100

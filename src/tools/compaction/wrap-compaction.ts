@@ -5,11 +5,12 @@
 
 import type { ToolExecutionOptions, ToolSet } from 'ai'
 
+import { getConfigContextIdFromStorageContextId } from '../../chat/scoped-context.js'
 import { logger } from '../../logger.js'
 import { COMPACTION_PREVIEW_BYTES } from './constants.js'
 import { putResult } from './result-store.js'
 import { evaluateForCompaction } from './size-gate.js'
-import { summarizeResult } from './summarizer.js'
+import { buildSummarizerDeps, summarizeResult } from './summarizer.js'
 import type { CompactedEnvelope, CompactionContext } from './types.js'
 
 const log = logger.child({ scope: 'compaction:wrap' })
@@ -23,8 +24,10 @@ export interface WrapCompactionDeps {
   }) => Promise<{ summary: string | null }>
 }
 
-const defaultDeps: WrapCompactionDeps = {
-  summarize: (input) => summarizeResult(input),
+// Resolve credentials and build the summarizer model once per turn, not per oversized result.
+function buildTurnDeps(storageContextId: string): WrapCompactionDeps {
+  const summarizerDeps = buildSummarizerDeps(getConfigContextIdFromStorageContextId(storageContextId))
+  return { summarize: (input) => summarizeResult(input, summarizerDeps) }
 }
 
 // expand_result serves pages of an already-compacted result; wrapping it would re-compact its own output
@@ -75,12 +78,9 @@ async function compact(
   return envelope
 }
 
-export function applyResultCompaction(
-  tools: ToolSet,
-  ctx: CompactionContext,
-  deps: WrapCompactionDeps = defaultDeps,
-): ToolSet {
+export function applyResultCompaction(tools: ToolSet, ctx: CompactionContext, deps?: WrapCompactionDeps): ToolSet {
   if (!ctx.enabled) return tools
+  const resolvedDeps = deps ?? buildTurnDeps(ctx.storageContextId)
   const out: ToolSet = {}
   for (const [name, t] of Object.entries(tools)) {
     if (t === undefined) continue
@@ -92,7 +92,7 @@ export function applyResultCompaction(
     out[name] = {
       ...t,
       execute: (input: unknown, options: ToolExecutionOptions): Promise<unknown> =>
-        Promise.resolve(inner(input, options)).then((result) => compact(result, name, ctx, deps)),
+        Promise.resolve(inner(input, options)).then((result) => compact(result, name, ctx, resolvedDeps)),
     }
   }
   return out

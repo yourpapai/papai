@@ -130,13 +130,18 @@ describe('dispatchExecution', () => {
       tool: (opts: unknown): unknown => opts,
       stepCountIs: (_n: number): unknown => undefined,
     }))
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (opts: { name: string; apiKey: string; baseURL: string }): ((modelId: string) => string) =>
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelId: string): string => {
+        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId })
+        return `openai-compatible:${modelId}`
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((modelId: string) => string) =>
         (modelId: string): string => {
-          buildModelCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, modelId })
-          return `${opts.name}:${modelId}`
+          buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId })
+          return `openai-compatible:${modelId}`
         },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
     await setupTestDb()
   })

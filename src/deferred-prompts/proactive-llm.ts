@@ -3,8 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { generateText, stepCountIs, type ModelMessage } from 'ai'
+import { generateText, stepCountIs, type LanguageModel, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
@@ -12,6 +11,7 @@ import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
+import { buildChatModel } from '../llm-model-builder.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
@@ -44,16 +44,13 @@ const makeMinimalTools = (userId: string): { get_current_time: ReturnType<typeof
 export interface ProactiveLlmDeps {
   generateText: typeof generateText
   stepCountIs: typeof stepCountIs
-  buildModel: (
-    config: { apiKey: string; baseURL: string },
-    modelId: string,
-  ) => ReturnType<ReturnType<typeof createOpenAICompatible>>
+  buildModel: (config: { apiKey: string; baseURL: string }, modelId: string) => LanguageModel
 }
 
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => stepCountIs(...args),
-  buildModel: (config, modelId) => createOpenAICompatible({ name: 'openai-compatible', ...config })(modelId),
+  buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
 }
 
 export type BuildProviderFn = (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null

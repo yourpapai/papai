@@ -228,13 +228,18 @@ describe('runTrimInBackground', () => {
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
     }))
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (opts: { apiKey: string; baseURL: string }): ((_model: string) => string) =>
+    void mock.module('../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelName: string): string => {
+        modelBuildCalls.push({ apiKey, baseUrl, modelName })
+        return 'mock-model'
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((_model: string) => string) =>
         (modelName: string): string => {
-          modelBuildCalls.push({ apiKey: opts.apiKey, baseUrl: opts.baseURL, modelName })
+          modelBuildCalls.push({ apiKey, baseUrl, modelName })
           return 'mock-model'
         },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
   })
 

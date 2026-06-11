@@ -17,7 +17,7 @@ void mock.module('../../../src/llm-config-resolver.js', () => ({
   }),
 }))
 
-import { summarizeResult, type SummarizerDeps } from '../../../src/tools/compaction/summarizer.js'
+import { buildSummarizerDeps, summarizeResult, type SummarizerDeps } from '../../../src/tools/compaction/summarizer.js'
 
 type GenerateOpts = { system: string; prompt: string }
 type GenerateFn = (opts: GenerateOpts) => Promise<{ text: string }>
@@ -63,9 +63,17 @@ describe('summarizeResult', () => {
     const out = await summarizeResult({ serialized: 'x', totalBytes: 9, toolName: 't', userIntent: 'i' }, deps)
     expect(out.summary).toBeNull()
   })
+})
 
-  it('returns summary:null without throwing when LLM config is missing and no deps provided', async () => {
-    const out = await summarizeResult({ serialized: 'x', totalBytes: 9, toolName: 't', userIntent: 'i' })
+describe('buildSummarizerDeps', () => {
+  it('returns null when per-context config resolution fails', () => {
+    expect(buildSummarizerDeps('cfg-ctx')).toBeNull()
+  })
+})
+
+describe('summarizeResult with null deps', () => {
+  it('returns a null summary', async () => {
+    const out = await summarizeResult({ serialized: 'x', totalBytes: 10, toolName: 't', userIntent: 'i' }, null)
     expect(out.summary).toBeNull()
   })
 })
