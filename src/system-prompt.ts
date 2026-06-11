@@ -9,9 +9,8 @@ import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { filterProviderlessPluginIds } from './plugins/providerless.js'
 import { getPluginsForContext } from './plugins/registry.js'
 import type { TaskProvider } from './providers/types.js'
-import { DISCLOSURE_INJECTED_TOOL_NAMES } from './tools/disclosure/core.js'
-import { getToolMetadata, TOOL_METADATA } from './tools/tool-metadata.js'
-import { getToolPrefs, resolveToolPermission, type ToolPrefs } from './tools/tool-preferences.js'
+import { buildAskToolsLine, buildUnavailableLine } from './system-prompt-prefs.js'
+import { getToolPrefs } from './tools/tool-preferences.js'
 
 const CORE_INTRO = `You are papai, a personal assistant that helps the user manage their tasks.
 
@@ -69,6 +68,14 @@ const DISCLOSURE_PROTOCOL = `TOOL DISCOVERY — Most tools are not loaded right 
 1. Call search_tools with a short natural-language description of what you want to do.
 2. Call load_tool with the names you need (pass several at once to avoid extra steps).
 3. Then call the loaded tool(s) normally.`
+
+function buildDisclosureFragment(enabledToolNames: ReadonlySet<string> | undefined): string {
+  const hasExpand = enabledToolNames?.has('expand_result') === true
+  const always = hasExpand
+    ? 'Always-available tools: get_current_time, search_tools, load_tool, expand_result. If a result says it was compacted, use expand_result with its handle to read more.'
+    : 'Always-available tools: get_current_time, search_tools, load_tool.'
+  return `${DISCLOSURE_PROTOCOL}\n${always}`
+}
 
 const PROVIDERLESS_DEFERRED = `DEFERRED PROMPTS — The user can set up automated scheduled tasks:
 - SCHEDULED PROMPTS: Use create_deferred_prompt with a schedule to set up one-time or recurring LLM tasks.
@@ -155,37 +162,6 @@ function buildOutputRules(enabled: ReadonlySet<string> | undefined): string {
   return OUTPUT_CORE
 }
 
-/** Safety-net for partial-domain disables; whole-domain disables are handled by fragment exclusion. */
-function buildUnavailableLine(prefs: ToolPrefs, enabled: ReadonlySet<string>): string | null {
-  const enabledDomains = new Set<string>()
-  for (const name of enabled) {
-    const meta = getToolMetadata(name)
-    if (meta !== undefined) enabledDomains.add(meta.domain)
-  }
-  const names = new Set<string>()
-  const candidateNames = new Set([...Object.keys(TOOL_METADATA), ...Object.keys(prefs.toolOverrides)])
-  for (const name of candidateNames) {
-    const meta = getToolMetadata(name)
-    if (meta === undefined || !enabledDomains.has(meta.domain) || enabled.has(name)) continue
-    if (resolveToolPermission(prefs, name) === 'deny') names.add(name)
-  }
-  if (names.size === 0) return null
-  return `Unavailable tools — do not use or mention: ${[...names].toSorted().join(', ')}.`
-}
-
-function buildAskToolsLine(prefs: ToolPrefs, exposed: ReadonlySet<string>): string | null {
-  const askNames = [...exposed]
-    .filter((name) => !DISCLOSURE_INJECTED_TOOL_NAMES.has(name))
-    .filter((name) => resolveToolPermission(prefs, name) === 'ask')
-    .toSorted()
-  if (askNames.length === 0) return null
-  return [
-    'Some tools require user permission before each call. Listed tools must include',
-    '`_permission_reason` (one sentence, present tense) describing why the call is needed:',
-    askNames.map((n) => `  - ${n}`).join('\n'),
-  ].join('\n')
-}
-
 interface AssembleOptions {
   readonly askPermissionAvailable: boolean
   readonly deferredFragmentText?: string
@@ -200,13 +176,7 @@ function assembleSystemPrompt(
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const parts: string[] = [intro]
-  if (options.progressiveDisclosure === true) {
-    const hasExpand = enabledToolNames?.has('expand_result') === true
-    const always = hasExpand
-      ? 'Always-available tools: get_current_time, search_tools, load_tool, expand_result. If a result says it was compacted, use expand_result with its handle to read more.'
-      : 'Always-available tools: get_current_time, search_tools, load_tool.'
-    parts.push(`${DISCLOSURE_PROTOCOL}\n${always}`)
-  }
+  if (options.progressiveDisclosure === true) parts.push(buildDisclosureFragment(enabledToolNames))
   for (const fragment of FRAGMENTS) {
     if (!fragmentIncluded(fragment, enabledToolNames)) continue
     if (fragment.text === DEFERRED && options.deferredFragmentText !== undefined) {
