@@ -14,6 +14,7 @@
   import { useScrollSpy } from './scrollspy.js'
   import { activeContext, settingsSession } from './session.svelte.js'
   import ProfileSection from './sections/ProfileSection.svelte'
+  import MemorySection from './sections/MemorySection.svelte'
   import TaskProviderSection from './sections/TaskProviderSection.svelte'
   import AiOutputSection from './sections/AiOutputSection.svelte'
   import ToolsSection from './sections/ToolsSection.svelte'
@@ -43,6 +44,7 @@
         kicker: 'Personal',
         items: [
           { id: 'profile', label: 'Profile' },
+          { id: 'memory', label: 'Memory' },
           { id: 'task-provider', label: 'Task provider' },
           { id: 'tools', label: 'Tools' },
           { id: 'ai-output', label: 'AI output' },
@@ -124,6 +126,7 @@
         <main class="settings-grid__main">
           <div class="settings-group">
             <ProfileSection contextId={ctx} />
+            <MemorySection contextId={ctx} />
             <TaskProviderSection contextId={ctx} />
             <ToolsSection contextId={ctx} />
             <AiOutputSection contextId={ctx} />
