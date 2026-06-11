@@ -127,10 +127,13 @@ const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   embedding: serializeEmbedding(input.embedding),
 })
 
-const loadProfile = (scopeId: string): MemoryProfile => {
-  const row = getDrizzleDb().select().from(memoryProfiles).where(eq(memoryProfiles.scopeId, scopeId)).get()
+const profileScopeCondition = (scope: MemoryScope): SQL | undefined =>
+  and(eq(memoryProfiles.scopeId, scope.scopeId), eq(memoryProfiles.scopeType, scope.scopeType))
+
+const loadProfile = (scope: MemoryScope): MemoryProfile => {
+  const row = getDrizzleDb().select().from(memoryProfiles).where(profileScopeCondition(scope)).get()
   if (row === undefined) {
-    throw new Error(`Memory profile not found after save: ${scopeId}`)
+    throw new Error(`Memory profile not found after save: ${scope.scopeType}:${scope.scopeId}`)
   }
   return rowToProfile(row)
 }
@@ -144,11 +147,7 @@ const loadRecord = (recordId: string): MemoryRecord => {
 }
 
 export function getMemoryProfile(scope: MemoryScope): MemoryProfile | null {
-  const row = getDrizzleDb()
-    .select()
-    .from(memoryProfiles)
-    .where(and(eq(memoryProfiles.scopeId, scope.scopeId), eq(memoryProfiles.scopeType, scope.scopeType)))
-    .get()
+  const row = getDrizzleDb().select().from(memoryProfiles).where(profileScopeCondition(scope)).get()
   return row === undefined ? null : rowToProfile(row)
 }
 
@@ -157,16 +156,15 @@ export function saveMemoryProfile(scope: MemoryScope, profile: string, now: stri
     .insert(memoryProfiles)
     .values({ scopeId: scope.scopeId, scopeType: scope.scopeType, profile, enabled: true, version: 1, updatedAt: now })
     .onConflictDoUpdate({
-      target: memoryProfiles.scopeId,
+      target: [memoryProfiles.scopeType, memoryProfiles.scopeId],
       set: {
-        scopeType: scope.scopeType,
         profile,
         version: sql`${memoryProfiles.version} + 1`,
         updatedAt: now,
       },
     })
     .run()
-  return loadProfile(scope.scopeId)
+  return loadProfile(scope)
 }
 
 export function setMemoryCaptureEnabled(scope: MemoryScope, enabled: boolean, now: string): MemoryProfile {
@@ -174,16 +172,15 @@ export function setMemoryCaptureEnabled(scope: MemoryScope, enabled: boolean, no
     .insert(memoryProfiles)
     .values({ scopeId: scope.scopeId, scopeType: scope.scopeType, profile: '', enabled, version: 1, updatedAt: now })
     .onConflictDoUpdate({
-      target: memoryProfiles.scopeId,
+      target: [memoryProfiles.scopeType, memoryProfiles.scopeId],
       set: {
-        scopeType: scope.scopeType,
         enabled,
         version: sql`${memoryProfiles.version} + 1`,
         updatedAt: now,
       },
     })
     .run()
-  return loadProfile(scope.scopeId)
+  return loadProfile(scope)
 }
 
 export function saveMemoryRecord(input: MemoryRecordInput): MemoryRecord {
@@ -293,7 +290,7 @@ export function clearMemoryScope(scope: MemoryScope): { profileDeleted: number; 
     .all()
   const deletedProfiles = db
     .delete(memoryProfiles)
-    .where(and(eq(memoryProfiles.scopeId, scope.scopeId), eq(memoryProfiles.scopeType, scope.scopeType)))
+    .where(profileScopeCondition(scope))
     .returning({ scopeId: memoryProfiles.scopeId })
     .all()
   return { profileDeleted: deletedProfiles.length, recordsDeleted: deletedRecords.length }

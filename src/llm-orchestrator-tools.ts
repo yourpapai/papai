@@ -128,7 +128,7 @@ export const prepareLlmInvocation = async (
     'Prepared tool set for LLM invocation',
   )
   const timezone = resolveTimezone(configId)
-  const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history)
+  const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history, contextType)
   const validatedMessages = validateToolResults(messagesWithMemory)
   log.debug(
     { contextId, historyLength: history.length, hasMemory: memoryMsg !== null, timezone },

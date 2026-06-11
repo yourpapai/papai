@@ -4,19 +4,22 @@
 // See LICENSE in the project root for details.
 
 import { desc } from 'drizzle-orm'
-import { blob, index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { blob, index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const memoryProfiles = sqliteTable(
   'memory_profiles',
   {
-    scopeId: text('scope_id').primaryKey(),
+    scopeId: text('scope_id').notNull(),
     scopeType: text('scope_type', { enum: ['personal', 'group'] }).notNull(),
     profile: text('profile').notNull().default(''),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     version: integer('version').notNull().default(1),
     updatedAt: text('updated_at').notNull(),
   },
-  (table) => [index('idx_memory_profiles_scope').on(table.scopeType, table.scopeId)],
+  (table) => [
+    primaryKey({ columns: [table.scopeType, table.scopeId] }),
+    index('idx_memory_profiles_scope').on(table.scopeType, table.scopeId),
+  ],
 )
 
 export const memoryRecords = sqliteTable(

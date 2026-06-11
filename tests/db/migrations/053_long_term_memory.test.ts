@@ -53,6 +53,34 @@ describe('migration053LongTermMemory', () => {
     ).toThrow()
   })
 
+  test('allows personal and group memory profiles with the same scope id', () => {
+    const db = new Database(':memory:')
+    migration053LongTermMemory.up(db)
+
+    db.run(
+      `INSERT INTO memory_profiles (scope_id, scope_type, profile, enabled, updated_at)
+       VALUES ('shared-scope', 'personal', 'Personal profile', 1, '2026-06-11T00:00:00.000Z')`,
+    )
+    db.run(
+      `INSERT INTO memory_profiles (scope_id, scope_type, profile, enabled, updated_at)
+       VALUES ('shared-scope', 'group', 'Group profile', 1, '2026-06-11T00:00:00.000Z')`,
+    )
+
+    expect(
+      db
+        .query<{ scopeType: string; profile: string }, []>(
+          `SELECT scope_type AS scopeType, profile
+           FROM memory_profiles
+           WHERE scope_id = 'shared-scope'
+           ORDER BY scope_type`,
+        )
+        .all(),
+    ).toEqual([
+      { scopeType: 'group', profile: 'Group profile' },
+      { scopeType: 'personal', profile: 'Personal profile' },
+    ])
+  })
+
   test('keeps FTS rows in sync with memory records', () => {
     const db = new Database(':memory:')
     migration053LongTermMemory.up(db)

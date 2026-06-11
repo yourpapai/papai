@@ -19,6 +19,7 @@ import type { ToolSet } from 'ai'
 import type { StagedFileDownloadFn } from '../src/attachments/types.js'
 import { userCachesForTesting } from '../src/cache.js'
 import type { LlmInvocationOptions } from '../src/llm-orchestrator-tools.js'
+import { saveMemoryProfile } from '../src/long-term-memory/store.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import { makeGetCurrentTimeTool } from '../src/tools/get-current-time.js'
 import type { MakeToolsOptions } from '../src/tools/types.js'
@@ -245,5 +246,36 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
     expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(0)
     expect(result.enabledToolNames.has('save_memo')).toBe(true)
     expect(result.enabledToolNames.has('get_current_time')).toBe(true)
+  })
+
+  test('injects group long-term memory using group scope', async () => {
+    saveMemoryProfile(
+      { scopeId: 'ctx-group-memory', scopeType: 'group' },
+      '## Group memory\n- The group ships release notes on Fridays',
+      '2026-06-12T00:00:00.000Z',
+    )
+    saveMemoryProfile(
+      { scopeId: 'ctx-group-memory', scopeType: 'personal' },
+      '## Personal memory\n- This should not be injected for group turns',
+      '2026-06-12T00:00:00.000Z',
+    )
+
+    const result = await prepareLlmInvocation({
+      contextId: 'ctx-group-memory',
+      configId: 'ctx-group-memory',
+      chatUserId: 'user-pr',
+      username: null,
+      contextType: 'group',
+      provider,
+      history: [{ role: 'user', content: 'What is our release note cadence?' }],
+      userText: 'What is our release note cadence?',
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+      askPermission: undefined,
+    })
+
+    const systemMessage = result.validatedMessages[0]
+    expect(systemMessage?.role).toBe('system')
+    expect(systemMessage?.content).toContain('The group ships release notes on Fridays')
+    expect(systemMessage?.content).not.toContain('This should not be injected for group turns')
   })
 })

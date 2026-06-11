@@ -61,6 +61,18 @@ describe('long-term memory store', () => {
     })
   })
 
+  test('keeps memory profiles isolated by full scope identity', () => {
+    saveMemoryProfile(
+      { scopeId: 'shared-profile', scopeType: 'personal' },
+      'Personal profile',
+      '2026-06-11T00:00:00.000Z',
+    )
+    saveMemoryProfile({ scopeId: 'shared-profile', scopeType: 'group' }, 'Group profile', '2026-06-12T00:00:00.000Z')
+
+    expect(getMemoryProfile({ scopeId: 'shared-profile', scopeType: 'personal' })?.profile).toBe('Personal profile')
+    expect(getMemoryProfile({ scopeId: 'shared-profile', scopeType: 'group' })?.profile).toBe('Group profile')
+  })
+
   test('stores records and lists only requested scope/status', () => {
     saveMemoryRecord(
       memoryRecordInput({

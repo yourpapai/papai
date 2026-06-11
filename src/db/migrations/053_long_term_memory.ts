@@ -13,12 +13,13 @@ const log = logger.child({ scope: 'migration:053' })
 const createProfiles = (db: Database): void => {
   db.run(`
     CREATE TABLE memory_profiles (
-      scope_id   TEXT NOT NULL PRIMARY KEY,
+      scope_id   TEXT NOT NULL,
       scope_type TEXT NOT NULL CHECK (scope_type IN ('personal', 'group')),
       profile    TEXT NOT NULL DEFAULT '',
       enabled    INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
       version    INTEGER NOT NULL DEFAULT 1,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (scope_type, scope_id)
     )
   `)
   db.run(`CREATE INDEX idx_memory_profiles_scope ON memory_profiles(scope_type, scope_id)`)
