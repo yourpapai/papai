@@ -32,6 +32,7 @@
   import AdminPluginsApprovalSection from './sections/admin/AdminPluginsApprovalSection.svelte'
   import AdminPluginsConfigSection from './sections/admin/AdminPluginsConfigSection.svelte'
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
+  import AdminFeatureFlagsSection from './sections/admin/AdminFeatureFlagsSection.svelte'
 
   let activeId = $state(window.location.hash.slice(1) || 'profile')
 
@@ -78,7 +79,12 @@
     }
     // super admins are always bot admins, so admin.items already has the bot-admin entries here
     if (settingsSession.isSuperAdmin) {
-      admin.items = [...admin.items, { id: 'admins', label: 'Admins' }, { id: 'plugin-approval', label: 'Plugin approval' }]
+      admin.items = [
+        ...admin.items,
+        { id: 'admins', label: 'Admins' },
+        { id: 'plugin-approval', label: 'Plugin approval' },
+        { id: 'feature-flags', label: 'Feature flags' },
+      ]
     }
     if (admin.items.length > 0) list.push(admin)
     return list
@@ -152,6 +158,7 @@
               {#if settingsSession.isSuperAdmin}
                 <AdminAdminsSection />
                 <AdminPluginsApprovalSection catalogContextId={ctx} />
+                <AdminFeatureFlagsSection />
               {/if}
             </div>
           {/if}
