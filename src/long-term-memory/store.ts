@@ -246,20 +246,42 @@ export function searchMemoryRecords(filter: SearchMemoryRecordsFilter): readonly
     .map(rowToRecord)
 }
 
+const recordScopeCondition = (scope: MemoryScope, recordId: string): SQL | undefined =>
+  and(
+    eq(memoryRecords.scopeId, scope.scopeId),
+    eq(memoryRecords.scopeType, scope.scopeType),
+    eq(memoryRecords.id, recordId),
+  )
+
 export function archiveMemoryRecord(scope: MemoryScope, recordId: string, now: string): boolean {
   const rows = getDrizzleDb()
     .update(memoryRecords)
     .set({ status: 'archived', updatedAt: now })
-    .where(
-      and(
-        eq(memoryRecords.scopeId, scope.scopeId),
-        eq(memoryRecords.scopeType, scope.scopeType),
-        eq(memoryRecords.id, recordId),
-      ),
-    )
+    .where(recordScopeCondition(scope, recordId))
     .returning({ id: memoryRecords.id })
     .all()
   return rows.length > 0
+}
+
+export function updateMemoryRecord(
+  scope: MemoryScope,
+  recordId: string,
+  patch: Readonly<{ status?: MemoryStatus; content?: string; confidence?: number }>,
+  now: string,
+): MemoryRecord | null {
+  const rows = getDrizzleDb()
+    .update(memoryRecords)
+    .set({
+      ...(patch.status === undefined ? {} : { status: patch.status }),
+      ...(patch.content === undefined ? {} : { content: patch.content }),
+      ...(patch.confidence === undefined ? {} : { confidence: patch.confidence }),
+      updatedAt: now,
+      lastSeenAt: now,
+    } satisfies Partial<MemoryRecordValues>)
+    .where(recordScopeCondition(scope, recordId))
+    .returning()
+    .all()
+  return rows[0] === undefined ? null : rowToRecord(rows[0])
 }
 
 export function clearMemoryScope(scope: MemoryScope): { profileDeleted: number; recordsDeleted: number } {
@@ -274,6 +296,5 @@ export function clearMemoryScope(scope: MemoryScope): { profileDeleted: number; 
     .where(and(eq(memoryProfiles.scopeId, scope.scopeId), eq(memoryProfiles.scopeType, scope.scopeType)))
     .returning({ scopeId: memoryProfiles.scopeId })
     .all()
-
   return { profileDeleted: deletedProfiles.length, recordsDeleted: deletedRecords.length }
 }

@@ -9,6 +9,7 @@ import type { ModelMessage } from 'ai'
 
 import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
 import * as cacheModule from '../src/cache.js'
+import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
 import { logger } from '../src/logger.js'
 import * as longTermMemoryStore from '../src/long-term-memory/store.js'
@@ -286,6 +287,35 @@ describe('buildMessagesWithMemory', () => {
     } finally {
       listMemoryRecordsSpy.mockRestore()
     }
+  })
+
+  test('loads long-term memory from parent group scope for thread contexts', () => {
+    const parent = toScopedContextId({ platformInstanceId: 'telegram-main', nativeContextId: '-1001' })
+    const thread = toScopedThreadContextId({
+      platformInstanceId: 'telegram-main',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    saveMemoryProfile(
+      { scopeId: parent, scopeType: 'group' },
+      '## Group memory\n- Release notes go out on Fridays',
+      '2026-06-12T00:00:00.000Z',
+    )
+    saveMemoryRecord(
+      memoryRecordInput({
+        id: 'mem-group-thread',
+        scopeId: parent,
+        scopeType: 'group',
+        kind: 'procedure',
+        content: 'Release notes go out on Fridays.',
+        summary: 'Friday release notes',
+      }),
+    )
+
+    const result = buildMessagesWithMemory(thread, [], 'group')
+
+    expect(result.memoryMsg?.content).toContain('Release notes go out on Fridays')
+    expect(result.memoryMsg?.content).toContain('Friday release notes')
   })
 
   test('does not mutate original history array', () => {

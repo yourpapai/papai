@@ -60,11 +60,15 @@ const logTrimConfigFailure = (
   )
 }
 
-export const buildMessagesWithMemory = (userId: string, history: readonly ModelMessage[]): MessagesWithMemory => {
+export const buildMessagesWithMemory = (
+  userId: string,
+  history: readonly ModelMessage[],
+  contextType: 'dm' | 'group' = 'dm',
+): MessagesWithMemory => {
   const summary = loadSummary(userId)
   const facts = loadFacts(userId)
   const compactedMemoryMsg = buildMemoryContextMessage(summary, facts)
-  const scope = resolveMemoryScope({ storageContextId: userId, contextType: 'dm' })
+  const scope = resolveMemoryScope({ storageContextId: userId, contextType })
   const profile = getMemoryProfile(scope)?.profile ?? null
   const records = listMemoryRecords({ ...scope, status: 'active', limit: 3 })
   const longTermMemoryMsg = buildLongTermMemoryContextMessage({ profile, records })
