@@ -11,6 +11,7 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import * as cacheModule from '../src/cache.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
 import { logger } from '../src/logger.js'
+import * as longTermMemoryStore from '../src/long-term-memory/store.js'
 import { saveMemoryProfile, saveMemoryRecord } from '../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../src/long-term-memory/types.js'
 import * as systemConfigModule from '../src/system-config.js'
@@ -268,6 +269,23 @@ describe('buildMessagesWithMemory', () => {
     expect(systemMsg.content).toContain('Prefer concise answers')
     expect(result.memoryMsg).not.toBeNull()
     expect(result.messages[0]).toEqual(result.memoryMsg!)
+  })
+
+  test('loads at most three active long-term memory records', () => {
+    const listMemoryRecordsSpy = spyOn(longTermMemoryStore, 'listMemoryRecords')
+
+    try {
+      buildMessagesWithMemory('user-1', [])
+
+      expect(listMemoryRecordsSpy).toHaveBeenCalledWith({
+        scopeId: 'user-1',
+        scopeType: 'personal',
+        status: 'active',
+        limit: 3,
+      })
+    } finally {
+      listMemoryRecordsSpy.mockRestore()
+    }
   })
 
   test('does not mutate original history array', () => {
