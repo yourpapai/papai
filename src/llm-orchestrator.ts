@@ -11,11 +11,11 @@ import { createAiProgressReporter, type AiProgressReporter } from './ai-progress
 import { getCachedHistory } from './cache.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
-import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { appendHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
 import { resolveEffectiveLlmConfig, type EffectiveLlmConfig } from './llm-config-resolver.js'
+import { appendAssistantHistory } from './llm-history.js'
 import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
@@ -63,21 +63,6 @@ const persistFactsFromResults = (contextId: string, result: unknown): void => {
     { contextId, factsExtracted: newFacts.length, factsUpserted: newFacts.length },
     'Facts extracted and persisted',
   )
-}
-
-const appendAssistantHistory = (
-  contextId: string,
-  configId: string,
-  history: readonly ModelMessage[],
-  assistantMessages: ModelMessage[],
-): void => {
-  if (assistantMessages.length > 0) {
-    appendHistory(contextId, assistantMessages)
-    log.debug({ contextId, assistantMessagesCount: assistantMessages.length }, 'Assistant response appended to history')
-  }
-  if (shouldTriggerTrim([...history, ...assistantMessages])) {
-    void runTrimInBackground(contextId, [...history, ...assistantMessages], undefined, configId)
-  }
 }
 
 const sendLlmResponse = async (
@@ -283,7 +268,8 @@ export const processMessage = async (
       resolvedLlm,
       turnId: resolvedTurnId,
     })
-    appendAssistantHistory(contextId, configId, [...turn.baseHistory, turn.historyMessage], result.response.messages)
+    const priorHistory = [...turn.baseHistory, turn.historyMessage]
+    appendAssistantHistory(contextId, configId, resolvedLlm.mainModel, priorHistory, result.response.messages)
   } catch (error) {
     await handleLlmTurnError({
       reply,

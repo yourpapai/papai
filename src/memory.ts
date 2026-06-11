@@ -11,6 +11,7 @@ import { getCachedFacts, getCachedSummary, setCachedSummary, clearCachedFacts, u
 import { getDrizzleDb } from './db/drizzle.js'
 import { memorySummary, memoryFacts } from './db/schema.js'
 import { logger } from './logger.js'
+import { resolveTrimmedIndices } from './memory-tool-pairing.js'
 import type { MemoryFact } from './types/memory.js'
 
 const log = logger.child({ scope: 'memory' })
@@ -163,25 +164,6 @@ Conversation (index: [role] content):
 Return ONLY a raw JSON object (no markdown, no code fences) with this exact structure:
 {"keep_indices": [<list of integer indices>], "summary": "<summary text>"}`
 
-function clampIndices(
-  selected: readonly number[],
-  trimMin: number,
-  trimMax: number,
-  historyLength: number,
-): readonly number[] {
-  if (selected.length > trimMax) {
-    return selected.slice(selected.length - trimMax)
-  }
-  if (selected.length < trimMin) {
-    const selectedSet = new Set(selected)
-    const candidates = Array.from({ length: historyLength }, (_, i) => i)
-      .filter((i) => !selectedSet.has(i))
-      .toReversed()
-    return [...selected, ...candidates.slice(0, trimMin - selected.length)].toSorted((a, b) => a - b)
-  }
-  return selected
-}
-
 const parseModelResponse = (text: string): z.infer<typeof TrimResultSchema> => {
   const jsonMatch = text.match(/\{[\s\S]*\}/u)
   let rawOutput: unknown = null
@@ -207,6 +189,21 @@ const defaultMemoryDeps: MemoryDeps = {
   generateText: (...args) => generateText(...args),
 }
 
+// Cap each message's serialized content in the trim prompt so a single huge message
+// (e.g. a pasted document or a base64 attachment in a tool result) cannot overflow the
+// small model's own context window or waste tokens.
+const MAX_TRIM_MESSAGE_CHARS = 2_000
+
+/** Render history as the indexed `index: [role] content` block fed to the trim model, with per-message truncation. */
+export const serializeHistoryForTrimPrompt = (history: readonly ModelMessage[]): string =>
+  history
+    .map((m, i) => {
+      const raw = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+      const content = raw.length > MAX_TRIM_MESSAGE_CHARS ? `${raw.slice(0, MAX_TRIM_MESSAGE_CHARS)}… [truncated]` : raw
+      return `${i}: [${m.role}] ${content}`
+    })
+    .join('\n')
+
 export async function trimWithMemoryModel(
   history: readonly ModelMessage[],
   trimMin: number,
@@ -220,9 +217,7 @@ export async function trimWithMemoryModel(
     'trimWithMemoryModel called',
   )
 
-  const messagesText = history
-    .map((m, i) => `${i}: [${m.role}] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
-    .join('\n')
+  const messagesText = serializeHistoryForTrimPrompt(history)
 
   const summaryText = summaryOrPlaceholder(previousSummary)
   const resolvedDeps = depsOrDefault(depsInput[0])
@@ -238,12 +233,7 @@ export async function trimWithMemoryModel(
 
   const data = parseModelResponse(result.text)
 
-  const selected = clampIndices(
-    [...new Set(data.keep_indices)].filter((i) => i >= 0 && i < history.length).toSorted((a, b) => a - b),
-    trimMin,
-    trimMax,
-    history.length,
-  )
+  const selected = resolveTrimmedIndices(history, data.keep_indices, trimMin, trimMax)
   const trimmedMessages = selected.map((i) => history[i]!)
 
   log.info(
@@ -260,24 +250,4 @@ export async function trimWithMemoryModel(
 
 // --- Context message builder ---
 
-export function buildMemoryContextMessage(
-  summary: string | null,
-  facts: readonly MemoryFact[],
-): { role: 'system'; content: string } | null {
-  const parts: string[] = []
-
-  if (summary !== null && summary.length > 0) {
-    parts.push(`Summary: ${summary}`)
-  }
-
-  if (facts.length > 0) {
-    const lines = facts.map((f) => `- ${f.identifier}: "${f.title}" — last seen ${f.last_seen.slice(0, 10)}`)
-    parts.push(`Recently accessed entities:\n${lines.join('\n')}`)
-  }
-
-  if (parts.length === 0) {
-    return null
-  }
-
-  return { role: 'system', content: `=== Memory context ===\n${parts.join('\n\n')}` }
-}
+export { buildMemoryContextMessage } from './memory-context-block.js'
