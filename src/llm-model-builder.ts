@@ -27,7 +27,7 @@ export function getOpenAICompatibleProvider(
   baseUrl: string,
   deps: ModelBuilderDeps = defaultDeps,
 ): OpenAICompatibleProvider {
-  const key = `${apiKey}:${baseUrl}`
+  const key = `${apiKey}\0${baseUrl}`
   const cached = providerCache.get(key)
   if (cached !== undefined) return cached
   const provider = deps.create({ name: 'openai-compatible', apiKey, baseURL: baseUrl, fetch: fetchWithoutTimeout })

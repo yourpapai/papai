@@ -55,6 +55,14 @@ describe('llm-model-builder', () => {
     expect(create).toHaveBeenCalledTimes(1)
   })
 
+  it('does not collide when the apiKey contains a colon', () => {
+    const { create, deps } = makeDeps()
+    const a = getOpenAICompatibleProvider('user:password', 'https://api', deps)
+    const b = getOpenAICompatibleProvider('user', 'password:https://api', deps)
+    expect(b).not.toBe(a)
+    expect(create).toHaveBeenCalledTimes(2)
+  })
+
   it('buildChatModel returns a model bound to the requested model name', () => {
     const model = buildChatModel('k1', 'http://x', 'small-model-1')
     expect(model).toMatchObject({ modelId: 'small-model-1' })
