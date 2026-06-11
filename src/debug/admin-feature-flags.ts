@@ -46,7 +46,7 @@ const kindRank = (kind: 'user' | 'group'): number => (kind === 'user' ? 0 : 1)
 function listContextRows(): AdminFlagContextRow[] {
   const rows: AdminFlagContextRow[] = []
   for (const instance of listPlatformInstancesSafe().instances) {
-    for (const user of listUsers(instance.id)) {
+    for (const user of listUsers(instance.id).filter((u) => !u.platform_user_id.startsWith('placeholder-'))) {
       const contextId = toScopedContextId({ platformInstanceId: instance.id, nativeContextId: user.platform_user_id })
       rows.push({
         contextId,

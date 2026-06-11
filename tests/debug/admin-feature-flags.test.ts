@@ -13,7 +13,7 @@ import {
   getAdminFeatureFlagsSnapshot,
 } from '../../src/debug/admin-feature-flags.js'
 import { upsertKnownGroupContext } from '../../src/group-settings/registry.js'
-import { addUser } from '../../src/users.js'
+import { addPendingUser, addUser } from '../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../utils/test-helpers.js'
 
 const ALL_OFF = { result_compaction: false, progressive_disclosure: false, semantic_tool_retrieval: false }
@@ -79,5 +79,26 @@ describe('admin-feature-flags', () => {
 
   it('rejects an unknown context', () => {
     expect(() => applyAdminFeatureFlagsUpdate('pi:bogus:ctx:bogus', ALL_OFF)).toThrow(AdminFeatureFlagsError)
+  })
+
+  it('excludes placeholder (pending) users', () => {
+    addPendingUser({ username: 'ghost', platformInstanceId: 'pi-1', addedBy: 'boot' })
+    const snapshot = getAdminFeatureFlagsSnapshot()
+    expect(snapshot.contexts.map((r) => r.contextId).toSorted()).toEqual([groupCtx, userCtx].toSorted())
+  })
+
+  it('sorts same-kind rows by label', () => {
+    addUser({ userId: 'u-2', platformInstanceId: 'pi-1', addedBy: 'boot', username: 'bob' })
+    const labels = getAdminFeatureFlagsSnapshot()
+      .contexts.filter((r) => r.kind === 'user')
+      .map((r) => r.label)
+    expect(labels).toEqual(['alice', 'bob'])
+  })
+
+  it('labels a group without parentName by displayName alone', () => {
+    const soloCtx = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'g-2' })
+    upsertKnownGroupContext({ contextId: soloCtx, provider: 'mattermost', displayName: 'Solo', parentName: null })
+    const row = getAdminFeatureFlagsSnapshot().contexts.find((r) => r.contextId === soloCtx)
+    expect(row?.label).toBe('Solo')
   })
 })
