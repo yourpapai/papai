@@ -11,6 +11,7 @@
 import { purgeExpiredStagedFiles } from './attachments/staged.js'
 import { cleanupExpiredCaches } from './cache.js'
 import { logger } from './logger.js'
+import { runMemoryMaintenance } from './long-term-memory/maintenance.js'
 import { sweepExpiredMessages } from './message-cache/cache.js'
 import { cleanupExpiredMessages } from './message-cache/persistence.js'
 import { cleanupExpiredQueues } from './message-queue/index.js'
@@ -57,6 +58,14 @@ scheduler.register('staged-files-purge', {
   interval: 60 * 60 * 1000,
   handler: () => {
     purgeExpiredStagedFiles()
+  },
+  options: { immediate: true },
+})
+
+scheduler.register('long-term-memory-maintenance', {
+  interval: 60 * 60 * 1000,
+  handler: () => {
+    runMemoryMaintenance()
   },
   options: { immediate: true },
 })
