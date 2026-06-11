@@ -11,6 +11,7 @@ import { emitUser } from './debug/event-bus.js'
 import { resolveEffectiveLlmConfig } from './llm-config-resolver.js'
 import { logger } from './logger.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
+import { estimateMessagesTokens, resolveMaxTokens } from './model-context.js'
 
 const log = logger.child({ scope: 'conversation' })
 
@@ -29,6 +30,9 @@ const WORKING_MEMORY_CAP = 100
 const TRIM_MIN = 50
 const TRIM_MAX = 100
 const SMART_TRIM_INTERVAL = 10
+// Trigger a trim once the history is estimated to fill this fraction of the model's
+// context window, even if the message-count thresholds have not been reached.
+const TOKEN_TRIGGER_RATIO = 0.5
 
 type MessagesWithMemory = {
   messages: ModelMessage[]
@@ -60,11 +64,21 @@ export const buildMessagesWithMemory = (userId: string, history: readonly ModelM
   return { messages: memoryMsg === null ? [...history] : [memoryMsg, ...history], memoryMsg }
 }
 
-export const shouldTriggerTrim = (history: readonly ModelMessage[]): boolean => {
+const exceedsTokenBudget = (history: readonly ModelMessage[], modelName: string | undefined): boolean => {
+  if (modelName === undefined) return false
+  // Trimming can only shed messages down to TRIM_MIN, so an early token trigger is only
+  // useful once there are more than TRIM_MIN messages to choose from.
+  if (history.length <= TRIM_MIN) return false
+  const maxTokens = resolveMaxTokens(modelName)
+  if (maxTokens === null) return false
+  return estimateMessagesTokens(history) >= maxTokens * TOKEN_TRIGGER_RATIO
+}
+
+export const shouldTriggerTrim = (history: readonly ModelMessage[], modelName?: string): boolean => {
   const userMessageCount = history.filter((m) => m.role === 'user').length
   const periodicTrim = userMessageCount > 0 && userMessageCount % SMART_TRIM_INTERVAL === 0 && history.length > TRIM_MIN
   const hardCapTrim = history.length >= WORKING_MEMORY_CAP
-  return periodicTrim || hardCapTrim
+  return periodicTrim || hardCapTrim || exceedsTokenBudget(history, modelName)
 }
 
 // Guards against overlapping background trims for the same context: at the hard cap

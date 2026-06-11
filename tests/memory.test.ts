@@ -20,6 +20,7 @@ import {
   clearSummary,
   clearFacts,
   trimWithMemoryModel,
+  serializeHistoryForTrimPrompt,
 } from '../src/memory.js'
 import { extractFacts } from './helpers/extract-facts.js'
 import { clearUserCache } from './utils/test-cache.js'
@@ -580,6 +581,30 @@ describe('memory', () => {
   // ============================================================================
   // Tests: tool-call / tool-result pairing integrity during trim
   // ============================================================================
+
+  describe('serializeHistoryForTrimPrompt', () => {
+    test('prefixes each message with its index and role', () => {
+      const history: ModelMessage[] = [
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'hello' },
+      ]
+      expect(serializeHistoryForTrimPrompt(history)).toBe('0: [user] hi\n1: [assistant] hello')
+    })
+
+    test('truncates oversized message content', () => {
+      const history: ModelMessage[] = [{ role: 'user', content: 'a'.repeat(5000) }]
+      const out = serializeHistoryForTrimPrompt(history)
+      expect(out).toContain('… [truncated]')
+      expect(out.length).toBeLessThan(2_500)
+    })
+
+    test('serializes structured content', () => {
+      const history: ModelMessage[] = [
+        { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'x', toolName: 'get_task', input: {} }] },
+      ]
+      expect(serializeHistoryForTrimPrompt(history)).toContain('tool-call')
+    })
+  })
 
   describe('tool-pairing integrity', () => {
     const mockModel: LanguageModel = 'test-model'

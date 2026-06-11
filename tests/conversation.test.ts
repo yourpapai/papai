@@ -108,6 +108,38 @@ describe('shouldTriggerTrim', () => {
   })
 })
 
+describe('shouldTriggerTrim — token-based triggering', () => {
+  // 55 messages → 28 user (28 % 10 !== 0) and length < 100, so the message-count
+  // triggers are all false; only the token budget can fire.
+  const sizedMessages = (count: number, contentLen: number): ModelMessage[] =>
+    Array.from({ length: count }, (_, i) => ({
+      role: i % 2 === 0 ? ('user' as const) : ('assistant' as const),
+      content: 'x'.repeat(contentLen),
+    }))
+
+  test('fires when estimated tokens exceed the model budget', () => {
+    // 55 × ~6000 chars ≈ 82k tokens > 0.5 × 128k (gpt-4o) = 64k
+    expect(shouldTriggerTrim(sizedMessages(55, 6000), 'gpt-4o')).toBe(true)
+  })
+
+  test('does not fire for small histories under the token budget', () => {
+    expect(shouldTriggerTrim(sizedMessages(55, 4), 'gpt-4o')).toBe(false)
+  })
+
+  test('does not fire without a model name (backwards compatible)', () => {
+    expect(shouldTriggerTrim(sizedMessages(55, 6000))).toBe(false)
+  })
+
+  test('does not fire for an unknown model with no known context window', () => {
+    expect(shouldTriggerTrim(sizedMessages(55, 6000), 'mystery-model')).toBe(false)
+  })
+
+  test('does not fire when there are too few messages to shed (<= TRIM_MIN)', () => {
+    // 40 huge messages: over budget by tokens, but trimming cannot reduce below them.
+    expect(shouldTriggerTrim(sizedMessages(40, 10_000), 'gpt-4o')).toBe(false)
+  })
+})
+
 describe('buildMessagesWithMemory', () => {
   const mockSummaries = new Map<string, string>()
   const mockFacts = new Map<string, Array<{ identifier: string; title: string; url: string; last_seen: string }>>()

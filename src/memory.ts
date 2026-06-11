@@ -189,6 +189,21 @@ const defaultMemoryDeps: MemoryDeps = {
   generateText: (...args) => generateText(...args),
 }
 
+// Cap each message's serialized content in the trim prompt so a single huge message
+// (e.g. a pasted document or a base64 attachment in a tool result) cannot overflow the
+// small model's own context window or waste tokens.
+const MAX_TRIM_MESSAGE_CHARS = 2_000
+
+/** Render history as the indexed `index: [role] content` block fed to the trim model, with per-message truncation. */
+export const serializeHistoryForTrimPrompt = (history: readonly ModelMessage[]): string =>
+  history
+    .map((m, i) => {
+      const raw = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+      const content = raw.length > MAX_TRIM_MESSAGE_CHARS ? `${raw.slice(0, MAX_TRIM_MESSAGE_CHARS)}… [truncated]` : raw
+      return `${i}: [${m.role}] ${content}`
+    })
+    .join('\n')
+
 export async function trimWithMemoryModel(
   history: readonly ModelMessage[],
   trimMin: number,
@@ -202,9 +217,7 @@ export async function trimWithMemoryModel(
     'trimWithMemoryModel called',
   )
 
-  const messagesText = history
-    .map((m, i) => `${i}: [${m.role}] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
-    .join('\n')
+  const messagesText = serializeHistoryForTrimPrompt(history)
 
   const summaryText = summaryOrPlaceholder(previousSummary)
   const resolvedDeps = depsOrDefault(depsInput[0])
