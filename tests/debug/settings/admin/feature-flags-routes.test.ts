@@ -67,10 +67,10 @@ describe('settings admin feature-flags routes', () => {
     expect(body.contexts.some((c) => c.contextId === userCtx)).toBe(true)
   })
 
-  test('PUT requires CSRF', async () => {
+  test('PATCH requires CSRF', async () => {
     const res = await call(
       new Request(URL_PATH, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: authHeaders(superSession),
         body: JSON.stringify({ contextId: userCtx, flags: FLAGS_ON }),
       }),
@@ -78,7 +78,7 @@ describe('settings admin feature-flags routes', () => {
     expect(res.status).toBe(403)
   })
 
-  test('PUT round-trips flags and returns the updated row', async () => {
+  test('PATCH round-trips flags and returns the updated row', async () => {
     const FlagsSchema = z.object({
       result_compaction: z.boolean(),
       progressive_disclosure: z.boolean(),
@@ -86,7 +86,7 @@ describe('settings admin feature-flags routes', () => {
     })
     const res = await call(
       new Request(URL_PATH, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: authHeaders(superSession, true),
         body: JSON.stringify({ contextId: userCtx, flags: FLAGS_ON }),
       }),
@@ -101,10 +101,21 @@ describe('settings admin feature-flags routes', () => {
     expect(body.contexts.find((c) => c.contextId === userCtx)?.flags).toEqual(FLAGS_ON)
   })
 
-  test('PUT rejects an unknown context with 422', async () => {
+  test('PATCH rejects a plain bot admin', async () => {
     const res = await call(
       new Request(URL_PATH, {
-        method: 'PUT',
+        method: 'PATCH',
+        headers: authHeaders(botAdminSession, true),
+        body: JSON.stringify({ contextId: userCtx, flags: FLAGS_ON }),
+      }),
+    )
+    expect(res.status).toBe(403)
+  })
+
+  test('PATCH rejects an unknown context with 422', async () => {
+    const res = await call(
+      new Request(URL_PATH, {
+        method: 'PATCH',
         headers: authHeaders(superSession, true),
         body: JSON.stringify({ contextId: 'pi:bogus:ctx:bogus', flags: FLAGS_ON }),
       }),
@@ -112,10 +123,10 @@ describe('settings admin feature-flags routes', () => {
     expect(res.status).toBe(422)
   })
 
-  test('PUT rejects a schema-invalid body with 422', async () => {
+  test('PATCH rejects a schema-invalid body with 422', async () => {
     const res = await call(
       new Request(URL_PATH, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: authHeaders(superSession, true),
         body: JSON.stringify({ contextId: userCtx, flags: { result_compaction: 'yes' } }),
       }),
@@ -128,6 +139,11 @@ describe('settings admin feature-flags routes', () => {
     const res = await call(new Request(URL_PATH, { headers: authHeaders(superSession) }))
     const body = z.object({ killSwitchEngaged: z.boolean() }).parse(await res.json())
     expect(body.killSwitchEngaged).toBe(true)
+  })
+
+  test('PUT is not allowed', async () => {
+    const res = await call(new Request(URL_PATH, { method: 'PUT', headers: authHeaders(superSession, true) }))
+    expect(res.status).toBe(405)
   })
 
   test('POST is not allowed', async () => {

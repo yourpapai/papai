@@ -40,7 +40,7 @@ wired in `src/debug/settings-api-router.ts` for the exact path
 `/settings/api/admin/feature-flags`. Handler order per existing admin routes:
 `authenticate` (401) → `requireSuperAdmin` (403) → for writes `requireCsrf` (403)
 → Zod body validation (400 malformed JSON / 422 invalid shape) → action →
-`settingsJson` response. Method dispatch GET/PUT; anything else → 405.
+`settingsJson` response. Method dispatch GET/PATCH; anything else → 405.
 
 ### GET /settings/api/admin/feature-flags
 
@@ -78,7 +78,7 @@ Assembly:
 - `killSwitchEngaged`: `process.env['TOOL_CONTEXT_REDUCTION_DISABLED'] === 'true'`.
 - Ordering: groups after users, both sorted by label; deterministic for tests.
 
-### PUT /settings/api/admin/feature-flags
+### PATCH /settings/api/admin/feature-flags
 
 Body (Zod):
 
@@ -109,7 +109,7 @@ corrupt JSON logs a warn). `resolveReductionFlags` delegates to it; the new GET
 route uses it too. No behavior change to resolution.
 
 The route maps `ReductionFlags` (camelCase) back to the wire/storage snake_case
-names; the storage JSON written by PUT uses exactly the snake_case keys the parser
+names; the storage JSON written by PATCH uses exactly the snake_case keys the parser
 reads (`result_compaction`, `progressive_disclosure`, `semantic_tool_retrieval`).
 
 ## Client
@@ -121,19 +121,19 @@ reads (`result_compaction`, `progressive_disclosure`, `semantic_tool_retrieval`)
   forced OFF by TOOL_CONTEXT_REDUCTION_DISABLED; toggles below are stored but
   inert until the variable is unset"), then a table — label, kind badge,
   platform instance, three checkboxes, per-row Save button enabled when the row
-  is dirty. Save calls the PUT fetcher and replaces the row from the response.
+  is dirty. Save calls the PATCH fetcher and replaces the row from the response.
 - `SettingsApp.svelte`: add `{ id: 'feature-flags', label: 'Feature flags' }` to
   the super-admin sidebar items and render `<AdminFeatureFlagsSection />` inside
   the existing `{#if settingsSession.isSuperAdmin}` block.
 - `client/settings/admin-fetchers.ts`: `fetchAdminFeatureFlags()` (getJson) and
-  `saveAdminFeatureFlags(payload)` (writeJson PUT) with Zod schemas for the
+  `saveAdminFeatureFlags(payload)` (writeJson PATCH) with Zod schemas for the
   snapshot and row shapes; `X-Settings-CSRF` is added automatically by
-  `settingsFetch` for PUT.
+  `settingsFetch` for PATCH.
 
 ## Error handling
 
 - 401 unauthenticated; 403 non-super-admin (including plain bot admins); 403
-  missing/invalid CSRF on PUT; 400 malformed JSON body; 422 schema-invalid body or
+  missing/invalid CSRF on PATCH; 400 malformed JSON body; 422 schema-invalid body or
   unknown `contextId`; 405 other methods; 500 with `settingsJson` on unexpected
   errors (logged via the route's pino child logger, no flag values logged beyond
   booleans — nothing sensitive here).
@@ -144,17 +144,18 @@ reads (`result_compaction`, `progressive_disclosure`, `semantic_tool_retrieval`)
 
 - `tests/debug/settings/admin/feature-flags-routes.test.ts` (mirror
   `plugin-config-routes.test.ts`; `establishSession` + `authHeaders` helpers):
-  401 without session; 403 for non-admin and for plain bot admin; PUT without
+  401 without session; 403 for non-admin and for plain bot admin; PATCH without
   CSRF → 403; GET returns user + group contexts with parsed flags (seed a user,
-  a known group, and one `tool_context_flags` row); PUT round-trips (write then
-  GET shows new values) and returns the updated row; PUT unknown contextId → 422;
-  PUT malformed body → 400/422; killSwitchEngaged true when env var set (set/restore
-  within the test); 405 for POST.
+  a known group, and one `tool_context_flags` row); PATCH round-trips (write then
+  GET shows new values) and returns the updated row; PATCH rejects plain bot admin
+  write → 403; PATCH unknown contextId → 422;
+  PATCH malformed body → 400/422; killSwitchEngaged true when env var set (set/restore
+  within the test); 405 for PUT and POST.
 - `tests/tools/feature-flags.test.ts`: cover `parseReductionFlagsJson` directly
   (moved/extended from existing resolveReductionFlags parse tests; resolution
   tests stay).
 - `tests/client/settings/` fetcher tests (mirror `admin-fetchers.test.ts`):
-  GET URL + schema parse; PUT URL, CSRF header present, payload shape.
+  GET URL + schema parse; PATCH URL, CSRF header present, payload shape.
 - Svelte component testing follows whatever coverage level peers have (fetcher
   tests are the enforced layer; section components are exercised via
   `tests/client` only where peers do the same — match local convention).

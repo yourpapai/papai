@@ -387,10 +387,10 @@ describe('settings admin feature-flags routes', () => {
     expect(body.contexts.some((c) => c.contextId === userCtx)).toBe(true)
   })
 
-  test('PUT requires CSRF', async () => {
+  test('PATCH requires CSRF', async () => {
     const res = await call(
       new Request(URL_PATH, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: authHeaders(superSession),
         body: JSON.stringify({ contextId: userCtx, flags: FLAGS_ON }),
       }),
@@ -398,10 +398,10 @@ describe('settings admin feature-flags routes', () => {
     expect(res.status).toBe(403)
   })
 
-  test('PUT round-trips flags and returns the updated row', async () => {
+  test('PATCH round-trips flags and returns the updated row', async () => {
     const res = await call(
       new Request(URL_PATH, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: authHeaders(superSession, true),
         body: JSON.stringify({ contextId: userCtx, flags: FLAGS_ON }),
       }),
@@ -414,10 +414,10 @@ describe('settings admin feature-flags routes', () => {
     expect(body.contexts.find((c) => c.contextId === userCtx)?.flags).toEqual(FLAGS_ON)
   })
 
-  test('PUT rejects an unknown context with 422', async () => {
+  test('PATCH rejects an unknown context with 422', async () => {
     const res = await call(
       new Request(URL_PATH, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: authHeaders(superSession, true),
         body: JSON.stringify({ contextId: 'pi:bogus:ctx:bogus', flags: FLAGS_ON }),
       }),
@@ -425,10 +425,10 @@ describe('settings admin feature-flags routes', () => {
     expect(res.status).toBe(422)
   })
 
-  test('PUT rejects a schema-invalid body with 422', async () => {
+  test('PATCH rejects a schema-invalid body with 422', async () => {
     const res = await call(
       new Request(URL_PATH, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: authHeaders(superSession, true),
         body: JSON.stringify({ contextId: userCtx, flags: { result_compaction: 'yes' } }),
       }),
@@ -488,7 +488,7 @@ const FlagsSchema = z
   })
   .strict()
 
-const PutBodySchema = z.object({ contextId: z.string().min(1), flags: FlagsSchema }).strict()
+const PatchBodySchema = z.object({ contextId: z.string().min(1), flags: FlagsSchema }).strict()
 
 export function handleAdminFeatureFlagsRoutes(req: Request, _url: URL, pathname: string): Promise<Response> {
   if (pathname !== '/settings/api/admin/feature-flags') {
@@ -504,14 +504,14 @@ export function handleAdminFeatureFlagsRoutes(req: Request, _url: URL, pathname:
     return Promise.resolve(settingsJson(200, getAdminFeatureFlagsSnapshot()))
   }
 
-  if (req.method === 'PUT') {
-    return handlePut(req, auth.authed)
+  if (req.method === 'PATCH') {
+    return handlePatch(req, auth.authed)
   }
 
   return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
 }
 
-async function handlePut(req: Request, authed: Parameters<typeof requireSuperAdmin>[0]): Promise<Response> {
+async function handlePatch(req: Request, authed: Parameters<typeof requireSuperAdmin>[0]): Promise<Response> {
   const guard = requireSuperAdmin(authed, 'write')
   if (guard !== null) return guard
 
@@ -520,7 +520,7 @@ async function handlePut(req: Request, authed: Parameters<typeof requireSuperAdm
 
   const parsed = await parseJsonBody(req)
   if (!parsed.ok) return parsed.response
-  const body = PutBodySchema.safeParse(parsed.value)
+  const body = PatchBodySchema.safeParse(parsed.value)
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   try {
@@ -529,7 +529,7 @@ async function handlePut(req: Request, authed: Parameters<typeof requireSuperAdm
     return settingsJson(200, row)
   } catch (err) {
     if (err instanceof AdminFeatureFlagsError) return settingsJson(422, { error: err.message })
-    log.error({ err: err instanceof Error ? err.message : String(err) }, 'Settings admin feature-flags PUT failed')
+    log.error({ err: err instanceof Error ? err.message : String(err) }, 'Settings admin feature-flags PATCH failed')
     return settingsJson(500, { error: 'internal server error' })
   }
 }
@@ -599,7 +599,7 @@ test('fetchAdminFeatureFlags GETs and parses the snapshot', async () => {
   expect(result.contexts[0]!.label).toBe('alice')
 })
 
-test('saveAdminFeatureFlags PUTs with CSRF header', async () => {
+test('saveAdminFeatureFlags PATCHes with CSRF header', async () => {
   const { saveAdminFeatureFlags } = await import('../../../client/settings/admin-fetchers.js')
   setCsrfToken('csrf-ff')
   let seenCsrf = ''
@@ -614,7 +614,7 @@ test('saveAdminFeatureFlags PUTs with CSRF header', async () => {
     flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
   })
   expect(seenCsrf).toBe('csrf-ff')
-  expect(seenMethod).toBe('PUT')
+  expect(seenMethod).toBe('PATCH')
 })
 ```
 
@@ -664,7 +664,7 @@ export const saveAdminFeatureFlags = (input: {
   contextId: string
   flags: AdminFeatureFlagState
 }): Promise<AdminFeatureFlagRow> =>
-  writeJson('/settings/api/admin/feature-flags', 'PUT', input, (b) => AdminFeatureFlagRowSchema.parse(b))
+  writeJson('/settings/api/admin/feature-flags', 'PATCH', input, (b) => AdminFeatureFlagRowSchema.parse(b))
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**

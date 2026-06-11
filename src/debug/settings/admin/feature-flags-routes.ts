@@ -24,7 +24,7 @@ const FlagsSchema = z
   })
   .strict()
 
-const PutBodySchema = z.object({ contextId: z.string().min(1), flags: FlagsSchema }).strict()
+const PatchBodySchema = z.object({ contextId: z.string().min(1), flags: FlagsSchema }).strict()
 
 export function handleAdminFeatureFlagsRoutes(req: Request, _url: URL, pathname: string): Promise<Response> {
   if (pathname !== '/settings/api/admin/feature-flags') {
@@ -40,14 +40,14 @@ export function handleAdminFeatureFlagsRoutes(req: Request, _url: URL, pathname:
     return Promise.resolve(settingsJson(200, getAdminFeatureFlagsSnapshot()))
   }
 
-  if (req.method === 'PUT') {
-    return handlePut(req, auth.authed)
+  if (req.method === 'PATCH') {
+    return handlePatch(req, auth.authed)
   }
 
   return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
 }
 
-async function handlePut(req: Request, authed: Parameters<typeof requireSuperAdmin>[0]): Promise<Response> {
+async function handlePatch(req: Request, authed: Parameters<typeof requireSuperAdmin>[0]): Promise<Response> {
   const guard = requireSuperAdmin(authed, 'write')
   if (guard !== null) return guard
 
@@ -56,7 +56,7 @@ async function handlePut(req: Request, authed: Parameters<typeof requireSuperAdm
 
   const parsed = await parseJsonBody(req)
   if (!parsed.ok) return parsed.response
-  const body = PutBodySchema.safeParse(parsed.value)
+  const body = PatchBodySchema.safeParse(parsed.value)
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   try {
@@ -65,7 +65,7 @@ async function handlePut(req: Request, authed: Parameters<typeof requireSuperAdm
     return settingsJson(200, row)
   } catch (err) {
     if (err instanceof AdminFeatureFlagsError) return settingsJson(422, { error: err.message })
-    log.error({ err: err instanceof Error ? err.message : String(err) }, 'Settings admin feature-flags PUT failed')
+    log.error({ err: err instanceof Error ? err.message : String(err) }, 'Settings admin feature-flags PATCH failed')
     return settingsJson(500, { error: 'internal server error' })
   }
 }
