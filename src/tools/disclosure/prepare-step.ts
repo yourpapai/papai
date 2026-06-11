@@ -39,7 +39,10 @@ export function createDisclosurePrepareStep(
       if (!fallbackOpen) {
         fallbackOpen = true
         emitUser('disclosure:fallback', contextId, { stepNumber }, turnId)
-        log.warn({ contextId, stepNumber, turnId }, 'Disclosure stalled; opening all tools')
+        log.warn(
+          { contextId, stepNumber, turnId, reason: preLoadStall ? 'pre-load-stall' : 'meta-churn' },
+          'Disclosure stalled; opening all tools',
+        )
       }
       return {}
     }

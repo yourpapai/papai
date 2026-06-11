@@ -115,4 +115,23 @@ describe('createDisclosurePrepareStep', () => {
     expect(prep({ stepNumber: 6, steps: [metaStep, metaStep, realStep] })).toEqual({})
     expect(emitUser).toHaveBeenCalledTimes(1)
   })
+
+  it('a step mixing meta and real tool calls does not count toward churn', () => {
+    const session = freshSession()
+    session.markLoaded(['list_tasks'])
+    const prep = createDisclosurePrepareStep(session, 'ctx-1')
+    const mixedStep = { toolCalls: [{ toolName: 'search_tools' }, { toolName: 'list_tasks' }] }
+    const out = prep({ stepNumber: 5, steps: [mixedStep, mixedStep] })
+    expect(out.activeTools).toBeDefined()
+    expect(emitUser).not.toHaveBeenCalled()
+  })
+
+  it('an empty or too-short steps window never counts as churn after a load', () => {
+    const session = freshSession()
+    session.markLoaded(['list_tasks'])
+    const prep = createDisclosurePrepareStep(session, 'ctx-1')
+    expect(prep({ stepNumber: 5, steps: [] }).activeTools).toBeDefined()
+    expect(prep({ stepNumber: 6, steps: [metaStep] }).activeTools).toBeDefined()
+    expect(emitUser).not.toHaveBeenCalled()
+  })
 })
