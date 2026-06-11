@@ -287,6 +287,47 @@ describe('check.sh --skip-tests', () => {
 })
 
 describe('check.sh full mode', () => {
+  test('runs the server test suite serially when CI=true', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+        CI: 'true',
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(0)
+
+      const calls = readFileSync(logFile, 'utf8')
+      expect(calls).toContain('bun test')
+      expect(calls).not.toContain('bun test --parallel')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('runs the server test suite in parallel outside CI', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+        CI: '',
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
+
+      expect(result.exitCode).toBe(0)
+
+      const calls = readFileSync(logFile, 'utf8')
+      expect(calls).toContain('bun test --parallel')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
   test('invokes bun test directly without a concurrency override', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 

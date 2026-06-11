@@ -131,7 +131,7 @@ async function invokeLightweight(
       'Lightweight response appended to history',
     )
     const updatedHistory = [...history, ...assistantMessages]
-    if (shouldTriggerTrim(updatedHistory))
+    if (shouldTriggerTrim(updatedHistory, config.mainModel))
       void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
   }
   return resultTextOrDone(result.text)
@@ -181,7 +181,7 @@ async function invokeWithContext(
   if (assistantMessages.length > 0) {
     appendHistory(storageContextId, assistantMessages)
     const updatedHistory = [...history, ...assistantMessages]
-    if (shouldTriggerTrim(updatedHistory))
+    if (shouldTriggerTrim(updatedHistory, config.mainModel))
       void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
   }
   return resultTextOrDone(result.text)
@@ -243,6 +243,7 @@ async function runFullGeneration(
     configContextId,
     result,
     getCachedHistory(storageContextId),
+    config.mainModel,
   )
   return resultTextOrDone(result.text)
 }

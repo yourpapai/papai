@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import {
   askPermissionViaChat,
+  formatArguments,
   formatPermissionDecisionText,
+  formatPrompt,
   resolvePermissionRequest,
   resetPermissionPromptForTesting,
 } from '../../src/chat/permission-prompt.js'
@@ -53,7 +55,7 @@ describe('askPermissionViaChat', () => {
 
   test('posts an Allow/Deny prompt and resolves on allow', async () => {
     const { reply, getButtonCall } = makeReply()
-    const promise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'cleanup T-123' })
+    const promise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'cleanup T-123', args: {} })
 
     await tickAsync()
     const call = getButtonCall()
@@ -71,7 +73,7 @@ describe('askPermissionViaChat', () => {
 
   test('resolves on deny', async () => {
     const { reply, getButtonCall } = makeReply()
-    const promise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'r' })
+    const promise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'r', args: {} })
     await tickAsync()
     const btns = extractButtons(getButtonCall()!)
     const id = btns[0]!.callbackData.replace('perm:a:', '')
@@ -85,7 +87,7 @@ describe('askPermissionViaChat', () => {
 
   test('callback data uses 8-char base64url id', async () => {
     const { reply, getButtonCall } = makeReply()
-    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'r' })
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'r', args: {} })
     await tickAsync()
     const btns = extractButtons(getButtonCall()!)
     const id = btns[0]!.callbackData.replace('perm:a:', '')
@@ -94,7 +96,7 @@ describe('askPermissionViaChat', () => {
 
   test('prompt body contains tool name and reason', async () => {
     const { reply, getButtonCall } = makeReply()
-    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'cleanup' })
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'cleanup', args: {} })
     await tickAsync()
     const call = getButtonCall()!
     expect(call.body).toContain('delete_task')
@@ -106,6 +108,7 @@ describe('askPermissionViaChat', () => {
     void askPermissionViaChat(reply, 'ctx-1', {
       toolName: 'delete_task',
       reason: '*click here* [tap](https://attacker.example) `code` _italic_',
+      args: {},
     })
     await tickAsync()
     const body = getButtonCall()!.body
@@ -121,14 +124,14 @@ describe('askPermissionViaChat', () => {
 
   test('reason without special characters is unchanged', async () => {
     const { reply, getButtonCall } = makeReply()
-    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'plain text reason' })
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'plain text reason', args: {} })
     await tickAsync()
     expect(getButtonCall()!.body).toContain('plain text reason')
   })
 
   test('tool name backticks in template still render as code span', async () => {
     const { reply, getButtonCall } = makeReply()
-    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'no markdown' })
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'no markdown', args: {} })
     await tickAsync()
     expect(getButtonCall()!.body).toContain('`delete_task`')
   })
@@ -145,5 +148,76 @@ describe('formatPermissionDecisionText', () => {
     expect(formatPermissionDecisionText('Run `delete_task`?\n\nReason', 'deny')).toBe(
       'Run `delete_task`?\n\nReason\n\nDenied.',
     )
+  })
+})
+
+describe('formatArguments', () => {
+  test('formats flat object', () => {
+    expect(formatArguments({ id: 'task-123', name: 'Test' })).toBe('id: task-123\nname: Test')
+  })
+
+  test('flattens nested objects', () => {
+    expect(formatArguments({ assignee: { name: 'John' } })).toBe('assignee.name: John')
+  })
+
+  test('formats arrays as comma-separated', () => {
+    expect(formatArguments({ tags: ['bug', 'urgent'] })).toBe('tags: bug, urgent')
+  })
+
+  test('masks sensitive values', () => {
+    expect(formatArguments({ apiKey: 'sk-abc123def' })).toBe('apiKey: sk-...def')
+  })
+
+  test('masks sensitive field names', () => {
+    expect(formatArguments({ token: 'abc123def456' })).toBe('token: abc...456')
+  })
+
+  test('handles empty args', () => {
+    expect(formatArguments({})).toBe('')
+  })
+
+  test('flattens up to 3 levels, then shows [Object]', () => {
+    const deep = { a: { b: { c: { d: 'value' } } } }
+    expect(formatArguments(deep)).toBe('a.b.c.d: value')
+  })
+
+  test('shows [Object] for deeply nested objects beyond 3 levels', () => {
+    const veryDeep = { a: { b: { c: { d: { e: 'value' } } } } }
+    expect(formatArguments(veryDeep)).toBe('a.b.c.d: [Object]')
+  })
+
+  test('handles null values', () => {
+    expect(formatArguments({ id: null })).toBe('id: (empty)')
+  })
+
+  test('handles undefined values', () => {
+    expect(formatArguments({ id: undefined })).toBe('id: (empty)')
+  })
+
+  test('handles boolean values', () => {
+    expect(formatArguments({ active: true })).toBe('active: true')
+  })
+
+  test('handles numeric values', () => {
+    expect(formatArguments({ count: 42 })).toBe('count: 42')
+  })
+})
+
+describe('formatPrompt', () => {
+  test('includes arguments before reason', () => {
+    const result = formatPrompt('delete_task', 'cleanup', { id: 'task-123' })
+    expect(result).toContain('**Arguments:**\nid: task-123')
+    expect(result.indexOf('**Arguments:**')).toBeLessThan(result.indexOf('cleanup'))
+  })
+
+  test('skips arguments section when args empty', () => {
+    const result = formatPrompt('delete_task', 'cleanup', {})
+    expect(result).not.toContain('**Arguments:**')
+    expect(result).toContain('🔐 Run `delete_task`?\n\ncleanup')
+  })
+
+  test('escapes markdown in reason', () => {
+    const result = formatPrompt('delete_task', 'cleanup *task*', { id: 'task-123' })
+    expect(result).toContain('cleanup \\*task\\*')
   })
 })

@@ -11,7 +11,15 @@ import { userCachesForTesting, setCachedConfig } from '../src/cache.js'
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import * as schema from '../src/db/schema.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../src/instances/admin-store.js'
-import { addUser, removeUser, isAuthorized, isDemoUser, resolveUserByUsername, listUsers } from '../src/users.js'
+import {
+  addUser,
+  addPendingUser,
+  removeUser,
+  isAuthorized,
+  isDemoUser,
+  resolveUserByUsername,
+  listUsers,
+} from '../src/users.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'telegram-default'
@@ -34,7 +42,11 @@ describe('addUser', () => {
   })
 
   test('adds a user by ID', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
     const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, '111')).get()
     const definedUser = requireDefined(user)
     expect(definedUser.addedBy).toBe('999')
@@ -43,7 +55,12 @@ describe('addUser', () => {
   })
 
   test('adds a user with username', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999', username: 'testuser' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+      username: 'testuser',
+    })
     const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, '111')).get()
     const definedUser = requireDefined(user)
     expect(definedUser.username).toBe('testuser')
@@ -51,16 +68,33 @@ describe('addUser', () => {
   })
 
   test('does not overwrite existing user when adding by ID', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '888' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '888',
+    })
     const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, '111')).get()
     const definedUser = requireDefined(user)
     expect(definedUser.addedBy).toBe('999')
   })
 
   test('addUser with existing ID and new username overwrites username', () => {
-    addUser({ userId: '123', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin' })
-    addUser({ userId: '123', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin', username: 'newname' })
+    addUser({
+      userId: '123',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin',
+    })
+    addUser({
+      userId: '123',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin',
+      username: 'newname',
+    })
     const users = listUsers()
     const user = users.find((u) => u.platform_user_id === '123')
     expect(user).toBeDefined()
@@ -68,8 +102,17 @@ describe('addUser', () => {
   })
 
   test('addUser with existing ID replaces username with null when no username provided', () => {
-    addUser({ userId: '456', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin', username: 'oldname' })
-    addUser({ userId: '456', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin' })
+    addUser({
+      userId: '456',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin',
+      username: 'oldname',
+    })
+    addUser({
+      userId: '456',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin',
+    })
     const users = listUsers()
     const user = users.find((u) => u.platform_user_id === '456')
     expect(user).toBeDefined()
@@ -77,8 +120,16 @@ describe('addUser', () => {
   })
 
   test('allows the same platform user ID on different platform instances', () => {
-    addUser({ userId: 'shared-user', platformInstanceId: 'telegram-default', addedBy: 'admin-1' })
-    addUser({ userId: 'shared-user', platformInstanceId: 'discord-default', addedBy: 'admin-2' })
+    addUser({
+      userId: 'shared-user',
+      platformInstanceId: 'telegram-default',
+      addedBy: 'admin-1',
+    })
+    addUser({
+      userId: 'shared-user',
+      platformInstanceId: 'discord-default',
+      addedBy: 'admin-2',
+    })
 
     expect(listUsers('telegram-default').map((u) => `${u.platform_instance_id}:${u.platform_user_id}`)).toEqual([
       'telegram-default:shared-user',
@@ -109,15 +160,35 @@ describe('addUser', () => {
   })
 
   test('reuses username row on repeated add for same platform', () => {
-    addUser({ userId: 'placeholder-one', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin', username: 'alice' })
-    addUser({ userId: 'placeholder-two', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin', username: 'alice' })
+    addUser({
+      userId: 'placeholder-one',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin',
+      username: 'alice',
+    })
+    addUser({
+      userId: 'placeholder-two',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin',
+      username: 'alice',
+    })
 
     expect(listUsers(TEST_PLATFORM_ID).filter((user) => user.username === 'alice')).toHaveLength(1)
   })
 
   test('keeps same username rows independent across platform instances', () => {
-    addUser({ userId: 'placeholder-tg', platformInstanceId: 'telegram-default', addedBy: 'admin', username: 'alice' })
-    addUser({ userId: 'placeholder-ds', platformInstanceId: 'discord-default', addedBy: 'admin', username: 'alice' })
+    addUser({
+      userId: 'placeholder-tg',
+      platformInstanceId: 'telegram-default',
+      addedBy: 'admin',
+      username: 'alice',
+    })
+    addUser({
+      userId: 'placeholder-ds',
+      platformInstanceId: 'discord-default',
+      addedBy: 'admin',
+      username: 'alice',
+    })
 
     expect(
       listUsers()
@@ -136,21 +207,34 @@ describe('removeUser', () => {
   })
 
   test('removes a user by ID', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
     removeUser('111', TEST_PLATFORM_ID)
     const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, '111')).get()
     expect(user).toBeUndefined()
   })
 
   test('removes a user by username', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999', username: 'testuser' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+      username: 'testuser',
+    })
     removeUser('testuser', TEST_PLATFORM_ID)
     const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, '111')).get()
     expect(user).toBeUndefined()
   })
 
   test('returns true when user is removed', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
     const result = removeUser('111', TEST_PLATFORM_ID)
     expect(result).toBe(true)
   })
@@ -161,7 +245,11 @@ describe('removeUser', () => {
   })
 
   test('returns false when removing same user twice', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
     const firstResult = removeUser('111', TEST_PLATFORM_ID)
     expect(firstResult).toBe(true)
     const secondResult = removeUser('111', TEST_PLATFORM_ID)
@@ -169,7 +257,11 @@ describe('removeUser', () => {
   })
 
   test('evicts cache entry when a user is removed', () => {
-    addUser({ userId: 'cache-test', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
+    addUser({
+      userId: 'cache-test',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
     setCachedConfig('cache-test', 'some_key', 'some_value')
 
     expect(userCachesForTesting.has('cache-test')).toBe(true)
@@ -181,17 +273,43 @@ describe('removeUser', () => {
   })
 
   test('removes recurring tasks only for scoped platform owner', () => {
-    const telegramOwner = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'same-id' })
-    const discordOwner = toScopedContextId({ platformInstanceId: 'discord-default', nativeContextId: 'same-id' })
-    addUser({ userId: 'same-id', platformInstanceId: 'telegram-default', addedBy: 'admin' })
-    addUser({ userId: 'same-id', platformInstanceId: 'discord-default', addedBy: 'admin' })
+    const telegramOwner = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'same-id',
+    })
+    const discordOwner = toScopedContextId({
+      platformInstanceId: 'discord-default',
+      nativeContextId: 'same-id',
+    })
+    addUser({
+      userId: 'same-id',
+      platformInstanceId: 'telegram-default',
+      addedBy: 'admin',
+    })
+    addUser({
+      userId: 'same-id',
+      platformInstanceId: 'discord-default',
+      addedBy: 'admin',
+    })
     testDb
       .insert(schema.recurringTasks)
-      .values({ id: 'tg-recurring', userId: telegramOwner, projectId: 'p1', title: 'tg task', triggerType: 'cron' })
+      .values({
+        id: 'tg-recurring',
+        userId: telegramOwner,
+        projectId: 'p1',
+        title: 'tg task',
+        triggerType: 'cron',
+      })
       .run()
     testDb
       .insert(schema.recurringTasks)
-      .values({ id: 'ds-recurring', userId: discordOwner, projectId: 'p1', title: 'ds task', triggerType: 'cron' })
+      .values({
+        id: 'ds-recurring',
+        userId: discordOwner,
+        projectId: 'p1',
+        title: 'ds task',
+        triggerType: 'cron',
+      })
       .run()
 
     expect(removeUser('same-id', 'telegram-default')).toBe(true)
@@ -209,7 +327,11 @@ describe('isAuthorized', () => {
   })
 
   test('returns true for authorized user', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
     expect(isAuthorized('111', TEST_PLATFORM_ID)).toBe(true)
   })
 
@@ -225,8 +347,16 @@ describe('isDemoUser', () => {
   })
 
   test('classifies demo users within the platform instance only', () => {
-    addUser({ userId: 'shared-user', platformInstanceId: 'telegram-default', addedBy: 'demo-auto' })
-    addUser({ userId: 'shared-user', platformInstanceId: 'discord-default', addedBy: 'admin' })
+    addUser({
+      userId: 'shared-user',
+      platformInstanceId: 'telegram-default',
+      addedBy: 'demo-auto',
+    })
+    addUser({
+      userId: 'shared-user',
+      platformInstanceId: 'discord-default',
+      addedBy: 'admin',
+    })
 
     expect(isDemoUser('shared-user', 'telegram-default')).toBe(true)
     expect(isDemoUser('shared-user', 'discord-default')).toBe(false)
@@ -242,7 +372,12 @@ describe('resolveUserByUsername', () => {
   })
 
   test('resolves placeholder ID to real platform user ID', () => {
-    addUser({ userId: 'placeholder-abc', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999', username: 'alice' })
+    addUser({
+      userId: 'placeholder-abc',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+      username: 'alice',
+    })
     expect(resolveUserByUsername('555', 'alice', TEST_PLATFORM_ID)).toBe(true)
     const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, '555')).get()
     expect(user).toBeDefined()
@@ -251,7 +386,12 @@ describe('resolveUserByUsername', () => {
   })
 
   test('returns true when ID already matches', () => {
-    addUser({ userId: '555', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999', username: 'alice' })
+    addUser({
+      userId: '555',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+      username: 'alice',
+    })
     expect(resolveUserByUsername('555', 'alice', TEST_PLATFORM_ID)).toBe(true)
   })
 
@@ -273,12 +413,28 @@ describe('resolveUserByUsername', () => {
   })
 
   test('updates one placeholder only', () => {
-    addUser({ userId: 'placeholder-one', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin', username: 'alice' })
+    addUser({
+      userId: 'placeholder-one',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin',
+      username: 'alice',
+    })
 
     expect(resolveUserByUsername('real-alice', 'alice', TEST_PLATFORM_ID)).toBe(true)
     const aliceUsers = listUsers(TEST_PLATFORM_ID).filter((user) => user.username === 'alice')
     expect(aliceUsers).toHaveLength(1)
     expect(requireDefined(aliceUsers[0]).platform_user_id).toBe('real-alice')
+  })
+
+  test('binds case-insensitively', () => {
+    addUser({
+      userId: 'placeholder-ci',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+      username: 'F4Dev',
+    })
+    expect(resolveUserByUsername('777', 'f4dev', TEST_PLATFORM_ID)).toBe(true)
+    expect(isAuthorized('777', TEST_PLATFORM_ID)).toBe(true)
   })
 })
 
@@ -289,8 +445,16 @@ describe('listUsers', () => {
   })
 
   test('returns all users', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
-    addUser({ userId: '222', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
+    addUser({
+      userId: '222',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+    })
     const users = listUsers()
     expect(users).toHaveLength(2)
   })
@@ -300,7 +464,12 @@ describe('listUsers', () => {
   })
 
   test('includes username when set', () => {
-    addUser({ userId: '111', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999', username: 'testuser' })
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+      username: 'testuser',
+    })
     const users = listUsers()
     const user = requireDefined(users[0])
     expect(user.username).toBe('testuser')
@@ -314,7 +483,11 @@ describe('platform-scoped authorization', () => {
   })
 
   test('authorizes only on the platform instance where the user was added', () => {
-    addUser({ userId: '111', platformInstanceId: 'telegram-default', addedBy: 'admin-1' })
+    addUser({
+      userId: '111',
+      platformInstanceId: 'telegram-default',
+      addedBy: 'admin-1',
+    })
 
     expect(isAuthorized('111', 'telegram-default')).toBe(true)
     expect(isAuthorized('111', 'discord-default')).toBe(false)
@@ -341,9 +514,104 @@ describe('platform-scoped authorization', () => {
   })
 
   test('listUsers can return only one platform instance', () => {
-    addUser({ userId: 'tg-user', platformInstanceId: 'telegram-default', addedBy: 'admin-1' })
-    addUser({ userId: 'ds-user', platformInstanceId: 'discord-default', addedBy: 'admin-1' })
+    addUser({
+      userId: 'tg-user',
+      platformInstanceId: 'telegram-default',
+      addedBy: 'admin-1',
+    })
+    addUser({
+      userId: 'ds-user',
+      platformInstanceId: 'discord-default',
+      addedBy: 'admin-1',
+    })
 
     expect(listUsers('telegram-default').map((u) => u.platform_user_id)).toEqual(['tg-user'])
+  })
+})
+
+describe('addPendingUser', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+  })
+
+  test('creates a placeholder row with the cleaned username', () => {
+    const added = addPendingUser({
+      username: '@f4dev',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin-1',
+    })
+    expect(added).toBe('created')
+    const rows = listUsers(TEST_PLATFORM_ID).filter((u) => u.username === 'f4dev')
+    expect(rows).toHaveLength(1)
+    const row = requireDefined(rows[0])
+    expect(row.platform_user_id.startsWith('placeholder-')).toBe(true)
+    expect(row.added_by).toBe('admin-1')
+  })
+
+  test('rejects an empty username', () => {
+    expect(
+      addPendingUser({
+        username: '@',
+        platformInstanceId: TEST_PLATFORM_ID,
+        addedBy: 'admin-1',
+      }),
+    ).toBe('invalid')
+    expect(
+      addPendingUser({
+        username: '   ',
+        platformInstanceId: TEST_PLATFORM_ID,
+        addedBy: 'admin-1',
+      }),
+    ).toBe('invalid')
+    expect(listUsers(TEST_PLATFORM_ID)).toHaveLength(0)
+  })
+
+  test('is idempotent case-insensitively', () => {
+    expect(
+      addPendingUser({
+        username: '@F4Dev',
+        platformInstanceId: TEST_PLATFORM_ID,
+        addedBy: 'admin-1',
+      }),
+    ).toBe('created')
+    expect(
+      addPendingUser({
+        username: 'f4dev',
+        platformInstanceId: TEST_PLATFORM_ID,
+        addedBy: 'admin-1',
+      }),
+    ).toBe('pending_exists')
+    expect(listUsers(TEST_PLATFORM_ID)).toHaveLength(1)
+  })
+
+  test('does not duplicate when a real user already holds the username', () => {
+    addUser({
+      userId: '111',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: 'admin-1',
+      username: 'jane',
+    })
+    expect(
+      addPendingUser({
+        username: '@Jane',
+        platformInstanceId: TEST_PLATFORM_ID,
+        addedBy: 'admin-1',
+      }),
+    ).toBe('already_resolved')
+    expect(listUsers(TEST_PLATFORM_ID)).toHaveLength(1)
+    expect(requireDefined(listUsers(TEST_PLATFORM_ID)[0]).platform_user_id).toBe('111')
+  })
+
+  test('pending entry binds and authorizes on first contact', () => {
+    expect(
+      addPendingUser({
+        username: '@f4dev',
+        platformInstanceId: TEST_PLATFORM_ID,
+        addedBy: 'admin-1',
+      }),
+    ).toBe('created')
+    expect(resolveUserByUsername('424242', 'f4dev', TEST_PLATFORM_ID)).toBe(true)
+    expect(isAuthorized('424242', TEST_PLATFORM_ID)).toBe(true)
   })
 })

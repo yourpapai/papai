@@ -1031,8 +1031,7 @@ describe('processMessage', () => {
       await processMessage(reply, 'tool-details-ctx', 'user-1', null, 'create a task', 'dm')
 
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
-      expect(textCalls[1]).toContain('create_task')
+      expect(textCalls[1]).toContain('Tool `create_task` failed')
     })
 
     test('handles non-Error objects in tool failure callback without default warning', async () => {
@@ -1150,7 +1149,7 @@ describe('processMessage', () => {
       await processMessage(reply, 'reasoning-visible-ctx', 'user-1', null, 'think', 'dm')
 
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Reasoning')
       expect(textCalls[1]).toContain('Provider reasoning available')
       expect(textCalls[1]).not.toContain('visible reasoning summary')
     })
@@ -1181,7 +1180,7 @@ describe('processMessage', () => {
       await processMessage(reply, 'reasoning-raw-ctx', 'user-1', null, 'think', 'dm')
 
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Reasoning')
       expect(textCalls[1]).toContain('raw reasoning payload')
     })
 
@@ -1213,7 +1212,7 @@ describe('processMessage', () => {
       await processMessage(reply, threadCtx, 'user-1', null, 'think', 'group', parentConfigCtx)
 
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Reasoning')
       expect(textCalls[1]).toContain('Provider reasoning available')
       expect(textCalls[1]).not.toContain('thread scoped reasoning')
     })
@@ -1254,7 +1253,7 @@ describe('processMessage', () => {
 
       expect(textCalls).toHaveLength(2)
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Reasoning')
       const history = getCachedHistory(ctx)
       expect(history).toHaveLength(2)
       expect(history[0]!.role).toBe('user')

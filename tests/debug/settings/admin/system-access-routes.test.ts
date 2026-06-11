@@ -3,13 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
 import { listAuthorizedGroups } from '../../../../src/authorized-groups.js'
+import { ChatRouter } from '../../../../src/chat/router.js'
 import { isScopedContextId, toScopedContextId, toScopedThreadContextId } from '../../../../src/chat/scoped-context.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../../../src/debug/chat-router-runtime.js'
 import { handleAdminSystemAccessRoutes } from '../../../../src/debug/settings/admin/system-access-routes.js'
 import { upsertKnownGroupContext } from '../../../../src/group-settings/registry.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
@@ -18,6 +20,23 @@ import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../../util
 import { authHeaders, establishSession, type SettingsSession } from '../helpers.js'
 
 const OkResponseSchema = z.object({ ok: z.literal(true) })
+
+const mockResolveUserId = mock((username: string, _context?: unknown) => {
+  if (username.includes('ghost')) return Promise.resolve<string | null>(null)
+  return Promise.resolve<string | null>(/^\d+$/u.test(username) ? username : `resolved-${username}`)
+})
+
+class MockChatRouter extends ChatRouter {
+  constructor() {
+    super(() => {
+      throw new Error('unused test factory')
+    })
+  }
+
+  override resolveUserId(username: string, context?: unknown): Promise<string | null> {
+    return mockResolveUserId(username, context)
+  }
+}
 
 describe('settings admin system/access routes', () => {
   let adminSession: SettingsSession
@@ -32,6 +51,12 @@ describe('settings admin system/access routes', () => {
     addAdmin('admin-1', 'pi-1')
     adminSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'admin-1' })
     userSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'user-1' })
+    mockResolveUserId.mockClear()
+    setRuntimeChatRouter(new MockChatRouter())
+  })
+
+  afterEach(() => {
+    clearRuntimeChatRouter()
   })
 
   test('GET system returns an LLM snapshot with masked api key', async () => {
@@ -58,7 +83,98 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/users',
     )
     expect(res.status).toBe(200)
-    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'newbie')).toBe(true)
+    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-newbie')).toBe(true)
+  })
+
+  test('POST users with username passes platformInstanceId to resolver', async () => {
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@f4dev' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(200)
+    expect(mockResolveUserId).toHaveBeenCalledWith('@f4dev', expect.objectContaining({ platformInstanceId: 'pi-1' }))
+    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-@f4dev')).toBe(true)
+  })
+
+  test('POST users with unresolvable username creates a pending entry', async () => {
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@ghost' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), pending: z.literal(true) }).parse(await res.json())
+    expect(body.pending).toBe(true)
+    const pendingRow = listUsers('pi-1').find((u) => u.username === 'ghost')
+    expect(pendingRow).toBeDefined()
+    expect(pendingRow!.platform_user_id.startsWith('placeholder-')).toBe(true)
+    expect(pendingRow!.added_by).toBe('admin-1')
+  })
+
+  test('POST users with unresolvable username of an existing real user returns ok without pending', async () => {
+    addUser({ userId: '4242', platformInstanceId: 'pi-1', addedBy: 'admin-1', username: 'ghostjane' })
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@ghostjane' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), pending: z.boolean().optional() }).parse(await res.json())
+    expect(body.pending).toBeUndefined()
+    const ghostjaneRows = listUsers('pi-1').filter((u) => u.username === 'ghostjane')
+    expect(ghostjaneRows).toHaveLength(1)
+    expect(ghostjaneRows[0]!.platform_user_id.startsWith('placeholder-')).toBe(false)
+  })
+
+  test('POST users without a chat router creates a pending entry', async () => {
+    clearRuntimeChatRouter()
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@offline' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(200)
+    z.object({ ok: z.literal(true), pending: z.literal(true) }).parse(await res.json())
+    const offlineRow = listUsers('pi-1').find((u) => u.username === 'offline')
+    expect(offlineRow).toBeDefined()
+    expect(offlineRow!.platform_user_id.startsWith('placeholder-')).toBe(true)
+  })
+
+  test('POST users with only "@" returns 422', async () => {
+    // no router → unresolved with empty username
+    clearRuntimeChatRouter()
+    const url = new URL('https://x/settings/api/admin/users')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@' }),
+      }),
+      url,
+      '/settings/api/admin/users',
+    )
+    expect(res.status).toBe(422)
   })
 
   test('non-admin POST users returns 403', async () => {
@@ -117,7 +233,7 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/users',
     )
     assert(
-      listUsers('pi-1').some((u) => u.platform_user_id === 'to-remove'),
+      listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-to-remove'),
       'user should exist before delete',
     )
 
@@ -126,14 +242,14 @@ describe('settings admin system/access routes', () => {
       new Request(deleteUrl, {
         method: 'DELETE',
         headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'to-remove' }),
+        body: JSON.stringify({ userId: 'resolved-to-remove' }),
       }),
       deleteUrl,
       '/settings/api/admin/users',
     )
     expect(res.status).toBe(200)
     OkResponseSchema.parse(await res.json())
-    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'to-remove')).toBe(false)
+    expect(listUsers('pi-1').some((u) => u.platform_user_id === 'resolved-to-remove')).toBe(false)
   })
 
   test('admin GET groups returns 200 with groups array', async () => {

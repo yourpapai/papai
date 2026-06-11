@@ -10,6 +10,7 @@ import {
 import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
+  AddAdminUserResponseSchema,
   AdminByokResponseSchema,
   AdminGroupsResponseSchema,
   AdminInstancesResponseSchema,
@@ -19,6 +20,7 @@ import {
   AnnounceResultSchema,
   PluginApprovalResultSchema,
   ProviderTypesResponseSchema,
+  type AddAdminUserResponse,
   type AdminByokResponse,
   type AdminGroupsResponse,
   type AdminInstancesResponse,
@@ -106,8 +108,8 @@ export const patchAdminByok = (input: { contextId: string; enabled: boolean }): 
 export const fetchAdminUsers = (): Promise<AdminUsersResponse> =>
   getJson('/settings/api/admin/users', (b) => AdminUsersResponseSchema.parse(b))
 
-export const addAdminUser = (input: { userId: string; username?: string }): Promise<unknown> =>
-  writeJson('/settings/api/admin/users', 'POST', input, (b) => b)
+export const addAdminUser = (input: { userId: string; username?: string }): Promise<AddAdminUserResponse> =>
+  writeJson('/settings/api/admin/users', 'POST', input, (b) => AddAdminUserResponseSchema.parse(b))
 
 export const removeAdminUser = (input: { userId: string }): Promise<unknown> =>
   writeJson('/settings/api/admin/users', 'DELETE', input, (b) => b)

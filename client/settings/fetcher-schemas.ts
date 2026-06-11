@@ -257,6 +257,9 @@ export const AdminUsersResponseSchema = z.object({ users: z.array(AdminUserRowSc
 export type AdminUserRow = z.infer<typeof AdminUserRowSchema>
 export type AdminUsersResponse = z.infer<typeof AdminUsersResponseSchema>
 
+export const AddAdminUserResponseSchema = z.object({ ok: z.boolean(), pending: z.boolean().optional() }).loose()
+export type AddAdminUserResponse = z.infer<typeof AddAdminUserResponseSchema>
+
 export const AdminGroupRowSchema = z
   .object({ group_id: z.string(), added_by: z.string(), added_at: z.string() })
   .loose()

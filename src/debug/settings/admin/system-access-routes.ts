@@ -14,8 +14,9 @@ import {
 import { listKnownGroupContextsForPlatform } from '../../../group-settings/admin-group-list.js'
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
-import { addUser, listUsers, removeUser } from '../../../users.js'
+import { addPendingUser, addUser, listUsers, removeUser } from '../../../users.js'
 import { applyAdminLlmUpdate, getAdminLlmSnapshot } from '../../admin-llm.js'
+import { resolveSettingsUserId } from '../resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
 import { requireAdmin } from './admin-guard.js'
 
@@ -73,8 +74,26 @@ async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): 
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   if (req.method === 'POST') {
+    const resolution = await resolveSettingsUserId(body.data.userId, authed.principal)
+    if (resolution.kind === 'unresolved') {
+      const result = addPendingUser({
+        username: resolution.username,
+        platformInstanceId: authed.principal.platformInstanceId,
+        addedBy: authed.principal.platformUserId,
+      })
+      if (result === 'invalid') return settingsJson(422, { error: 'invalid request' })
+      if (result === 'already_resolved') {
+        log.info(
+          { platformInstanceId: authed.principal.platformInstanceId },
+          'Settings admin add matched existing user',
+        )
+        return settingsJson(200, { ok: true })
+      }
+      log.info({ platformInstanceId: authed.principal.platformInstanceId }, 'Settings admin added pending user')
+      return settingsJson(200, { ok: true, pending: true })
+    }
     addUser({
-      userId: body.data.userId,
+      userId: resolution.userId,
       platformInstanceId: authed.principal.platformInstanceId,
       addedBy: authed.principal.platformUserId,
       username: body.data.username,

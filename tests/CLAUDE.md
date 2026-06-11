@@ -4,9 +4,10 @@ Runtime: **Bun** test runner (`bun:test`). No Jest or Vitest.
 
 ## Parallel Execution & Isolation
 
-The default server-side run (`bun run test` / CI) is `bun test --parallel`: each test
-file runs in its own worker process (implies `--isolate`). Tests **must** be
-isolation-clean:
+The default local server-side run (`bun run test`) is `bun test --parallel`: each test
+file runs in its own worker process (implies `--isolate`). CI (`scripts/check.sh` with
+`CI=true`) runs the suite serially to keep the 4-vCPU runner stable, but tests **must**
+still be isolation-clean:
 
 - No reliance on cross-file shared module/global state or test ordering.
 - No fixed-wall-clock timing assertions (e.g. `await wait(100); expect(count).toBeGreaterThanOrEqual(1)`).

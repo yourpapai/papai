@@ -92,6 +92,7 @@ export function persistProactiveResults(
   configContextId: string,
   result: LlmResult,
   history: readonly ModelMessage[],
+  mainModel: string,
 ): void {
   const newFacts = extractFactsFromSdkResults(extractFactToolCalls(result), extractFactToolResults(result))
   for (const fact of newFacts) upsertFact(storageContextId, fact)
@@ -105,7 +106,8 @@ export function persistProactiveResults(
   if (msgs.length > 0) {
     appendHistory(storageContextId, msgs)
     const updated = [...history, ...msgs]
-    if (shouldTriggerTrim(updated)) void runTrimInBackground(storageContextId, updated, undefined, configContextId)
+    if (shouldTriggerTrim(updated, mainModel))
+      void runTrimInBackground(storageContextId, updated, undefined, configContextId)
   }
   log.debug({ userId: creatorId, toolCalls: toolCallCount(result) }, 'Proactive LLM response received')
 }

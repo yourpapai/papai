@@ -14,6 +14,7 @@ import { listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { requireScope } from '../../settings/scope-guard.js'
+import { resolveSettingsUserId } from './resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-group' })
@@ -64,7 +65,13 @@ async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsReq
   if (!outcome.ok) return outcome.response
 
   if (req.method === 'POST') {
-    addGroupMember(outcome.group.contextId, body.data.userId, authed.principal.platformUserId)
+    const resolution = await resolveSettingsUserId(body.data.userId, authed.principal)
+    if (resolution.kind === 'unresolved') {
+      return settingsJson(422, {
+        error: `could not resolve "${body.data.userId}" to a user ID — use the numeric user ID`,
+      })
+    }
+    addGroupMember(outcome.group.contextId, resolution.userId, authed.principal.platformUserId)
     log.info({ contextId: outcome.group.contextId }, 'Settings group member added')
   } else {
     removeGroupMember(outcome.group.contextId, body.data.userId)

@@ -151,7 +151,8 @@ describe('Story 4: Key facts remembered after read', () => {
       },
     ]
 
-    const contextMessage = buildMemoryContextMessage(null, facts)
+    // Pin "now" near last_seen so the entity is fresh and not evicted by age.
+    const contextMessage = buildMemoryContextMessage(null, facts, Date.parse('2026-03-02T00:00:00Z'))
 
     // Verify the LLM context contains the project name
     expect(contextMessage).not.toBeNull()

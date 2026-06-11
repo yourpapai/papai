@@ -89,7 +89,11 @@ describe('Mattermost action callbacks', () => {
           return Promise.resolve()
         },
       }
-      void askPermissionViaChat(promptReply, expectedStorageContextId, { toolName: 'delete_task', reason: 'cleanup' })
+      void askPermissionViaChat(promptReply, expectedStorageContextId, {
+        toolName: 'delete_task',
+        reason: 'cleanup',
+        args: {},
+      })
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 0)
       })

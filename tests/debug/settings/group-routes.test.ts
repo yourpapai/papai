@@ -3,13 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { z } from 'zod'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
+import { ChatRouter } from '../../../src/chat/router.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { taskInstances } from '../../../src/db/instance-schema.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../../src/debug/chat-router-runtime.js'
 import { handleGroupRoutes } from '../../../src/debug/settings/group-routes.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
 import { getContextSettings } from '../../../src/instances/context-store.js'
@@ -28,6 +30,23 @@ const TaskInstanceGetSchema = z.object({
   taskInstanceId: z.string().nullable(),
   available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
 })
+
+const mockResolveUserId = mock((username: string, _context?: unknown) => {
+  if (username.includes('ghost')) return Promise.resolve<string | null>(null)
+  return Promise.resolve<string | null>(/^\d+$/u.test(username) ? username : `resolved-${username}`)
+})
+
+class MockChatRouter extends ChatRouter {
+  constructor() {
+    super(() => {
+      throw new Error('unused test factory')
+    })
+  }
+
+  override resolveUserId(username: string, context?: unknown): Promise<string | null> {
+    return mockResolveUserId(username, context)
+  }
+}
 
 /** Seed a manageable group for the test principal (u-1, pi-1) and return its contextId. */
 function seedManageableGroup(): string {
@@ -58,6 +77,12 @@ describe('settings group routes', () => {
     seedTestPlatformInstance({ id: 'pi-1' })
     addUser({ userId: 'u-1', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
     session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-1' })
+    mockResolveUserId.mockClear()
+    setRuntimeChatRouter(new MockChatRouter())
+  })
+
+  afterEach(() => {
+    clearRuntimeChatRouter()
   })
 
   test('members GET on a personal context is 403 (group scope required)', async () => {
@@ -140,7 +165,43 @@ describe('settings group routes', () => {
     )
     expect(getRes.status).toBe(200)
     const body = MembersDetailSchema.parse(await getRes.json())
-    expect(body.members.some((m) => m.user_id === 'member-1')).toBe(true)
+    expect(body.members.some((m) => m.user_id === 'resolved-member-1')).toBe(true)
+  })
+
+  test('members POST with @username passes platformInstanceId to resolver', async () => {
+    const contextId = seedManageableGroup()
+
+    const postUrl = new URL('https://x/settings/api/group/members')
+    const postRes = await handleGroupRoutes(
+      new Request(postUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@someuser', contextId }),
+      }),
+      postUrl,
+      '/settings/api/group/members',
+    )
+    expect(postRes.status).toBe(200)
+    expect(mockResolveUserId).toHaveBeenCalledWith('@someuser', expect.objectContaining({ platformInstanceId: 'pi-1' }))
+  })
+
+  test('members POST with unresolvable username returns 422 with guidance', async () => {
+    const contextId = seedManageableGroup()
+
+    const postUrl = new URL('https://x/settings/api/group/members')
+    const postRes = await handleGroupRoutes(
+      new Request(postUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '@ghost-member', contextId }),
+      }),
+      postUrl,
+      '/settings/api/group/members',
+    )
+    expect(postRes.status).toBe(422)
+    await expect(postRes.json()).resolves.toEqual({
+      error: 'could not resolve "@ghost-member" to a user ID — use the numeric user ID',
+    })
   })
 
   test('members DELETE then GET — removed member no longer present', async () => {
@@ -162,7 +223,7 @@ describe('settings group routes', () => {
       new Request(delUrl, {
         method: 'DELETE',
         headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'member-1', contextId }),
+        body: JSON.stringify({ userId: 'resolved-member-1', contextId }),
       }),
       delUrl,
       '/settings/api/group/members',
@@ -177,7 +238,7 @@ describe('settings group routes', () => {
     )
     expect(getRes.status).toBe(200)
     const body = MembersDetailSchema.parse(await getRes.json())
-    expect(body.members.some((m) => m.user_id === 'member-1')).toBe(false)
+    expect(body.members.some((m) => m.user_id === 'resolved-member-1')).toBe(false)
   })
 
   test('members POST without CSRF returns 403', async () => {
