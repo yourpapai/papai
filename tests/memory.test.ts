@@ -11,7 +11,6 @@ import { eq } from 'drizzle-orm'
 import * as schema from '../src/db/schema.js'
 import { isValidToolSequence } from '../src/memory-tool-pairing.js'
 import {
-  buildMemoryContextMessage,
   extractFactsFromSdkResults,
   loadSummary,
   saveSummary,
@@ -121,54 +120,6 @@ describe('memory', () => {
       clearFacts('1')
       const rows = testDb.select().from(schema.memoryFacts).where(eq(schema.memoryFacts.userId, '1')).all()
       expect(rows).toHaveLength(0)
-    })
-  })
-
-  describe('buildMemoryContextMessage', () => {
-    test('returns null when both summary and facts are empty', () => {
-      expect(buildMemoryContextMessage(null, [])).toBeNull()
-    })
-
-    test('returns null for empty string summary and no facts', () => {
-      expect(buildMemoryContextMessage('', [])).toBeNull()
-    })
-
-    test('returns system message with summary only', () => {
-      const result = buildMemoryContextMessage('User created #42', [])
-      expect(result).not.toBeNull()
-      expect(result!.role).toBe('system')
-      expect(result!.content).toContain('Summary: User created #42')
-      expect(result!.content).toContain('=== Memory context ===')
-    })
-
-    test('returns system message with facts only', () => {
-      const facts = [
-        {
-          identifier: '#42',
-          title: 'Fix login',
-          url: 'https://linear.app/#42',
-          last_seen: '2026-03-01T00:00:00Z',
-        },
-      ]
-      const result = buildMemoryContextMessage(null, facts)
-      expect(result).not.toBeNull()
-      expect(result!.content).toContain('#42')
-      expect(result!.content).toContain('Fix login')
-      expect(result!.content).toContain('Recently accessed entities')
-    })
-
-    test('returns combined message with both summary and facts', () => {
-      const facts = [{ identifier: '#42', title: 'Fix login', url: '', last_seen: '2026-03-01T00:00:00Z' }]
-      const result = buildMemoryContextMessage('Previous summary', facts)
-      expect(result).not.toBeNull()
-      expect(result!.content).toContain('Summary: Previous summary')
-      expect(result!.content).toContain('#42')
-    })
-
-    test('formats last_seen date as YYYY-MM-DD', () => {
-      const facts = [{ identifier: '#1', title: 'Test', url: '', last_seen: '2026-03-05T14:30:00Z' }]
-      const result = buildMemoryContextMessage(null, facts)
-      expect(result!.content).toContain('last seen 2026-03-05')
     })
   })
 
@@ -757,36 +708,6 @@ describe('memory', () => {
     test('skips malformed results', () => {
       const facts = extractFactsFromSdkResults([], [{ toolName: 'create_task', output: { no_id: true } }])
       expect(facts).toHaveLength(0)
-    })
-  })
-
-  // ============================================================================
-  // Tests: buildMemoryContextMessage format details
-  // ============================================================================
-
-  describe('buildMemoryContextMessage format details', () => {
-    test('separates summary and facts sections with double newline', () => {
-      const facts = [{ identifier: '#1', title: 'T', url: '', last_seen: '2026-01-01T00:00:00Z' }]
-      const result = buildMemoryContextMessage('My summary', facts)
-      expect(result!.content).toContain('Summary: My summary\n\nRecently accessed entities')
-    })
-
-    test('separates fact lines with single newline', () => {
-      const facts = [
-        { identifier: '#1', title: 'First', url: '', last_seen: '2026-01-01T00:00:00Z' },
-        { identifier: '#2', title: 'Second', url: '', last_seen: '2026-02-01T00:00:00Z' },
-      ]
-      const result = buildMemoryContextMessage(null, facts)
-      const content = result!.content
-      // Lines should be separated by \n NOT \n\n within the facts section
-      expect(content).toContain('- #1: "First" — last seen 2026-01-01\n- #2: "Second" — last seen 2026-02-01')
-    })
-
-    test('slices last_seen to exactly 10 characters', () => {
-      const facts = [{ identifier: '#1', title: 'T', url: '', last_seen: '2026-03-15T14:30:00.000Z' }]
-      const result = buildMemoryContextMessage(null, facts)
-      expect(result!.content).toContain('last seen 2026-03-15')
-      expect(result!.content).not.toContain('T14:30')
     })
   })
 })

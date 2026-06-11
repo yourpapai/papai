@@ -186,7 +186,9 @@ describe('buildMessagesWithMemory', () => {
 
   test('prepends system message with facts when facts are present', () => {
     const history: ModelMessage[] = [{ role: 'user', content: 'Hello' }]
-    mockFacts.set('user1', [{ identifier: '#42', title: 'Fix login bug', url: '', last_seen: '2026-03-01T00:00:00Z' }])
+    mockFacts.set('user1', [
+      { identifier: '#42', title: 'Fix login bug', url: '', last_seen: new Date().toISOString() },
+    ])
 
     getCachedFactsSpy.mockReturnValue(mockFacts.get('user1')!)
 
@@ -201,7 +203,9 @@ describe('buildMessagesWithMemory', () => {
   test('prepends single system message with both summary and facts when both present', () => {
     const history: ModelMessage[] = [{ role: 'user', content: 'Hello' }]
     mockSummaries.set('user1', 'User worked on mobile app project')
-    mockFacts.set('user1', [{ identifier: '#42', title: 'Fix login bug', url: '', last_seen: '2026-03-01T00:00:00Z' }])
+    mockFacts.set('user1', [
+      { identifier: '#42', title: 'Fix login bug', url: '', last_seen: new Date().toISOString() },
+    ])
 
     getCachedSummarySpy.mockReturnValue(mockSummaries.get('user1')!)
     getCachedFactsSpy.mockReturnValue(mockFacts.get('user1')!)

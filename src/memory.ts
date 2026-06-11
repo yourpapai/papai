@@ -250,24 +250,4 @@ export async function trimWithMemoryModel(
 
 // --- Context message builder ---
 
-export function buildMemoryContextMessage(
-  summary: string | null,
-  facts: readonly MemoryFact[],
-): { role: 'system'; content: string } | null {
-  const parts: string[] = []
-
-  if (summary !== null && summary.length > 0) {
-    parts.push(`Summary: ${summary}`)
-  }
-
-  if (facts.length > 0) {
-    const lines = facts.map((f) => `- ${f.identifier}: "${f.title}" — last seen ${f.last_seen.slice(0, 10)}`)
-    parts.push(`Recently accessed entities:\n${lines.join('\n')}`)
-  }
-
-  if (parts.length === 0) {
-    return null
-  }
-
-  return { role: 'system', content: `=== Memory context ===\n${parts.join('\n\n')}` }
-}
+export { buildMemoryContextMessage } from './memory-context-block.js'
