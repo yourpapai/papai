@@ -95,6 +95,34 @@ describe('admin-feature-flags', () => {
     expect(labels).toEqual(['alice', 'bob'])
   })
 
+  it('places users before groups even when a group label sorts before the user label', () => {
+    // This test kills the kindRank ternary mutation (-> true/false):
+    // if kindRank always returns the same constant, the sort falls back to label order
+    // and "aardvark-group" would come before "zeus-user" alphabetically — wrong.
+    addUser({ userId: 'u-z', platformInstanceId: 'pi-1', addedBy: 'boot', username: 'zeus' })
+    upsertKnownGroupContext({
+      contextId: toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'g-a' }),
+      provider: 'mattermost',
+      displayName: 'Aardvark Team',
+      parentName: null,
+    })
+    const snapshot = getAdminFeatureFlagsSnapshot()
+    const zeuIdx = snapshot.contexts.findIndex((r) => r.label === 'zeus')
+    const aardIdx = snapshot.contexts.findIndex((r) => r.label === 'Aardvark Team')
+    expect(zeuIdx).toBeLessThan(aardIdx)
+  })
+
+  it('secondary sort by label applies within the same kind', () => {
+    // This test kills the LogicalOperator mutation (|| -> &&):
+    // if || is replaced by &&, same-kind sort short-circuits at 0 and labels are unsorted.
+    addUser({ userId: 'u-b', platformInstanceId: 'pi-1', addedBy: 'boot', username: 'bob' })
+    addUser({ userId: 'u-a', platformInstanceId: 'pi-1', addedBy: 'boot', username: 'abe' })
+    const userLabels = getAdminFeatureFlagsSnapshot()
+      .contexts.filter((r) => r.kind === 'user')
+      .map((r) => r.label)
+    expect(userLabels).toEqual(['abe', 'alice', 'bob'])
+  })
+
   it('labels a group without parentName by displayName alone', () => {
     const soloCtx = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'g-2' })
     upsertKnownGroupContext({ contextId: soloCtx, provider: 'mattermost', displayName: 'Solo', parentName: null })

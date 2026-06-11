@@ -57,7 +57,39 @@ describe('buildPairedConfig', () => {
       testFiles: ['tests/foo.test.ts', 'tests/integration/foo-flow.test.ts'],
       reportPath: 'reports/paired/foo.json',
     })
-    expect(cfg.bun.testFiles).toEqual(['tests/foo.test.ts', 'tests/integration/foo-flow.test.ts'])
+    expect(cfg.bun.testFiles).toEqual(['./tests/foo.test.ts', './tests/integration/foo-flow.test.ts'])
+  })
+
+  test('prefixes relative testFiles with ./ so Bun treats them as paths not patterns', () => {
+    // Without ./prefix, Bun uses testFiles as pattern filters and applies pathIgnorePatterns,
+    // which blocks tests/client/** from being discovered in the Stryker sandbox.
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'client/admin/feature-flags-fetcher-schemas.ts',
+      testFiles: ['tests/client/admin/feature-flags-fetcher-schemas.test.ts'],
+      reportPath: 'reports/paired/feature-flags.json',
+    })
+    expect(cfg.bun.testFiles).toEqual(['./tests/client/admin/feature-flags-fetcher-schemas.test.ts'])
+  })
+
+  test('does not double-prefix testFiles that already start with ./', () => {
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'src/foo.ts',
+      testFiles: ['./tests/foo.test.ts'],
+      reportPath: 'reports/paired/foo.json',
+    })
+    expect(cfg.bun.testFiles).toEqual(['./tests/foo.test.ts'])
+  })
+
+  test('does not add ./ prefix to absolute testFile paths', () => {
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'src/foo.ts',
+      testFiles: ['/absolute/path/foo.test.ts'],
+      reportPath: 'reports/paired/foo.json',
+    })
+    expect(cfg.bun.testFiles).toEqual(['/absolute/path/foo.test.ts'])
   })
 
   test('preserves base bun options (timeout)', () => {
@@ -117,5 +149,40 @@ describe('buildPairedConfig', () => {
         reportPath: 'reports/paired/foo.json',
       }),
     ).toThrow(/testFiles/u)
+  })
+
+  test('adds --path-ignore-patterns "" bunArg when any testFile is under tests/client/', () => {
+    // bunfig.toml pathIgnorePatterns blocks tests/client/** during discovery in the
+    // Stryker sandbox. The stryker-bun-runner sanitizer copies pathIgnorePatterns to
+    // the sandbox bunfig; --path-ignore-patterns '' on the CLI overrides it.
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'client/admin/feature-flags-fetcher-schemas.ts',
+      testFiles: ['tests/client/admin/feature-flags-fetcher-schemas.test.ts'],
+      reportPath: 'reports/paired/feature-flags.json',
+    })
+    expect(cfg.bun.bunArgs).toContain('--path-ignore-patterns')
+    expect(cfg.bun.bunArgs).toContain('')
+  })
+
+  test('does not add bunArg for server-side tests not under tests/client/', () => {
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'src/tools/feature-flags.ts',
+      testFiles: ['tests/tools/feature-flags.test.ts'],
+      reportPath: 'reports/paired/feature-flags.json',
+    })
+    expect(cfg.bun.bunArgs).toBeUndefined()
+  })
+
+  test('preserves existing base bunArgs when adding path-ignore-patterns', () => {
+    const cfg = buildPairedConfig({
+      base: { ...BASE, bun: { ...BASE.bun, bunArgs: ['--watch'] } },
+      srcFile: 'client/foo.ts',
+      testFiles: ['tests/client/foo.test.ts'],
+      reportPath: 'reports/paired/foo.json',
+    })
+    expect(cfg.bun.bunArgs).toContain('--watch')
+    expect(cfg.bun.bunArgs).toContain('--path-ignore-patterns')
   })
 })

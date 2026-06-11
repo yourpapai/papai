@@ -47,6 +47,15 @@ describe('settings admin feature-flags routes', () => {
     else process.env['TOOL_CONTEXT_REDUCTION_DISABLED'] = savedKill
   })
 
+  test('returns 404 for an unrecognized pathname', async () => {
+    const res = await handleAdminFeatureFlagsRoutes(
+      new Request(URL_PATH, { headers: authHeaders(superSession) }),
+      new URL(URL_PATH),
+      '/settings/api/admin/other',
+    )
+    expect(res.status).toBe(404)
+  })
+
   test('GET requires a session', async () => {
     const res = await call(new Request(URL_PATH))
     expect(res.status).toBe(401)

@@ -33,6 +33,9 @@ describe('resolveReductionFlags', () => {
     getCachedConfig.mockReturnValue(JSON.stringify({ result_compaction: true }))
     expect(resolveReductionFlags('ctx-1').resultCompaction).toBe(true)
     expect(getCachedConfig).toHaveBeenCalledWith(expect.any(String), REDUCTION_FLAGS_CONFIG_KEY)
+    // Pin the literal key so a constant-mutation can't satisfy both sides simultaneously
+    expect(REDUCTION_FLAGS_CONFIG_KEY).toBe('tool_context_flags')
+    expect(getCachedConfig).toHaveBeenCalledWith(expect.any(String), 'tool_context_flags')
   })
 
   it('reads progressive_disclosure flag independently', () => {

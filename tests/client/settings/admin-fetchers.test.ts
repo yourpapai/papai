@@ -95,13 +95,15 @@ describe('admin-fetchers', () => {
     expect(result.contexts[0]?.label).toBe('alice')
   })
 
-  test('saveAdminFeatureFlags PATCHes with CSRF header', async () => {
+  test('saveAdminFeatureFlags PATCHes the feature-flags endpoint with CSRF header', async () => {
     const { saveAdminFeatureFlags } = await import('../../../client/settings/admin-fetchers.js')
     setCsrfToken('csrf-ff')
+    let seenUrl = ''
     let seenCsrf = ''
     let seenMethod = ''
     let seenBody: unknown
-    setMockFetch((_url, init) => {
+    setMockFetch((url, init) => {
+      seenUrl = url
       seenCsrf = csrfHeader(init)
       seenMethod = methodOf(init)
       seenBody = parseBody(init.body)
@@ -111,6 +113,7 @@ describe('admin-fetchers', () => {
       contextId: 'pi:cGktMQ:ctx:dS0x',
       flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
     })
+    expect(seenUrl).toBe('/settings/api/admin/feature-flags')
     expect(seenCsrf).toBe('csrf-ff')
     expect(seenMethod).toBe('PATCH')
     expect(seenBody).toEqual({

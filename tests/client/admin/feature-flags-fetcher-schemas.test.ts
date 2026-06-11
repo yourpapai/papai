@@ -48,6 +48,18 @@ describe('AdminFeatureFlagRowSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  test('parses valid group row', () => {
+    const result = AdminFeatureFlagRowSchema.safeParse({
+      contextId: 'pi:cGktMQ:ctx:Zy0x',
+      kind: 'group',
+      label: 'Dev Team',
+      platformInstanceLabel: 'pi-1',
+      flags: { result_compaction: false, progressive_disclosure: false, semantic_tool_retrieval: false },
+    })
+    expect(result.success).toBe(true)
+    expect(result.data?.kind).toBe('group')
+  })
+
   test('rejects invalid kind', () => {
     const result = AdminFeatureFlagRowSchema.safeParse({
       contextId: 'ctx',
