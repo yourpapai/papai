@@ -34,17 +34,18 @@ export function makeExpandResultTool(contextId: string): ToolSet[string] {
       const resolvedLimit = limit ?? EXPAND_DEFAULT_LIMIT_BYTES
       const page = getResultPage(contextId, handle, resolvedOffset, resolvedLimit)
       if (!page.found) {
-        log.warn({ contextId, handle }, 'expand_result handle not found or expired')
+        log.warn({ contextId, handle }, 'expand_result handle not found (expired or evicted)')
         const failure: ToolFailureResult = {
           success: false,
-          error: 'Result handle not found or expired',
+          error: 'Result handle not found, expired, or evicted',
           toolName: 'expand_result',
           toolCallId: opts?.toolCallId ?? '',
           timestamp: new Date().toISOString(),
           errorType: 'tool-execution',
           errorCode: 'expired',
           userMessage: 'That cached result is no longer available.',
-          agentMessage: 'The compacted result expired. Re-run the original tool to get fresh data.',
+          agentMessage:
+            'The compacted result is no longer available (expired or evicted). Re-run the original tool to get fresh data.',
           retryable: true,
         }
         return failure

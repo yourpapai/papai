@@ -5,6 +5,7 @@
 
 import { describe, expect, it, beforeEach } from 'bun:test'
 
+import { RESULT_STORE_MAX_ENTRIES } from '../../../src/tools/compaction/constants.js'
 import {
   putResult,
   getResultPage,
@@ -49,6 +50,18 @@ describe('result-store', () => {
     for (let i = 0; i < 65; i++) handles.push(putResult('ctx-1', `v${i}`))
     expect(getResultPage('ctx-1', handles[0]!, 0, 4)).toEqual({ found: false })
     expect(getResultPage('ctx-1', handles[64]!, 0, 4).found).toBe(true)
+  })
+
+  it('a read-refreshed entry survives overflow eviction (LRU, not FIFO)', () => {
+    const first = putResult('ctx-1', 'v0')
+    const second = putResult('ctx-1', 'v1')
+    for (let i = 2; i < RESULT_STORE_MAX_ENTRIES; i++) putResult('ctx-1', `v${i}`)
+    // Store is at cap. Reading the oldest entry refreshes its recency.
+    expect(getResultPage('ctx-1', first, 0, 4)).toMatchObject({ found: true })
+    putResult('ctx-1', 'overflow')
+    // The read entry survives; the never-read second-oldest entry is evicted instead.
+    expect(getResultPage('ctx-1', first, 0, 4)).toMatchObject({ found: true })
+    expect(getResultPage('ctx-1', second, 0, 4)).toEqual({ found: false })
   })
 
   it('allows a fresh put and correct paging after TTL-expiry evicts the sole entry for a context', () => {

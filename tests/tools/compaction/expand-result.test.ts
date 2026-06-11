@@ -19,11 +19,23 @@ function isPageResult(v: unknown): v is { chunk: string; done: boolean } {
   return typeof v === 'object' && v !== null && 'chunk' in v && 'done' in v
 }
 
-function isFailureResult(
-  v: unknown,
-): v is { success: boolean; errorCode: string; retryable: boolean; toolCallId: string } {
+function isFailureResult(v: unknown): v is {
+  success: boolean
+  errorCode: string
+  retryable: boolean
+  toolCallId: string
+  error: string
+  agentMessage: string
+} {
   return (
-    typeof v === 'object' && v !== null && 'success' in v && 'errorCode' in v && 'retryable' in v && 'toolCallId' in v
+    typeof v === 'object' &&
+    v !== null &&
+    'success' in v &&
+    'errorCode' in v &&
+    'retryable' in v &&
+    'toolCallId' in v &&
+    'error' in v &&
+    'agentMessage' in v
   )
 }
 
@@ -60,6 +72,16 @@ describe('expand_result tool', () => {
     const out: unknown = await exec({ handle: 'res_missing' }, { toolCallId: 'call_42', messages: [] })
     assert(isFailureResult(out), 'Expected a structured failure result')
     expect(out.toolCallId).toBe('call_42')
+  })
+
+  it('does not claim expiry for an unknown handle (could be eviction)', async () => {
+    const exec = getToolExecutor(makeExpandResultTool('ctx-1'))
+    const out: unknown = await exec({ handle: 'res_missing' })
+    assert(isFailureResult(out), 'Expected a structured failure result')
+    expect(out.error).toBe('Result handle not found, expired, or evicted')
+    expect(out.agentMessage).toBe(
+      'The compacted result is no longer available (expired or evicted). Re-run the original tool to get fresh data.',
+    )
   })
 
   it('returns a structured failure for a TTL-expired handle', async () => {

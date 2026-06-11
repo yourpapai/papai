@@ -56,6 +56,9 @@ export function getResultPage(contextId: string, handle: string, offset: number,
     if (m.size === 0) store.delete(contextId)
     return { found: false }
   }
+  // Refresh recency so putResult's insertion-order eviction behaves as LRU.
+  m.delete(handle)
+  m.set(handle, entry)
   const start = Math.max(0, offset)
   const chunk = entry.raw.slice(start, start + Math.max(0, limit))
   const nextOffset = start + chunk.length
