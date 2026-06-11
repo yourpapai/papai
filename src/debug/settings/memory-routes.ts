@@ -72,6 +72,14 @@ function parseOptionalJsonBody(req: Request): Promise<ParsedBody> {
   return parseJsonBody(req)
 }
 
+function decodeRecordId(rawRecordId: string): string | null {
+  try {
+    return decodeURIComponent(rawRecordId)
+  } catch {
+    return null
+  }
+}
+
 function handleGet(req: Request, url: URL): Response {
   const auth = authenticate(req)
   if (!auth.ok) return auth.response
@@ -159,6 +167,9 @@ async function handleRecordDelete(req: Request, recordId: string): Promise<Respo
   const csrf = requireCsrf(req, auth.authed)
   if (csrf !== null) return csrf
 
+  const decodedRecordId = decodeRecordId(recordId)
+  if (decodedRecordId === null) return settingsJson(400, { error: 'invalid record id' })
+
   const parsed = await parseOptionalJsonBody(req)
   if (!parsed.ok) return parsed.response
   const body = ContextBodySchema.safeParse(parsed.value)
@@ -168,7 +179,7 @@ async function handleRecordDelete(req: Request, recordId: string): Promise<Respo
   if (!scope.ok) return scope.response
 
   const memoryScope = toMemoryScope(scope.scope)
-  const archived = archiveMemoryRecord(memoryScope, recordId, new Date().toISOString())
+  const archived = archiveMemoryRecord(memoryScope, decodedRecordId, new Date().toISOString())
   const status = archived ? 'archived' : 'not_found'
   log.info(
     { scopeId: memoryScope.scopeId, scopeType: memoryScope.scopeType, action: 'record.archive', status },
@@ -232,7 +243,7 @@ export function handleMemoryRoutes(req: Request, url: URL): Promise<Response> {
 
   const recordId = url.pathname.match(/^\/settings\/api\/memory\/records\/([^/]+)$/u)?.[1]
   if (recordId !== undefined) {
-    if (req.method === 'DELETE') return handleRecordDelete(req, decodeURIComponent(recordId))
+    if (req.method === 'DELETE') return handleRecordDelete(req, recordId)
     return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
   }
 

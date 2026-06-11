@@ -173,6 +173,34 @@ describe('settings memory routes', () => {
     expect(getMemoryProfile(personalScope)?.profile).toBe('## Preferences\n- Remember task context')
   })
 
+  test('PATCH profile rejects oversized profile text', async () => {
+    const res = await handleMemoryRoutes(
+      request('/settings/api/memory/profile', session, {
+        method: 'PATCH',
+        csrf: true,
+        body: { profile: 'x'.repeat(20_001) },
+      }),
+      new URL('https://x/settings/api/memory/profile'),
+    )
+
+    expect(res.status).toBe(422)
+    expect(getMemoryProfile(personalScope)).toBeNull()
+  })
+
+  test('PATCH capture returns controlled JSON error for malformed JSON', async () => {
+    const res = await handleMemoryRoutes(
+      new Request('https://x/settings/api/memory/capture', {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: 'not-json',
+      }),
+      new URL('https://x/settings/api/memory/capture'),
+    )
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'invalid JSON body' })
+  })
+
   test('PATCH capture toggles enabled', async () => {
     const res = await handleMemoryRoutes(
       request('/settings/api/memory/capture', session, {
@@ -211,6 +239,29 @@ describe('settings memory routes', () => {
     expect(
       listMemoryRecords({ scopeId: personalContextId, scopeType: 'group', status: 'active' }).map((r) => r.id),
     ).toEqual(['group-record'])
+  })
+
+  test('DELETE malformed encoded record id returns controlled JSON error', async () => {
+    const url = new URL('https://x/settings/api/memory/records/%E0%A4%A')
+    let thrown: unknown
+    let res: Response | undefined
+
+    try {
+      res = await handleMemoryRoutes(
+        new Request(url, {
+          method: 'DELETE',
+          headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+          body: '{}',
+        }),
+        url,
+      )
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeUndefined()
+    expect(res?.status).toBe(400)
+    await expect(res?.json()).resolves.toEqual({ error: 'invalid record id' })
   })
 
   test('POST clear clears only authorized scope', async () => {
