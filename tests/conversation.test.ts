@@ -490,6 +490,61 @@ describe('runTrimInBackground', () => {
     expect(finalHistory).toBeDefined()
     expect(Array.isArray(finalHistory)).toBe(true)
   })
+
+  test('concurrency guard: skips a second trim while one is in flight, then releases', async () => {
+    const history: ModelMessage[] = [
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi' },
+    ]
+    const histories = new Map<string, ModelMessage[]>([['user1', [...history]]])
+    const configs = new Map<string, Map<string, string | null>>([
+      [
+        'user1',
+        new Map([
+          ['llm_apikey', 'test-key'],
+          ['llm_baseurl', 'http://test.com'],
+          ['main_model', 'main-model'],
+          ['small_model', 'test-model'],
+        ]),
+      ],
+    ])
+
+    let releaseFirst: (value: GenerateTextResult) => void = () => {}
+    const gate = new Promise<GenerateTextResult>((resolve) => {
+      releaseFirst = resolve
+    })
+    const done = Promise.resolve({ text: JSON.stringify({ keep_indices: [0], summary: 's' }) })
+    // First model call blocks on the gate; the later (post-release) call resolves immediately.
+    const queued: Array<Promise<GenerateTextResult>> = [gate, done, done, done]
+    generateTextImpl = (): Promise<GenerateTextResult> => queued.shift()!
+
+    trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(configs)))
+    trackSpy(spyOn(systemConfigModule, 'getSystemConfig').mockImplementation(makeSystemConfigLookup(configs, 'user1')))
+    trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(histories)))
+    trackSpy(
+      spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
+        histories.set(userId, [...messages])
+      }),
+    )
+    trackSpy(spyOn(cacheModule, 'setCachedSummary').mockImplementation(() => {}))
+    trackSpy(spyOn(cacheModule, 'getCachedSummary').mockReturnValue(null))
+
+    // First trim starts and blocks on the gated model call.
+    const first = runTrimInBackground('user1', history)
+    await flushMicrotasks()
+    // Second trim while the first is in flight is skipped (no second model build).
+    await runTrimInBackground('user1', history)
+    expect(modelBuildCalls).toHaveLength(1)
+
+    // Release the first; once it finishes the guard is released and a later trim runs.
+    releaseFirst({ text: JSON.stringify({ keep_indices: [0], summary: 's' }) })
+    await first
+    await flushMicrotasks()
+
+    await runTrimInBackground('user1', history)
+    await flushMicrotasks()
+    expect(modelBuildCalls).toHaveLength(2)
+  })
 })
 
 describe('Story 3: Context retained at message 50+', () => {

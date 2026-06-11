@@ -67,11 +67,16 @@ export const shouldTriggerTrim = (history: readonly ModelMessage[]): boolean => 
   return periodicTrim || hardCapTrim
 }
 
-export const runTrimInBackground = async (
+// Guards against overlapping background trims for the same context: at the hard cap
+// every turn would otherwise re-trigger a trim before the previous one persisted, and
+// concurrent trims race on setCachedHistory.
+const trimsInFlight = new Set<string>()
+
+const performTrim = async (
   userId: string,
   history: readonly ModelMessage[],
-  deps: ConversationDeps = defaultConversationDeps,
-  configContextId = userId,
+  deps: ConversationDeps,
+  configContextId: string,
 ): Promise<void> => {
   const userMessageCount = history.filter((m) => m.role === 'user').length
   const reason =
@@ -110,5 +115,23 @@ export const runTrimInBackground = async (
       error: error instanceof Error ? error.message : String(error),
       success: false,
     })
+  }
+}
+
+export const runTrimInBackground = async (
+  userId: string,
+  history: readonly ModelMessage[],
+  deps: ConversationDeps = defaultConversationDeps,
+  configContextId = userId,
+): Promise<void> => {
+  if (trimsInFlight.has(userId)) {
+    log.debug({ userId }, 'Smart trim already in flight; skipping re-trigger')
+    return
+  }
+  trimsInFlight.add(userId)
+  try {
+    await performTrim(userId, history, deps, configContextId)
+  } finally {
+    trimsInFlight.delete(userId)
   }
 }
