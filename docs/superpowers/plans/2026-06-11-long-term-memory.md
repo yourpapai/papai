@@ -32,6 +32,7 @@ Create:
 - `src/tools/memory.ts` — `search_memory`, `remember_memory`, `forget_memory`, and `list_memory` tool factories.
 - `src/debug/settings/memory-routes.ts` — settings API for profile/records/toggle/clear operations.
 - `client/settings/sections/MemorySection.svelte` — settings UI section for profile and records.
+- `src/db/long-term-memory-schema.ts` — Drizzle schema definitions for long-term memory tables.
 
 Modify:
 
@@ -69,6 +70,7 @@ Tests:
 - Create: `src/db/migrations/053_long_term_memory.ts`
 - Modify: `src/db/index.ts`
 - Modify: `src/db/schema.ts`
+- Create: `src/db/long-term-memory-schema.ts`
 - Test: `tests/db/migrations/053_long_term_memory.test.ts`
 
 - [ ] **Step 1: Write the failing migration test**
@@ -250,9 +252,16 @@ Add `migration053LongTermMemory` immediately after `migration052ByokLlmCredentia
 
 - [ ] **Step 5: Add Drizzle schema exports**
 
-Modify `src/db/schema.ts` near the existing memory tables:
+Create `src/db/long-term-memory-schema.ts` to keep `src/db/schema.ts` under the repo's max-lines rule:
 
 ```ts
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { blob, index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+
 export const memoryProfiles = sqliteTable(
   'memory_profiles',
   {
@@ -309,7 +318,16 @@ export type MemoryProfileRow = typeof memoryProfiles.$inferSelect
 export type MemoryRecordRow = typeof memoryRecords.$inferSelect
 ```
 
-Add `real` and `integer` to the existing `drizzle-orm/sqlite-core` import if they are not already imported.
+Modify `src/db/schema.ts` to re-export that module near the other schema re-exports:
+
+```ts
+export {
+  memoryProfiles,
+  memoryRecords,
+  type MemoryProfileRow,
+  type MemoryRecordRow,
+} from './long-term-memory-schema.js'
+```
 
 - [ ] **Step 6: Verify and commit**
 
@@ -325,7 +343,7 @@ Expected: PASS.
 Commit:
 
 ```bash
-git add src/db/migrations/053_long_term_memory.ts src/db/index.ts src/db/schema.ts tests/db/migrations/053_long_term_memory.test.ts
+git add src/db/migrations/053_long_term_memory.ts src/db/index.ts src/db/schema.ts src/db/long-term-memory-schema.ts tests/db/migrations/053_long_term_memory.test.ts
 git commit -m "feat(memory): add long-term memory schema"
 ```
 
