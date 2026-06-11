@@ -11,6 +11,8 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import * as cacheModule from '../src/cache.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
 import { logger } from '../src/logger.js'
+import { saveMemoryProfile, saveMemoryRecord } from '../src/long-term-memory/store.js'
+import type { MemoryRecordInput } from '../src/long-term-memory/types.js'
 import * as systemConfigModule from '../src/system-config.js'
 import { flushMicrotasks, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
@@ -41,6 +43,24 @@ const defaultGenerateTextImpl = (): Promise<GenerateTextResult> =>
   Promise.resolve({
     text: JSON.stringify({ keep_indices: [0, 1], summary: 'Updated summary text' }),
   })
+
+const memoryRecordInput = (overrides: Partial<MemoryRecordInput>): MemoryRecordInput => ({
+  id: 'mem-1',
+  scopeId: 'user-1',
+  scopeType: 'personal',
+  kind: 'preference',
+  content: 'User prefers concise implementation plans.',
+  summary: 'Concise plans',
+  tags: ['style'],
+  confidence: 0.9,
+  status: 'active',
+  source: 'explicit',
+  evidence: {},
+  createdAt: '2026-06-11T00:00:00.000Z',
+  updatedAt: '2026-06-11T00:00:00.000Z',
+  lastSeenAt: '2026-06-12T00:00:00.000Z',
+  ...overrides,
+})
 
 describe('shouldTriggerTrim', () => {
   const makeMessages = (count: number, userEvery = 2): ModelMessage[] =>
@@ -146,7 +166,8 @@ describe('buildMessagesWithMemory', () => {
   let getCachedSummarySpy: ReturnType<typeof spyOn<typeof cacheModule, 'getCachedSummary'>>
   let getCachedFactsSpy: ReturnType<typeof spyOn<typeof cacheModule, 'getCachedFacts'>>
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await setupTestDb()
     mockSummaries.clear()
     mockFacts.clear()
     getCachedSummarySpy = spyOn(cacheModule, 'getCachedSummary').mockReturnValue(null)
@@ -217,6 +238,36 @@ describe('buildMessagesWithMemory', () => {
     expect(systemMsg.role).toBe('system')
     expect(systemMsg.content).toContain('User worked on mobile app project')
     expect(systemMsg.content).toContain('#42')
+  })
+
+  test('prepends one system message containing compacted and long-term memory when both are present', () => {
+    const history: ModelMessage[] = []
+    const summary = 'User worked on mobile app project'
+    getCachedSummarySpy.mockReturnValue(summary)
+    saveMemoryProfile(
+      { scopeId: 'user-1', scopeType: 'personal' },
+      '## Communication\n- Prefer concise answers',
+      '2026-06-12T00:00:00.000Z',
+    )
+    saveMemoryRecord(
+      memoryRecordInput({
+        id: 'mem-direct',
+        content: 'User prefers direct status reports.',
+        summary: 'Direct status reports',
+      }),
+    )
+
+    const result = buildMessagesWithMemory('user-1', history)
+
+    expect(result.messages).toHaveLength(1)
+    const systemMsg = result.messages[0]!
+    expect(systemMsg.role).toBe('system')
+    expect(systemMsg.content).toContain('<memory trust="compacted_low">')
+    expect(systemMsg.content).toContain('<long_term_memory trust="profile_and_retrieved_low">')
+    expect(systemMsg.content).toContain(summary)
+    expect(systemMsg.content).toContain('Prefer concise answers')
+    expect(result.memoryMsg).not.toBeNull()
+    expect(result.messages[0]).toEqual(result.memoryMsg!)
   })
 
   test('does not mutate original history array', () => {
@@ -609,7 +660,8 @@ describe('Story 5: Summary injected into context', () => {
   let getCachedSummarySpy: ReturnType<typeof spyOn<typeof cacheModule, 'getCachedSummary'>>
   let getCachedFactsSpy: ReturnType<typeof spyOn<typeof cacheModule, 'getCachedFacts'>>
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await setupTestDb()
     mockSummaries.clear()
     mockFacts.clear()
     getCachedSummarySpy = spyOn(cacheModule, 'getCachedSummary').mockReturnValue(null)
