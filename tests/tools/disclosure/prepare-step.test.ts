@@ -77,4 +77,42 @@ describe('createDisclosurePrepareStep', () => {
     const out = prep({ stepNumber: 5 })
     expect(out.activeTools).toContain('list_tasks')
   })
+
+  const metaStep = { toolCalls: [{ toolName: 'search_tools' }] }
+  const realStep = { toolCalls: [{ toolName: 'list_tasks' }] }
+
+  it('opens all tools when the last N completed steps are meta-only churn after a load', () => {
+    const session = freshSession()
+    session.markLoaded(['list_tasks'])
+    const prep = createDisclosurePrepareStep(session, 'ctx-1')
+    const out = prep({ stepNumber: 5, steps: [realStep, metaStep, metaStep] })
+    expect(out).toEqual({})
+    expect(emitUser).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not churn-fallback when a recent step called a real tool', () => {
+    const session = freshSession()
+    session.markLoaded(['list_tasks'])
+    const prep = createDisclosurePrepareStep(session, 'ctx-1')
+    const out = prep({ stepNumber: 5, steps: [metaStep, realStep] })
+    expect(out.activeTools).toBeDefined()
+    expect(emitUser).not.toHaveBeenCalled()
+  })
+
+  it('a step with zero tool calls does not count toward churn', () => {
+    const session = freshSession()
+    session.markLoaded(['list_tasks'])
+    const prep = createDisclosurePrepareStep(session, 'ctx-1')
+    const out = prep({ stepNumber: 5, steps: [{ toolCalls: [] }, metaStep] })
+    expect(out.activeTools).toBeDefined()
+  })
+
+  it('stays open after a churn fallback even when a later step looks healthy', () => {
+    const session = freshSession()
+    session.markLoaded(['list_tasks'])
+    const prep = createDisclosurePrepareStep(session, 'ctx-1')
+    expect(prep({ stepNumber: 5, steps: [metaStep, metaStep] })).toEqual({})
+    expect(prep({ stepNumber: 6, steps: [metaStep, metaStep, realStep] })).toEqual({})
+    expect(emitUser).toHaveBeenCalledTimes(1)
+  })
 })
