@@ -64,4 +64,47 @@ describe('admin-fetchers', () => {
     const result = await sendAnnounce({ message: 'hello' })
     expect(result.totalUsers).toBe(5)
   })
+
+  const flagsSnapshot = {
+    killSwitchEngaged: false,
+    contexts: [
+      {
+        contextId: 'pi:cGktMQ:ctx:dS0x',
+        kind: 'user',
+        label: 'alice',
+        platformInstanceLabel: 'pi-1',
+        flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+      },
+    ],
+  }
+
+  test('fetchAdminFeatureFlags GETs and parses the snapshot', async () => {
+    const { fetchAdminFeatureFlags } = await import('../../../client/settings/admin-fetchers.js')
+    let seenUrl = ''
+    setMockFetch((url) => {
+      seenUrl = url
+      return Promise.resolve(json(flagsSnapshot))
+    })
+    const result = await fetchAdminFeatureFlags()
+    expect(seenUrl).toBe('/settings/api/admin/feature-flags')
+    expect(result.contexts[0]?.label).toBe('alice')
+  })
+
+  test('saveAdminFeatureFlags PATCHes with CSRF header', async () => {
+    const { saveAdminFeatureFlags } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-ff')
+    let seenCsrf = ''
+    let seenMethod: string | undefined
+    setMockFetch((_url, init) => {
+      seenCsrf = csrfHeader(init)
+      seenMethod = init.method
+      return Promise.resolve(json(flagsSnapshot.contexts[0]))
+    })
+    await saveAdminFeatureFlags({
+      contextId: 'pi:cGktMQ:ctx:dS0x',
+      flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+    })
+    expect(seenCsrf).toBe('csrf-ff')
+    expect(seenMethod).toBe('PATCH')
+  })
 })

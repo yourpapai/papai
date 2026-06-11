@@ -4,6 +4,13 @@
 // See LICENSE in the project root for details.
 
 import {
+  AdminFeatureFlagRowSchema,
+  AdminFeatureFlagsSnapshotSchema,
+  type AdminFeatureFlagRow,
+  type AdminFeatureFlagState,
+  type AdminFeatureFlagsSnapshot,
+} from '../admin/feature-flags-fetcher-schemas.js'
+import {
   AdminPluginConfigSnapshotSchema,
   SubmitAdminPluginConfigResponseSchema,
 } from '../admin/plugin-config-fetcher-schemas.js'
@@ -150,3 +157,14 @@ export const patchAdminPluginConfig = (input: {
   value: string
 }): Promise<AdminPluginConfigUpdateResult> =>
   writeJson('/settings/api/admin/plugin-config', 'PATCH', input, (b) => SubmitAdminPluginConfigResponseSchema.parse(b))
+
+// --- Admin: feature flags ---
+
+export const fetchAdminFeatureFlags = (): Promise<AdminFeatureFlagsSnapshot> =>
+  getJson('/settings/api/admin/feature-flags', (b) => AdminFeatureFlagsSnapshotSchema.parse(b))
+
+export const saveAdminFeatureFlags = (input: {
+  contextId: string
+  flags: AdminFeatureFlagState
+}): Promise<AdminFeatureFlagRow> =>
+  writeJson('/settings/api/admin/feature-flags', 'PATCH', input, (b) => AdminFeatureFlagRowSchema.parse(b))
