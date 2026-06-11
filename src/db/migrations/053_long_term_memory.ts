@@ -16,7 +16,7 @@ const createProfiles = (db: Database): void => {
       scope_id   TEXT NOT NULL PRIMARY KEY,
       scope_type TEXT NOT NULL CHECK (scope_type IN ('personal', 'group')),
       profile    TEXT NOT NULL DEFAULT '',
-      enabled    INTEGER NOT NULL DEFAULT 1,
+      enabled    INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
       version    INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL
     )

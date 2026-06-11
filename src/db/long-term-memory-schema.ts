@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { desc } from 'drizzle-orm'
 import { blob, index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const memoryProfiles = sqliteTable(
@@ -11,7 +12,7 @@ export const memoryProfiles = sqliteTable(
     scopeId: text('scope_id').primaryKey(),
     scopeType: text('scope_type', { enum: ['personal', 'group'] }).notNull(),
     profile: text('profile').notNull().default(''),
-    enabled: integer('enabled').notNull().default(1),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     version: integer('version').notNull().default(1),
     updatedAt: text('updated_at').notNull(),
   },
@@ -52,7 +53,7 @@ export const memoryRecords = sqliteTable(
     embedding: blob('embedding'),
   },
   (table) => [
-    index('idx_memory_records_scope_status_seen').on(table.scopeId, table.status, table.lastSeenAt),
+    index('idx_memory_records_scope_status_seen').on(table.scopeId, table.status, desc(table.lastSeenAt)),
     index('idx_memory_records_scope_kind_status').on(table.scopeId, table.kind, table.status),
   ],
 )

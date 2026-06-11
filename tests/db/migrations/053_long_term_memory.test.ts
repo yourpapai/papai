@@ -14,6 +14,16 @@ const tableNames = (db: Database): string[] =>
     .all()
     .map((r) => r.name)
 
+const searchMemory = (db: Database, query: string): { id: string }[] =>
+  db
+    .query<{ id: string }, [string]>(
+      `SELECT m.id
+       FROM memory_records m
+       JOIN memory_records_fts f ON m.rowid = f.rowid
+       WHERE f.memory_records_fts MATCH ?`,
+    )
+    .all(query)
+
 describe('migration053LongTermMemory', () => {
   test('creates long-term memory profile and record storage', () => {
     const db = new Database(':memory:')
@@ -31,6 +41,18 @@ describe('migration053LongTermMemory', () => {
     expect(names).toContain('memory_records_ad')
   })
 
+  test('rejects non-boolean memory profile enabled values', () => {
+    const db = new Database(':memory:')
+    migration053LongTermMemory.up(db)
+
+    expect(() =>
+      db.run(
+        `INSERT INTO memory_profiles (scope_id, scope_type, profile, enabled, updated_at)
+         VALUES ('scope-1', 'personal', '', 2, '2026-06-11T00:00:00.000Z')`,
+      ),
+    ).toThrow()
+  })
+
   test('keeps FTS rows in sync with memory records', () => {
     const db = new Database(':memory:')
     migration053LongTermMemory.up(db)
@@ -42,14 +64,19 @@ describe('migration053LongTermMemory', () => {
         ('mem-1', 'scope-1', 'personal', 'preference', 'User prefers concise replies', 'Concise replies', '["style"]', 0.9, 'active', 'explicit', '{}', '2026-06-11T00:00:00.000Z', '2026-06-11T00:00:00.000Z', '2026-06-11T00:00:00.000Z')`,
     )
 
-    const found = db
-      .query<{ id: string }, []>(
-        `SELECT m.id
-         FROM memory_records m
-         JOIN memory_records_fts f ON m.rowid = f.rowid
-         WHERE f.memory_records_fts MATCH 'concise'`,
-      )
-      .all()
-    expect(found).toEqual([{ id: 'mem-1' }])
+    expect(searchMemory(db, 'concise')).toEqual([{ id: 'mem-1' }])
+
+    db.run(
+      `UPDATE memory_records
+       SET content = 'User prefers detailed replies', summary = 'Detailed replies'
+       WHERE id = 'mem-1'`,
+    )
+
+    expect(searchMemory(db, 'concise')).toEqual([])
+    expect(searchMemory(db, 'detailed')).toEqual([{ id: 'mem-1' }])
+
+    db.run(`DELETE FROM memory_records WHERE id = 'mem-1'`)
+
+    expect(searchMemory(db, 'detailed')).toEqual([])
   })
 })
