@@ -143,6 +143,17 @@ describe('settings admin feature-flags routes', () => {
     expect(res.status).toBe(422)
   })
 
+  test('PATCH rejects malformed JSON with 400', async () => {
+    const res = await call(
+      new Request(URL_PATH, {
+        method: 'PATCH',
+        headers: authHeaders(superSession, true),
+        body: '{not json',
+      }),
+    )
+    expect(res.status).toBe(400)
+  })
+
   test('GET reflects the kill switch', async () => {
     process.env['TOOL_CONTEXT_REDUCTION_DISABLED'] = 'true'
     const res = await call(new Request(URL_PATH, { headers: authHeaders(superSession) }))
