@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.7] - 2026-06-11
+
+### Added
+
+- **users:** Add pending-user placeholders and case-insensitive username binding
+- **settings:** Shared user-id resolver with unresolved outcome
+- **settings:** Pending user entries when username resolution fails
+- **settings-ui:** Typed add-user response with pending flag
+- **settings-ui:** Pending badge and first-contact message for username adds
+
+### Changed
+
+- **settings:** Share user-id resolution in group member route
+
+### Documentation
+
+- **specs:** Pending username entries design
+- **plans:** Pending username entries implementation plan
+- Document pending @username entries for authorized users
+
+### Fixed
+
+- **users:** Clarify pending-user dedupe log and exempt addPendingUser from knip until route lands
+- **settings:** Treat empty username input as unresolved regardless of router
+- **settings:** Distinguish already-authorized users from pending entries in add response
+
+### Miscellaneous
+
+- **mutation:** Ignore local agent-tool dirs in stryker sandbox copy
+
+### Testing
+
+- **settings:** Type resolver mock against ResolveUserContext and cover non-@ resolution
 ## [6.1.6] - 2026-06-10
 
 ### Fixed
