@@ -15,6 +15,7 @@ import type { IncomingFile } from '../../src/chat/types.js'
 import { createAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
 import { getIdentityMapping } from '../../src/identity/mapping.js'
 import { listInstructions } from '../../src/instructions.js'
+import { listMemoryRecords } from '../../src/long-term-memory/store.js'
 import { listMemos } from '../../src/memos.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
@@ -139,6 +140,10 @@ describe('buildTools', () => {
     const tools = buildTools(provider, 'user-123', threadContextId, 'normal', 'group', 'alice')
 
     await getToolExecutor(tools['save_memo'])({ content: 'shared group memo' })
+    await getToolExecutor(tools['remember_memory'])({
+      content: 'The group remembers release notes are reviewed in the main channel.',
+      kind: 'procedure',
+    })
     await getToolExecutor(tools['save_instruction'])({ text: 'Prefer concise replies' })
     await getToolExecutor(tools['create_recurring_task'])({
       title: 'Shared recurring task',
@@ -154,6 +159,10 @@ describe('buildTools', () => {
     expect(parentContextId).not.toBe(threadContextId)
     expect(listMemos(parentContextId).map((memo) => memo.content)).toContain('shared group memo')
     expect(listMemos(threadContextId).map((memo) => memo.content)).not.toContain('shared group memo')
+    expect(
+      listMemoryRecords({ scopeId: parentContextId, scopeType: 'group', status: 'active' }).map((r) => r.content),
+    ).toContain('The group remembers release notes are reviewed in the main channel.')
+    expect(listMemoryRecords({ scopeId: threadContextId, scopeType: 'group', status: 'active' })).toEqual([])
     expect(listInstructions(parentContextId).map((instruction) => instruction.text)).toContain('Prefer concise replies')
     expect(listInstructions(threadContextId).map((instruction) => instruction.text)).not.toContain(
       'Prefer concise replies',
@@ -431,16 +440,41 @@ describe('buildTools', () => {
     expect(tools).not.toHaveProperty('list_memos')
     expect(tools).not.toHaveProperty('create_recurring_task')
     expect(tools).not.toHaveProperty('save_instruction')
+    expect(tools).not.toHaveProperty('remember_memory')
+  })
+
+  it('exposes memory tools when storage context and context type are available', () => {
+    const provider = createMockProvider()
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal', 'dm')
+
+    expect(tools).toHaveProperty('search_memory')
+    expect(tools).toHaveProperty('remember_memory')
+    expect(tools).toHaveProperty('forget_memory')
+    expect(tools).toHaveProperty('list_memory')
+  })
+
+  it('does not expose memory tools without context type', () => {
+    const provider = createMockProvider()
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
+
+    expect(tools).not.toHaveProperty('search_memory')
+    expect(tools).not.toHaveProperty('remember_memory')
+    expect(tools).not.toHaveProperty('forget_memory')
+    expect(tools).not.toHaveProperty('list_memory')
   })
 
   it('builds only provider-independent tools for providerless invocation', () => {
-    const tools = buildProviderlessTools('user-123', 'group-456:thread-1', 'normal')
+    const tools = buildProviderlessTools('user-123', 'group-456:thread-1', 'normal', 'group')
 
     expect(tools).toHaveProperty('get_current_time')
     expect(tools).toHaveProperty('save_memo')
     expect(tools).toHaveProperty('search_memos')
     expect(tools).toHaveProperty('list_memos')
     expect(tools).toHaveProperty('archive_memos')
+    expect(tools).toHaveProperty('search_memory')
+    expect(tools).toHaveProperty('remember_memory')
+    expect(tools).toHaveProperty('forget_memory')
+    expect(tools).toHaveProperty('list_memory')
     expect(tools).toHaveProperty('create_recurring_task')
     expect(tools).toHaveProperty('list_recurring_tasks')
     expect(tools).toHaveProperty('save_instruction')

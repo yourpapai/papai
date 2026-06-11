@@ -24,6 +24,7 @@ export const TOOL_DOMAINS = [
   'time',
   'mcp',
   'plugin',
+  'memory',
 ] as const
 
 export type ToolDomain = (typeof TOOL_DOMAINS)[number]
@@ -138,6 +139,11 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   list_memos: read('memo'),
   archive_memos: write('memo', 'update'),
   promote_memo: write('memo', 'create'),
+
+  search_memory: read('memory'),
+  list_memory: read('memory'),
+  remember_memory: write('memory', 'create'),
+  forget_memory: destructive('memory'),
 
   create_recurring_task: write('recurring', 'create'),
   list_recurring_tasks: read('recurring'),
