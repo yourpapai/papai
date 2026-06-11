@@ -3,16 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import { SYSTEM_CONFIG_KEYS, type SystemConfigKey, systemConfigCacheForTesting } from '../../../src/system-config.js'
-import { EmbeddingToolRetriever, getToolRetriever } from '../../../src/tools/disclosure/embedding-tool-retriever.js'
+import type { EmbeddingCallContext } from '../../../src/embeddings.js'
+import type { EffectiveLlmConfigResult } from '../../../src/llm-config-resolver.js'
+import {
+  clearBriefEmbeddingCachesForTesting,
+  EmbeddingToolRetriever,
+  getToolRetriever,
+  type ToolRetrieverFactoryDeps,
+} from '../../../src/tools/disclosure/embedding-tool-retriever.js'
 import type { ToolBrief } from '../../../src/tools/disclosure/tool-brief.js'
 import { LexicalToolRetriever } from '../../../src/tools/disclosure/tool-retriever.js'
-
-function isSystemConfigKey(k: string): k is SystemConfigKey {
-  return (SYSTEM_CONFIG_KEYS as readonly string[]).includes(k)
-}
 
 const briefs: ToolBrief[] = [
   { name: 'list_tasks', summary: 'List tasks.', domain: 'task' },
@@ -26,6 +28,12 @@ const webVec: number[] = [0, 1]
 // Returns an embed function backed by the given lookup map; unknown texts yield null.
 function makeEmbedFromMap(vecByText: Map<string, number[]>): (text: string) => Promise<number[] | null> {
   return (text: string): Promise<number[] | null> => Promise.resolve(vecByText.get(text) ?? null)
+}
+
+// Returns an embed function backed by the given lookup map; unknown texts throw.
+function makeEmbedThrowingForUnknown(vecByText: Map<string, number[]>): (text: string) => Promise<number[] | null> {
+  return (text: string): Promise<number[] | null> =>
+    vecByText.has(text) ? Promise.resolve(vecByText.get(text)!) : Promise.reject(new Error('boom'))
 }
 
 // Brief embedding text literals (must match embedBrief's format exactly).
@@ -180,6 +188,42 @@ describe('EmbeddingToolRetriever', () => {
     expect(out[0]!.name).toBe('list_tasks')
   })
 
+  it('falls back to lexical ranking when the query embed throws', async () => {
+    const embed = mock((_text: string): Promise<number[] | null> => Promise.reject(new Error('network down')))
+    const r = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: new Map() })
+    const out = await r.rank('list tasks', briefs, 5)
+    expect(out.length).toBeGreaterThan(0)
+  })
+
+  it('treats a throwing brief embed as missing and falls back to lexical', async () => {
+    // Query embeds fine (in map); every brief embed throws (not in map) → no scored briefs
+    // → lexical fallback still returns results.
+    const queryOnlyMap = new Map<string, number[]>([['show my tasks', taskVec]])
+    const r = new EmbeddingToolRetriever({
+      embed: mock(makeEmbedThrowingForUnknown(queryOnlyMap)),
+      lexical: new LexicalToolRetriever(),
+      cache: new Map(),
+    })
+    const out = await r.rank('show my tasks', briefs, 5)
+    expect(out.length).toBeGreaterThan(0)
+  })
+
+  it('scores only the briefs whose embeds succeed when others throw', async () => {
+    // Query and list_tasks brief embed fine (in map); web_fetch brief is NOT in map
+    // → its embed throws → web_fetch excluded from scored set → only list_tasks appears.
+    const queryAndTaskMap = new Map<string, number[]>([
+      ['show my tasks', taskVec],
+      [TASK_BRIEF_TEXT, taskVec],
+    ])
+    const r = new EmbeddingToolRetriever({
+      embed: mock(makeEmbedThrowingForUnknown(queryAndTaskMap)),
+      lexical: new LexicalToolRetriever(),
+      cache: new Map(),
+    })
+    const out = await r.rank('show my tasks', briefs, 5)
+    expect(out.map((b) => b.name)).toEqual(['list_tasks'])
+  })
+
   describe('dimension-mismatch guard', () => {
     it('excludes a cached brief whose vector length differs from the query vector, does not throw, and still ranks the matching brief', async () => {
       // query embeds have length 2; list_tasks cache entry has length 3 (stale/wrong model)
@@ -222,129 +266,69 @@ describe('EmbeddingToolRetriever', () => {
   })
 })
 
+const okConfig: EffectiveLlmConfigResult = {
+  ok: true,
+  source: 'byok',
+  llmApiKey: 'byok-key',
+  llmBaseUrl: 'http://byok-llm',
+  mainModel: 'main-1',
+  smallModel: 'small-1',
+  embeddingModel: 'embed-1',
+}
+
+const missingConfig: EffectiveLlmConfigResult = {
+  ok: false,
+  type: 'missing',
+  source: 'global',
+  missing: ['llm_apikey'],
+}
+
+const callContext: EmbeddingCallContext = { storageContextId: 'ctx-1', contextType: 'dm', chatUserId: 'u1' }
+
 describe('getToolRetriever', () => {
-  // Save and restore system config cache entries around each test to avoid pollution
-  let savedCache: Map<string, string>
-
   beforeEach(() => {
-    savedCache = new Map(systemConfigCacheForTesting)
+    clearBriefEmbeddingCachesForTesting()
   })
 
-  afterEach(() => {
-    systemConfigCacheForTesting.clear()
-    for (const [k, v] of savedCache) {
-      if (isSystemConfigKey(k)) systemConfigCacheForTesting.set(k, v)
+  it('returns the lexical retriever when config resolution fails', () => {
+    const deps: ToolRetrieverFactoryDeps = {
+      resolveConfig: mock(() => missingConfig),
+      embedText: mock(() => Promise.resolve(null)),
     }
+    const r = getToolRetriever('cfg-ctx', callContext, deps)
+    expect(r).toBeInstanceOf(LexicalToolRetriever)
   })
 
-  it('returns a LexicalToolRetriever when llm_apikey is absent', () => {
-    systemConfigCacheForTesting.clear()
-    systemConfigCacheForTesting.set('llm_baseurl', 'http://localhost')
-    systemConfigCacheForTesting.set('embedding_model', 'text-embedding-3-small')
-    const retriever = getToolRetriever()
-    expect(retriever).toBeInstanceOf(LexicalToolRetriever)
-  })
-
-  it('returns a LexicalToolRetriever when llm_baseurl is absent', () => {
-    systemConfigCacheForTesting.clear()
-    systemConfigCacheForTesting.set('llm_apikey', 'sk-test')
-    systemConfigCacheForTesting.set('embedding_model', 'text-embedding-3-small')
-    const retriever = getToolRetriever()
-    expect(retriever).toBeInstanceOf(LexicalToolRetriever)
-  })
-
-  it('returns a LexicalToolRetriever when embedding_model is absent', () => {
-    systemConfigCacheForTesting.clear()
-    systemConfigCacheForTesting.set('llm_apikey', 'sk-test')
-    systemConfigCacheForTesting.set('llm_baseurl', 'http://localhost')
-    const retriever = getToolRetriever()
-    expect(retriever).toBeInstanceOf(LexicalToolRetriever)
-  })
-
-  it('returns an EmbeddingToolRetriever when all three keys are present', () => {
-    systemConfigCacheForTesting.clear()
-    systemConfigCacheForTesting.set('llm_apikey', 'sk-test')
-    systemConfigCacheForTesting.set('llm_baseurl', 'http://localhost')
-    systemConfigCacheForTesting.set('embedding_model', 'text-embedding-3-small')
-    const retriever = getToolRetriever()
-    expect(retriever).toBeInstanceOf(EmbeddingToolRetriever)
-  })
-
-  it('reuses the same brief-embedding cache across calls for the same model', async () => {
-    // If the cache === undefined guard is mutated to always true, a new Map is created on every
-    // getToolRetriever() call and briefEmbeddingCaches.set is called every time — but calling
-    // getToolRetriever() twice with the same model and then priming the cache via EmbeddingToolRetriever
-    // directly shows whether the two instances share the same Map.
-    // We test this by constructing two EmbeddingToolRetriever instances with the SAME cache Map
-    // and confirming that a brief embedded in one is seen by the other (cache hit, no re-embed).
-    const sharedCache = new Map<string, number[]>()
-    const embedFn = makeEmbedFromMap(
-      new Map([
-        [TASK_BRIEF_TEXT, taskVec],
-        [WEB_BRIEF_TEXT, webVec],
-        ['priming query', taskVec],
-        ['second query', webVec],
-      ]),
+  it('resolves per-context credentials and forwards the call context to embedText', async () => {
+    const resolveConfig = mock((_id: string) => okConfig)
+    const embedText: ToolRetrieverFactoryDeps['embedText'] = mock(
+      (_text: string, _key: string, _url: string, _model: string, _ctx?: EmbeddingCallContext) =>
+        Promise.resolve<number[] | null>(taskVec),
     )
-    const embed = mock(embedFn)
-
-    // First retriever primes the cache.
-    const r1 = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: sharedCache })
-    await r1.rank('priming query', briefs, 2)
-    const callsAfterPrime = embed.mock.calls.length
-
-    // Second retriever with the SAME cache — should not re-embed briefs.
-    const r2 = new EmbeddingToolRetriever({ embed, lexical: new LexicalToolRetriever(), cache: sharedCache })
-    await r2.rank('second query', briefs, 2)
-    // Only the query embed is new; briefs are cached.
-    expect(embed.mock.calls.length).toBe(callsAfterPrime + 1)
+    const r = getToolRetriever('cfg-ctx', callContext, { resolveConfig, embedText })
+    await r.rank('show my tasks', briefs, 2)
+    expect(resolveConfig).toHaveBeenCalledWith('cfg-ctx')
+    expect(embedText).toHaveBeenCalledWith('show my tasks', 'byok-key', 'http://byok-llm', 'embed-1', callContext)
   })
 
-  it('uses independent caches for different embedding_model values (no cross-model cache pollution)', async () => {
-    // Prime with model-A and rank to populate its cache
-    systemConfigCacheForTesting.set('llm_apikey', 'sk-test')
-    systemConfigCacheForTesting.set('llm_baseurl', 'http://localhost')
-    systemConfigCacheForTesting.set('embedding_model', 'model-a')
-    const retrieverA = getToolRetriever()
+  it('does not share brief caches across endpoints with the same model name', async () => {
+    const otherEndpoint: EffectiveLlmConfigResult = { ...okConfig, llmBaseUrl: 'http://other-llm' }
+    let callsA = 0
+    const embedA: ToolRetrieverFactoryDeps['embedText'] = (_t, _k, _u, _m, _c) => {
+      callsA++
+      return Promise.resolve<number[] | null>(taskVec)
+    }
+    const rA = getToolRetriever('cfg-a', callContext, { resolveConfig: mock(() => okConfig), embedText: embedA })
+    await rA.rank('show my tasks', briefs, 2)
 
-    // Prime with model-B — should get a fresh, independent cache
-    systemConfigCacheForTesting.set('embedding_model', 'model-b')
-    const retrieverB = getToolRetriever()
-
-    // They are distinct instances, both EmbeddingToolRetrievers
-    expect(retrieverA).toBeInstanceOf(EmbeddingToolRetriever)
-    expect(retrieverB).toBeInstanceOf(EmbeddingToolRetriever)
-    expect(retrieverA).not.toBe(retrieverB)
-
-    // Seed model-A's cache with dim-3 vectors (stale model)
-    const cacheA = new Map<string, number[]>()
-    cacheA.set('list_tasks', [1, 0, 0])
-    cacheA.set('web_fetch', [0, 1, 0])
-
-    // Build model-A retriever directly with stale cache; model-B with fresh cache + dim-2 embed
-    const staleRetriever = new EmbeddingToolRetriever({
-      embed: mock((_: string): Promise<number[] | null> => Promise.resolve([1, 0])),
-      lexical: new LexicalToolRetriever(),
-      cache: cacheA,
-    })
-    // dim mismatch on all entries → falls back to lexical (does not throw)
-    const outA = await staleRetriever.rank('list tasks', briefs, 2)
-    // lexical fallback, no throw
-    expect(outA[0]!.name).toBe('list_tasks')
-
-    const freshRetriever = new EmbeddingToolRetriever({
-      embed: makeEmbedFromMap(
-        new Map([
-          [TASK_BRIEF_TEXT, taskVec],
-          [WEB_BRIEF_TEXT, webVec],
-          ['list tasks', taskVec],
-        ]),
-      ),
-      lexical: new LexicalToolRetriever(),
-      cache: new Map(),
-    })
-    const outB = await freshRetriever.rank('list tasks', briefs, 2)
-    // semantic match, no throw
-    expect(outB[0]!.name).toBe('list_tasks')
+    let callsB = 0
+    const embedB: ToolRetrieverFactoryDeps['embedText'] = (_t, _k, _u, _m, _c) => {
+      callsB++
+      return Promise.resolve<number[] | null>(webVec)
+    }
+    const rB = getToolRetriever('cfg-b', callContext, { resolveConfig: mock(() => otherEndpoint), embedText: embedB })
+    await rB.rank('show my tasks', briefs, 2)
+    // Endpoint B must embed the briefs itself (separate cache), not reuse endpoint A's vectors.
+    expect(callsB).toBe(callsA)
   })
 })

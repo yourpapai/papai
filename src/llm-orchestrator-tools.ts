@@ -8,6 +8,7 @@ import type { ModelMessage, ToolSet } from 'ai'
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import { getCachedTools, setCachedTools } from './cache.js'
 import { askPermissionViaChat } from './chat/permission-prompt.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
 import { buildMessagesWithMemory } from './conversation.js'
 import { resolveTimezone } from './llm-orchestrator-config.js'
@@ -126,7 +127,13 @@ const buildFullToolSet = async (
     userIntent: userText,
     enabled: flags.resultCompaction,
   })
-  const retriever = flags.semanticToolRetrieval ? getToolRetriever() : new LexicalToolRetriever()
+  const retriever = flags.semanticToolRetrieval
+    ? getToolRetriever(getConfigContextIdFromStorageContextId(contextId), {
+        storageContextId: contextId,
+        contextType,
+        chatUserId,
+      })
+    : new LexicalToolRetriever()
   const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(compacted, contextId, retriever, {
     enabled: flags.progressiveDisclosure,
   })

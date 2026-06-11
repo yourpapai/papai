@@ -5,10 +5,13 @@
 
 import { cosineSimilarity } from 'ai'
 
-import { tryGetEmbedding } from '../../embeddings.js'
-import { getSystemConfig } from '../../system-config.js'
+import { type EmbeddingCallContext, tryGetEmbedding } from '../../embeddings.js'
+import { resolveEffectiveLlmConfig } from '../../llm-config-resolver.js'
+import { logger } from '../../logger.js'
 import type { ToolBrief } from './tool-brief.js'
 import { LexicalToolRetriever, type RankedBrief, type ToolRetriever } from './tool-retriever.js'
+
+const log = logger.child({ scope: 'disclosure:embedding-retriever' })
 
 export interface EmbeddingRetrieverDeps {
   embed: (text: string) => Promise<number[] | null>
@@ -22,9 +25,21 @@ export class EmbeddingToolRetriever implements ToolRetriever {
     this.deps = deps
   }
 
+  private async safeEmbed(text: string): Promise<number[] | null> {
+    try {
+      return await this.deps.embed(text)
+    } catch (error) {
+      log.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Embedding call threw; treating as unavailable',
+      )
+      return null
+    }
+  }
+
   async rank(query: string, briefs: ToolBrief[], limit: number): Promise<RankedBrief[]> {
     if (query.trim() === '') return []
-    const queryVec = await this.deps.embed(query)
+    const queryVec = await this.safeEmbed(query)
     if (queryVec === null) return this.deps.lexical.rank(query, briefs, limit)
     const vecs = await Promise.all(briefs.map((brief) => this.embedBrief(brief)))
     const scored: RankedBrief[] = []
@@ -42,7 +57,7 @@ export class EmbeddingToolRetriever implements ToolRetriever {
   private embedBrief(brief: ToolBrief): Promise<number[] | null> {
     const cached = this.deps.cache.get(brief.name)
     if (cached !== undefined) return Promise.resolve(cached)
-    return this.deps.embed(`${brief.name}. ${brief.summary} (${brief.domain})`).then((vec) => {
+    return this.safeEmbed(`${brief.name}. ${brief.summary} (${brief.domain})`).then((vec) => {
       if (vec !== null) this.deps.cache.set(brief.name, vec)
       return vec
     })
@@ -51,19 +66,39 @@ export class EmbeddingToolRetriever implements ToolRetriever {
 
 const briefEmbeddingCaches = new Map<string, Map<string, number[]>>()
 
-export function getToolRetriever(): ToolRetriever {
-  const apiKey = getSystemConfig('llm_apikey')
-  const baseUrl = getSystemConfig('llm_baseurl')
-  const embeddingModel = getSystemConfig('embedding_model')
+export function clearBriefEmbeddingCachesForTesting(): void {
+  briefEmbeddingCaches.clear()
+}
+
+export interface ToolRetrieverFactoryDeps {
+  resolveConfig: typeof resolveEffectiveLlmConfig
+  embedText: typeof tryGetEmbedding
+}
+
+const defaultFactoryDeps: ToolRetrieverFactoryDeps = {
+  resolveConfig: resolveEffectiveLlmConfig,
+  embedText: tryGetEmbedding,
+}
+
+export function getToolRetriever(
+  configContextId: string,
+  callContext: EmbeddingCallContext,
+  deps: ToolRetrieverFactoryDeps = defaultFactoryDeps,
+): ToolRetriever {
   const lexical = new LexicalToolRetriever()
-  if (apiKey === null || baseUrl === null || embeddingModel === null) return lexical
-  let cache = briefEmbeddingCaches.get(embeddingModel)
+  const resolved = deps.resolveConfig(configContextId)
+  if (!resolved.ok) return lexical
+  // Key per endpoint+model: two endpoints can serve the same model name with
+  // incompatible vector spaces of equal dimension.
+  const cacheKey = `${resolved.llmBaseUrl}:${resolved.embeddingModel}`
+  let cache = briefEmbeddingCaches.get(cacheKey)
   if (cache === undefined) {
     cache = new Map<string, number[]>()
-    briefEmbeddingCaches.set(embeddingModel, cache)
+    briefEmbeddingCaches.set(cacheKey, cache)
   }
   return new EmbeddingToolRetriever({
-    embed: (text) => tryGetEmbedding(text, apiKey, baseUrl, embeddingModel),
+    embed: (text) =>
+      deps.embedText(text, resolved.llmApiKey, resolved.llmBaseUrl, resolved.embeddingModel, callContext),
     lexical,
     cache,
   })
