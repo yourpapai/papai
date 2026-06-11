@@ -32,7 +32,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function parse(raw: string | null): ReductionFlags {
+/** Parse a raw tool_context_flags JSON string. Only literal `true` enables a flag. */
+export function parseReductionFlagsJson(raw: string | null): ReductionFlags {
   if (raw === null || raw.trim() === '') return { ...ALL_OFF }
   try {
     const parsed: unknown = JSON.parse(raw)
@@ -52,5 +53,5 @@ function parse(raw: string | null): ReductionFlags {
 export function resolveReductionFlags(storageContextId: string): ReductionFlags {
   if (killSwitchEngaged()) return { ...ALL_OFF }
   const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
-  return parse(getCachedConfig(configContextId, REDUCTION_FLAGS_CONFIG_KEY))
+  return parseReductionFlagsJson(getCachedConfig(configContextId, REDUCTION_FLAGS_CONFIG_KEY))
 }

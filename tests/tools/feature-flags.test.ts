@@ -10,7 +10,8 @@ import { toScopedThreadContextId, getConfigContextIdFromStorageContextId } from 
 const getCachedConfig = mock((_c: string, _k: string): string | null => null)
 void mock.module('../../src/cache.js', () => ({ getCachedConfig }))
 
-const { resolveReductionFlags, REDUCTION_FLAGS_CONFIG_KEY } = await import('../../src/tools/feature-flags.js')
+const { resolveReductionFlags, REDUCTION_FLAGS_CONFIG_KEY, parseReductionFlagsJson } =
+  await import('../../src/tools/feature-flags.js')
 
 describe('resolveReductionFlags', () => {
   beforeEach(() => {
@@ -123,5 +124,22 @@ describe('resolveReductionFlags', () => {
     const expectedConfigContextId = getConfigContextIdFromStorageContextId(threadScopedId)
     resolveReductionFlags(threadScopedId)
     expect(getCachedConfig).toHaveBeenCalledWith(expectedConfigContextId, REDUCTION_FLAGS_CONFIG_KEY)
+  })
+})
+
+describe('parseReductionFlagsJson', () => {
+  it('parses only literal true values', () => {
+    const flags = parseReductionFlagsJson(
+      '{"result_compaction":true,"progressive_disclosure":"true","semantic_tool_retrieval":1}',
+    )
+    expect(flags).toEqual({ resultCompaction: true, progressiveDisclosure: false, semanticToolRetrieval: false })
+  })
+
+  it('returns all OFF for null, empty, and corrupt input', () => {
+    const allOff = { resultCompaction: false, progressiveDisclosure: false, semanticToolRetrieval: false }
+    expect(parseReductionFlagsJson(null)).toEqual(allOff)
+    expect(parseReductionFlagsJson('')).toEqual(allOff)
+    expect(parseReductionFlagsJson('{not json')).toEqual(allOff)
+    expect(parseReductionFlagsJson('[1,2]')).toEqual(allOff)
   })
 })
