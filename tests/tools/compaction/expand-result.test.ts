@@ -19,8 +19,12 @@ function isPageResult(v: unknown): v is { chunk: string; done: boolean } {
   return typeof v === 'object' && v !== null && 'chunk' in v && 'done' in v
 }
 
-function isFailureResult(v: unknown): v is { success: boolean; errorCode: string; retryable: boolean } {
-  return typeof v === 'object' && v !== null && 'success' in v && 'errorCode' in v && 'retryable' in v
+function isFailureResult(
+  v: unknown,
+): v is { success: boolean; errorCode: string; retryable: boolean; toolCallId: string } {
+  return (
+    typeof v === 'object' && v !== null && 'success' in v && 'errorCode' in v && 'retryable' in v && 'toolCallId' in v
+  )
 }
 
 describe('expand_result tool', () => {
@@ -48,6 +52,14 @@ describe('expand_result tool', () => {
     expect(out.success).toBe(false)
     expect(out.errorCode).toBe('expired')
     expect(out.retryable).toBe(true)
+    expect(out.toolCallId).toBe('')
+  })
+
+  it('uses the SDK toolCallId in failure results, not the handle', async () => {
+    const exec = getToolExecutor(makeExpandResultTool('ctx-1'))
+    const out: unknown = await exec({ handle: 'res_missing' }, { toolCallId: 'call_42', messages: [] })
+    assert(isFailureResult(out), 'Expected a structured failure result')
+    expect(out.toolCallId).toBe('call_42')
   })
 
   it('returns a structured failure for a TTL-expired handle', async () => {

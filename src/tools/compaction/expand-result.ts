@@ -28,7 +28,7 @@ export function makeExpandResultTool(contextId: string): ToolSet[string] {
         .default(EXPAND_DEFAULT_LIMIT_BYTES)
         .describe('Maximum characters to return'),
     }),
-    execute: ({ handle, offset, limit }) => {
+    execute: ({ handle, offset, limit }, opts) => {
       // getToolExecutor and some SDK paths bypass schema parsing, so defaults are applied here too
       const resolvedOffset = offset ?? 0
       const resolvedLimit = limit ?? EXPAND_DEFAULT_LIMIT_BYTES
@@ -39,7 +39,7 @@ export function makeExpandResultTool(contextId: string): ToolSet[string] {
           success: false,
           error: 'Result handle not found or expired',
           toolName: 'expand_result',
-          toolCallId: handle,
+          toolCallId: opts?.toolCallId ?? '',
           timestamp: new Date().toISOString(),
           errorType: 'tool-execution',
           errorCode: 'expired',
