@@ -69,6 +69,12 @@ export const memoryFacts = sqliteTable(
     index('idx_memory_facts_user_lastseen').on(table.userId, table.lastSeen),
   ],
 )
+export {
+  memoryProfiles,
+  memoryRecords,
+  type MemoryProfileRow,
+  type MemoryRecordRow,
+} from './long-term-memory-schema.js'
 export const versionAnnouncements = sqliteTable('version_announcements', {
   version: text('version').primaryKey(),
   announcedAt: text('announced_at').notNull(),
