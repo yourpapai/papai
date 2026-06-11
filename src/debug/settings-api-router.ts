@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { handleAdminByokRoutes } from './settings/admin/byok-routes.js'
+import { handleAdminFeatureFlagsRoutes } from './settings/admin/feature-flags-routes.js'
 import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
 import { handleAdminPluginConfigRoutes } from './settings/admin/plugin-config-routes.js'
 import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
@@ -48,6 +49,9 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   }
   if (url.pathname === '/settings/api/admin/plugin-config') {
     return handleAdminPluginConfigRoutes(req, url, url.pathname)
+  }
+  if (url.pathname === '/settings/api/admin/feature-flags') {
+    return handleAdminFeatureFlagsRoutes(req, url, url.pathname)
   }
   if (url.pathname === '/settings/api/admin/byok') return handleAdminByokRoutes(req, url)
   if (url.pathname === '/settings/api/byok') return handleByokRoutes(req, url)
