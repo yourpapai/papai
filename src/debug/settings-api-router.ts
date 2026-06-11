@@ -14,6 +14,7 @@ import { handleContextTaskInstanceRoutes } from './settings/context-task-instanc
 import { handleGroupRoutes } from './settings/group-routes.js'
 import { handleIdentityRoutes } from './settings/identity-routes.js'
 import { handleMcpRoutes } from './settings/mcp-routes.js'
+import { handleMemoryRoutes } from './settings/memory-routes.js'
 import { handlePluginsRoutes } from './settings/plugins-routes.js'
 import { handleProvisionKaneo } from './settings/provision-routes.js'
 import { handleToolsRoutes } from './settings/tools-routes.js'
@@ -57,6 +58,9 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
     return handleToolsRoutes(req, url, url.pathname)
   }
   if (url.pathname === '/settings/api/mcp') return handleMcpRoutes(req, url)
+  if (url.pathname === '/settings/api/memory' || url.pathname.startsWith('/settings/api/memory/')) {
+    return handleMemoryRoutes(req, url)
+  }
   if (url.pathname.startsWith('/settings/api/plugins')) return handlePluginsRoutes(req, url, url.pathname)
   if (url.pathname === '/settings/api/identity') return handleIdentityRoutes(req, url)
   if (url.pathname.startsWith('/settings/api/group/')) return handleGroupRoutes(req, url, url.pathname)
