@@ -41,11 +41,12 @@ export function buildFullMessages(
   prompt: string,
   matchedTasksSummary: string | undefined,
   metadata: ExecutionMetadata,
+  contextType: 'dm' | 'group' = 'dm',
 ): { messages: ModelMessage[]; systemPrompt: string } {
   const timezone = timezoneOrUtc(getConfig(createdByUserId, 'timezone'))
   const trigger = buildProactiveTrigger(type, prompt, timezone, matchedTasksSummary)
   const history = getCachedHistory(storageContextId)
-  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history)
+  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history, contextType)
   return {
     messages: [
       ...messagesWithMemory,

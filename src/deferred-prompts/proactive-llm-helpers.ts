@@ -6,11 +6,13 @@
 import type { ModelMessage } from 'ai'
 
 import type { DeferredDeliveryTarget } from '../chat/types.js'
-import { runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
+import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { logger } from '../logger.js'
 import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from '../memory.js'
+import type { TaskProvider } from '../providers/types.js'
+import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
 import type { ExecutionMetadata } from './types.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
@@ -32,6 +34,8 @@ type DeferredExecutionContextLike = Readonly<{
   createdByUserId: string
   deliveryTarget: DeferredDeliveryTarget
 }>
+
+export type BuildProviderFn = (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -83,6 +87,52 @@ export function buildMetadataMessages(m: ExecutionMetadata): ModelMessage[] {
 }
 
 export const wrapPrompt = (prompt: string): string => `===DEFERRED_TASK===\n${prompt}\n===END_DEFERRED_TASK===`
+
+export const buildContextMessages = (
+  storageContextId: string,
+  contextType: 'dm' | 'group',
+  history: readonly ModelMessage[],
+  metadata: ExecutionMetadata,
+  prompt: string,
+): ModelMessage[] => {
+  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history, contextType)
+  return [...messagesWithMemory, ...buildMetadataMessages(metadata), { role: 'user', content: wrapPrompt(prompt) }]
+}
+
+export const persistContextResponse = (
+  storageContextId: string,
+  configContextId: string,
+  history: readonly ModelMessage[],
+  mainModel: string,
+  assistantMessages: ModelMessage[],
+): void => {
+  if (assistantMessages.length === 0) return
+  appendHistory(storageContextId, assistantMessages)
+  const updatedHistory = [...history, ...assistantMessages]
+  if (shouldTriggerTrim(updatedHistory, mainModel))
+    void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
+}
+
+export const buildFullSystemPrompt = (
+  provider: TaskProvider | null,
+  storageContextId: string,
+  enabledToolNames: ReadonlySet<string>,
+): string =>
+  provider === null
+    ? buildProviderlessSystemPrompt(storageContextId, enabledToolNames, { askPermissionAvailable: false })
+    : buildSystemPrompt(provider, storageContextId, enabledToolNames, { askPermissionAvailable: false })
+
+export async function resolveFullProvider(
+  buildProviderFn: BuildProviderFn,
+  userId: string,
+  storageContextId: string,
+  configContextId: string,
+): Promise<TaskProvider | null> {
+  const provider = await buildProviderFn(configContextId)
+  if (provider !== null) return provider
+  log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for deferred prompt')
+  return null
+}
 
 type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCalls: unknown[] | undefined }
 

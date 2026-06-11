@@ -9,21 +9,24 @@ import { generateText, stepCountIs, type ModelMessage } from 'ai'
 import { getCachedHistory } from '../cache.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
-import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
+import { runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { logger } from '../logger.js'
-import type { TaskProvider } from '../providers/types.js'
-import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
 import {
+  buildContextMessages,
+  buildFullSystemPrompt,
   buildMetadataMessages,
   buildMinimalSystemPrompt,
   getStorageContextId,
   modelIdForLightweight,
+  persistContextResponse,
   persistProactiveResults,
   resultTextOrDone,
+  resolveFullProvider,
+  type BuildProviderFn,
   type ProactiveLlmDispatchArgs,
   wrapPrompt,
 } from './proactive-llm-helpers.js'
@@ -31,7 +34,6 @@ import type { ExecutionMetadata } from './types.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm' })
 
-/** Execution context for a deferred prompt: who created it and where to deliver. */
 export type DeferredExecutionContext = {
   createdByUserId: string
   deliveryTarget: DeferredDeliveryTarget
@@ -55,11 +57,15 @@ const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   stepCountIs: (...args) => stepCountIs(...args),
   buildModel: (config, modelId) => createOpenAICompatible({ name: 'openai-compatible', ...config })(modelId),
 }
-
-export type BuildProviderFn = (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
-
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string; smallModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
+export type { BuildProviderFn }
+type FullGenerationInput = Readonly<{
+  storageContextId: string
+  tools: Awaited<ReturnType<typeof buildFullToolSet>>['tools']
+  systemPrompt: string
+  messages: ModelMessage[]
+}>
 
 function getLlmConfig(configContextId: string): LlmConfig | string {
   const resolved = resolveEffectiveLlmConfig(configContextId)
@@ -156,12 +162,7 @@ async function invokeWithContext(
 
   const model = deps.buildModel(config, config.mainModel)
   const history = getCachedHistory(storageContextId)
-  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history)
-  const messages: ModelMessage[] = [
-    ...messagesWithMemory,
-    ...buildMetadataMessages(metadata),
-    { role: 'user', content: wrapPrompt(prompt) },
-  ]
+  const messages = buildContextMessages(storageContextId, deliveryTarget.contextType, history, metadata, prompt)
 
   log.debug(
     {
@@ -180,26 +181,38 @@ async function invokeWithContext(
     timeout: 1_200_000,
   })
 
-  const assistantMessages = result.response.messages
-  if (assistantMessages.length > 0) {
-    appendHistory(storageContextId, assistantMessages)
-    const updatedHistory = [...history, ...assistantMessages]
-    if (shouldTriggerTrim(updatedHistory, config.mainModel))
-      void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
-  }
+  persistContextResponse(storageContextId, configContextId, history, config.mainModel, result.response.messages)
   return resultTextOrDone(result.text)
 }
 
-async function resolveFullProvider(
-  buildProviderFn: BuildProviderFn,
-  userId: string,
-  storageContextId: string,
-  configContextId: string,
-): Promise<TaskProvider | null> {
-  const provider = await buildProviderFn(configContextId)
-  if (provider !== null) return provider
-  log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for deferred prompt')
-  return null
+async function prepareFullGenerationInput(
+  execCtx: DeferredExecutionContext,
+  type: 'scheduled' | 'alert',
+  prompt: string,
+  metadata: ExecutionMetadata,
+  matchedTasksSummary: string | undefined,
+  provider: Awaited<ReturnType<BuildProviderFn>>,
+): Promise<FullGenerationInput> {
+  const { createdByUserId, deliveryTarget } = execCtx
+  const storageContextId = getStorageContextId(deliveryTarget)
+  const { tools, enabledToolNames } = await buildFullToolSet(
+    provider,
+    createdByUserId,
+    storageContextId,
+    deliveryTarget.contextType,
+    prompt,
+  )
+  const systemPrompt = buildFullSystemPrompt(provider, storageContextId, enabledToolNames)
+  const { messages } = buildFullMessages(
+    createdByUserId,
+    storageContextId,
+    type,
+    prompt,
+    matchedTasksSummary,
+    metadata,
+    deliveryTarget.contextType,
+  )
+  return { storageContextId, tools, systemPrompt, messages }
 }
 
 async function runFullGeneration(
@@ -213,39 +226,27 @@ async function runFullGeneration(
   provider: Awaited<ReturnType<BuildProviderFn>>,
   deps: ProactiveLlmDeps,
 ): Promise<string> {
-  const { createdByUserId, deliveryTarget } = execCtx
-  const storageContextId = getStorageContextId(deliveryTarget)
+  const { createdByUserId } = execCtx
   const model = deps.buildModel(config, config.mainModel)
-  const { tools, enabledToolNames } = await buildFullToolSet(
-    provider,
-    createdByUserId,
-    storageContextId,
-    deliveryTarget.contextType,
-    prompt,
-  )
-  const systemPrompt =
-    provider === null
-      ? buildProviderlessSystemPrompt(storageContextId, enabledToolNames, { askPermissionAvailable: false })
-      : buildSystemPrompt(provider, storageContextId, enabledToolNames, { askPermissionAvailable: false })
-  const { messages } = buildFullMessages(createdByUserId, storageContextId, type, prompt, matchedTasksSummary, metadata)
+  const prepared = await prepareFullGenerationInput(execCtx, type, prompt, metadata, matchedTasksSummary, provider)
   log.debug(
-    { userId: createdByUserId, mainModel: config.mainModel, historyLength: messages.length, mode: 'full' },
+    { userId: createdByUserId, mainModel: config.mainModel, historyLength: prepared.messages.length, mode: 'full' },
     'generateText',
   )
   const result = await deps.generateText({
     model,
-    system: systemPrompt,
-    messages,
-    tools,
+    system: prepared.systemPrompt,
+    messages: prepared.messages,
+    tools: prepared.tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
   persistProactiveResults(
     createdByUserId,
-    storageContextId,
+    prepared.storageContextId,
     configContextId,
     result,
-    getCachedHistory(storageContextId),
+    getCachedHistory(prepared.storageContextId),
     config.mainModel,
   )
   return resultTextOrDone(result.text)

@@ -15,6 +15,7 @@ import {
   safeBuildProvider,
 } from '../../src/commands/context-tool-resolution.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
+import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { buildProviderlessSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
@@ -124,6 +125,11 @@ function createSequentialLiveToolSet(results: readonly (ToolSet | null)[]): () =
   }
 }
 
+function requireMemoryMessage(value: string | null): string {
+  if (value === null) throw new Error('expected memory message')
+  return value
+}
+
 describe('registerContextCommand', () => {
   beforeEach(async () => {
     mockLogger()
@@ -200,6 +206,49 @@ describe('registerContextCommand', () => {
     expect(activeToolDefinitions).not.toBeNull()
     expect(activeToolDefinitions).toHaveProperty('set_my_identity')
     expect(activeToolDefinitions).toHaveProperty('clear_my_identity')
+  })
+
+  test('uses group long-term memory in context command memory section', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const chat = createFormattedContextChat(commands, null)
+    let memoryMessage: string | null = null
+    saveMemoryProfile(
+      { scopeId: 'group-ctx', scopeType: 'group' },
+      '## Group memory\n- Group planning happens in the roadmap thread',
+      '2026-06-12T00:00:00.000Z',
+    )
+    saveMemoryProfile(
+      { scopeId: 'group-ctx', scopeType: 'personal' },
+      '## Personal memory\n- This personal profile should not be shown',
+      '2026-06-12T00:00:00.000Z',
+    )
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          memoryMessage = collectorDeps.getMemoryMessage()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+    const { reply } = createMockReply()
+
+    await handler(
+      createGroupMessage('actor-user', '/context', false, 'group-ctx'),
+      reply,
+      createAuth('group-ctx', { isGroupAdmin: true }),
+    )
+
+    const capturedMemoryMessage = requireMemoryMessage(memoryMessage)
+    expect(capturedMemoryMessage).toContain('Group planning happens in the roadmap thread')
+    expect(capturedMemoryMessage).not.toContain('This personal profile should not be shown')
   })
 
   test('uses injected provider construction instead of the hardwired provider factory', async () => {

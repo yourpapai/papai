@@ -67,13 +67,18 @@ function resolveRegisterDeps(rest: readonly [ContextCommandDeps] | readonly []):
   return defaultDeps
 }
 
-function buildMemoryMessageText(contextId: string, history: readonly ModelMessage[]): string | null {
-  const { memoryMsg } = buildMessagesWithMemory(contextId, history)
+function buildMemoryMessageText(
+  contextId: string,
+  history: readonly ModelMessage[],
+  contextType: 'dm' | 'group',
+): string | null {
+  const { memoryMsg } = buildMessagesWithMemory(contextId, history, contextType)
   return memoryMsg === null ? null : memoryMsg.content
 }
 
 async function buildCollectorDeps(
   storageContextId: string,
+  contextType: 'dm' | 'group',
   provider: TaskProvider | null,
   resolvedToolSurface: ResolvedContextToolSurface,
   deps: ContextCommandDeps,
@@ -99,7 +104,7 @@ async function buildCollectorDeps(
     buildInstructionsBlock: () => buildInstructionsBlock(storageContextId),
     getProviderAddendum: () => (provider === null ? '' : provider.getPromptAddendum()),
     getHistory: () => loadHistory(storageContextId),
-    getMemoryMessage: () => buildMemoryMessageText(storageContextId, loadHistory(storageContextId)),
+    getMemoryMessage: () => buildMemoryMessageText(storageContextId, loadHistory(storageContextId), contextType),
     getSummary: () => loadSummary(storageContextId),
     getFacts: () => loadFacts(storageContextId),
     getActiveToolDefinitions: (): Record<string, unknown> => deps.resolveActiveToolDefinitions(resolvedToolSurface),
@@ -153,11 +158,12 @@ function renderContextForMessage(
 
 async function buildContextSnapshot(
   storageContextId: string,
+  contextType: 'dm' | 'group',
   provider: TaskProvider | null,
   resolvedToolSurface: ResolvedContextToolSurface,
   deps: ContextCommandDeps,
 ): Promise<ContextSnapshot> {
-  const collectorDeps = await buildCollectorDeps(storageContextId, provider, resolvedToolSurface, deps)
+  const collectorDeps = await buildCollectorDeps(storageContextId, contextType, provider, resolvedToolSurface, deps)
   return deps.collectContext(storageContextId, collectorDeps)
 }
 
@@ -195,7 +201,7 @@ async function handleContextCommand(
   )
   let snapshot: ContextSnapshot
   try {
-    snapshot = await buildContextSnapshot(auth.storageContextId, provider, resolvedToolSurface, deps)
+    snapshot = await buildContextSnapshot(auth.storageContextId, msg.contextType, provider, resolvedToolSurface, deps)
   } catch (error) {
     log.warn(
       {
