@@ -11,6 +11,7 @@ import { getCachedFacts, getCachedSummary, setCachedSummary, clearCachedFacts, u
 import { getDrizzleDb } from './db/drizzle.js'
 import { memorySummary, memoryFacts } from './db/schema.js'
 import { logger } from './logger.js'
+import { resolveTrimmedIndices } from './memory-tool-pairing.js'
 import type { MemoryFact } from './types/memory.js'
 
 const log = logger.child({ scope: 'memory' })
@@ -163,25 +164,6 @@ Conversation (index: [role] content):
 Return ONLY a raw JSON object (no markdown, no code fences) with this exact structure:
 {"keep_indices": [<list of integer indices>], "summary": "<summary text>"}`
 
-function clampIndices(
-  selected: readonly number[],
-  trimMin: number,
-  trimMax: number,
-  historyLength: number,
-): readonly number[] {
-  if (selected.length > trimMax) {
-    return selected.slice(selected.length - trimMax)
-  }
-  if (selected.length < trimMin) {
-    const selectedSet = new Set(selected)
-    const candidates = Array.from({ length: historyLength }, (_, i) => i)
-      .filter((i) => !selectedSet.has(i))
-      .toReversed()
-    return [...selected, ...candidates.slice(0, trimMin - selected.length)].toSorted((a, b) => a - b)
-  }
-  return selected
-}
-
 const parseModelResponse = (text: string): z.infer<typeof TrimResultSchema> => {
   const jsonMatch = text.match(/\{[\s\S]*\}/u)
   let rawOutput: unknown = null
@@ -238,12 +220,7 @@ export async function trimWithMemoryModel(
 
   const data = parseModelResponse(result.text)
 
-  const selected = clampIndices(
-    [...new Set(data.keep_indices)].filter((i) => i >= 0 && i < history.length).toSorted((a, b) => a - b),
-    trimMin,
-    trimMax,
-    history.length,
-  )
+  const selected = resolveTrimmedIndices(history, data.keep_indices, trimMin, trimMax)
   const trimmedMessages = selected.map((i) => history[i]!)
 
   log.info(

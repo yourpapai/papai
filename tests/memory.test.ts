@@ -9,6 +9,7 @@ import type { LanguageModel, ModelMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 
 import * as schema from '../src/db/schema.js'
+import { isValidToolSequence } from '../src/memory-tool-pairing.js'
 import {
   buildMemoryContextMessage,
   extractFactsFromSdkResults,
@@ -573,6 +574,34 @@ describe('memory', () => {
       ]
 
       await expect(trimWithMemoryModel(history, 0, 10, null, mockModel)).rejects.toThrow('LLM API failure')
+    })
+  })
+
+  // ============================================================================
+  // Tests: tool-call / tool-result pairing integrity during trim
+  // ============================================================================
+
+  describe('tool-pairing integrity', () => {
+    const mockModel: LanguageModel = 'test-model'
+    const userMsg = (t: string): ModelMessage => ({ role: 'user', content: t })
+    const asstText = (t: string): ModelMessage => ({ role: 'assistant', content: t })
+    const asstCall = (id: string): ModelMessage => ({
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: id, toolName: 'get_task', input: {} }],
+    })
+    const toolResult = (id: string): ModelMessage => ({
+      role: 'tool',
+      content: [{ type: 'tool-result', toolCallId: id, toolName: 'get_task', output: { type: 'json', value: {} } }],
+    })
+
+    test('trimWithMemoryModel never splits tool-call/result pairs', async () => {
+      const history = [userMsg('0'), asstCall('x'), toolResult('x'), userMsg('3'), asstText('4')]
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({ text: JSON.stringify({ keep_indices: [1, 3, 4], summary: 's' }) })
+
+      const result = await trimWithMemoryModel(history, 1, 10, null, mockModel)
+
+      expect(isValidToolSequence(result.trimmedMessages)).toBe(true)
     })
   })
 
