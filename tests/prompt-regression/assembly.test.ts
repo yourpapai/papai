@@ -26,7 +26,9 @@ describe('prompt regression assembly fixtures', () => {
 
   test('pending assembly fixtures are documented', () => {
     expect(pending.map((fixture) => fixture.meta.id)).toEqual([
+      'assembly-group-context-pending',
       'assembly-memory-trust-labels',
+      'assembly-proactive-deferred-pending',
       'assembly-tool-context-reduction-flags-on',
     ])
   })

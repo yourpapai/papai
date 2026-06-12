@@ -76,6 +76,54 @@ export const assemblyFixtures: readonly AssemblyFixture[] = [
   {
     kind: 'assembly',
     meta: {
+      id: 'assembly-denied-tool-preference',
+      description: 'Denied tool preference removes the tool from the active tool set.',
+      ownerArea: 'tools',
+      roadmapPhase: 'phase-0',
+    },
+    setup: {
+      contextType: 'dm',
+      provider: 'kaneo',
+      enabledTools: ['create_task', 'delete_task'],
+      deniedTools: ['delete_task'],
+    },
+    expected: {
+      prompt: {
+        mustContain: ['Unavailable tools'],
+      },
+      tools: { include: ['create_task'], exclude: ['delete_task'] },
+    },
+  },
+  {
+    kind: 'assembly',
+    meta: {
+      id: 'assembly-group-context-pending',
+      description: 'Group context should expose group-specific history and identity prompt/tool differences.',
+      ownerArea: 'context',
+      roadmapPhase: 'phase-0',
+      pending: {
+        reason:
+          'The assembly harness declares setup.contextType but does not yet translate group context into real tool assembly or context-block assertions.',
+        expectedFixPhase: 'phase-1',
+        unskipWhen:
+          'Assembly harness routes group context through makeTools/builders and can assert group-history behavior.',
+      },
+    },
+    setup: {
+      contextType: 'group',
+      provider: 'kaneo',
+      enabledTools: ['lookup_group_history', 'set_my_identity', 'clear_my_identity'],
+    },
+    expected: {
+      prompt: {
+        mustContain: ['group'],
+      },
+      tools: { include: ['lookup_group_history'] },
+    },
+  },
+  {
+    kind: 'assembly',
+    meta: {
       id: 'assembly-memory-trust-labels',
       description: 'Memory setup expects low-trust compact and long-term memory labels.',
       ownerArea: 'context',
@@ -95,6 +143,58 @@ export const assemblyFixtures: readonly AssemblyFixture[] = [
     expected: {
       prompt: {
         mustContain: ['<memory trust="compacted_low">', '<long_term_memory trust="profile_and_retrieved_low">'],
+      },
+    },
+  },
+  {
+    kind: 'assembly',
+    meta: {
+      id: 'assembly-proactive-deferred-pending',
+      description:
+        'Proactive deferred execution prompt should render proactive-mode rules and exclude deferred scheduling tools.',
+      ownerArea: 'orchestration',
+      roadmapPhase: 'phase-0',
+      pending: {
+        reason:
+          'The assembly harness declares setup.contextType=proactive but does not yet translate proactive mode or deferred execution messages.',
+        expectedFixPhase: 'phase-1',
+        unskipWhen: 'Assembly harness can build proactive-mode prompts and assert deferred tool exclusions.',
+      },
+    },
+    setup: {
+      contextType: 'proactive',
+      provider: 'kaneo',
+      enabledTools: ['create_task', 'create_deferred_prompt', 'list_deferred_prompts'],
+    },
+    expected: {
+      prompt: {
+        mustContain: ['PROACTIVE MODE'],
+      },
+      tools: { exclude: ['create_deferred_prompt'] },
+    },
+  },
+  {
+    kind: 'assembly',
+    meta: {
+      id: 'assembly-tool-context-reduction-flags-off',
+      description: 'Default-off tool-context reduction flags preserve the normal prompt and active tool baseline.',
+      ownerArea: 'tool-context-reduction',
+      roadmapPhase: 'phase-0',
+    },
+    setup: {
+      contextType: 'dm',
+      provider: 'kaneo',
+      enabledTools: ['create_task', 'update_task', 'search_tasks'],
+      flags: { progressive_disclosure: false, result_compaction: false, semantic_tool_retrieval: false },
+    },
+    expected: {
+      prompt: {
+        mustContain: ['WORKFLOW:'],
+        mustNotContain: ['search_tools', 'load_tool', 'expand_result'],
+      },
+      tools: {
+        include: ['create_task', 'update_task', 'search_tasks'],
+        exclude: ['search_tools', 'load_tool', 'expand_result'],
       },
     },
   },

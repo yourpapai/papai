@@ -19,6 +19,9 @@ describe('prompt regression trace fixtures', () => {
   }
 
   test('pending trace fixtures are documented', () => {
-    expect(pending.map((fixture) => fixture.meta.id)).toEqual(['trace-stale-memory-conflict-prefers-current-user'])
+    expect(pending.map((fixture) => fixture.meta.id)).toEqual([
+      'trace-instruction-like-tool-output-pending',
+      'trace-stale-memory-conflict-prefers-current-user',
+    ])
   })
 })

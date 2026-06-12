@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { TraceScriptStep } from './fixture-types.js'
-import { buildScriptedTrace, classifyFinalReply } from './scripted-model.js'
+import { SCRIPTED_FAKE_MODEL_TRACE_SOURCE, buildScriptedTrace, classifyFinalReply } from './scripted-model.js'
 
 describe('buildScriptedTrace', () => {
   test('extracts tool call sequence and final assistant text', () => {
@@ -23,6 +23,7 @@ describe('buildScriptedTrace', () => {
 
     const trace = buildScriptedTrace(script)
 
+    expect(trace.source).toBe(SCRIPTED_FAKE_MODEL_TRACE_SOURCE)
     expect(trace.toolCalls.map((call) => call.toolName)).toEqual(['create_task'])
     expect(trace.finalText).toBe('Created [Ship it](https://example.test/t1).')
   })
@@ -39,5 +40,15 @@ describe('classifyFinalReply', () => {
 
   test('classifies cannot-do-that refusals as unsafe declines', () => {
     expect(classifyFinalReply('I cannot do that because it is unsafe.')).toBe('declines_unsafe_action')
+  })
+
+  test('classifies declined confirmations as answers without tools', () => {
+    expect(classifyFinalReply('Okay, I will not delete that task.')).toBe('answers_without_tools')
+  })
+
+  test('classifies stable provider configuration failures as non-retryable', () => {
+    expect(classifyFinalReply('The task tracker is not configured for this context.')).toBe(
+      'reports_non_retryable_failure',
+    )
   })
 })

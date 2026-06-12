@@ -22,4 +22,42 @@ describe('buildPromptRegressionContext', () => {
 
     expect(ctx.contextId).toBe('ctx-explicit')
   })
+
+  test('preserves explicit chat user id', () => {
+    const ctx = buildPromptRegressionContext({ ...setup, chatUserId: 'chat-user-explicit' }, 'assembly-user')
+
+    expect(ctx.chatUserId).toBe('chat-user-explicit')
+  })
+
+  test('translates tool preferences into the exposed tool set', () => {
+    const ctx = buildPromptRegressionContext(
+      {
+        ...setup,
+        enabledTools: ['create_task', 'delete_task', 'ask_permission'],
+        deniedTools: ['delete_task'],
+        askTools: ['ask_permission'],
+      },
+      'assembly-tool-prefs',
+    )
+
+    expect([...ctx.enabledToolNames].toSorted()).toEqual(['ask_permission', 'create_task'])
+  })
+
+  test('does not yet translate memory or flags into built context', () => {
+    const plain = buildPromptRegressionContext(
+      { ...setup, enabledTools: ['create_task', 'search_tasks'] },
+      'assembly-plain',
+    )
+    const withPendingDimensions = buildPromptRegressionContext(
+      {
+        ...setup,
+        enabledTools: ['create_task', 'search_tasks'],
+        memory: 'compacted-and-long-term',
+        flags: { progressive_disclosure: true, result_compaction: true },
+      },
+      'assembly-pending-dimensions',
+    )
+
+    expect([...withPendingDimensions.enabledToolNames].toSorted()).toEqual([...plain.enabledToolNames].toSorted())
+  })
 })
