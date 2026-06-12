@@ -437,6 +437,50 @@ describe('buildProviderRuntime.httpFetch dynamic hosts', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  test('strips Authorization when static-host 302-redirects to a dynamic host', async () => {
+    // Regression guard: a redirect from a static host to a different (dynamic) host
+    // must strip Authorization because the origin changes.
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL) => Promise.resolve())
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'http://whisper.lan/next' } }),
+    )
+    fetchMock.mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const runtime = buildProviderRuntime(
+      ['api.openai.com'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+    )
+
+    await runtime.httpFetch('https://api.openai.com/v1/audio', { headers: { authorization: 'Bearer secret' } })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(getHeaderValue(fetchMock.mock.calls[1]?.[1]?.headers, 'authorization')).toBeNull()
+  })
+
+  test('strips Authorization when dynamic-host 302-redirects to a static host', async () => {
+    // Regression guard: a redirect from a dynamic host to a different (static) host
+    // must strip Authorization because the origin changes.
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL) => Promise.resolve())
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://api.openai.com/v2' } }),
+    )
+    fetchMock.mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const runtime = buildProviderRuntime(
+      ['api.openai.com'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+    )
+
+    await runtime.httpFetch('http://whisper.lan/transcribe', { headers: { authorization: 'Bearer secret' } })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(getHeaderValue(fetchMock.mock.calls[1]?.[1]?.headers, 'authorization')).toBeNull()
+  })
+
   test('dynamic host set is evaluated lazily on each call', async () => {
     // The thunk is called per-request, so host added after runtime construction is allowed
     const dynamicSet = new Set<string>()

@@ -3,9 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { logger } from '../logger.js'
 import type { DynamicHostsFn } from './provider-runtime.js'
 import { getPluginAdminConfig } from './store.js'
 import type { PluginManifest } from './types.js'
+
+const log = logger.child({ scope: 'plugins:dynamic-hosts' })
 
 /** Build a thunk that reads admin-scoped plugin config at call time and resolves the
  * declared host keys to a set of hostnames.
@@ -26,7 +29,7 @@ export function buildDynamicHosts(manifest: PluginManifest): DynamicHostsFn {
       try {
         hosts.add(new URL(value).hostname.toLowerCase())
       } catch {
-        // Ignore non-URL admin config values — they are not valid host sources
+        log.warn({ pluginId: manifest.id, key }, 'providerAllowedHostsFromConfig value is not a valid URL; skipping')
       }
     }
     return hosts

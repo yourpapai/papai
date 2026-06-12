@@ -37,6 +37,8 @@ const defaultDeps: ProviderRuntimeDeps = {
 // The allowlist is host-only by design: ports are intentionally not part of
 // the allowlist scope. Plugin manifests declare plain hostnames (no colons
 // allowed by pluginManifestSchema), so port-level restriction is not supported.
+// The same port-agnostic semantics apply to dynamic hosts: an admin's
+// http://whisper.lan:9000 covers whisper.lan on any port.
 const MAX_REDIRECTS = 5
 const TIMEOUT_MS = 30_000
 

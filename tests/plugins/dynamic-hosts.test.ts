@@ -85,6 +85,15 @@ describe('buildDynamicHosts', () => {
     expect(thunk().size).toBe(0)
   })
 
+  test('skips an invalid URL with warn logging and still yields an empty set', () => {
+    // mockLogger() in beforeEach silences the warn emitted by the catch block;
+    // this test confirms the skip still yields an empty set so callers are not
+    // disrupted by invalid operator config.
+    setPluginAdminConfig('test-plugin', 'api_url', 'ht tp://invalid url', 'admin')
+    const thunk = buildDynamicHosts(makeManifest({ providerAllowedHostsFromConfig: ['api_url'] }))
+    expect(thunk().size).toBe(0)
+  })
+
   test('is evaluated lazily — admin config set after thunk construction is reflected', () => {
     const thunk = buildDynamicHosts(makeManifest({ providerAllowedHostsFromConfig: ['base_url'] }))
     // Before config is set: empty
