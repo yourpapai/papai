@@ -4,12 +4,19 @@
 // See LICENSE in the project root for details.
 
 import {
+  findStagedFilesByMessageId,
   isS3Configured,
   listActiveAttachments,
   persistIncomingAttachments,
+  resolveStagedFile,
   stageFileMetadata,
 } from './attachments/index.js'
-import { toSourceProvider, type AttachmentRef, type AttachmentSourceProvider } from './attachments/types.js'
+import {
+  toSourceProvider,
+  type AttachmentRef,
+  type AttachmentSourceProvider,
+  type StagedFileDownloadFn,
+} from './attachments/types.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { ChatProvider, IncomingFile, IncomingFileCandidate, IncomingMessage } from './chat/types.js'
 import { logger } from './logger.js'
@@ -126,4 +133,33 @@ export async function resolveMessageAttachments(
     newAttachmentIds: [],
     activeAttachments: isS3Configured() ? listActiveAttachments(storageContextId) : [],
   }
+}
+
+/**
+ * Eagerly resolve voice-origin staged files for the message being processed.
+ * Group chats stage files lazily; a voice note addressed to the bot IS the
+ * message, so it must be available before the LLM turn starts. Ordinary
+ * staged files keep lazy resolution via the resolve_staged_file tool.
+ */
+export function resolveVoiceStagedFiles(
+  storageContextId: string,
+  messageId: string | undefined,
+  downloadFn: StagedFileDownloadFn | undefined,
+): Promise<string[]> {
+  if (!isS3Configured() || messageId === undefined || downloadFn === undefined) return Promise.resolve([])
+  const voiceStaged = findStagedFilesByMessageId(storageContextId, messageId).filter(
+    (staged) => staged.origin === 'voice',
+  )
+  return voiceStaged.reduce(
+    async (chain, staged) => {
+      const acc = await chain
+      const result = await resolveStagedFile(staged.stagedId, storageContextId, downloadFn)
+      if ('attachmentId' in result && result.attachmentId !== null && result.attachmentId !== 'unknown') {
+        return [...acc, result.attachmentId]
+      }
+      log.warn({ stagedId: staged.stagedId, storageContextId }, 'Eager voice staged-file resolution failed')
+      return acc
+    },
+    Promise.resolve([] as string[]),
+  )
 }

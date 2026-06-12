@@ -5,7 +5,7 @@
 
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
-import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
+import { resolveMessageAttachments, resolveVoiceStagedFiles, stageGroupFileCandidates } from './bot-attachments.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { supportsFileReplies } from './chat/capabilities.js'
@@ -140,6 +140,7 @@ async function handleMessage(
     return
   }
   if (shouldIgnoreGroupMessage(msg)) return
+  const voiceAttachmentIds = await resolveVoiceStagedFiles(auth.storageContextId, msg.messageId, deps.stagedDownloadFn)
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
   let queueMessage = enqueueMessage
   if (deps.enqueueMessage !== undefined) queueMessage = deps.enqueueMessage
@@ -151,7 +152,7 @@ async function handleMessage(
       storageContextId: auth.storageContextId,
       configContextId: auth.configContextId,
       contextType: msg.contextType,
-      newAttachmentIds,
+      newAttachmentIds: [...voiceAttachmentIds, ...newAttachmentIds],
     },
     reply,
     (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),
