@@ -45,6 +45,7 @@ const toRef = (row: StagedRow): StagedFileRef => ({
   createdAt: row.createdAt,
   expiresAt: row.expiresAt,
   origin: toAttachmentOrigin(row.origin) ?? null,
+  // nullable on StagedFileRef; downloadAndPersist maps it to undefined for SaveAttachmentInput
   forwardedFrom: row.forwardedFrom,
 })
 

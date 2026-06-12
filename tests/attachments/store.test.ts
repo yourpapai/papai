@@ -101,6 +101,20 @@ describe('attachment store', () => {
     expect(stored?.forwardedFrom).toBe('Alice')
   })
 
+  test('persists and round-trips origin file', async () => {
+    const ref = await saveAttachment({
+      contextId: 'ctx-origin',
+      sourceProvider: 'telegram',
+      filename: 'doc.pdf',
+      status: 'available',
+      content: Buffer.from('pdf'),
+      mimeType: 'application/pdf',
+      origin: 'file',
+    })
+    const stored = await loadAttachmentRecord('ctx-origin', ref.attachmentId)
+    expect(stored?.origin).toBe('file')
+  })
+
   test('origin and forwardedFrom are absent when not provided', async () => {
     const ref = await saveAttachment({
       contextId: 'ctx-origin',

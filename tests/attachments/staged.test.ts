@@ -13,6 +13,7 @@ import {
   searchStagedFiles,
   stageFileMetadata as rawStageFileMetadata,
 } from '../../src/attachments/staged.js'
+import { loadAttachmentRecord } from '../../src/attachments/store.js'
 import type { StageFileParams, StagedFileRef } from '../../src/attachments/types.js'
 import { toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -611,7 +612,6 @@ describe('staged file cache', () => {
   })
 
   test('stageFileMetadata persists origin and forwardedFrom; resolveStagedFile threads them onto the attachment', async () => {
-    const { loadAttachmentRecord } = await import('../../src/attachments/store.js')
     const staged = stageFileMetadata({
       contextId: 'ctx-voice',
       messageId: 'm-1',
