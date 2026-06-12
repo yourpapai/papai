@@ -5,6 +5,1577 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] - 2026-06-12
+
+### Added
+
+- **tools:** Per-context reduction feature flags with kill switch
+- **compaction:** Envelope types and tuning constants
+- **compaction:** Pure size-gate with failure/envelope/non-serializable guards
+- **compaction:** Per-context TTL+LRU result store with injected clock
+- **compaction:** Query-aware SMALL_MODEL summarizer with fallback
+- **compaction:** Expand_result paging tool
+- **compaction:** Per-turn result-compaction wrap layer
+- **compaction:** Register expand_result when compaction flag is on
+- **orchestrator:** Apply per-turn result compaction behind the flag
+- **disclosure:** Core/meta tool-name constants and stall threshold
+- **disclosure:** Tool-brief builder from descriptions + metadata
+- **disclosure:** ToolRetriever interface + lexical implementation
+- **disclosure:** Embedding-backed retriever with lexical fallback and brief cache
+- **disclosure:** Turn-scoped DisclosureSession registry
+- **disclosure:** Search_tools tool returning ranked schema-less briefs
+- **disclosure:** Load_tool batch activation tool
+- **disclosure:** PrepareStep factory with stall fallback
+- **disclosure:** MaybeApplyDisclosure wiring helper
+- **disclosure:** Discovery preamble in system prompt behind option
+- **disclosure:** Thread DisclosureSession into generateText prepareStep
+- **memory:** Token-based trim triggering and bounded trim prompt
+- **memory:** Trust-labelled memory block with staleness and eviction (R-07)
+- **admin:** Feature-flags snapshot and update module
+- **admin:** Super-admin feature-flags settings API
+- **settings-ui:** Feature-flags admin fetchers
+- **settings-ui:** Super-admin feature-flags section
+- **memory:** Add long-term memory schema
+- **memory:** Normalize long-term memory scopes
+- **memory:** Add long-term memory store
+- **memory:** Inject bounded long-term context
+- **memory:** Capture long-term memory in background
+- **memory:** Expose long-term memory tools
+- **memory:** Add settings API controls
+- **memory:** Add settings memory controls
+- **memory:** Retire stale long-term memories
+
+### Changed
+
+- **compaction:** Drop vestigial model field from summarizer DI contract
+- **disclosure:** Document conditional expand_result membership, tighten union test
+- **disclosure:** Distinct-term lexical scoring + rank contract docs
+- **disclosure:** Require toolsForBriefs and hoist brief building
+- **prompt:** Extract preference prompt lines into system-prompt-prefs
+- **flags:** Export strict reduction-flags JSON parser
+
+### Documentation
+
+- **plan:** Re-anchor part 2 disclosure plan to post-part-1 code
+- Document progressive disclosure flag behavior
+- Design spec for PR #151 review-fix batch
+- Implementation plan for PR #151 review-fix batch
+- Reflect proactive gating, LRU store, and churn stall guard
+- Note BYOK-aware semantic tool retrieval
+- Design spec for admin feature-flags settings section
+- Implementation plan for admin feature-flags section
+- Feature flags managed in settings UI admin section
+- Design long-term memory architecture
+- Plan long-term memory implementation
+- Clarify long-term memory schema split
+
+### Fixed
+
+- **compaction:** Require non-empty handle in envelope guard
+- **compaction:** Type expand_result failure, kebab logger scope, TTL-expiry test
+- **compaction:** Summarizer-dep rejection falls back to truncation envelope
+- **config:** Invalidate tool descriptor cache on reduction-flag writes
+- **compaction:** Clarify character-offset hint and evict empty context maps
+- **disclosure:** First-sentence extraction skips single-letter abbreviations
+- **disclosure:** Per-model embedding cache + dimension-mismatch guard
+- **disclosure:** Expose defensive copy of session allNames
+- **disclosure:** Only advertise expand_result in preamble when registered
+- **disclosure:** Correlate fallback event with turnId
+- **disclosure:** Stall guard ignores always-on loads; wrap meta tools in structured failures
+- **compaction:** Expand_result failures carry the SDK toolCallId
+- **disclosure:** One reduction-flag snapshot per turn
+- **compaction:** True LRU result store and neutral unavailability message
+- **disclosure:** Ask line no longer advertises ungated injected meta-tools
+- **compaction:** Do not register expand_result on the proactive path
+- **disclosure:** BYOK-aware tool retrieval with usage recording and throw-safe embeds
+- **llm:** Shared memoized model builder; per-context summarizer credentials
+- **llm:** Migrate remaining chat-model callsites; isolation-clean builder tests
+- **llm:** Collision-proof provider cache key; cover default compaction deps
+- **disclosure:** Catch post-load search/load churn with a latched stall guard
+- **memory:** Preserve tool-call/result pairing during smart trim
+- **conversation:** Guard against overlapping background trims
+- **ci:** Run server test suite serially on CI runners
+- **admin:** Exclude placeholder users from feature-flags roster
+- **admin:** Feature-flags write uses PATCH; cover bot-admin write rejection
+- **settings-ui:** Split sidebar builder; add feature-flags section test
+- **memory:** Harden long-term memory schema
+- **memory:** Isolate record store by scope type
+- **memory:** Bound long-term record query
+- **memory:** Isolate group memory profiles
+- **memory:** Use group context for deferred memory
+- **memory:** Bound memory tool inputs
+- **memory:** Guard malformed settings record ids
+- **memory:** Harden settings memory controls
+- **memory:** Harden background memory extraction
+- **settings-ui:** Drop duplicate ContextTaskInstanceResponseSchema alias
+
+### Miscellaneous
+
+- **compaction:** Lint/type/format/mutation cleanup for part 1
+- **compaction:** Knip allowlist for store test seams + doc updates
+- **disclosure:** Gate + mutation cleanup for part 2
+
+### Testing
+
+- **tools:** Pin reserved config key in feature-flags test
+- **tools:** Cover scoped-context derivation and full corrupt-JSON shape
+- **compaction:** Pin size-gate boundary, coherence, and undefined-serialization cases
+- **orchestrator:** Harden compaction wiring test defaults and call assertion
+- **disclosure:** Drop duplicate embedding retriever suite
+- **disclosure:** All-unknown load batch + idempotent description
+- **disclosure:** Reset emit mock per test and pin stall boundary
+- **disclosure:** Pin load_tool registration and copy-on-write in wire
+- **disclosure:** ActiveTools widening across a scripted loop
+- **disclosure:** Flag-off keeps full eager tool set
+- **disclosure:** Kill retriever and registry mutation survivors
+- **disclosure:** Kill churn-guard mutants; log stall reason
+- **settings-ui:** Pin feature-flags request body and wrong-type rejection
+- Kill behavioral mutation survivors; fix client/ paired mutation support
+- **admin:** Cover malformed-body 400 on feature-flags PATCH
+- Replace leaky top-level mock.module with DI and real deps
+## [6.1.7] - 2026-06-11
+
+### Added
+
+- **users:** Add pending-user placeholders and case-insensitive username binding
+- **settings:** Shared user-id resolver with unresolved outcome
+- **settings:** Pending user entries when username resolution fails
+- **settings-ui:** Typed add-user response with pending flag
+- **settings-ui:** Pending badge and first-contact message for username adds
+
+### Changed
+
+- **settings:** Share user-id resolution in group member route
+
+### Documentation
+
+- **specs:** Pending username entries design
+- **plans:** Pending username entries implementation plan
+- Document pending @username entries for authorized users
+
+### Fixed
+
+- **users:** Clarify pending-user dedupe log and exempt addPendingUser from knip until route lands
+- **settings:** Treat empty username input as unresolved regardless of router
+- **settings:** Distinguish already-authorized users from pending entries in add response
+
+### Miscellaneous
+
+- **mutation:** Ignore local agent-tool dirs in stryker sandbox copy
+
+### Testing
+
+- **settings:** Type resolver mock against ResolveUserContext and cover non-@ resolution
+## [6.1.6] - 2026-06-10
+
+### Fixed
+
+- Pass platformInstanceId for username resolution in settings admin routes
+## [6.1.5] - 2026-06-10
+
+### Added
+
+- **tools:** Add args to AskPermissionFn type
+- **settings:** Support @username in admin users section
+- **chat:** Add argument formatting functions
+- **chat:** Update formatPrompt to include arguments
+- Resolve @username to user ID server-side for admin and group member endpoints
+
+### Fixed
+
+- Add missing return type and void operator in test file
+- Update tests for server-side username resolution
+
+### Testing
+
+- **chat:** Add unit tests for argument formatting
+- **chat:** Update interaction router tests for args
+## [6.1.4] - 2026-06-10
+
+### Added
+
+- **telegram:** Resolve usernames via getChat API
+- **settings:** Support @username for member addition
+
+### Changed
+
+- Memoize expensive derivations in config-key, recurrence, and oracle
+- Rewrite ai-progress-reporter formatting to use fenced code blocks and per-tool messages
+
+### Documentation
+
+- Add plans and specs for recent features
+
+### Fixed
+
+- Resolve no-await-in-loop lint error in progress reporter
+- Restore formatError/formatErrorValue, sequential sends, formatCodeBlock reuse
+- Update llm-orchestrator tests for new progress reporter format
+
+### Miscellaneous
+
+- **lint:** Remove papai-policy oxlint plugin and strict config
+
+### Testing
+
+- Enable parallel execution by default and fix isolation issues
+- Add config-key memoization and recurrence edge-case coverage
+- Eliminate fixed sleeps and public/ races in slow suites
+- Cut fixed waits and per-test exec scans in slow suites
+- Update ai-progress-reporter tests for new per-message format
+## [6.1.3] - 2026-06-09
+
+### Added
+
+- **config:** Add AI-output keys and typed ConfigField controls
+- **config:** Validate enum config fields against their options
+- **config:** Surface AI-output fields from getConfigFieldsForContext
+- **settings:** Forward control/options in config GET response
+- **settings:** Parse control/options on client ConfigField schema
+- **settings:** Render enum config controls via SegmentedControl
+- **settings:** Add AI output settings section
+- **settings:** Register AI output section in settings SPA
+
+### Changed
+
+- **config:** Exclude ai-output kind from required provider keys
+
+### Documentation
+
+- **spec:** AI output settings UI design
+- **plan:** AI output settings UI implementation plan
+- **adr:** Correct AI-output write-path reference (settings UI)
+- Document AI output visibility settings (CLAUDE.md, README)
+
+### Fixed
+
+- **config:** Accept empty value for optional enum fields
+- **settings:** Guard enum save re-entrancy; strengthen ConfigFieldRow tests
+
+### Testing
+
+- **config:** Cover isConfigKey for AI-output keys; clarify options field
+- **settings:** Broaden AiOutputSection coverage; scope detail hint
+- **settings:** Cover AI-output enum PATCH round-trip; fix plan doc
+## [6.1.2] - 2026-06-09
+
+### Added
+
+- **byok:** Add llm credentials schema
+- **byok:** Add encrypted llm credential store
+- **byok:** Resolve effective llm config by context
+- **byok:** Use context llm config in orchestrator
+- **byok:** Use context llm config in helper calls
+- Add isReplyToBot field to IncomingMessage type
+- Process and observe group messages that reply to bot
+- **telegram:** Set isReplyToBot when reply targets bot message
+- **discord:** Add isReplyToBot parameter to mapDiscordMessage
+- **discord:** Pre-fetch parent to detect reply-to-bot in groups
+- **byok:** Add llm credentials schema
+- **byok:** Add encrypted llm credential store
+- **byok:** Resolve effective llm config by context
+- **byok:** Use context llm config in orchestrator
+- **byok:** Use context llm config in helper calls
+- **settings:** Add byok llm api routes
+- **settings:** Add byok client fetchers
+- **settings:** Add byok llm UI
+
+### Changed
+
+- **instances:** Share encrypted secret payload crypto
+- Remove getLlmConfig, update dashboard link format, revise reply-to-bot plan
+- **instances:** Share encrypted secret payload crypto
+- Remove getLlmConfig, update dashboard link format, revise reply-to-bot plan
+
+### Documentation
+
+- Add superpowers plans
+- Clarify isReplyToBot undefined semantics
+- Note reply-to-bot group processing for telegram and discord
+- Note reply-to-bot group processing in README platform support
+- Add superpowers plans
+
+### Fixed
+
+- **byok:** Require credential context id
+- **byok:** Handle unreadable credential payloads
+- **byok:** Sanitize unreadable credential errors
+- **byok:** Pass config context to helper llm calls
+- **discord:** Log parent-fetch failure and cover reply-to-bot negative branches
+- **byok:** Require credential context id
+- **byok:** Handle unreadable credential payloads
+- **byok:** Sanitize unreadable credential errors
+- **byok:** Pass config context to helper llm calls
+- **byok:** Pass config context to conversation trim
+- **byok:** Keep deferred context mode on main model
+- **settings:** Preserve byok unreadable metadata
+- **settings:** Clear byok drafts on context changes
+- **byok:** Handle optional clears and unreadable context state
+
+### Testing
+
+- **byok:** Cover llm credential regressions
+## [6.1.1] - 2026-06-08
+
+### Added
+
+- **settings:** Rename design tokens to spec vocabulary with legacy aliases
+- **settings:** Add type-scale utilities, content-cap and rhythm layout classes
+- **settings:** Grouped sidebar rail with aria-current + responsive jump menu
+- **settings:** Group sections into Personal/Integrations/Admin with grouped rail
+- **settings:** Collapse per-section Refresh to icon button; normalize Provision Kaneo
+- **settings:** Approve=primary, reject=danger; audit status pills for green-only-primary
+- **settings:** Segmented control for 3-state tool permissions
+- **settings:** Bullet-mask secrets and use secondary Replace button
+- **settings:** Compact System (LLM) kv inline-edit table
+- **settings:** Separate instance create-card from instances table
+- **settings:** Reusable SettingsTable with search, pagination, sticky header, hover
+- **settings:** Destructive confirmations + middle-truncated copyable IDs
+- **settings:** Admin danger zone + confirm steps for announce and secret keys
+- **settings:** Eyebrow/contrast/focus consistency pass
+
+### Changed
+
+- **settings:** Use declarative onchange in jump menu; bubble change in test
+
+### Documentation
+
+- Add byok llm credentials design
+
+### Fixed
+
+- **settings:** Preserve --fg4 ghost shade, drift-proof --state-active, widen alias test
+- **settings:** Keep LLM edit row open on save failure; cover cancel/empty/error paths
+- **settings:** Confirm Instances stop; CopyButton awaits clipboard write
+- **settings:** Guard CopyButton without clipboard; aria-current=page; stable confirm labels
+
+### Miscellaneous
+
+- Remove docs/architecture and architecture-refresh system
+- **knip:** Ignore .svelte-only exports for settings mask/truncate utils
+
+### Testing
+
+- **settings:** Assert sidebar kickers specifically; clarify super-admin path
+- **settings:** Cover SegmentedControl arrow-key cycling
+## [6.1.0] - 2026-06-05
+
+### Added
+
+- **client/ui:** Map log levels and retriable in statusTone
+- **client/ui:** Map warn and info log levels in statusTone
+- Add providerless task tracker fallback
+- **client/ui:** Add multiline (textarea) mode to Input
+- **settings:** Bind context to task instance + HTTPS-gated session cookie
+- **scripts:** Add architecture refresh config
+- **scripts:** Render architecture refresh reports
+- **group-settings:** Add listKnownGroupContextsForPlatform reader
+- **settings:** Auto-scope raw group ids when authorizing a group
+- **settings:** Return observed unauthorized groups from admin groups GET
+- **settings:** Add observed groups to admin groups response schema
+- **settings:** Observed-group pick-list and raw-id field in AdminGroupsSection
+- **mattermost:** Add action signing secret
+- **mattermost:** Sign action contexts
+- **mattermost:** Render reply buttons
+- **chat:** Route permission button callbacks
+- **mattermost:** Add action callback registry
+- **mattermost:** Dispatch action callbacks
+- **mattermost:** Expose action callback route
+
+### Changed
+
+- **settings:** Dedup authorized-group lookup in admin groups GET
+
+### Documentation
+
+- **claude:** Condense CLAUDE.md to ~21k chars
+- Write ADR-0124 through ADR-0167 for implemented plans, archive specs and plans
+- Prune ADR 0001-0100, archive pre-May-20 specs; add commit hashes to ADR index
+- Add dependency-cruiser architecture refresh design
+- **settings:** Design spec for Admin Groups authorization UX
+- **settings:** Implementation plan for Admin Groups authorization UX
+- Add architecture refresh implementation plan
+- Add Mattermost buttons design
+- Add Mattermost implementation plan
+- **specs:** Tool-context reduction design (progressive disclosure + result compaction + semantic tool retrieval)
+- **plans:** Tool-context reduction implementation plans (part 1 flags+compaction, part 2 disclosure+retrieval)
+- Reduce architecture refresh artifacts
+- Reduce architecture refresh artifacts
+
+### Fixed
+
+- **telegram,tests:** Make dispatchCallbackQuery mockable, drop check.sh concurrency, tighten test isolation
+- **admin:** Render system summary via SummaryList (B6)
+- **debug:** Close control via Btn in DebugDetailRail
+- **debug:** LogExplorer via Panel/Toolbar/Select/Input/Btn
+- **debug:** NotificationsPanel via Panel/EmptyState/JsonCell
+- **debug:** ToolFailuresPanel via Panel/EmptyState/StatusPill
+- **debug:** LiveContextCard via Panel/EmptyState
+- **debug:** SessionsList via Panel
+- **debug:** TraceList via Panel/EmptyState + fmtNum duration
+- **debug:** Explicit StatusPill for SessionCard active state
+- **debug:** SessionDetail via SummaryList/KV/DataTable
+- **debug:** TraceDetail via SummaryList/StatusPill + fmtNum
+- **debug:** LogDetail meta via SummaryList with level pill
+- **debug:** TurnsPanel empty via EmptyState
+- **settings:** Adopt Secret/Input/Btn in ConfigFieldRow
+- **settings:** Adopt Btn/EmptyState in ProfileSection
+- **settings:** Adopt Btn/EmptyState/SummaryList/Secret in TaskProviderSection
+- **settings:** Adopt Btn/Pill/EmptyState in ToolsSection (expand stays raw for aria)
+- **settings:** Adopt Field/Input/Btn in IdentitySection
+- **settings:** Adopt Field/Input/Btn/DataTable in MembersSection
+- **settings:** Adopt Field/Select/Btn in GroupProviderSection
+- **settings:** Adopt Btn/Pill/Field/Input/EmptyState in PluginsSection
+- **settings:** Adopt Field/Input/Btn in McpSection (checkbox stays native)
+- **settings:** Adopt Field/Input/Btn/DataTable in AdminAdminsSection
+- **settings:** Adopt Field/Input/Btn/DataTable in AdminGroupsSection
+- **settings:** Adopt Field/Input/Btn/DataTable in AdminUsersSection
+- **settings:** Adopt multiline Input + Btn in AdminAnnounceSection
+- **settings:** Adopt DataTable/StatusPill/Btn in AdminPluginsApprovalSection
+- **settings:** Adopt Secret/Field/Input/Btn/EmptyState in AdminPluginsConfigSection
+- **settings:** Adopt Secret/Field/Input/Btn in AdminSystemSection
+- **settings:** Adopt Field/Input/Select/Btn/DataTable/StatusPill in AdminInstancesSection
+- **settings:** Migrate all section headers to PageHeader (B1)
+- **settings:** Show editor for unset secret config fields
+- **scripts:** Tighten architecture refresh scope
+- **scripts:** Restore architecture refresh runtime scope
+- **scripts:** Share depcruise config
+- **auth:** Key bot-admin DM context off user id, not channel id
+- **tests:** Assert depcruise options identity
+- **scripts:** Normalize architecture refresh graph
+- **scripts:** Keep shared runtime buckets in normalize
+- **tests:** Cover shared runtime allowlist
+- **scripts:** Curate architecture refresh outputs
+- **scripts:** Finalize architecture refresh generator
+- **scripts:** Resolve graphviz dot from PATH
+- **scripts:** Stabilize dot fallback selection
+- **scripts:** Wait for child stdio close
+- **scripts:** Fail architecture refresh without graphviz
+- **scripts:** Preflight graphviz before writes
+- **scripts:** Prove graphviz preflight render
+- **workflows:** Serialize architecture refresh runs
+- **workflows:** Watch architecture refresh inputs
+- **scripts:** Align architecture refresh CI and mapping
+- **scripts:** Align architecture refresh outputs
+- **workflows:** Align architecture refresh scope
+- **settings:** Normalize thread-scoped group ids to main context on authorize
+- **deps:** Bump vite to ^6.4.2 to patch GHSA-4w7w-66w2-5vf9
+- **server:** Start web UI server unconditionally
+- **mattermost:** Reference action signing secret
+- **mattermost:** Harden action signature verification
+- **mattermost:** Compare canonical action signatures
+- **chat:** Bind permission callbacks to context
+- **mattermost:** Preserve action thread context
+- **mattermost:** Bind actions to channel
+
+### Miscellaneous
+
+- Remove architecture inventory tooling
+- **settings:** Remove dead shadow-styling rules superseded by the kit
+- **knip:** Allow pending Mattermost action signing
+- **mattermost:** Mark pending action verifier internal
+- **mattermost:** Update action callback maintenance
+
+### Testing
+
+- **scripts:** Cover architecture refresh triggers
+- **scripts:** Assert architecture refresh PR base
+- **scripts:** Scope architecture refresh workflow checks
+- **group-settings:** Cover empty-result case for platform reader
+- **settings:** Assert observed group leaves list and renders parent after authorize
+- **startup:** Reset startup guard mock
+- **mattermost:** Update capability expectations
+- **mattermost:** Cover permission action callbacks
+- **mattermost:** Verify signed prompt content
+- **mattermost:** Cover provider action dispatch
+- **mattermost:** Assert action platform context
+- **startup:** Restore debug server mock
+
+### Ci
+
+- **workflows:** Add architecture refresh workflow
+## [6.0.6] - 2026-06-02
+
+### Fixed
+
+- **client/ui:** Only render Secret reveal button when onReveal is provided
+- **plugins:** Apply approval changes without restart
+- **db:** Scope legacy context ids left raw by migration 043
+- **ci:** Set DB_PATH in docker smoke test so the bun user can write the db
+- **ci:** Pin buildx to host docker driver so smoke test sees the built image
+
+### Testing
+
+- **admin:** Assert StatusPill renders for memos/reminders status (B4 guard)
+## [6.0.5] - 2026-06-02
+
+### Fixed
+
+- **admin:** Contain Reminders filter + StatusPill status (A7/B2/B3/B4)
+- **admin:** Adopt Input/Btn/StatusPill in MemosSection (B2/B3/B4)
+- **admin:** Adopt Input/Btn in IdentitiesSection (B2/B3)
+- **admin:** Adopt Btn for Groups refresh/revoke (B2)
+- **admin:** Adopt Btn for Billing refresh (B2)
+- **admin:** Render recent-request status as StatusPill (B4)
+- **admin:** Adopt Secret/Input/Btn in CredentialsForm, drop duplicate heading (C2/B2/B3/B7)
+- **admin:** Panel-wrap plugin groups, adopt Secret/Input/Btn (B7/B2/B3/C2)
+- **deploy:** Use compose status filter for backup gate
+## [6.0.4] - 2026-06-01
+
+### Added
+
+- **kaneo:** Export kaneoProvision hook for HTTP route dispatch
+- **kaneo:** Register kaneoProvision hook via plugin registry
+- **client/ui:** Add optional titleTestId prop to PageHeader
+- **client/ui:** Add optional testid pass-through to Btn
+- **client/ui:** Add password type and testid to Input
+- **client/ui:** Add optional testid pass-through to Select
+
+### Changed
+
+- **plugins:** Thread TaskProviderProvision through registration pipeline
+- **admin:** Consolidate byte formatting onto shared fmtBytes
+- **admin:** Consolidate SubjectsTable tests, carry row subject ref (review fixes)
+- **settings:** Dispatch provision via plugin registry, remove plugins/ import
+
+### Documentation
+
+- **plan:** Backstage phases 2.2-2.5 implementation plans
+- **plan:** Backstage phase 3.1 /debug kit sweep implementation plan
+- **plan:** Backstage phase 3.2 /settings user sections kit sweep
+- **plan:** Backstage phase 3.3 /settings admin sections + cleanup
+- **plan:** Record /stats aggregation verification findings (phase 2.1)
+- **plugins:** Document kaneoProvision hook in developer guide
+
+### Fixed
+
+- **admin:** Render SubjectsTable via DataTable with right-aligned formatted numerics (A1/A4)
+- **admin:** Render active subjects via Stat to flag over-capacity (A5)
+- **admin:** Render surface mix via Meter with clamped over-capacity (A6)
+- **admin:** Render Stats header via PageHeader (B1)
+- **admin:** Render System header via PageHeader, drop duplicate eyebrow (B1)
+- **admin:** Render Instances header via PageHeader (B1)
+- **admin:** Render Plugin Config header via PageHeader (B1)
+- **client/ui:** Restore controlled value + delegated oninput on Input (keep testid/password)
+- **client/ui:** Restore delegated onchange on Select (keep testid)
+- **admin:** Adopt Btn/Input/Select/StatusPill/JsonCell in InstancesSection (B2/B3/B4/B5)
+- **kaneo:** Repair legacy plugin setup flow
+- **startup:** Gate kaneo repair by activated plugins
+
+### Miscellaneous
+
+- **client:** Fix status-tone import and knip allowlist
+- **check:** Parallelize test runs by cpu count
+
+### Styling
+
+- **admin:** Alphabetize PageHeader import in StatsPanel
+
+### Testing
+
+- **settings:** Reduce auth db setup scope
+- **admin:** Regression guards for tool-calls chart/header (A2/A3); C1 covered by Bars tests
+- **kaneo:** Cover kaneoProvision hook delegates to provisionAndConfigure
+- **kaneo:** Verify kaneoProvision forwards all four fields
+
+### Ci
+
+- Smoke-test the built Docker image to catch boot-time crashes
+- **smoke:** Move smoke into build job, tolerate created state, preflight image
+## [6.0.3] - 2026-06-01
+
+### Added
+
+- **plugins:** Surface directoryMissing in DiscoveryResult
+- **client/ui:** Add fmtNum and fmtBytes formatting helpers
+- **client/ui:** Add statusTone status-string mapping
+- **client/ui:** Add StatusPill component
+- **client/ui:** Add PageHeader component
+- **client/ui:** Add Field labeled-control component
+- **client/ui:** Add FormRow component
+- **client/ui:** Add Toolbar component
+- **client/ui:** Add Tag attribute-badge component
+- **client/ui:** Add Code value-chip component
+- **client/ui:** Add JsonCell key-value chip component
+- **client/ui:** Add Secret masked-value component
+- **client/ui:** Add EmptyState component
+- **client/ui:** Add Meter clamped ratio-bar component
+- **client/ui:** Add Stat value-of-total component
+- **client/ui:** Add SummaryList key-value component
+
+### Changed
+
+- **providers:** Add TaskProviderProvision hook to plugin-contributed registry
+
+### Documentation
+
+- Add plugins deployment safety plan
+- **spec:** Backstage admin UI kit additions & audit fixes design
+- **plan:** Backstage kit additions phase 1 implementation plan
+- **plan:** Mark plugins deployment safety Task 1 complete
+- **plan:** Backstage phase 2.1 numbers/tables/guards implementation plan
+
+### Fixed
+
+- **client:** Make shell body the scroll container so main content scrolls
+- **settings:** Only disable plugin toggle for inactive plugins awaiting approval
+- **plugins:** Fail fast at startup when DEBUG_SERVER=true and plugins/ is missing
+- **client/ui:** Mono font for Meter value, .js extension on StatusPill import
+
+### Miscellaneous
+
+- Switch test script to bun test auto-discovery
+- Include prior session dashboard.ts and CLAUDE.md changes
+- Remove test suites from check:full stop hook, fix lint/format issues
+- Add --skip-tests flag to check:full, stop hook skips tests
+- **opencode:** Remove legacy pi wiring
+- **knip:** Ignore forward-compat TaskProviderProvision export and svelte-consumed client ui
+
+### Styling
+
+- **client/ui:** Use mono font for Stat value per design system
+
+### Testing
+
+- **startup-guard:** Assert warn reason mentions degraded mode
+- **providers:** Cover getTaskProviderProvision lookup
+## [6.0.2] - 2026-06-01
+
+### Fixed
+
+- **docker:** Copy plugins directory into image
+## [6.0.1] - 2026-06-01
+
+### Miscellaneous
+
+- **deps:** Move typescript from devDependencies to dependencies
+## [6.0.0] - 2026-06-01
+
+### Added
+
+- **db:** Add drizzle schema for platform/task/context/admin instance tables
+- **db:** Add migration 040 for platform/task/context/admin instance tables
+- **db:** Register migration 040 in MIGRATIONS list
+- **instances:** Add AES-256-GCM encryption helper with masking
+- **instances:** Add encrypted CRUD for platform_instances
+- **instances:** Add encrypted CRUD for task_instances
+- **instances:** Add context_settings store with indexed lookups
+- **instances:** Add admin store with super-/platform-admin union check
+- **instances:** Add idempotent env→DB bootstrap for instance rows
+- **startup:** Call bootstrapInstancesFromEnv after initDb
+- Add context task provider resolver
+- Derive config keys from context assignment
+- Apply context config keys to setup UI
+- Select task instance during setup
+- Drive setup from context task assignment
+- Resolve task provider by context for llm
+- Resolve scheduled task providers by context
+- Wire startup to task provider resolver
+- **chat:** Require platform instance on inbound chat events
+- **chat:** Create platform providers from instance config
+- **chat:** Add multi-instance ChatRouter
+- **chat:** Route command helpers through source platform instance
+- **chat:** Resolve proactive delivery platform instances
+- **chat:** Pass platform instance ids for proactive sends
+- **chat:** Start runtime through ChatRouter
+- **auth:** Scope authorized users by platform instance
+- **auth:** Authorize admins from instance admin rows
+- **commands:** Scope plugin admin actions
+- **commands:** Scope user management by platform instance
+- **commands:** Scope plugin admin actions
+- **chat:** Expose runtime router for instance apply
+- **debug:** Add instance management API routes
+- **admin:** Add instance API client helpers
+- **admin:** Add instances dashboard section
+- **plugins:** Evaluate compatibility across instances
+- **plugins:** Collect startup capabilities by instance
+- **plugins:** Gate eligibility by context capabilities
+- **plugins:** Guard scheduled jobs by eligibility
+- **stories:** Phase A — storybook + vite scaffold
+- **stories:** Phase B — mock layer (fixtures, MSW, SSE stub, decorators)
+- **stories:** Phase C — vertical-slice stories proving every mock layer
+- **stories:** PR 2 — shared/ui primitive stories
+- **stories:** PR 3a — shared composite stories
+- **stories:** PR 3b — admin component stories + SubjectStats fixture
+- **stories:** PR 3c — debug component stories + debug fixtures
+- **stories:** PR 4 — admin sections + DebugApp shell
+- Add ai output settings model
+- Add ai progress reporter
+- Add ai output config controls
+- Route tool progress through reporter
+- Show configured ai output details
+- **tools:** Add per-context tool preferences module + cache prefix clear
+- **tools:** Filter disabled tools out of makeTools by context preferences
+- **prompt:** Compose system prompt from tool-gated fragments + safety-net line
+- **prompt:** Pass effective enabled tool set into system-prompt builders
+- **config:** Add Tools toggle section to /config with tgl: interaction handler
+- **plugins:** Add provider.task and identity permissions
+- **plugins:** Add task provider type manifest fields and validation
+- **providers:** Add contributed task provider registry map
+- **plugins:** Add registerTaskProviderType to plugin registration
+- **plugins:** Add provider.task-gated providerRuntime facade
+- **plugins:** Add identity-gated ctx.identity facade
+- **plugins:** Unregister contributed provider type on plugin teardown
+- **time:** Add formatCurrentTimeTag helper
+- **time:** Inject current_time tag into live user turns
+- **time:** Document current_time tag in TIME system prompt
+- **time:** Document current_time tag in TIME system prompt
+- **ui:** Add icon Snippet prop to Btn
+- **ui:** Add pad prop to Panel body
+- **ui:** Accept Snippet for KV.v
+- **ui:** Make TopBar.statusRow optional
+- **providers:** Add TaskProviderTypeDescriptor + listTaskProviderTypes for built-ins
+- **providers:** Contributed task provider types expose displayName and configSchema in catalog
+- **instances:** Open TaskInstanceType union and resolve contributed types via instance config
+- **admin:** Serve task provider type catalog and validate instance type against it
+- **admin-client:** Add task provider type catalog fetcher and open task instance type
+- **admin-client:** Drive task instance form from the provider type catalog
+- **providers:** Add scope field to provider config requirements
+- **providers:** Complete built-in provider descriptors with scoped fields
+- **instances:** Descriptor-sensitive config masking
+- **instances:** Invoke provider config validator before persisting task instances
+- **providers:** Add papai/plugin-types stable import alias
+- **admin:** Update instance configs in place
+- **db:** Enforce multi-provider integrity
+- **providers:** Split task provider descriptors
+- **debug:** Expose split task provider catalog
+- **chat:** Add platform provider catalog
+- **admin:** Render platform instances from catalog
+- **config:** Support dynamic provider context fields
+- **providers:** Resolve plugin context credentials
+- **tools:** Gate provider-specific behavior by traits
+- **instances:** Standardize provider baseUrl config
+- **debug:** Mask instance configs from provider schemas
+- **mcp:** Add types and Zod schemas for MCP endpoint configs
+- **mcp:** Add types and Zod schemas for MCP endpoint configs
+- **mcp:** Add connection pool for MCP client management
+- **mcp:** Add connection pool with idle timeout and reconnect
+- **mcp:** Add tool adapter for MCP-to-AI-SDK tool conversion
+- **mcp:** Add user-configured MCP endpoints with ToolSet builder
+- **plugins:** Add mcp field to plugin manifest schema
+- **mcp:** Add plugin-manifest endpoint resolution
+- **mcp:** Wire MCP tool builders into makeTools pipeline (async)
+- **tools:** Add 'mcp' domain to ToolDomain and detect mcp_* tools in getToolMetadata
+- **debug:** Add MCP status read-only route
+- **plugins:** Add http permission for outbound HTTP access
+- **plugins:** Add admin-scoped plugin config with scope field and store functions
+- **plugins:** Add adminConfig facade to PluginContext
+- **plugins:** Check admin-scoped config in eligibility using system_config
+- **plugins:** Expose rate limiter on plugin tool runtime context
+- **debug:** Add admin plugin config routes for dashboard management
+- **admin:** Add plugin config UI section
+- **plugins:** Add synthetic-web-search plugin with search tool and prompt fragment
+- **dashboard-auth:** Add dashboard_claims and dashboard_sessions tables
+- **dashboard-auth:** Add session cookie parser and formatter
+- **dashboard-auth:** Add claim and session DB store
+- **dashboard-auth:** Public claim and session API
+- **dashboard-auth:** Periodic sweeper for expired claims and sessions
+- **debug-server:** Replace DEBUG_TOKEN gate with dashboard session auth
+- **debug-server:** Add /auth/claim, /auth/logout, /auth/whoami
+- **commands:** Add /dashboard claim-link issuer
+- **startup:** Warn on legacy DEBUG_TOKEN; start dashboard-auth sweeper
+- **client-admin:** Gate admin UI on /auth/whoami; add sign-in screen and logout
+- **client-debug:** Gate debug UI on /auth/whoami
+- **hooks:** Add changedSourceFiles and docReviewSuggested to session state
+- **hooks:** Add doc mapping module for source file changes
+- **hooks:** Add doc review prompt builder module
+- **hooks:** Add source file tracking predicate module
+- **hooks:** Add Claude Code doc-review stop hook
+- **hooks:** Add OpenCode doc-review plugin
+- **hooks:** Wire up source file tracking in existing TDD hooks
+- **hooks:** Register doc-review hooks in configuration
+- **plugins:** Expose identity facade to tools
+- **hooks:** Add changedSourceFiles and docReviewSuggested to session state
+- **hooks:** Add doc mapping module for source file changes
+- **hooks:** Add doc review prompt builder module
+- **hooks:** Add source file tracking predicate module
+- **hooks:** Add Claude Code doc-review stop hook
+- **hooks:** Add OpenCode doc-review plugin
+- **hooks:** Wire up source file tracking in existing TDD hooks
+- **hooks:** Register doc-review hooks in configuration
+- **commands:** Add telegram publication catalog
+- **telegram:** Derive command scopes from catalog
+- **group-settings:** Surface newly authorized telegram groups
+- **mattermost:** Require mention-prefixed commands
+- **mattermost:** Guide mention-only messages
+- **plugins:** Accept camelCase provider field keys in manifest schema
+- **plugins:** Scaffold task-provider-kaneo manifest and entry shell
+- **plugins:** Wire task-provider-kaneo factory and validateConfig
+- **kaneo:** Migrate context credentials to plugin-namespaced config keys
+- **instances:** Warn at startup about unresolvable task provider plugins
+- **admin:** Label task instances whose provider plugin is not active
+- **plugins:** Scaffold task-provider-youtrack manifest and entry shell
+- **plugins:** Wire task-provider-youtrack factory and capabilities
+- **youtrack:** Migrate context token to plugin-namespaced config key
+- Add safe chat router config fingerprints
+- Reconcile platform instances on apply
+- Honor plugin provider metadata
+- **tools:** Add resolveToolPermission for tri-state ToolPrefs
+- **tools:** Lazy migration of legacy tool_prefs to tri-state
+- **tools:** Tri-state cycle + domain summary in ToolPrefs
+- **tools:** Permission_denied result shape
+- **tools:** ExtendSchemaForAsk adds _permission_reason field
+- **tools:** GatedExecute permission wrapper
+- **tools:** MakeToolsOptions.askPermission
+- **tools:** Apply tri-state preferences and gate ask tools
+- **tools:** Cache descriptors; apply tri-state prefs per turn
+- **chat:** AskPermissionViaChat with pending-request registry
+- **chat:** HandlePermissionInteraction for perm: callbacks
+- **chat:** Route perm: callbacks to permission handler
+- **system-prompt:** Announce ask tools and require _permission_reason
+- **commands:** 3-state markers and footer hint in tool config view
+- **chat:** Tool/domain taps cycle through allow/ask/deny
+- **commands:** External pseudo-domain in tool config view
+- **commands:** /config Tools summary counts blocked and ask
+- **chat:** Add Kontur Talk reply helpers
+- **kontur-talk:** Add context renderer and label helpers
+- **chat:** Add KonturTalkChatProvider main class with poll loop and sendMessage
+- **kontur-talk:** Implement handleUpdate message handling
+- **kontur-talk:** Register provider in registry, bootstrap, and env validation
+- **kontur-talk:** Add admin dashboard and platform store support
+- **mutation:** Add paired-config builder (ignoreStatic:false per file)
+- **mutation:** Add per-file test-set override resolver
+- **mutation:** Add per-file Stryker report aggregator
+- **mutation:** Add paired-run orchestrator + test:mutate:file CLI
+- **mutation:** Add changed-files paired runner + test:mutate:changed-paired CLI
+- **mutation:** Repoint mutation scripts to paired runner
+- **mutation:** Quiet paired runner output
+- **plugins:** Add scheduled job runtime context
+- **settings:** Add public base-url config and link builder
+- **settings:** Add crypto helpers for codes and sessions
+- **settings:** Add 047 migration and schema for auth codes, sessions, rate limit
+- **settings:** Add single-use auth-code store
+- **settings:** Add SQLite-backed session store with CSRF rotation
+- **settings:** Add parameterized rate limiter
+- **settings:** Log allowed quota consumption; test actor isolation
+- **settings:** Add link-issuance service
+- **settings:** Add per-request principal resolution
+- **settings:** Add server-side scope guard
+- **settings:** Add available-context listing
+- **settings:** Add cookie helpers and request authentication
+- **settings:** Add exchange, logout, and bootstrap route handlers
+- **settings:** Wire trust-isolated /settings router into debug server
+- **settings:** Issue settings link from /config when configured
+- **settings:** Shared response/auth/scope helpers for /settings/api
+- **settings:** /settings/api router skeleton wired into settings-router
+- **settings:** Add principal display + /settings/api/bootstrap alias
+- **settings:** Config GET/PATCH route backed by existing validators
+- **settings:** Tools GET + toggle backed by tool-preferences
+- **settings:** Structured MCP endpoint GET/PUT with masked-header preservation
+- **settings:** Plugins GET + toggle + config (manifest-validated)
+- **settings:** Identity GET/PUT/DELETE for manual provider linking
+- **settings:** Kaneo auto-provision route with one-time credential reveal
+- **settings:** Group members + group task-instance selection routes
+- **settings:** Admin instance + provider-type wrappers (session-authorized)
+- **settings:** Admin system/LLM + users + groups wrappers
+- **settings:** Admin roster (SA) + plugin approval (SA) + announce wrappers
+- **settings:** Serve client/settings bundle as public static assets
+- **settings:** Response schemas for the settings SPA
+- **settings:** Typed fetch layer with CSRF + 401 handling
+- **settings:** Reactive session store with bootstrap + expiry
+- **settings:** Scroll-spy hook
+- **settings:** Top bar with context switcher
+- **settings:** Role-gated sidebar navigation
+- **settings:** Reusable config field row
+- **settings:** Profile section
+- **settings:** Task provider section with Kaneo provision
+- **settings:** Tools section with domain drill-down
+- **settings:** Structured MCP endpoints section
+- **settings:** Plugins section (per-context enable + config)
+- **settings:** Identity mapping section
+- **settings:** Group members section
+- **settings:** Group task-provider selection section
+- **settings:** Admin instances section
+- **settings:** Admin system/LLM section
+- **settings:** Admin users section
+- **settings:** Admin groups section
+- **settings:** Admin roster section (SA)
+- **settings:** Plugin approval section (SA)
+- **settings:** Announce section
+- **settings:** Root app shell with role + context gating
+- **settings:** SPA entry point with session bootstrap
+- **retirement:** /config is launcher-only (drop legacy in-chat editor)
+- **retirement:** Remove /setup; delete wizard + group-settings selector
+- **retirement:** Remove /plugin (admin plugin mgmt is UI-only)
+- **retirement:** Remove /group and /groups (membership + auth move to UI)
+- **retirement:** Remove /user, /users, /announce commands (keep broadcast fn)
+- **settings:** MCP endpoint headers and tool-filter editing in the web UI
+- **settings:** Admin plugin-config management in the web UI
+- **shared/ui:** Add DataTable primitive
+- **shared/ui:** Add MetricCard primitive
+- **stories/msw:** Add pluginConfigHandlers family
+- **stories/msw:** Wire plugin-config and instances into admin scenarios
+- **stats:** Add tool-call totals and 30d growth to global stats
+- **admin/llm:** Expose per-credential required flag
+- **admin/identity:** Add admin-wide identity mappings list endpoint
+- **admin/groups:** Add DELETE /auth/groups/:id route
+- **config-keys:** Add descriptor-driven required provider key resolver
+
+### Changed
+
+- Let resolver handle kaneo workspace setup
+- Remove task provider factory
+- **chat:** Clean router lifecycle implementation
+- **chat:** Split discord command matching
+- **providers:** Merge TaskProviderPhaseFive into TaskProvider, split TaskCapability into dedicated module
+- **providers:** Unify factory type and ignore staged contributed-registry exports in knip
+- **time:** Assign hour once + cover midnight in formatCurrentTimeTag
+- **admin:** Kill .panel CSS-class collision, hoist padding to .admin-section
+- **providers:** Correct listTaskProviderTypes doc and tighten built-in catalog test
+- **instances:** Centralize BuiltinTaskType guard and make types test behavioral
+- **debug:** Share jsonResponse helper and name TaskProviderTypeView; tighten route tests
+- **providers:** Descriptor-driven resolver merge; Kaneo credential branching in factory
+- **providers:** Source built-in capabilities from descriptors
+- **debug-server:** Drop DEBUG_TOKEN checks; rely on session auth
+- **kaneo:** Single-source workspaceId in user_config
+- **kaneo:** Move provider source into plugins/task-provider-kaneo
+- **kaneo:** Move tests under tests/plugins/task-provider-kaneo
+- **providers:** Drop inline kaneo factory and built-in descriptor
+- **providers:** Drop resolver kaneo-workspaceId special case
+- **instances:** Drop task-instance env bootstrap
+- **kaneo:** Delete dead getKaneoWorkspace/setKaneoWorkspace helpers and workspace cache
+- **youtrack:** Move provider source into plugins/task-provider-youtrack
+- **youtrack:** Move tests under tests/plugins/task-provider-youtrack
+- **providers:** Drop inline youtrack factory and built-in descriptor
+- **providers:** Drop legacy descriptor.configSchema, legacyConfigSchema, and contributed configSchema fallback
+- **providers:** Drop vestigial TaskProvider.configRequirements and dead ProviderConfigRequirement re-export
+- Construct chat adapters from typed config
+- Remove legacy provider config schema paths
+- Remove unused chat registry export
+- Remove obsolete multi-provider compatibility helpers
+- Require explicit chat instance ids
+- **tools:** Tri-state partitionToolNames; drop isToolEnabled
+- **tools:** Drop temporary toggle/isToolEnabled shims
+- **tools:** Drop redundant wrapToolExecution on ask path
+- **plugins:** Extract discovery graph walker
+- **providers:** Route auto provision through descriptors
+- **settings:** Exercise schema barrel and export rate-limit row type
+- **settings:** Build settings URL from a captured base, drop dead recheck
+- **settings:** Drop redundant buildSettingsUrl in favor of buildSettingsUrlFromBase
+- **settings:** Drop unused methodNotAllowed export from api-router
+- **commands:** Extract reusable broadcastMessage from /announce
+- **settings:** Shared admin guard; consistent 422 for unknown LLM key; cover admin paths
+- **settings:** Hoist admin response types to fetcher-schemas (single source)
+- **settings:** Top bar reuses shared Select + sign-out test
+- **retirement:** Interaction router has no config-flow routes
+- **retirement:** Non-command text goes straight to the orchestrator (remove interception)
+- Require explicit provider instance config
+- Remove stale multi-provider cleanup paths
+- Remove unused platform store export
+- **config:** Derive sensitivity from provider descriptors
+- **wizard:** Drive prompts and validation from descriptor metadata
+- **config-keys:** Use descriptor label, drop dead youtrack_token branch
+- **types:** Drop legacy provider keys from canonical ConfigKey union
+- **discord:** Remove env read and dead adminUserId threading
+- **bootstrap:** Remove dead narrowing branch via typed collectMissing
+- **router:** Rename removeInstanceStrict to removeInstance
+- **apply:** Drop never-emitted 'stop' from ApplyFailureAction
+- **resolver:** Early-return null on unknown provider descriptor
+- **kaneo:** Read internalUrl through a typed accessor
+- **plugins:** Thread validateConfig at registration instead of post-hoc mutation
+
+### Documentation
+
+- **plan:** Add Phase 1 instance data model implementation plan
+- Apply markdown formatter normalization to multi-provider plan + specs
+- **claude:** Document INSTANCE_CONFIG_KEY and src/instances module
+- Align phase 2 resolver plan
+- Adjust phase 2 config key sequencing
+- Align task provider resolver phase
+- Fix resolver plan log object
+- Align resolver plan verification
+- Plan multi-provider chat router phase
+- Plan multi-provider phase 4 admin dashboard
+- Align phase 4 admin dashboard spec
+- Plan multi-provider phase 5 plugin alignment
+- Plan multi-provider stabilization
+- Sync stabilization migration scope
+- Mark multi-provider stabilization implemented
+- **spec:** Storybook harness design for dashboard UI
+- **plan:** PR 1 (vertical slice) implementation plan for storybook harness
+- **spec:** Provider-as-plugin designs + 3rd-party trust research
+- **plan:** Task-provider-as-plugin Phase 1 implementation plan
+- **spec:** Mutation measurement & test-quality investigation design
+- **plan:** Mutation-measurement & test-quality investigation plan
+- **spec:** User-configurable tool access (tool toggles) design
+- **research:** Scaffold mutation measurement findings report
+- **research:** A1 baseline mutant status breakdown
+- **plan:** User-configurable tool access implementation plan
+- **research:** A2 runner static-vs-perTest bucketing mechanism
+- **plan:** Apply formatter to tool-access plan
+- **research:** A3 reproduce static collapse on column-resource
+- **spec:** Ai output visibility design
+- **research:** A4 concurrency variable test
+- **research:** A5 preload isolation variable test
+- **research:** A6 per-file true-score probe (ignoreStatic:false)
+- **research:** B1 preload architecture catalog
+- **research:** B2 mock.module blast radius
+- **research:** B3 DI adherence assessment
+- **research:** B4 test-quality signals from mutation data
+- **research:** B5 interaction synthesis + C1 root cause
+- **research:** C2 quality assessment + C3 deferred options
+- **research:** Executive summary + appendix + finalize
+- **research:** Fix B4 NoCoverage-table survived-count notes
+- **plan:** Ai output visibility implementation
+- Add mutation measurement tooling design
+- Document user-configurable tool access
+- **plugins:** Note caller-header forwarding across provider redirect hops
+- **spec:** Per-message current-time injection design
+- Add missing plan license headers
+- **plan:** Per-message current-time injection implementation plan
+- Align multi-provider runtime guidance
+- **design:** Dashboard UI audit + primitives-pass plan
+- **design:** Mark primitives-pass items resolved in dashboard audit
+- **plan:** Add task-provider-as-plugin Phase 2 (type catalog + admin UX) plan
+- **providers:** Spec Phase-3 prerequisites for task-provider-as-plugin
+- **plan:** Task-provider-plugin Phase 3 prerequisites implementation plan
+- Document multi-provider remediation phases
+- Align provider catalog phase 3 plan
+- **spec:** MCP adapter design — core module with user-configured and declarative plugin endpoints
+- **plan:** MCP adapter implementation plan — 11 tasks, TDD-driven
+- Add synthetic web search plugin design spec
+- Add synthetic web search plugin implementation plan
+- **plugins:** Add design rationale comments to buildRateLimit
+- **dashboard-auth:** Add session-cookie auth implementation plan
+- **dashboard-auth:** Document session-cookie auth and deployment patterns
+- Sync README/CLAUDE docs with MCP adapter and plugin changes
+- Align markdown table column widths in README
+- **plans:** Add hook, plugin remediation, and storage context sharing plans
+- **plugins:** Complete provider plugin guide
+- **plugins:** Remove stale provider limitations
+- **specs:** Add chat command design docs
+- **plans:** Add Telegram and Mattermost execution plans
+- **plans:** Add multi-provider review fix plan
+- **plans:** Add plugin review follow-up fix plan
+- **spec:** Add task-provider-as-plugin Phases 3-5 combined design
+- **plan:** Add task-provider-as-plugin Phases 3-5 implementation plan
+- **plan:** Resync Phases 3-5 plan to shipped schema (namespaced keys)
+- **plan:** Record Task 3.5 validateConfig correction + provision coupling in Drift Log
+- **plan:** Drift Log — knip plugin scope + SENSITIVE_KEYS note
+- **plugins:** Document Phase 3 Kaneo migration
+- **plan:** Phase 3 complete; Drift Log checkRequiredProviderConfig follow-up
+- **spec:** Task-provider-plugin follow-up design (deferred items)
+- **plugins:** Document Phase 4 YouTrack migration; approve youtrack in E2E
+- Add multi-provider review cleanup design
+- Spec for tool `ask` permission
+- Implementation plan for tool `ask` permission
+- Add Kontur Talk chat provider design spec
+- Add Kontur Talk chat provider implementation plan
+- **mutation:** Add implementation plan for paired Stryker runner
+- **mutation:** Document paired runner + CLI entries
+- Add multi-provider review cleanup implementation plan
+- **plugins:** Add remediation plan artifacts
+- **settings-ui:** Scoped design specs for chat-command → web settings migration
+- **settings-ui:** Consolidate settings web UI specs and resolve blocking OQs
+- **settings:** Add access-model implementation plan
+- **settings:** Document access-model module and SETTINGS_PUBLIC_BASE_URL
+- **settings:** Document the /settings/api route family
+- **settings:** Client SPA (Part B) implementation plan
+- **retirement:** Command-retirement & migration implementation plan
+- **retirement:** Parity-gate verification checklist
+- **retirement:** /help points at /config; drops retired commands
+- **retirement:** /start welcome points at /config
+- **retirement:** Not-configured reply points at /config
+- **retirement:** Document web-UI-only command surface
+- **settings:** Admin plugin-config view is implemented (no longer deferred)
+- **readme:** Actualize task-provider plugin migration and dashboard auth
+- Reconcile merge — three-state tool permissions + plugin approval is UI-only (drop retired /plugin & /setup refs)
+- **design:** Reconcile audit with 2026-05-30 visual sweep
+- **design:** Mark visual-bug findings resolved
+- **claude:** Note new admin/stats endpoints and toolMix fields
+- **superpowers:** Add dashboard visual-bugs fix plan and design spec
+- Actualize README + CLAUDE.md against settings-web-UI branch
+- Surface kontur-talk chat provider in README + CLAUDE.md
+- Add multi-provider validated findings remediation spec
+- Add multi-provider remediation implementation plan
+- Actualize multi-provider docs
+- Add verified multi-provider remediation design spec
+- Add multi-provider remediation implementation plan
+- **plugins:** Correct validator comments about merged config at resolver time
+- **adr:** Update ADR-0009 to plugin-contributed provider architecture
+- **plugins:** Document #15 provider host allowlist enforcement gap
+
+### Fixed
+
+- **instances:** Wrap bootstrap seed in a sqlite transaction (spec compliance)
+- Run kaneo provisioning after setup assignment
+- Require kaneo workspace before provider resolution
+- Group alert polling by delivery context
+- Scope alert snapshots to delivery context
+- Group alerts by storage context
+- **chat:** Propagate adapter platform instance ids
+- **chat:** Harden router lifecycle edges
+- **chat:** Type instance context rendering
+- **chat:** Route threaded proactive delivery contexts
+- **chat:** Keep undelivered proactive prompts pending
+- **chat:** Preserve alert transitions after failed delivery
+- **chat:** Keep stale routed prompts retryable
+- **chat:** Preflight proactive delivery routing
+- **chat:** Avoid guessed announcement platform ids
+- **chat:** Isolate startup platform instance loading
+- **chat:** Assign setup contexts to source platform
+- **chat:** Use source instance metadata for commands
+- **chat:** Scope group username capability checks
+- **chat:** Scope wizard button capability checks
+- **auth:** Preserve platform-scoped user rows
+- **auth:** Remove legacy user auth fallbacks
+- **db:** Satisfy user migration strict lint
+- **test:** Satisfy migration registration strict lint
+- **cache:** Persist context workspaces outside users
+- **cache:** Backfill workspace config from users
+- **db:** Make workspace backfill non-destructive
+- **auth:** Scope demo user checks by platform
+- **auth:** Remove env admin command authority
+- **auth:** Constrain scoped admin commands
+- **auth:** Finish admin row authority cleanup
+- **chat:** Remove legacy adapter instance defaults
+- **test:** Clean adapter default strict lint
+- **debug:** Clear runtime router before shutdown
+- **debug:** Complete instance route reconciliation
+- **debug:** Match instance route error contract
+- **admin:** Tighten instance client contracts
+- **admin:** Guard instance dashboard actions
+- **admin:** Address final phase 4 review gaps
+- **tests:** Restore plugin registry module mock
+- **tests:** Restore startup module mocks
+- **plugins:** Isolate scheduled job guard failures
+- **plugins:** Ignore stopped chat instances for capabilities
+- **chat:** Scope storage context ids by platform instance
+- **db:** Migrate context-owned rows to platform scoped ids
+- **db:** Harden scoped context migration
+- **db:** Include telemetry context ids in scoped migration
+- **db:** Handle staged file scoped migration conflicts
+- **db:** Preserve plugin context rows during scoped migration
+- **db:** Scope direct upgrades before instance bootstrap
+- **db:** Migrate legacy users to inferred platform scope
+- **db:** Migrate web rate limit context ids
+- **auth:** Use scoped context ids for runtime storage
+- **auth:** Complete scoped group runtime flow
+- **auth:** Normalize scoped group context usage
+- **auth:** Normalize native and scoped group ids
+- **auth:** Harden scoped context parsing
+- **tools:** Use scoped owners for storage tools
+- **deferred:** Preserve native delivery ids with scoped storage
+- **deferred:** Split scoped storage from native delivery
+- **deferred:** Preserve scoped routing for legacy rows
+- **chat:** Scope command and interaction storage contexts
+- **chat:** Accept legacy interaction targets with scoped routing
+- **chat:** Resolve scoped thread routing via config context
+- **group-settings:** Scope manageable group lookup
+- **db:** Preserve legacy thread context shape
+- **chat:** Avoid legacy scoped-context leaks
+- **attachments:** Route staged downloads by platform instance
+- **attachments:** Recover legacy staged source instance
+- **users:** Constrain user cleanup and username resolution by platform
+- **users:** Tighten username placeholder detection
+- **kaneo:** Provision from assigned task instance config
+- **kaneo:** Report missing task instance URL
+- **kaneo:** Disable global admin auto-provisioning
+- **chat:** Skip proactive delivery to stopped instances
+- **chat:** Guard routed sends by instance status
+- **chat:** Report refused routed sends
+- **chat:** Propagate routed send refusal
+- **scheduler:** Log refused recurring notifications
+- **scheduler:** Send recurring notifications to native ids
+- Tighten ai output setting types
+- Enforce ai output setting pairs
+- Harden ai progress sanitization
+- Prevent progress reporter leaks
+- Redact secret-like progress strings
+- Validate ai output callback targets
+- Reject invalid ai callback utf8
+- Harden tool progress hook handling
+- Isolate ai output detail failures
+- Stabilize ai output visibility
+- Sanitize reasoning progress output
+- Restrict ai output visibility controls
+- Align reasoning visibility tests
+- Resolve ai output visibility checks
+- **tools:** Cache empty tool set so all-disabled contexts skip rebuild
+- **tools:** Classify file tools + scope proactive prompt to delivery context
+- **plugins:** Tighten provider host and config-validator manifest validation
+- **plugins:** Harden provider-runtime httpFetch against SSRF and runtime mutation
+- **time:** Address Task 2 review — logger scope + real timezone assertion
+- **time:** Address Task 2 review — logger scope + real timezone assertion
+- **ui:** Add Btn :hover styles for all five variants
+- **ui:** Define status-success and truncation-banner CSS
+- **admin:** Define masked-value and masked-hint CSS
+- **ui:** Add scoped styles to TreeView
+- **ui:** Add scoped styles to PropertiesTable
+- **admin-client:** Check response status in fetchTaskProviderTypes like sibling fetchers
+- **admin-client:** Require non-empty plugin id in TaskProviderTypeViewSchema source
+- **config:** Contributed task providers require no per-user credential key
+- **providers:** Reject contributed types that shadow built-in providers
+- **providers:** First-wins on duplicate contributed task provider type
+- **providers:** Default per-context source for contributed user-scoped config fields
+- **instances:** Clean up platform admin rows
+- **instances:** Preserve super admins during cleanup
+- **instances:** Clear tool caches on context changes
+- **admin:** Make platform delete apply-only
+- **debug:** Bound platform apply concurrency
+- Address phase 1 hardening verification
+- **test:** Seed instance parents for integrity
+- **chat:** Accept mattermost descriptor base url
+- **config:** Compact dynamic config callbacks
+- **config:** Make compact callbacks deterministic
+- **config:** Bound all config callbacks
+- **config:** Bound tool menu callbacks
+- **providers:** Keep runtime traits aligned with descriptors
+- **admin:** Align platform provider traits schema
+- **mcp:** Use sanitizeServerId in tool name generation
+- **tests:** Rename stale providerRuntime test after http permission addition
+- **plugins:** Add logging to setPluginAdminConfig for observability consistency
+- **tests:** Add adminConfig freeze assertion to context test
+- **debug:** Guard maskSensitive against short values leaking secrets
+- **admin:** Align sensitive value display with server masking and strengthen ordering test
+- **plugins:** Add ZodError handling, missing tests, and grammar fix to synthetic-web-search
+- **test:** Isolate startup plugin wiring
+- **plugins:** Remove dead null checks in resolveAndReadEntryPoint (code quality bot)
+- Resolve lint, format, and knip failures
+- **checks:** Remove unused validation exports
+- **dashboard-auth:** Treat empty cookie value as absent
+- **dashboard-auth:** TouchSession ignores revoked/expired; tighten store tests
+- **dashboard-auth:** Make sha256 module-private
+- **dashboard-auth:** Tighten env TTL parsing and XFF handling
+- **dashboard-auth:** Guard unref(), use error log key, test sweep throw
+- **debug-server:** Rename test export to avoid lint allowlist edit
+- **debug-server:** Whoami records activity; parse multi-value X-Forwarded-Proto
+- **commands/dashboard:** Wrap claim URL in backticks; handle issueClaim errors
+- **startup:** Stop dashboard-auth sweeper on graceful shutdown
+- **auth-routes:** Handle mintSession failure; cache-no-store on claim redirect
+- **hooks:** Remove phantom src/instances doc dir and duplicate tracking in tdd-enforcement
+- Share durable group thread tool state
+- **plugins:** Fail closed for unknown task providers
+- **plugins:** Stop orphaned contributed task instances
+- **plugins:** Gate and register plugin commands correctly
+- **plugins:** Evaluate pre-start chat capabilities
+- **plugins:** Honor default enabled scheduled jobs
+- **plugins:** Cover default scheduled contexts
+- **plugins:** Tighten runtime identity exposure
+- **plugins:** Share target authorization
+- **plugins:** Scope interaction target authorization
+- **plugins:** Isolate prompt fragment failures
+- **plugins:** Preserve provider runtime host error
+- **plugins:** Preserve provider instances on shutdown
+- Inherit group thread configuration
+- Migrate shared group thread entities
+- Preserve shared thread config during migration
+- Invalidate shared thread tool caches
+- **hooks:** Remove phantom src/instances doc dir and duplicate tracking in tdd-enforcement
+- **group-settings:** Align fallback target validation
+- **telegram:** Log scope publication failures
+- **mattermost:** Preserve non-command mentions
+- **mattermost:** Detect later standalone mentions
+- **mattermost:** Keep mention guidance scoped
+- **mattermost:** Use runtime username in guidance
+- **chat:** Fail loudly on command publication errors
+- **chat:** Log sync command publication failures
+- **commands:** Remove dead catalog export
+- Validate platform instance config
+- Validate platform instance patch config
+- Validate task instance patch config
+- Read admin system providers from instances
+- Handle ambiguous admin system providers
+- **plugins:** Reject invalid disable targets
+- **plugins:** Surface tool collisions in runtime events
+- **plugins:** Dedupe tool collision events
+- **hooks:** Add missing fs import in verify-test-import.mjs
+- **plugins:** Harden discovery hashing
+- **plugins:** Stabilize discovery contracts
+- **plugins:** Make discovery paths portable
+- **plugins:** Import entrypoints via file urls
+- **plugins:** Make manifest validation strict
+- **plugins:** Tighten manifest path checks
+- **plugins:** Validate provider manifest fields
+- **plugins:** Handle commented dynamic imports
+- **plugins:** Harden discovery import parsing
+- **plugins:** Use parser-backed import discovery
+- **plugins:** Refine manifest path validation
+- **plugins:** Tighten mcp-only manifest validation
+- **plugins:** Reject raw parent path segments
+- **plugins:** Stage activation side effects
+- **plugins:** Tighten activation registration guards
+- **plugins:** Close registration after activation
+- **plugins:** Tighten registration lifecycle
+- **plugins:** Resolve provider validator exports
+- **plugins:** Tighten validator activation checks
+- **plugins:** Harden validator error handling
+- **plugins:** Scope validator inputs to instance config
+- **plugins:** Validate provider config validators
+- **plugins:** Allow http host allowlists
+- **plugins:** Make admin config live at runtime
+- **plugins:** Cover runtime permission guards
+- **plugins:** Cap tiny synthetic search budgets
+- **plugins:** Unify missing config resolution
+- **plugins:** Scope plugin target error messages
+- **plugins:** Tighten context eligibility toggles
+- **plugins:** Expose editable plugin config in /config
+- **plugins:** Accept plugin context config callbacks
+- **config-editor:** Fail closed for stale compact callbacks
+- **config-editor:** Bind compact non-field callbacks
+- **config-editor:** Bind save actions to active field session
+- **config-editor:** Bind save actions to active sessions
+- **config-editor:** Rotate save tokens on value changes
+- **config-editor:** Invalidate staged save after invalid input
+- **config-editor:** Reject legacy dm callbacks
+- **plugins:** Enforce https-only provider fetch
+- **plugins:** Align provider redirect handling
+- **plugins:** Correct redirect replay semantics
+- **plugins:** Strip auth on cross-origin redirects
+- **tools:** Classify plugin tools in preferences
+- **tools:** Wire plugin tool toggles end to end
+- **plugins:** Align review remediation with runtime contract
+- **tools:** Surface plugin toggles in config
+- **config-editor:** Preserve compact callback session tokens
+- Use safe chat config fingerprints
+- Harden chat config fingerprint digest
+- Report apply reconciliation failures accurately
+- Surface platform apply failures
+- Harden instance route mutations
+- Validate task provider config during resolution
+- Contain task provider validator failures
+- Honor plugin provider storage keys
+- Use plugin provider storage keys in setup
+- Align plugin provider storage metadata
+- Align admin provider storage submission
+- Preserve legacy mattermost instance config reads
+- Preserve mattermost constructor url config
+- **tools:** Tighten PERMISSIONS type and clarify tool_prefs log
+- **tools:** New-shape tool_prefs wins over legacy on conflict
+- **chat:** Use storage context id for permission auth check
+- **tools:** Preserve MCP tool schemas when adding _permission_reason
+- **system-prompt:** Suppress ask fragment on proactive turns
+- **kontur-talk:** Skip non-text messages in MVP
+- **kontur-talk:** Resolve knip issues — use label helpers, validate send response, remove unused error schema
+- **tests:** Migrate master's scoped-context test to tri-state semantics
+- **chat:** Escape markdown in LLM-supplied _permission_reason
+- **mutation:** Preserve paired-config threshold bands
+- **mutation:** Surface pending mutants in paired score merger
+- **mutation:** Validate paired-run threshold handling
+- **mutation:** Reject empty paired-run threshold
+- **mutation:** Reject duplicate paired-run thresholds
+- **mutation:** Prevent stale paired-run reports
+- **mutation:** Reject short paired-run flags
+- **mutation:** Tolerate stryker nonzero with report
+- **mutation:** Constrain paired-run threshold range
+- **mutation:** Align changed-files dependency API
+- **mutation:** Exclude deleted changed-file targets
+- **ci:** Avoid mutation scan shell injection
+- **mutation:** Stream progress and pause CI gate
+- **providers:** Validate resolved plugin config
+- **plugins:** Tighten context settings nullability
+- **hooks:** Normalize doc review paths
+- **plugins:** Dedupe activation lifecycle order
+- **plugins:** Bind identity claims to runtime actor
+- **plugins:** Narrow activation identity facade
+- **plugins:** Re-export scheduled job runtime type
+- **plugins:** Enforce command and scheduler permissions
+- **plugins:** Preserve legacy approval state
+- **plugins:** Persist runtime registry state
+- **plugins:** Harden discovery path verification
+- **plugins:** Complete strict discovery migration
+- **plugins:** Remove src refs from strict entry files
+- **plugins:** Hash local runtime bridge imports
+- **plugins:** Close bare require discovery hole
+- **plugins:** Restore synthetic search input schema
+- **plugins:** Reject computed import.meta.require
+- **commands:** Route setup auto provision through descriptors
+- **commands:** Isolate auto provision failures
+- **plugins:** Align operator surfaces with runtime state
+- **settings:** Reject CSRF rotation for expired sessions
+- **settings:** Deny system sentinel via group path; exhaustive scope guard
+- **settings:** Rate-limit on proxy-trusted client IP; test 429 and code replay
+- **settings:** Enforce live authorization on bootstrap; mark revoke-all-sessions @public
+- **settings:** Stable alphabetical domain ordering in tools GET
+- **settings:** Reject enabling a non-active plugin; cover plugin route branches
+- **settings:** Authenticate identity PUT before parsing body
+- **settings:** Do not return Kaneo apiKey in provision response
+- **settings:** Provision username mirrors wizard; log failure reason; add 405 test
+- **settings:** 405 on non-GET provider-types; tighten types; cover admin write paths
+- **settings:** Plugin approval via registry; audit DELETE; cover roster/approval/announce
+- **settings:** Treat masked secret resubmission as no-change in config and plugin config
+- **settings:** Identity schema nullability + matchedAt to match server contract
+- **settings:** Config field row re-syncs draft on prop change + cover replace/cancel
+- **settings:** Profile section gates placeholder on load/error + error test
+- **settings:** Clear Kaneo provision reveal on context switch
+- **settings:** Tools section additive errors, collapsed drill-down, context-safe expand
+- **settings:** Mcp section collision-free row ids + status feedback + tests
+- **settings:** Plugins section clears error before toggle/config actions
+- **settings:** Identity section guards empty user id + 422 form-hidden test
+- **settings:** Members section clears error on actions + remove/error tests
+- **settings:** Group provider clamps selection to available + status feedback
+- **settings:** Admin instances clears error on load + delete confirm ordering + additive-error test
+- **settings:** Admin system password input + empty-save guard + status reset + tests
+- **settings:** Admin users success status feedback + username-path test
+- **settings:** App inits activeId from hash + clamps to visible sections
+- **settings:** Plugin required-config guard, identity loading state, scrollspy tick
+- **retirement:** Group-settings dispatch default config-render stub throws instead of silent no-op
+- **retirement:** Restore recordRuntimeEvent assertions; drop stale supportsInteractiveButtons references
+- **retirement:** Point remaining user-facing config prompts at /config (drop /setup references)
+- **settings:** Scope guard denies bot-admin access to other users' personal contexts
+- **shared/ui:** Harden Bars against undefined and degenerate data
+- **shared/ui:** Harden DataTable click guard and Bars geometry
+- **admin/overview:** Rebuild section with MetricCard chrome
+- **admin/stats:** Rebuild with MetricCards, DataTable, and tool-calls panel
+- **admin/billing:** Wrap subjects table and detail in Panel chrome
+- **admin/memos:** Rebuild with Panel + Seg + DataTable chrome
+- **admin/reminders:** Rebuild with two-Panel grid layout
+- **admin/identity:** Rebuild with Panel + DataTable over admin-wide list
+- **admin/groups:** Rebuild with Panel + DataTable + revoke action
+- **admin/system:** Panel chrome + surface credential required flag
+- **admin/instances:** Minimal Panel wrap + Btn/Seg swap
+- **debug/turns:** Restore 6-column table layout
+- **debug/session-card:** Repair row line-bleed when stacked
+- **shared/treeview:** Pad story bodies to stop top-row clipping
+- Replace retired-command references in user/operator-facing strings
+- Harden instance config key derivation
+- Isolate unreadable instance rows
+- Use safe task decoding at startup
+- Handle unreadable instance diagnostics in admin client
+- Report platform apply desired status
+- Preserve platform apply compatibility
+- Preserve strict removal state
+- Split task provider config validation
+- Isolate unreadable platform apply rows
+- **hooks:** Simplify idle rerun guidance
+- **hooks:** Clarify check-full failure prompt
+- **orchestrator:** Restore required-config guard via descriptor keys
+- **migration:** Isolate undecryptable rows in 045 baseUrl backfill
+- **instances:** Use safe decode on admin/setup/lifecycle list paths
+- **apply:** Preserve running instances whose DB row is unreadable
+- **router:** Always remove instance on stop failure to allow retry
+
+### Miscellaneous
+
+- **deps:** Bump @opencode-ai/plugin to 1.15.7
+- **chat:** Satisfy final verification checks
+- **chat:** Format final router changes
+- **instances:** Clean unused platform setup helper
+- **instances:** Remove unused key length constant
+- **auth:** Format scoped user changes
+- **test:** Format plugin admin coverage
+- **format:** Order router runtime imports
+- **stories:** Phase D — production-bundle isolation guard + docs
+- **docs:** Format Phase 1 plan
+- Ignore client/assets build output
+- **tsconfig:** Exclude storybook-static build output from typecheck
+- Remove unused types, functions, and knip suppressions
+- Add plugin config fetchers to knip ignore list for Svelte consumption
+- **client-admin:** Update UI copy after DEBUG_TOKEN removal
+- **dashboard-auth:** Remove residual DEBUG_TOKEN references
+- **plugins:** Remove stale compatibility API
+- **plugins:** Remove unused plugin command parameter
+- **providers:** Remove test-only registry lookup
+- **providers:** Remove stale registry knip ignore
+- **knip:** Transitionally ignore setKaneoWorkspace unused export
+- **knip:** Scan plugins/ so plugin->src usage is tracked
+- Satisfy strict lint for plugin follow-up
+- Bump opencode plugin
+- **knip:** Suppress test-only seam exports from knip strict mode
+- **settings:** Register client/settings bundle entry + svelte export ignores in knip
+- **retirement:** Delete message-interception modules
+- **retirement:** Delete tool/plugin/ai-output interaction handlers
+- **retirement:** Delete config-editor presentation (keep validation.ts)
+- **retirement:** Sever wizard/selector from non-command callers
+- **retirement:** Finalize command menu catalog (/config launcher description + telegram menu)
+- **retirement:** Knip dead-code sweep (remove orphaned chat-config modules + exports)
+- **debug/story:** Rename DebugApp story Populated -> Default
+- **claude:** Add launch config for storybook and assets servers
+
+### Styling
+
+- **attachments:** Satisfy strict lint for staged files
+- **spec:** Normalize markdown table alignment
+- **tools:** Apply oxfmt formatting to tool-access source files
+- Apply repo-wide oxfmt reformat and split files over max-lines
+
+### Testing
+
+- **index:** Mock src/instances/bootstrap.js in startup-wiring test
+- **mock-reset:** Restore src/instances/bootstrap.js after process-wide mock
+- Update config tests for dynamic keys
+- Fix config editor dynamic key lint
+- Update context assignment fixtures
+- **chat:** Cover router delegation edge cases
+- **chat:** Update chat router contract coverage
+- **plugins:** Cover scheduled job guard triggers
+- **plugins:** Cover context resolved provider eligibility
+- **auth:** Resolve usernames from placeholders
+- **chat:** Align legacy tests with scoped contexts
+- **config:** Cover tgl: tool/open/back paths; log malformed tool-toggle context
+- **tools:** Fix tools/index mock leak and youtrack DB setup
+- **plugins:** Assert registerTaskProviderType error messages and enrich undeclared-type error
+- **plugins:** Cover identity facade cleared-mapping null branch
+- **providers:** Assert contributed capabilities and mock logger in catalog test
+- **admin:** Cover sensitive-field rendering and provider-type switch in InstancesSection
+- **plugins:** Use non-built-in type name in registerTaskProviderType success test
+- **debug:** Cover task delete cache invalidation
+- **debug:** Tighten task delete cache assertions
+- **providers:** Isolate plugin resolver registry entry
+- **plugins:** Clean up provider context registry
+- **tools:** Use traited Kaneo mocks for label tools
+- **bot:** Update auto setup wizard expectation
+- **dashboard-auth:** Tighten migration 046 tests; update registration assertion
+- **startup:** Remove duplicate debug-token-warn test file
+- **client-admin:** Remove duplicate whoami-bootstrap test file
+- Cover group thread deferred prompt ownership
+- **commands:** Enforce catalog assertion metadata
+- **commands:** Tighten catalog registration assertions
+- **commands:** Strengthen catalog coverage
+- **bot:** Lock command registration to catalog
+- **bot:** Strengthen command registration drift check
+- **telegram:** Tighten command scope assertions
+- **group-settings:** Complete fallback selector flow
+- **mattermost:** Cover mention-prefixed command syntax
+- **mattermost:** Expand mention syntax coverage
+- Fix rebased instance route null guard
+- **e2e:** Approve task-provider-kaneo plugin in setup
+- **dashboard:** Make issueClaim-failure test deterministic
+- **plugins:** Cover raw parent path segments
+- **plugins:** Align main contract fixtures
+- **config-editor:** Align plugin config alias expectation
+- Update provider validator wrapper expectation
+- Update provider baseUrl fixtures
+- **kontur-talk:** Improve schema and config test coverage
+- **plugins:** Cover repeated loader activation
+- **settings:** Cover auth-code expiry boundary
+- **settings:** Cover platform-admin principal; log platformUserId
+- **settings:** Harden cookie/session auth coverage; trim cookie value
+- **settings:** Assert single reply and rate-limit message for /config link
+- **settings:** Cover parseJsonBody and requireCsrf success path
+- **settings:** Dedup api-router test to hook-mirror path
+- **settings:** Cover config masking, unchanged, and unknown-field paths
+- **settings:** Assert MCP mask form and masked-header roundtrip
+- **settings:** Cover identity DELETE clearing, no-CSRF, and no-provider paths
+- **settings:** Cover group member + task-instance write paths
+- **settings:** Harden static-serving tests + build guard
+- **settings:** Reset session fields between tests + cover exchange 401
+- **settings:** Cover plugin reject path + approval status banner
+- **settings:** Strengthen announce result + error assertions
+- **settings:** Make session exchange assertion resilient to cross-test fetch pollution
+- **settings:** Route entry mount mock by url + cover failed-exchange gate path
+- **retirement:** Config-field + authorization parity gate
+- **retirement:** Characterize normal-message orchestrator path before interception removal
+- **retirement:** Restore command-path observation/denial/reply coverage on surviving commands
+- Cover migration completion logs
+- Stabilize verification suite
+- **orchestrator:** Set namespaced youtrack token now that the guard is live
+- **instances:** Instance is evicted on stop failure (removeInstance retry semantics)
+
+### Build
+
+- **stryker:** Add typescript-checker plugin
+- **settings:** Add client/settings bundle entry and isolation guard
+
+### Ci
+
+- Re-enable mutation testing as warn-only paired changed-files job
+- Run paired mutation gate on pull requests only
+- Provision INSTANCE_CONFIG_KEY + SETTINGS_PUBLIC_BASE_URL, drop dead TASK_PROVIDER
+
+### Merge
+
+- Resolve conflicts with origin/master (adopt handleClientFile, preserve MCP routes)
 ## [5.7.0] - 2026-05-23
 
 ### Added

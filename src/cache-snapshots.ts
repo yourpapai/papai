@@ -15,7 +15,6 @@ export type SessionSnapshot = {
   factsCount: number
   facts: ReadonlyArray<{ identifier: string; title: string; url: string; lastSeen: string }>
   configKeys: string[]
-  workspaceId: string | null
   hasTools: boolean
   instructionsCount: number
   // Full data for debug dashboard
@@ -35,7 +34,6 @@ type UserCacheEntry = {
   facts: Array<{ identifier: string; title: string; url: string; last_seen: string }>
   instructions: Array<{ id: string; text: string; createdAt: string }> | null
   config: Map<string, string | null>
-  workspaceId: string | null
   tools: unknown
   lastAccessed: number
 }
@@ -96,7 +94,6 @@ function buildSnapshot(id: string, cache: UserCacheEntry): SessionSnapshot {
     })),
     configKeys,
     config,
-    workspaceId: cache.workspaceId,
     hasTools: cache.tools !== null,
     instructionsCount: cache.instructions?.length ?? 0,
     instructions: cache.instructions ?? null,

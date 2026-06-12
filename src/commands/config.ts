@@ -3,201 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { buildAiOutputConfigSection } from '../ai-output-config-ui.js'
-import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
-import { resolveSourceChatProvider } from '../chat/source-instance.js'
-import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
-import { serializeCallbackData } from '../config-editor/index.js'
-import { getConfigKeysForContext } from '../config-keys.js'
-import { getAllConfig, getPluginConfig, maskValue } from '../config.js'
-import { startGroupSettingsSelection } from '../group-settings/selector.js'
+import type { ChatProvider, CommandHandler } from '../chat/types.js'
 import { logger } from '../logger.js'
-import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
-import type { PluginRegistryEntry } from '../plugins/registry.js'
-import { getPluginContextState } from '../plugins/store.js'
-import { getToolPrefs } from '../tools/tool-preferences.js'
-import type { ConfigKey } from '../types/config.js'
+import { issueSettingsLink } from '../settings/issue-link.js'
 
 const log = logger.child({ scope: 'commands:config' })
+
 const GROUP_CONFIG_REDIRECT =
   'Group settings are configured in direct messages with the bot. Open a DM with me and run /config.'
 const GROUP_CONFIG_ADMIN_ONLY =
   'Only group admins can configure group settings, and group settings are configured in direct messages with the bot.'
-const NO_DELETE_WARNING =
-  '⚠️ This platform does not support automatic deletion of messages containing secrets. Please manually delete your messages after entering API keys and tokens.\n\n'
+const NOT_CONFIGURED =
+  'The settings UI is not configured on this deployment. Ask the administrator to set SETTINGS_PUBLIC_BASE_URL.'
 
-const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
-  kaneo_apikey: 'Kaneo API Key',
-  kaneo_workspace_id: 'Kaneo Workspace ID',
-  youtrack_token: 'YouTrack Token',
-  timezone: 'Timezone',
-}
-
-function getFieldEmoji(key: ConfigKey): string {
-  const emojiMap: Record<ConfigKey, string> = {
-    kaneo_apikey: '🔐',
-    kaneo_workspace_id: '📁',
-    youtrack_token: '🔐',
-    timezone: '🌍',
-  }
-  const emoji = emojiMap[key]
-  if (emoji === undefined) return '⚙️'
-  return emoji
-}
-
-function formatConfigLine(key: ConfigKey, value: string | undefined): string {
-  const displayName = FIELD_DISPLAY_NAMES[key]
-  const emoji = getFieldEmoji(key)
-  if (value === undefined) {
-    return `${emoji} ${displayName}: *(not set)*`
-  }
-  return `${emoji} ${displayName}: ${maskValue(key, value)}`
-}
-
-function buildConfigButtons(config: Partial<Record<ConfigKey, string>>, targetContextId: string): ChatButton[] {
-  const buttons: ChatButton[] = getConfigKeysForContext(targetContextId).map((key) => ({
-    text: `${getFieldEmoji(key)} ${FIELD_DISPLAY_NAMES[key]}`,
-    callbackData: serializeCallbackData({ action: 'edit', key }, targetContextId),
-    style: config[key] === undefined ? 'secondary' : 'primary',
-  }))
-  buttons.push({
-    text: '🔄 Full Setup',
-    callbackData: serializeCallbackData({ action: 'setup' }, targetContextId),
-    style: 'primary',
-  })
-  return buttons
-}
-
-function encodePluginContextId(contextId: string): string {
-  return Buffer.from(contextId).toString('base64url')
-}
-
-function maskPluginConfigValue(value: string): string {
-  return `****${value.slice(-4)}`
-}
-
-function isPluginSelectedForContext(entry: PluginRegistryEntry, targetContextId: string): boolean {
-  const state = getPluginContextState(entry.discoveredPlugin.manifest.id, targetContextId)
-  return state === undefined ? entry.discoveredPlugin.manifest.defaultEnabled : state.enabled
-}
-
-function formatPluginStatus(entry: PluginRegistryEntry, targetContextId: string): string {
-  const selected = isPluginSelectedForContext(entry, targetContextId)
-  const source =
-    getPluginContextState(entry.discoveredPlugin.manifest.id, targetContextId) === undefined && selected
-      ? ' (default)'
-      : ''
-  if (!selected) return 'disabled'
-
-  const eligibility = getPluginContextEligibility(entry.discoveredPlugin.manifest.id, targetContextId)
-  if (eligibility.eligible) return `enabled${source}`
-  if (eligibility.reason === 'config_missing') return 'unavailable (missing config)'
-  if (eligibility.reason === 'capability_missing') {
-    return `unavailable (missing capability: ${eligibility.missingCapabilities.join(', ')})`
-  }
-  return 'disabled'
-}
-
-function appendPluginRequirementLines(lines: string[], entry: PluginRegistryEntry, targetContextId: string): void {
-  for (const requirement of entry.discoveredPlugin.manifest.configRequirements) {
-    const value = getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
-    const displayedValue =
-      value === null || value === '' ? '*(not set)*' : requirement.sensitive ? maskPluginConfigValue(value) : value
-    lines.push(`  - ${requirement.label} (${requirement.required ? 'required' : 'optional'}): ${displayedValue}`)
-  }
-}
-
-function appendPluginConfigLines(lines: string[], targetContextId: string): void {
-  const pluginEntries = pluginRegistry.getAllEntries().filter((entry) => entry.state === 'active')
-  if (pluginEntries.length === 0) return
-
-  lines.push('\n🧩 **Plugins**')
-  for (const entry of pluginEntries) {
-    const eligible = isPluginActiveForContext(entry.discoveredPlugin.manifest.id, targetContextId)
-    const selected = isPluginSelectedForContext(entry, targetContextId)
-    const marker = eligible ? '🟢' : selected ? '🟠' : '⭕'
-    lines.push(`${marker} ${entry.discoveredPlugin.manifest.name}: ${formatPluginStatus(entry, targetContextId)}`)
-    appendPluginRequirementLines(lines, entry, targetContextId)
-  }
-}
-
-function buildPluginButtons(targetContextId: string): ChatButton[] {
-  const encodedContextId = encodePluginContextId(targetContextId)
-  return pluginRegistry
-    .getAllEntries()
-    .filter((entry) => entry.state === 'active')
-    .map((entry) => {
-      const pluginId = entry.discoveredPlugin.manifest.id
-      const enabled = isPluginActiveForContext(pluginId, targetContextId)
-      return {
-        text: `${enabled ? 'Disable' : 'Enable'} ${entry.discoveredPlugin.manifest.name}`,
-        callbackData: `plg:${enabled ? 'disable' : 'enable'}:${pluginId}:${encodedContextId}`,
-        style: enabled ? 'danger' : 'primary',
-      }
-    })
-}
-
-export async function renderConfigForTarget(
-  reply: ReplyFn,
-  targetContextId: string,
-  interactiveButtons: boolean,
-): Promise<void> {
-  const config = getAllConfig(targetContextId)
-  const lines = ['⚙️ **Current Configuration**\n']
-
-  getConfigKeysForContext(targetContextId).forEach((key) => {
-    lines.push(formatConfigLine(key, config[key]))
-  })
-  const aiOutputSection = buildAiOutputConfigSection(targetContextId)
-  lines.push(...aiOutputSection.lines)
-  appendPluginConfigLines(lines, targetContextId)
-  const toolPrefs = getToolPrefs(targetContextId)
-  const disabledCount =
-    toolPrefs.disabledDomains.length + Object.values(toolPrefs.toolOverrides).filter((v) => !v).length
-  lines.push(`\n🧰 **Tools**: ${disabledCount === 0 ? 'all enabled' : `${disabledCount} disabled`}`)
-
-  if (!interactiveButtons) {
-    lines.push('\n⚠️ Interactive editing is not available in this chat. Use `/setup` to configure everything.')
-    await reply.formatted(lines.join('\n'))
-    return
-  }
-
-  lines.push('\n💡 Click a field below to edit it, or use `/setup` to configure everything.')
-  await reply.buttons(lines.join('\n'), {
-    buttons: [
-      ...buildConfigButtons(config, targetContextId),
-      ...aiOutputSection.buttons,
-      ...buildPluginButtons(targetContextId),
-      {
-        text: '🧰 Tools',
-        callbackData: `tgl:menu:${encodePluginContextId(targetContextId)}`,
-        style: 'secondary',
-      },
-    ],
-  })
-}
-
-async function replyWithConfigSelection(
-  reply: ReplyFn,
-  userId: string,
-  platformInstanceId: string,
-  interactiveButtons: boolean,
-): Promise<void> {
-  const selection = startGroupSettingsSelection(userId, 'config', interactiveButtons, platformInstanceId)
-  if ('continueWith' in selection) {
-    await renderConfigForTarget(reply, selection.continueWith.targetContextId, interactiveButtons)
-    return
-  }
-  if ('buttons' in selection && selection.buttons !== undefined) {
-    await reply.buttons(selection.response, { buttons: selection.buttons })
-    return
-  }
-  if ('response' in selection) {
-    await reply.text(selection.response)
-  }
-}
-
-export function registerConfigCommand(chat: ChatProvider, ..._rest: [] | [_checkAuthorization: unknown]): void {
+export function registerConfigCommand(chat: ChatProvider): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) return
 
@@ -206,15 +25,22 @@ export function registerConfigCommand(chat: ChatProvider, ..._rest: [] | [_check
       return
     }
 
-    log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command called')
-    const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
-    const interactiveButtons = supportsInteractiveButtons(sourceChat)
-
-    log.info({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command executed')
-    if (!supportsMessageDeletion(sourceChat)) {
-      await reply.text(NO_DELETE_WARNING)
+    const link = issueSettingsLink({ platformInstanceId: msg.platformInstanceId, platformUserId: msg.user.id })
+    if (link.kind === 'ok') {
+      log.info({ userId: msg.user.id }, '/config issued settings link')
+      await reply.formatted(
+        `🔧 Open your settings: ${link.url}\n\n⚠️ This link is single-use and expires in 10 minutes. Do not share it.`,
+      )
+      return
     }
-    await replyWithConfigSelection(reply, msg.user.id, msg.platformInstanceId, interactiveButtons)
+    if (link.kind === 'rate_limited') {
+      const minutes = Math.max(1, Math.ceil(link.retryAfterSec / 60))
+      await reply.text(`Too many settings links requested. Please try again in ${minutes} minute(s).`)
+      return
+    }
+
+    log.warn({ userId: msg.user.id }, '/config requested but settings UI is not configured')
+    await reply.text(NOT_CONFIGURED)
   }
 
   chat.registerCommand('config', handler)

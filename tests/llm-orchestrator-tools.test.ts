@@ -6,9 +6,10 @@
 /**
  * Tests for src/llm-orchestrator-tools.ts.
  *
- * Uses mock.module() for src/tools/index.js so that makeTools can be spied
- * on with a controlled return value; all other collaborators (cache, conversation,
- * validation, tool-router) use their real implementations against the test DB.
+ * Uses mock.module() for src/tools/index.js so that buildToolDescriptors can
+ * be spied on with a controlled return value; all other collaborators (cache,
+ * conversation, validation) use their real implementations
+ * against the test DB.
  */
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
@@ -17,8 +18,11 @@ import type { ToolSet } from 'ai'
 
 import type { StagedFileDownloadFn } from '../src/attachments/types.js'
 import { userCachesForTesting } from '../src/cache.js'
+import type { LlmInvocationOptions } from '../src/llm-orchestrator-tools.js'
+import { saveMemoryProfile } from '../src/long-term-memory/store.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import { makeGetCurrentTimeTool } from '../src/tools/get-current-time.js'
+import type { MakeToolsOptions } from '../src/tools/types.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -30,10 +34,15 @@ const NO_STAGED_DOWNLOAD: StagedFileDownloadFn | undefined = undefined as Staged
 // mock. Bun's mock.module() is synchronous; the delayed `await import(…)` below
 // picks up the registered mock.
 // ---------------------------------------------------------------------------
-const makeToolsSpy = mock((_provider: TaskProvider): ToolSet => ({}))
+const buildToolDescriptorsSpy = mock(
+  (_provider: TaskProvider, _options: MakeToolsOptions): Promise<ToolSet> => Promise.resolve({}),
+)
+const buildProviderlessToolDescriptorsSpy = mock((_options: MakeToolsOptions): Promise<ToolSet> => Promise.resolve({}))
 
 void mock.module('../src/tools/index.js', () => ({
-  makeTools: makeToolsSpy,
+  buildToolDescriptors: buildToolDescriptorsSpy,
+  buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
+  applyToolPreferences: (tools: ToolSet): ToolSet => tools,
 }))
 
 // Import module under test AFTER mock registration so it sees the spy.
@@ -44,52 +53,128 @@ const CONFIG_ID = CTX_ID
 const CHAT_USER_ID = 'user-tools-1'
 const USERNAME = null
 
-describe('llm-orchestrator-tools / getOrCreateTools cache behaviour', () => {
+const baseOpts = (
+  provider: TaskProvider,
+  overrides: Partial<{ contextId: string; configId: string; userText: string }> = {},
+): LlmInvocationOptions => ({
+  contextId: overrides.contextId ?? CTX_ID,
+  configId: overrides.configId ?? CONFIG_ID,
+  chatUserId: CHAT_USER_ID,
+  username: USERNAME,
+  contextType: 'dm' as const,
+  provider,
+  history: [],
+  userText: overrides.userText ?? 'hello',
+  stagedDownloadFn: NO_STAGED_DOWNLOAD,
+  askPermission: undefined,
+})
+
+describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () => {
   let provider: TaskProvider
 
   beforeEach(async () => {
     // mock-reset's global beforeEach restores the real ../src/tools/index.js, so
     // re-install the spy here (after the restore) for every test in this suite.
-    void mock.module('../src/tools/index.js', () => ({ makeTools: makeToolsSpy }))
+    void mock.module('../src/tools/index.js', () => ({
+      buildToolDescriptors: buildToolDescriptorsSpy,
+      buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
+      applyToolPreferences: (tools: ToolSet): ToolSet => tools,
+    }))
     mockLogger()
     await setupTestDb()
     userCachesForTesting.clear()
-    makeToolsSpy.mockClear()
+    buildToolDescriptorsSpy.mockClear()
+    buildProviderlessToolDescriptorsSpy.mockClear()
 
     provider = createMockProvider()
   })
 
-  test('makeTools is called on the first invocation', () => {
-    prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
+  test('buildToolDescriptors is called on the first invocation', async () => {
+    await prepareLlmInvocation(baseOpts(provider))
 
-    expect(makeToolsSpy).toHaveBeenCalledTimes(1)
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
   })
 
-  test('makeTools result is reused on the second invocation when tools is an empty set', () => {
+  test('buildToolDescriptors result is reused on the second invocation when descriptors is an empty set', async () => {
     // First call — populates the cache with {}.
-    prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
+    await prepareLlmInvocation(baseOpts(provider))
 
     // Second call — must reuse the cached empty ToolSet.
-    prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'world', NO_STAGED_DOWNLOAD)
+    await prepareLlmInvocation(baseOpts(provider, { userText: 'world' }))
 
-    expect(makeToolsSpy).toHaveBeenCalledTimes(1)
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
   })
 
-  test('makeTools is called again for a different context even when tools is empty', () => {
-    prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
-    prepareLlmInvocation(
-      'ctx-other',
-      'ctx-other',
-      CHAT_USER_ID,
-      USERNAME,
-      'dm',
-      provider,
-      [],
-      'hello',
-      NO_STAGED_DOWNLOAD,
-    )
+  test('buildToolDescriptors is called again for a different context even when descriptors is empty', async () => {
+    await prepareLlmInvocation(baseOpts(provider))
+    await prepareLlmInvocation(baseOpts(provider, { contextId: 'ctx-other', configId: 'ctx-other' }))
 
-    expect(makeToolsSpy).toHaveBeenCalledTimes(2)
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(2)
+  })
+
+  test('buildToolDescriptors is called again in DM when username changes for the same context', async () => {
+    await prepareLlmInvocation({
+      ...baseOpts(provider, { contextId: 'ctx-dm-username', configId: 'ctx-dm-username' }),
+      username: 'alice',
+    })
+    await prepareLlmInvocation({
+      ...baseOpts(provider, { contextId: 'ctx-dm-username', configId: 'ctx-dm-username' }),
+      username: 'bob',
+    })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(2)
+  })
+
+  test('provider-backed and providerless invocations do not share the same cache entry', async () => {
+    buildToolDescriptorsSpy.mockResolvedValueOnce({ create_task: makeGetCurrentTimeTool('provider') })
+    buildProviderlessToolDescriptorsSpy.mockResolvedValueOnce({ save_memo: makeGetCurrentTimeTool('providerless') })
+
+    const providerBacked = await prepareLlmInvocation(
+      baseOpts(provider, { contextId: 'ctx-shared', configId: 'ctx-shared' }),
+    )
+    const providerless = await prepareLlmInvocation({
+      contextId: 'ctx-shared',
+      configId: 'ctx-shared',
+      chatUserId: CHAT_USER_ID,
+      username: USERNAME,
+      contextType: 'dm',
+      provider: null,
+      history: [],
+      userText: 'remember this note',
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+      askPermission: undefined,
+    })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    expect(buildProviderlessToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    expect(providerBacked.enabledToolNames.has('create_task')).toBe(true)
+    expect(providerBacked.enabledToolNames.has('save_memo')).toBe(false)
+    expect(providerless.enabledToolNames.has('save_memo')).toBe(true)
+    expect(providerless.enabledToolNames.has('create_task')).toBe(false)
+  })
+
+  test('descriptor cache distinguishes stagedDownloadFn-sensitive tool sets', async () => {
+    const stagedDownloadFn: StagedFileDownloadFn = mock(() => Promise.resolve(Buffer.from('file')))
+    buildToolDescriptorsSpy
+      .mockResolvedValueOnce({ search_staged_files: makeGetCurrentTimeTool('no-download') })
+      .mockResolvedValueOnce({
+        search_staged_files: makeGetCurrentTimeTool('with-download'),
+        resolve_staged_file: makeGetCurrentTimeTool('with-download'),
+      })
+
+    const withoutDownload = await prepareLlmInvocation({
+      ...baseOpts(provider, { contextId: 'ctx-staged', configId: 'ctx-staged' }),
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+    })
+    const withDownload = await prepareLlmInvocation({
+      ...baseOpts(provider, { contextId: 'ctx-staged', configId: 'ctx-staged' }),
+      stagedDownloadFn,
+    })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(2)
+    expect(withoutDownload.enabledToolNames.has('search_staged_files')).toBe(true)
+    expect(withoutDownload.enabledToolNames.has('resolve_staged_file')).toBe(false)
+    expect(withDownload.enabledToolNames.has('resolve_staged_file')).toBe(true)
   })
 })
 
@@ -99,51 +184,98 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
   beforeEach(async () => {
     // mock-reset's global beforeEach restores the real ../src/tools/index.js, so
     // re-install the spy here (after the restore) for every test in this suite.
-    void mock.module('../src/tools/index.js', () => ({ makeTools: makeToolsSpy }))
+    void mock.module('../src/tools/index.js', () => ({
+      buildToolDescriptors: buildToolDescriptorsSpy,
+      buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
+      applyToolPreferences: (tools: ToolSet): ToolSet => tools,
+    }))
     mockLogger()
     await setupTestDb()
     userCachesForTesting.clear()
-    makeToolsSpy.mockClear()
+    buildToolDescriptorsSpy.mockClear()
+    buildProviderlessToolDescriptorsSpy.mockClear()
 
     provider = createMockProvider()
   })
 
-  test('returns enabledToolNames derived from makeTools result before routing', () => {
-    // Use a memo-intent message: 'remember this note' matches MEMO_RE → intent='memo',
-    // confidence=0.85 > HIGH_CONFIDENCE=0.65 → routing narrows to MEMO_DOMAINS
-    // (memo/time/web). create_task (domain: task) is dropped; save_memo (domain: memo)
-    // is kept. This proves enabledToolNames is sourced from the pre-routing full set.
-    //
-    // Tool factory values are placeholders — only the KEYS matter for enabledToolNames;
-    // a real factory is used to satisfy the no-unsafe-type-assertion lint rule.
-    makeToolsSpy.mockReturnValueOnce({
-      // domain: task — dropped by memo routing
+  test('returns enabledToolNames from the full tool set without routing', async () => {
+    buildToolDescriptorsSpy.mockResolvedValueOnce({
       create_task: makeGetCurrentTimeTool('u'),
-      // domain: memo — kept by memo routing
       save_memo: makeGetCurrentTimeTool('u'),
     })
 
-    const result = prepareLlmInvocation(
-      'ctx-prerouting',
-      'ctx-prerouting',
-      'user-pr',
-      null,
-      'dm',
+    const result = await prepareLlmInvocation({
+      contextId: 'ctx-prerouting',
+      configId: 'ctx-prerouting',
+      chatUserId: 'user-pr',
+      username: null,
+      contextType: 'dm',
       provider,
-      [],
-      'remember this note',
-      NO_STAGED_DOWNLOAD,
-    )
+      history: [],
+      userText: 'remember this note',
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+      askPermission: undefined,
+    })
 
-    // Pre-routing origin: both keys are present in enabledToolNames even though
-    // routing drops create_task.
     expect(result.enabledToolNames instanceof Set).toBe(true)
     expect(result.enabledToolNames.has('create_task')).toBe(true)
     expect(result.enabledToolNames.has('save_memo')).toBe(true)
+    expect(Object.keys(result.tools).toSorted()).toEqual(['create_task', 'save_memo'])
+  })
 
-    // Contrast: routing actually narrowed the set — create_task is absent from
-    // routingResult.tools, confirming the two sets are genuinely different.
-    expect(Object.keys(result.routingResult.tools)).not.toContain('create_task')
-    expect(Object.keys(result.routingResult.tools)).toContain('save_memo')
+  test('uses providerless descriptors when provider is null', async () => {
+    buildProviderlessToolDescriptorsSpy.mockResolvedValueOnce({
+      save_memo: makeGetCurrentTimeTool('u'),
+      get_current_time: makeGetCurrentTimeTool('u'),
+    })
+
+    const result = await prepareLlmInvocation({
+      contextId: 'ctx-providerless',
+      configId: 'ctx-providerless',
+      chatUserId: 'user-pr',
+      username: null,
+      contextType: 'dm',
+      provider: null,
+      history: [],
+      userText: 'remember this note',
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+      askPermission: undefined,
+    })
+
+    expect(buildProviderlessToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(0)
+    expect(result.enabledToolNames.has('save_memo')).toBe(true)
+    expect(result.enabledToolNames.has('get_current_time')).toBe(true)
+  })
+
+  test('injects group long-term memory using group scope', async () => {
+    saveMemoryProfile(
+      { scopeId: 'ctx-group-memory', scopeType: 'group' },
+      '## Group memory\n- The group ships release notes on Fridays',
+      '2026-06-12T00:00:00.000Z',
+    )
+    saveMemoryProfile(
+      { scopeId: 'ctx-group-memory', scopeType: 'personal' },
+      '## Personal memory\n- This should not be injected for group turns',
+      '2026-06-12T00:00:00.000Z',
+    )
+
+    const result = await prepareLlmInvocation({
+      contextId: 'ctx-group-memory',
+      configId: 'ctx-group-memory',
+      chatUserId: 'user-pr',
+      username: null,
+      contextType: 'group',
+      provider,
+      history: [{ role: 'user', content: 'What is our release note cadence?' }],
+      userText: 'What is our release note cadence?',
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+      askPermission: undefined,
+    })
+
+    const systemMessage = result.validatedMessages[0]
+    expect(systemMessage?.role).toBe('system')
+    expect(systemMessage?.content).toContain('The group ships release notes on Fridays')
+    expect(systemMessage?.content).not.toContain('This should not be injected for group turns')
   })
 })

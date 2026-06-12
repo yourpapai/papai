@@ -1,20 +1,30 @@
 {
   "$schema": "./node_modules/knip/schema.json",
 
+  // The review-loop workspace is a standalone developer tool with its own
+  // check suite (review-loop:lint/typecheck/format:check/test) run separately
+  // in check:full. knip-bun cannot resolve its .js-extension imports, so
+  // exclude it from analysis here.
+  "ignoreWorkspaces": ["review-loop"],
+
   // Entry points not auto-detected from package.json scripts
   "entry": [
     "client/admin/index.ts!",
     "client/debug/index.ts!",
-    "tests/review-loop/**/*.test.ts!",
+    "client/settings/index.ts!",
     "scripts/behavior-audit/index.ts!",
     "scripts/behavior-audit/profile-clustering.ts!",
     "scripts/behavior-audit/tune-embedding.ts!",
     "scripts/behavior-audit/reset.ts!",
     "scripts/behavior-audit/migrate-trust.ts!",
+    // First-party plugin entry points are loaded dynamically by the plugin loader,
+    // so they have no static importer; declare them as entries.
+    "plugins/*/index.ts!",
   ],
 
-  // All source files (production only)
-  "project": ["src/**/*.ts!", "client/**/*.ts!", "review-loop/src/**/*.ts!", "scripts/behavior-audit/**/*.ts!"],
+  // All source files (production only). plugins/** is included so knip tracks
+  // plugin->src usage (e.g. clearCachedTools, consumed only by a provider plugin).
+  "project": ["src/**/*.ts!", "client/**/*.ts!", "scripts/behavior-audit/**/*.ts!", "plugins/**/*.ts!"],
 
   // All issue types treated as hard errors
   "rules": {
@@ -50,7 +60,10 @@
     "src/config.ts": ["exports"],
     // resetPluginRegistryForTesting is a test-only seam.
     "src/plugins/registry.ts": ["exports"],
-    // getContributedTaskProviderType is a test-only seam.
+    // resetContributionCollisionStateForTesting is a test-only seam.
+    "src/plugins/contributions.ts": ["exports"],
+    // getTaskProviderProvision is a forward-compat export wired in a downstream
+    // task of the plugins deployment safety plan (mirrors getTaskProviderConfigValidator).
     "src/providers/registry.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.
     "src/system-config.ts": ["exports"],
@@ -60,6 +73,23 @@
     "src/stats/index.ts": ["exports"],
     // resetUsageRecorderForTesting is a test-only seam.
     "src/usage/index.ts": ["exports"],
+    // resetPermissionPromptForTesting is a test-only seam.
+    "src/chat/permission-prompt.ts": ["exports"],
+    // setResultStoreClockForTesting and clearResultStoreForTesting are test-only seams.
+    "src/tools/compaction/result-store.ts": ["exports"],
+    // clearModelBuilderCacheForTesting is a test-only seam.
+    "src/llm-model-builder.ts": ["exports"],
+    // clearBriefEmbeddingCachesForTesting is a test-only seam.
+    "src/tools/disclosure/embedding-tool-retriever.ts": ["exports"],
+    // Mattermost action context signing is created ahead of the action adapter integration.
+    "src/chat/mattermost/action-signing.ts": ["files"],
+    // Mattermost action callback route entry points are created ahead of the web server route wiring.
+    "src/chat/mattermost/action-callbacks.ts": ["exports"],
+    // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
+    "src/byok-llm/store.ts": ["files", "exports"],
+    "src/byok-llm/types.ts": ["files", "types"],
+    // partitionToolNames is a test-only seam.
+    "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
     "src/instances/admin-store.ts": ["exports"],
     // deleteContextsByTaskInstance, deleteContextsByPlatformInstance are test-only seams.
@@ -69,8 +99,14 @@
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
     "tests/scripts/behavior-audit/test-fixtures.ts": ["exports"],
+    // setStoreDb is a test-only seam.
+    "src/dashboard-auth/store.ts": ["exports"],
+    // routeRequestForTest is a test-only seam.
+    "src/debug/server.ts": ["exports"],
     // The client uses Svelte components that knip can't parse, so most of these
     // exports look orphaned even though .svelte files consume them.
+    "client/admin/auth.ts": ["exports"],
+    "client/debug/auth.ts": ["exports"],
     "client/debug/handlers.ts": ["exports"],
     "client/debug/log-bootstrap.ts": ["exports"],
     "client/debug/log-filter.ts": ["exports"],
@@ -85,9 +121,38 @@
     "client/admin/instance-fetchers.ts": ["exports"],
     "client/admin/index.ts": ["files", "exports"],
     "client/admin/scrollspy.ts": ["exports"],
+    // Settings client: .svelte components consume these, but knip can't follow .svelte imports.
+    "client/settings/fetcher-schemas.ts": ["types"],
+    "client/settings/fetchers.ts": ["exports"],
+    "client/settings/admin-fetchers.ts": ["exports"],
+    "client/settings/scrollspy.ts": ["exports"],
+    "client/settings/session.svelte.ts": ["exports"],
+    "client/settings/lib/mask-secret.ts": ["exports"],
+    "client/settings/lib/truncate-middle.ts": ["exports"],
     "client/shared/fetcher-helpers.ts": ["exports"],
     "client/shared/helpers.ts": ["exports"],
     "client/shared/api-types.ts": ["types"],
+    "client/shared/ui/status-tone.ts": ["files", "exports"],
+    // Plugin entry-point default exports are imported dynamically by the plugin
+    // loader (by path), so knip sees no static importer. Each new plugin adds a line.
+    "plugins/synthetic-web-search/index.ts": ["exports"],
+    "plugins/task-provider-kaneo/index.ts": ["exports"],
+    "plugins/task-provider-youtrack/index.ts": ["exports"],
+    // validateConfig is resolved dynamically by the loader from the manifest's
+    // `providerConfigValidator` named export (re-exported through index.ts), so knip
+    // sees no static consumer of the implementation.
+    "plugins/task-provider-kaneo/validate-config.ts": ["exports"],
+    "plugins/task-provider-youtrack/validate-config.ts": ["exports"],
+    // Strict discovery migration moved these plugin runtime consumers behind
+    // import.meta.require()-based plugin-local bridges, which Knip cannot trace.
+    "plugins/task-provider-kaneo/auto-provision.ts": ["files"],
+    "plugins/task-provider-kaneo/provision.ts": ["files", "exports"],
+    "plugins/task-provider-kaneo/provision-messages.ts": ["files", "exports"],
+    "plugins/task-provider-kaneo/client.ts": ["exports"],
+    "plugins/task-provider-kaneo/provider.ts": ["exports"],
+    "plugins/task-provider-youtrack/provider.ts": ["exports"],
+    "src/cache.ts": ["exports"],
+    "src/types/config.ts": ["exports"],
   },
 
   // Report unused exports even in entry files

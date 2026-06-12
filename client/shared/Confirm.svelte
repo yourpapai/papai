@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import type { Snippet } from 'svelte'
-
+  import Btn from './ui/Btn.svelte'
   import Modal from './Modal.svelte'
 
   interface Props {
@@ -14,19 +14,18 @@
     onCancel: () => void
     onConfirm: () => void
     body: Snippet
-    cancelLabel: string | undefined
-    confirmLabel: string | undefined
+    cancelLabel?: string
+    confirmLabel?: string
+    danger?: boolean
   }
-
-  let { open, title, onCancel, onConfirm, body, cancelLabel, confirmLabel }: Props = $props()
-
-  const resolvedCancelLabel = $derived(cancelLabel === undefined ? 'Cancel' : cancelLabel)
-  const resolvedConfirmLabel = $derived(confirmLabel === undefined ? 'Confirm' : confirmLabel)
+  let { open, title, onCancel, onConfirm, body, cancelLabel, confirmLabel, danger = false }: Props = $props()
+  const resolvedCancelLabel = $derived(cancelLabel ?? 'Cancel')
+  const resolvedConfirmLabel = $derived(confirmLabel ?? 'Confirm')
 </script>
 
 <Modal {open} {title} onClose={onCancel} {body} size="sm">
   {#snippet footer()}
-    <button type="button" onclick={onCancel}>{resolvedCancelLabel}</button>
-    <button type="button" onclick={onConfirm}>{resolvedConfirmLabel}</button>
+    <Btn variant="secondary" onClick={onCancel}>{#snippet children()}{resolvedCancelLabel}{/snippet}</Btn>
+    <Btn variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>{#snippet children()}{resolvedConfirmLabel}{/snippet}</Btn>
   {/snippet}
 </Modal>

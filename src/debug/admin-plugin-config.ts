@@ -6,6 +6,7 @@
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
+import { pluginRegistry } from '../plugins/registry.js'
 import { getPluginAdminConfig, setPluginAdminConfig } from '../plugins/store.js'
 
 const log = logger.child({ scope: 'debug:admin-plugin-config' })
@@ -47,6 +48,21 @@ export type PluginConfigDescriptor = {
     sensitive: boolean
     scope: string
   }>
+}
+
+/** Build plugin config descriptors from the live plugin registry. Shared across routes. */
+export function buildPluginConfigDescriptors(): PluginConfigDescriptor[] {
+  const entries = pluginRegistry.getAllEntries()
+  return entries.map((entry) => ({
+    pluginId: entry.discoveredPlugin.manifest.id,
+    configRequirements: entry.discoveredPlugin.manifest.configRequirements.map((req) => ({
+      key: req.key,
+      label: req.label,
+      required: req.required,
+      sensitive: req.sensitive,
+      scope: req.scope,
+    })),
+  }))
 }
 
 function maskSensitive(value: string): string {

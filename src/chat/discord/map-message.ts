@@ -23,19 +23,18 @@ export type DiscordMessageLike = {
 } & Partial<{ guild: { id: string; name: string } | null }>
 
 // Discord.js ChannelType: DM = 1. Everything else maps to 'group'.
-const CHANNEL_TYPE_DM = 1
+export const CHANNEL_TYPE_DM = 1
 
 // Discord.js MessageType values we accept. Default = 0, Reply = 19.
 const ACCEPTED_MESSAGE_TYPES = new Set<number>([0, 19])
 
 /** Map a Discord message to papai's IncomingMessage. Returns null if the message should be ignored. */
 export function mapDiscordMessage(
-  ...args:
-    | [message: DiscordMessageLike, botId: string, _adminUserId: string]
-    | [message: DiscordMessageLike, botId: string, _adminUserId: string, platformInstanceId: string]
+  message: DiscordMessageLike,
+  botId: string,
+  platformInstanceId: string,
+  isReplyToBot = false,
 ): IncomingMessage | null {
-  const [message, botId] = args
-  const platformInstanceId = args.length === 4 ? args[3] : 'discord-default'
   if (message.author.bot) {
     log.debug({ messageId: message.id, authorId: message.author.id }, 'Skipping bot-authored message')
     return null
@@ -49,7 +48,7 @@ export function mapDiscordMessage(
   const contextId = contextType === 'dm' ? message.author.id : message.channel.id
   const mentioned = isBotMentioned(message.mentions, botId, contextType)
 
-  if (contextType === 'group' && !mentioned) {
+  if (contextType === 'group' && !mentioned && !isReplyToBot) {
     return null
   }
 
@@ -70,6 +69,7 @@ export function mapDiscordMessage(
     contextName,
     contextParentName,
     isMentioned: mentioned,
+    isReplyToBot,
     text,
     platformInstanceId,
     messageId: message.id,

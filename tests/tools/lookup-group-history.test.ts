@@ -8,12 +8,14 @@ import assert from 'node:assert/strict'
 
 import type { LanguageModel, ModelMessage } from 'ai'
 
+import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import {
   getMainContextIdFromThreadContextId,
   toScopedContextId,
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { appendHistory } from '../../src/history.js'
+import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
 
 type GenerateTextResult = {
   text: string
@@ -25,11 +27,14 @@ type LookupGroupHistoryInput = {
 }
 
 let generateTextImpl: () => Promise<GenerateTextResult>
+let builtModelCalls: Array<{ apiKey: string; baseUrl: string; modelName: string }>
 
 describe('makeLookupGroupHistoryTool', () => {
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     await setupTestDb()
+    builtModelCalls = []
 
     generateTextImpl = (): Promise<GenerateTextResult> => Promise.resolve({ text: 'test response' })
 
@@ -37,10 +42,18 @@ describe('makeLookupGroupHistoryTool', () => {
       generateText: (): Promise<GenerateTextResult> => generateTextImpl(),
     }))
 
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (): ((_model: string) => unknown) =>
-        (_model: string): unknown => ({}),
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelName: string): unknown => {
+        builtModelCalls.push({ apiKey, baseUrl, modelName })
+        return { modelName }
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((_model: string) => unknown) =>
+        (modelName: string): unknown => {
+          builtModelCalls.push({ apiKey, baseUrl, modelName })
+          return { modelName }
+        },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
   })
 
@@ -98,7 +111,9 @@ describe('makeLookupGroupHistoryTool', () => {
 describe('executeLookupGroupHistory', () => {
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     await setupTestDb()
+    builtModelCalls = []
 
     // Default implementation returns a simple result
     generateTextImpl = (): Promise<GenerateTextResult> => Promise.resolve({ text: 'test response' })
@@ -108,11 +123,19 @@ describe('executeLookupGroupHistory', () => {
       generateText: (): Promise<GenerateTextResult> => generateTextImpl(),
     }))
 
-    // Mock the openai-compatible module
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (): ((_model: string) => unknown) =>
-        (_model: string): unknown => ({}),
+    // Mock the llm-model-builder module (used by default deps)
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelName: string): unknown => {
+        builtModelCalls.push({ apiKey, baseUrl, modelName })
+        return { modelName }
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((_model: string) => unknown) =>
+        (modelName: string): unknown => {
+          builtModelCalls.push({ apiKey, baseUrl, modelName })
+          return { modelName }
+        },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
   })
 
@@ -133,7 +156,9 @@ describe('executeLookupGroupHistory', () => {
 describe('executeLookupGroupHistory with history', () => {
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     await setupTestDb()
+    builtModelCalls = []
 
     generateTextImpl = (): Promise<GenerateTextResult> =>
       Promise.resolve({ text: 'The team decided to use REST for the API.' })
@@ -142,11 +167,19 @@ describe('executeLookupGroupHistory with history', () => {
       generateText: (): Promise<GenerateTextResult> => generateTextImpl(),
     }))
 
-    // Mock the openai-compatible module
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (): ((_model: string) => unknown) =>
-        (_model: string): unknown => ({}),
+    // Mock the llm-model-builder module (used by default deps)
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelName: string): unknown => {
+        builtModelCalls.push({ apiKey, baseUrl, modelName })
+        return { modelName }
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((_model: string) => unknown) =>
+        (modelName: string): unknown => {
+          builtModelCalls.push({ apiKey, baseUrl, modelName })
+          return { modelName }
+        },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
   })
 
@@ -164,6 +197,33 @@ describe('executeLookupGroupHistory with history', () => {
       getSmallModel: () => 'test-model' as LanguageModel,
     })
     expect(result).toBe('The team decided to use REST for the API.')
+  })
+
+  it('uses BYOK small model for the enabled main group context without global config', async () => {
+    const { executeLookupGroupHistory } = await import('../../src/tools/lookup-group-history.js')
+    const groupId = 'group-byok-history'
+    updateByokLlmConfig(
+      groupId,
+      {
+        llm_apikey: 'sk-byok-history',
+        llm_baseurl: 'https://byok-history.invalid/v1',
+        main_model: 'byok-main-history',
+        small_model: 'byok-small-history',
+      },
+      'admin-1',
+    )
+    appendHistory(groupId, [{ role: 'user', content: 'The group picked REST.' }])
+
+    const result = await executeLookupGroupHistory('user123', groupId, ['API decision'])
+
+    expect(result).toBe('The team decided to use REST for the API.')
+    expect(builtModelCalls).toEqual([
+      {
+        apiKey: 'sk-byok-history',
+        baseUrl: 'https://byok-history.invalid/v1',
+        modelName: 'byok-small-history',
+      },
+    ])
   })
 
   it('should return error when LLM not configured', async () => {

@@ -32,5 +32,5 @@
       "papai/plugin-types": ["./src/providers/public-types.ts"]
     }
   },
-  "exclude": [".pi", "docs/superpowers/extensions", "public", "storybook-static"]
+  "exclude": [".pi", ".opencode", "docs/superpowers/extensions", "public", "storybook-static"]
 }

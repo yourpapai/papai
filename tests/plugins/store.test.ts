@@ -5,13 +5,14 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq, sql } from 'drizzle-orm'
+
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { pluginRuntimeEvents } from '../../src/db/schema.js'
 import {
-  getAllPluginAdminStates,
-  getEnabledPluginsForContext,
   getPluginAdminConfig,
   getPluginAdminState,
   getPluginContextState,
-  getRecentRuntimeEvents,
   isPluginEnabledForContext,
   kvDelete,
   kvGet,
@@ -25,6 +26,23 @@ import {
 } from '../../src/plugins/store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
+function getRecentRuntimeEvents(
+  pluginId: string,
+  limit = 20,
+): Array<{ eventType: string; message: string | null; occurredAt: string }> {
+  return getDrizzleDb()
+    .select({
+      eventType: pluginRuntimeEvents.eventType,
+      message: pluginRuntimeEvents.message,
+      occurredAt: pluginRuntimeEvents.occurredAt,
+    })
+    .from(pluginRuntimeEvents)
+    .where(eq(pluginRuntimeEvents.pluginId, pluginId))
+    .orderBy(sql`${pluginRuntimeEvents.occurredAt} DESC, rowid DESC`)
+    .limit(limit)
+    .all()
+}
+
 describe('plugin store', () => {
   beforeEach(async () => {
     mockLogger()
@@ -36,8 +54,8 @@ describe('plugin store', () => {
       upsertPluginAdminState('my-plugin', 'discovered')
       const row = getPluginAdminState('my-plugin')
       expect(row).toBeDefined()
-      expect(row?.state).toBe('discovered')
-      expect(row?.approvedBy).toBeNull()
+      expect(row!.state).toBe('discovered')
+      expect(row!.approvedBy).toBeNull()
     })
 
     test('updates on conflict', () => {
@@ -47,24 +65,12 @@ describe('plugin store', () => {
         approvedManifestHash: 'abc',
       })
       const row = getPluginAdminState('my-plugin')
-      expect(row?.state).toBe('approved')
-      expect(row?.approvedBy).toBe('admin-123')
+      expect(row!.state).toBe('approved')
+      expect(row!.approvedBy).toBe('admin-123')
     })
 
     test('returns undefined for unknown plugin', () => {
       expect(getPluginAdminState('nonexistent')).toBeUndefined()
-    })
-  })
-
-  describe('getAllPluginAdminStates', () => {
-    test('returns all records', () => {
-      upsertPluginAdminState('plugin-a', 'discovered')
-      upsertPluginAdminState('plugin-b', 'approved')
-      const rows = getAllPluginAdminStates()
-      expect(rows.length).toBeGreaterThanOrEqual(2)
-      const ids = rows.map((r) => r.pluginId)
-      expect(ids).toContain('plugin-a')
-      expect(ids).toContain('plugin-b')
     })
   })
 
@@ -73,8 +79,8 @@ describe('plugin store', () => {
       upsertPluginAdminState('my-plugin', 'discovered', { lastSeenManifestHash: 'hash1' })
       updatePluginAdminStateField('my-plugin', { state: 'approved', approvedBy: 'admin' })
       const row = getPluginAdminState('my-plugin')
-      expect(row?.state).toBe('approved')
-      expect(row?.approvedBy).toBe('admin')
+      expect(row!.state).toBe('approved')
+      expect(row!.approvedBy).toBe('admin')
     })
   })
 
@@ -96,16 +102,6 @@ describe('plugin store', () => {
 
     test('isPluginEnabledForContext returns false for unknown', () => {
       expect(isPluginEnabledForContext('no-plugin', 'no-ctx')).toBe(false)
-    })
-
-    test('getEnabledPluginsForContext returns only enabled plugins', () => {
-      setPluginContextEnabled('plugin-a', 'ctx-1', true)
-      setPluginContextEnabled('plugin-b', 'ctx-1', false)
-      setPluginContextEnabled('plugin-c', 'ctx-1', true)
-      const enabled = getEnabledPluginsForContext('ctx-1')
-      expect(enabled).toContain('plugin-a')
-      expect(enabled).toContain('plugin-c')
-      expect(enabled).not.toContain('plugin-b')
     })
   })
 
@@ -149,6 +145,18 @@ describe('plugin store', () => {
       expect(rows.length).toBe(2)
     })
 
+    test('kvList treats wildcard characters literally in prefixes', () => {
+      kvSet('plug', 'ctx', 'literal%key', 'one')
+      kvSet('plug', 'ctx', 'literalXkey', 'two')
+      kvSet('plug', 'ctx', 'literal_key', 'three')
+
+      const percentRows = kvList('plug', 'ctx', 'literal%')
+      const underscoreRows = kvList('plug', 'ctx', 'literal_')
+
+      expect(percentRows.map((row) => row.key)).toEqual(['literal%key'])
+      expect(underscoreRows.map((row) => row.key)).toEqual(['literal_key'])
+    })
+
     test('KV is scoped per context', () => {
       kvSet('plug', 'ctx-1', 'k', 'v1')
       kvSet('plug', 'ctx-2', 'k', 'v2')
@@ -186,25 +194,15 @@ describe('plugin store', () => {
       recordRuntimeEvent('plug', 'activated', 'ok')
       const events = getRecentRuntimeEvents('plug')
       expect(events.length).toBe(1)
-      expect(events[0]?.eventType).toBe('activated')
-      expect(events[0]?.message).toBe('ok')
+      expect(events[0]!.eventType).toBe('activated')
+      expect(events[0]!.message).toBe('ok')
     })
 
     test('records an error event', () => {
       recordRuntimeEvent('plug', 'error', 'something broke')
       const events = getRecentRuntimeEvents('plug')
       const err = events.find((e) => e.eventType === 'error')
-      expect(err?.message).toBe('something broke')
-    })
-
-    test('returns empty array for unknown plugin', () => {
-      expect(getRecentRuntimeEvents('unknown-plugin')).toEqual([])
-    })
-
-    test('respects limit parameter', () => {
-      for (let i = 0; i < 5; i++) recordRuntimeEvent('plug', 'activated')
-      const events = getRecentRuntimeEvents('plug', 3)
-      expect(events.length).toBe(3)
+      expect(err!.message).toBe('something broke')
     })
   })
 })

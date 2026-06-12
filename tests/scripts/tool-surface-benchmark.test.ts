@@ -153,23 +153,23 @@ describe('tool-surface benchmark runner', () => {
       },
       {
         model: 'model-a',
-        mode: 'direct_routed',
-        scenario: 'deferred_prompt_creation',
+        mode: 'direct_full',
+        scenario: 'search_then_update_status',
         success: true,
         failureCategory: null,
         toolCallCount: 1,
         stepCount: 1,
         fullToolCount: 11,
-        exposedToolCount: 4,
+        exposedToolCount: 11,
         failureMessage: null,
       },
     ])
 
     expect(markdown).toContain('## Summary')
-    expect(markdown).toContain('| model-a | direct_full | 1 | 100.0% | 1.0 | 1.0 | none |')
+    expect(markdown).toContain('| model-a | direct_full | 2 | 100.0% | 1.0 | 1.0 | none |')
     expect(markdown).toContain('## Scenario Detail')
     expect(markdown).toContain(
-      '| model-a | direct_routed | deferred_prompt_creation | 1 | 100.0% | 1.0 | 1.0 | none | none |',
+      '| model-a | direct_full | search_then_update_status | 1 | 100.0% | 1.0 | 1.0 | none | none |',
     )
   })
 })

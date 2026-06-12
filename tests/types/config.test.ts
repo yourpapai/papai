@@ -10,16 +10,39 @@
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { isConfigKey, type ConfigKey } from '../../src/types/config.js'
+import { ALL_CONFIG_KEYS, isAllowedDynamicConfigKey, isConfigKey, type ConfigKey } from '../../src/types/config.js'
 
 describe('config types', () => {
+  describe('ALL_CONFIG_KEYS', () => {
+    test('ALL_CONFIG_KEYS contains the static preference and AI-output keys', () => {
+      expect(ALL_CONFIG_KEYS).toEqual([
+        'timezone',
+        'mcp_endpoints',
+        'ai_tool_visibility',
+        'ai_reasoning_visibility',
+        'ai_output_detail_level',
+      ])
+    })
+  })
+
   describe('isConfigKey', () => {
-    test('returns true for the valid per-user keys', () => {
-      const validKeys: ConfigKey[] = ['kaneo_apikey', 'kaneo_workspace_id', 'youtrack_token', 'timezone']
+    test('returns true for the valid static per-user keys', () => {
+      const validKeys: ConfigKey[] = ['timezone', 'mcp_endpoints']
 
       for (const key of validKeys) {
         expect(isConfigKey(key)).toBe(true)
       }
+    })
+
+    test('returns true for the AI-output keys', () => {
+      for (const key of ['ai_tool_visibility', 'ai_reasoning_visibility', 'ai_output_detail_level'] as const) {
+        expect(isConfigKey(key)).toBe(true)
+      }
+    })
+
+    test('isConfigKey rejects the legacy flat provider keys', () => {
+      expect(isConfigKey('kaneo_apikey')).toBe(false)
+      expect(isConfigKey('youtrack_token')).toBe(false)
     })
 
     test('returns false for invalid keys and for the former LLM keys', () => {
@@ -36,10 +59,40 @@ describe('config types', () => {
     })
 
     test('type guard narrows string to ConfigKey', () => {
-      const maybeKey = 'kaneo_apikey'
-      assert(isConfigKey(maybeKey), 'expected isConfigKey to return true for a valid key')
+      const maybeKey = 'timezone'
+      assert(isConfigKey(maybeKey), 'expected isConfigKey to return true for a static key')
       const key: ConfigKey = maybeKey
-      expect(key).toBe('kaneo_apikey')
+      expect(key).toBe('timezone')
+    })
+  })
+
+  describe('isAllowedDynamicConfigKey', () => {
+    test('isAllowedDynamicConfigKey still accepts namespaced provider keys', () => {
+      expect(isAllowedDynamicConfigKey('plugin:task-provider-kaneo:provider:credential')).toBe(true)
+    })
+
+    test('accepts namespaced youtrack token key', () => {
+      expect(isAllowedDynamicConfigKey('plugin:task-provider-youtrack:provider:token')).toBe(true)
+    })
+
+    test('accepts static config keys', () => {
+      expect(isAllowedDynamicConfigKey('timezone')).toBe(true)
+      expect(isAllowedDynamicConfigKey('mcp_endpoints')).toBe(true)
+    })
+
+    test('accepts the AI-output config keys', () => {
+      expect(isAllowedDynamicConfigKey('ai_tool_visibility')).toBe(true)
+      expect(isAllowedDynamicConfigKey('ai_reasoning_visibility')).toBe(true)
+      expect(isAllowedDynamicConfigKey('ai_output_detail_level')).toBe(true)
+    })
+
+    test('accepts the system-reserved reduction-flags key', () => {
+      expect(isAllowedDynamicConfigKey('tool_context_flags')).toBe(true)
+    })
+
+    test('rejects unknown keys', () => {
+      expect(isAllowedDynamicConfigKey('kaneo_apikey')).toBe(false)
+      expect(isAllowedDynamicConfigKey('youtrack_token')).toBe(false)
     })
   })
 })

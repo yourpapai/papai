@@ -170,7 +170,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       // Unauthorized users should NOT be able to execute commands
       expect(commandCalled).toBe(false)
@@ -188,7 +196,15 @@ describe('routeButtonFallback', () => {
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
       createMockReply()
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       const auth = requireCapturedAuth(capturedAuth)
@@ -211,7 +227,15 @@ describe('routeButtonFallback', () => {
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
       createMockReply()
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       // Group members should be allowed (with isBotAdmin: false)
       expect(commandCalled).toBe(true)
@@ -236,7 +260,15 @@ describe('routeButtonFallback', () => {
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
       createMockReply()
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       // For threads, storageContextId should be contextId:threadId
@@ -257,7 +289,15 @@ describe('routeButtonFallback', () => {
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
       createMockReply()
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       expect(requireCapturedAuth(capturedAuth).storageContextId).toBe(scopedChannel('channel-123'))
@@ -283,9 +323,9 @@ describe('routeButtonFallback', () => {
         // In DMs, contextId is the user ID
         authorizedUserId,
         'dm',
-        'admin-123',
         commands,
         null,
+        TEST_PLATFORM_ID,
       )
 
       expect(commandCalled).toBe(true)
@@ -311,7 +351,15 @@ describe('routeButtonFallback', () => {
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
       createMockReply()
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       // Should be allowed, not a bot admin, but IS a group admin
@@ -332,7 +380,15 @@ describe('routeButtonFallback', () => {
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
       createMockReply()
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       const auth = requireCapturedAuth(capturedAuth)
@@ -362,9 +418,9 @@ describe('routeButtonFallback', () => {
         interaction.channel!,
         'channel-123',
         'group',
-        'admin-123',
         commands,
         mockMessageHandler,
+        TEST_PLATFORM_ID,
       )
 
       expect(messageHandlerCalled).toBe(true)
@@ -379,7 +435,15 @@ describe('routeButtonFallback', () => {
       const commands = new Map<string, CommandHandler>()
 
       // Should not throw
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       // No assertion needed - test passes if no error is thrown
       expect(true).toBe(true)
@@ -404,9 +468,9 @@ describe('routeButtonFallback', () => {
         interaction.channel!,
         'channel-123',
         'group',
-        'admin-123',
         commands,
         mockMessageHandler,
+        TEST_PLATFORM_ID,
       )
 
       expect(messageHandlerCalled).toBe(true)
@@ -434,7 +498,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['test', mockCommandWithArgs]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(receivedMatch).toBe('arg1 arg2')
     })
@@ -457,7 +529,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['test', mockCommandNoArgs]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(receivedMatch).toBe('')
     })
@@ -477,7 +557,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
     })
@@ -503,7 +591,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['test', mockCommand]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       // The match is trimmed, so extra whitespace around args is preserved
       // but leading/trailing whitespace is removed
@@ -526,7 +622,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       expect(requireCapturedAuth(capturedAuth).storageContextId).toBe(scopedThread('channel-123', 'thread-789'))
@@ -545,7 +649,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       expect(requireCapturedAuth(capturedAuth).storageContextId).toBe(scopedChannel('channel-123'))
@@ -568,7 +680,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       expect(requireCapturedAuth(capturedAuth).isGroupAdmin).toBe(true)
@@ -584,7 +704,15 @@ describe('routeButtonFallback', () => {
       })
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
 
-      await routeButtonFallback(interaction, interaction.channel!, 'channel-123', 'group', 'admin-123', commands, null)
+      await routeButtonFallback(
+        interaction,
+        interaction.channel!,
+        'channel-123',
+        'group',
+        commands,
+        null,
+        TEST_PLATFORM_ID,
+      )
 
       expect(commandCalled).toBe(true)
       const auth = requireCapturedAuth(capturedAuth)
@@ -606,7 +734,7 @@ describe('routeButtonFallback', () => {
         customId: '/help',
       })
 
-      const result = createFallbackMessage(interaction, 'channel-123', 'group', false)
+      const result = createFallbackMessage(interaction, 'channel-123', 'group', false, TEST_PLATFORM_ID)
 
       expect(result.user.username).toBeNull()
     })

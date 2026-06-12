@@ -17,23 +17,71 @@ const InstanceViewBaseSchema = z.object({
 })
 
 export const PlatformInstanceViewSchema = InstanceViewBaseSchema.extend({
-  type: z.enum(['telegram', 'mattermost', 'discord']),
+  type: z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk']),
 })
+
+const InstanceDecodeFailureSchema = z.object({
+  table: z.enum(['platform_instances', 'task_instances']),
+  id: z.string(),
+  type: z.string(),
+  error: z.string(),
+})
+
+export const PlatformInstanceListResponseSchema = z.union([
+  z.array(PlatformInstanceViewSchema),
+  z.object({
+    instances: z.array(PlatformInstanceViewSchema),
+    unreadable: z.array(InstanceDecodeFailureSchema),
+  }),
+])
 
 export const TaskInstanceViewSchema = InstanceViewBaseSchema.extend({
   type: z.string(),
   referencingContextIds: z.array(z.string()).optional(),
   referencingContextCount: z.number().optional(),
+  unresolvedReason: z.string().nullable(),
+})
+
+export const TaskInstanceListResponseSchema = z.union([
+  z.array(TaskInstanceViewSchema),
+  z.object({
+    instances: z.array(TaskInstanceViewSchema),
+    unreadable: z.array(InstanceDecodeFailureSchema),
+  }),
+])
+
+const ProviderConfigRequirementViewSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  required: z.boolean(),
+  sensitive: z.boolean(),
+  storageKey: z.string().optional(),
+})
+
+const ChatProviderTraitsSchema = z.object({
+  observedGroupMessages: z.enum(['all', 'mentions_only']),
+  maxMessageLength: z.number().optional(),
+  callbackDataMaxLength: z.number().optional(),
 })
 
 export const TaskProviderTypeViewSchema = z.object({
   type: z.string(),
   displayName: z.string(),
-  configSchema: z.array(
-    z.object({ key: z.string(), label: z.string(), required: z.boolean(), sensitive: z.boolean() }),
-  ),
+  instanceConfigSchema: z.array(ProviderConfigRequirementViewSchema),
+  contextConfigSchema: z.array(ProviderConfigRequirementViewSchema),
   capabilities: z.array(z.string()),
+  traits: z.array(z.string()),
   source: z.union([z.literal('builtin'), z.object({ plugin: z.string().min(1) })]),
+})
+
+export const PlatformProviderTypeViewSchema = z.object({
+  type: z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk']),
+  displayName: z.string(),
+  instanceConfigSchema: z.array(ProviderConfigRequirementViewSchema),
+  contextConfigSchema: z.array(ProviderConfigRequirementViewSchema),
+  capabilities: z.array(z.string()),
+  traits: ChatProviderTraitsSchema,
+  source: z.literal('builtin'),
 })
 
 export const AdminInstanceViewSchema = z.object({
@@ -42,4 +90,22 @@ export const AdminInstanceViewSchema = z.object({
   createdAt: z.string().optional(),
 })
 
-export const ApplyInstancesResultSchema = z.object({ applied: z.number() })
+export const ApplyFailureSchema = z.object({
+  id: z.string(),
+  action: z.enum(['remove', 'recreate', 'start']),
+  error: z.string(),
+})
+
+export const ApplyInstancesResultSchema = z.object({
+  applied: z.number(),
+  started: z.array(z.string()),
+  stopped: z.array(z.string()),
+  removed: z.array(z.string()),
+  removedDetails: z
+    .array(z.object({ id: z.string(), desiredStatus: z.enum(['pending', 'stopped']).nullable() }))
+    .default([]),
+  recreated: z.array(z.string()),
+  unchanged: z.array(z.string()),
+  failed: z.array(ApplyFailureSchema),
+  unreadable: z.array(InstanceDecodeFailureSchema).default([]),
+})

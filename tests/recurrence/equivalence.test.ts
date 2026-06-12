@@ -51,11 +51,14 @@ const timezones = ['UTC', 'America/New_York', 'Europe/London', 'Asia/Tokyo']
 
 const anchors = [new Date('2026-03-07T12:00:00Z'), new Date('2026-11-01T05:00:00Z'), new Date('2026-06-15T12:00:00Z')]
 
-// DTSTART must predate all anchors so that rrule-temporal does not treat the
+// DTSTART must predate the anchor so that rrule-temporal does not treat the
 // anchor itself as a DTSTART boundary and skip occurrences that fall between
-// the anchor and the next day boundary.  A fixed epoch well before the test
-// anchors is sufficient.
-const DTSTART_UTC = '2025-01-01T00:00:00Z'
+// the anchor and the next day boundary.  Keep it close to the anchor:
+// RRuleTemporal.next() enumerates every occurrence from DTSTART on each call,
+// so widening this gap inflates the suite runtime linearly.  35 days is wide
+// enough that every anchor's scan still crosses the nearby DST transitions
+// the anchors are chosen around.
+const dtstartFor = (anchor: Date): string => new Date(anchor.getTime() - 35 * 24 * 60 * 60 * 1000).toISOString()
 
 describe('cron engine vs facade equivalence', () => {
   for (const p of patterns) {
@@ -63,7 +66,7 @@ describe('cron engine vs facade equivalence', () => {
       for (const anchor of anchors) {
         it(`${p.name} in ${tz} starting ${anchor.toISOString()}`, () => {
           const cron = parseCron(p.cron)!
-          const translated = cronToRrule(p.cron, tz, DTSTART_UTC)!
+          const translated = cronToRrule(p.cron, tz, dtstartFor(anchor))!
 
           const cronResults = collectCronOccurrences(cron, anchor, tz, 10)
           const facadeResults = collectFacadeOccurrences(translated.rrule, translated.dtstartUtc, tz, anchor, 10)

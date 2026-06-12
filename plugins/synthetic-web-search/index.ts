@@ -3,35 +3,118 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
-
-import type { PluginContext } from '../../src/plugins/context.js'
-import type { PluginFactory, PluginToolRuntimeContext } from '../../src/plugins/types.js'
+import { requirePluginContext, type HttpFetch, type PluginToolRuntimeContextLike } from './context.ts'
+import { searchInputSchema } from './input-schema.ts'
 
 const API_ENDPOINT = 'https://api.synthetic.new/v2/search'
 
-const searchInputSchema = z.object({
-  query: z.string().max(400),
-  max_length: z.number().int().min(0).max(10000).optional().default(0),
-  index: z.number().int().min(0).optional(),
-})
+type SearchInput = { query: string; max_length: number; index?: number }
 
-const searchResultSchema = z.object({
-  url: z.string(),
-  title: z.string(),
-  text: z.string(),
-  published: z.string().optional(),
-})
+type SearchResult = { url: string; title: string; text: string; published?: string }
 
-const searchResponseSchema = z.object({
-  results: z.array(searchResultSchema),
-})
+type IntegerBounds = { minimum: number; maximum: number | undefined; defaultValue: number | undefined }
 
-type SearchResult = z.infer<typeof searchResultSchema>
-type SearchInput = z.infer<typeof searchInputSchema>
+class ValidationError extends Error {}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function readRequiredString(record: Record<string, unknown>, key: string, errorMessage: string): string {
+  const value = record[key]
+  if (typeof value !== 'string') {
+    throw new ValidationError(errorMessage)
+  }
+  return value
+}
+
+function readOptionalString(record: Record<string, unknown>, key: string, errorMessage: string): string | undefined {
+  const value = record[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') {
+    throw new ValidationError(errorMessage)
+  }
+  return value
+}
+
+function readOptionalBoundedInteger(
+  record: Record<string, unknown>,
+  key: string,
+  options: IntegerBounds,
+): number | undefined {
+  const value = record[key]
+  if (value === undefined) return options.defaultValue
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new ValidationError(`${key} must be an integer`)
+  }
+  if (value < options.minimum) {
+    throw new ValidationError(`${key} must be greater than or equal to ${options.minimum}`)
+  }
+  if (options.maximum !== undefined && value > options.maximum) {
+    throw new ValidationError(`${key} must be less than or equal to ${options.maximum}`)
+  }
+  return value
+}
+
+function parseSearchInput(input: unknown): SearchInput {
+  if (!isRecord(input)) {
+    throw new ValidationError('input must be an object')
+  }
+
+  const query = readRequiredString(input, 'query', 'query must be a string')
+  if (query.length > 400) {
+    throw new ValidationError('query must be less than or equal to 400 characters')
+  }
+
+  const maxLength = readOptionalBoundedInteger(input, 'max_length', {
+    minimum: 0,
+    maximum: 10000,
+    defaultValue: 0,
+  })
+  const index = readOptionalBoundedInteger(input, 'index', { minimum: 0, maximum: undefined, defaultValue: undefined })
+
+  let normalizedMaxLength = 0
+  if (maxLength !== undefined) {
+    normalizedMaxLength = maxLength
+  }
+
+  return {
+    query,
+    max_length: normalizedMaxLength,
+    ...(index === undefined ? {} : { index }),
+  }
+}
+
+function parseSearchResult(input: unknown): SearchResult {
+  if (!isRecord(input)) {
+    throw new ValidationError('search result must be an object')
+  }
+
+  const published = readOptionalString(input, 'published', 'result published must be a string')
+
+  return {
+    url: readRequiredString(input, 'url', 'result url must be a string'),
+    title: readRequiredString(input, 'title', 'result title must be a string'),
+    text: readRequiredString(input, 'text', 'result text must be a string'),
+    ...(published === undefined ? {} : { published }),
+  }
+}
+
+function parseSearchResponse(input: unknown): { results: SearchResult[] } {
+  if (!isRecord(input)) {
+    throw new ValidationError('search response must be an object')
+  }
+
+  const results = input['results']
+  if (!Array.isArray(results)) {
+    throw new ValidationError('results must be an array')
+  }
+
+  return { results: results.map((result) => parseSearchResult(result)) }
+}
 
 function truncate(text: string, maxLength: number): string {
-  if (maxLength <= 0) return text
+  if (maxLength < 0) return text
   return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
 }
 
@@ -67,82 +150,109 @@ function processSearchResults(results: SearchResult[], parsed: SearchInput): unk
   }
 }
 
+function resolveRateLimitActorId(runtimeContext: PluginToolRuntimeContextLike): string {
+  if (runtimeContext.chatUserId !== '') return runtimeContext.chatUserId
+  return runtimeContext.storageContextId
+}
+
+async function fetchSearchApiResults(
+  parsed: SearchInput,
+  apiKey: string,
+  abortSignal: AbortSignal | undefined,
+  httpFetch: HttpFetch,
+): Promise<unknown> {
+  const response = await httpFetch(API_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query: parsed.query }),
+    signal: abortSignal,
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    return { error: 'api_error', status: response.status, message: errorText }
+  }
+
+  const data: unknown = await response.json()
+  const validated = parseSearchResponse(data)
+  return processSearchResults(validated.results, parsed)
+}
+
+function buildSearchExecutionError(err: unknown): unknown {
+  if (err instanceof ValidationError) {
+    return { error: 'validation_error', message: err.message }
+  }
+  const message = err instanceof Error ? err.message : String(err)
+  if (err instanceof Error && err.name === 'AbortError') {
+    return { error: 'timeout', message }
+  }
+  return { error: 'network_error', message }
+}
+
 async function executeSearch(
   input: unknown,
-  runtimeContext: PluginToolRuntimeContext,
-  apiKey: string | undefined,
-  httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined,
+  runtimeContext: PluginToolRuntimeContextLike,
+  abortSignal: AbortSignal | undefined,
+  httpFetch: HttpFetch | undefined,
 ): Promise<unknown> {
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
+  const rateResult = runtimeContext.rateLimit.check(resolveRateLimitActorId(runtimeContext))
   if (!rateResult.allowed) {
     return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
   }
+
+  const apiKey = runtimeContext.adminConfig.get('api_key')
 
   if (apiKey === undefined || httpFetch === undefined) {
     return { error: 'not_configured', message: 'Synthetic API key is not configured' }
   }
 
-  const parsed = searchInputSchema.parse(input)
+  const parsed = parseSearchInput(input)
 
   try {
-    const response = await httpFetch(API_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query: parsed.query }),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      return { error: 'api_error', status: response.status, message: errorText }
-    }
-
-    const data: unknown = await response.json()
-    const validated = searchResponseSchema.parse(data)
-
-    return processSearchResults(validated.results, parsed)
+    return await fetchSearchApiResults(parsed, apiKey, abortSignal, httpFetch)
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return { error: 'validation_error', message: err.message }
-    }
-    const message = err instanceof Error ? err.message : String(err)
-    if (err instanceof Error && err.name === 'AbortError') {
-      return { error: 'timeout', message }
-    }
-    return { error: 'network_error', message }
+    return buildSearchExecutionError(err)
   }
 }
 
-const factory: PluginFactory = () => {
-  let apiKey: string | undefined
-  let httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined
+const factory = (): {
+  activate(ctx: unknown): void
+  deactivate(ctx: unknown): void
+} => {
+  let httpFetch: HttpFetch | undefined
 
   return {
-    activate(ctx: PluginContext): void {
-      apiKey = ctx.adminConfig.get('api_key')
-      httpFetch = ctx.providerRuntime?.httpFetch
+    activate(ctx: unknown): void {
+      const pluginContext = requirePluginContext(ctx)
+      const providerRuntime = pluginContext.providerRuntime
+      httpFetch = providerRuntime === undefined ? undefined : providerRuntime.httpFetch
 
-      ctx.log.info({}, 'synthetic-web-search plugin activated')
+      pluginContext.log.info({}, 'synthetic-web-search plugin activated')
 
-      ctx.registration.registerTool({
+      pluginContext.registration.registerTool({
         name: 'search',
         description: 'Uses a search engine which returns title, url, and content in markdown',
         inputSchema: searchInputSchema,
-        execute: (input: unknown, runtimeContext: PluginToolRuntimeContext) =>
-          executeSearch(input, runtimeContext, apiKey, httpFetch),
+        execute: (
+          input: unknown,
+          runtimeContext: PluginToolRuntimeContextLike,
+          options: { abortSignal: AbortSignal | undefined },
+        ) => executeSearch(input, runtimeContext, options.abortSignal, httpFetch),
       })
 
-      ctx.registration.registerPromptFragment({
+      pluginContext.registration.registerPromptFragment({
         name: 'web-search-hint',
         content:
           'When the user asks a question that requires up-to-date information not in your training data, use the search tool to find relevant web content. Use web_fetch to read full page content when a search result looks promising.',
       })
     },
 
-    deactivate(ctx: PluginContext): void {
-      ctx.log.info({}, 'synthetic-web-search plugin deactivated')
+    deactivate(ctx: unknown): void {
+      const pluginContext = requirePluginContext(ctx)
+      pluginContext.log.info({}, 'synthetic-web-search plugin deactivated')
     },
   }
 }

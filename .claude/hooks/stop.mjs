@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import fs from 'node:fs'
 
 import { checkFull } from '../../.hooks/tdd/checks/check-full.mjs'
@@ -5,6 +10,7 @@ import { getSessionsDir } from '../../.hooks/tdd/paths.mjs'
 import { SessionState } from '../../.hooks/tdd/session-state.mjs'
 
 try {
+  /** @type {{ session_id: string, cwd: string }} */
   const ctx = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8'))
   const { session_id, cwd } = ctx
 
@@ -15,7 +21,7 @@ try {
     process.exit(0)
   }
 
-  const result = checkFull(ctx)
+  const result = checkFull(ctx, true)
 
   if (result) {
     state.setNeedsRecheck(false)

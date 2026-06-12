@@ -17,12 +17,18 @@ describe('msw scenarios', () => {
     'billing-error',
     'billing-loading',
     'stats-populated',
+    'plugin-config-populated',
+    'plugin-config-empty',
+    'plugin-config-error',
+    'instances-populated',
+    'instances-empty',
+    'instances-error',
   ])('%s resolves to a non-empty handler bundle', (name) => {
     expect(scenarios[name].length).toBeGreaterThan(0)
   })
 
-  test('admin-populated composes admin, billing, and stats families', () => {
-    // admin (2) + billing (2) + stats (2: /stats/global + /stats/subject/:id) populated handlers
-    expect(scenarios['admin-populated'].length).toBe(6)
+  test('admin-populated composes admin, billing, stats, pluginConfig, instances, and identityMappings families', () => {
+    // admin (2) + billing (2) + stats (2) + pluginConfig (2) + instances (8) + identityMappings (1) populated handlers
+    expect(scenarios['admin-populated'].length).toBe(17)
   })
 })

@@ -21,11 +21,11 @@ import {
 const log = logger.child({ scope: 'scheduler' })
 
 export interface SchedulerDeps {
-  resolve: (contextId: string) => TaskProvider | null
+  resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
 }
 
 const defaultSchedulerDeps: SchedulerDeps = {
-  resolve: (contextId): TaskProvider | null => defaultTaskProviderResolver.resolve(contextId),
+  resolve: (contextId): Promise<TaskProvider | null> => defaultTaskProviderResolver.resolve(contextId),
 }
 
 const TICK_INTERVAL_MS = 60 * 1000
@@ -44,7 +44,7 @@ const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDe
     return
   }
 
-  const provider = deps.resolve(task.userId)
+  const provider = await deps.resolve(task.userId)
   if (provider === null) {
     log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: task provider unavailable')
     return
@@ -76,7 +76,7 @@ export async function createMissedTasks(
   const task = getRecurringTask(recurringTaskId)
   if (task === null) return 0
 
-  const provider = resolvedDeps.resolve(task.userId)
+  const provider = await resolvedDeps.resolve(task.userId)
   if (provider === null) {
     log.warn({ recurringTaskId, contextId: task.userId }, 'Skipping missed tasks: task provider unavailable')
     return 0
@@ -179,6 +179,7 @@ export const stopScheduler = (): void => {
     scheduler.unregister('recurring-tasks')
     chatProviderRef = null
     tickCount = 0
+    activeTickPromise = null
     log.info('Stopped recurring task scheduler')
   }
 }

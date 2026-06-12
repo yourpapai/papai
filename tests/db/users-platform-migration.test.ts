@@ -4,14 +4,15 @@
 // See LICENSE in the project root for details.
 
 import { Database } from 'bun:sqlite'
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { MIGRATIONS } from '../../src/db/index.js'
 import type { Migration } from '../../src/db/migrate.js'
 import { migration041UsersPlatformInstanceIndex } from '../../src/db/migrations/041_users_platform_instance_index.js'
-import { mockLogger } from '../utils/test-helpers.js'
+import { createTrackedLoggerMock, mockLogger } from '../utils/test-helpers.js'
 
 const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
+type Migration041Module = typeof import('../../src/db/migrations/041_users_platform_instance_index.js')
 
 const requireDefined = <T>(value: T | null | undefined): T => {
   if (value === undefined || value === null) throw new Error('expected value to be defined')
@@ -55,6 +56,25 @@ const createUserConfigTable = (db: Database): void => {
 }
 
 const getMigration = (id: string): Migration => requireDefined(MIGRATIONS.find((migration) => migration.id === id))
+
+const isMigration041Module = (module: unknown): module is Migration041Module =>
+  typeof module === 'object' &&
+  module !== null &&
+  'migration041UsersPlatformInstanceIndex' in module &&
+  typeof module.migration041UsersPlatformInstanceIndex === 'object' &&
+  module.migration041UsersPlatformInstanceIndex !== null &&
+  'up' in module.migration041UsersPlatformInstanceIndex &&
+  typeof module.migration041UsersPlatformInstanceIndex.up === 'function'
+
+const loadMigration041Module = async (): Promise<Migration041Module> => {
+  const module: unknown = await import(
+    `../../src/db/migrations/041_users_platform_instance_index.js?test=${crypto.randomUUID()}`
+  )
+  if (!isMigration041Module(module)) {
+    throw new Error('Failed to load migration 041 module for testing')
+  }
+  return module
+}
 
 const getUsers = (
   db: Database,
@@ -181,5 +201,21 @@ describe('migration 041 users platform scoping', () => {
       .query<{ value: string }, [string, string]>(`SELECT value FROM user_config WHERE user_id = ? AND key = ?`)
       .get('111', KANEO_WORKSPACE_CONFIG_KEY)
     expect(row).toBeNull()
+  })
+
+  test('logs completion when the migration finishes', async () => {
+    const trackedLogger = createTrackedLoggerMock()
+    void mock.module('../../src/logger.js', () => ({
+      getLogLevel: trackedLogger.getLogLevel,
+      logger: trackedLogger.logger,
+    }))
+    const { migration041UsersPlatformInstanceIndex: migration } = await loadMigration041Module()
+
+    migration.up(db)
+
+    expect(trackedLogger.getCallsByLevel('info')).toContainEqual({
+      level: 'info',
+      args: ['migration 041: users platform instance index complete'],
+    })
   })
 })

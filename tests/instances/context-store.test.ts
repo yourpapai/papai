@@ -7,8 +7,6 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import {
-  deleteContextsByPlatformInstance,
-  deleteContextsByTaskInstance,
   getContextSettings,
   listContextsByPlatformInstance,
   listContextsByTaskInstance,
@@ -20,6 +18,14 @@ import {
   seedTestTaskInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
+
+const buildGroupDescriptorCacheKey = (
+  contextId: string,
+  chatUserId: string,
+  username: string,
+  providerScope: 'provider-backed' | 'providerless',
+  stagedScope: 'no-staged-download' | 'with-staged-download',
+): string => `${providerScope}:${stagedScope}:${contextId}:${chatUserId}:${username}`
 
 describe('context-store', () => {
   beforeEach(async () => {
@@ -49,43 +55,37 @@ describe('context-store', () => {
   })
 
   test('setContextSettings clears cached tool sets for the context', () => {
-    setCachedTools('u1', { old_tool: {} })
+    setCachedTools('provider-backed:no-staged-download:u1', { old_tool: {} })
+    setCachedTools('providerless:with-staged-download:u1', { old_tool: {} })
 
     setContextSettings({ contextId: 'u1', taskInstanceId: 'yt-default', platformInstanceId: 'tg-default' })
 
-    expect(getCachedTools('u1')).toBeUndefined()
+    expect(getCachedTools('provider-backed:no-staged-download:u1')).toBeUndefined()
+    expect(getCachedTools('providerless:with-staged-download:u1')).toBeUndefined()
   })
 
   test('setContextSettings clears cached group-derived tool sets for the context', () => {
-    setCachedTools('group-1:user-1:alice', { old_tool: {} })
+    const providerBackedKey = buildGroupDescriptorCacheKey(
+      'group-1',
+      'user-1',
+      'alice',
+      'provider-backed',
+      'no-staged-download',
+    )
+    const providerlessKey = buildGroupDescriptorCacheKey(
+      'group-1',
+      'user-1',
+      'alice',
+      'providerless',
+      'with-staged-download',
+    )
+    setCachedTools(providerBackedKey, { old_tool: {} })
+    setCachedTools(providerlessKey, { old_tool: {} })
 
     setContextSettings({ contextId: 'group-1', taskInstanceId: 'yt-default', platformInstanceId: 'tg-default' })
 
-    expect(getCachedTools('group-1:user-1:alice')).toBeUndefined()
-  })
-
-  test('deleteContextsByTaskInstance clears tool caches for deleted contexts', () => {
-    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'tg-default' })
-    setContextSettings({ contextId: 'ctx-2', taskInstanceId: 'tasks-main', platformInstanceId: 'tg-default' })
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-2:user-1:alice', { old_tool: {} })
-
-    expect(deleteContextsByTaskInstance('tasks-main')).toBe(2)
-
-    expect(getCachedTools('ctx-1')).toBeUndefined()
-    expect(getCachedTools('ctx-2:user-1:alice')).toBeUndefined()
-  })
-
-  test('deleteContextsByPlatformInstance clears tool caches for deleted contexts', () => {
-    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'tg-default' })
-    setContextSettings({ contextId: 'ctx-2', taskInstanceId: 'tasks-other', platformInstanceId: 'tg-default' })
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-2:user-1:alice', { old_tool: {} })
-
-    expect(deleteContextsByPlatformInstance('tg-default')).toBe(2)
-
-    expect(getCachedTools('ctx-1')).toBeUndefined()
-    expect(getCachedTools('ctx-2:user-1:alice')).toBeUndefined()
+    expect(getCachedTools(providerBackedKey)).toBeUndefined()
+    expect(getCachedTools(providerlessKey)).toBeUndefined()
   })
 
   test('get returns null for unknown context', () => {

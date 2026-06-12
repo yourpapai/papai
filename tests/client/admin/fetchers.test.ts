@@ -16,11 +16,13 @@ import {
   fetchAdmins,
   fetchAdminGroups,
   fetchAdminIdentity,
+  fetchAdminIdentityMappings,
   fetchAdminLlm,
   fetchAdminSystem,
   fetchDeferredPrompts,
   fetchMemos,
   fetchPlatformInstances,
+  fetchPlatformProviderTypes,
   fetchRecentRequests,
   fetchRecurringTasks,
   fetchTaskInstances,
@@ -28,7 +30,7 @@ import {
   setPlatformInstanceStatus,
   submitAdminLlm,
 } from '../../../client/admin/fetchers.js'
-import type { AdminInstanceView } from '../../../client/shared/api-types.js'
+import type { AdminInstanceView, ApplyInstancesResult } from '../../../client/shared/api-types.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type Equal<Left, Right> = [Left] extends [Right] ? ([Right] extends [Left] ? true : false) : false
@@ -36,9 +38,42 @@ type Expect<Actual extends true> = Actual
 type ExpectedAdminInstanceView = Readonly<
   { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>
 >
+type ExpectedApplyInstancesResult = Readonly<{
+  applied: number
+  started: readonly string[]
+  stopped: readonly string[]
+  removed: readonly string[]
+  removedDetails?: readonly { readonly id: string; readonly desiredStatus: 'pending' | 'stopped' | null }[]
+  recreated: readonly string[]
+  unchanged: readonly string[]
+  failed: readonly {
+    readonly id: string
+    readonly action: 'remove' | 'recreate' | 'start'
+    readonly error: string
+  }[]
+  unreadable?: readonly {
+    readonly table: 'platform_instances' | 'task_instances'
+    readonly id: string
+    readonly type: string
+    readonly error: string
+  }[]
+}>
 type PlatformStatusInput = Parameters<typeof setPlatformInstanceStatus>[1]
 const adminInstanceViewContract: Expect<Equal<AdminInstanceView, ExpectedAdminInstanceView>> = true
+const applyInstancesResultContract: Expect<Equal<ApplyInstancesResult, ExpectedApplyInstancesResult>> = true
 const platformStatusInputContract: Expect<Equal<PlatformStatusInput, 'active' | 'stopped'>> = true
+
+const applyResult = {
+  applied: 1,
+  started: ['telegram-main'],
+  stopped: [],
+  removed: [],
+  removedDetails: [],
+  recreated: [],
+  unchanged: [],
+  failed: [],
+  unreadable: [],
+} as const
 
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []
 
@@ -48,6 +83,7 @@ beforeEach(() => {
 
 test('compile-time instance client contracts are enforced', () => {
   expect(adminInstanceViewContract).toBe(true)
+  expect(applyInstancesResultContract).toBe(true)
   expect(platformStatusInputContract).toBe(true)
 })
 
@@ -81,6 +117,25 @@ const expectDefined = <T>(value: T | undefined | null, message: string): NonNull
 
 describe('fetchAdminLlm', () => {
   test('GETs /admin/llm', async () => {
+    const empty = { value: null, updatedAt: null, updatedBy: null, required: false }
+    installFetch(200, {
+      llm_apikey: { ...empty, required: true },
+      llm_baseurl: { ...empty, required: true },
+      main_model: { ...empty, required: true },
+      small_model: empty,
+      embedding_model: empty,
+    })
+    const snap = await fetchAdminLlm()
+    expect(firstCaptured().url).toBe('/admin/llm')
+    expect(snap.llm_apikey.value).toBeNull()
+    expect(snap.llm_apikey.required).toBe(true)
+    expect(snap.llm_baseurl.required).toBe(true)
+    expect(snap.main_model.required).toBe(true)
+    expect(snap.small_model.required).toBe(false)
+    expect(snap.embedding_model.required).toBe(false)
+  })
+
+  test('rejects snapshot missing required flag', async () => {
     const empty = { value: null, updatedAt: null, updatedBy: null }
     installFetch(200, {
       llm_apikey: empty,
@@ -89,9 +144,7 @@ describe('fetchAdminLlm', () => {
       small_model: empty,
       embedding_model: empty,
     })
-    const snap = await fetchAdminLlm()
-    expect(firstCaptured().url).toBe('/admin/llm')
-    expect(snap.llm_apikey.value).toBeNull()
+    await expect(fetchAdminLlm()).rejects.toThrow()
   })
 })
 
@@ -281,6 +334,53 @@ describe('fetchAdminIdentity', () => {
   })
 })
 
+describe('fetchAdminIdentityMappings', () => {
+  test('GETs /admin/identity/mappings and returns a validated array', async () => {
+    installFetch(200, [
+      {
+        contextId: 'ctx-alice',
+        providerName: 'kaneo',
+        providerUserId: 'k-1',
+        providerUserLogin: 'alice',
+        displayName: 'Alice',
+        matchedAt: '2026-05-21T00:00:00.000Z',
+        matchMethod: 'auto',
+        confidence: 100,
+      },
+    ])
+
+    const result = await fetchAdminIdentityMappings()
+    const firstEntry = expectDefined(result[0], 'missing identity mapping entry')
+
+    expect(firstCaptured().url).toBe('/admin/identity/mappings')
+    expect(result).toHaveLength(1)
+    expect(firstEntry.contextId).toBe('ctx-alice')
+    expect(firstEntry.providerName).toBe('kaneo')
+    expect(firstEntry.matchMethod).toBe('auto')
+  })
+
+  test('returns empty array when server returns []', async () => {
+    installFetch(200, [])
+
+    const result = await fetchAdminIdentityMappings()
+
+    expect(firstCaptured().url).toBe('/admin/identity/mappings')
+    expect(result).toEqual([])
+  })
+
+  test('rejects malformed identity mapping payloads', async () => {
+    installFetch(200, [{ contextId: 'ctx-alice' }])
+
+    await expect(fetchAdminIdentityMappings()).rejects.toThrow()
+  })
+
+  test('throws on non-ok response', async () => {
+    installFetch(401, 'Unauthorized')
+
+    await expect(fetchAdminIdentityMappings()).rejects.toThrow('request failed with status 401')
+  })
+})
+
 describe('fetchRecentRequests', () => {
   test('GETs /admin/subjects/:id/recent-requests and returns parsed rows', async () => {
     installFetch(200, {
@@ -350,10 +450,23 @@ describe('instance API fetchers', () => {
     config: { KANEO_INTERNAL_URL: 'https://kaneo.example' },
     status: 'active',
     createdAt: '2026-05-24T00:00:00.000Z',
+    unresolvedReason: null,
   } as const
 
   test('fetchPlatformInstances GETs and validates /api/platform-instances', async () => {
     installFetch(200, [platformInstance])
+
+    const result = await fetchPlatformInstances()
+
+    expect(firstCaptured().url).toBe('/api/platform-instances')
+    expect(result).toEqual([platformInstance])
+  })
+
+  test('fetchPlatformInstances accepts unreadable diagnostics object shape', async () => {
+    installFetch(200, {
+      instances: [platformInstance],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
+    })
 
     const result = await fetchPlatformInstances()
 
@@ -403,19 +516,48 @@ describe('instance API fetchers', () => {
     })
   })
 
-  test('applyPlatformInstances POSTs apply and parses the applied count', async () => {
-    installFetch(200, { applied: 1 })
+  test('applyPlatformInstances POSTs apply and parses detailed reconciliation results', async () => {
+    installFetch(200, applyResult)
 
     const result = await applyPlatformInstances()
     const call = firstCaptured()
 
     expect(call.url).toBe('/api/platform-instances/apply')
     expect(call.init.method).toBe('POST')
-    expect(result.applied).toBe(1)
+    expect(result).toEqual(applyResult)
+  })
+
+  test('applyPlatformInstances defaults missing removedDetails in legacy responses', async () => {
+    installFetch(200, {
+      applied: 1,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+    })
+
+    const result = await applyPlatformInstances()
+
+    expect(firstCaptured().url).toBe('/api/platform-instances/apply')
+    expect(result.removedDetails).toEqual([])
   })
 
   test('fetchTaskInstances GETs task instances', async () => {
     installFetch(200, [taskInstance])
+
+    const result = await fetchTaskInstances()
+
+    expect(firstCaptured().url).toBe('/api/task-instances')
+    expect(result).toEqual([taskInstance])
+  })
+
+  test('fetchTaskInstances accepts unreadable diagnostics object shape', async () => {
+    installFetch(200, {
+      instances: [taskInstance],
+      unreadable: [{ table: 'task_instances', id: 'bad', type: 'kaneo', error: 'Encrypted payload' }],
+    })
 
     const result = await fetchTaskInstances()
 
@@ -489,8 +631,10 @@ test('fetchTaskProviderTypes parses the catalog', async () => {
         {
           type: 'kaneo',
           displayName: 'Kaneo',
-          configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+          instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+          contextConfigSchema: [],
           capabilities: ['comments.read'],
+          traits: [],
           source: 'builtin',
         },
       ]),
@@ -498,11 +642,42 @@ test('fetchTaskProviderTypes parses the catalog', async () => {
   )
   const types = await fetchTaskProviderTypes()
   expect(types[0]?.type).toBe('kaneo')
-  expect(types[0]?.configSchema[0]?.key).toBe('baseUrl')
+  expect(types[0]?.instanceConfigSchema[0]?.key).toBe('baseUrl')
   restoreFetch()
 })
 
 test('fetchTaskProviderTypes throws on non-ok response', async () => {
   installFetch(500, { error: 'internal server error' })
   await expect(fetchTaskProviderTypes()).rejects.toThrow()
+})
+
+test('fetchPlatformProviderTypes parses the catalog', async () => {
+  setMockFetch(() =>
+    Promise.resolve(
+      Response.json([
+        {
+          type: 'mattermost',
+          displayName: 'Mattermost',
+          instanceConfigSchema: [
+            { key: 'baseUrl', label: 'Mattermost URL', required: true, sensitive: false },
+            { key: 'token', label: 'Mattermost Bot Token', required: true, sensitive: true },
+          ],
+          contextConfigSchema: [],
+          capabilities: ['commands'],
+          traits: { observedGroupMessages: 'all', maxMessageLength: 16383 },
+          source: 'builtin',
+        },
+      ]),
+    ),
+  )
+  const types = await fetchPlatformProviderTypes()
+  expect(types[0]?.type).toBe('mattermost')
+  expect(types[0]?.instanceConfigSchema[1]?.sensitive).toBe(true)
+  expect(types[0]?.traits.observedGroupMessages).toBe('all')
+  restoreFetch()
+})
+
+test('fetchPlatformProviderTypes throws on non-ok response', async () => {
+  installFetch(500, { error: 'internal server error' })
+  await expect(fetchPlatformProviderTypes()).rejects.toThrow()
 })

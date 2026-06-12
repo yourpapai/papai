@@ -7,6 +7,7 @@
   import { untrack } from 'svelte'
 
   import type { AdminPluginConfigSnapshot } from '../../shared/api-types.js'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
   import PluginConfigForm from '../components/PluginConfigForm.svelte'
   import { fetchAdminPluginConfig } from '../plugin-config-fetchers.js'
 
@@ -34,18 +35,16 @@
 </script>
 
 <section id="plugin-config" class="plugin-config-section admin-section">
-  <header class="plugin-config-header">
-    <div>
-      <p class="eyebrow">Plugins</p>
-      <h2 data-testid="admin-section-title">Plugin Config</h2>
-    </div>
-    <button
-      type="button"
-      data-testid="plugin-config-refresh"
-      onclick={() => {
-        void load()
-      }}>{fetching ? 'Refreshing...' : 'Refresh'}</button>
-  </header>
+  <PageHeader eyebrow="Plugins" title="Plugin Config" titleTestId="admin-section-title">
+    {#snippet action()}
+      <button
+        type="button"
+        data-testid="plugin-config-refresh"
+        onclick={() => {
+          void load()
+        }}>{fetching ? 'Refreshing...' : 'Refresh'}</button>
+    {/snippet}
+  </PageHeader>
 
   {#if error !== null}
     <p class="status-error">{error}</p>

@@ -2,6 +2,11 @@
   import { tick } from 'svelte'
 
   import { formatTime, levelClass, levelName } from '../../shared/helpers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Input from '../../shared/ui/Input.svelte'
+  import Panel from '../../shared/ui/Panel.svelte'
+  import Select from '../../shared/ui/Select.svelte'
+  import Toolbar from '../../shared/ui/Toolbar.svelte'
   import { filterLogsWithIndex, updateFuseIndex } from '../log-filter.js'
   import type { LogEntry, DashboardState } from '../dashboard-types.js'
 
@@ -57,52 +62,103 @@
 </script>
 
 <section id="log-explorer">
-  <div class="log-toolbar">
-    <h2>Log Explorer <span class="count-badge">{filtered.length}</span></h2>
-    <div class="log-filters">
-      <select bind:value={levelFilter}>
-        <option value="0">all levels</option>
-        <option value="10">trace</option>
-        <option value="20">debug</option>
-        <option value="30">info</option>
-        <option value="40">warn</option>
-        <option value="50">error</option>
-      </select>
-      <select bind:value={scopeFilter}>
-        <option value="">all scopes</option>
-        {#each sortedScopes as s (s)}
-          <option value={s}>{s}</option>
+  <Panel title="log explorer" count={filtered.length}>
+    {#snippet action()}
+      <Toolbar>
+        <Select
+          value={levelFilter}
+          options={[
+            { value: '0', label: 'all levels' },
+            { value: '10', label: 'trace' },
+            { value: '20', label: 'debug' },
+            { value: '30', label: 'info' },
+            { value: '40', label: 'warn' },
+            { value: '50', label: 'error' },
+          ]}
+          onChange={(v) => (levelFilter = v)} />
+        <Select
+          value={scopeFilter}
+          options={[{ value: '', label: 'all scopes' }, ...sortedScopes.map((s) => ({ value: s, label: s }))]}
+          onChange={(v) => (scopeFilter = v)} />
+        <Input value={searchQuery} placeholder="search..." onInput={(v) => (searchQuery = v)} />
+        {#if dashboard.activeLogFilter.turnId !== undefined}
+          <div class="log-turnid-badge">
+            <span>turn:{dashboard.activeLogFilter.turnId.slice(0, 8)}</span>
+            <Btn variant="ghost" size="sm" onClick={clearTurnFilter}>{#snippet children()}×{/snippet}</Btn>
+          </div>
+        {/if}
+        <Btn variant="ghost" size="sm" onClick={clearLogs}>{#snippet children()}clear{/snippet}</Btn>
+      </Toolbar>
+    {/snippet}
+    {#snippet body()}
+      <div id="log-entries" bind:this={entriesEl} onscroll={onScroll}>
+        {#each filtered as fl, i (i)}
+          <div
+            class="log-entry {levelClass(fl.entry.level)}"
+            role="button"
+            tabindex="0"
+            onclick={() => onSelectLog(fl.entry, fl.originalIndex)}
+            onkeydown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelectLog(fl.entry, fl.originalIndex)
+              }
+            }}>
+            <span class="log-meta">{formatTime(fl.entry.time)} {levelName(fl.entry.level)}{fl.entry.scope === undefined ? '' : ` ${fl.entry.scope}`}</span>
+            <span class="log-msg">{fl.entry.msg}</span>
+          </div>
         {/each}
-      </select>
-      <input type="text" placeholder="search..." bind:value={searchQuery} />
-      {#if dashboard.activeLogFilter.turnId !== undefined}
-        <div class="log-turnid-badge">
-          <span>turn:{dashboard.activeLogFilter.turnId.slice(0, 8)}</span>
-          <button type="button" aria-label="Clear turn filter" onclick={clearTurnFilter}>×</button>
-        </div>
-      {/if}
-      <button type="button" onclick={clearLogs}>clear</button>
-    </div>
-  </div>
-  <div id="log-entries" bind:this={entriesEl} onscroll={onScroll}>
-    {#each filtered as fl, i (i)}
-      <div
-        class="log-entry {levelClass(fl.entry.level)}"
-        role="button"
-        tabindex="0"
-        onclick={() => onSelectLog(fl.entry, fl.originalIndex)}
-        onkeydown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onSelectLog(fl.entry, fl.originalIndex)
-          }
-        }}>
-        <span class="log-meta">{formatTime(fl.entry.time)} {levelName(fl.entry.level)}{fl.entry.scope === undefined ? '' : ` ${fl.entry.scope}`}</span>
-        <span class="log-msg">{fl.entry.msg}</span>
       </div>
-    {/each}
-  </div>
-  {#if !autoScroll}
-    <button type="button" id="log-autoscroll" onclick={jumpToBottom}>▼ auto-scroll</button>
-  {/if}
+      {#if !autoScroll}
+        <Btn variant="secondary" size="sm" onClick={jumpToBottom}>{#snippet children()}▼ auto-scroll{/snippet}</Btn>
+      {/if}
+    {/snippet}
+  </Panel>
 </section>
+
+<style>
+  #log-entries {
+    flex: 1;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .log-entry {
+    display: flex;
+    gap: 8px;
+    padding: 2px 8px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+  }
+
+  .log-entry:hover {
+    background: var(--raised);
+  }
+
+  .log-meta {
+    color: var(--fg3);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .log-msg {
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .log-turnid-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 2px 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg2);
+  }
+</style>

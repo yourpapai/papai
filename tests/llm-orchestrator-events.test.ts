@@ -53,7 +53,7 @@ describe('llm-orchestrator-events', () => {
 
       try {
         const provider = createMockProvider()
-        const tools = makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
+        const tools = await makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
         emitLlmStart('ctx-1', 'gpt-4', [{ role: 'user', content: 'hi' }], tools)
 
         const capturedEvent = capture()
@@ -65,8 +65,8 @@ describe('llm-orchestrator-events', () => {
         expect(capturedEvent['model']).toBe('gpt-4')
         expect(capturedEvent['messageCount']).toBe(1)
         expect(capturedEvent['toolCount']).toBe(Object.keys(tools).length)
-        expect(capturedEvent['exposedToolCount']).toBe(Object.keys(tools).length)
-        expect(capturedEvent['fullToolCount']).toBe(Object.keys(tools).length)
+        expect(capturedEvent['exposedToolCount']).toBeUndefined()
+        expect(capturedEvent['fullToolCount']).toBeUndefined()
         expect(typeof capturedEvent['toolSchemaBytes']).toBe('number')
       } finally {
         unsubscribe(listener)
@@ -104,7 +104,7 @@ describe('llm-orchestrator-events', () => {
           finishReason: 'stop',
         }
         const provider = createMockProvider()
-        const tools = makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
+        const tools = await makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
         const startTime = Date.now() - 1000
 
         emitLlmEnd(
@@ -116,7 +116,6 @@ describe('llm-orchestrator-events', () => {
           startTime,
           [{ role: 'user', content: 'hi' }],
           tools,
-          undefined,
           'turn-1',
         )
 
@@ -131,8 +130,8 @@ describe('llm-orchestrator-events', () => {
         expect(capturedEvent['finishReason']).toBe('stop')
         expect(capturedEvent['messageCount']).toBe(1)
         expect(capturedEvent['toolCount']).toBe(Object.keys(tools).length)
-        expect(capturedEvent['exposedToolCount']).toBe(Object.keys(tools).length)
-        expect(capturedEvent['fullToolCount']).toBe(Object.keys(tools).length)
+        expect(capturedEvent['exposedToolCount']).toBeUndefined()
+        expect(capturedEvent['fullToolCount']).toBeUndefined()
         expect(typeof capturedEvent['toolSchemaBytes']).toBe('number')
         expect(capturedEvent['generatedText']).toBe('Done!')
         expect(Array.isArray(capturedEvent['stepsDetail'])).toBe(true)
@@ -161,7 +160,7 @@ describe('llm-orchestrator-events', () => {
           finishReason: 'stop',
         }
         const provider = createMockProvider()
-        const tools = makeTools(provider, { storageContextId: 'ctx-grp', chatUserId: 'user-2' })
+        const tools = await makeTools(provider, { storageContextId: 'ctx-grp', chatUserId: 'user-2' })
         emitLlmEnd(
           'ctx-grp',
           'user-2',
@@ -171,7 +170,6 @@ describe('llm-orchestrator-events', () => {
           Date.now() - 10,
           [{ role: 'user', content: 'hi' }],
           tools,
-          undefined,
           'turn-2',
         )
 
@@ -288,7 +286,6 @@ describe('llm-orchestrator-events', () => {
           Date.now() - 1000,
           [{ role: 'user', content: 'hi' }],
           { x: cyclicTool },
-          undefined,
           'turn-cyclic',
         )
 

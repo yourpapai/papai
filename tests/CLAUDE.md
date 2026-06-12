@@ -2,6 +2,26 @@
 
 Runtime: **Bun** test runner (`bun:test`). No Jest or Vitest.
 
+## Parallel Execution & Isolation
+
+The default local server-side run (`bun run test`) is `bun test --parallel`: each test
+file runs in its own worker process (implies `--isolate`). CI (`scripts/check.sh` with
+`CI=true`) runs the suite serially to keep the 4-vCPU runner stable, but tests **must**
+still be isolation-clean:
+
+- No reliance on cross-file shared module/global state or test ordering.
+- No fixed-wall-clock timing assertions (e.g. `await wait(100); expect(count).toBeGreaterThanOrEqual(1)`).
+  Under worker CPU contention the event loop starves and these flake. Poll for the
+  condition instead (`waitFor(() => count >= 1)`), which still fails if the behavior
+  never happens but tolerates scheduling jitter. For upper-bound "didn't hang" checks,
+  keep the bound generous.
+- Real HTTP servers must bind a unique port per file (avoid cross-worker collisions).
+
+`setupTestDb()` deserializes a once-migrated in-memory snapshot rather than replaying
+all migrations per test (~190x cheaper per call); the snapshot is cached by migration
+set in `tests/utils/test-helpers.ts`. Use `bun test:serial` to debug isolation-sensitive
+failures.
+
 ## Test Helpers
 
 Use helpers from `tests/utils/test-helpers.ts` unless a test already follows a local pattern for a specialized reason.
@@ -101,3 +121,10 @@ When DI is not available and module evaluation order matters:
 - Track resources created outside the test client with `testClient.trackTask(...)` or the matching tracker helper when the suite uses `KaneoTestClient`.
 - The suite is in transition: many files already rely on shared preload/setup, but some older E2E files still use local `beforeAll`/`afterAll` hooks or manual cleanup. Follow the local pattern unless you are intentionally modernizing that suite.
 - Before proposing new E2E coverage, read `docs/superpowers/e2e-planning-workflow.md` and start from `docs/superpowers/templates/e2e-test-plan-template.md`.
+
+## Mutation testing
+
+For accurate mutation scores that bypass the runner's static-bucket artifact,
+use `bun test:mutate:file <path>` for focused work, `bun test:mutate:changed`
+for changed files, and `bun test:mutate` for the configured full mutate scope
+(see `scripts/mutation/README.md`).

@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import Panel from '../../shared/ui/Panel.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
   import { formatTime } from '../../shared/helpers.js'
   import type { BillingDetail, BillingRequestRow } from '../../shared/api-types.js'
   import { fetchRecentRequests } from '../fetchers.js'
@@ -122,7 +123,7 @@
                 <td>{r.role}</td>
                 <td>{r.inputTokens}</td>
                 <td>{r.outputTokens}</td>
-                <td>{r.finishStatus}</td>
+                <td><StatusPill status={r.finishStatus} /></td>
               </tr>
             {/each}
           </tbody>

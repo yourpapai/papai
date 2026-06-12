@@ -50,3 +50,25 @@ export function formatTokens(n: number): string {
 export function escapeHtml(str: string): string {
   return str.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;').replace(/"/gu, '&quot;')
 }
+
+export function fmtNum(n: number | string | null | undefined, dp = 2): string {
+  if (n === null || n === undefined || n === '') return '—'
+  if (typeof n === 'string') return n
+  if (!Number.isFinite(n)) return '—'
+  const factor = 10 ** dp
+  const r = Math.round(n * factor) / factor
+  return r.toLocaleString('en-US', { maximumFractionDigits: dp })
+}
+
+export function fmtBytes(b: number | null | undefined): string {
+  if (b === null || b === undefined) return '—'
+  if (b < 1024) return `${b} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let i = -1
+  let v = b
+  do {
+    v /= 1024
+    i++
+  } while (v >= 1024 && i < units.length - 1)
+  return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`
+}

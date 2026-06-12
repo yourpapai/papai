@@ -5,7 +5,62 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { TaskInstanceViewSchema, TaskProviderTypeViewSchema } from '../../../client/admin/instance-fetcher-schemas.js'
+import {
+  ApplyInstancesResultSchema,
+  PlatformInstanceListResponseSchema,
+  PlatformInstanceViewSchema,
+  PlatformProviderTypeViewSchema,
+  TaskInstanceListResponseSchema,
+  TaskInstanceViewSchema,
+  TaskProviderTypeViewSchema,
+} from '../../../client/admin/instance-fetcher-schemas.js'
+
+describe('ApplyInstancesResultSchema', () => {
+  test('ApplyInstancesResultSchema accepts detailed reconciliation result', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 2,
+      started: ['telegram-main'],
+      stopped: ['discord-old'],
+      removed: ['discord-old'],
+      removedDetails: [{ id: 'discord-old', desiredStatus: 'stopped' }],
+      recreated: ['mattermost-main'],
+      unchanged: ['telegram-secondary'],
+      failed: [{ id: 'telegram-bad', action: 'remove', error: 'boom' }],
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  test('ApplyInstancesResultSchema defaults missing removedDetails for legacy payloads', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 1,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.removedDetails).toEqual([])
+  })
+
+  test('ApplyInstancesResultSchema accepts unreadable diagnostics', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 1,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
+    })
+
+    expect(result.success).toBe(true)
+  })
+})
 
 describe('TaskInstanceViewSchema', () => {
   test('accepts any string type after the enum was opened', () => {
@@ -15,6 +70,7 @@ describe('TaskInstanceViewSchema', () => {
       config: {},
       status: 'active',
       createdAt: '2026-05-26T00:00:00.000Z',
+      unresolvedReason: null,
     })
     expect(result.success).toBe(true)
   })
@@ -26,8 +82,71 @@ describe('TaskInstanceViewSchema', () => {
       config: {},
       status: 'pending',
       createdAt: '2026-05-26T00:00:00.000Z',
+      unresolvedReason: null,
     })
     expect(result.success).toBe(true)
+  })
+
+  test('accepts a non-null unresolvedReason when the provider plugin is not active', () => {
+    const result = TaskInstanceViewSchema.safeParse({
+      id: 'missing-1',
+      type: 'no-such-provider',
+      config: {},
+      status: 'active',
+      createdAt: '2026-05-29T00:00:00.000Z',
+      unresolvedReason:
+        "Provider plugin for type 'no-such-provider' is not active. Approve it in the settings web UI admin area (Plugins approval).",
+    })
+    expect(result.success).toBe(true)
+  })
+})
+
+describe('instance list response schemas', () => {
+  const platformInstance = {
+    id: 'telegram-main',
+    type: 'telegram',
+    config: { token: '********' },
+    status: 'active',
+    createdAt: '2026-05-26T00:00:00.000Z',
+  } as const
+
+  const taskInstance = {
+    id: 'kaneo-main',
+    type: 'kaneo',
+    config: { baseUrl: 'https://kaneo.invalid' },
+    status: 'active',
+    createdAt: '2026-05-26T00:00:00.000Z',
+    unresolvedReason: null,
+  } as const
+
+  test('PlatformInstanceListResponseSchema accepts the clean array shape', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse([platformInstance])
+    expect(result.success).toBe(true)
+  })
+
+  test('PlatformInstanceListResponseSchema accepts unreadable diagnostics shape', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse({
+      instances: [platformInstance],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('TaskInstanceListResponseSchema accepts unreadable diagnostics shape', () => {
+    const result = TaskInstanceListResponseSchema.safeParse({
+      instances: [taskInstance],
+      unreadable: [{ table: 'task_instances', id: 'bad', type: 'kaneo', error: 'Encrypted payload' }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('instance list object shape still validates row schemas', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse({
+      instances: [{ ...platformInstance, type: 'unknown' }],
+      unreadable: [],
+    })
+    expect(result.success).toBe(false)
+    expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, type: 'unknown' }).success).toBe(false)
   })
 })
 
@@ -36,12 +155,24 @@ describe('TaskProviderTypeViewSchema', () => {
     const parsed = TaskProviderTypeViewSchema.parse({
       type: 'kaneo',
       displayName: 'Kaneo',
-      configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+      contextConfigSchema: [
+        {
+          key: 'credential',
+          label: 'Kaneo API key',
+          required: true,
+          sensitive: true,
+          storageKey: 'kaneo_apikey',
+        },
+      ],
       capabilities: ['comments.read'],
+      traits: ['workspace-scoped'],
       source: 'builtin',
     })
     expect(parsed.type).toBe('kaneo')
-    expect(parsed.configSchema[0]?.key).toBe('baseUrl')
+    expect(parsed.instanceConfigSchema[0]?.key).toBe('baseUrl')
+    expect(parsed.contextConfigSchema[0]?.storageKey).toBe('kaneo_apikey')
+    expect(parsed.traits).toContain('workspace-scoped')
     expect(parsed.source).toBe('builtin')
   })
 
@@ -49,8 +180,10 @@ describe('TaskProviderTypeViewSchema', () => {
     const parsed = TaskProviderTypeViewSchema.parse({
       type: 'custom-tracker',
       displayName: 'Custom Tracker',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
       capabilities: [],
+      traits: [],
       source: { plugin: 'my-plugin' },
     })
     expect(parsed.source).toEqual({ plugin: 'my-plugin' })
@@ -65,8 +198,10 @@ describe('TaskProviderTypeViewSchema', () => {
     const result = TaskProviderTypeViewSchema.safeParse({
       type: 'kaneo',
       displayName: 'Kaneo',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
       capabilities: [],
+      traits: [],
       source: 42,
     })
     expect(result.success).toBe(false)
@@ -76,10 +211,57 @@ describe('TaskProviderTypeViewSchema', () => {
     const result = TaskProviderTypeViewSchema.safeParse({
       type: 'custom-tracker',
       displayName: 'Custom Tracker',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
       capabilities: [],
+      traits: [],
       source: { plugin: '' },
     })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('PlatformProviderTypeViewSchema', () => {
+  test('parses structured chat provider traits', () => {
+    const parsed = PlatformProviderTypeViewSchema.parse({
+      type: 'mattermost',
+      displayName: 'Mattermost',
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'Mattermost URL', required: true, sensitive: false }],
+      contextConfigSchema: [],
+      capabilities: ['commands'],
+      traits: { observedGroupMessages: 'all', maxMessageLength: 16383 },
+      source: 'builtin',
+    })
+
+    expect(parsed.traits.observedGroupMessages).toBe('all')
+    expect(parsed.traits.maxMessageLength).toBe(16383)
+  })
+
+  test('accepts kontur-talk type', () => {
+    const parsed = PlatformProviderTypeViewSchema.parse({
+      type: 'kontur-talk',
+      displayName: 'Kontur Talk',
+      instanceConfigSchema: [{ key: 'jwtToken', label: 'JWT Token', required: true, sensitive: true }],
+      contextConfigSchema: [],
+      capabilities: ['messages.reply-context'],
+      traits: { observedGroupMessages: 'all', maxMessageLength: 4096 },
+      source: 'builtin',
+    })
+
+    expect(parsed.type).toBe('kontur-talk')
+  })
+
+  test('rejects legacy array traits', () => {
+    const result = PlatformProviderTypeViewSchema.safeParse({
+      type: 'mattermost',
+      displayName: 'Mattermost',
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
+      capabilities: [],
+      traits: [],
+      source: 'builtin',
+    })
+
     expect(result.success).toBe(false)
   })
 })

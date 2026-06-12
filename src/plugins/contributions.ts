@@ -5,7 +5,6 @@
 
 import type { ToolSet } from 'ai'
 import { tool } from 'ai'
-import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
@@ -13,9 +12,15 @@ import type { TaskProvider } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
 import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
 import { namespacedJobName, namespacedToolName } from './contribution-names.js'
+import { getPluginToolInputSchema } from './input-schema.js'
 import { getPluginContextEligibility } from './registry.js'
-import { getEnabledContextsForPlugin } from './store.js'
-import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from './tool-runtime.js'
+import { getScheduledJobContextIds } from './scheduled-contexts.js'
+import { recordRuntimeEvent } from './store.js'
+import {
+  buildPluginScheduledJobRuntimeContext,
+  buildPluginToolRuntimeContext,
+  type PluginToolSetRuntime,
+} from './tool-runtime.js'
 import type {
   PluginCommand,
   PluginContributions,
@@ -26,9 +31,13 @@ import type {
 } from './types.js'
 
 const log = logger.child({ scope: 'plugins:contributions' })
+const recordedToolCollisionEvents = new Set<string>()
 export { namespacedJobName, namespacedToolName, sanitizePluginId } from './contribution-names.js'
 
-/** Active contributions from a single plugin. */
+export function resetContributionCollisionStateForTesting(): void {
+  recordedToolCollisionEvents.clear()
+}
+
 export type ActivePluginContributions = {
   pluginId: string
   manifest: PluginManifest
@@ -41,17 +50,16 @@ export type ActivePluginContributions = {
 export type { PluginToolSetRuntime } from './tool-runtime.js'
 
 export type PluginScheduledJobDeps = Readonly<{
-  resolveTaskProvider: (contextId: string) => TaskProvider | null
+  resolveTaskProvider: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
 }>
 
 const defaultScheduledJobDeps: PluginScheduledJobDeps = {
   resolveTaskProvider: (contextId) => defaultTaskProviderResolver.resolve(contextId),
 }
 
-const pluginNeedsTaskProvider = (manifest: PluginManifest): boolean => {
+const manifestUsesTaskProviderFacade = (manifest: PluginManifest): boolean => {
   if (manifest.permissions.includes('tasks.read')) return true
-  if (manifest.permissions.includes('tasks.write')) return true
-  return manifest.requiredTaskCapabilities.length > 0
+  return manifest.permissions.includes('tasks.write')
 }
 
 const getRawCommands = (rawContributions: PluginContributions): readonly PluginCommand[] => {
@@ -62,11 +70,6 @@ const getRawCommands = (rawContributions: PluginContributions): readonly PluginC
 const getRawJobs = (rawContributions: PluginContributions): readonly PluginScheduledJob[] => {
   if (rawContributions.jobs === undefined) return []
   return rawContributions.jobs
-}
-
-const getInputSchema = (pluginTool: PluginTool): z.ZodType => {
-  if (pluginTool.inputSchema === undefined) return z.object({})
-  return pluginTool.inputSchema
 }
 
 /** Registry of active plugin contributions (in-memory, per-process). */
@@ -194,7 +197,6 @@ class PluginContributionRegistry {
   }
 }
 
-/** Singleton contribution registry. */
 export const contributionRegistry = new PluginContributionRegistry()
 
 type RunPluginScheduledJobArgs =
@@ -216,7 +218,7 @@ export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs):
 
   const deps = getScheduledJobDeps(args)
 
-  await getEnabledContextsForPlugin(pluginId).reduce(async (chain, contextId) => {
+  await getScheduledJobContextIds(pluginId, contributions.manifest).reduce(async (chain, contextId) => {
     await chain
     try {
       const eligibility = getPluginContextEligibility(pluginId, contextId)
@@ -225,12 +227,15 @@ export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs):
         return
       }
 
-      if (pluginNeedsTaskProvider(contributions.manifest) && deps.resolveTaskProvider(contextId) === null) {
+      const provider = manifestUsesTaskProviderFacade(contributions.manifest)
+        ? await deps.resolveTaskProvider(contextId)
+        : undefined
+      if (provider === null) {
         log.warn({ pluginId, jobName, contextId }, 'Plugin job skipping context with unresolved task provider')
         return
       }
 
-      await job.execute(contextId)
+      await job.execute(buildPluginScheduledJobRuntimeContext(pluginId, contextId, contributions.manifest, provider))
     } catch (error) {
       log.error(
         { pluginId, jobName, contextId, error: error instanceof Error ? error.message : String(error) },
@@ -240,10 +245,6 @@ export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs):
   }, Promise.resolve())
 }
 
-/**
- * Build a ToolSet from the active plugin contributions for a given set of active plugin IDs.
- * Collisions with built-in tool names or other plugin tools are rejected with a warning.
- */
 export function buildPluginToolSet(
   activePluginIds: string[],
   existingToolNames: ReadonlySet<string>,
@@ -260,13 +261,19 @@ export function buildPluginToolSet(
       const namespacedName = namespacedToolName(pluginId, pluginTool.name)
 
       if (usedNames.has(namespacedName)) {
+        const message = `Tool contribution '${namespacedName}' skipped because the name already exists`
+        const collisionKey = `${pluginId}:${namespacedName}`
         log.warn({ pluginId, toolName: namespacedName }, 'Plugin tool name collision — skipping')
+        if (!recordedToolCollisionEvents.has(collisionKey)) {
+          recordedToolCollisionEvents.add(collisionKey)
+          recordRuntimeEvent(pluginId, 'skipped', message)
+        }
         continue
       }
 
       usedNames.add(namespacedName)
 
-      const schema = getInputSchema(pluginTool)
+      const schema = getPluginToolInputSchema(pluginTool)
       const wrappedExecute = wrapToolExecution((input, options) => {
         return pluginTool.execute(
           input,

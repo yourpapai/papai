@@ -147,6 +147,9 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
         retryAfterSec: overrides.retryAfterSec,
       }),
     },
+    adminConfig: {
+      get: () => undefined,
+    },
     attachments: overrides.attachments ?? createMockAttachments().facade,
   }
 }

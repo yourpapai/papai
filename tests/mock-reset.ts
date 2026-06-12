@@ -11,7 +11,7 @@
  * Individual test files override in their own describe-level beforeEach.
  *
  * Order per test:
- *   global beforeEach (restore originals) -> file beforeEach (apply mocks) -> test -> global afterEach (restore spies)
+ *   global beforeEach (restore originals) -> file beforeEach (apply mocks) -> test -> global afterEach (restore spies/originals)
  */
 
 import { afterEach, beforeEach, mock } from 'bun:test'
@@ -19,6 +19,7 @@ import { afterEach, beforeEach, mock } from 'bun:test'
 import * as _openaiCompat from '@ai-sdk/openai-compatible'
 import * as _ai from 'ai'
 
+import * as _provision from '../plugins/task-provider-kaneo/provision.js'
 // Additional modules mocked by tests/index.test.ts (graceful shutdown tests).
 // Bun's mock.module() is process-wide, so any module mocked there leaks into
 // subsequent test files. Capturing originals here lets the global beforeEach
@@ -41,13 +42,19 @@ import { resetDrizzleDbForTesting } from '../src/db/drizzle.js'
 import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
 import * as _chatRouterRuntime from '../src/debug/chat-router-runtime.js'
+import * as _debugServer from '../src/debug/server.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
 import * as _identityMapping from '../src/identity/mapping.js'
 import * as _instancesBootstrap from '../src/instances/bootstrap.js'
 import * as _platformStore from '../src/instances/platform-store.js'
 import * as _taskStore from '../src/instances/task-store.js'
+import * as _llmModelBuilder from '../src/llm-model-builder.js'
 import * as _logger from '../src/logger.js'
+import * as _mcpIndex from '../src/mcp/index.js'
+import * as _mcpPluginEndpoints from '../src/mcp/plugin-endpoints.js'
+import * as _mcpToolAdapter from '../src/mcp/tool-adapter.js'
+import * as _mcpUserEndpoints from '../src/mcp/user-endpoints.js'
 import * as _memos from '../src/memos.js'
 import * as _messageCache from '../src/message-cache/cache.js'
 import * as _messageCacheIndex from '../src/message-cache/index.js'
@@ -55,7 +62,7 @@ import * as _messageQueueIndex from '../src/message-queue/index.js'
 import * as _pluginDiscovery from '../src/plugins/discovery.js'
 import * as _pluginLoader from '../src/plugins/loader.js'
 import * as _pluginRegistry from '../src/plugins/registry.js'
-import * as _provision from '../src/providers/kaneo/provision.js'
+import * as _pluginStartupGuard from '../src/plugins/startup-guard.js'
 import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
@@ -68,10 +75,11 @@ import * as _users from '../src/users.js'
 const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/logger.js', { ..._logger }],
   ['../src/message-cache/cache.js', { ..._messageCache }],
-  ['../src/providers/kaneo/provision.js', { ..._provision }],
+  ['../plugins/task-provider-kaneo/provision.js', { ..._provision }],
   ['../src/chat/interaction-router.js', { ..._interactionRouter }],
   ['ai', { ..._ai }],
   ['@ai-sdk/openai-compatible', { ..._openaiCompat }],
+  ['../src/llm-model-builder.js', { ..._llmModelBuilder }],
   ['../src/announcements.js', { ..._announcements }],
   ['../src/attachments/index.js', { ..._attachmentsIndex }],
   ['../src/attachments/staged-download.js', { ..._stagedDownload }],
@@ -85,6 +93,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/db/drizzle.js', { ..._dbDrizzle }],
   ['../src/db/index.js', { ..._dbIndex }],
   ['../src/debug/chat-router-runtime.js', { ..._chatRouterRuntime }],
+  ['../src/debug/server.js', { ..._debugServer }],
   ['../src/deferred-prompts/scheduled.js', { ..._scheduledPrompts }],
   ['../src/deferred-prompts/poller.js', { ..._poller }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
@@ -94,9 +103,14 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/memos.js', { ..._memos }],
   ['../src/message-cache/index.js', { ..._messageCacheIndex }],
   ['../src/message-queue/index.js', { ..._messageQueueIndex }],
+  ['../src/mcp/index.js', { ..._mcpIndex }],
+  ['../src/mcp/plugin-endpoints.js', { ..._mcpPluginEndpoints }],
+  ['../src/mcp/tool-adapter.js', { ..._mcpToolAdapter }],
+  ['../src/mcp/user-endpoints.js', { ..._mcpUserEndpoints }],
   ['../src/plugins/discovery.js', { ..._pluginDiscovery }],
   ['../src/plugins/loader.js', { ..._pluginLoader }],
   ['../src/plugins/registry.js', { ..._pluginRegistry }],
+  ['../src/plugins/startup-guard.js', { ..._pluginStartupGuard }],
   ['../src/providers/resolver.js', { ..._taskProviderResolver }],
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],
@@ -107,19 +121,24 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/users.js', { ..._users }],
 ]
 
+const restoreOriginalModules = (): void => {
+  for (const [path, exports] of originals) {
+    void mock.module(path, () => ({ ...exports }))
+  }
+}
+
 beforeEach(() => {
   resetDrizzleDbForTesting()
   setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
   process.env['S3_BUCKET'] = 'test-bucket'
   process.env['S3_ACCESS_KEY_ID'] = 'test-key'
   process.env['S3_SECRET_ACCESS_KEY'] = 'test-secret'
-  for (const [path, exports] of originals) {
-    void mock.module(path, () => ({ ...exports }))
-  }
+  restoreOriginalModules()
 })
 
 afterEach(() => {
   mock.restore()
+  restoreOriginalModules()
   delete process.env['S3_BUCKET']
   delete process.env['S3_ACCESS_KEY_ID']
   delete process.env['S3_SECRET_ACCESS_KEY']

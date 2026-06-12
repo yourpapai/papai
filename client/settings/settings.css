@@ -1,0 +1,139 @@
+/* SPDX-License-Identifier: BUSL-1.1 */
+/* Copyright (c) 2026 Dmitriy Lazarev */
+/* Use of this software is governed by the Business Source License 1.1. */
+/* See LICENSE in the project root for details. */
+
+/* ---- layout shell ---- */
+.settings-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+}
+.settings-grid__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-group);
+  padding: var(--gap-section) var(--gap-section) 96px;
+  min-width: 0;
+}
+
+/* group = Personal / Integrations / Admin */
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-section);
+  max-width: var(--content-max);
+}
+.settings-group--wide {
+  max-width: var(--table-max);
+}
+
+.settings-section {
+  scroll-margin-top: 96px;
+  color: var(--text);
+}
+
+/* forms */
+.settings-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-inline);
+  align-items: end;
+  margin-bottom: var(--gap-field);
+}
+.settings-table-wrap {
+  overflow-x: auto;
+}
+
+/* ---- type scale (utility classes; composite of size+weight+case) ---- */
+.t-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+.t-section {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+.t-subhead {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.t-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.t-body {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+}
+.t-help {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+.t-mono-data {
+  font-size: 13px;
+  font-weight: 400;
+  font-family: var(--font-mono);
+}
+
+/* ---- status text ---- */
+.status-error {
+  color: var(--danger);
+}
+.status-success {
+  color: var(--success);
+}
+.placeholder {
+  color: var(--text-muted);
+}
+
+.settings-gate {
+  font-family: var(--font-mono);
+  max-width: 540px;
+  margin: 4rem auto;
+  padding: 1rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* ---- shared focus ring ---- */
+.settings-grid :focus-visible {
+  outline: 2px solid rgba(82, 224, 138, 0.4);
+  outline-offset: 1px;
+}
+
+@media (max-width: 720px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- admin danger zone ---- */
+.settings-admin-zone {
+  position: relative;
+  padding-top: var(--gap-section);
+  border-top: 1px solid var(--danger);
+}
+.settings-admin-zone::before {
+  content: 'ADMIN';
+  position: absolute;
+  top: -10px;
+  left: 0;
+  background: var(--bg);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 0 8px;
+}

@@ -10,6 +10,7 @@ import type {
   ApplyInstancesResult,
   InstanceConfigView,
   PlatformInstanceView,
+  PlatformProviderTypeView,
   TaskInstanceView,
   TaskProviderTypeView,
 } from '../shared/api-types.js'
@@ -17,10 +18,22 @@ import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
   AdminInstanceViewSchema,
   ApplyInstancesResultSchema,
+  PlatformInstanceListResponseSchema,
   PlatformInstanceViewSchema,
+  PlatformProviderTypeViewSchema,
+  TaskInstanceListResponseSchema,
   TaskInstanceViewSchema,
   TaskProviderTypeViewSchema,
 } from './fetcher-schemas.js'
+
+const hasInstances = <T>(
+  result: readonly T[] | { readonly instances: readonly T[] },
+): result is { readonly instances: readonly T[] } => !Array.isArray(result)
+
+const unpackListResponse = <T>(result: readonly T[] | { readonly instances: readonly T[] }): T[] => {
+  if (hasInstances(result)) return [...result.instances]
+  return [...result]
+}
 
 export type CreatePlatformInstanceInput = {
   readonly id: string
@@ -54,7 +67,14 @@ export const fetchPlatformInstances = async (): Promise<PlatformInstanceView[]> 
   const res = await fetch('/api/platform-instances')
   const body = await readBody(res)
   requireOk(res, body)
-  return z.array(PlatformInstanceViewSchema).parse(body)
+  return unpackListResponse(PlatformInstanceListResponseSchema.parse(body))
+}
+
+export const fetchPlatformProviderTypes = async (): Promise<PlatformProviderTypeView[]> => {
+  const res = await fetch('/api/platform-provider-types')
+  const body = await readBody(res)
+  requireOk(res, body)
+  return z.array(PlatformProviderTypeViewSchema).parse(body)
 }
 
 export const createPlatformInstance = async (input: CreatePlatformInstanceInput): Promise<PlatformInstanceView> => {
@@ -124,7 +144,7 @@ export const fetchTaskInstances = async (): Promise<TaskInstanceView[]> => {
   const res = await fetch('/api/task-instances')
   const body = await readBody(res)
   requireOk(res, body)
-  return z.array(TaskInstanceViewSchema).parse(body)
+  return unpackListResponse(TaskInstanceListResponseSchema.parse(body))
 }
 
 export const createTaskInstance = async (input: CreateTaskInstanceInput): Promise<TaskInstanceView> => {

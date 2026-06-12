@@ -1,0 +1,89 @@
+<!-- SPDX-License-Identifier: BUSL-1.1 -->
+<!-- Copyright (c) 2026 Dmitriy Lazarev -->
+<!-- Use of this software is governed by the Business Source License 1.1. -->
+<!-- See LICENSE in the project root for details. -->
+
+<script lang="ts">
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Input from '../../shared/ui/Input.svelte'
+  import Confirm from '../../shared/Confirm.svelte'
+  import { maskSecret } from '../lib/mask-secret.js'
+
+  interface Props {
+    keyName: string
+    value: string | null
+    sensitive: boolean
+    onSave: (value: string) => Promise<boolean>
+  }
+  let { keyName, value, sensitive, onSave }: Props = $props()
+
+  let editing = $state(false)
+  let draft = $state('')
+  let confirming = $state(false)
+
+  const display = $derived(value === null ? null : sensitive ? maskSecret(value) : value)
+
+  function start(): void { editing = true; draft = sensitive ? '' : (value ?? '') }
+  function cancel(): void { editing = false; draft = '' }
+  async function save(): Promise<void> {
+    if (draft.trim() === '') return
+    const ok = await onSave(draft)
+    if (ok) {
+      editing = false
+      draft = ''
+    }
+  }
+  function requestSave(): void {
+    if (draft.trim() === '') return
+    if (sensitive) { confirming = true; return }
+    void save()
+  }
+</script>
+
+<tr class="kv-row" data-testid={`system-row-${keyName}`}>
+  <td class="kv-row__key t-mono-data">{keyName}</td>
+  <td class="kv-row__val">
+    {#if editing}
+      <Input
+        type={sensitive ? 'password' : 'text'}
+        value={draft}
+        placeholder="enter a new value"
+        onInput={(v) => (draft = v)}
+        testid={`system-input-${keyName}`} />
+    {:else if display === null}
+      <span class="placeholder">unset</span>
+    {:else}
+      <span class="t-mono-data">{display}</span>
+    {/if}
+  </td>
+  <td class="kv-row__action">
+    {#if editing}
+      <Btn variant="primary" size="sm" testid={`system-save-${keyName}`} onClick={requestSave}>
+        {#snippet children()}Save{/snippet}
+      </Btn>
+      <Btn variant="secondary" size="sm" testid={`system-cancel-${keyName}`} onClick={cancel}>
+        {#snippet children()}Cancel{/snippet}
+      </Btn>
+    {:else}
+      <Btn variant="secondary" size="sm" testid={`system-edit-${keyName}`} onClick={start}>
+        {#snippet children()}Edit{/snippet}
+      </Btn>
+    {/if}
+  </td>
+</tr>
+<Confirm
+  open={confirming}
+  title="Change secret key"
+  danger
+  confirmLabel="Save secret"
+  onCancel={() => (confirming = false)}
+  onConfirm={() => { confirming = false; void save() }}>
+  {#snippet body()}<p>Update <code>{keyName}</code>? The new secret takes effect immediately.</p>{/snippet}
+</Confirm>
+
+<style>
+  .kv-row__key { color: var(--text-muted); padding: 8px 12px; white-space: nowrap; vertical-align: middle; }
+  .kv-row__val { padding: 8px 12px; vertical-align: middle; }
+  .kv-row__action { padding: 8px 12px; white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; }
+  .kv-row { border-bottom: 1px solid var(--border); }
+</style>

@@ -9,26 +9,29 @@ import { getCachedHistory } from '../cache.js'
 import { getConfig } from '../config.js'
 import { buildMessagesWithMemory } from '../conversation.js'
 import type { TaskProvider } from '../providers/types.js'
-import { makeTools } from '../tools/index.js'
-import { routeToolsForMessage } from '../tools/tool-router.js'
+import { applyToolPreferences, buildProviderlessToolDescriptors, makeTools } from '../tools/index.js'
 import { buildMetadataMessages, timezoneOrUtc } from './proactive-llm-helpers.js'
 import { buildProactiveTrigger } from './proactive-trigger.js'
 import type { ExecutionMetadata } from './types.js'
 
-export function buildFullToolSet(
-  provider: TaskProvider,
+export async function buildFullToolSet(
+  provider: TaskProvider | null,
   createdByUserId: string,
   storageContextId: string,
   contextType: 'dm' | 'group',
-  prompt: string,
-): { tools: ToolSet; enabledToolNames: ReadonlySet<string> } {
-  const fullTools = makeTools(provider, {
+  _prompt: string,
+): Promise<{ tools: ToolSet; enabledToolNames: ReadonlySet<string> }> {
+  const options = {
     storageContextId,
     chatUserId: createdByUserId,
-    mode: 'proactive',
+    mode: 'proactive' as const,
     contextType,
-  })
-  return { tools: routeToolsForMessage(prompt, fullTools).tools, enabledToolNames: new Set(Object.keys(fullTools)) }
+  }
+  const fullTools =
+    provider === null
+      ? applyToolPreferences(await buildProviderlessToolDescriptors(options), storageContextId, undefined)
+      : await makeTools(provider, options)
+  return { tools: fullTools, enabledToolNames: new Set(Object.keys(fullTools)) }
 }
 
 export function buildFullMessages(
@@ -38,11 +41,12 @@ export function buildFullMessages(
   prompt: string,
   matchedTasksSummary: string | undefined,
   metadata: ExecutionMetadata,
+  contextType: 'dm' | 'group' = 'dm',
 ): { messages: ModelMessage[]; systemPrompt: string } {
   const timezone = timezoneOrUtc(getConfig(createdByUserId, 'timezone'))
   const trigger = buildProactiveTrigger(type, prompt, timezone, matchedTasksSummary)
   const history = getCachedHistory(storageContextId)
-  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history)
+  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history, contextType)
   return {
     messages: [
       ...messagesWithMemory,

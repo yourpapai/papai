@@ -10,10 +10,10 @@ import { z } from 'zod'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import {
-  isKaneoProvider,
   listTaskLabels,
   listVisibleWorkspaceLabels,
   listWorkspaceLabels,
+  usesSeparateLabelReadApi,
 } from './kaneo-label-helpers.js'
 
 const log = logger.child({ scope: 'tool:add-task-label' })
@@ -117,7 +117,7 @@ export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[
     inputSchema: labelTargetSchema,
     execute: async ({ taskId, labelId, labelName }) => {
       try {
-        if (isKaneoProvider(provider)) {
+        if (usesSeparateLabelReadApi(provider)) {
           const existing = await resolveKaneoAlreadyPresent(provider, taskId, labelId, labelName)
           if (existing !== null) return existing
         }

@@ -7,13 +7,12 @@ import { describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { makeRemoveTaskLabelTool } from '../../src/tools/remove-task-label.js'
-import { createMockProvider } from './mock-provider.js'
+import { createMockKaneoProvider } from './mock-provider.js'
 
 describe('makeRemoveTaskLabelTool direct', () => {
   test('returns already_absent for Kaneo when task does not currently have label by visible name', async () => {
     const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
-    const provider = createMockProvider({
-      name: 'kaneo',
+    const provider = createMockKaneoProvider({
       listTaskLabels: mock(() => Promise.resolve([])),
       removeTaskLabel,
     })
@@ -36,8 +35,7 @@ describe('makeRemoveTaskLabelTool direct', () => {
 
   test('returns already_absent for Kaneo when task does not currently have label by id', async () => {
     const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
-    const provider = createMockProvider({
-      name: 'kaneo',
+    const provider = createMockKaneoProvider({
       listTaskLabels: mock(() => Promise.resolve([])),
       removeTaskLabel,
     })

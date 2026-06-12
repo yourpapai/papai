@@ -17,6 +17,7 @@ interface RenderConfirmOptions {
   onConfirm: (() => void) | undefined
   cancelLabel: string | undefined
   confirmLabel: string | undefined
+  danger?: boolean
 }
 
 function textSnippet(text: string): Snippet {
@@ -25,8 +26,8 @@ function textSnippet(text: string): Snippet {
   }))
 }
 
-function findButtonByText(target: HTMLElement, text: string): HTMLButtonElement | null {
-  const button = [...target.querySelectorAll('button')].find((node) => {
+function findBtnByText(target: HTMLElement, text: string): HTMLButtonElement | null {
+  const button = [...target.querySelectorAll<HTMLButtonElement>('.ui-btn')].find((node) => {
     const content = node.textContent
     if (content === null) return false
     return content.trim() === text
@@ -95,6 +96,7 @@ function renderConfirm(optionsInput: RenderConfirmOptions | undefined): {
       onConfirm,
       cancelLabel: options.cancelLabel,
       confirmLabel: options.confirmLabel,
+      danger: options.danger,
       body: textSnippet('Confirm Body'),
     },
   })
@@ -106,8 +108,8 @@ describe('Confirm.svelte', () => {
     const { target, component } = renderConfirm(defaultRenderConfirmOptions())
 
     expect(target.querySelector('.modal-content.modal--sm')).not.toBeNull()
-    expect(findButtonByText(target, 'Cancel')).not.toBeNull()
-    expect(findButtonByText(target, 'Confirm')).not.toBeNull()
+    expect(findBtnByText(target, 'Cancel')).not.toBeNull()
+    expect(findBtnByText(target, 'Confirm')).not.toBeNull()
     expect(target.textContent).toContain('Confirm Body')
     void unmount(component)
   })
@@ -125,7 +127,7 @@ describe('Confirm.svelte', () => {
       },
     })
 
-    const cancelButton = findButtonByText(target, 'Cancel')
+    const cancelButton = findBtnByText(target, 'Cancel')
     expect(cancelButton).not.toBeNull()
     cancelButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 
@@ -147,7 +149,7 @@ describe('Confirm.svelte', () => {
       },
     })
 
-    const confirmButton = findButtonByText(target, 'Confirm')
+    const confirmButton = findBtnByText(target, 'Confirm')
     expect(confirmButton).not.toBeNull()
     confirmButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 
@@ -170,6 +172,19 @@ describe('Confirm.svelte', () => {
     backdrop!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 
     expect(cancelled).toBe(1)
+    void unmount(component)
+  })
+
+  test('with danger prop, the confirm button has class ui-btn--danger', () => {
+    const { target, component } = renderConfirm({
+      ...defaultRenderConfirmOptions(),
+      danger: true,
+      confirmLabel: 'Delete',
+    })
+
+    const confirmButton = findBtnByText(target, 'Delete')
+    expect(confirmButton).not.toBeNull()
+    expect(confirmButton!.classList.contains('ui-btn--danger')).toBe(true)
     void unmount(component)
   })
 })

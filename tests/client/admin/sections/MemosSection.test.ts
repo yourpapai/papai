@@ -34,6 +34,13 @@ const responseFor = (responses: ReadonlyMap<string, Response>, url: string): Pro
 }
 
 describe('MemosSection', () => {
+  test('renders kit controls: Input for user id, Btn for load', () => {
+    const { target, component } = render()
+    expect(target.querySelector('[data-testid="memos-user-id"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="memos-load"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
   test('loads memos for a user and selected state', async () => {
     const calls: string[] = []
     const responses = new Map<string, Response>([
@@ -73,16 +80,17 @@ describe('MemosSection', () => {
     expect(calls).toEqual(['/memos?userId=user-1&state=active'])
     expect(target.textContent).toContain('remember billing')
     expect(target.textContent).toContain('ops')
+    expect(target.querySelector('.ui-pill')).not.toBeNull()
 
     void unmount(component)
   })
 
   test('only offers supported memo states', () => {
     const { target, component } = render()
-    const stateSelect = target.querySelector<HTMLSelectElement>('[data-testid="memos-state"]')
-    expect(stateSelect).not.toBeNull()
+    const segBtns = target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn')
+    expect(segBtns.length).toBeGreaterThan(0)
 
-    const optionValues = Array.from(stateSelect!.querySelectorAll('option')).map((option) => option.value)
+    const optionValues = Array.from(segBtns).map((btn) => btn.textContent?.trim())
 
     expect(optionValues).toEqual(['active', 'archived'])
 
@@ -95,11 +103,13 @@ describe('MemosSection', () => {
 
     const { target, component } = render()
     const userInput = target.querySelector<HTMLInputElement>('[data-testid="memos-user-id"]')
-    const stateSelect = target.querySelector<HTMLSelectElement>('[data-testid="memos-state"]')
+    const archivedBtn = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn')).find(
+      (btn) => btn.textContent === 'archived',
+    )
+    expect(archivedBtn).not.toBeUndefined()
     userInput!.value = 'user-2'
     userInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    stateSelect!.value = 'archived'
-    stateSelect!.dispatchEvent(new Event('change', { bubbles: true }))
+    archivedBtn!.click()
     flushSync()
 
     target.querySelector<HTMLButtonElement>('[data-testid="memos-load"]')!.click()

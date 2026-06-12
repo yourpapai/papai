@@ -4,7 +4,7 @@
   <img src="docs/assets/logo.png" alt="PAPAI logo" width="600">
 </p>
 
-<p align="center">Natural language task management for Telegram, Mattermost, and Discord</p>
+<p align="center">Natural language task management for Telegram, Mattermost, Discord, and Kontur Talk</p>
 
 <p align="center">
   <a href="https://github.com/yourpapai/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
@@ -38,9 +38,9 @@
 
 ## Overview
 
-Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, or Discord, connect it to Kaneo or YouTrack, and manage work through conversational task operations. Platform and task-provider instances are stored in SQLite after first bootstrap, so one deployment can manage multiple configured chat and task-provider instances.
+Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, Discord, or Kontur Talk, connect it to Kaneo or YouTrack, and manage work through conversational task operations. Platform and task-provider instances are stored in SQLite after first bootstrap, so one deployment can manage multiple configured chat and task-provider instances.
 
-The bot interprets natural-language requests, invokes capability-gated tools through LLM tool-calling, and replies with task details, updates, summaries, and search results. Personal settings remain user-scoped, while DM `/setup` and `/config` can also target shared group settings for groups the user manages. Conversation history, memory, and memo storage are isolated by storage context. Telegram forum topics and Mattermost threads get separate thread-scoped context; Discord currently does not.
+The bot interprets natural-language requests, invokes capability-gated tools through LLM tool-calling, and replies with task details, updates, summaries, and search results. Personal and group settings are managed in the settings web UI launched via `/config` (requires `SETTINGS_PUBLIC_BASE_URL`). Conversation history, memory, and memo storage are isolated by storage context. Telegram forum topics and Mattermost threads get separate thread-scoped context; Discord currently does not.
 
 ---
 
@@ -65,15 +65,18 @@ The bot interprets natural-language requests, invokes capability-gated tools thr
 | **Recurring Tasks**  | Template schedules                              | Reusable recurring task automation                                   |
 | **Deferred Prompts** | One-shot, delayed, cron                         | Scheduled proactive assistance                                       |
 | **Instructions**     | Context-specific guidance                       | Per-chat custom instructions                                         |
+| **AI Output**        | Show tool calls / reasoning; sanitized or raw   | Per-context control of the execution detail the bot posts to chat    |
 | **Plugins**          | Trusted local extensions                        | Discover, approve, and enable first-party plugins per context        |
+| **MCP Servers**      | External tools via Model Context Protocol       | Merge tools from per-context or plugin-declared MCP servers          |
 
 ### Platform Support
 
-| Platform       | Group Message Model                | Threads                                                                  | Command Menu | Buttons      | File Receive | File Replies | Notes                                                                                      |
-| -------------- | ---------------------------------- | ------------------------------------------------------------------------ | ------------ | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------------------ |
-| **Telegram**   | Sees group messages directly       | Forum topics supported and can create a topic on mention in forum groups | Yes          | Yes          | Yes          | Yes          | Best support for bot command menus and forum-topic flows                                   |
-| **Mattermost** | Sees group messages directly       | Thread/root-post aware                                                   | No           | No callbacks | Yes          | Yes          | Username resolution supported                                                              |
-| **Discord**    | DMs plus guild-channel `@mentions` | No separate thread-scoped support today                                  | No           | Yes          | No           | No           | Uses embeds for rich `/context` output; requires Message Content intent for content access |
+| Platform        | Group Message Model                                                   | Threads                                                                  | Command Menu | Buttons      | File Receive | File Replies | Notes                                                                                      |
+| --------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------ | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------------------ |
+| **Telegram**    | Sees group messages directly                                          | Forum topics supported and can create a topic on mention in forum groups | Yes          | Yes          | Yes          | Yes          | Best support for bot command menus and forum-topic flows                                   |
+| **Mattermost**  | Sees group messages directly                                          | Thread/root-post aware                                                   | No           | No callbacks | Yes          | Yes          | Username resolution supported                                                              |
+| **Discord**     | DMs, guild-channel `@mentions`, and replies to the bot's own messages | No separate thread-scoped support today                                  | No           | Yes          | No           | No           | Uses embeds for rich `/context` output; requires Message Content intent for content access |
+| **Kontur Talk** | Sees group messages directly                                          | Message-scoped threads supported                                         | No           | No           | No           | No           | JWT-authenticated; reply-context aware; minimal interaction surface                        |
 
 ### Task Provider Support
 
@@ -91,7 +94,7 @@ YouTrack task creation can require workflow-specific custom fields. Papai expose
 ### Prerequisites
 
 - [Bun](https://bun.sh) 1.3+
-- One supported chat platform: Telegram, Mattermost, or Discord
+- One supported chat platform: Telegram, Mattermost, Discord, or Kontur Talk
 - One supported task provider: Kaneo or YouTrack
 - OpenAI-compatible API credentials for your chosen model provider
 
@@ -110,9 +113,8 @@ Edit `.env`:
 # Required for all setups
 ADMIN_USER_ID=123456789         # Your platform user ID
 
-# First-run instance bootstrap. Used only when instance tables are empty.
-CHAT_PROVIDER=telegram          # or: mattermost, discord
-TASK_PROVIDER=kaneo             # or: youtrack
+# First-run platform-instance bootstrap. Used only when the platform instance table is empty.
+CHAT_PROVIDER=telegram          # or: mattermost, discord, kontur-talk
 # INSTANCE_CONFIG_KEY=64_hex_chars_for_production_config_encryption
 
 # Central LLM credentials (seeded once into system_config on first start)
@@ -124,10 +126,12 @@ MAIN_MODEL=gpt-4o-mini
 
 # Platform-specific
 TELEGRAM_BOT_TOKEN=your_token_here
-
-# Provider-specific
-KANEO_CLIENT_URL=https://kaneo.example.com
 ```
+
+> Task providers are no longer env-bootstrapped. After the bot starts, create a task
+> instance via `/admin#instances`, then approve its plugin (`task-provider-kaneo` or
+> `task-provider-youtrack`) in the settings web UI admin area (Plugins approval, super admin). The provider base URL is an
+> instance config field set in `/admin#instances`, not an env var.
 
 Start the bot:
 
@@ -135,17 +139,16 @@ Start the bot:
 bun start
 ```
 
-Then configure runtime settings in chat:
+Then configure runtime settings:
 
-1. DM the bot and run `/setup`
-2. Complete the wizard for personal settings (task provider credentials, timezone)
-3. Use `/config` later to review or edit settings
-
-For groups, run `/setup` or `/config` in DM and choose either personal settings or one of the groups you manage.
+1. Ensure `SETTINGS_PUBLIC_BASE_URL` is set to the bot's public base URL (e.g. `https://bot.example.com`)
+2. DM the bot and run `/config` to receive a single-use link to the settings web UI
+3. In the web UI Task provider section, bind the context to an active task instance, then enter its credentials (the credential fields appear only after a task instance is bound) and set your timezone
+4. For group settings, open `/config` in DM and select the group context in the web UI
 
 > LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#system` without restarting the bot.
 
-> `CHAT_PROVIDER` and `TASK_PROVIDER` seed the first platform/task instances only when the instance tables are empty. After bootstrap, platform instances, task instances, and admins are managed from SQLite and the admin Instances surface (`/admin#instances`).
+> `CHAT_PROVIDER` seeds the first platform instance only when the platform instance table is empty. Task instances are never env-bootstrapped — create them via `/admin#instances` and approve the relevant task-provider plugin. After bootstrap, platform instances, task instances, and admins are managed from SQLite and the admin Instances surface (`/admin#instances`).
 
 ---
 
@@ -158,9 +161,9 @@ flowchart TD
     Router --> CP1[Telegram Instance]
     Router --> CP2[Mattermost Instance]
     Router --> CP3[Discord Instance]
-    User[User<br>Telegram / Mattermost / Discord] -->|Message or interaction| Router
+    Router --> CP4[Kontur Talk Instance]
+    User[User<br>Telegram / Mattermost / Discord / Kontur Talk] -->|Message or interaction| Router
     Router -->|IncomingMessage / IncomingInteraction + platformInstanceId| Bot[bot.ts]
-    Bot -->|intercepts setup/config/group-selector flows| Intercept[Wizard + Config Editor + Group Settings]
     Bot -->|queued prompt + reply context + attachment ids| Queue[Message Queue + Attachment Workspace]
     Queue --> LLM[LLM Orchestrator]
     LLM --> Tools[Capability-gated Tool Registry]
@@ -173,22 +176,23 @@ flowchart TD
 
 ### Component Overview
 
-| Path                                               | Responsibility                                                                             |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring           |
-| `src/bot.ts`                                       | Platform-agnostic message handling, interception, queueing, and interaction routing        |
-| `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata and the `ChatRouter`   |
-| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                             |
-| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                              |
-| `src/providers/`                                   | Kaneo and YouTrack provider adapters                                                       |
-| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap         |
-| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                      |
-| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver |
-| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                |
-| `src/group-settings/`                              | DM-driven selection of personal vs group configuration targets                             |
-| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`           |
-| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV       |
-| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                           |
+| Path                                               | Responsibility                                                                                        |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring                      |
+| `src/bot.ts`                                       | Platform-agnostic message handling, queueing, and interaction routing                                 |
+| `src/chat/`                                        | Telegram, Mattermost, Discord, and Kontur Talk adapters plus capability metadata and the `ChatRouter` |
+| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                                        |
+| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                                         |
+| `src/providers/`                                   | Shared normalized provider types/utilities; Kaneo and YouTrack ship as first-party plugins            |
+| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap                    |
+| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                                 |
+| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver            |
+| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                           |
+| `src/group-settings/`                              | Admin group-context listing, scope filtering, and group observations for the settings web UI          |
+| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`                      |
+| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV                  |
+| `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints            |
+| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                                      |
 
 ---
 
@@ -199,12 +203,12 @@ flowchart TD
 <details>
 <summary><b>Startup And Bootstrap Variables</b> (click to expand)</summary>
 
-| Variable              | When required                    | Description                                                                                     | Example                                            |
-| --------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `ADMIN_USER_ID`       | Always                           | Initial authorized admin identity                                                               | Platform user ID string seen by the active adapter |
-| `CHAT_PROVIDER`       | First run with empty instance DB | Platform bootstrap source                                                                       | `telegram`, `mattermost`, or `discord`             |
-| `TASK_PROVIDER`       | First run with empty instance DB | Task-provider bootstrap source                                                                  | `kaneo` or `youtrack`                              |
-| `INSTANCE_CONFIG_KEY` | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset | 64 hex chars                                       |
+| Variable                   | When required                    | Description                                                                                                                                                      | Example                                               |
+| -------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `ADMIN_USER_ID`            | Always                           | Initial authorized admin identity                                                                                                                                | Platform user ID string seen by the active adapter    |
+| `CHAT_PROVIDER`            | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                                                                                              | `telegram`, `mattermost`, `discord`, or `kontur-talk` |
+| `SETTINGS_PUBLIC_BASE_URL` | For the settings web UI          | External base URL used to build single-use `/config` settings links; `/config` errors without it (the settings cookie is marked `Secure` only on HTTPS requests) | `https://bot.example.com`                             |
+| `INSTANCE_CONFIG_KEY`      | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset                                                                  | 64 hex chars                                          |
 
 </details>
 
@@ -236,6 +240,8 @@ To find your Telegram numeric user ID, message [@userinfobot](https://t.me/useri
 
 For Mattermost and Discord, use the platform user ID string the bot receives, not a display name or `@username`.
 
+Authorized users added later through the settings UI admin area can be entered as `@username`: if the platform cannot resolve it to an ID (the Telegram Bot API cannot look up user accounts by username), the bot stores a pending entry and authorizes the user automatically the first time they message it.
+
 </details>
 
 <details>
@@ -260,37 +266,55 @@ Discord support uses gateway intents including `MessageContent`. Enable the **Me
 </details>
 
 <details>
+<summary><b>Kontur Talk Configuration</b></summary>
+
+| Variable                | Description                                          |
+| ----------------------- | ---------------------------------------------------- |
+| `KONTUR_TALK_JWT_TOKEN` | JWT used to authenticate the bot against Kontur Talk |
+
+Kontur Talk observes group messages directly and supports message-scoped threads. Its interaction surface is minimal: no command menu, buttons, or file transfer — only reply-context-aware messaging. `ADMIN_USER_ID` must match the Kontur Talk platform user ID string the bot receives.
+
+</details>
+
+<details>
 <summary><b>Kaneo Configuration</b></summary>
 
-| Variable             | Description                                        |
-| -------------------- | -------------------------------------------------- |
-| `KANEO_CLIENT_URL`   | Public Kaneo client URL                            |
-| `KANEO_INTERNAL_URL` | Optional internal API URL for bot-to-Kaneo traffic |
+Papai no longer reads Kaneo URLs from the environment. The Kaneo client URL is now a task-instance
+config field: create the task instance in `/admin#instances`, then approve `task-provider-kaneo` in the
+settings web UI admin area (Plugins approval).
+Per-user credentials (`plugin:task-provider-kaneo:provider:credential`, `plugin:task-provider-kaneo:provider:workspaceId`)
+are set in the settings web UI, opened via `/config`.
 
-Kaneo can auto-provision user accounts for the bot workflow. In self-hosted deployments, `docker-compose.yml` also expects Kaneo-specific database/auth variables such as `KANEO_POSTGRES_PASSWORD` and `KANEO_AUTH_SECRET`.
+Kaneo can auto-provision user accounts for the bot workflow. In self-hosted deployments, `docker-compose.yml`
+still expects Kaneo-service variables such as `KANEO_CLIENT_URL` (consumed by the bundled Kaneo and Caddy
+services, not papai), `KANEO_POSTGRES_PASSWORD`, and `KANEO_AUTH_SECRET`.
 
 </details>
 
 <details>
 <summary><b>YouTrack Configuration</b></summary>
 
-| Variable       | Description           |
-| -------------- | --------------------- |
-| `YOUTRACK_URL` | YouTrack instance URL |
-
-Runtime setup still requires a per-user `youtrack_token`, configured through the bot.
+Papai no longer reads `YOUTRACK_URL` from the environment. The YouTrack instance URL is a task-instance
+config field: create the task instance in `/admin#instances`, then approve `task-provider-youtrack` in the
+settings web UI admin area (Plugins approval).
+Runtime setup still requires a per-user token (`plugin:task-provider-youtrack:provider:token`), set in the
+settings web UI, opened via `/config`.
 
 </details>
 
 <details>
 <summary><b>Optional Debug Server</b></summary>
 
-| Variable         | Description                                                                  |
-| ---------------- | ---------------------------------------------------------------------------- |
-| `DEBUG_SERVER`   | Set to `true` to start the local debug server                                |
-| `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)                                 |
-| `DEBUG_PORT`     | Debug server bind port (default `9100`)                                      |
-| `DEBUG_TOKEN`    | Optional bearer token for debug/admin routes; required for `POST /admin/llm` |
+| Variable                        | Description                                                                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `DEBUG_SERVER`                  | Set to `true` to start the local debug server                                                                               |
+| `DEBUG_HOSTNAME`                | Debug server bind host (default `127.0.0.1`)                                                                                |
+| `DEBUG_PORT`                    | Debug server bind port (default `9100`)                                                                                     |
+| `DASHBOARD_BASE_URL`            | Origin embedded in the sign-in link (falls back to `SETTINGS_PUBLIC_BASE_URL`, then `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`) |
+| `DASHBOARD_SESSION_TTL_SECONDS` | Session lifetime (default `28800`, i.e. 8h)                                                                                 |
+| `DASHBOARD_CLAIM_TTL_SECONDS`   | Sign-in link lifetime (default `300`, i.e. 5 min)                                                                           |
+
+`DEBUG_TOKEN` is no longer used; if set it is ignored and the bot logs a one-shot startup warning. Dashboard auth is now chat-issued.
 
 When the debug server is enabled, the local surfaces are split by audience:
 
@@ -303,9 +327,9 @@ Admin sections include:
 - **System** at `/admin#system` — environment summary plus the credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
 - **Billing** at `/admin#billing` — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows) and drill-down by request.
 - **Stats** at `/admin#stats` — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only - never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
-- **Instances** at `/admin#instances` — platform instances, task instances, and admin assignments backed by `/api/platform-instances`, `/api/task-instances`, and `/api/admins`. Instance config values are masked on read and encrypted at rest.
+- **Instances** at `/admin#instances` — platform instances, task instances, and admin assignments backed by `/api/platform-instances`, `/api/task-instances`, and `/api/admins`. Instance config values are masked on read and encrypted at rest. If a persisted instance row cannot be decrypted or decoded, list routes return readable rows plus an `unreadable` diagnostics array instead of failing the whole response.
 
-When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer token. When it is unset, read-only debug/admin routes remain available without a token. `POST /admin/llm` is the special case: it returns 401 when `DEBUG_TOKEN` is unset, so production-style deployments behind a reverse proxy keep the write surface closed by default.
+The dashboard is gated by a chat-issued session cookie rather than a static token. DM `/dashboard` to the bot to receive a single-use sign-in link (valid 5 min); clicking it sets an `HttpOnly; Secure; SameSite=Strict` session cookie (8h default). `ADMIN_USER_ID` must match the chat user who runs `/dashboard`, and for HTTPS the reverse proxy must forward `X-Forwarded-Proto: https`. Never expose the dashboard on a public interface without one of the patterns in [`docs/deployment/dashboard-access.md`](docs/deployment/dashboard-access.md).
 
 </details>
 
@@ -328,27 +352,28 @@ Required when the bot needs to receive, persist, or attach files to tasks.
 
 ### Runtime Configuration
 
-Use the bot’s DM-based configuration flow:
+Use the settings web UI to configure the bot. Launch it via `/config` in DM:
 
-| Command    | Description                                                            |
-| ---------- | ---------------------------------------------------------------------- |
-| `/setup`   | Run the guided configuration wizard                                    |
-| `/config`  | View current settings and edit fields interactively where supported    |
-| `/clear`   | Clear conversation history, summary, and facts for the current context |
-| `/context` | View the current LLM context window for this conversation              |
-| `/plugin`  | DM, bot-admin only: discover, approve, reject, and enable plugins      |
+| Command      | Description                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| `/config`    | Issues a single-use link to the settings web UI (requires `SETTINGS_PUBLIC_BASE_URL` to be set) |
+| `/clear`     | Clear conversation history, summary, and facts for the current context                          |
+| `/context`   | View the current LLM context window for this conversation                                       |
+| `/dashboard` | DM, bot-admin only: receive a sign-in link to the operator debug/admin UI                       |
 
-Runtime keys shown by `/setup` and `/config` include:
+Settings managed in the web UI include:
 
-| Key              | Description                                      |
-| ---------------- | ------------------------------------------------ |
-| `kaneo_apikey`   | Kaneo API key or session token                   |
-| `youtrack_token` | YouTrack permanent token                         |
-| `timezone`       | User timezone for local date/time interpretation |
+| Key                                               | Description                                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `plugin:task-provider-kaneo:provider:credential`  | Kaneo API key or session token (plugin-namespaced)                                               |
+| `plugin:task-provider-kaneo:provider:workspaceId` | Kaneo workspace ID (plugin-namespaced)                                                           |
+| `plugin:task-provider-youtrack:provider:token`    | YouTrack permanent token (plugin-namespaced)                                                     |
+| `timezone`                                        | User timezone for local date/time interpretation                                                 |
+| `mcp_endpoints`                                   | JSON array of external MCP server endpoints whose tools are merged into the context (HTTPS only) |
 
-LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through `/setup` or `/config`.
+LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through the user settings web UI.
 
-Platform and task-provider base configuration is instance-owned. First-run env bootstrap creates `<provider>-default` instance rows from `CHAT_PROVIDER`, `TASK_PROVIDER`, and provider-specific env vars only when the instance tables are empty. After that, manage instance lifecycle and admin assignment through `/admin#instances`; per-context credentials and preferences remain in `/setup` and `/config`.
+Platform and task-provider base configuration is instance-owned. First-run env bootstrap creates a single `<provider>-default` platform instance row from `CHAT_PROVIDER` and the platform-specific env vars only when the platform instance table is empty. Task instances are never env-bootstrapped: create them through `/admin#instances` (or the admin section of the settings web UI) and approve the matching task-provider plugin. After that, manage instance lifecycle and admin assignment through `/admin#instances`; per-context credentials and preferences are managed in the settings web UI (reached via `/config`).
 
 ---
 
@@ -388,19 +413,18 @@ Send natural-language requests to the bot.
 
 ### Group Chat
 
-Add the bot to a Telegram group, Mattermost channel, or Discord server/channel.
+Add the bot to a Telegram group, Mattermost channel, Discord server/channel, or Kontur Talk room.
 
 Typical flow:
 
 1. Add the bot to the group or channel
-2. A group admin authorizes members with `/group adduser <@username>` or an explicit user ID
-3. Group admins configure group settings from DM using `/setup` or `/config`
-4. Members interact in-group, usually by mention where the platform requires it
+2. A group admin opens the settings web UI via `/config` in DM and authorizes members and configures group settings there
+3. Members interact in-group, usually by mention where the platform requires it
 
 Important behavior:
 
-- Telegram and Mattermost can observe regular group messages; Discord group use is mention-driven.
-- Group configuration is DM-only. `/setup` and `/config` in groups redirect admins to DM.
+- Telegram and Mattermost can observe regular group messages; Discord group use is mention-driven. On Telegram and Discord, a user's reply to one of the bot's own messages in a group is treated like an `@mention` and processed without an explicit mention.
+- Group configuration is done in the settings web UI (launched via `/config` in DM).
 - Thread contexts are isolated. In Telegram forum topics and Mattermost threads, the bot stores thread-scoped history separately from the main group chat.
 - In thread-scoped group contexts, the bot can use `lookup_group_history` to search the main group discussion when needed.
 
@@ -421,19 +445,20 @@ plugins/
 
 ### Lifecycle
 
-1. **Discover** — startup scans `plugins/` and records each package in `plugin_admin_state` as `discovered`. The manifest + entry source are hashed for integrity.
-2. **Approve** — bot admin runs `/plugin approve <plugin-id>` in DM. Any subsequent change to the manifest or entry source clears approval and requires re-approval.
+1. **Discover** — startup scans `plugins/` and records each package in `plugin_admin_state` as `discovered`. The manifest + entry source are hashed for integrity. If the `plugins/` directory is missing and `DEBUG_SERVER=true`, startup fails fast (the settings web UI cannot dispatch task-provider provisioning without plugins); otherwise a `WARN` is logged and the bot starts in degraded mode.
+2. **Approve** — bot admin approves the plugin in the settings web UI admin area. Any subsequent change to the manifest or entry source clears approval and requires re-approval.
 3. **Activate** — on the next startup, approved plugins are imported with a per-plugin activation timeout. Failures are isolated and recorded to `plugin_runtime_events`.
-4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group context via `/plugin enable`, the `plg:` buttons in `/config`, or `defaultEnabled: true` in the manifest.
+4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group context via the settings web UI admin area or `defaultEnabled: true` in the manifest.
 
 ### Contribution Surface
 
-| Surface          | Exposed as                                    | Notes                                                          |
-| ---------------- | --------------------------------------------- | -------------------------------------------------------------- |
-| LLM tools        | `plugin_<plugin_id>__<tool_name>`             | Sandwiched through the same execution wrapper as core tools.   |
-| Prompt fragments | Appended to system prompt (8,000-char budget) | Synchronous only; 2,000 chars per fragment.                    |
-| Commands         | `plugin_<plugin_id>_<command_name>`           | Registered through the normal chat command path.               |
-| Scheduled jobs   | Owner `plugin:<pluginId>:<jobName>`           | Runs only for contexts where the plugin is enabled & eligible. |
+| Surface             | Exposed as                                    | Notes                                                                              |
+| ------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| LLM tools           | `plugin_<plugin_id>__<tool_name>`             | Sandwiched through the same execution wrapper as core tools.                       |
+| Prompt fragments    | Appended to system prompt (8,000-char budget) | Synchronous only; 2,000 chars per fragment.                                        |
+| Commands            | `plugin_<plugin_id>_<command_name>`           | Registered through the normal chat command path.                                   |
+| Scheduled jobs      | Owner `plugin:<pluginId>:<jobName>`           | Runs only for contexts where the plugin is enabled & eligible.                     |
+| External MCP server | `plugin_<server>__<tool>`                     | Optional manifest `mcp` block; tools fetched from a Model Context Protocol server. |
 
 ### Context API
 
@@ -456,7 +481,6 @@ bun build:client
 # Code quality
 bun lint
 bun lint:fix
-bun lint:agent-strict -- src/file.ts tests/file.test.ts
 bun format
 bun format:check
 bun typecheck
@@ -468,7 +492,9 @@ bun security
 bun security:ci
 
 # Testing
-bun test
+bun build:client   # required once on a clean checkout: server tests serve public/ bundles
+bun run test       # parallel (one worker process per file); the local default (CI runs serially)
+bun test:serial    # serial run, for debugging isolation-sensitive failures
 bun test:client
 bun test:watch
 bun test:coverage
@@ -476,7 +502,6 @@ bun test:e2e
 bun test:e2e:watch
 bun test:mutate
 bun test:mutate:changed
-bun test:mutate:full
 
 # Composite checks
 bun check
@@ -493,7 +518,7 @@ Notes:
 
 - `bun start` builds the debug/admin clients first, then starts the bot.
 - `bun start:debug` also enables the local debug server.
-- `bun test` excludes client and E2E suites; run `bun test:client` and `bun test:e2e` separately.
+- `bun run test` excludes client and E2E suites (configured in `bunfig.toml`); run `bun test:client` and `bun test:e2e` separately. It runs `bun test --parallel` (one isolated worker process per file) — the local default; in CI, `scripts/check.sh` runs the suite serially to avoid exhausting the 4-vCPU runner. Bare `bun test` (Bun's built-in runner) stays serial; use `bun run test` or `bun test:serial` accordingly.
 - `bun check` runs staged-file checks, while `bun check:full` runs the wider repo checks.
 
 ---
@@ -503,10 +528,13 @@ Notes:
 ### Unit and Integration Tests
 
 ```bash
-bun test
+bun run test
 ```
 
-Runs the curated main Bun test suites defined in `package.json` for the repo’s non-client, non-E2E areas.
+Runs all server-side Bun test suites (excludes client and E2E via `bunfig.toml`).
+Defaults to `bun test --parallel` (one isolated worker process per file) locally;
+in CI, `scripts/check.sh` runs the suite serially to keep the 4-vCPU runner stable.
+Use `bun test:serial` to debug isolation-sensitive failures.
 
 ### Client Tests
 
@@ -530,7 +558,7 @@ Runs the Docker-backed Kaneo end-to-end suite.
 bun test:mutate:changed
 ```
 
-Runs incremental mutation testing with Stryker. Full mutation runs are also available via `bun test:mutate` and `bun test:mutate:full`.
+Runs changed-file paired mutation testing with Stryker. Full paired mutation runs are available via `bun test:mutate`.
 
 ---
 
@@ -554,14 +582,14 @@ services:
     image: ghcr.io/yourpapai/papai:latest
     environment:
       CHAT_PROVIDER: telegram
-      TASK_PROVIDER: kaneo
       ADMIN_USER_ID: '123456789'
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      KANEO_CLIENT_URL: https://kaneo.example.com
       INSTANCE_CONFIG_KEY: ${INSTANCE_CONFIG_KEY}
 ```
 
-For a real deployment, prefer the checked-in `docker-compose.yml` and `.env.example` together, because the full stack is Kaneo-specific and also needs Kaneo database/auth settings. For YouTrack deployments, you typically run `papai` against an external YouTrack instance instead of this full bundled stack.
+After the stack is up, create the Kaneo task instance via `/admin#instances` and approve `task-provider-kaneo` in the settings web UI admin area (Plugins approval); the Kaneo client URL is an instance config field, not a papai env var.
+
+For a real deployment, prefer the checked-in `docker-compose.yml` and `.env.example` together, because the full stack is Kaneo-specific and also needs Kaneo service settings (`KANEO_CLIENT_URL`, `KANEO_POSTGRES_PASSWORD`, `KANEO_AUTH_SECRET`) consumed by the bundled Kaneo and Caddy services. For YouTrack deployments, you typically run `papai` against an external YouTrack instance instead of this full bundled stack.
 
 ### GitHub Actions Deployment
 

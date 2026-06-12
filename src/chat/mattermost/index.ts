@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../../logger.js'
+import { getSettingsPublicBaseUrl } from '../../settings/config.js'
 import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
   ChatProvider,
@@ -12,16 +13,25 @@ import type {
   ContextSnapshot,
   ContextType,
   DeferredDeliveryTarget,
+  IncomingInteraction,
   IncomingMessage,
   ReplyFn,
   ResolveUserContext,
 } from '../types.js'
+import {
+  dispatchMattermostProviderAction,
+  registerMattermostActionDispatcher,
+  unregisterMattermostActionDispatcher,
+  type MattermostActionPayload,
+  type MattermostActionResponse,
+} from './action-callbacks.js'
+import { getMattermostActionSigningSecret } from './action-secret.js'
+import { createMattermostActionContext } from './action-signing.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
 import { renderMattermostContext } from './context-renderer.js'
 import {
-  buildMattermostMentionPrefix,
   cacheIncomingPost,
   downloadMattermostFile,
   parsePostedEvent,
@@ -30,10 +40,11 @@ import {
   uploadMattermostFile,
 } from './file-helpers.js'
 import { resolveMattermostGroupLabel, resolveMattermostUserLabel } from './label-helpers.js'
+import { determineMattermostThreadId, normalizeMattermostMessageText } from './message-normalization.js'
 import { mattermostCapabilities, mattermostConfigRequirements, mattermostTraits } from './metadata.js'
 import { buildMattermostReplyContext } from './reply-context.js'
-import { createMattermostReplyFn } from './reply-helpers.js'
-import { ChannelSchema, extractReplyId, MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
+import { createMattermostReplyFn, sendMattermostDeferredMessage } from './reply-helpers.js'
+import { extractReplyId, MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
 
 const log = logger.child({ scope: 'chat:mattermost' })
 
@@ -59,25 +70,19 @@ export class MattermostChatProvider implements ChatProvider {
   private readonly platformInstanceId: string
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
+  private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private ws: WebSocket | null = null
   private botUserId: string | null = null
   private botUsername: string | null = null
   private wsSeq = 1
 
-  constructor(...args: [] | [MattermostConstructorConfig]) {
-    let config: MattermostConstructorConfig
-    if (args[0] === undefined) {
-      config = {}
-    } else {
-      config = args[0]
-    }
+  constructor(config: MattermostConstructorConfig) {
     const resolved = resolveMattermostConfig(config)
     this.baseUrl = resolved.baseUrl
     this.token = resolved.token
     this.platformInstanceId = resolved.platformInstanceId
     log.debug({ platformInstanceId: this.platformInstanceId }, 'MattermostChatProvider constructed')
   }
-
   registerCommand(name: string, handler: CommandHandler): void {
     this.commands.set(name, handler)
   }
@@ -86,24 +91,12 @@ export class MattermostChatProvider implements ChatProvider {
     this.messageHandler = handler
   }
 
+  onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
+    this.interactionHandler = handler
+  }
+
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
-    if (target.contextType === 'dm') {
-      if (this.botUserId === null) throw new Error('Bot not started')
-      const dmData = await this.apiFetch('POST', '/api/v4/channels/direct', [this.botUserId, target.contextId])
-      const channelId = ChannelSchema.parse(dmData).id
-      await this.apiFetch('POST', '/api/v4/posts', { channel_id: channelId, message: markdown })
-      return
-    }
-    const mention =
-      target.audience === 'personal'
-        ? await buildMattermostMentionPrefix(target.mentionUserIds, target.createdByUsername, this.apiFetch.bind(this))
-        : ''
-    const post = {
-      channel_id: target.contextId,
-      message: `${mention}${markdown}`,
-      ...(target.threadId === null ? {} : { root_id: target.threadId }),
-    }
-    await this.apiFetch('POST', '/api/v4/posts', post)
+    await sendMattermostDeferredMessage(this.botUserId, target, markdown, this.apiFetch.bind(this))
   }
 
   async start(): Promise<void> {
@@ -112,10 +105,12 @@ export class MattermostChatProvider implements ChatProvider {
     this.botUserId = user.id
     this.botUsername = typeof user.username === 'string' ? user.username : null
     log.info({ botUserId: this.botUserId, botUsername: this.botUsername }, 'Mattermost bot started')
+    registerMattermostActionDispatcher(this.platformInstanceId, (payload) => this.dispatchMattermostAction(payload))
     this.connectWebSocket()
   }
 
   stop(): Promise<void> {
+    unregisterMattermostActionDispatcher(this.platformInstanceId)
     if (this.ws !== null) this.ws.close()
     this.ws = null
     log.info('Mattermost bot stopped')
@@ -169,12 +164,18 @@ export class MattermostChatProvider implements ChatProvider {
     const replyToMessageId = extractReplyId(post.parent_id, post.root_id)
     cacheIncomingPost(post, replyToMessageId, senderName)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
+    if (msg.isMentioned && msg.text === '') {
+      const mentionHelp =
+        this.botUsername === null ? 'Use `/help` to see commands' : `Use \`@${this.botUsername} /help\` to see commands`
+      await reply.text(`${mentionHelp}, or mention me with a question.`)
+      return
+    }
     if (command !== null) {
       const auth = buildScopedCommandAuth(msg, isAdmin, this.platformInstanceId)
       await command.handler(msg, reply, auth)
-    } else if (this.messageHandler !== null) {
-      await this.messageHandler(msg, reply)
+      return
     }
+    if (this.messageHandler !== null) await this.messageHandler(msg, reply)
   }
 
   async buildPostedMessage(
@@ -190,10 +191,11 @@ export class MattermostChatProvider implements ChatProvider {
     const teamId = contextType === 'group' ? channelInfo.team_id : undefined
     const teamInfo = teamId === undefined ? null : await fetchMattermostTeamInfo(api, teamId)
     const isAdmin = await checkChannelAdmin(post.channel_id, post.user_id, api)
-    const isMentioned = this.botUsername !== null && post.message.includes(`@${this.botUsername}`)
-    const threadId = this.determineThreadId(post, isMentioned, contextType, replyToMessageId)
+    const normalized = normalizeMattermostMessageText(post.message, this.botUsername)
+    const isMentioned = normalized.isMentioned
+    const threadId = determineMattermostThreadId(post, isMentioned, contextType, replyToMessageId)
     const reply = this.buildReplyFn(post.channel_id, post.id, threadId)
-    const command = this.matchCommand(post.message)
+    const command = normalized.commandInput === null ? null : this.matchCommand(normalized.commandInput)
     const uname = post.user_name
     const username = typeof uname === 'string' ? uname : typeof senderName === 'string' ? senderName : null
     const dispName = typeof channelInfo.display_name === 'string' ? channelInfo.display_name : channelInfo.name
@@ -214,7 +216,7 @@ export class MattermostChatProvider implements ChatProvider {
       contextName,
       contextParentName,
       isMentioned,
-      text: post.message,
+      text: normalized.text,
       platformInstanceId: this.platformInstanceId,
       commandMatch: command === null ? undefined : command.match,
       messageId: post.id,
@@ -225,17 +227,6 @@ export class MattermostChatProvider implements ChatProvider {
       ...(fileCandidates ? { fileCandidates } : {}),
     }
     return { msg, reply, command, isAdmin }
-  }
-
-  private determineThreadId(
-    post: MattermostPost,
-    isMentioned: boolean,
-    contextType: ContextType,
-    replyToMessageId: string | undefined,
-  ): string | undefined {
-    if (post.root_id !== undefined && post.root_id !== '') return post.root_id
-    if (isMentioned && contextType === 'group') return post.id
-    return replyToMessageId
   }
 
   private matchCommand(text: string): { handler: CommandHandler; match: string } | null {
@@ -255,12 +246,22 @@ export class MattermostChatProvider implements ChatProvider {
       channelId,
       postId,
       threadId,
-      baseUrl: this.baseUrl,
       getWsSeq: () => this.wsSeq++,
       apiFetch: this.apiFetch.bind(this),
       wsSend: this.wsSend.bind(this),
       uploadFile: (uploadChannelId, content, filename) =>
         uploadMattermostFile(this.baseUrl, this.token, uploadChannelId, content, filename),
+      platformInstanceId: this.platformInstanceId,
+      callbackBaseUrl: getSettingsPublicBaseUrl(),
+      createActionContext: (input) => createMattermostActionContext(input, getMattermostActionSigningSecret()),
+    })
+  }
+
+  private dispatchMattermostAction(payload: MattermostActionPayload): Promise<MattermostActionResponse> {
+    return dispatchMattermostProviderAction(payload, {
+      platformInstanceId: this.platformInstanceId,
+      apiFetch: this.apiFetch.bind(this),
+      interactionHandler: this.interactionHandler,
     })
   }
 
@@ -273,9 +274,7 @@ export class MattermostChatProvider implements ChatProvider {
   downloadFile(fileId: string): Promise<Buffer | null> {
     return downloadMattermostFile(this.baseUrl, this.token, fileId)
   }
-  resolveUserLabel(userId: string): Promise<string | null>
-  resolveUserLabel(userId: string, _context: ResolveUserContext | undefined): Promise<string | null>
-  resolveUserLabel(userId: string, ..._rest: [] | [ResolveUserContext | undefined]): Promise<string | null> {
+  resolveUserLabel(userId: string, _context?: ResolveUserContext): Promise<string | null> {
     return resolveMattermostUserLabel(this.apiFetch.bind(this), userId)
   }
   private wsSend(data: unknown): void {

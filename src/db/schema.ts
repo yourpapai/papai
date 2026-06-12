@@ -44,6 +44,7 @@ export const userConfig = sqliteTable(
 export { systemConfig } from './system-config-schema.js'
 export { llmUsageEvents, type LlmUsageEventRow } from './llm-usage-events-schema.js'
 export { toolCallEvents, type ToolCallEventRow } from './tool-call-events-schema.js'
+export { byokLlmCredentials, type ByokLlmCredentialRow } from './byok-llm-schema.js'
 
 export const conversationHistory = sqliteTable('conversation_history', {
   userId: text('user_id').primaryKey(),
@@ -68,6 +69,12 @@ export const memoryFacts = sqliteTable(
     index('idx_memory_facts_user_lastseen').on(table.userId, table.lastSeen),
   ],
 )
+export {
+  memoryProfiles,
+  memoryRecords,
+  type MemoryProfileRow,
+  type MemoryRecordRow,
+} from './long-term-memory-schema.js'
 export const versionAnnouncements = sqliteTable('version_announcements', {
   version: text('version').primaryKey(),
   announcedAt: text('announced_at').notNull(),
@@ -278,3 +285,11 @@ export { attachments } from './attachments-schema.js'
 export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
 export { contextSettings, platformAdmins, platformInstances, superAdmins, taskInstances } from './instance-schema.js'
+export {
+  settingsAuthCodes,
+  settingsRateLimit,
+  settingsSessions,
+  type SettingsAuthCodeRow,
+  type SettingsRateLimitRow,
+  type SettingsSessionRow,
+} from './settings-auth-schema.js'

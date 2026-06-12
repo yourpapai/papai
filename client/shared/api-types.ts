@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ChatProviderTraits } from '../../src/chat/types.js'
 import type {
   Fact,
   Instruction,
@@ -150,6 +151,7 @@ export type AdminLlmKeyState = {
   value: string | null
   updatedAt: number | null
   updatedBy: string | null
+  required: boolean
 }
 
 export type AdminLlmSnapshot = {
@@ -160,7 +162,7 @@ export type AdminLlmSnapshot = {
   embedding_model: AdminLlmKeyState
 }
 
-export type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'unknown'
+export type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'kontur-talk' | 'unknown'
 export type AdminTaskProvider = 'kaneo' | 'youtrack' | 'unknown'
 
 export type AdminSystemSummary = {
@@ -176,7 +178,7 @@ export type InstanceStatusView = 'pending' | 'active' | 'stopped'
 
 export type PlatformInstanceView = {
   readonly id: string
-  readonly type: 'telegram' | 'mattermost' | 'discord'
+  readonly type: 'telegram' | 'mattermost' | 'discord' | 'kontur-talk'
   readonly config: InstanceConfigView
   readonly status: InstanceStatusView
   readonly createdAt: string
@@ -188,6 +190,7 @@ export type TaskInstanceView = Readonly<{
   config: InstanceConfigView
   status: InstanceStatusView
   createdAt: string
+  unresolvedReason: string | null
 }> &
   Partial<Readonly<{ referencingContextIds: readonly string[]; referencingContextCount: number }>>
 
@@ -196,13 +199,26 @@ export type ProviderConfigRequirementView = {
   readonly label: string
   readonly required: boolean
   readonly sensitive: boolean
+  readonly storageKey?: string
 }
+
+export type PlatformProviderTypeView = Readonly<{
+  type: PlatformInstanceView['type']
+  displayName: string
+  instanceConfigSchema: readonly ProviderConfigRequirementView[]
+  contextConfigSchema: readonly ProviderConfigRequirementView[]
+  capabilities: readonly string[]
+  traits: ChatProviderTraits
+  source: 'builtin'
+}>
 
 export type TaskProviderTypeView = Readonly<{
   type: string
   displayName: string
-  configSchema: readonly ProviderConfigRequirementView[]
+  instanceConfigSchema: readonly ProviderConfigRequirementView[]
+  contextConfigSchema: readonly ProviderConfigRequirementView[]
   capabilities: readonly string[]
+  traits: readonly string[]
   source: 'builtin' | { readonly plugin: string }
 }>
 
@@ -210,7 +226,30 @@ export type AdminInstanceView = Readonly<
   { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>
 >
 
-export type ApplyInstancesResult = { readonly applied: number }
+export type ApplyFailure = Readonly<{
+  id: string
+  action: 'remove' | 'recreate' | 'start'
+  error: string
+}>
+
+export type InstanceDecodeFailure = Readonly<{
+  table: 'platform_instances' | 'task_instances'
+  id: string
+  type: string
+  error: string
+}>
+
+export type ApplyInstancesResult = Readonly<{
+  applied: number
+  started: readonly string[]
+  stopped: readonly string[]
+  removed: readonly string[]
+  removedDetails?: readonly { readonly id: string; readonly desiredStatus: 'pending' | 'stopped' | null }[]
+  recreated: readonly string[]
+  unchanged: readonly string[]
+  failed: readonly ApplyFailure[]
+  unreadable?: readonly InstanceDecodeFailure[]
+}>
 
 export type AdminPluginConfigKeyState = {
   key: string

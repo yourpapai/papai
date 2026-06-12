@@ -117,6 +117,27 @@ export function setIdentityMapping(params: SetIdentityMappingParams, deps: Ident
 }
 
 /**
+ * List all identity mappings across all contexts and providers.
+ */
+export function listAllIdentityMappings(deps: IdentityMappingDeps = defaultDeps): IdentityMapping[] {
+  log.debug({}, 'listAllIdentityMappings called')
+
+  const db = deps.getDrizzleDb()
+  const rows = db.select().from(userIdentityMappings).all()
+
+  return rows.map((row) => ({
+    contextId: row.contextId,
+    providerName: row.providerName,
+    providerUserId: row.providerUserId,
+    providerUserLogin: row.providerUserLogin,
+    displayName: row.displayName,
+    matchedAt: row.matchedAt,
+    matchMethod: isMatchMethod(row.matchMethod) ? row.matchMethod : null,
+    confidence: row.confidence,
+  }))
+}
+
+/**
  * Clear identity mapping by setting providerUserId to null.
  * Preserves the record to avoid re-attempting auto-link.
  */

@@ -3,35 +3,39 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import * as adminStore from '../instances/admin-store.js'
+import { listPlatformProviderTypes } from '../chat/registry.js'
+import { authenticate } from '../dashboard-auth/index.js'
 import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
-import { isSecretKeyName, maskConfig } from '../instances/encryption.js'
+import { maskConfig, providerSensitiveKeys, unknownProviderSensitiveKeys } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
   getPlatformInstance,
   insertPlatformInstance,
-  listActivePlatformInstances,
   listPlatformInstances,
+  listPlatformInstancesSafe,
   updatePlatformInstance,
 } from '../instances/platform-store.js'
 import {
   deleteTaskInstance,
   getTaskInstance,
   insertTaskInstance,
-  listTaskInstances,
+  listTaskInstancesSafe,
   updateTaskInstance,
 } from '../instances/task-store.js'
 import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
 import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { listTaskProviderTypes } from '../providers/registry.js'
+import { getTaskProviderDescriptor } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
+import { handleAdmins } from './instance-admin-routes.js'
+import { validatePlatformInstanceConfig, validateTaskInstanceRouteConfig } from './instance-config-validation.js'
 import {
-  adminSchema,
   applyPlatformInstances,
   type InstanceApiDeps,
   instanceExistsError,
   instancePatchSchema,
+  insertOrConflict,
+  isInstanceApiPath,
   parseBody,
   platformInstanceSchema,
   splitPath,
@@ -40,43 +44,60 @@ import {
   textResponse,
 } from './instance-route-support.js'
 import { jsonResponse } from './json-response.js'
-import { handleTaskProviderTypes, validateTaskInstanceConfig } from './task-provider-type-routes.js'
+import { handlePlatformProviderTypes } from './platform-provider-type-routes.js'
+import { handleTaskProviderTypes } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
 
 const defaultDeps: InstanceApiDeps = {
   getRuntimeChatRouter,
-  listActivePlatformInstances,
+  listPlatformInstances,
+  listPlatformInstancesSafe,
+}
+
+const INSTANCE_ROUTE_MASK = '********'
+
+const platformInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
+  const descriptor = listPlatformProviderTypes().find((candidate) => candidate.type === type)
+  if (descriptor === undefined) return unknownProviderSensitiveKeys(config)
+  return providerSensitiveKeys(config, descriptor.instanceConfigSchema)
 }
 
 const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance => ({
   ...instance,
-  config: maskConfig(instance.config),
+  config: maskConfig(
+    instance.config,
+    platformInstanceSensitiveKeys(instance.type, instance.config),
+    INSTANCE_ROUTE_MASK,
+  ),
 })
 
 // Defense-in-depth: mask a task-instance config key if its provider descriptor declares it
 // instance-scoped sensitive, OR its name looks secret-bearing. The pattern arm covers arbitrary
 // keys operators can now write in-place via PATCH, which the descriptor schema does not constrain.
 const taskInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
-  const descriptor = listTaskProviderTypes().find((d) => d.type === type)
-  const declared =
-    descriptor === undefined
-      ? []
-      : descriptor.configSchema
-          .filter((field) => (field.scope ?? 'instance') === 'instance' && field.sensitive === true)
-          .map((field) => field.key)
-  const secretLike = Object.keys(config).filter((key) => isSecretKeyName(key))
-  return new Set([...declared, ...secretLike])
+  const descriptor = getTaskProviderDescriptor(type)
+  if (descriptor === undefined) return unknownProviderSensitiveKeys(config)
+  return providerSensitiveKeys(config, descriptor.instanceConfigSchema)
 }
 
 const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
   ...instance,
-  config: maskConfig(instance.config, taskInstanceSensitiveKeys(instance.type, instance.config)),
+  config: maskConfig(instance.config, taskInstanceSensitiveKeys(instance.type, instance.config), INSTANCE_ROUTE_MASK),
 })
+
+const unresolvedReasonFor = (instance: TaskInstance): string | null =>
+  getTaskProviderDescriptor(instance.type) === undefined
+    ? `Provider plugin for type '${instance.type}' is not active. Approve it in the settings web UI admin area (Plugins approval).`
+    : null
 
 const taskInstanceView = (
   instance: TaskInstance,
-): TaskInstance & { readonly referencingContextCount: number; readonly referencingContextIds: readonly string[] } => {
+): TaskInstance & {
+  readonly referencingContextCount: number
+  readonly referencingContextIds: readonly string[]
+  readonly unresolvedReason: string | null
+} => {
   const referencingContextIds = listContextsByTaskInstance(instance.id)
     .map((context) => context.contextId)
     .toSorted((a, b) => a.localeCompare(b))
@@ -84,63 +105,70 @@ const taskInstanceView = (
     ...maskedTaskInstance(instance),
     referencingContextCount: referencingContextIds.length,
     referencingContextIds,
+    unresolvedReason: unresolvedReasonFor(instance),
   }
-}
-
-const INSTANCE_API_PREFIXES = [
-  '/api/admins',
-  '/api/platform-instances',
-  '/api/task-instances',
-  '/api/task-provider-types',
-] as const
-
-const isInstanceApiPath = (pathname: string): boolean =>
-  INSTANCE_API_PREFIXES.some((prefix) => [pathname === prefix, pathname.startsWith(`${prefix}/`)].includes(true))
-
-const authorizeWrite = (req: Request): boolean => {
-  const token = process.env['DEBUG_TOKEN']
-  if (token === undefined || token === '') return false
-  const authorization = req.headers.get('Authorization')
-  if (authorization === null) return false
-  const headerToken = authorization.replace('Bearer ', '')
-  return headerToken === token
 }
 
 const handlePlatformStatusUpdate = async (req: Request, instanceId: string): Promise<Response> => {
   if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
   const body = await parseBody(req, statusSchema)
   if (body instanceof Response) return body
+  const referencingContextIds = listContextsByPlatformInstance(instanceId).map((context) => context.contextId)
   updatePlatformInstance(instanceId, { config: undefined, status: body.status })
+  clearToolCachesForContexts(referencingContextIds)
   const instance = getPlatformInstance(instanceId)
   return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
 }
 
 const handlePlatformPatch = async (req: Request, instanceId: string): Promise<Response> => {
-  if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
+  const existing = getPlatformInstance(instanceId)
+  if (existing === null) return textResponse('Not found', 404)
   const body = await parseBody(req, instancePatchSchema)
   if (body instanceof Response) return body
+  if (body.config !== undefined) {
+    const configError = validatePlatformInstanceConfig(existing.type, body.config)
+    if (configError !== null) return configError
+  }
+  const referencingContextIds = listContextsByPlatformInstance(instanceId).map((context) => context.contextId)
   updatePlatformInstance(instanceId, { config: body.config, status: body.status })
+  clearToolCachesForContexts(referencingContextIds)
   const instance = getPlatformInstance(instanceId)
   return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
 }
 
-const resolveAdminPlatformInstanceId = (platformInstanceId: string | undefined): string => {
-  if (platformInstanceId !== undefined) return platformInstanceId
-  return adminStore.SUPER_ADMIN_PLATFORM_ID
+const platformInstanceListResponse = (): Response => {
+  const result = listPlatformInstancesSafe()
+  return jsonResponse({
+    instances: result.instances.map((instance) => maskedPlatformInstance(instance)),
+    unreadable: result.failures,
+  })
+}
+
+const taskInstanceListResponse = (): Response => {
+  const result = listTaskInstancesSafe()
+  return jsonResponse({
+    instances: result.instances.map((instance) => taskInstanceView(instance)),
+    unreadable: result.failures,
+  })
 }
 
 const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApiDeps): Promise<Response | null> => {
   const parts = splitPath(url)
 
   if (url.pathname === '/api/platform-instances' && req.method === 'GET') {
-    return jsonResponse(listPlatformInstances().map((instance) => maskedPlatformInstance(instance)))
+    return platformInstanceListResponse()
   }
 
   if (url.pathname === '/api/platform-instances' && req.method === 'POST') {
     const body = await parseBody(req, platformInstanceSchema)
     if (body instanceof Response) return body
     if (getPlatformInstance(body.id) !== null) return instanceExistsError(body.id)
-    insertPlatformInstance({ ...body, status: 'active' })
+    const configError = validatePlatformInstanceConfig(body.type, body.config)
+    if (configError !== null) return configError
+    const conflict = insertOrConflict(body.id, () => {
+      insertPlatformInstance({ ...body, status: 'active' })
+    })
+    if (conflict !== null) return conflict
     const instance = getPlatformInstance(body.id)
     return jsonResponse(instance === null ? null : maskedPlatformInstance(instance), { status: 201 })
   }
@@ -175,33 +203,42 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
   return null
 }
 
+const handleTaskCreate = async (req: Request): Promise<Response> => {
+  const body = await parseBody(req, taskInstanceSchema)
+  if (body instanceof Response) return body
+  if (getTaskInstance(body.id) !== null) return instanceExistsError(body.id)
+  const configError = await validateTaskInstanceRouteConfig(body.type, body.config)
+  if (configError !== null) return configError
+  const conflict = insertOrConflict(body.id, () => {
+    insertTaskInstance({ ...body, status: 'active' })
+  })
+  if (conflict !== null) return conflict
+  const instance = getTaskInstance(body.id)
+  return jsonResponse(instance === null ? null : maskedTaskInstance(instance), { status: 201 })
+}
+
 const handleTaskInstances = async (req: Request, url: URL): Promise<Response | null> => {
   const parts = splitPath(url)
 
   if (url.pathname === '/api/task-instances' && req.method === 'GET') {
-    return jsonResponse(listTaskInstances().map((instance) => taskInstanceView(instance)))
+    return taskInstanceListResponse()
   }
 
   if (url.pathname === '/api/task-instances' && req.method === 'POST') {
-    const body = await parseBody(req, taskInstanceSchema)
-    if (body instanceof Response) return body
-    if (!listTaskProviderTypes().some((descriptor) => descriptor.type === body.type)) {
-      return jsonResponse({ error: 'unknown_task_provider_type', type: body.type }, { status: 400 })
-    }
-    if (getTaskInstance(body.id) !== null) return instanceExistsError(body.id)
-    const configError = await validateTaskInstanceConfig(body.type, body.config)
-    if (configError !== null) return configError
-    insertTaskInstance({ ...body, status: 'active' })
-    const instance = getTaskInstance(body.id)
-    return jsonResponse(instance === null ? null : maskedTaskInstance(instance), { status: 201 })
+    return handleTaskCreate(req)
   }
 
   if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'task-instances' && req.method === 'PATCH') {
     const taskInstanceId = parts[2]
     if (taskInstanceId === undefined) return textResponse('Not found', 404)
-    if (getTaskInstance(taskInstanceId) === null) return textResponse('Not found', 404)
+    const existing = getTaskInstance(taskInstanceId)
+    if (existing === null) return textResponse('Not found', 404)
     const body = await parseBody(req, instancePatchSchema)
     if (body instanceof Response) return body
+    if (body.config !== undefined) {
+      const configError = await validateTaskInstanceRouteConfig(existing.type, body.config)
+      if (configError !== null) return configError
+    }
     const referencingContextIds = listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
     updateTaskInstance(taskInstanceId, { config: body.config, status: body.status })
     clearToolCachesForContexts(referencingContextIds)
@@ -222,39 +259,12 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   return null
 }
 
-const handleAdmins = async (req: Request, url: URL): Promise<Response | null> => {
-  const parts = splitPath(url)
-
-  if (url.pathname === '/api/admins' && req.method === 'GET') return jsonResponse(adminStore.listAdmins())
-
-  if (url.pathname === '/api/admins' && req.method === 'POST') {
-    const body = await parseBody(req, adminSchema)
-    if (body instanceof Response) return body
-    const platformInstanceId = resolveAdminPlatformInstanceId(body.platformInstanceId)
-    if (platformInstanceId !== adminStore.SUPER_ADMIN_PLATFORM_ID && getPlatformInstance(platformInstanceId) === null) {
-      return jsonResponse({ error: 'platform_instance_not_found', id: platformInstanceId }, { status: 404 })
-    }
-    adminStore.addAdmin(body.userId, platformInstanceId)
-    return jsonResponse({ userId: body.userId, platformInstanceId }, { status: 201 })
-  }
-
-  if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'admins') {
-    if (req.method !== 'DELETE') return textResponse('Method not allowed', 405)
-    const userId = parts[2]
-    const platformInstanceId = parts[3]
-    if (userId === undefined || platformInstanceId === undefined) return textResponse('Not found', 404)
-    adminStore.removeAdmin(userId, platformInstanceId)
-    return new Response(null, { status: 204 })
-  }
-
-  return null
-}
-
 const routeInstanceApi = (
   req: Request,
   url: URL,
   deps: InstanceApiDeps,
 ): Response | Promise<Response | null> | null => {
+  if (url.pathname.startsWith('/api/platform-provider-types')) return handlePlatformProviderTypes(req, url)
   if (url.pathname.startsWith('/api/platform-instances')) return handlePlatformInstances(req, url, deps)
   if (url.pathname.startsWith('/api/task-provider-types')) return handleTaskProviderTypes(req, url)
   if (url.pathname.startsWith('/api/task-instances')) return handleTaskInstances(req, url)
@@ -268,7 +278,7 @@ export const handleInstanceApiRouteWithDeps = async (
   deps: InstanceApiDeps,
 ): Promise<Response | null> => {
   if (!isInstanceApiPath(url.pathname)) return null
-  if ((req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') && !authorizeWrite(req)) {
+  if ((req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') && authenticate(req) === null) {
     return textResponse('Unauthorized', 401)
   }
 

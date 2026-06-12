@@ -3,20 +3,81 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, like, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import type {
-  PluginAdminStateRow,
-  PluginContextStateRow,
-  PluginKvRow,
-  PluginRuntimeEventRow,
-} from '../db/plugin-schema.js'
+import type { PluginAdminStateRow, PluginContextStateRow, PluginKvRow } from '../db/plugin-schema.js'
 import { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents, systemConfig } from '../db/schema.js'
 import { logger } from '../logger.js'
 import type { PluginState } from './types.js'
 
 const log = logger.child({ scope: 'plugins:store' })
+const LIKE_ESCAPE = '\\'
+
+type PluginAdminStateOptions = Partial<
+  Readonly<{
+    approvedBy: string | null
+    approvedManifestHash: string | null
+    lastSeenManifestHash: string | null
+    compatibilityReason: string | null
+  }>
+>
+
+type PluginAdminStateRecord = Readonly<{
+  pluginId: string
+  state: PluginState
+  approvedBy: string | null
+  approvedManifestHash: string | null
+  lastSeenManifestHash: string | null
+  compatibilityReason: string | null
+  updatedAt: string
+}>
+
+function escapeLikePattern(value: string): string {
+  return value
+    .replaceAll(LIKE_ESCAPE, `${LIKE_ESCAPE}${LIKE_ESCAPE}`)
+    .replaceAll('%', `${LIKE_ESCAPE}%`)
+    .replaceAll('_', `${LIKE_ESCAPE}_`)
+}
+
+function normalizePluginAdminStateOptions(
+  ...rest: [] | [opts: PluginAdminStateOptions]
+): Required<PluginAdminStateOptions> {
+  const opts = rest.length === 0 ? {} : rest[0]
+  let approvedBy: string | null = null
+  let approvedManifestHash: string | null = null
+  let lastSeenManifestHash: string | null = null
+  let compatibilityReason: string | null = null
+
+  if (opts.approvedBy !== undefined) approvedBy = opts.approvedBy
+  if (opts.approvedManifestHash !== undefined) approvedManifestHash = opts.approvedManifestHash
+  if (opts.lastSeenManifestHash !== undefined) lastSeenManifestHash = opts.lastSeenManifestHash
+  if (opts.compatibilityReason !== undefined) compatibilityReason = opts.compatibilityReason
+
+  return {
+    approvedBy,
+    approvedManifestHash,
+    lastSeenManifestHash,
+    compatibilityReason,
+  }
+}
+
+function buildPluginAdminStateRecord(
+  pluginId: string,
+  state: PluginState,
+  updatedAt: string,
+  opts: Required<PluginAdminStateOptions>,
+): PluginAdminStateRecord {
+  return {
+    pluginId,
+    state,
+    approvedBy: opts.approvedBy,
+    approvedManifestHash: opts.approvedManifestHash,
+    lastSeenManifestHash: opts.lastSeenManifestHash,
+    compatibilityReason: opts.compatibilityReason,
+    updatedAt,
+  }
+}
 
 // ---- Admin state ----
 
@@ -25,43 +86,20 @@ export function getPluginAdminState(pluginId: string): PluginAdminStateRow | und
   return db.select().from(pluginAdminState).where(eq(pluginAdminState.pluginId, pluginId)).get()
 }
 
-export function getAllPluginAdminStates(): PluginAdminStateRow[] {
-  const db = getDrizzleDb()
-  return db.select().from(pluginAdminState).all()
-}
-
 export function upsertPluginAdminState(
   pluginId: string,
   state: PluginState,
-  opts: {
-    approvedBy?: string | null
-    approvedManifestHash?: string | null
-    lastSeenManifestHash?: string | null
-    compatibilityReason?: string | null
-  } = {},
+  ...rest: [] | [opts: PluginAdminStateOptions]
 ): void {
   const db = getDrizzleDb()
   const now = new Date().toISOString()
+  const opts = normalizePluginAdminStateOptions(...rest)
+  const values = buildPluginAdminStateRecord(pluginId, state, now, opts)
   db.insert(pluginAdminState)
-    .values({
-      pluginId,
-      state,
-      approvedBy: opts.approvedBy ?? null,
-      approvedManifestHash: opts.approvedManifestHash ?? null,
-      lastSeenManifestHash: opts.lastSeenManifestHash ?? null,
-      compatibilityReason: opts.compatibilityReason ?? null,
-      updatedAt: now,
-    })
+    .values(values)
     .onConflictDoUpdate({
       target: pluginAdminState.pluginId,
-      set: {
-        state,
-        approvedBy: opts.approvedBy ?? null,
-        approvedManifestHash: opts.approvedManifestHash ?? null,
-        lastSeenManifestHash: opts.lastSeenManifestHash ?? null,
-        compatibilityReason: opts.compatibilityReason ?? null,
-        updatedAt: now,
-      },
+      set: values,
     })
     .run()
   log.debug({ pluginId, state }, 'Plugin admin state upserted')
@@ -113,24 +151,13 @@ export function setPluginContextEnabled(pluginId: string, contextId: string, ena
   log.debug({ pluginId, contextId, enabled }, 'Plugin context state updated')
 }
 
-export function getEnabledPluginsForContext(contextId: string): string[] {
+export function getContextStatesForPlugin(pluginId: string): Array<{ contextId: string; enabled: boolean }> {
   const db = getDrizzleDb()
   return db
-    .select({ pluginId: pluginContextState.pluginId })
+    .select({ contextId: pluginContextState.contextId, enabled: pluginContextState.enabled })
     .from(pluginContextState)
-    .where(and(eq(pluginContextState.contextId, contextId), eq(pluginContextState.enabled, true)))
+    .where(eq(pluginContextState.pluginId, pluginId))
     .all()
-    .map((r) => r.pluginId)
-}
-
-export function getEnabledContextsForPlugin(pluginId: string): string[] {
-  const db = getDrizzleDb()
-  return db
-    .select({ contextId: pluginContextState.contextId })
-    .from(pluginContextState)
-    .where(and(eq(pluginContextState.pluginId, pluginId), eq(pluginContextState.enabled, true)))
-    .all()
-    .map((r) => r.contextId)
 }
 
 // ---- KV store ----
@@ -142,7 +169,7 @@ export function kvGet(pluginId: string, contextId: string, key: string): string 
     .from(pluginKv)
     .where(and(eq(pluginKv.pluginId, pluginId), eq(pluginKv.contextId, contextId), eq(pluginKv.key, key)))
     .get()
-  return row?.value
+  return row === undefined ? undefined : row.value
 }
 
 export function kvSet(pluginId: string, contextId: string, key: string, value: string): void {
@@ -164,14 +191,16 @@ export function kvDelete(pluginId: string, contextId: string, key: string): void
     .run()
 }
 
-export function kvList(pluginId: string, contextId: string, prefix?: string): PluginKvRow[] {
+export function kvList(pluginId: string, contextId: string, ...rest: [] | [prefix: string]): PluginKvRow[] {
+  const prefix = rest.length === 0 ? undefined : rest[0]
   const db = getDrizzleDb()
   const baseCondition = and(eq(pluginKv.pluginId, pluginId), eq(pluginKv.contextId, contextId))
   if (prefix !== undefined && prefix !== '') {
+    const escapedPrefix = `${escapeLikePattern(prefix)}%`
     return db
       .select()
       .from(pluginKv)
-      .where(and(baseCondition, like(pluginKv.key, `${prefix}%`)))
+      .where(and(baseCondition, sql`${pluginKv.key} LIKE ${escapedPrefix} ESCAPE ${LIKE_ESCAPE}`))
       .all()
   }
   return db.select().from(pluginKv).where(baseCondition).all()
@@ -182,38 +211,22 @@ export function kvList(pluginId: string, contextId: string, prefix?: string): Pl
 export function recordRuntimeEvent(
   pluginId: string,
   eventType: 'activated' | 'deactivated' | 'error' | 'skipped',
-  message?: string,
+  ...rest: [] | [message: string]
 ): void {
+  const message = rest.length === 0 ? undefined : rest[0]
   const db = getDrizzleDb()
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   try {
-    db.insert(pluginRuntimeEvents)
-      .values({ id, pluginId, eventType, message: message ?? null, occurredAt: now })
-      .run()
+    let persistedMessage: string | null = null
+    if (message !== undefined) persistedMessage = message
+    db.insert(pluginRuntimeEvents).values({ id, pluginId, eventType, message: persistedMessage, occurredAt: now }).run()
   } catch (error) {
     log.warn(
       { pluginId, eventType, error: error instanceof Error ? error.message : String(error) },
       'Failed to record plugin runtime event',
     )
   }
-}
-
-type PluginRuntimeEventSummary = Pick<PluginRuntimeEventRow, 'eventType' | 'message' | 'occurredAt'>
-
-export function getRecentRuntimeEvents(pluginId: string, limit = 20): PluginRuntimeEventSummary[] {
-  const db = getDrizzleDb()
-  return db
-    .select({
-      eventType: pluginRuntimeEvents.eventType,
-      message: pluginRuntimeEvents.message,
-      occurredAt: pluginRuntimeEvents.occurredAt,
-    })
-    .from(pluginRuntimeEvents)
-    .where(eq(pluginRuntimeEvents.pluginId, pluginId))
-    .orderBy(sql`${pluginRuntimeEvents.occurredAt} DESC`)
-    .limit(limit)
-    .all()
 }
 
 // ---- Admin config ----
@@ -228,7 +241,7 @@ export function getPluginAdminConfig(pluginId: string, key: string): string | un
     .from(systemConfig)
     .where(eq(systemConfig.key, pluginAdminConfigKey(pluginId, key)))
     .get()
-  return row?.value
+  return row === undefined ? undefined : row.value
 }
 
 export function setPluginAdminConfig(pluginId: string, key: string, value: string, updatedBy: string): void {

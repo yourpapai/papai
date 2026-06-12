@@ -6,6 +6,12 @@
 <script lang="ts">
   import type { DeferredPrompt, RecurringTask } from '../../shared/api-types.js'
   import { fetchDeferredPrompts, fetchRecurringTasks } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Input from '../../shared/ui/Input.svelte'
+  import Panel from '../../shared/ui/Panel.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
+  import Toolbar from '../../shared/ui/Toolbar.svelte'
 
   let userId = $state('')
   let recurring: RecurringTask[] = $state([])
@@ -61,96 +67,119 @@
     observer.observe(rootEl)
     return () => observer.disconnect()
   })
-
-  function submit(event: SubmitEvent): void {
-    event.preventDefault()
-    void loadReminders()
-  }
 </script>
 
-<section id="reminders" class="admin-data-section admin-section" bind:this={rootEl}>
-  <header class="admin-section-header">
-    <div>
-      <p class="eyebrow">Schedules</p>
-      <h2 data-testid="admin-section-title">Reminders</h2>
-    </div>
-  </header>
-
-  <form class="admin-filter-form" onsubmit={submit}>
-    <label>
-      <span>User ID</span>
-      <input data-testid="reminders-user-id" bind:value={userId} placeholder="user id" type="text" />
-    </label>
-    <button data-testid="reminders-load" disabled={userId.trim() === '' || loading} type="submit">
-      {loading ? 'Loading...' : 'Load'}
-    </button>
-  </form>
+<section id="reminders" class="admin-section" bind:this={rootEl}>
+  <Toolbar>
+    <Field label="user id">
+      <Input value={userId} onInput={(v) => (userId = v)} placeholder="user id" testid="reminders-user-id" />
+    </Field>
+    <Btn variant="primary" size="sm" testid="reminders-load" disabled={userId.trim() === '' || loading} onClick={() => { void loadReminders() }}>
+      {#snippet children()}{loading ? 'Loading…' : 'Load'}{/snippet}
+    </Btn>
+  </Toolbar>
 
   {#if error !== null}
     <p class="status-error">{error}</p>
   {:else if hasLoaded && recurring.length === 0 && deferred.length === 0}
     <p class="placeholder">No reminders found</p>
   {:else}
-    <div class="admin-subsection-grid">
-      <section>
-        <h3>Recurring</h3>
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Schedule</th>
-                <th>Next run</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#if recurring.length === 0}
-                <tr><td colspan="4">No recurring reminders</td></tr>
-              {:else}
-                {#each recurring as task (task.id)}
-                  <tr>
-                    <td>{task.title}</td>
-                    <td>{task.rrule ?? 'One-shot'}</td>
-                    <td>{task.nextRun ?? 'Not scheduled'}</td>
-                    <td>{task.enabled ? 'Enabled' : 'Paused'}</td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
-        </div>
-      </section>
+    <div class="reminders__grid">
+      <Panel title="recurring tasks" count={recurring.length}>
+        {#snippet body()}
+          {#if recurring.length === 0}
+            <p class="placeholder">No recurring reminders</p>
+          {:else}
+            <ul class="reminders__list">
+              {#each recurring as r (r.id)}
+                <li class="reminders__row">
+                  <div class="reminders__row-main">
+                    <span class="reminders__title">{r.title}</span>
+                    <span class="reminders__sub">{r.rrule ?? 'one-shot'}</span>
+                  </div>
+                  <StatusPill status={r.enabled ? 'enabled' : 'paused'} />
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {/snippet}
+      </Panel>
 
-      <section>
-        <h3>Deferred</h3>
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Prompt</th>
-                <th>Fire at</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#if deferred.length === 0}
-                <tr><td colspan="4">No deferred reminders</td></tr>
-              {:else}
-                {#each deferred as prompt (prompt.id)}
-                  <tr>
-                    <td>{prompt.id}</td>
-                    <td>{prompt.prompt}</td>
-                    <td>{prompt.fireAt}</td>
-                    <td>{prompt.status}</td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <Panel title="deferred prompts" count={deferred.length}>
+        {#snippet body()}
+          {#if deferred.length === 0}
+            <p class="placeholder">No deferred reminders</p>
+          {:else}
+            <ul class="reminders__list">
+              {#each deferred as d (d.id)}
+                <li class="reminders__row">
+                  <div class="reminders__row-main">
+                    <span class="reminders__title">{d.prompt}</span>
+                    <span class="reminders__sub">fires at {d.fireAt}</span>
+                  </div>
+                  <StatusPill status={d.status} />
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {/snippet}
+      </Panel>
     </div>
   {/if}
 </section>
+
+<style>
+  .admin-section {
+    scroll-margin-top: 96px;
+  }
+  .reminders__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 0 12px 12px;
+  }
+  .reminders__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .reminders__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--hair);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .reminders__row:last-child {
+    border-bottom: none;
+  }
+  .reminders__row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .reminders__title {
+    color: var(--fg);
+  }
+  .reminders__sub {
+    color: var(--fg3);
+    font-size: 11px;
+  }
+  .placeholder {
+    margin: 0;
+    padding: 24px;
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: center;
+  }
+  .status-error {
+    padding: 12px;
+    color: var(--red, #e25);
+  }
+</style>

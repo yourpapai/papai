@@ -32,7 +32,16 @@ export function buildPluginPromptSection(activePluginIds: string[]): string {
         break
       }
 
-      const rawContent = typeof fragment.content === 'function' ? fragment.content() : fragment.content
+      let rawContent: string
+      try {
+        rawContent = typeof fragment.content === 'function' ? fragment.content() : fragment.content
+      } catch (error) {
+        log.warn(
+          { pluginId, fragmentName: fragment.name, error: error instanceof Error ? error.message : String(error) },
+          'Plugin prompt fragment threw — skipping',
+        )
+        continue
+      }
       const truncated =
         rawContent.length > MAX_FRAGMENT_LENGTH_PER_PLUGIN
           ? rawContent.slice(0, MAX_FRAGMENT_LENGTH_PER_PLUGIN - '[truncated]'.length) + '[truncated]'

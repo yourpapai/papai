@@ -53,12 +53,12 @@ import {
 export { extractReplyContext } from './message-extraction.js'
 const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
-const resolveConfigValue = (value: string | undefined, fallback: string | undefined): string | undefined => {
-  if (value === undefined) return fallback
-  return value
+type TelegramConstructorConfig = {
+  readonly token?: string
+  readonly platformInstanceId: string
 }
 const resolvePlatformInstanceId = (value: string | undefined): string => {
-  if (value === undefined) return 'telegram-default'
+  if (value === undefined || value.trim() === '') throw new Error('platformInstanceId is required')
   return value
 }
 export class TelegramChatProvider implements ChatProvider {
@@ -77,9 +77,9 @@ export class TelegramChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | undefined
 
-  constructor(...args: [] | [string | undefined] | [string | undefined, string | undefined]) {
-    const token = resolveConfigValue(args[0], process.env['TELEGRAM_BOT_TOKEN'])
-    const platformInstanceId = resolvePlatformInstanceId(args[1])
+  constructor(config: TelegramConstructorConfig) {
+    const token = config.token
+    const platformInstanceId = resolvePlatformInstanceId(config.platformInstanceId)
     if (token === undefined || token.trim() === '') {
       throw new Error('TELEGRAM_BOT_TOKEN environment variable is required')
     }
@@ -167,9 +167,15 @@ export class TelegramChatProvider implements ChatProvider {
   async stop(): Promise<void> {
     await this.bot.stop()
   }
-  resolveUserId(username: string, _context: ResolveUserContext): Promise<string | null> {
+  async resolveUserId(username: string, _context: ResolveUserContext): Promise<string | null> {
     const clean = username.startsWith('@') ? username.slice(1) : username
-    return Promise.resolve(/^\d+$/u.test(clean) ? clean : null)
+    if (/^\d+$/u.test(clean)) return clean
+    try {
+      const chat = await this.bot.api.getChat(`@${clean}`)
+      return String(chat.id)
+    } catch {
+      return null
+    }
   }
   resolveGroupLabel(groupId: string): Promise<string | null> {
     return resolveTelegramGroupLabel((chatId) => this.bot.api.getChat(chatId), groupId)
@@ -196,6 +202,7 @@ export class TelegramChatProvider implements ChatProvider {
     logMessageExtraction(id, contextId, messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText)
     cacheTelegramMessage(ctx, id, contextId, messageIdStr, text, replyToMessageIdStr)
     const replyContext = extractReplyContext(ctx, contextId)
+    const isReplyToBot = replyContext?.authorId !== undefined && String(ctx.me.id) === replyContext.authorId
     const threadId = await resolveThreadId(ctx, isMentioned, contextType, this.bot.api)
     const from = ctx.from
     const chat = ctx.chat
@@ -209,6 +216,7 @@ export class TelegramChatProvider implements ChatProvider {
       contextType,
       contextName,
       isMentioned,
+      isReplyToBot,
       text,
       platformInstanceId: this.platformInstanceId,
       messageId: messageIdStr,
@@ -269,11 +277,7 @@ export class TelegramChatProvider implements ChatProvider {
   }
   private async dispatchCallbackQuery(ctx: Context): Promise<void> {
     await ctx.answerCallbackQuery()
-    const interaction = buildTelegramInteraction(
-      ctx,
-      await checkTelegramAdminStatus(ctx, (chatId) => this.bot.api.getChatAdministrators(chatId)),
-      this.platformInstanceId,
-    )
+    const interaction = buildTelegramInteraction(ctx, await this.checkAdminStatus(ctx), this.platformInstanceId)
     if (interaction === null) return
     const reply = this.buildReplyFn(ctx, interaction.threadId, true)
     if (this.interactionHandler === undefined) {

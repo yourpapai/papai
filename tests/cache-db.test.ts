@@ -14,56 +14,34 @@ import {
   syncHistoryToDb,
   syncInstructionToDb,
   syncSummaryToDb,
-  syncWorkspaceToDb,
 } from '../src/cache-db.js'
-import { userCachesForTesting } from '../src/cache.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
-import {
-  conversationHistory,
-  memoryFacts,
-  memorySummary,
-  platformInstances,
-  userConfig,
-  userInstructions,
-  users,
-} from '../src/db/schema.js'
-import { addUser, getKaneoWorkspace, setKaneoWorkspace } from '../src/users.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { conversationHistory, memoryFacts, memorySummary, userConfig, userInstructions } from '../src/db/schema.js'
+import { mockLogger, setupTestDb, waitFor } from './utils/test-helpers.js'
 
 function requireDefined<T>(value: T | undefined): T {
   if (value === undefined) throw new Error('expected value to be defined')
   return value
 }
 
-const seedPlatform = (id: string): void => {
-  getDrizzleDb()
-    .insert(platformInstances)
-    .values({ id, type: id.startsWith('discord') ? 'discord' : 'telegram', config: '{}', status: 'active' })
-    .onConflictDoNothing()
-    .run()
-}
-
 describe('cache-db', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    userCachesForTesting.clear()
   })
 
   describe('syncHistoryToDb', () => {
     test('syncs conversation history to DB', async () => {
       const userId = 'user-history-123'
       const messages = [{ role: 'user', content: 'Hello' }]
+      const db = getDrizzleDb()
+      const getRow = (): typeof conversationHistory.$inferSelect | undefined =>
+        db.select().from(conversationHistory).where(eq(conversationHistory.userId, userId)).get()
 
       syncHistoryToDb(userId, messages)
+      await waitFor(() => getRow() !== undefined)
 
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      const db = getDrizzleDb()
-      const result = db.select().from(conversationHistory).where(eq(conversationHistory.userId, userId)).get()
-
+      const result = getRow()
       expect(result).not.toBeUndefined()
       expect(requireDefined(result).messages).toBe(JSON.stringify(messages))
     })
@@ -72,21 +50,17 @@ describe('cache-db', () => {
       const userId = 'user-history-456'
       const initialMessages = [{ role: 'user', content: 'First' }]
       const updatedMessages = [{ role: 'user', content: 'Second' }]
+      const db = getDrizzleDb()
+      const getRow = (): typeof conversationHistory.$inferSelect | undefined =>
+        db.select().from(conversationHistory).where(eq(conversationHistory.userId, userId)).get()
 
       syncHistoryToDb(userId, initialMessages)
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
+      await waitFor(() => getRow()?.messages === JSON.stringify(initialMessages))
 
       syncHistoryToDb(userId, updatedMessages)
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
+      await waitFor(() => getRow()?.messages === JSON.stringify(updatedMessages))
 
-      const db = getDrizzleDb()
-      const result = db.select().from(conversationHistory).where(eq(conversationHistory.userId, userId)).get()
-
-      expect(requireDefined(result).messages).toBe(JSON.stringify(updatedMessages))
+      expect(requireDefined(getRow()).messages).toBe(JSON.stringify(updatedMessages))
     })
   })
 
@@ -94,16 +68,14 @@ describe('cache-db', () => {
     test('syncs summary to DB', async () => {
       const userId = 'user-summary-123'
       const summary = 'This is a test summary'
+      const db = getDrizzleDb()
+      const getRow = (): typeof memorySummary.$inferSelect | undefined =>
+        db.select().from(memorySummary).where(eq(memorySummary.userId, userId)).get()
 
       syncSummaryToDb(userId, summary)
+      await waitFor(() => getRow() !== undefined)
 
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      const db = getDrizzleDb()
-      const result = db.select().from(memorySummary).where(eq(memorySummary.userId, userId)).get()
-
+      const result = getRow()
       expect(result).not.toBeUndefined()
       expect(requireDefined(result).summary).toBe(summary)
     })
@@ -114,20 +86,18 @@ describe('cache-db', () => {
       const userId = 'user-fact-123'
       const fact = { identifier: 'fact-1', title: 'Test Fact', url: 'https://example.com' }
       const now = new Date().toISOString()
+      const db = getDrizzleDb()
+      const getRow = (): typeof memoryFacts.$inferSelect | undefined =>
+        db
+          .select()
+          .from(memoryFacts)
+          .where(and(eq(memoryFacts.userId, userId), eq(memoryFacts.identifier, 'fact-1')))
+          .get()
 
       syncFactToDb(userId, fact, now)
+      await waitFor(() => getRow() !== undefined)
 
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      const db = getDrizzleDb()
-      const result = db
-        .select()
-        .from(memoryFacts)
-        .where(and(eq(memoryFacts.userId, userId), eq(memoryFacts.identifier, 'fact-1')))
-        .get()
-
+      const result = getRow()
       expect(result).not.toBeUndefined()
       const definedResult = requireDefined(result)
       expect(definedResult.title).toBe('Test Fact')
@@ -138,26 +108,22 @@ describe('cache-db', () => {
       const userId = 'user-fact-456'
       const fact = { identifier: 'fact-2', title: 'Test Fact', url: 'https://example.com' }
       const firstSeen = new Date(Date.now() - 86400000).toISOString()
+      const db = getDrizzleDb()
+      const getRow = (): typeof memoryFacts.$inferSelect | undefined =>
+        db
+          .select()
+          .from(memoryFacts)
+          .where(and(eq(memoryFacts.userId, userId), eq(memoryFacts.identifier, 'fact-2')))
+          .get()
 
       syncFactToDb(userId, fact, firstSeen)
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
+      await waitFor(() => getRow()?.lastSeen === firstSeen)
 
       const updatedNow = new Date().toISOString()
       syncFactToDb(userId, fact, updatedNow)
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
+      await waitFor(() => getRow()?.lastSeen === updatedNow)
 
-      const db = getDrizzleDb()
-      const result = db
-        .select()
-        .from(memoryFacts)
-        .where(and(eq(memoryFacts.userId, userId), eq(memoryFacts.identifier, 'fact-2')))
-        .get()
-
-      expect(requireDefined(result).lastSeen).toBe(updatedNow)
+      expect(requireDefined(getRow()).lastSeen).toBe(updatedNow)
     })
   })
 
@@ -166,20 +132,18 @@ describe('cache-db', () => {
       const userId = 'user-config-123'
       const key = 'test_key'
       const value = 'test_value'
+      const db = getDrizzleDb()
+      const getRow = (): typeof userConfig.$inferSelect | undefined =>
+        db
+          .select()
+          .from(userConfig)
+          .where(and(eq(userConfig.userId, userId), eq(userConfig.key, key)))
+          .get()
 
       syncConfigToDb(userId, key, value)
+      await waitFor(() => getRow() !== undefined)
 
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      const db = getDrizzleDb()
-      const result = db
-        .select()
-        .from(userConfig)
-        .where(and(eq(userConfig.userId, userId), eq(userConfig.key, key)))
-        .get()
-
+      const result = getRow()
       expect(result).not.toBeUndefined()
       expect(requireDefined(result).value).toBe(value)
     })
@@ -187,117 +151,21 @@ describe('cache-db', () => {
     test('updates existing config', async () => {
       const userId = 'user-config-456'
       const key = 'test_key'
+      const db = getDrizzleDb()
+      const getRow = (): typeof userConfig.$inferSelect | undefined =>
+        db
+          .select()
+          .from(userConfig)
+          .where(and(eq(userConfig.userId, userId), eq(userConfig.key, key)))
+          .get()
 
       syncConfigToDb(userId, key, 'initial_value')
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
+      await waitFor(() => getRow()?.value === 'initial_value')
 
       syncConfigToDb(userId, key, 'updated_value')
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
+      await waitFor(() => getRow()?.value === 'updated_value')
 
-      const db = getDrizzleDb()
-      const result = db
-        .select()
-        .from(userConfig)
-        .where(and(eq(userConfig.userId, userId), eq(userConfig.key, key)))
-        .get()
-
-      expect(requireDefined(result).value).toBe('updated_value')
-    })
-  })
-
-  describe('syncWorkspaceToDb', () => {
-    test('does not create a users row when syncing workspace for an unknown context', async () => {
-      const groupId = 'new-group-123'
-      const workspaceId = 'workspace-abc'
-
-      expect(getKaneoWorkspace(groupId)).toBeNull()
-
-      setKaneoWorkspace(groupId, workspaceId)
-      expect(getKaneoWorkspace(groupId)).toBe(workspaceId)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      userCachesForTesting.delete(groupId)
-      expect(getKaneoWorkspace(groupId)).toBe(workspaceId)
-
-      const db = getDrizzleDb()
-      const result = db.select().from(users).where(eq(users.platformUserId, groupId)).get()
-      expect(result).toBeUndefined()
-    })
-
-    test('syncs workspace for an existing scoped user when the user id is unambiguous', async () => {
-      const groupId = 'existing-group-456'
-      const initialWorkspace = 'workspace-initial'
-      const updatedWorkspace = 'workspace-updated'
-      seedPlatform('telegram-default')
-      addUser({ userId: groupId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
-
-      setKaneoWorkspace(groupId, initialWorkspace)
-      expect(getKaneoWorkspace(groupId)).toBe(initialWorkspace)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      setKaneoWorkspace(groupId, updatedWorkspace)
-      expect(getKaneoWorkspace(groupId)).toBe(updatedWorkspace)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      userCachesForTesting.delete(groupId)
-      expect(getKaneoWorkspace(groupId)).toBe(updatedWorkspace)
-
-      const db = getDrizzleDb()
-      const userRow = db.select().from(users).where(eq(users.platformUserId, groupId)).get()
-      const configRow = db
-        .select()
-        .from(userConfig)
-        .where(and(eq(userConfig.userId, groupId), eq(userConfig.key, 'kaneo_workspace_id')))
-        .get()
-
-      expect(requireDefined(userRow).kaneoWorkspaceId).toBeNull()
-      expect(requireDefined(configRow).value).toBe(updatedWorkspace)
-    })
-
-    test('does not update workspace when a user id exists on multiple platform instances', async () => {
-      const userId = 'ambiguous-workspace-user'
-      seedPlatform('telegram-default')
-      seedPlatform('discord-default')
-      addUser({ userId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
-      addUser({ userId, platformInstanceId: 'discord-default', addedBy: 'admin' })
-
-      syncWorkspaceToDb(userId, 'workspace-ambiguous')
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      const rows = getDrizzleDb().select().from(users).where(eq(users.platformUserId, userId)).all()
-      expect(rows.map((row) => row.kaneoWorkspaceId)).toEqual([null, null])
-    })
-
-    test('directly calls syncWorkspaceToDb for new user without manufacturing a users row', async () => {
-      const userId = 'direct-user-123'
-      const workspaceId = 'workspace-direct'
-
-      syncWorkspaceToDb(userId, workspaceId)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      const db = getDrizzleDb()
-      const result = db.select().from(users).where(eq(users.platformUserId, userId)).get()
-
-      expect(result).toBeUndefined()
+      expect(requireDefined(getRow()).value).toBe('updated_value')
     })
   })
 
@@ -310,15 +178,14 @@ describe('cache-db', () => {
         createdAt: new Date().toISOString(),
       }
 
-      syncInstructionToDb(contextId, instruction)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
       const db = getDrizzleDb()
-      const result = db.select().from(userInstructions).where(eq(userInstructions.id, instruction.id)).get()
+      const getRow = (): typeof userInstructions.$inferSelect | undefined =>
+        db.select().from(userInstructions).where(eq(userInstructions.id, instruction.id)).get()
 
+      syncInstructionToDb(contextId, instruction)
+      await waitFor(() => getRow() !== undefined)
+
+      const result = getRow()
       expect(result).not.toBeUndefined()
       const definedResult = requireDefined(result)
       expect(definedResult.text).toBe(instruction.text)
@@ -335,22 +202,18 @@ describe('cache-db', () => {
         createdAt: new Date().toISOString(),
       }
 
-      syncInstructionToDb(contextId, instruction)
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
       const db = getDrizzleDb()
-      const before = db.select().from(userInstructions).where(eq(userInstructions.id, instruction.id)).get()
-      expect(before).not.toBeUndefined()
+      const getRow = (): typeof userInstructions.$inferSelect | undefined =>
+        db.select().from(userInstructions).where(eq(userInstructions.id, instruction.id)).get()
+
+      syncInstructionToDb(contextId, instruction)
+      await waitFor(() => getRow() !== undefined)
+      expect(getRow()).not.toBeUndefined()
 
       deleteInstructionFromDb(contextId, instruction.id)
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
+      await waitFor(() => getRow() === undefined)
 
-      const after = db.select().from(userInstructions).where(eq(userInstructions.id, instruction.id)).get()
-      expect(after).toBeUndefined()
+      expect(getRow()).toBeUndefined()
     })
   })
 })

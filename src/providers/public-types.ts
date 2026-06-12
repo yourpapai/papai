@@ -18,7 +18,7 @@ export type {
   Label,
   ListTasksParams,
   Project,
-  ProviderConfigRequirement,
+  ProviderConfigField,
   RelationType,
   SavedQuery,
   SetTaskVisibilityParams,
@@ -41,4 +41,5 @@ export type {
 } from './types.js'
 export type { TaskCapability } from './task-capability.js'
 export type { AppError, LlmError, ProviderError, SystemError, ValidationError, WebFetchError } from '../errors.js'
+export type { PluginContext } from '../plugins/context.js'
 export { providerError, systemError, webFetchError, isAppError, extractAppError } from '../errors.js'

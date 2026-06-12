@@ -4,12 +4,11 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import { pluginRegistry } from '../plugins/registry.js'
 import {
   AdminPluginConfigError,
   applyAdminPluginConfigUpdate,
+  buildPluginConfigDescriptors,
   getAdminPluginConfigSnapshot,
-  type PluginConfigDescriptor,
 } from './admin-plugin-config.js'
 
 const log = logger.child({ scope: 'debug-server:plugin-config-routes' })
@@ -20,31 +19,12 @@ const jsonResponse = (status: number, body: unknown): Response =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-function buildDescriptors(): PluginConfigDescriptor[] {
-  const entries = pluginRegistry.getAllEntries()
-  return entries.map((entry) => ({
-    pluginId: entry.discoveredPlugin.manifest.id,
-    configRequirements: entry.discoveredPlugin.manifest.configRequirements.map((req) => ({
-      key: req.key,
-      label: req.label,
-      required: req.required,
-      sensitive: req.sensitive,
-      scope: req.scope,
-    })),
-  }))
-}
-
 export const handleAdminPluginConfigGet = (): Response => {
-  const snapshot = getAdminPluginConfigSnapshot(buildDescriptors())
+  const snapshot = getAdminPluginConfigSnapshot(buildPluginConfigDescriptors())
   return jsonResponse(200, snapshot)
 }
 
 export const handleAdminPluginConfigPost = async (req: Request): Promise<Response> => {
-  const debugToken = process.env['DEBUG_TOKEN']
-  if (debugToken === undefined || debugToken === '') {
-    log.warn('admin/plugin-config POST refused: DEBUG_TOKEN is not set in env')
-    return jsonResponse(401, { error: 'credentials API requires DEBUG_TOKEN' })
-  }
   const adminUserId = process.env['ADMIN_USER_ID']
   if (adminUserId === undefined || adminUserId === '') {
     log.error('admin/plugin-config POST refused: ADMIN_USER_ID is not set in env')
@@ -59,7 +39,7 @@ export const handleAdminPluginConfigPost = async (req: Request): Promise<Respons
   }
 
   try {
-    const result = applyAdminPluginConfigUpdate(body, adminUserId, buildDescriptors())
+    const result = applyAdminPluginConfigUpdate(body, adminUserId, buildPluginConfigDescriptors())
     return jsonResponse(200, { ok: true, pluginId: result.pluginId, key: result.key, updatedAt: result.updatedAt })
   } catch (err) {
     if (err instanceof AdminPluginConfigError) {

@@ -5,7 +5,13 @@
 
 import { mock } from 'bun:test'
 
-import type { ListTasksParams, TaskCapability, TaskProvider, ToolDueDateInput } from '../../src/providers/types.js'
+import type {
+  ListTasksParams,
+  TaskCapability,
+  TaskProvider,
+  TaskProviderTrait,
+  ToolDueDateInput,
+} from '../../src/providers/types.js'
 import { localDatetimeToUtc, utcToLocal } from '../../src/utils/datetime.js'
 
 const ALL_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapability>([
@@ -61,6 +67,8 @@ const ALL_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapability>([
   'queries.saved',
 ])
 
+const NO_TRAITS: ReadonlySet<TaskProviderTrait> = new Set<TaskProviderTrait>()
+
 const normalizeMockDueDateInput = (dueDate: ToolDueDateInput | undefined, timezone: string): string | undefined => {
   if (dueDate === undefined) return undefined
   return localDatetimeToUtc(dueDate.date, dueDate.time, timezone)
@@ -102,7 +110,7 @@ export function createMockProvider(overrides: Partial<TaskProvider> = {}): TaskP
     name: 'mock',
     supportsCustomFields: false,
     capabilities: ALL_CAPABILITIES,
-    configRequirements: [],
+    traits: NO_TRAITS,
     preferredUserIdentifier: 'id',
     createTask: mock(() =>
       Promise.resolve({
@@ -249,9 +257,18 @@ export function createMockProvider(overrides: Partial<TaskProvider> = {}): TaskP
   }
 }
 
+export function createMockKaneoProvider(overrides: Partial<TaskProvider> = {}): TaskProvider {
+  return createMockProvider({
+    name: 'kaneo',
+    traits: new Set<TaskProviderTrait>(['task-label-read-requires-provider-specific-api']),
+    ...overrides,
+  })
+}
+
 export function createMockYouTrackProvider(overrides: Partial<TaskProvider> = {}): TaskProvider {
   return createMockProvider({
     name: 'youtrack',
+    traits: new Set<TaskProviderTrait>(['supports-command-language', 'command-language:youtrack', 'custom-fields']),
     preferredUserIdentifier: 'login',
     normalizeDueDateInput: (_dueDate: ToolDueDateInput | undefined, _timezone: string): string | undefined =>
       normalizeYouTrackMockDueDateInput(_dueDate),

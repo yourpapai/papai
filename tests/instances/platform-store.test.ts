@@ -5,10 +5,13 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { platformInstances } from '../../src/db/schema.js'
 import {
   deletePlatformInstance,
   getPlatformInstance,
   insertPlatformInstance,
+  listActivePlatformInstancesSafe,
   listPlatformInstances,
   updatePlatformInstance,
 } from '../../src/instances/platform-store.js'
@@ -49,11 +52,26 @@ describe('platform-store', () => {
     insertPlatformInstance({
       id: 'b',
       type: 'mattermost',
-      config: { url: 'u', token: 't' },
+      config: { baseUrl: 'u', token: 't' },
       status: 'pending',
     })
     const rows = listPlatformInstances()
     expect(rows.map((r) => r.id).toSorted()).toEqual(['a', 'b'])
+  })
+
+  test('listActivePlatformInstancesSafe skips unreadable active rows and returns failures', () => {
+    insertPlatformInstance({ id: 'good', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+    getDrizzleDb()
+      .insert(platformInstances)
+      .values({ id: 'bad', type: 'telegram', config: 'not-base64', status: 'active' })
+      .run()
+
+    const result = listActivePlatformInstancesSafe()
+
+    expect(result.instances.map((instance) => instance.id)).toEqual(['good'])
+    expect(result.failures).toHaveLength(1)
+    expect(result.failures[0]).toMatchObject({ table: 'platform_instances', id: 'bad', type: 'telegram' })
+    expect(result.failures[0]?.error).toContain('Encrypted payload')
   })
 
   test('update changes config and status, leaves id untouched', () => {

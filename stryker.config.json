@@ -41,6 +41,6 @@
   "jsonReporter": {
     "fileName": "reports/mutation.json"
   },
-  "ignorePatterns": ["node_modules", ".stryker-tmp"],
+  "ignorePatterns": ["node_modules", ".stryker-tmp", "reports", ".agents", ".codex", ".opencode", ".worktrees"],
   "cleanTempDir": true
 }

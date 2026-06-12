@@ -58,6 +58,14 @@ describe('Btn.svelte', () => {
     void unmount(component)
   })
 
+  test('forwards testid to the button element', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(Btn, { target, props: { children: textSnippet('go'), testid: 'do-thing' } })
+    expect(target.querySelector('[data-testid="do-thing"]')?.tagName).toBe('BUTTON')
+    void unmount(c)
+  })
+
   test('Btn.svelte source contains :hover rules for every variant', async () => {
     const url = new URL('../../../../client/shared/ui/Btn.svelte', import.meta.url)
     const source = await Bun.file(url).text()

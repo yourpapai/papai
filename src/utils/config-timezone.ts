@@ -7,7 +7,7 @@ import { getConfig } from '../config.js'
 import { normalizeTimezoneValue } from './timezone.js'
 
 const INVALID_TIMEZONE_ERROR =
-  'Your configured timezone is invalid. Please update it in /config or rerun /setup and try again.'
+  'Your configured timezone is invalid. Please update it in /config (settings web UI) and try again.'
 
 export function getUserTimezoneOrDefault(userId: string, fallback = 'UTC'): string {
   return normalizeTimezoneValue(getConfig(userId, 'timezone')) ?? fallback

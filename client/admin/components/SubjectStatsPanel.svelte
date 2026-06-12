@@ -7,6 +7,7 @@
   import { untrack } from 'svelte'
 
   import type { SubjectStats } from '../../../src/stats/types.js'
+  import { fmtBytes } from '../../shared/helpers.js'
   import { fetchStatsSubject } from '../fetchers.js'
 
   interface Props {
@@ -18,13 +19,6 @@
   let data: SubjectStats | null = $state(null)
   let loading = $state(true)
   let error: string | null = $state(null)
-
-  function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-  }
 
   async function load(): Promise<void> {
     loading = true
@@ -58,7 +52,7 @@
       <dt>scheduled prompts</dt><dd>{data.scheduledPrompts.total}</dd>
       <dt>alert prompts</dt><dd>{data.alertPrompts.total}</dd>
       <dt>instructions</dt><dd>{data.userInstructions.total}</dd>
-      <dt>attachments bytes</dt><dd>{formatBytes(data.attachments.storedBytesTotal)}</dd>
+      <dt>attachments bytes</dt><dd>{fmtBytes(data.attachments.storedBytesTotal)}</dd>
       <dt>messages</dt><dd>{data.messageMetadata.total}</dd>
       <dt>turns</dt><dd>{data.conversationHistory.turnCount}</dd>
       <dt>llm rows</dt><dd>{data.llmUsage.rowCount}</dd>

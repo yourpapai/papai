@@ -5,12 +5,9 @@
 
 export type InstanceConfig = Record<string, string>
 
-export type PlatformInstanceType = 'telegram' | 'mattermost' | 'discord'
+export type PlatformInstanceType = 'telegram' | 'mattermost' | 'discord' | 'kontur-talk'
 export type TaskInstanceType = string
-export type BuiltinTaskType = 'kaneo' | 'youtrack'
 export type InstanceStatus = 'pending' | 'active' | 'stopped'
-
-export const isBuiltinTaskType = (type: string): type is BuiltinTaskType => type === 'kaneo' || type === 'youtrack'
 
 export interface PlatformInstance {
   id: string
@@ -28,6 +25,18 @@ export interface TaskInstance {
   createdAt: string
 }
 
+export type InstanceDecodeFailure = Readonly<{
+  table: 'platform_instances' | 'task_instances'
+  id: string
+  type: string
+  error: string
+}>
+
+export type InstanceDecodeResult<T> = Readonly<{
+  instances: T[]
+  failures: InstanceDecodeFailure[]
+}>
+
 export interface ContextSettings {
   contextId: string
   taskInstanceId: string
@@ -41,5 +50,5 @@ export interface AdminRecord {
 }
 
 export type BootstrapResult =
-  | { bootstrapped: true; platformInstanceId: string; taskInstanceId: string }
+  | { bootstrapped: true; platformInstanceId: string }
   | { bootstrapped: false; reason: 'no-env' | 'already-bootstrapped' | 'partial-env'; missing?: string[] }

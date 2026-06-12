@@ -15,8 +15,11 @@ import {
   safeBuildProvider,
 } from '../../src/commands/context-tool-resolution.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
+import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import type { TaskProvider } from '../../src/providers/types.js'
+import { buildProviderlessSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
+import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createAuth,
@@ -51,7 +54,12 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
       approximate: false,
     }),
     buildProvider: safeBuildProvider,
-    buildLiveToolSet: (storageContextId, actorUserId, contextType, provider): ToolSet | null => {
+    buildLiveToolSet: (
+      storageContextId,
+      actorUserId,
+      contextType,
+      provider,
+    ): Promise<ToolSet | null> | ToolSet | null => {
       if (provider === null) return null
       return makeTools(provider, {
         storageContextId,
@@ -115,6 +123,11 @@ function createSequentialLiveToolSet(results: readonly (ToolSet | null)[]): () =
     if (nextResult === undefined) return null
     return nextResult
   }
+}
+
+function requireMemoryMessage(value: string | null): string {
+  if (value === null) throw new Error('expected memory message')
+  return value
 }
 
 describe('registerContextCommand', () => {
@@ -193,6 +206,49 @@ describe('registerContextCommand', () => {
     expect(activeToolDefinitions).not.toBeNull()
     expect(activeToolDefinitions).toHaveProperty('set_my_identity')
     expect(activeToolDefinitions).toHaveProperty('clear_my_identity')
+  })
+
+  test('uses group long-term memory in context command memory section', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const chat = createFormattedContextChat(commands, null)
+    let memoryMessage: string | null = null
+    saveMemoryProfile(
+      { scopeId: 'group-ctx', scopeType: 'group' },
+      '## Group memory\n- Group planning happens in the roadmap thread',
+      '2026-06-12T00:00:00.000Z',
+    )
+    saveMemoryProfile(
+      { scopeId: 'group-ctx', scopeType: 'personal' },
+      '## Personal memory\n- This personal profile should not be shown',
+      '2026-06-12T00:00:00.000Z',
+    )
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          memoryMessage = collectorDeps.getMemoryMessage()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+    const { reply } = createMockReply()
+
+    await handler(
+      createGroupMessage('actor-user', '/context', false, 'group-ctx'),
+      reply,
+      createAuth('group-ctx', { isGroupAdmin: true }),
+    )
+
+    const capturedMemoryMessage = requireMemoryMessage(memoryMessage)
+    expect(capturedMemoryMessage).toContain('Group planning happens in the roadmap thread')
+    expect(capturedMemoryMessage).not.toContain('This personal profile should not be shown')
   })
 
   test('uses injected provider construction instead of the hardwired provider factory', async () => {
@@ -281,7 +337,7 @@ describe('registerContextCommand', () => {
 
   test('keeps summary and follow-up aligned when live tool resolution is transient across calls', async () => {
     const provider = createIdentityCapableProvider()
-    const firstLiveTools = makeTools(provider, {
+    const firstLiveTools = await makeTools(provider, {
       storageContextId: 'group-1',
       chatUserId: 'actor-user',
       mode: 'normal',
@@ -472,5 +528,79 @@ describe('registerContextCommand', () => {
 
     expect(textCalls.length).toBe(1)
     expect(textCalls[0]).toMatch(/could not build context view/iu)
+  })
+
+  test('uses the full providerless system prompt when provider construction fails', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const chat = createMockChat({ commandHandlers: commands })
+    let capturedPrompt = ''
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        buildProvider: () => null,
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          capturedPrompt = collectorDeps.buildSystemPrompt()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+
+    const { reply } = createMockReply()
+    const auth = createAuth('providerless-user')
+
+    await handler(createDmMessage('providerless-user'), reply, auth)
+
+    const expectedPrompt = buildProviderlessSystemPrompt(auth.storageContextId, new Set<string>(), {
+      askPermissionAvailable: true,
+    })
+    expect(capturedPrompt).toBe(expectedPrompt)
+  })
+
+  test('uses resolved active tool surface when building provider-backed system prompt', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const chat = createMockChat({ commandHandlers: commands })
+    const provider = createMockProvider()
+    let capturedPrompt = ''
+    setToolPrefs('provider-backed-user', {
+      domainDefaults: {},
+      toolOverrides: { search_tasks: 'deny' },
+    })
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        buildProvider: (): typeof provider => provider,
+        resolveToolSurface: () =>
+          Promise.resolve({
+            definitions: {
+              create_task: { description: 'Create task' },
+            },
+          }),
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          capturedPrompt = collectorDeps.buildSystemPrompt()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+
+    const { reply } = createMockReply()
+
+    await handler(createDmMessage('provider-backed-user'), reply, createAuth('provider-backed-user'))
+
+    expect(capturedPrompt).toContain('Unavailable tools')
+    expect(capturedPrompt).toContain('search_tasks')
   })
 })

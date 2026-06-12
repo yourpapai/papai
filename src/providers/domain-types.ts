@@ -238,11 +238,12 @@ export type TaskCommandResult = {
   silent?: boolean
 }
 
-/** Configuration keys that a provider requires to function. `scope` distinguishes instance-shared config from per-user context config; defaults to `'instance'`. */
-export type ProviderConfigRequirement = {
+/** Configuration fields that a provider requires to function. */
+export type ProviderConfigField = {
   key: string
   label: string
   required: boolean
-  sensitive?: boolean
-  scope?: 'instance' | 'user'
+  sensitive: boolean
+  scope: 'instance' | 'context'
+  storageKey?: string
 }

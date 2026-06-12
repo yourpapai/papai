@@ -3,14 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, type LanguageModel } from 'ai'
 
+import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
+import { buildChatModel } from '../llm-model-builder.js'
 import { logger } from '../logger.js'
-import { getSystemConfig, type SystemConfigKey } from '../system-config.js'
 import { recordUsage } from '../usage/recorder.js'
 import type { ContextType } from '../usage/types.js'
-import { fetchWithoutTimeout } from '../utils/fetch.js'
 
 const log = logger.child({ scope: 'web:distill' })
 
@@ -36,25 +35,19 @@ const splitParagraphs = (text: string): readonly string[] =>
     .map((paragraph) => paragraph.trim())
     .filter((paragraph) => paragraph.length > 0)
 
-const requireSystemValue = (key: SystemConfigKey): string => {
-  const value = getSystemConfig(key)
-  if (value !== null) {
-    return value
-  }
-
-  throw new Error(`Missing required system_config: ${key}`)
-}
-
 const bypassDistillation = (storageContextId: string, content: string): DistilledContent => {
   log.info({ storageContextId, contentLength: content.length }, 'Bypassed distillation')
   return { summary: content, excerpt: content, truncated: false }
 }
 
-const getModelConfig = (): { apiKey: string; baseUrl: string; modelId: string } => ({
-  apiKey: requireSystemValue('llm_apikey'),
-  baseUrl: requireSystemValue('llm_baseurl'),
-  modelId: getSystemConfig('small_model') ?? requireSystemValue('main_model'),
-})
+const getModelConfig = (configContextId: string): { apiKey: string; baseUrl: string; modelId: string } => {
+  const resolved = resolveEffectiveLlmConfig(configContextId)
+  if (resolved.ok) {
+    return { apiKey: resolved.llmApiKey, baseUrl: resolved.llmBaseUrl, modelId: resolved.smallModel }
+  }
+  const details = resolved.type === 'missing' ? resolved.missing.join(', ') : resolved.error
+  throw new Error(`Missing ${resolved.source} LLM config: ${details}`)
+}
 
 const parseDistilledContent = (text: string): DistilledContent => {
   const [summary = '', ...excerptParts] = splitParagraphs(text)
@@ -86,13 +79,7 @@ export interface DistillDeps {
 
 const defaultDeps: DistillDeps = {
   generateText: (...args) => generateText(...args),
-  buildModel: (apiKey, baseUrl, modelId) =>
-    createOpenAICompatible({
-      name: 'openai-compatible',
-      apiKey,
-      baseURL: baseUrl,
-      fetch: fetchWithoutTimeout,
-    })(modelId),
+  buildModel: (apiKey, baseUrl, modelId) => buildChatModel(apiKey, baseUrl, modelId),
 }
 
 export type DistillCallContext = {
@@ -102,6 +89,7 @@ export type DistillCallContext = {
 
 type DistillInput = {
   readonly storageContextId: string
+  readonly configContextId?: string
   readonly title: string
   readonly content: string
   readonly goal?: string
@@ -193,7 +181,7 @@ export async function distillWebContent(
     return bypassDistillation(input.storageContextId, input.content)
   }
 
-  const { apiKey, baseUrl, modelId } = getModelConfig()
+  const { apiKey, baseUrl, modelId } = getModelConfig(input.configContextId ?? input.storageContextId)
   const model = deps.buildModel(apiKey, baseUrl, modelId)
   const prompt = buildPrompt(input.title, input.goal ?? DEFAULT_GOAL, input.content)
   const callContext = getDistillCallContext(input)

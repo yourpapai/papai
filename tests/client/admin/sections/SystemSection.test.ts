@@ -10,12 +10,12 @@ import { flushSync, mount, unmount } from 'svelte'
 import SystemSection from '../../../../client/admin/sections/SystemSection.svelte'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
-const emptyKey = { value: null, updatedAt: null, updatedBy: null }
+const emptyKey = { value: null, updatedAt: null, updatedBy: null, required: false }
 
 const llmSnapshot = {
-  llm_apikey: { value: '****1234', updatedAt: 1, updatedBy: 'admin' },
-  llm_baseurl: { value: 'https://llm.example.test/v1', updatedAt: 2, updatedBy: 'admin' },
-  main_model: { value: 'gpt-main', updatedAt: 3, updatedBy: 'admin' },
+  llm_apikey: { value: '****1234', updatedAt: 1, updatedBy: 'admin', required: true },
+  llm_baseurl: { value: 'https://llm.example.test/v1', updatedAt: 2, updatedBy: 'admin', required: true },
+  main_model: { value: 'gpt-main', updatedAt: 3, updatedBy: 'admin', required: true },
   small_model: emptyKey,
   embedding_model: emptyKey,
 }
@@ -104,10 +104,35 @@ describe('SystemSection', () => {
     expect(target.textContent).toContain('System')
     expect(target.textContent).toContain('telegram')
     expect(target.textContent).toContain('kaneo')
-    expect(target.textContent).toContain('Debug server')
+    expect(target.textContent).toContain('debug server')
     expect(target.textContent).toContain('Enabled')
     expect(target.querySelectorAll('[data-testid="credentials-row"]')).toHaveLength(5)
     expect(target.textContent).toContain('****1234')
+
+    void unmount(component)
+  })
+
+  test('renders a single System title via PageHeader with no duplicate eyebrow', () => {
+    installReadFetch()
+    const { component, target } = render()
+    expect(target.querySelector('[data-testid="admin-section-title"]')?.textContent).toBe('System')
+    expect(target.querySelector('.ui-page-header')).not.toBeNull()
+    expect(target.querySelector('.ui-caption')).toBeNull()
+    expect(target.querySelector('[data-testid="system-refresh"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders the system summary via SummaryList with aligned rows and pills (B6)', async () => {
+    installReadFetch()
+    const { component, target } = render()
+    await drain()
+
+    expect(target.querySelector('.ui-summary')).not.toBeNull()
+    expect(target.querySelectorAll('.ui-summary__row').length).toBe(4)
+    // exactly three values render as pills (task provider, debug server, admin user)
+    expect(target.querySelectorAll('[data-testid="system-summary"] .ui-pill').length).toBe(3)
+    // the old definition-list is gone
+    expect(target.querySelector('dl[data-testid="system-summary"]')).toBeNull()
 
     void unmount(component)
   })

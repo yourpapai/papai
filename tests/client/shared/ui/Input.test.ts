@@ -37,6 +37,36 @@ describe('Input.svelte', () => {
     void unmount(component)
   })
 
+  test('supports password type and forwards testid', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const c = mount(Input, { target, props: { value: '', type: 'password', testid: 'secret-field' } })
+    const input = target.querySelector<HTMLInputElement>('[data-testid="secret-field"]')!
+    expect(input.tagName).toBe('INPUT')
+    expect(input.getAttribute('type')).toBe('password')
+    void unmount(c)
+  })
+
+  test('emits onInput with the new value', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    let seen = ''
+    const c = mount(Input, {
+      target,
+      props: {
+        value: '',
+        onInput: (v: string) => {
+          seen = v
+        },
+      },
+    })
+    const input = target.querySelector<HTMLInputElement>('input')!
+    input.value = 'hello'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(seen).toBe('hello')
+    void unmount(c)
+  })
+
   test('calls onInput when the input value changes', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
@@ -55,5 +85,29 @@ describe('Input.svelte', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
     expect(last).toBe('hi')
     void unmount(component)
+  })
+
+  test('renders a textarea in multiline mode and emits onInput', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    let seen = ''
+    const c = mount(Input, {
+      target,
+      props: {
+        value: '',
+        multiline: true,
+        rows: 3,
+        onInput: (v: string) => {
+          seen = v
+        },
+      },
+    })
+    const ta = target.querySelector<HTMLTextAreaElement>('textarea')!
+    expect(ta).not.toBeNull()
+    expect(target.querySelector('input')).toBeNull()
+    ta.value = 'hi'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(seen).toBe('hi')
+    void unmount(c)
   })
 })

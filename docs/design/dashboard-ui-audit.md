@@ -89,13 +89,13 @@ Severity: **LOW**.
 
 ### 1.7 Conflicting shared components
 
-| Component                                | Issue                                                                                                       |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `PanelShell.svelte` + `.panel` CSS       | parallel panel implementation; `letter-spacing: 0.05em` vs proto `0.08em`, title color `fg3` vs proto `fg2` |
-| `StatusDot.svelte`                       | renders `●` text with class names that exist nowhere; conflicts with `Dot.svelte` + `Pill.svelte`           |
-| `PropertiesTable.svelte`                 | uses `tree-*` classes never defined in CSS — visually broken                                                |
-| `TreeView.svelte`                        | uses `tree-*` classes never defined in CSS — visually broken                                                |
-| `Confirm.svelte` / `Modal.svelte` footer | plain `<button>` instead of `<Btn>` — no shared variant styling                                             |
+| Component                                | Issue                                                                                                                                                            |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PanelShell.svelte` + `.panel` CSS       | parallel panel implementation; `letter-spacing: 0.05em` vs proto `0.08em`, title color `fg3` vs proto `fg2`                                                      |
+| `StatusDot.svelte`                       | renders `●` text with class names that exist nowhere; conflicts with `Dot.svelte` + `Pill.svelte`                                                                |
+| `PropertiesTable.svelte`                 | ✅ RESOLVED (2026-05-30 visual sweep): renders correctly with type-coloured cells; no tree-\* class drift observed                                               |
+| `TreeView.svelte`                        | Story decorator padding missing — top rows clipped at iframe edge. Fixed in the visual-bugs fix series; see docs/design/dashboard-visual-bugs-2026-05-30.md §2.8 |
+| `Confirm.svelte` / `Modal.svelte` footer | plain `<button>` instead of `<Btn>` — no shared variant styling                                                                                                  |
 
 The TreeView is the engine behind the entire `TurnDetail` rail (see § 2.7), so its unstyled state is the visible problem there.
 

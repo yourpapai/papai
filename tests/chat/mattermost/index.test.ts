@@ -3,11 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { fetchMattermostFiles } from '../../../src/chat/mattermost/file-helpers.js'
 import { MattermostChatProvider } from '../../../src/chat/mattermost/index.js'
+import { determineMattermostThreadId } from '../../../src/chat/mattermost/message-normalization.js'
 import { mattermostCapabilities } from '../../../src/chat/mattermost/metadata.js'
 import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
 import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
@@ -17,6 +18,15 @@ import { createMockReply, restoreFetch, setMockFetch } from '../../utils/test-he
 
 type BuiltPostedMessage = { readonly msg: IncomingMessage }
 type PostedEventHandler = (data: Record<string, unknown>) => Promise<void>
+type MattermostActionDispatch = (payload: unknown) => Promise<unknown>
+const TEST_PLATFORM_ID = 'mattermost-default'
+
+const createMattermostProvider = (): MattermostChatProvider =>
+  new MattermostChatProvider({
+    baseUrl: 'https://mm.invalid',
+    token: 'test-token',
+    platformInstanceId: TEST_PLATFORM_ID,
+  })
 
 function isIncomingMessage(value: unknown): value is IncomingMessage {
   return (
@@ -34,6 +44,10 @@ function isBuiltPostedMessage(value: unknown): value is BuiltPostedMessage {
 }
 
 function isPostedEventHandler(value: unknown): value is PostedEventHandler {
+  return typeof value === 'function'
+}
+
+function isMattermostActionDispatch(value: unknown): value is MattermostActionDispatch {
   return typeof value === 'function'
 }
 
@@ -184,17 +198,38 @@ void mock.module('../../../src/auth.js', () => ({
 describe('MattermostChatProvider', () => {
   let provider: MattermostChatProvider
 
-  beforeEach(() => {
-    // Set required env vars
-    process.env['MATTERMOST_URL'] = 'http://localhost:8065'
-    process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
+  test('constructor requires explicit baseUrl, token, and platform instance id', () => {
+    expect(() => new MattermostChatProvider({ token: 'cfg-token', platformInstanceId: TEST_PLATFORM_ID })).toThrow(
+      'MATTERMOST_URL environment variable is required',
+    )
+    expect(
+      () => new MattermostChatProvider({ baseUrl: 'https://configured.invalid', platformInstanceId: TEST_PLATFORM_ID }),
+    ).toThrow('MATTERMOST_BOT_TOKEN environment variable is required')
+    expect(
+      () =>
+        new MattermostChatProvider({
+          baseUrl: 'https://configured.invalid',
+          token: 'cfg-token',
+          platformInstanceId: '   ',
+        }),
+    ).toThrow('platformInstanceId is required')
+  })
+
+  test('constructor accepts explicit baseUrl config', () => {
+    const constructedProvider = new MattermostChatProvider({
+      baseUrl: 'https://configured.invalid',
+      token: 'cfg-token',
+      platformInstanceId: TEST_PLATFORM_ID,
+    })
+
+    expect(constructedProvider.name).toBe('mattermost')
   })
 
   describe('resolveUserId', () => {
     test('resolves username to user ID', async () => {
       setMockFetch(makeFetchWithUsernameTestuser())
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       const userId = await provider.resolveUserId('testuser', {
         contextId: 'c1',
         contextType: 'group',
@@ -207,7 +242,7 @@ describe('MattermostChatProvider', () => {
     test('handles username with @ prefix', async () => {
       setMockFetch(makeFetchWithUsernameTestuser())
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       const userId = await provider.resolveUserId('@testuser', {
         contextId: 'c1',
         contextType: 'group',
@@ -222,7 +257,7 @@ describe('MattermostChatProvider', () => {
         return Promise.resolve(new Response(null, { status: 404 }))
       })
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       const userId = await provider.resolveUserId('nonexistent', {
         contextId: 'c1',
         contextType: 'group',
@@ -242,12 +277,12 @@ describe('MattermostChatProvider', () => {
       expect(mattermostCapabilities.has('users.resolve')).toBe(true)
     })
 
-    test('does NOT advertise messages.buttons', () => {
-      expect(mattermostCapabilities.has('messages.buttons')).toBe(false)
+    test('advertises messages.buttons capability', () => {
+      expect(mattermostCapabilities.has('messages.buttons')).toBe(true)
     })
 
-    test('does NOT advertise interactions.callbacks', () => {
-      expect(mattermostCapabilities.has('interactions.callbacks')).toBe(false)
+    test('advertises interactions.callbacks capability', () => {
+      expect(mattermostCapabilities.has('interactions.callbacks')).toBe(true)
     })
 
     test('does NOT advertise commands.menu', () => {
@@ -259,7 +294,7 @@ describe('MattermostChatProvider', () => {
     test('mentions stored target usernames for personal group delivery', async () => {
       const requests: Array<{ readonly path: string; readonly body: unknown }> = []
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       Reflect.set(provider, 'apiFetch', makeApiFetchWithUserPostAndRecording('user-2', 'alex', requests))
 
       await provider.sendMessage(
@@ -288,7 +323,7 @@ describe('MattermostChatProvider', () => {
     test('falls back to creator username for legacy personal group delivery without mention targets', async () => {
       const requests: Array<{ readonly path: string; readonly body: unknown }> = []
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       Reflect.set(provider, 'apiFetch', makeApiFetchPostOnly(requests))
 
       await provider.sendMessage(
@@ -317,7 +352,7 @@ describe('MattermostChatProvider', () => {
     test('mentions stored targets even when createdByUsername is null', async () => {
       const requests: Array<{ readonly path: string; readonly body: unknown }> = []
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       Reflect.set(provider, 'apiFetch', makeApiFetchWithUserPostAndRecording('user-2', 'alex', requests))
 
       await provider.sendMessage(
@@ -347,7 +382,7 @@ describe('MattermostChatProvider', () => {
   test('buildPostedMessage includes channel and team names', async () => {
     const { reply } = createMockReply()
 
-    provider = new MattermostChatProvider()
+    provider = createMattermostProvider()
 
     Reflect.set(provider, 'apiFetch', makeApiFetchChannelAndTeam())
     Reflect.set(provider, 'checkChannelAdmin', () => Promise.resolve(true))
@@ -382,7 +417,11 @@ describe('MattermostChatProvider', () => {
   test('buildPostedMessage emits constructor-provided platform instance ID', async () => {
     const { reply } = createMockReply()
 
-    provider = new MattermostChatProvider({ platformInstanceId: 'mattermost-secondary' })
+    provider = new MattermostChatProvider({
+      baseUrl: 'https://mm.invalid',
+      token: 'test-token',
+      platformInstanceId: 'mattermost-secondary',
+    })
 
     Reflect.set(provider, 'apiFetch', makeApiFetchChannelAndTeam())
     Reflect.set(provider, 'checkChannelAdmin', () => Promise.resolve(true))
@@ -407,7 +446,7 @@ describe('MattermostChatProvider', () => {
   test('buildPostedMessage emits default Mattermost platform instance ID when config omits it', async () => {
     const { reply } = createMockReply()
 
-    provider = new MattermostChatProvider()
+    provider = createMattermostProvider()
 
     Reflect.set(provider, 'apiFetch', makeApiFetchChannelAndTeam())
     Reflect.set(provider, 'checkChannelAdmin', () => Promise.resolve(true))
@@ -428,9 +467,69 @@ describe('MattermostChatProvider', () => {
     expect(result.msg.platformInstanceId).toBe('mattermost-default')
   })
 
+  test('dispatches Mattermost action callbacks through onInteraction handler', async () => {
+    provider = createMattermostProvider()
+    const interactions: Array<{
+      callbackData: string
+      sourceMessageText: string | undefined
+      storageContextId: string
+      threadId: string | undefined
+    }> = []
+    provider.onInteraction?.((interaction, reply): Promise<void> => {
+      interactions.push({
+        callbackData: interaction.callbackData,
+        sourceMessageText: interaction.sourceMessageText,
+        storageContextId: interaction.storageContextId,
+        threadId: interaction.threadId,
+      })
+      const replaceText = reply.replaceText
+      assert(replaceText !== undefined)
+      return replaceText('updated')
+    })
+
+    const responses: Record<string, unknown> = {
+      'GET /api/v4/channels/chan-1': { type: 'O' },
+      'GET /api/v4/channels/chan-1/members/user-1': { roles: '' },
+    }
+    const apiFetch = (method: string, path: string, _body: unknown): Promise<unknown> => {
+      return Promise.resolve(responses[`${method} ${path}`])
+    }
+    Reflect.set(provider, 'apiFetch', apiFetch)
+
+    const dispatchValue = Reflect.get(provider as object, 'dispatchMattermostAction') as unknown
+    assert(isMattermostActionDispatch(dispatchValue), 'Expected Mattermost action dispatcher')
+    const response = await dispatchValue.call(provider, {
+      userId: 'user-1',
+      postId: 'post-1',
+      channelId: 'chan-1',
+      teamId: 'team-1',
+      action: {
+        platformInstanceId: TEST_PLATFORM_ID,
+        callbackData: 'perm:a:abc12345',
+        sourceMessageText: 'Run `delete_task`?\n\nReason',
+        expiresAt: Date.now() + 60_000,
+        threadId: 'root-post-1',
+      },
+    })
+
+    expect(interactions).toEqual([
+      {
+        callbackData: 'perm:a:abc12345',
+        sourceMessageText: 'Run `delete_task`?\n\nReason',
+        storageContextId: toScopedThreadContextId({
+          platformInstanceId: TEST_PLATFORM_ID,
+          nativeContextId: 'chan-1',
+          threadId: 'root-post-1',
+        }),
+        threadId: 'root-post-1',
+      },
+    ])
+    expect(response).toEqual({ update: { message: 'updated', props: {} } })
+  })
+
   describe('renderContext', () => {
     test('returns formatted method result with context snapshot', () => {
-      const mmProvider = new MattermostChatProvider()
+      const mmProvider = createMattermostProvider()
       const snapshot: ContextSnapshot = {
         modelName: 'gpt-4o',
         totalTokens: 1500,
@@ -455,7 +554,7 @@ describe('MattermostChatProvider', () => {
   describe('command thread scoping', () => {
     test('MattermostProvider is properly imported and has registerCommand', () => {
       // Verify the provider can be instantiated and has expected methods
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       expect(typeof provider.registerCommand).toBe('function')
       expect(typeof provider.onMessage).toBe('function')
     })
@@ -502,7 +601,7 @@ describe('MattermostChatProvider', () => {
       // This test verifies the actual code path where threadId is populated
       setMockFetch(makeFetchWithGroupChannel('O'))
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
 
       // Trigger command handler via dispatch (simulating the full flow)
       // Access internal dispatch to test thread scoping directly
@@ -526,7 +625,13 @@ describe('MattermostChatProvider', () => {
 
     test('command auth uses scoped storage context for active platform instance', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
-      provider = new MattermostChatProvider({ platformInstanceId: 'mattermost-secondary' })
+      provider = new MattermostChatProvider({
+        baseUrl: 'https://mm.invalid',
+        token: 'test-token',
+        platformInstanceId: 'mattermost-secondary',
+      })
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
       let auth: AuthorizationResult | undefined
       provider.registerCommand('test', (_msg, _reply, commandAuth): Promise<void> => {
         auth = commandAuth
@@ -540,7 +645,7 @@ describe('MattermostChatProvider', () => {
           id: 'post123',
           user_id: 'user456',
           channel_id: 'channel789',
-          message: '/test',
+          message: '@testbot /test',
           root_id: 'threadRoot',
           parent_id: '',
         }),
@@ -557,10 +662,329 @@ describe('MattermostChatProvider', () => {
       restoreFetch()
     })
 
+    test('routes @mention-prefixed slash text to the registered command handler', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(true)
+
+      restoreFetch()
+    })
+
+    test('routes @mention-prefixed slash text to the registered command handler in dm', async () => {
+      setMockFetch(makeFetchWithGroupChannel('D'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post124',
+          user_id: 'user456',
+          channel_id: 'dm-channel',
+          message: '@testbot /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(true)
+
+      restoreFetch()
+    })
+
+    test('preserves commandMatch after removing a mention-prefixed slash command mention', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandMatch: string | undefined
+      provider.registerCommand('config', (msg) => {
+        commandMatch = msg.commandMatch
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post125',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot /config foo',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandMatch).toBe('foo')
+
+      restoreFetch()
+    })
+
+    test('does not route bare slash text to papai command handlers', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '/config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+
+      restoreFetch()
+    })
+
+    test('keeps mention-prefixed natural language on the message flow', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let seen: unknown = null
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot summarize this thread',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(true)
+      expect(message.text).toBe('summarize this thread')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
+    test('replies with guidance when a message only mentions the bot', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      const replies = createMockReply()
+      provider.onMessage(async (_msg, reply) => {
+        await reply.text('should not be called')
+      })
+
+      // @ts-expect-error - replacing private method for testing
+      provider.buildReplyFn = (): typeof replies.reply => replies.reply
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post129',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(replies.getReplies()).toEqual(['Use `@testbot /help` to see commands, or mention me with a question.'])
+
+      restoreFetch()
+    })
+
+    test('keeps non-prefix mentions on the normal message flow while preserving isMentioned', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      let seen: unknown = null
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post126',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: 'hello @testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(true)
+      expect(message.text).toBe('hello @testbot')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
+    test('does not treat near-match prefixes as bot mentions or commands', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      let seen: unknown = null
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post127',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbotty /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(false)
+      expect(message.text).toBe('@testbotty /config')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
+    test('recognizes a later standalone mention after an earlier near-match mention', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let seen: unknown = null
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post128',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbotty please ask @testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(true)
+      expect(message.text).toBe('@testbotty please ask @testbot')
+
+      restoreFetch()
+    })
+
     test('IncomingMessage contains threadId from replyToMessageId when root_id empty', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
 
       const post: MattermostPost = {
         id: 'post123',
@@ -583,7 +1007,7 @@ describe('MattermostChatProvider', () => {
     test('IncomingMessage has undefined threadId for non-threaded posts', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
 
       const post: MattermostPost = {
         id: 'post123',
@@ -605,7 +1029,7 @@ describe('MattermostChatProvider', () => {
     test('creates threadId from post.id when mentioned in group (not already threaded)', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       // Manually set bot username for mention detection
       // @ts-expect-error - accessing private field for testing
       provider.botUsername = 'testbot'
@@ -631,7 +1055,7 @@ describe('MattermostChatProvider', () => {
     test('does NOT create thread when mentioned in DM', async () => {
       setMockFetch(makeFetchWithGroupChannel('D'))
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       // @ts-expect-error - accessing private field for testing
       provider.botUsername = 'testbot'
 
@@ -655,7 +1079,7 @@ describe('MattermostChatProvider', () => {
     })
 
     test('thread capabilities advertise canCreateThreads=true', () => {
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       expect(provider.threadCapabilities.supportsThreads).toBe(true)
       expect(provider.threadCapabilities.canCreateThreads).toBe(true)
       expect(provider.threadCapabilities.threadScope).toBe('post')
@@ -664,7 +1088,7 @@ describe('MattermostChatProvider', () => {
     test('determineThreadId returns root_id when in existing thread', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       // @ts-expect-error - accessing private field for testing
       provider.botUsername = 'testbot'
 
@@ -688,7 +1112,7 @@ describe('MattermostChatProvider', () => {
     test('determineThreadId returns replyToMessageId when not mentioned and no root_id', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 
-      provider = new MattermostChatProvider()
+      provider = createMattermostProvider()
       // @ts-expect-error - accessing private field for testing
       provider.botUsername = 'testbot'
 
@@ -711,8 +1135,7 @@ describe('MattermostChatProvider', () => {
       restoreFetch()
     })
 
-    test('determineThreadId method directly - mentioned in group creates thread', () => {
-      provider = new MattermostChatProvider()
+    test('determineMattermostThreadId creates a thread for a mentioned group post', () => {
       const post: MattermostPost = {
         id: 'post789',
         user_id: 'user456',
@@ -722,13 +1145,11 @@ describe('MattermostChatProvider', () => {
         parent_id: undefined,
       }
 
-      // @ts-expect-error - accessing private method for testing
-      const result = provider.determineThreadId(post, true, 'group', undefined)
+      const result = determineMattermostThreadId(post, true, 'group', undefined)
       expect(result).toBe('post789')
     })
 
-    test('determineThreadId method directly - existing thread uses root_id', () => {
-      provider = new MattermostChatProvider()
+    test('determineMattermostThreadId uses root_id for existing threads', () => {
       const post: MattermostPost = {
         id: 'reply456',
         user_id: 'user456',
@@ -738,13 +1159,11 @@ describe('MattermostChatProvider', () => {
         parent_id: 'parent123',
       }
 
-      // @ts-expect-error - accessing private method for testing
-      const result = provider.determineThreadId(post, false, 'group', 'parent123')
+      const result = determineMattermostThreadId(post, false, 'group', 'parent123')
       expect(result).toBe('threadRoot')
     })
 
-    test('determineThreadId method directly - not mentioned uses replyToMessageId', () => {
-      provider = new MattermostChatProvider()
+    test('determineMattermostThreadId uses replyToMessageId when not mentioned', () => {
       const post: MattermostPost = {
         id: 'post789',
         user_id: 'user456',
@@ -754,13 +1173,11 @@ describe('MattermostChatProvider', () => {
         parent_id: undefined,
       }
 
-      // @ts-expect-error - accessing private method for testing
-      const result = provider.determineThreadId(post, false, 'group', 'fallbackId')
+      const result = determineMattermostThreadId(post, false, 'group', 'fallbackId')
       expect(result).toBe('fallbackId')
     })
 
-    test('determineThreadId method directly - mentioned in DM does not create thread', () => {
-      provider = new MattermostChatProvider()
+    test('determineMattermostThreadId does not create threads for DM mentions', () => {
       const post: MattermostPost = {
         id: 'post789',
         user_id: 'user456',
@@ -770,8 +1187,7 @@ describe('MattermostChatProvider', () => {
         parent_id: undefined,
       }
 
-      // @ts-expect-error - accessing private method for testing
-      const result = provider.determineThreadId(post, true, 'dm', undefined)
+      const result = determineMattermostThreadId(post, true, 'dm', undefined)
       expect(result).toBeUndefined()
     })
   })
@@ -845,9 +1261,7 @@ describe('MattermostChatProvider reverse label resolution', () => {
   test('resolveGroupLabel returns channel display name', async () => {
     setMockFetch(makeFetchChannel('chan-1', { type: 'O', display_name: 'Operations', name: 'operations' }))
 
-    process.env['MATTERMOST_URL'] = 'http://localhost:8065'
-    process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
-    const provider = new MattermostChatProvider()
+    const provider = createMattermostProvider()
     const label = await provider.resolveGroupLabel?.('chan-1')
 
     expect(label).toBe('Operations')
@@ -865,9 +1279,7 @@ describe('MattermostChatProvider reverse label resolution', () => {
       }),
     )
 
-    process.env['MATTERMOST_URL'] = 'http://localhost:8065'
-    process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
-    const provider = new MattermostChatProvider()
+    const provider = createMattermostProvider()
     const label = await provider.resolveUserLabel?.('user-1')
 
     expect(label).toBe('John Johnson (@itsmike)')
@@ -877,9 +1289,7 @@ describe('MattermostChatProvider reverse label resolution', () => {
   test('resolveUserLabel returns null when user lookup fails', async () => {
     setMockFetch(() => Promise.resolve(new Response(null, { status: 404 })))
 
-    process.env['MATTERMOST_URL'] = 'http://localhost:8065'
-    process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
-    const provider = new MattermostChatProvider()
+    const provider = createMattermostProvider()
     const label = await provider.resolveUserLabel?.('missing-user')
 
     expect(label).toBeNull()

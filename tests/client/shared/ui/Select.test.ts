@@ -31,6 +31,32 @@ describe('Select.svelte', () => {
     void unmount(component)
   })
 
+  test('forwards testid to the select element and emits onChange', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    let picked = ''
+    const c = mount(Select, {
+      target,
+      props: {
+        value: 'a',
+        options: [
+          { value: 'a', label: 'A' },
+          { value: 'b', label: 'B' },
+        ],
+        onChange: (v: string) => {
+          picked = v
+        },
+        testid: 'type-input',
+      },
+    })
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="type-input"]')!
+    expect(sel.tagName).toBe('SELECT')
+    sel.value = 'b'
+    sel.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(picked).toBe('b')
+    void unmount(c)
+  })
+
   test('calls onChange with the new value', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!

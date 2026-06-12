@@ -55,6 +55,15 @@ import { migration041UsersPlatformInstanceIndex } from './migrations/041_users_p
 import { migration042UserWorkspaceConfigBackfill } from './migrations/042_user_workspace_config_backfill.js'
 import { migration043ScopedContextIds } from './migrations/043_scoped_context_ids.js'
 import { migration044InstanceIntegrity } from './migrations/044_instance_integrity.js'
+import { migration045ProviderBaseUrl } from './migrations/045_provider_base_url.js'
+import { migration046ParentSharedContextEntities } from './migrations/046_parent_shared_context_entities.js'
+import { migration047DashboardSessions } from './migrations/047_dashboard_sessions.js'
+import { migration048NamespaceKaneoConfig } from './migrations/048_namespace_kaneo_config.js'
+import { migration049NamespaceYoutrackConfig } from './migrations/049_namespace_youtrack_config.js'
+import { migration050SettingsAuth } from './migrations/050_settings_auth.js'
+import { migration051LegacyContextIdBackfill } from './migrations/051_legacy_context_id_backfill.js'
+import { migration052ByokLlmCredentials } from './migrations/052_byok_llm_credentials.js'
+import { migration053LongTermMemory } from './migrations/053_long_term_memory.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -134,6 +143,15 @@ export const MIGRATIONS: readonly Migration[] = [
   migration042UserWorkspaceConfigBackfill,
   migration043ScopedContextIds,
   migration044InstanceIntegrity,
+  migration045ProviderBaseUrl,
+  migration046ParentSharedContextEntities,
+  migration047DashboardSessions,
+  migration048NamespaceKaneoConfig,
+  migration049NamespaceYoutrackConfig,
+  migration050SettingsAuth,
+  migration051LegacyContextIdBackfill,
+  migration052ByokLlmCredentials,
+  migration053LongTermMemory,
 ]
 
 export const initDb = (): void => {

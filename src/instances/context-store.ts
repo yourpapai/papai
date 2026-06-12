@@ -49,6 +49,11 @@ export const getContextSettings = (contextId: string): ContextSettings | null =>
   return row === undefined ? null : rowToSettings(row)
 }
 
+export const listContextSettings = (): ContextSettings[] => {
+  const rows = getDrizzleDb().select().from(contextSettings).all()
+  return rows.map((row) => rowToSettings(row))
+}
+
 export const listContextsByTaskInstance = (taskInstanceId: string): ContextSettings[] => {
   const rows = getDrizzleDb()
     .select()
@@ -65,26 +70,4 @@ export const listContextsByPlatformInstance = (platformInstanceId: string): Cont
     .where(eq(contextSettings.platformInstanceId, platformInstanceId))
     .all()
   return rows.map((row) => rowToSettings(row))
-}
-
-export const deleteContextsByTaskInstance = (taskInstanceId: string): number => {
-  const deletedRows = getDrizzleDb()
-    .delete(contextSettings)
-    .where(eq(contextSettings.taskInstanceId, taskInstanceId))
-    .returning({ contextId: contextSettings.contextId })
-    .all()
-  clearToolCachesForContexts(deletedRows.map((row) => row.contextId))
-  log.info({ taskInstanceId, deletedCount: deletedRows.length }, 'context settings deleted for task instance')
-  return deletedRows.length
-}
-
-export const deleteContextsByPlatformInstance = (platformInstanceId: string): number => {
-  const deletedRows = getDrizzleDb()
-    .delete(contextSettings)
-    .where(eq(contextSettings.platformInstanceId, platformInstanceId))
-    .returning({ contextId: contextSettings.contextId })
-    .all()
-  clearToolCachesForContexts(deletedRows.map((row) => row.contextId))
-  log.info({ platformInstanceId, deletedCount: deletedRows.length }, 'context settings deleted for platform instance')
-  return deletedRows.length
 }

@@ -11,23 +11,40 @@
     placeholder?: string
     prefix?: Snippet
     onInput?: (value: string) => void
-    type?: 'text' | 'search'
+    type?: 'text' | 'search' | 'password'
     readonly?: boolean
+    testid?: string
+    multiline?: boolean
+    rows?: number
   }
 
-  let { value, placeholder, prefix, onInput, type = 'text', readonly = false }: Props = $props()
+  let {
+    value,
+    placeholder,
+    prefix,
+    onInput,
+    type = 'text',
+    readonly = false,
+    testid,
+    multiline = false,
+    rows = 3,
+  }: Props = $props()
 
   function handleInput(event: Event): void {
-    const next = (event.target as HTMLInputElement).value
+    const next = (event.target as HTMLInputElement | HTMLTextAreaElement).value
     onInput?.(next)
   }
 </script>
 
-<div class="ui-input">
-  {#if prefix}
-    <span class="ui-input__prefix">{@render prefix()}</span>
+<div class="ui-input" class:ui-input--multiline={multiline}>
+  {#if multiline}
+    <textarea {placeholder} {value} {readonly} {rows} data-testid={testid} oninput={handleInput}></textarea>
+  {:else}
+    {#if prefix}
+      <span class="ui-input__prefix">{@render prefix()}</span>
+    {/if}
+    <input {type} {placeholder} {value} {readonly} data-testid={testid} oninput={handleInput} />
   {/if}
-  <input {type} {placeholder} {value} {readonly} oninput={handleInput} />
 </div>
 
 <style>
@@ -54,5 +71,19 @@
     font-size: 12px;
     flex: 1;
     padding: 6px 0;
+  }
+  .ui-input--multiline {
+    align-items: stretch;
+  }
+  .ui-input textarea {
+    background: transparent;
+    border: 0;
+    outline: 0;
+    color: var(--fg);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    flex: 1;
+    padding: 6px 0;
+    resize: vertical;
   }
 </style>

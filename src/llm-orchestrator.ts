@@ -3,19 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { getCachedHistory } from './cache.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
-import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { appendHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
+import { resolveEffectiveLlmConfig, type EffectiveLlmConfig } from './llm-config-resolver.js'
+import { appendAssistantTurnHistory } from './llm-history.js'
+import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
-import { checkRequiredProviderConfig, getLlmConfig, resolveConfigId } from './llm-orchestrator-config.js'
+import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
 import {
   resolveAttachmentIds,
@@ -24,28 +26,28 @@ import {
   type ProcessMessageRest,
 } from './llm-orchestrator-process-args.js'
 import { handleLlmTurnError, logProcessMessage } from './llm-orchestrator-support.js'
-import { prepareLlmInvocation } from './llm-orchestrator-tools.js'
-import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
+import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
-import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
+import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
-import { getSystemConfig, isSystemConfigComplete, missingSystemConfigKeys } from './system-config.js'
-import { getKaneoWorkspace } from './users.js'
-import { fetchWithoutTimeout } from './utils/fetch.js'
+import { missingSystemConfigKeys } from './system-config.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
+
+export const resolveAiOutputSettingsContextId = (contextId: string): string =>
+  getConfigContextIdFromStorageContextId(contextId)
 
 const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => stepCountIs(...args),
-  buildOpenAI: (apiKey: string, baseURL: string) =>
-    createOpenAICompatible({ name: 'openai-compatible', apiKey, baseURL, fetch: fetchWithoutTimeout }),
+  buildOpenAI: (apiKey: string, baseURL: string) => getOpenAICompatibleProvider(apiKey, baseURL),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
-  getKaneoWorkspace,
-  maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
+  maybeAutoProvision: (reply, contextId, chatUserId, username) =>
+    maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
 }
 export { defaultDeps }
 
@@ -59,20 +61,6 @@ const persistFactsFromResults = (contextId: string, result: unknown): void => {
     { contextId, factsExtracted: newFacts.length, factsUpserted: newFacts.length },
     'Facts extracted and persisted',
   )
-}
-
-const appendAssistantHistory = (
-  contextId: string,
-  history: readonly ModelMessage[],
-  assistantMessages: ModelMessage[],
-): void => {
-  if (assistantMessages.length > 0) {
-    appendHistory(contextId, assistantMessages)
-    log.debug({ contextId, assistantMessagesCount: assistantMessages.length }, 'Assistant response appended to history')
-  }
-  if (shouldTriggerTrim([...history, ...assistantMessages])) {
-    void runTrimInBackground(contextId, [...history, ...assistantMessages])
-  }
 }
 
 const sendLlmResponse = async (
@@ -121,7 +109,7 @@ const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId:
   const missing = checkRequiredProviderConfig(configId)
   if (missing.length === 0) return
   log.warn({ contextId, configId, missing }, 'Missing required provider config keys')
-  await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /setup to configure.`)
+  await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /config to finish setup in the settings web UI.`)
   throw new Error('Missing configuration')
 }
 
@@ -130,11 +118,41 @@ let botMisconfiguredNotified = false
 const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise<void> => {
   const missing = missingSystemConfigKeys()
   log.error({ contextId, missing }, 'system_config is incomplete; bot cannot serve this turn')
-  await reply.text('⚠️ The bot is not fully configured. The administrator has been notified.')
+  await reply.text(
+    '⚠️ The bot is not fully configured. Ask the administrator to run /config and complete setup in the web UI.',
+  )
   if (!botMisconfiguredNotified) {
     botMisconfiguredNotified = true
     log.warn({ missing }, 'admin notification suppressed for subsequent turns in this process')
   }
+}
+
+type LlmConfigFailure = Exclude<ReturnType<typeof resolveEffectiveLlmConfig>, EffectiveLlmConfig>
+type ResolvedTurnLlmConfig = EffectiveLlmConfig | null
+
+async function replyByokConfigProblem(reply: ReplyFn, contextId: string, result: LlmConfigFailure): Promise<void> {
+  if (result.type === 'missing') {
+    log.warn({ contextId, missing: result.missing }, 'BYOK LLM config is incomplete; bot cannot serve this turn')
+    await reply.text(
+      `BYOK is enabled for this context, but LLM setup is incomplete. Missing: ${result.missing.join(', ')}. Use /config to finish BYOK setup in the settings web UI.`,
+    )
+    return
+  }
+  log.warn({ contextId }, 'BYOK LLM config is unreadable; bot cannot serve this turn')
+  await reply.text(
+    'BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.',
+  )
+}
+
+async function resolveLlmForTurn(reply: ReplyFn, contextId: string, configId: string): Promise<ResolvedTurnLlmConfig> {
+  const resolvedLlm = resolveEffectiveLlmConfig(configId)
+  if (resolvedLlm.ok) return resolvedLlm
+  if (resolvedLlm.source === 'global') {
+    await replyBotMisconfigured(reply, contextId)
+    return null
+  }
+  await replyByokConfigProblem(reply, contextId, resolvedLlm)
+  return null
 }
 
 /** Test-only helper to reset the admin-notified guard between tests. */
@@ -142,57 +160,37 @@ export const resetBotMisconfiguredNotifiedForTesting = (): void => {
   botMisconfiguredNotified = false
 }
 
-const buildToolRoutingTelemetry = (
-  routingResult: ReturnType<typeof prepareLlmInvocation>['routingResult'],
-): InvokeModelArgs['toolRouting'] => ({
-  intent: routingResult.decision.intent,
-  confidence: routingResult.decision.confidence,
-  reason: routingResult.decision.reason,
-  fullToolCount: routingResult.fullToolCount,
-  exposedToolCount: routingResult.exposedToolCount,
-})
+const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
+  createAiProgressReporter(reply, getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)))
 
-type CallLlmArgs = {
-  reply: ReplyFn
-  contextId: string
-  chatUserId: string
-  username: string | null
-  history: readonly ModelMessage[]
-  userText: string
-  contextType: 'dm' | 'group'
+type CallLlmArgs = InvocationSource & {
   deps: LlmOrchestratorDeps
-  configContextId: string | undefined
+  configId: string
+  resolvedLlm: EffectiveLlmConfig
   turnId: string
 }
 
 const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: ModelMessage[] } }> => {
-  const { reply, contextId, chatUserId, username, history, userText, contextType, deps, configContextId, turnId } = args
-  const configId = resolveConfigId(contextId, configContextId)
+  const { reply, contextId, chatUserId, username, contextType, deps, configId, resolvedLlm, turnId } = args
   if (contextType === 'dm') {
-    await deps.maybeProvisionKaneo(reply, configId, username)
+    try {
+      await deps.maybeAutoProvision(reply, configId, chatUserId, username)
+    } catch {
+      // Auto-provision is opportunistic; missing or broken hooks should fall through to normal setup guidance.
+    }
   }
-  await ensureRequiredConfig(reply, contextId, configId)
-  const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()
+  const { llmApiKey, llmBaseUrl, mainModel } = resolvedLlm
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
-  const provider = deps.resolve(configId)
+  const provider = await deps.resolve(configId)
   if (provider === null) {
-    log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
-    await reply.text('I need /setup before I can do that.')
-    return { response: { messages: [] } }
+    log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn; using providerless fallback')
+  } else {
+    await ensureRequiredConfig(reply, contextId, configId)
+    await maybeAutoLinkIdentity(chatUserId, username, provider)
   }
-  await maybeAutoLinkIdentity(chatUserId, username, provider)
-  const { routingResult, validatedMessages, enabledToolNames } = prepareLlmInvocation(
-    contextId,
-    configId,
-    chatUserId,
-    username,
-    contextType,
-    provider,
-    history,
-    userText,
-    deps.stagedDownloadFn,
-  )
-  const progressReporter = createAiProgressReporter(reply, getAiOutputSettings(contextId))
+  const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
+  const { tools, validatedMessages, enabledToolNames, disclosure } = await prepareLlmInvocation(invocationOpts)
+  const progressReporter = createProgressReporterForContext(reply, contextId)
   const result = await invokeModelWithTyping(reply, {
     contextId,
     chatUserId,
@@ -200,12 +198,12 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     mainModel,
     model,
     provider,
-    tools: routingResult.tools,
+    tools,
     enabledToolNames,
-    toolRouting: buildToolRoutingTelemetry(routingResult),
     messages: validatedMessages,
     deps,
     progressReporter,
+    disclosure,
     turnId,
   })
   const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
@@ -216,20 +214,14 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   return result
 }
 
-const resolveModelName = (): string => {
-  const modelName = getSystemConfig('main_model')
-  if (modelName === null) return ''
-  return modelName
-}
-
 const buildHistory = async (
   contextId: string,
   chatUserId: string,
+  modelName: string,
   userText: string,
   attachmentIds: readonly string[],
 ): Promise<{ baseHistory: readonly ModelMessage[]; modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
   const baseHistory = getCachedHistory(contextId)
-  const modelName = resolveModelName()
   const { modelMessage, historyMessage } = await buildUserTurnMessages(
     contextId,
     chatUserId,
@@ -254,34 +246,35 @@ export const processMessage = async (
   const newAttachmentIds = resolveAttachmentIds(newAttachmentIdsInput)
   const resolvedTurnId = resolveTurnId(turnId)
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
-  if (!isSystemConfigComplete()) {
-    await replyBotMisconfigured(reply, contextId)
-    return
-  }
-  const turn = await buildHistory(contextId, chatUserId, userText, newAttachmentIds)
+  const configId = resolveConfigId(contextId, configContextId)
+  const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId)
+  if (resolvedLlm === null) return
+  const turn = await buildHistory(contextId, chatUserId, resolvedLlm.mainModel, userText, newAttachmentIds)
+  const invocationSource = { reply, contextId, chatUserId, username, userText, contextType }
   appendHistory(contextId, [turn.historyMessage])
   const startedAt = Date.now()
   try {
     const result = await callLlm({
-      reply,
-      contextId,
-      chatUserId,
-      username,
+      ...invocationSource,
       history: [...turn.baseHistory, turn.modelMessage],
-      userText,
-      contextType,
       deps,
-      configContextId,
+      configId,
+      resolvedLlm,
       turnId: resolvedTurnId,
     })
-    appendAssistantHistory(contextId, [...turn.baseHistory, turn.historyMessage], result.response.messages)
+    appendAssistantTurnHistory(
+      contextId,
+      configId,
+      resolvedLlm.mainModel,
+      turn.baseHistory,
+      turn.historyMessage,
+      result.response.messages,
+      contextType,
+    )
   } catch (error) {
     await handleLlmTurnError({
-      reply,
-      contextId,
-      chatUserId,
-      contextType,
-      mainModel: resolveModelName(),
+      ...invocationSource,
+      mainModel: resolvedLlm.mainModel,
       startedAt,
       baseHistory: turn.baseHistory,
       error,

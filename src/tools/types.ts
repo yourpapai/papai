@@ -28,7 +28,7 @@ export type MakeToolsOptions = {
    * In DMs, this is the same as storageContextId.
    * In groups, this is the actual user ID while storageContextId is the group ID.
    */
-  chatUserId: string
+  chatUserId?: string
   /**
    * The chat username for the current actor when the platform provides one.
    * Used by tools that persist delivery metadata for later platform-native mentions.
@@ -46,4 +46,10 @@ export type MakeToolsOptions = {
    */
   contextType?: ContextType
   stagedDownloadFn?: import('../attachments/types.js').StagedFileDownloadFn
+  /**
+   * Per-turn callback used to gate tools whose effective permission is 'ask'.
+   * The orchestrator constructs this closure with the user's chat reply bound
+   * inside it. When undefined, ask-marked tools deny on each call.
+   */
+  askPermission?: import('./permission-gate.js').AskPermissionFn
 }

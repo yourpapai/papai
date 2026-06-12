@@ -5,14 +5,26 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { userCachesForTesting } from '../../src/cache.js'
+import { tool, type ToolSet } from 'ai'
+import { z } from 'zod'
+
+import { setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import {
   buildInvocationToolSet,
   resolveContextToolSurface,
   safeBuildProvider,
 } from '../../src/commands/context-tool-resolution.js'
+import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+function fakeTool(name: string): ToolSet[string] {
+  return tool({
+    description: `fake ${name}`,
+    inputSchema: z.object({ id: z.string() }),
+    execute: ({ id }: { id: string }) => Promise.resolve(`${name}:${id}`),
+  })
+}
 
 describe('context-tool-resolution', () => {
   beforeEach(async () => {
@@ -21,66 +33,90 @@ describe('context-tool-resolution', () => {
     await setupTestDb()
   })
 
-  test('resolveContextToolSurface returns definitions without catalogPages', () => {
+  test('resolveContextToolSurface returns definitions without catalogPages', async () => {
     const provider = createMockProvider()
-    const surface = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
+    const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
 
     expect(surface).toHaveProperty('definitions')
     expect(surface).not.toHaveProperty('catalogPages')
     expect(Object.keys(surface.definitions).length).toBeGreaterThan(0)
   })
 
-  test('resolveContextToolSurface returns the full set when no lastUserText is provided', () => {
+  test('resolveContextToolSurface returns the full set when no lastUserText is provided', async () => {
     const provider = createMockProvider()
-    const surface = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
+    const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
 
-    expect(surface.routing).toBeUndefined()
+    expect(Object.keys(surface.definitions).length).toBeGreaterThan(0)
   })
 
-  test('resolveContextToolSurface applies routing when lastUserText is provided', () => {
+  test('resolveContextToolSurface returns the full live set even when lastUserText is provided', async () => {
     const provider = createMockProvider()
-    const full = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
-    const routed = resolveContextToolSurface(
-      'user-1',
-      'user-1',
-      'dm',
-      provider,
-      buildInvocationToolSet,
-      'remember that I prefer morning standups',
-    )
+    const full = await resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
+    const withLastUserText = await resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
 
-    expect(routed.routing).toBeDefined()
-    expect(routed.routing?.intent).toBe('memo')
-    expect(routed.routing?.fullToolCount).toBe(Object.keys(full.definitions).length)
-    expect(routed.routing?.exposedToolCount).toBe(Object.keys(routed.definitions).length)
-    expect(Object.keys(routed.definitions).length).toBeLessThan(Object.keys(full.definitions).length)
-    expect(routed.definitions).toHaveProperty('save_memo')
-    expect(routed.definitions).not.toHaveProperty('create_task')
+    expect(Object.keys(withLastUserText.definitions).toSorted()).toEqual(Object.keys(full.definitions).toSorted())
+    expect(withLastUserText.definitions).toHaveProperty('save_memo')
+    expect(withLastUserText.definitions).toHaveProperty('create_task')
   })
 
-  test('resolveContextToolSurface returns full set when routing falls back to full intent', () => {
-    const provider = createMockProvider()
-    const routed = resolveContextToolSurface(
-      'user-1',
-      'user-1',
-      'dm',
-      provider,
-      buildInvocationToolSet,
-      'can you handle the thing we discussed',
-    )
+  test('buildInvocationToolSet returns providerless tools when provider is null', async () => {
+    const result = await buildInvocationToolSet('user-1', 'user-1', 'dm', null)
 
-    expect(routed.routing?.intent).toBe('full')
-    expect(routed.routing?.exposedToolCount).toBe(routed.routing?.fullToolCount)
+    expect(result).not.toBeNull()
+    expect(result).toHaveProperty('get_current_time')
+    expect(result).toHaveProperty('save_memo')
+    expect(result).not.toHaveProperty('create_task')
   })
 
-  test('buildInvocationToolSet returns null when provider is null', () => {
-    const result = buildInvocationToolSet('user-1', 'user-1', 'dm', null)
+  test('buildInvocationToolSet returns a Promise when provider is not null', () => {
+    const provider = createMockProvider()
+    const result = buildInvocationToolSet('user-1', 'user-1', 'dm', provider)
+    expect(result).toBeInstanceOf(Promise)
+  })
+
+  test('resolveContextToolSurface returns a Promise', () => {
+    const provider = createMockProvider()
+    const result = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
+    expect(result).toBeInstanceOf(Promise)
+  })
+
+  test('safeBuildProvider returns null when resolver has no provider', async () => {
+    const result = await safeBuildProvider('user-1')
+
     expect(result).toBeNull()
   })
 
-  test('safeBuildProvider returns null when resolver has no provider', () => {
-    const result = safeBuildProvider('user-1')
+  test('resolveContextToolSurface falls back to the exact cached descriptor set for the current invocation scope', async () => {
+    setCachedTools('providerless:no-staged-download:user-1:user-1:', { save_memo: { description: 'providerless' } })
 
-    expect(result).toBeNull()
+    const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', null, () => null)
+
+    expect(surface.definitions).toEqual({ save_memo: { description: 'providerless' } })
+  })
+
+  test('resolveContextToolSurface degraded fallback does not reuse another scope cached descriptor set', async () => {
+    setCachedTools('provider-backed:no-staged-download:user-1:user-1:', {
+      create_task: { description: 'provider-backed' },
+    })
+    setCachedTools('providerless:no-staged-download:user-1:other-user:', { save_memo: { description: 'other-actor' } })
+
+    const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', null, () => null)
+
+    expect(surface.definitions).toEqual({})
+  })
+
+  test('resolveContextToolSurface reapplies tool preferences to degraded cached descriptors', async () => {
+    const cachedSaveMemo = fakeTool('save_memo')
+    setToolPrefs('user-1', { domainDefaults: { task: 'deny' }, toolOverrides: { save_memo: 'ask' } })
+    setCachedTools('providerless:no-staged-download:user-1:user-1:', {
+      create_task: fakeTool('create_task'),
+      save_memo: cachedSaveMemo,
+    })
+
+    const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', null, () => null)
+
+    expect(surface.definitions).not.toHaveProperty('create_task')
+    expect(surface.definitions).toHaveProperty('save_memo')
+    expect(surface.definitions['save_memo']).not.toBe(cachedSaveMemo)
   })
 })

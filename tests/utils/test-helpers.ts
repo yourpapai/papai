@@ -106,29 +106,62 @@ export function hasCachedMessage(contextId: string, messageId: string): boolean 
 let testDb: ReturnType<typeof drizzle<typeof schema>> | null = null
 let testSqlite: Database | null = null
 
-/**
- * Setup test database with all migrations.
- * Call this in beforeEach or at the start of each test.
- * Returns drizzle db instance.
- */
-export async function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
-  const { Database } = await import('bun:sqlite')
-  const { drizzle } = await import('drizzle-orm/bun-sqlite')
-  const { runMigrations } = await import('../../src/db/migrate.js')
+// Cache of pre-migrated in-memory DB images, keyed by the migration set (by
+// reference identity). Replaying the ~50 migrations per test costs ~17ms each;
+// deserializing a snapshot is ~190x faster (~0.1ms), so we migrate once per
+// distinct migration set and clone the resulting image for every later setup.
+type MigrationSet = readonly { id: string; up: (db: Database) => void }[]
+const migratedSnapshotCache = new Map<MigrationSet, Uint8Array>()
 
+async function buildMigratedSnapshot(migrations: MigrationSet): Promise<Uint8Array> {
+  const cached = migratedSnapshotCache.get(migrations)
+  if (cached !== undefined) return cached
+
+  const { runMigrations } = await import('../../src/db/migrate.js')
+  const template = new Database(':memory:')
+  template.run('PRAGMA foreign_keys=ON')
+  runMigrations(template, migrations)
+  // serialize() copies the schema into a standalone image; deserialize() below
+  // copies it back into a fresh private DB, so the cached buffer is never mutated.
+  const snapshot = template.serialize()
+  template.close()
+  migratedSnapshotCache.set(migrations, snapshot)
+  return snapshot
+}
+
+async function setupMigratedTestDb(migrations: MigrationSet): Promise<ReturnType<typeof drizzle<typeof schema>>> {
   // Clear the in-memory user cache to prevent config/session bleed between tests
   const { userCachesForTesting } = await import('../../src/cache.js')
   userCachesForTesting.clear()
   const { resetPluginRegistryForTesting } = await import('../../src/plugins/registry.js')
   resetPluginRegistryForTesting()
 
-  testSqlite = new Database(':memory:')
+  const snapshot = await buildMigratedSnapshot(migrations)
+  testSqlite = Database.deserialize(snapshot)
+  // foreign_keys is a per-connection pragma, not part of the serialized image.
   testSqlite.run('PRAGMA foreign_keys=ON')
   testDb = drizzle(testSqlite, { schema })
-
-  runMigrations(testSqlite, MIGRATIONS)
   setDrizzleDbForTesting(testDb)
   return testDb
+}
+
+/**
+ * Setup test database with all migrations.
+ * Call this in beforeEach or at the start of each test.
+ * Returns drizzle db instance.
+ */
+export function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
+  return setupMigratedTestDb(MIGRATIONS)
+}
+
+/**
+ * Setup a focused test database for settings auth/session/quota stores.
+ * Use this for settings unit suites that do not depend on the full schema.
+ */
+export function setupSettingsAuthTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
+  return import('../../src/db/migrations/050_settings_auth.js').then(({ migration050SettingsAuth }) =>
+    setupMigratedTestDb([migration050SettingsAuth]),
+  )
 }
 
 /**
@@ -200,7 +233,7 @@ export function seedTestTaskInstance(input: SeedTestTaskInstanceInput): void {
     .values({
       id: input.id,
       type: input.type ?? 'kaneo',
-      config: encryptInstanceConfig(input.config ?? { url: 'https://tasks.invalid' }),
+      config: encryptInstanceConfig(input.config ?? { baseUrl: 'https://tasks.invalid' }),
       status: input.status ?? 'active',
     })
     .onConflictDoNothing({ target: schema.taskInstances.id })
@@ -773,9 +806,9 @@ export function getToolExecutor(tool: unknown): (...args: unknown[]) => Promise<
 
 import type { z } from 'zod'
 
-import type { CreateLabelResponseSchema } from '../../src/providers/kaneo/schemas/create-label.js'
-import { TaskSchema } from '../../src/providers/kaneo/schemas/create-task.js'
-import { ActivityItemSchema } from '../../src/providers/kaneo/schemas/global-search.js'
+import type { CreateLabelResponseSchema } from '../../plugins/task-provider-kaneo/schemas/create-label.js'
+import { TaskSchema } from '../../plugins/task-provider-kaneo/schemas/create-task.js'
+import { ActivityItemSchema } from '../../plugins/task-provider-kaneo/schemas/global-search.js'
 
 type CreateTaskResponse = z.infer<typeof TaskSchema>
 type CreateProjectResponse = {
@@ -949,4 +982,24 @@ export async function flushMicrotasks(): Promise<void> {
       resolve()
     }, 0)
   })
+}
+
+/**
+ * Poll until `predicate` returns true, throwing after `timeoutMs`.
+ *
+ * Use this instead of a fixed `setTimeout` wait + assertion: under parallel
+ * test execution the event loop can be starved, so fixed-wall-clock timing
+ * assertions flake. Polling waits only as long as the behavior actually
+ * takes, and still fails (via the thrown timeout) if it never happens.
+ */
+export async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now()
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('waitFor: condition not met within timeout')
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 5)
+    })
+  }
 }

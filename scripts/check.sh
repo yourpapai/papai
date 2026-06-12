@@ -9,9 +9,12 @@ fi
 
 # Parse arguments
 STAGED_MODE=false
+SKIP_TESTS=false
 for arg in "$@"; do
   if [ "$arg" = "--staged" ]; then
     STAGED_MODE=true
+  elif [ "$arg" = "--skip-tests" ]; then
+    SKIP_TESTS=true
   fi
 done
 
@@ -31,6 +34,19 @@ is_license_header_file() {
         *) return 1 ;;
       esac
       ;;
+    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+      case "$file" in
+        *.ts|*.tsx|*.js|*.jsx) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+is_oxlint_scoped_file() {
+  local file="$1"
+  case "$file" in
     src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
       case "$file" in
         *.ts|*.tsx|*.js|*.jsx) return 0 ;;
@@ -110,7 +126,9 @@ if [ "$STAGED_MODE" = true ]; then
     esac
     case "$file" in
       *.ts|*.tsx|*.js|*.jsx)
-        lintable_files+=("$file")
+        if is_oxlint_scoped_file "$file"; then
+          lintable_files+=("$file")
+        fi
         ;;
     esac
   done
@@ -183,7 +201,33 @@ if [ "$STAGED_MODE" = true ]; then
   # Run format:check on staged files
   (
     exit_code=0
-    bunx oxfmt --check --ignore-path=.oxfmtignore "${relevant_files[@]}" >"$TMPDIR/format_check.out" 2>&1 || exit_code=$?
+    format_checked_files=()
+    for file in "${relevant_files[@]}"; do
+      keep=true
+      case "$file" in
+        package-lock.json|*/package-lock.json) keep=false ;;
+      esac
+      if $keep && [ -f .oxfmtignore ]; then
+        while IFS= read -r pattern; do
+          [ -z "$pattern" ] && continue
+          case "$pattern" in
+            \#*) continue ;;
+          esac
+          case "$file" in
+            ${pattern}*) keep=false; break ;;
+          esac
+        done < .oxfmtignore
+      fi
+      if $keep; then
+        format_checked_files+=("$file")
+      fi
+    done
+
+    if [ ${#format_checked_files[@]} -eq 0 ]; then
+      printf '%s\n' 'ℹ No format-checkable staged files for oxfmt' >"$TMPDIR/format_check.out"
+    else
+      bunx oxfmt --check --ignore-path=.oxfmtignore "${format_checked_files[@]}" >"$TMPDIR/format_check.out" 2>&1 || exit_code=$?
+    fi
     echo "$exit_code" >"$TMPDIR/format_check.exit"
   ) &
   format_pid=$!
@@ -249,6 +293,18 @@ if [ "$STAGED_MODE" = true ]; then
 else
   # Original behavior: run all checks
   checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check" "review-loop:test")
+  if [ "$SKIP_TESTS" = true ]; then
+    filtered_checks=()
+    for check in "${checks[@]}"; do
+      case "$check" in
+        test|test:client|review-loop:test)
+          continue
+          ;;
+      esac
+      filtered_checks+=("$check")
+    done
+    checks=("${filtered_checks[@]}")
+  fi
   failed=0
   pids=()
 
@@ -261,7 +317,6 @@ else
         header_checked_files=()
         while IFS= read -r file; do
           [ -n "$file" ] || continue
-          # Skip tracked files that have been deleted in the worktree.
           [ -f "$file" ] || continue
           if is_license_header_file "$file"; then
             header_checked_files+=("$file")
@@ -269,7 +324,18 @@ else
         done < <(git ls-files 2>/dev/null || true)
         run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
       elif [ "$check" = "test" ]; then
-        bun run test >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        # CI runners (4 vCPU, all checks already running concurrently) get
+        # destabilized by worker-per-file --parallel: the VM is OOM-killed and
+        # the runner shuts down mid-job. Run the suite serially there.
+        if [ "${CI:-}" = "true" ]; then
+          bun test >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        else
+          bun test --parallel >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        fi
+      elif [ "$check" = "test:client" ]; then
+        bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+      elif [ "$check" = "review-loop:test" ]; then
+        bun test tests/review-loop >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       else
         bun run "$check" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       fi

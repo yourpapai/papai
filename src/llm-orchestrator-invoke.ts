@@ -13,8 +13,9 @@ import { handleToolCallFinish } from './llm-orchestrator-support.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
-import { buildSystemPrompt } from './system-prompt.js'
+import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
 import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
+import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:invoke' })
 
@@ -197,6 +198,16 @@ export const buildToolCallFinishHandler =
     handleToolCallFinishEvent(ctx, event)
   }
 
+const resolveSystemPrompt = (
+  args: Pick<InvokeModelArgs, 'provider' | 'contextId' | 'enabledToolNames' | 'disclosure'>,
+): string => {
+  const { provider, contextId, enabledToolNames, disclosure } = args
+  const opts = { askPermissionAvailable: true, progressiveDisclosure: disclosure !== undefined }
+  return provider === null
+    ? buildProviderlessSystemPrompt(contextId, enabledToolNames, opts)
+    : buildSystemPrompt(provider, contextId, enabledToolNames, opts)
+}
+
 export const invokeModel = async (
   args: InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string },
 ): ReturnType<LlmOrchestratorDeps['generateText']> => {
@@ -212,9 +223,11 @@ export const invokeModel = async (
     deps,
     turnId,
     enabledToolNames,
+    disclosure,
   } = args
   const start = Date.now()
-  emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting, turnId)
+  const systemPrompt = resolveSystemPrompt({ provider, contextId, enabledToolNames, disclosure })
+  emitLlmStart(contextId, mainModel, messages, tools, turnId)
   const ctx: ToolCallContext = {
     contextId,
     chatUserId,
@@ -226,15 +239,16 @@ export const invokeModel = async (
   }
   const result = await deps.generateText({
     model,
-    system: buildSystemPrompt(provider, contextId, enabledToolNames),
+    system: systemPrompt,
     messages,
     tools,
     timeout: 1_200_000,
     stopWhen: deps.stepCountIs(25),
     experimental_onToolCallStart: buildToolCallStartHandler(ctx),
     experimental_onToolCallFinish: buildToolCallFinishHandler(ctx),
+    ...(disclosure === undefined ? {} : { prepareStep: createDisclosurePrepareStep(disclosure, contextId, turnId) }),
   })
-  emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, args.toolRouting, turnId)
+  emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId)
   return result
 }
 

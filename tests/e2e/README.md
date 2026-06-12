@@ -183,12 +183,26 @@ docker-compose -f docker-compose.yml -f docker-compose.test.yml ps
 
 ## Files
 
+Harness and support:
+
 - `bun-test-setup.ts` - Shared preload harness for E2E setup
 - `e2e.test.ts` - Aggregated E2E entry point and final teardown
 - `global-setup.ts` - E2E environment setup and teardown
 - `docker-lifecycle.ts` - Docker Compose management
 - `kaneo-test-client.ts` - Test client for resource management
 - `kaneo-api-helpers.ts` - Narrow raw API oracle helpers for direct Kaneo checks
+- `test-helpers.ts` - Shared E2E assertion/setup helpers
+
+Test suites:
+
 - `task-lifecycle.test.ts` - Task CRUD tests
+- `task-search.test.ts` - Task search tests
+- `task-relations.test.ts` - Task relation tests
+- `task-comments.test.ts` - Task comment tests
+- `task-list-compatibility.test.ts` - Task listing compatibility tests
 - `label-operations.test.ts` - Label CRUD tests
-- `project-lifecycle.test.ts` - Project CRUD tests
+- `project-lifecycle.test.ts` / `project-management.test.ts` - Project tests
+- `column-management.test.ts` - Status/column management tests
+- `user-workflows.test.ts` - End-to-end user workflow tests
+- `error-handling.test.ts` - Error-path tests
+- `docker-lifecycle.test.ts` - Docker lifecycle harness tests

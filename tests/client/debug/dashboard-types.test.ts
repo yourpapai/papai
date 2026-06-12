@@ -78,11 +78,11 @@ describe('dashboard-types', () => {
   })
 
   test('AdminLlmSnapshot type covers all five system config keys', () => {
-    const empty = { value: null, updatedAt: null, updatedBy: null }
+    const empty = { value: null, updatedAt: null, updatedBy: null, required: false }
     const snap: AdminLlmSnapshot = {
-      llm_apikey: empty,
-      llm_baseurl: empty,
-      main_model: empty,
+      llm_apikey: { ...empty, required: true },
+      llm_baseurl: { ...empty, required: true },
+      main_model: { ...empty, required: true },
       small_model: empty,
       embedding_model: empty,
     }
@@ -97,7 +97,6 @@ describe('dashboard-types', () => {
       factsCount: 2,
       summary: 'Test summary',
       configKeys: ['key1'],
-      workspaceId: 'ws-123',
       facts: [
         {
           identifier: 'fact-1',

@@ -5,10 +5,13 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { taskInstances } from '../../src/db/schema.js'
 import {
   deleteTaskInstance,
   getTaskInstance,
   insertTaskInstance,
+  listTaskInstancesSafe,
   listTaskInstances,
   updateTaskInstance,
 } from '../../src/instances/task-store.js'
@@ -29,17 +32,17 @@ describe('task-store', () => {
     insertTaskInstance({
       id: 'kaneo-prod',
       type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
+      config: { baseUrl: 'https://kaneo.invalid' },
       status: 'active',
     })
     const row = getTaskInstance('kaneo-prod')
     expect(row?.type).toBe('kaneo')
-    expect(row?.config).toEqual({ url: 'https://kaneo.invalid' })
+    expect(row?.config).toEqual({ baseUrl: 'https://kaneo.invalid' })
   })
 
   test('list returns all rows', () => {
-    insertTaskInstance({ id: 'a', type: 'kaneo', config: { url: 'u1' }, status: 'active' })
-    insertTaskInstance({ id: 'b', type: 'youtrack', config: { url: 'u2' }, status: 'pending' })
+    insertTaskInstance({ id: 'a', type: 'kaneo', config: { baseUrl: 'u1' }, status: 'active' })
+    insertTaskInstance({ id: 'b', type: 'youtrack', config: { baseUrl: 'u2' }, status: 'pending' })
     expect(
       listTaskInstances()
         .map((r) => r.id)
@@ -47,16 +50,31 @@ describe('task-store', () => {
     ).toEqual(['a', 'b'])
   })
 
+  test('listTaskInstancesSafe skips unreadable rows and returns failures', () => {
+    insertTaskInstance({ id: 'good', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
+    getDrizzleDb()
+      .insert(taskInstances)
+      .values({ id: 'bad', type: 'kaneo', config: 'not-base64', status: 'active' })
+      .run()
+
+    const result = listTaskInstancesSafe()
+
+    expect(result.instances.map((instance) => instance.id)).toEqual(['good'])
+    expect(result.failures).toHaveLength(1)
+    expect(result.failures[0]).toMatchObject({ table: 'task_instances', id: 'bad', type: 'kaneo' })
+    expect(result.failures[0]?.error).toContain('Encrypted payload')
+  })
+
   test('update sets config + status', () => {
-    insertTaskInstance({ id: 'a', type: 'kaneo', config: { url: 'old' }, status: 'pending' })
-    updateTaskInstance('a', { config: { url: 'new' }, status: 'active' })
+    insertTaskInstance({ id: 'a', type: 'kaneo', config: { baseUrl: 'old' }, status: 'pending' })
+    updateTaskInstance('a', { config: { baseUrl: 'new' }, status: 'active' })
     const row = getTaskInstance('a')
-    expect(row?.config).toEqual({ url: 'new' })
+    expect(row?.config).toEqual({ baseUrl: 'new' })
     expect(row?.status).toBe('active')
   })
 
   test('delete removes the row', () => {
-    insertTaskInstance({ id: 'a', type: 'kaneo', config: { url: 'u' }, status: 'active' })
+    insertTaskInstance({ id: 'a', type: 'kaneo', config: { baseUrl: 'u' }, status: 'active' })
     deleteTaskInstance('a')
     expect(getTaskInstance('a')).toBeNull()
   })

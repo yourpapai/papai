@@ -8,14 +8,13 @@ import { and, eq, sql } from 'drizzle-orm'
 import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memorySummary, memoryFacts, userConfig, userInstructions } from './db/schema.js'
 import { logger } from './logger.js'
-import { KANEO_WORKSPACE_CONFIG_KEY } from './types/config.js'
 
 const log = logger.child({ scope: 'cache-db' })
 
 export function syncHistoryToDb(userId: string, messages: unknown[]): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.insert(conversationHistory)
         .values({ userId, messages: JSON.stringify(messages) })
         .onConflictDoUpdate({
@@ -34,9 +33,9 @@ export function syncHistoryToDb(userId: string, messages: unknown[]): void {
 }
 
 export function syncSummaryToDb(userId: string, summary: string): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.insert(memorySummary)
         .values({ userId, summary, updatedAt: new Date().toISOString() })
         .onConflictDoUpdate({
@@ -59,10 +58,9 @@ export function syncFactToDb(
   fact: { identifier: string; title: string; url: string },
   now: string,
 ): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
-
       db.transaction((tx) => {
         // Insert or update the fact
         tx.insert(memoryFacts)
@@ -102,9 +100,9 @@ export function syncFactToDb(
 }
 
 export function syncConfigToDb(userId: string, key: string, value: string): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.insert(userConfig)
         .values({ userId, key, value })
         .onConflictDoUpdate({
@@ -122,34 +120,13 @@ export function syncConfigToDb(userId: string, key: string, value: string): void
   })
 }
 
-export function syncWorkspaceToDb(userId: string, workspaceId: string): void {
-  queueMicrotask(() => {
-    try {
-      const db = getDrizzleDb()
-      db.insert(userConfig)
-        .values({ userId, key: KANEO_WORKSPACE_CONFIG_KEY, value: workspaceId })
-        .onConflictDoUpdate({
-          target: [userConfig.userId, userConfig.key],
-          set: { value: workspaceId },
-        })
-        .run()
-      log.debug({ userId }, 'Workspace synced to config')
-    } catch (error) {
-      log.error(
-        { userId, error: error instanceof Error ? error.message : String(error) },
-        'Failed to sync workspace to DB',
-      )
-    }
-  })
-}
-
 export function syncInstructionToDb(
   contextId: string,
   instruction: { id: string; text: string; createdAt: string },
 ): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.insert(userInstructions)
         .values({
           id: instruction.id,
@@ -170,9 +147,9 @@ export function syncInstructionToDb(
 }
 
 export function deleteInstructionFromDb(contextId: string, id: string): void {
+  const db = getDrizzleDb()
   queueMicrotask(() => {
     try {
-      const db = getDrizzleDb()
       db.delete(userInstructions)
         .where(and(eq(userInstructions.id, id), eq(userInstructions.contextId, contextId)))
         .run()

@@ -7,13 +7,12 @@ import { describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { makeCreateLabelTool } from '../../src/tools/create-label.js'
-import { createMockProvider } from './mock-provider.js'
+import { createMockKaneoProvider } from './mock-provider.js'
 
 describe('makeCreateLabelTool direct', () => {
   test('returns already_exists for Kaneo when reusable workspace label already exists', async () => {
     const createLabel = mock(() => Promise.resolve({ id: 'label-new', name: 'Feature', color: '#ff0000' }))
-    const provider = createMockProvider({
-      name: 'kaneo',
+    const provider = createMockKaneoProvider({
       listLabels: mock(() => Promise.resolve([{ id: 'label-1', name: 'Feature', color: '#ff0000' }])),
       createLabel,
     })

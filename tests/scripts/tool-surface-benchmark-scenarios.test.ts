@@ -300,33 +300,41 @@ describe('tool-surface benchmark scenarios', () => {
     expect(store.tasks.get('task-1')?.assigneeId).toBeNull()
   })
 
-  it('builds routed mode with deferred tools for reminder prompts', () => {
+  it('builds full direct mode with deferred tools for reminder prompts', () => {
     const store = createBenchmarkStore()
-    const setup = toolsForMode('direct_routed', 'Remind me tomorrow about benchmark results.', store)
+    const setup = toolsForMode('direct_full', 'Remind me tomorrow about benchmark results.', store)
 
-    expect(setup.exposedToolCount).toBeLessThan(setup.fullToolCount)
+    expect(setup.exposedToolCount).toBe(setup.fullToolCount)
     expect(setup.tools).toHaveProperty('create_deferred_prompt')
     expect(setup.tools).toHaveProperty('get_current_time')
-    expect(setup.tools).not.toHaveProperty('create_recurring_task')
+    expect(setup.tools).toHaveProperty('create_recurring_task')
   })
 
-  it('builds routed mode with time and web tools for link prompts', () => {
+  it('builds full direct mode with time and web tools for link prompts', () => {
     const store = createBenchmarkStore()
-    const setup = toolsForMode('direct_routed', 'Check https://example.com/release-notes and tell me the time.', store)
+    const setup = toolsForMode('direct_full', 'Check https://example.com/release-notes and tell me the time.', store)
 
     expect(setup.tools).toHaveProperty('web_fetch')
     expect(setup.tools).toHaveProperty('get_current_time')
   })
 
-  it('builds routed mode with update_task for search_then_update_status', () => {
+  it('builds full direct mode with update_task for search_then_update_status', () => {
     const store = createBenchmarkStore()
     const scenarioPrompt = 'Update the benchmark report task to in progress after searching for it.'
 
     expect(scenarios).toContainEqual({ id: 'search_then_update_status', prompt: scenarioPrompt })
 
-    const setup = toolsForMode('direct_routed', scenarioPrompt, store)
+    const setup = toolsForMode('direct_full', scenarioPrompt, store)
 
     expect(setup.tools).toHaveProperty('search_tasks')
     expect(setup.tools).toHaveProperty('update_task')
+  })
+
+  it('uses the full direct tool surface after router removal', () => {
+    const store = createBenchmarkStore()
+    const direct = toolsForMode('direct_full', 'remember this note', store)
+
+    expect(direct.exposedToolCount).toBe(direct.fullToolCount)
+    expect(Object.keys(direct.tools).length).toBeGreaterThan(0)
   })
 })

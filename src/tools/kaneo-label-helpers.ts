@@ -5,9 +5,8 @@
 
 import type { Label, TaskLabel, TaskProvider } from '../providers/types.js'
 
-export function isKaneoProvider(provider: Readonly<TaskProvider>): boolean {
-  return provider.name === 'kaneo'
-}
+export const usesSeparateLabelReadApi = (provider: Readonly<TaskProvider>): boolean =>
+  provider.traits.has('task-label-read-requires-provider-specific-api')
 
 export function listWorkspaceLabels(provider: Readonly<TaskProvider>): Promise<Label[]> {
   if (provider.listLabels === undefined) return Promise.resolve([])
@@ -25,6 +24,6 @@ export function listVisibleWorkspaceLabels(
 }
 
 export function listTaskLabels(provider: Readonly<TaskProvider>, taskId: string): Promise<TaskLabel[]> {
-  if (!isKaneoProvider(provider) || provider.listTaskLabels === undefined) return Promise.resolve([])
+  if (!usesSeparateLabelReadApi(provider) || provider.listTaskLabels === undefined) return Promise.resolve([])
   return provider.listTaskLabels(taskId)
 }

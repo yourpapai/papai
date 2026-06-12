@@ -17,6 +17,7 @@
     onClick?: () => void
     type?: 'button' | 'submit'
     disabled?: boolean
+    testid?: string
   }
 
   let {
@@ -27,6 +28,7 @@
     onClick,
     type = 'button',
     disabled = false,
+    testid,
   }: Props = $props()
 </script>
 
@@ -35,6 +37,7 @@
   {type}
   {disabled}
   onclick={onClick}
+  data-testid={testid}
 >
   {#if icon}<span class="ui-btn__icon">{@render icon()}</span>{/if}
   {@render children()}

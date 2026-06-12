@@ -8,10 +8,11 @@ import { getPluginConfig } from '../config.js'
 import { getRuntimeChatRouter } from '../debug/chat-router-runtime.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
+import type { ContextSettings } from '../instances/types.js'
 import { getCapabilitiesForTaskInstance } from '../providers/registry.js'
 import type { TaskCapability } from '../providers/types.js'
 import type { PluginRegistryEntry } from './registry.js'
-import { getPluginAdminConfig, getPluginContextState, isPluginEnabledForContext } from './store.js'
+import { getPluginAdminConfig, getPluginContextState } from './store.js'
 import type { DiscoveredPlugin } from './types.js'
 
 export type PluginContextEligibility =
@@ -20,7 +21,15 @@ export type PluginContextEligibility =
   | { eligible: false; reason: 'config_missing'; missingKeys: readonly string[] }
   | { eligible: false; reason: 'capability_missing'; missingCapabilities: readonly string[] }
 
-function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
+export type MissingPluginRequirement = {
+  key: string
+  label: string
+}
+
+export function getMissingRequiredPluginRequirements(
+  plugin: DiscoveredPlugin,
+  contextId: string,
+): readonly MissingPluginRequirement[] {
   return plugin.manifest.configRequirements
     .filter((requirement) => requirement.required)
     .filter((requirement) => {
@@ -33,7 +42,11 @@ function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: strin
       if (value === null) return true
       return value.trim() === ''
     })
-    .map((requirement) => requirement.key)
+    .map((requirement) => ({ key: requirement.key, label: requirement.label }))
+}
+
+function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
+  return getMissingRequiredPluginRequirements(plugin, contextId).map((requirement) => requirement.key)
 }
 
 const missingFromSet = <Capability extends string>(
@@ -43,20 +56,37 @@ const missingFromSet = <Capability extends string>(
 
 const emptyTaskCapabilities = (): ReadonlySet<TaskCapability> => new Set<TaskCapability>()
 
+const safeTaskCapabilities = (
+  taskInstance: NonNullable<ReturnType<typeof getTaskInstance>>,
+): ReadonlySet<TaskCapability> => {
+  try {
+    return getCapabilitiesForTaskInstance(taskInstance)
+  } catch {
+    return emptyTaskCapabilities()
+  }
+}
+
 const emptyChatCapabilities = (): ReadonlySet<ChatCapability> => new Set<ChatCapability>()
+
+function getTaskCapabilitiesForContext(settings: ContextSettings): ReadonlySet<TaskCapability> {
+  const taskInstance = getTaskInstance(settings.taskInstanceId)
+  return taskInstance === null || taskInstance.status !== 'active'
+    ? emptyTaskCapabilities()
+    : safeTaskCapabilities(taskInstance)
+}
+
+function getChatCapabilitiesForContext(settings: ReturnType<typeof getContextSettings>): ReadonlySet<ChatCapability> {
+  const router = getRuntimeChatRouter()
+  return settings === null || router === null
+    ? emptyChatCapabilities()
+    : router.getPlatformInstanceCapabilities(settings.platformInstanceId)
+}
 
 function getMissingRequiredCapabilities(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
   const settings = getContextSettings(contextId)
   if (settings === null) return []
-
-  const taskInstance = getTaskInstance(settings.taskInstanceId)
-  const taskCapabilities =
-    taskInstance === null || taskInstance.status !== 'active'
-      ? emptyTaskCapabilities()
-      : getCapabilitiesForTaskInstance(taskInstance)
-  const router = getRuntimeChatRouter()
-  const chatCapabilities =
-    router === null ? emptyChatCapabilities() : router.getPlatformInstanceCapabilities(settings.platformInstanceId)
+  const taskCapabilities = getTaskCapabilitiesForContext(settings)
+  const chatCapabilities = getChatCapabilitiesForContext(settings)
 
   return [
     ...missingFromSet(plugin.manifest.requiredTaskCapabilities, taskCapabilities),
@@ -71,10 +101,7 @@ export function getPluginContextEligibilityForEntry(
 ): PluginContextEligibility {
   if (entry === undefined || entry.state !== 'active') return { eligible: false, reason: 'inactive' }
   const contextState = getPluginContextState(pluginId, contextId)
-  const enabled =
-    contextState === undefined
-      ? entry.discoveredPlugin.manifest.defaultEnabled
-      : isPluginEnabledForContext(pluginId, contextId)
+  const enabled = contextState === undefined ? entry.discoveredPlugin.manifest.defaultEnabled : contextState.enabled
   if (!enabled) return { eligible: false, reason: 'disabled' }
 
   const missingKeys = getMissingRequiredConfigKeys(entry.discoveredPlugin, contextId)

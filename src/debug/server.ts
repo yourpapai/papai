@@ -5,17 +5,26 @@
 
 import path from 'node:path'
 
-import { listAuthorizedGroups } from '../authorized-groups.js'
-import { listScheduledPrompts } from '../deferred-prompts/scheduled.js'
-import { getIdentityMapping } from '../identity/mapping.js'
+import { removeAuthorizedGroup } from '../authorized-groups.js'
+import { handleMattermostActionRequest, isMattermostActionPath } from '../chat/mattermost/action-callbacks.js'
+import { authenticate, recordActivity } from '../dashboard-auth/index.js'
+import { listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
-import { listMemos } from '../memos.js'
-import { listRecurringTasks } from '../recurring.js'
 import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
+import { handleAuthClaim, handleAuthLogout, handleAuthWhoami } from './auth-routes.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
+import { handleMcpStatus } from './mcp-routes.js'
 import { handleAdminPluginConfigGet, handleAdminPluginConfigPost } from './plugin-config-routes.js'
+import {
+  handleAuthGroups,
+  handleDeferred,
+  handleIdentity,
+  handleMemos,
+  handleRecurring,
+} from './server-route-support.js'
+import { isSettingsPath, routeSettingsPaths } from './settings-router.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
 
@@ -41,21 +50,11 @@ function getHostname(): string {
   return DEFAULT_HOSTNAME
 }
 
-function getDebugToken(): string | null {
-  const token = process.env['DEBUG_TOKEN']
-  if (token !== undefined) return token
-  return null
-}
-
-function isAuthorizedRequest(req: Request): boolean {
-  const token = getDebugToken()
-  // No token required if not set
-  if (token === null) return true
-
-  const authorization = req.headers.get('Authorization')
-  if (authorization === null) return false
-  const headerToken = authorization.replace('Bearer ', '')
-  return headerToken === token
+function isAuthorizedRequest(req: Readonly<Request>): boolean {
+  const session = authenticate(req)
+  if (session === null) return false
+  recordActivity(session.sessionIdHash, req)
+  return true
 }
 
 function jsonResponse(body: unknown): Response {
@@ -108,9 +107,15 @@ function handleLogs(url: URL): Response {
   return jsonResponse(results)
 }
 
-let server: ReturnType<typeof Bun.serve> | null = null
+export type WebServerRouteOptions = Readonly<{ debugEnabled: boolean; mattermostActionSecretForTest?: string }>
+type WebServerStartOptions = Readonly<{ debugEnabled?: boolean; logLevel?: string }>
+const DEFAULT_ROUTE_OPTIONS: WebServerRouteOptions = { debugEnabled: true }
+const DEBUG_ONLY_PATHS = new Set(['/debug', '/debug.js', '/debug.css', '/events', '/logs', '/logs/stats', '/dashboard'])
 
-function handleClientFile(prefix: 'debug' | 'admin', pathname: string): Response {
+let server: ReturnType<typeof Bun.serve> | null = null
+let routeOptions: WebServerRouteOptions = DEFAULT_ROUTE_OPTIONS
+
+function handleClientFile(prefix: 'debug' | 'admin' | 'settings', pathname: string): Response {
   if (pathname === `/${prefix}`) {
     return new Response(Bun.file(path.join(PUBLIC_DIR, `${prefix}.html`)))
   }
@@ -136,56 +141,7 @@ function handleTurnLookup(url: URL): Response {
   return new Response('Not found', { status: 404 })
 }
 
-function handleRecurring(url: URL): Response {
-  const userId = url.searchParams.get('userId')
-  if (userId === null || userId === '') {
-    return new Response('Missing userId parameter', { status: 400 })
-  }
-  const tasks = listRecurringTasks(userId)
-  return jsonResponse(tasks)
-}
-
-function handleDeferred(url: URL): Response {
-  const userId = url.searchParams.get('userId')
-  if (userId === null || userId === '') {
-    return new Response('Missing userId parameter', { status: 400 })
-  }
-  const prompts = listScheduledPrompts(userId)
-  return jsonResponse(prompts)
-}
-
-function handleMemos(url: URL): Response {
-  const userId = url.searchParams.get('userId')
-  if (userId === null || userId === '') {
-    return new Response('Missing userId parameter', { status: 400 })
-  }
-  const state = resolveParamDefault(url.searchParams.get('state'), 'active')
-  const memos = listMemos(userId, 100, state)
-  return jsonResponse(memos)
-}
-
-function handleIdentity(url: URL): Response {
-  const userId = url.searchParams.get('userId')
-  if (userId === null || userId === '') {
-    return new Response('Missing userId parameter', { status: 400 })
-  }
-  const providerName = resolveParamDefault(url.searchParams.get('provider'), 'task-provider')
-  const mapping = getIdentityMapping(userId, providerName)
-  if (mapping === null) {
-    return new Response('Not found', { status: 404 })
-  }
-  return jsonResponse(mapping)
-}
-
-function resolveParamDefault(value: string | null, fallback: string): string {
-  if (value !== null) return value
-  return fallback
-}
-
-function handleAuthGroups(): Response {
-  const groups = listAuthorizedGroups()
-  return jsonResponse(groups)
-}
+const handleAdminIdentityMappings = (): Response => jsonResponse(listAllIdentityMappings())
 
 function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> | null {
   if (url.pathname === '/admin/system') {
@@ -205,22 +161,26 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
     if (req.method === 'POST') return handleAdminPluginConfigPost(req)
     return new Response('Method not allowed', { status: 405 })
   }
+  if (url.pathname === '/admin/identity/mappings') {
+    if (req.method === 'GET') return handleAdminIdentityMappings()
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/admin.css') {
     return handleClientFile('admin', url.pathname)
   }
   return null
 }
 
-async function routeRequest(req: Request): Promise<Response> {
-  if (!isAuthorizedRequest(req)) {
-    return new Response('Unauthorized', { status: 401 })
-  }
+function routePublicAuthPaths(req: Request, url: URL): Response | null {
+  if (url.pathname === '/auth/claim' && req.method === 'GET') return handleAuthClaim(req, url)
+  if (url.pathname === '/auth/logout' && req.method === 'POST') return handleAuthLogout(req)
+  if (url.pathname === '/auth/whoami' && req.method === 'GET') return handleAuthWhoami(req)
+  return null
+}
 
-  const url = new URL(req.url)
+const isDebugOnlyPath = (pathname: string): boolean => DEBUG_ONLY_PATHS.has(pathname) || pathname.startsWith('/turns/')
 
-  const instanceApiResponse = await handleInstanceApiRoute(req, url)
-  if (instanceApiResponse !== null) return instanceApiResponse
-
+function routeProtectedPaths(req: Request, url: URL): Response | Promise<Response> | null {
   if (url.pathname === '/events') return handleEvents(req)
   if (url.pathname === '/logs') return handleLogs(url)
   if (url.pathname === '/logs/stats') {
@@ -232,10 +192,60 @@ async function routeRequest(req: Request): Promise<Response> {
   if (url.pathname === '/memos') return handleMemos(url)
   if (url.pathname === '/identity') return handleIdentity(url)
   if (url.pathname === '/auth/groups') return handleAuthGroups()
+  if (url.pathname.startsWith('/auth/groups/')) {
+    const groupId = decodeURIComponent(url.pathname.slice('/auth/groups/'.length))
+    if (req.method === 'DELETE') return jsonResponse({ removed: removeAuthorizedGroup(groupId) })
+    return new Response('Method not allowed', { status: 405 })
+  }
+  if (url.pathname === '/mcp/status') {
+    if (req.method === 'GET') return handleMcpStatus()
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (url.pathname === '/billing/subjects') return handleBillingSubjects(url)
   if (url.pathname.startsWith('/billing/subject/')) return handleBillingSubject(url)
   if (url.pathname === '/stats/global') return handleStatsGlobal(url)
   if (url.pathname.startsWith('/stats/subject/')) return handleStatsSubject(url)
+  return null
+}
+
+/** Public settings SPA shell/assets; API remains settings-session gated. */
+export function routeSettingsStatic(pathname: string): Response | null {
+  if (pathname === '/settings' || pathname === '/settings.js' || pathname === '/settings.css') {
+    return handleClientFile('settings', pathname)
+  }
+  return null
+}
+
+async function routeRequest(req: Request, options: WebServerRouteOptions = routeOptions): Promise<Response> {
+  const url = new URL(req.url)
+  const settingsStatic = routeSettingsStatic(url.pathname)
+  if (settingsStatic !== null) return settingsStatic
+  // Settings trust domain: session-cookie auth only, never DEBUG_TOKEN.
+  if (isSettingsPath(url.pathname)) {
+    return (await routeSettingsPaths(req, url)) ?? new Response('Not found', { status: 404 })
+  }
+
+  const publicAuthResponse = routePublicAuthPaths(req, url)
+  if (publicAuthResponse !== null) return publicAuthResponse
+
+  if (isMattermostActionPath(req, url)) {
+    return handleMattermostActionRequest(req, {
+      getSecret:
+        options.mattermostActionSecretForTest === undefined ? undefined : () => options.mattermostActionSecretForTest!,
+    })
+  }
+
+  if (!options.debugEnabled && isDebugOnlyPath(url.pathname)) return new Response('Not found', { status: 404 })
+
+  if (!isAuthorizedRequest(req)) {
+    return new Response('Unauthorized', { status: 401 })
+  }
+
+  const instanceApiResponse = await handleInstanceApiRoute(req, url)
+  if (instanceApiResponse !== null) return instanceApiResponse
+
+  const protectedResponse = routeProtectedPaths(req, url)
+  if (protectedResponse !== null) return protectedResponse
 
   const adminResponse = routeAdminPaths(req, url)
   if (adminResponse !== null) return adminResponse
@@ -253,26 +263,27 @@ async function routeRequest(req: Request): Promise<Response> {
   return new Response('Not found', { status: 404 })
 }
 
-export function startDebugServer(adminUserId: string, ...args: [] | [string]): void {
-  init(adminUserId)
-  const logLevel = args.length === 0 ? getLogLevel() : args[0]
-  logMultistream.add({ stream: logBufferStream, level: logLevel })
+const resolveStartOptions = (options: WebServerStartOptions | string | undefined): Required<WebServerStartOptions> =>
+  typeof options === 'string'
+    ? { debugEnabled: true, logLevel: options }
+    : { debugEnabled: options?.debugEnabled ?? true, logLevel: options?.logLevel ?? getLogLevel() }
 
+export function startDebugServer(adminUserId: string, options?: WebServerStartOptions | string): void {
+  init(adminUserId)
+  const resolved = resolveStartOptions(options)
+  routeOptions = { debugEnabled: resolved.debugEnabled }
+  logMultistream.add({ stream: logBufferStream, level: resolved.logLevel })
   const port = getPort()
   const hostname = getHostname()
-  const token = getDebugToken()
-
-  server = Bun.serve({
-    port,
-    hostname,
-    idleTimeout: 0,
-    fetch: routeRequest,
-  })
-
-  log.info({ port, hostname, authEnabled: token !== null }, 'Debug server started')
+  server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: (req) => routeRequest(req) })
+  log.info({ port, hostname, debugEnabled: resolved.debugEnabled }, 'Web server started (session auth)')
 }
 
+export const routeRequestForTest = (req: Request, options?: Partial<WebServerRouteOptions>): Promise<Response> =>
+  routeRequest(req, { ...DEFAULT_ROUTE_OPTIONS, ...options })
+
 export function stopDebugServer(): void {
+  routeOptions = DEFAULT_ROUTE_OPTIONS
   if (server !== null) {
     void server.stop()
     server = null

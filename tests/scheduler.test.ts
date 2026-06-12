@@ -18,7 +18,7 @@ import type { TaskCapability, Task, TaskProvider } from '../src/providers/types.
 import { createRecurringTask, getDueRecurringTasks } from '../src/recurring.js'
 import type { SchedulerDeps } from '../src/scheduler.js'
 import { tick, createMissedTasks, startScheduler, stopScheduler } from '../src/scheduler.js'
-import { setKaneoWorkspace } from '../src/users.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from '../src/types/config.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { clearUserCache } from './utils/test-cache.js'
 import { createMockChat, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
@@ -112,7 +112,7 @@ describe('scheduler', () => {
       taskInstanceId: 'kaneo-default',
       platformInstanceId: 'telegram-default',
     })
-    setKaneoWorkspace(resolvedUserId, 'workspace-1')
+    setCachedConfig(resolvedUserId, KANEO_PLUGIN_WORKSPACE_KEY, 'workspace-1')
   }
 
   const createDueTask = (
@@ -159,6 +159,9 @@ describe('scheduler', () => {
   }
 
   beforeEach(() => {
+    // Ensure scheduler is stopped before each test (guards against concurrent test leakage)
+    stopScheduler()
+
     // Reset mutable state to defaults
     createTaskCallCount = 0
     resolveCreateTask = null

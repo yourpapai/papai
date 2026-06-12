@@ -5,8 +5,12 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
 import { ChatRouter } from '../../src/chat/router.js'
 import { setPluginConfig } from '../../src/config.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { pluginAdminState } from '../../src/db/plugin-schema.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
@@ -22,7 +26,7 @@ import {
 } from '../../src/plugins/registry.js'
 import {
   getPluginAdminState,
-  isPluginEnabledForContext as storeIsEnabled,
+  getPluginContextState,
   setPluginAdminConfig,
   updatePluginAdminStateField,
 } from '../../src/plugins/store.js'
@@ -55,7 +59,9 @@ function makePlugin(...overrides: readonly Partial<DiscoveredPlugin>[]): Discove
       requiredChatCapabilities: [],
       configRequirements: [],
       providerCapabilities: [],
+      providerTraits: [],
       providerConfigSchema: [],
+      providerContextConfigSchema: [],
       providerAllowedHosts: [],
     },
     pluginDir: '/fake/plugin-dir/test-plugin',
@@ -169,6 +175,16 @@ describe('PluginRegistry', () => {
     expectEntryState(registry, 'test-plugin', 'active')
   })
 
+  test('markActive persists active state to plugin_admin_state', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+
+    registry.markActive('test-plugin')
+
+    expect(getPluginAdminState('test-plugin')?.state).toBe('active')
+  })
+
   test('markError records reason and sets error state', () => {
     const plugin = makePlugin()
     registry.registerDiscovered(plugin)
@@ -176,6 +192,17 @@ describe('PluginRegistry', () => {
     registry.markError('test-plugin', 'timeout')
     expectEntryState(registry, 'test-plugin', 'error')
     expectEntryReason(registry, 'test-plugin', 'timeout')
+  })
+
+  test('markError persists error state and reason to plugin_admin_state', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+
+    registry.markError('test-plugin', 'activation failed')
+
+    expect(getPluginAdminState('test-plugin')?.state).toBe('error')
+    expect(getPluginAdminState('test-plugin')?.compatibilityReason).toBe('activation failed')
   })
 
   test('markDeactivated transitions active plugin back to approved', () => {
@@ -187,23 +214,36 @@ describe('PluginRegistry', () => {
     expectEntryState(registry, 'test-plugin', 'approved')
   })
 
-  test('evaluateCompatibility marks incompatible when capability missing', () => {
+  test('markDeactivated persists approved state after active runtime', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+    registry.markActive('test-plugin')
+
+    registry.markDeactivated('test-plugin')
+
+    expect(getPluginAdminState('test-plugin')?.state).toBe('approved')
+  })
+
+  test('evaluateCompatibilityAcrossInstances marks incompatible when capability missing', () => {
     const plugin = makePlugin({
       manifest: { ...makePlugin().manifest, requiredTaskCapabilities: ['tasks.delete'] },
     })
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
-    registry.evaluateCompatibility('test-plugin', new Set(), new Set())
+    registry.evaluateCompatibilityAcrossInstances([{ taskCapabilities: new Set(), chatCapabilities: new Set() }])
     expectEntryState(registry, 'test-plugin', 'incompatible')
   })
 
-  test('evaluateCompatibility leaves compatible plugin as approved', () => {
+  test('evaluateCompatibilityAcrossInstances leaves compatible plugin as approved', () => {
     const plugin = makePlugin({
       manifest: { ...makePlugin().manifest, requiredTaskCapabilities: ['tasks.delete'] },
     })
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
-    registry.evaluateCompatibility('test-plugin', new Set(['tasks.delete']), new Set())
+    registry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: new Set(['tasks.delete']), chatCapabilities: new Set() },
+    ])
     expectEntryState(registry, 'test-plugin', 'approved')
   })
 
@@ -312,12 +352,14 @@ describe('PluginRegistry', () => {
     })
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
-    registry.evaluateCompatibility('test-plugin', new Set(), new Set())
+    registry.evaluateCompatibilityAcrossInstances([{ taskCapabilities: new Set(), chatCapabilities: new Set() }])
     expectEntryState(registry, 'test-plugin', 'incompatible')
 
     const restartedRegistry = new PluginRegistry()
     restartedRegistry.registerDiscovered(plugin)
-    restartedRegistry.evaluateCompatibility('test-plugin', new Set(['tasks.delete']), new Set())
+    restartedRegistry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: new Set(['tasks.delete']), chatCapabilities: new Set() },
+    ])
 
     expectEntryState(restartedRegistry, 'test-plugin', 'approved')
     expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)
@@ -337,6 +379,29 @@ describe('PluginRegistry', () => {
 
     expectEntryState(restartedRegistry, 'test-plugin', 'discovered')
     expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(0)
+  })
+
+  test('startup preserves approval for legacy persisted config_missing state when approval hash exists', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+
+    getDrizzleDb()
+      .update(pluginAdminState)
+      .set({ state: 'config_missing', compatibilityReason: 'Missing config from legacy runtime state' })
+      .where(eq(pluginAdminState.pluginId, 'test-plugin'))
+      .run()
+
+    const restartedRegistry = new PluginRegistry()
+    restartedRegistry.registerDiscovered(plugin)
+
+    expectEntryState(restartedRegistry, 'test-plugin', 'approved')
+    expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)
+
+    const adminState = getPluginAdminState('test-plugin')
+    expect(adminState?.state).toBe('approved')
+    expect(adminState?.approvedManifestHash).toBe('hash-abc')
+    expect(adminState?.compatibilityReason).toBeNull()
   })
 })
 
@@ -360,7 +425,7 @@ describe('singleton registry helpers', () => {
 
   test('setPluginEnabledForContext persists context-level enablement', () => {
     setPluginEnabledForContext('test-plugin', 'ctx-1', true)
-    expect(storeIsEnabled('test-plugin', 'ctx-1')).toBe(true)
+    expect(getPluginContextState('test-plugin', 'ctx-1')?.enabled).toBe(true)
   })
 
   test('getPluginsForContext returns active plugins enabled for context', () => {
@@ -458,7 +523,7 @@ describe('singleton registry helpers', () => {
       },
       manifestHash: 'hash-task-capability',
     })
-    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
     seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-a' })
 
@@ -487,7 +552,7 @@ describe('singleton registry helpers', () => {
       },
       manifestHash: 'hash-chat-capability',
     })
-    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'yt-a', platformInstanceId: 'telegram-a' })
     const router = new ChatRouter(() => createMockChat({ capabilities: new Set() }))
@@ -518,7 +583,7 @@ describe('singleton registry helpers', () => {
       },
       manifestHash: 'hash-stopped-chat-capability',
     })
-    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'yt-a', platformInstanceId: 'telegram-a' })
     const router = new ChatRouter(() => createMockChat({ capabilities: new Set(['messages.buttons']) }))

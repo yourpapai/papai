@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { compareConfigKeyOrder } from '../../src/chat/router-helpers.js'
 import { ChatRouter, type ManagedChatInstance, type ManagedChatInstanceFactory } from '../../src/chat/router.js'
 import { dmTarget } from '../../src/chat/types.js'
 import type {
@@ -24,6 +25,7 @@ import type {
 import { setContextSettings } from '../../src/instances/context-store.js'
 import type { InstanceConfig, PlatformInstanceType } from '../../src/instances/types.js'
 import {
+  createTrackedLoggerMock,
   mockLogger,
   seedCommonTestPlatformInstances,
   seedTestTaskInstance,
@@ -40,6 +42,8 @@ type FakeProvider = ChatProvider & {
   commandHandlers: Record<string, CommandHandler>
   setCommandsCalls: string[]
 }
+
+type RouterModule = typeof import('../../src/chat/router.js')
 
 const fakeReply: ReplyFn = {
   text: () => Promise.resolve(),
@@ -79,9 +83,24 @@ const defaultThreadCapabilities: ThreadCapabilities = {
 
 const noopPromise = (): Promise<void> => Promise.resolve()
 
-const callResolver = (resolve: (() => void) | undefined): void => {
-  if (resolve === undefined) throw new Error('resolver missing')
-  resolve()
+const requireSetCommands = (
+  setCommandsById: Record<string, () => Promise<void>>,
+  id: string,
+): (() => Promise<void>) => {
+  const setCommands = setCommandsById[id]
+  if (setCommands === undefined) throw new Error(`missing setCommands for ${id}`)
+  return setCommands
+}
+
+const isRouterModule = (module: unknown): module is RouterModule =>
+  typeof module === 'object' && module !== null && 'ChatRouter' in module && typeof module.ChatRouter === 'function'
+
+const loadFreshRouterModule = async (): Promise<RouterModule> => {
+  const module: unknown = await import(`../../src/chat/router.js?test=${crypto.randomUUID()}`)
+  if (!isRouterModule(module)) {
+    throw new Error('Failed to load chat router module for testing')
+  }
+  return module
 }
 
 type FakeProviderOptions = Partial<{
@@ -204,6 +223,14 @@ const makeInteraction = (platformInstanceId: string): IncomingInteraction => ({
   callbackData: 'callback',
 })
 
+const snapshotFingerprint = (type: PlatformInstanceType, config: InstanceConfig): string => {
+  const fingerprintRouter = new ChatRouter((_id, providerType) => makeProvider(providerType, {}))
+  fingerprintRouter.addInstance('fingerprint-test', type, config)
+  const [snapshot] = fingerprintRouter.listInstances()
+  if (snapshot === undefined) throw new Error('missing fingerprint snapshot')
+  return snapshot.configFingerprint
+}
+
 describe('ChatRouter', () => {
   let providers: Record<string, FakeProvider>
   let factory: ManagedChatInstanceFactory
@@ -308,13 +335,32 @@ describe('ChatRouter', () => {
     expect(getProvider('stopped-main').sent).toEqual([])
   })
 
-  test('marks instance inactive before awaiting stop to refuse racing sends', async () => {
-    let resolveStop: (() => void) | undefined
-    const stopPromise = new Promise<void>((resolve) => {
-      resolveStop = resolve
-    })
+  test('keeps instance active until stop succeeds and preserves state when stop fails', async () => {
+    const stop = mock(() => Promise.reject(new Error('stop failed')))
     factory = (id: string, type: PlatformInstanceType): ChatProvider => {
-      const fakeProvider = makeProvider(type, { stop: () => stopPromise })
+      const fakeProvider = makeProvider(type, { stop })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-main', 'telegram', {})
+    await router.startInstance('telegram-main')
+
+    await expect(router.stopInstance('telegram-main')).rejects.toThrow('stop failed')
+
+    expect(router.isInstanceActive('telegram-main')).toBe(true)
+  })
+
+  test('refuses routed sends while stop is in flight and preserves active state if stop fails', async () => {
+    let releaseStop: (() => void) | undefined
+    const stop = mock(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseStop = resolve
+        }),
+    )
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, { stop })
       providers[id] = fakeProvider
       return fakeProvider
     }
@@ -323,12 +369,34 @@ describe('ChatRouter', () => {
     await router.startInstance('telegram-main')
 
     const stopping = router.stopInstance('telegram-main')
-    const delivered = await router.sendMessage('telegram-main', dmTarget('user-1'), 'racing')
-    callResolver(resolveStop)
+    const deliveredWhileStopping = await router.sendMessage('telegram-main', dmTarget('user-1'), 'racing')
+
+    expect(deliveredWhileStopping).toBe(false)
+    expect(getProvider('telegram-main').sent).toEqual([])
+    expect(router.isInstanceActive('telegram-main')).toBe(false)
+
+    expect(releaseStop).toBeFunction()
+    releaseStop?.()
     await stopping
 
-    expect(delivered).toBe(false)
-    expect(getProvider('telegram-main').sent).toEqual([])
+    expect(router.getInstance('telegram-main')?.status).toBe('stopped')
+  })
+
+  test('startInstance is a no-op for already active instances', async () => {
+    const start = mock(async () => {})
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, { start })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-main', 'telegram', {})
+
+    await router.startInstance('telegram-main')
+    await router.startInstance('telegram-main')
+
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(router.isInstanceActive('telegram-main')).toBe(true)
   })
 
   test('propagates delegated provider send refusal', async () => {
@@ -390,12 +458,45 @@ describe('ChatRouter', () => {
 
     const snapshots = router.listInstances()
 
-    expect(snapshots).toEqual([
+    expect(snapshots.map(({ id, type, status }) => ({ id, type, status }))).toEqual([
       { id: 'telegram-main', type: 'telegram', status: 'active' },
       { id: 'discord-main', type: 'discord', status: 'stopped' },
     ])
+    expect(snapshots[0]?.configFingerprint).toBeString()
+    expect(snapshots[1]?.configFingerprint).toBeString()
     expect('provider' in snapshots[0]!).toBe(false)
     expect(snapshots[0]).not.toBe(routerInstance('telegram-main'))
+  })
+
+  test('listInstances exposes safe config fingerprints without raw config', () => {
+    const snapshotRouter = new ChatRouter((_id, type, _config) => makeProvider(type, {}))
+
+    snapshotRouter.addInstance('telegram-main', 'telegram', { token: 'secret-token' })
+
+    const [snapshot] = snapshotRouter.listInstances()
+
+    expect(snapshot).toMatchObject({ id: 'telegram-main', type: 'telegram', status: 'pending' })
+    expect(snapshot?.configFingerprint).toBeString()
+    expect(snapshot?.configFingerprint).toMatch(/^[a-f0-9]{64}$/u)
+    expect(JSON.stringify(snapshot)).not.toContain('secret-token')
+  })
+
+  test('config fingerprints are stable across key order', () => {
+    const left = snapshotFingerprint('telegram', { token: 'secret-token', url: 'https://example.test' })
+    const right = snapshotFingerprint('telegram', { url: 'https://example.test', token: 'secret-token' })
+
+    expect(left).toBe(right)
+  })
+
+  test('config fingerprint sorting uses code point key order', () => {
+    expect(['z', 'ä'].toSorted(compareConfigKeyOrder)).toEqual(['z', 'ä'])
+  })
+
+  test('config fingerprints change when config or platform type changes', () => {
+    const baseline = snapshotFingerprint('telegram', { token: 'secret-token' })
+
+    expect(snapshotFingerprint('telegram', { token: 'rotated-token' })).not.toBe(baseline)
+    expect(snapshotFingerprint('discord', { token: 'secret-token' })).not.toBe(baseline)
   })
 
   test('isolates start failures and starts remaining instances', async () => {
@@ -449,7 +550,7 @@ describe('ChatRouter', () => {
     expect(instanceStatus('good')).toBe('stopped')
   })
 
-  test('removes instances even when provider stop fails', async () => {
+  test('removeInstance deletes the instance even when provider.stop throws', async () => {
     factory = (id: string, type: PlatformInstanceType): ChatProvider => {
       const fakeProvider = makeProvider(type, { stop: () => Promise.reject(new Error(`stop ${id}`)) })
       providers[id] = fakeProvider
@@ -458,7 +559,7 @@ describe('ChatRouter', () => {
     router = new ChatRouter(factory)
     router.addInstance('telegram-main', 'telegram', {})
 
-    await expect(router.removeInstance('telegram-main')).resolves.toBeUndefined()
+    await expect(router.removeInstance('telegram-main')).rejects.toThrow('stop telegram-main')
 
     expect(router.getInstance('telegram-main')).toBeNull()
   })
@@ -576,7 +677,7 @@ describe('ChatRouter', () => {
     expect(groupLabel).toBe('discord:group-1')
   })
 
-  test('continues setting commands when one instance fails', async () => {
+  test('rejects setting commands when one instance fails', async () => {
     const setCommandsById: Record<string, (adminUserId: string, calls: string[]) => Promise<void>> = {
       bad: () => Promise.reject(new Error('command menu failed')),
       good: () => Promise.resolve(),
@@ -592,10 +693,48 @@ describe('ChatRouter', () => {
     router.addInstance('bad', 'telegram', {})
     router.addInstance('good', 'discord', {})
 
-    await expect(router.setCommands('admin-1')).resolves.toBeUndefined()
+    await expect(router.setCommands('admin-1')).rejects.toThrow('command menu failed')
 
     expect(getProvider('bad').setCommandsCalls).toEqual(['admin-1'])
     expect(getProvider('good').setCommandsCalls).toEqual(['admin-1'])
+  })
+
+  test('logs and rethrows synchronous command publication failures', async () => {
+    const trackedLogger = createTrackedLoggerMock()
+    void mock.module('../../src/logger.js', () => ({
+      getLogLevel: trackedLogger.getLogLevel,
+      logger: trackedLogger.logger,
+    }))
+    const routerModule = await loadFreshRouterModule()
+    const FreshChatRouter = routerModule.ChatRouter
+
+    const setCommandsById: Record<string, () => Promise<void>> = {
+      bad: () => {
+        throw new Error('sync command failure')
+      },
+      good: () => Promise.resolve(),
+    }
+
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, {
+        setCommands: () => requireSetCommands(setCommandsById, id)(),
+      })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+
+    const freshRouter = new FreshChatRouter(factory)
+    freshRouter.addInstance('bad', 'telegram', {})
+    freshRouter.addInstance('good', 'discord', {})
+
+    await expect(freshRouter.setCommands('admin-1')).rejects.toThrow('sync command failure')
+
+    expect(getProvider('bad').setCommandsCalls).toEqual(['admin-1'])
+    expect(getProvider('good').setCommandsCalls).toEqual(['admin-1'])
+    expect(trackedLogger.getCallsByLevel('warn')).toContainEqual({
+      level: 'warn',
+      args: [{ platformInstanceId: 'bad', error: 'sync command failure' }, 'failed to set chat commands'],
+    })
   })
 
   test('excludes stopped instances from aggregate metadata and command menus', async () => {

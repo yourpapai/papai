@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.js'
 import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
@@ -18,12 +19,13 @@ import type { DeferredExecutionContext } from '../../src/deferred-prompts/proact
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
+import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { loadFacts } from '../../src/memory.js'
 import { setSystemConfig } from '../../src/system-config.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import { flushMicrotasks, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
 
 // Track generateText calls
 type GenerateTextResult = {
@@ -34,6 +36,7 @@ type GenerateTextResult = {
   response: { messages: ModelMessage[] }
 }
 type GenerateTextCall = { model: string; system: string; messages: ModelMessage[]; tools: unknown }
+type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
 
 // Helper defined outside test blocks — no-conditional-in-test requires predicate helpers at module scope
 function messageIncludesText(msgs: readonly ModelMessage[], text: string): boolean {
@@ -95,6 +98,7 @@ function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): v
 
 describe('dispatchExecution', () => {
   const generateTextCalls: GenerateTextCall[] = []
+  const buildModelCalls: BuildModelCall[] = []
 
   let generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
     generateTextCalls.push(args)
@@ -109,7 +113,9 @@ describe('dispatchExecution', () => {
 
   beforeEach(async () => {
     mockLogger()
+    resetSystemConfigCacheForTesting()
     generateTextCalls.length = 0
+    buildModelCalls.length = 0
     generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
       generateTextCalls.push(args)
       return Promise.resolve({
@@ -125,11 +131,18 @@ describe('dispatchExecution', () => {
       tool: (opts: unknown): unknown => opts,
       stepCountIs: (_n: number): unknown => undefined,
     }))
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (opts: { name: string; apiKey: string; baseURL: string }): ((modelId: string) => string) =>
-        (modelId: string): string =>
-          `${opts.name}:${modelId}`,
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelId: string): string => {
+        buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId })
+        return `openai-compatible:${modelId}`
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((modelId: string) => string) =>
+        (modelId: string): string => {
+          buildModelCalls.push({ apiKey, baseURL: baseUrl, modelId })
+          return `openai-compatible:${modelId}`
+        },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
     await setupTestDb()
   })
@@ -244,10 +257,11 @@ describe('dispatchExecution', () => {
       context_snapshot: 'Discussed Q2 sprint priorities',
     }
 
-    test('uses main_model', async () => {
-      setupUserConfig()
+    test('uses main_model even when small_model is configured', async () => {
+      setupUserConfig({ smallModel: 'small-model' })
       await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
       expect(generateTextCalls[0]!.model).toContain('main-model')
+      expect(generateTextCalls[0]!.model).not.toContain('small-model')
     })
 
     test('loads conversation history', async () => {
@@ -256,6 +270,26 @@ describe('dispatchExecution', () => {
       await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
       const messages = generateTextCalls[0]!.messages
       expect(messageIncludesText(messages, 'history message')).toBe(true)
+    })
+
+    test('uses group long-term memory for group thread delivery context', async () => {
+      setupUserConfig()
+      saveMemoryProfile(
+        { scopeId: '-1001', scopeType: 'group' },
+        '## Group memory\n- Group standups happen at 10:00',
+        '2026-06-12T00:00:00.000Z',
+      )
+      saveMemoryProfile(
+        { scopeId: '-1001:42', scopeType: 'personal' },
+        '## Personal memory\n- This personal thread scope should not be injected',
+        '2026-06-12T00:00:00.000Z',
+      )
+
+      await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
+
+      const messages = generateTextCalls[0]!.messages
+      expect(messageIncludesText(messages, 'Group standups happen at 10:00')).toBe(true)
+      expect(messageIncludesText(messages, 'This personal thread scope should not be injected')).toBe(false)
     })
 
     test('includes get_current_time tool only', async () => {
@@ -289,6 +323,31 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.model).toContain('main-model')
     })
 
+    test('uses complete BYOK config for full generation without global config', async () => {
+      setConfig(USER_ID, 'timezone', 'UTC')
+      updateByokLlmConfig(
+        USER_ID,
+        {
+          llm_apikey: 'sk-byok-deferred',
+          llm_baseurl: 'https://byok-deferred.invalid/v1',
+          main_model: 'byok-main-deferred',
+        },
+        'admin-1',
+      )
+      const provider = createMockProvider()
+
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      expect(buildModelCalls).toEqual([
+        {
+          apiKey: 'sk-byok-deferred',
+          baseURL: 'https://byok-deferred.invalid/v1',
+          modelId: 'byok-main-deferred',
+        },
+      ])
+      expect(generateTextCalls[0]!.model).toBe('openai-compatible:byok-main-deferred')
+    })
+
     test('includes tools with proactive mode', async () => {
       setupUserConfig()
       const provider = createMockProvider()
@@ -319,10 +378,34 @@ describe('dispatchExecution', () => {
       expect(messageIncludesText(messages, 'full mode history')).toBe(true)
     })
 
-    test('returns error when provider cannot be built', async () => {
+    test('full mode uses group long-term memory for group thread delivery context', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      saveMemoryProfile(
+        { scopeId: '-1001', scopeType: 'group' },
+        '## Group memory\n- Group escalations use the incident queue',
+        '2026-06-12T00:00:00.000Z',
+      )
+      saveMemoryProfile(
+        { scopeId: '-1001:42', scopeType: 'personal' },
+        '## Personal memory\n- This personal thread profile should not be injected',
+        '2026-06-12T00:00:00.000Z',
+      )
+
+      await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      const messages = generateTextCalls[0]!.messages
+      expect(messageIncludesText(messages, 'Group escalations use the incident queue')).toBe(true)
+      expect(messageIncludesText(messages, 'This personal thread profile should not be injected')).toBe(false)
+    })
+
+    test('falls back to providerless full execution when provider cannot be built', async () => {
       setupUserConfig()
       const result = await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => null)
-      expect(result).toContain('task provider not configured')
+      expect(result).toBe('Mock response')
+      expect(generateTextCalls).toHaveLength(1)
+      expect(generateTextCalls[0]!.system).toContain('task tracker tools are unavailable')
+      expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_task')
     })
 
     test('stores extracted facts in group thread delivery context instead of creator DM', async () => {
@@ -410,6 +493,90 @@ describe('dispatchExecution', () => {
       expect(resolvedContextIds).toEqual([scopedMainContextId])
       expect(loadFacts(scopedThreadContextId)).toEqual([
         expect.objectContaining({ identifier: '#21', title: 'Scoped thread task', url: '' }),
+      ])
+    })
+
+    test('full mode background trim uses scoped main config context instead of thread storage', async () => {
+      setConfig(USER_ID, 'timezone', 'UTC')
+      const scopedThreadContextId = toScopedThreadContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+        threadId: '42',
+      })
+      const scopedMainContextId = toScopedContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+      })
+      updateByokLlmConfig(
+        scopedMainContextId,
+        {
+          llm_apikey: 'sk-byok-full-trim',
+          llm_baseurl: 'https://byok-full-trim.invalid/v1',
+          main_model: 'byok-full-main',
+          small_model: 'byok-full-small',
+        },
+        'admin-1',
+      )
+      appendHistory(
+        scopedThreadContextId,
+        Array.from({ length: 99 }, (_, index): ModelMessage => ({ role: 'assistant', content: `old ${index}` })),
+      )
+      const generateTextResults: readonly Promise<GenerateTextResult>[] = [
+        Promise.resolve({
+          text: 'Thread response',
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          response: { messages: [{ role: 'assistant', content: 'new response' }] },
+        }),
+        Promise.resolve({
+          text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          response: { messages: [] },
+        }),
+        Promise.resolve({
+          text: JSON.stringify({ profile: null, records: [], updates: [] }),
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          response: { messages: [] },
+        }),
+      ]
+      let callIndex = 0
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        const result = generateTextResults[callIndex]!
+        callIndex += 1
+        return result
+      }
+
+      await dispatchExecution(
+        {
+          createdByUserId: USER_ID,
+          deliveryTarget: {
+            contextId: '-1001',
+            storageContextId: scopedThreadContextId,
+            contextType: 'group',
+            threadId: '42',
+            audience: 'personal',
+            mentionUserIds: [USER_ID],
+            createdByUserId: USER_ID,
+            createdByUsername: null,
+          },
+        },
+        'scheduled',
+        'check overdue',
+        metadata,
+        () => createMockProvider(),
+      )
+      await flushMicrotasks()
+
+      expect(buildModelCalls).toEqual([
+        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-main' },
+        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
+        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
       ])
     })
 
@@ -523,8 +690,8 @@ describe('dispatchExecution', () => {
       // When the bug is present (uses creator context), getToolPrefs(USER_ID) is empty
       // so buildUnavailableLine returns null and the line is absent.
       setToolPrefs(deliveryStorageContextId, {
-        disabledDomains: [],
-        toolOverrides: { save_memo: false },
+        domainDefaults: {},
+        toolOverrides: { save_memo: 'deny' },
       })
 
       await dispatchExecution(

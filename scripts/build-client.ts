@@ -9,7 +9,21 @@ import path from 'node:path'
 import { sveltePlugin } from './svelte-plugin.js'
 
 const ROOT = path.resolve(import.meta.dir, '..')
-export const PUBLIC_DIR = path.join(ROOT, 'public')
+
+/**
+ * Output directory for client bundles. `CLIENT_BUILD_OUTDIR` overrides the
+ * default `public/` so tests can build into a temp dir without touching the
+ * bundles other test files serve.
+ */
+function resolveOutDir(): string {
+  const override = process.env['CLIENT_BUILD_OUTDIR']
+  if (override === undefined || override === '') {
+    return path.join(ROOT, 'public')
+  }
+  return path.resolve(override)
+}
+
+export const PUBLIC_DIR = resolveOutDir()
 
 export interface BundleConfig {
   entry: string
@@ -39,6 +53,15 @@ const BUNDLES: BundleConfig[] = [
     cssName: 'admin.css',
     baseCssPath: 'client/shared/base.css',
     localCssPath: 'client/admin/admin.css',
+  },
+  {
+    entry: 'client/settings/index.ts',
+    htmlSrc: 'client/settings/settings.html',
+    jsName: 'settings.js',
+    htmlName: 'settings.html',
+    cssName: 'settings.css',
+    baseCssPath: 'client/shared/base.css',
+    localCssPath: 'client/settings/settings.css',
   },
 ]
 

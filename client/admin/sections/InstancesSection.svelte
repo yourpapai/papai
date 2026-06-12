@@ -8,8 +8,8 @@
 
   import type {
     AdminInstanceView,
-    InstanceConfigView,
     PlatformInstanceView,
+    PlatformProviderTypeView,
     TaskInstanceView,
     TaskProviderTypeView,
   } from '../../shared/api-types.js'
@@ -23,10 +23,19 @@
     deleteTaskInstance,
     fetchAdmins,
     fetchPlatformInstances,
+    fetchPlatformProviderTypes,
     fetchTaskInstances,
     fetchTaskProviderTypes,
     updatePlatformInstance,
   } from '../fetchers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Field from '../../shared/ui/Field.svelte'
+  import Input from '../../shared/ui/Input.svelte'
+  import JsonCell from '../../shared/ui/JsonCell.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Panel from '../../shared/ui/Panel.svelte'
+  import Select from '../../shared/ui/Select.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
 
   type FormStatus = { readonly kind: 'success' | 'error'; readonly message: string }
   type PlatformType = PlatformInstanceView['type']
@@ -34,6 +43,7 @@
   let platformInstances: PlatformInstanceView[] = $state([])
   let taskInstances: TaskInstanceView[] = $state([])
   let admins: AdminInstanceView[] = $state([])
+  let platformProviderTypes: PlatformProviderTypeView[] = $state([])
   let taskProviderTypes: TaskProviderTypeView[] = $state([])
   let loading = $state(false)
   let status: FormStatus | null = $state(null)
@@ -41,16 +51,17 @@
 
   let platformId = $state('')
   let platformType: PlatformType = $state('telegram')
-  let platformConfig = $state('{}')
+  let platformConfigFields: Record<string, string> = $state({})
   let taskId = $state('')
   let taskType = $state('')
   let taskConfigFields: Record<string, string> = $state({})
   let adminUserId = $state('')
   let adminPlatformInstanceId = $state('')
 
+  const selectedPlatformType = $derived(platformProviderTypes.find((descriptor) => descriptor.type === platformType))
   const selectedTaskType = $derived(taskProviderTypes.find((descriptor) => descriptor.type === taskType))
 
-  const configLabel = (config: InstanceConfigView): string => JSON.stringify(config)
+  const fieldStorageKey = (field: { readonly key: string; readonly storageKey?: string }): string => field.storageKey ?? field.key
   const setSuccess = (message: string): void => {
     status = { kind: 'success', message }
   }
@@ -58,22 +69,9 @@
     status = { kind: 'error', message: err instanceof Error ? err.message : String(err) }
   }
 
-  function parseConfig(raw: string): InstanceConfigView | null {
-    try {
-      const parsed: unknown = JSON.parse(raw)
-      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-      const entries = Object.entries(parsed)
-      if (entries.some(([, value]) => typeof value !== 'string')) return null
-      return Object.fromEntries(entries) as InstanceConfigView
-    } catch {
-      return null
-    }
-  }
-
-  function requireConfig(raw: string): InstanceConfigView {
-    const parsed = parseConfig(raw)
-    if (parsed === null) throw new Error('Config must be a JSON object with string values')
-    return parsed
+  const applyFailureMessage = (result: Awaited<ReturnType<typeof applyPlatformInstances>>): string => {
+    const details = result.failed.map((failure) => `${failure.id} ${failure.action} failed: ${failure.error}`).join('; ')
+    return `Failed to apply ${result.applied} platform ${result.applied === 1 ? 'change' : 'changes'}: ${details}`
   }
 
   function confirmDestructive(message: string): boolean {
@@ -86,6 +84,13 @@
 
   async function loadTaskInstances(): Promise<void> {
     taskInstances = await fetchTaskInstances()
+  }
+
+  async function loadPlatformProviderTypes(): Promise<void> {
+    platformProviderTypes = await fetchPlatformProviderTypes()
+    if (!platformProviderTypes.some((descriptor) => descriptor.type === platformType) && platformProviderTypes.length > 0) {
+      platformType = platformProviderTypes[0]!.type
+    }
   }
 
   async function loadAdmins(): Promise<void> {
@@ -101,7 +106,13 @@
     loading = true
     status = null
     try {
-      await Promise.all([loadPlatformInstances(), loadTaskInstances(), loadAdmins(), loadTaskProviderTypes()])
+      await Promise.all([
+        loadPlatformInstances(),
+        loadTaskInstances(),
+        loadAdmins(),
+        loadTaskProviderTypes(),
+        loadPlatformProviderTypes(),
+      ])
     } catch (err) {
       setError(err)
     } finally {
@@ -110,7 +121,18 @@
   }
 
   $effect(() => {
-    const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
+    const schema = selectedPlatformType === undefined ? [] : selectedPlatformType.instanceConfigSchema
+    const prev = untrack(() => platformConfigFields)
+    const next: Record<string, string> = {}
+    for (const field of schema) {
+      const value = prev[field.key]
+      next[field.key] = value === undefined ? '' : value
+    }
+    platformConfigFields = next
+  })
+
+  $effect(() => {
+    const schema = selectedTaskType === undefined ? [] : selectedTaskType.instanceConfigSchema
     const prev = untrack(() => taskConfigFields)
     const next: Record<string, string> = {}
     for (const field of schema) {
@@ -122,9 +144,17 @@
 
   async function createPlatform(): Promise<void> {
     try {
-      await createPlatformInstance({ id: platformId.trim(), type: platformType, config: requireConfig(platformConfig) })
+      const schema = selectedPlatformType === undefined ? [] : selectedPlatformType.instanceConfigSchema
+      const config: Record<string, string> = {}
+      for (const field of schema) {
+        const rawValue = platformConfigFields[field.key]
+        const value = (rawValue === undefined ? '' : rawValue).trim()
+        if (field.required && value === '') throw new Error(`${field.label} is required`)
+        if (value !== '') config[field.key] = value
+      }
+      await createPlatformInstance({ id: platformId.trim(), type: platformType, config })
       platformId = ''
-      platformConfig = '{}'
+      platformConfigFields = {}
       platformDirty = true
       await loadPlatformInstances()
       setSuccess('Platform instance created. Platform changes are unapplied.')
@@ -160,6 +190,10 @@
   async function applyPlatforms(): Promise<void> {
     try {
       const result = await applyPlatformInstances()
+      if (result.failed.length > 0) {
+        setError(new Error(applyFailureMessage(result)))
+        return
+      }
       platformDirty = false
       await loadPlatformInstances()
       setSuccess(`Applied ${result.applied} platform ${result.applied === 1 ? 'change' : 'changes'}.`)
@@ -170,13 +204,13 @@
 
   async function createTask(): Promise<void> {
     try {
-      const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
+      const schema = selectedTaskType === undefined ? [] : selectedTaskType.instanceConfigSchema
       const config: Record<string, string> = {}
       for (const field of schema) {
         const rawValue = taskConfigFields[field.key]
         const value = (rawValue === undefined ? '' : rawValue).trim()
         if (field.required && value === '') throw new Error(`${field.label} is required`)
-        if (value !== '') config[field.key] = value
+        if (value !== '') config[fieldStorageKey(field)] = value
       }
       await createTaskInstance({ id: taskId.trim(), type: taskType, config })
       taskId = ''
@@ -241,119 +275,168 @@
   })
 </script>
 
-<section id="instances" class="panel admin-data-section admin-section">
-  <header class="admin-section-header">
-    <div>
-      <p class="eyebrow">Runtime</p>
-      <h2 data-testid="admin-section-title">Instances</h2>
-    </div>
-    <button type="button" onclick={() => void refreshAll()}>{loading ? 'Refreshing...' : 'Refresh'}</button>
-  </header>
+<section id="instances" class="admin-data-section admin-section">
+  <PageHeader eyebrow="Runtime" title="Instances" titleTestId="admin-section-title">
+    {#snippet action()}
+      <Btn variant="secondary" size="sm" onClick={() => void refreshAll()}>
+        {#snippet children()}{loading ? 'Refreshing...' : 'Refresh'}{/snippet}
+      </Btn>
+    {/snippet}
+  </PageHeader>
 
   {#if status !== null}
     <p class={status.kind === 'error' ? 'status-error' : 'status-success'}>{status.message}</p>
   {/if}
 
   <div class="admin-subsection-grid instances-grid">
-    <section>
-      <div class="instances-subheader">
-        <h3>Platform Instances</h3>
-        <button type="button" data-testid="platform-apply-button" onclick={() => void applyPlatforms()}>Apply changes</button>
-      </div>
-      {#if platformDirty}
-        <p class="placeholder" data-testid="platform-unapplied-indicator">Platform changes are unapplied</p>
-      {/if}
-      <form class="admin-filter-form" data-testid="platform-create-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
-        <label><span>ID</span><input data-testid="platform-id-input" bind:value={platformId} /></label>
-        <label>
-          <span>Type</span>
-          <select data-testid="platform-type-input" bind:value={platformType}>
-            <option value="telegram">Telegram</option>
-            <option value="mattermost">Mattermost</option>
-            <option value="discord">Discord</option>
-          </select>
-        </label>
-        <label><span>Config JSON</span><input data-testid="platform-config-input" bind:value={platformConfig} /></label>
-        <button type="submit" data-testid="platform-create-button">Create</button>
-      </form>
-      <div class="admin-table-wrap">
-        <table class="admin-table">
-          <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Config</th><th>Created</th><th>Actions</th></tr></thead>
-          <tbody>
-            {#each platformInstances as instance (instance.id)}
-              <tr data-testid="platform-instance-row">
-                <td>{instance.id}</td><td>{instance.type}</td><td>{instance.status}</td><td>{configLabel(instance.config)}</td><td>{instance.createdAt}</td>
-                <td>
-                  <button type="button" data-testid={`platform-status-${instance.id}`} onclick={() => void updatePlatformStatus(instance)}>{instance.status === 'active' ? 'Stop' : 'Start'}</button>
-                  <button type="button" data-testid={`platform-delete-${instance.id}`} onclick={() => void removePlatform(instance.id)}>Delete</button>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <Panel title="platform instances">
+      {#snippet action()}
+        <Btn variant="secondary" size="sm" testid="platform-apply-button" onClick={() => void applyPlatforms()}>
+          {#snippet children()}Apply changes{/snippet}
+        </Btn>
+      {/snippet}
+      {#snippet body()}
+        {#if platformDirty}
+          <p class="placeholder" data-testid="platform-unapplied-indicator">Platform changes are unapplied</p>
+        {/if}
+        <form class="admin-filter-form" data-testid="platform-create-form" onsubmit={(event) => { event.preventDefault(); void createPlatform() }}>
+          <Field label="ID">
+            <Input value={platformId} onInput={(v) => (platformId = v)} testid="platform-id-input" />
+          </Field>
+          <Field label="Type">
+            <Select
+              value={platformType}
+              options={platformProviderTypes.map((d) => ({ value: d.type, label: d.displayName }))}
+              onChange={(v) => (platformType = v as PlatformType)}
+              testid="platform-type-input" />
+          </Field>
+          {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
+            <Field label={field.label} required={field.required}>
+              <Input
+                type={field.sensitive ? 'password' : 'text'}
+                value={platformConfigFields[field.key] ?? ''}
+                onInput={(v) => (platformConfigFields[field.key] = v)}
+                testid={`platform-config-${field.key}`} />
+            </Field>
+          {/each}
+          <Btn type="submit" variant="primary" testid="platform-create-button">
+            {#snippet children()}Create{/snippet}
+          </Btn>
+        </form>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Config</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody>
+              {#each platformInstances as instance (instance.id)}
+                <tr data-testid="platform-instance-row">
+                  <td>{instance.id}</td>
+                  <td>{instance.type}</td>
+                  <td><StatusPill status={instance.status} /></td>
+                  <td><JsonCell value={instance.config} /></td>
+                  <td>{instance.createdAt}</td>
+                  <td class="admin-table__actions">
+                    <Btn variant="outline" size="sm" testid={`platform-status-${instance.id}`} onClick={() => void updatePlatformStatus(instance)}>
+                      {#snippet children()}{instance.status === 'active' ? 'Stop' : 'Start'}{/snippet}
+                    </Btn>
+                    <Btn variant="danger" size="sm" testid={`platform-delete-${instance.id}`} onClick={() => void removePlatform(instance.id)}>
+                      {#snippet children()}Delete{/snippet}
+                    </Btn>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/snippet}
+    </Panel>
 
-    <section>
-      <h3>Task Instances</h3>
-      <form class="admin-filter-form" data-testid="task-create-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
-        <label><span>ID</span><input data-testid="task-id-input" bind:value={taskId} /></label>
-        <label>
-          <span>Type</span>
-          <select data-testid="task-type-input" bind:value={taskType}>
-            {#each taskProviderTypes as descriptor (descriptor.type)}
-              <option value={descriptor.type}>{descriptor.displayName}</option>
-            {/each}
-          </select>
-        </label>
-        {#each selectedTaskType?.configSchema ?? [] as field (field.key)}
-          <label>
-            <span>{field.label}{field.required ? ' *' : ''}</span>
-            {#if field.sensitive}
-              <input data-testid={`task-config-${field.key}`} type="password" bind:value={taskConfigFields[field.key]} />
-            {:else}
-              <input data-testid={`task-config-${field.key}`} bind:value={taskConfigFields[field.key]} />
-            {/if}
-          </label>
-        {/each}
-        <button type="submit" data-testid="task-create-button">Create</button>
-      </form>
-      <div class="admin-table-wrap">
-        <table class="admin-table">
-          <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Config</th><th>Created</th><th>Actions</th></tr></thead>
-          <tbody>
-            {#each taskInstances as instance (instance.id)}
-              <tr data-testid="task-instance-row">
-                <td>{instance.id}</td><td>{instance.type}</td><td>{instance.status}</td><td>{configLabel(instance.config)}</td><td>{instance.createdAt}</td>
-                <td><button type="button" data-testid={`task-delete-${instance.id}`} onclick={() => void removeTask(instance)}>Delete</button></td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <Panel title="task instances">
+      {#snippet body()}
+        <form class="admin-filter-form" data-testid="task-create-form" onsubmit={(event) => { event.preventDefault(); void createTask() }}>
+          <Field label="ID">
+            <Input value={taskId} onInput={(v) => (taskId = v)} testid="task-id-input" />
+          </Field>
+          <Field label="Type">
+            <Select
+              value={taskType}
+              options={taskProviderTypes.map((d) => ({ value: d.type, label: d.displayName }))}
+              onChange={(v) => (taskType = v)}
+              testid="task-type-input" />
+          </Field>
+          {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
+            <Field label={field.label} required={field.required}>
+              <Input
+                type={field.sensitive ? 'password' : 'text'}
+                value={taskConfigFields[field.key] ?? ''}
+                onInput={(v) => (taskConfigFields[field.key] = v)}
+                testid={`task-config-${field.key}`} />
+            </Field>
+          {/each}
+          <Btn type="submit" variant="primary" testid="task-create-button">
+            {#snippet children()}Create{/snippet}
+          </Btn>
+        </form>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Config</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody>
+              {#each taskInstances as instance (instance.id)}
+                <tr data-testid="task-instance-row">
+                  <td>{instance.id}</td>
+                  <td>{instance.type}</td>
+                  <td><StatusPill status={instance.status} /></td>
+                  <td><JsonCell value={instance.config} /></td>
+                  <td>{instance.createdAt}</td>
+                  <td class="admin-table__actions">
+                    {#if instance.unresolvedReason}
+                      <span data-testid={`task-instance-unresolved-${instance.id}`} class="unresolved-label">{instance.unresolvedReason}</span>
+                    {/if}
+                    <Btn variant="danger" size="sm" testid={`task-delete-${instance.id}`} onClick={() => void removeTask(instance)}>
+                      {#snippet children()}Delete{/snippet}
+                    </Btn>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/snippet}
+    </Panel>
 
-    <section>
-      <h3>Admins</h3>
-      <form class="admin-filter-form" data-testid="admin-create-form" onsubmit={(event) => { event.preventDefault(); void addAdmin() }}>
-        <label><span>User ID</span><input data-testid="admin-user-id-input" bind:value={adminUserId} /></label>
-        <label><span>Platform Instance ID</span><input data-testid="admin-platform-id-input" bind:value={adminPlatformInstanceId} /></label>
-        <button type="submit" data-testid="admin-create-button">Create</button>
-      </form>
-      <div class="admin-table-wrap">
-        <table class="admin-table">
-          <thead><tr><th>User ID</th><th>Platform Instance</th><th>Created</th><th>Actions</th></tr></thead>
-          <tbody>
-            {#each admins as admin (`${admin.userId}:${admin.platformInstanceId}`)}
-              <tr data-testid="admin-instance-row">
-                <td>{admin.userId}</td><td>{admin.platformInstanceId}</td><td>{admin.createdAt ?? 'n/a'}</td>
-                <td><button type="button" data-testid={`admin-remove-${admin.userId}`} onclick={() => void removeAdmin(admin.userId, admin.platformInstanceId)}>Remove</button></td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <Panel title="admins">
+      {#snippet body()}
+        <form class="admin-filter-form" data-testid="admin-create-form" onsubmit={(event) => { event.preventDefault(); void addAdmin() }}>
+          <Field label="User ID">
+            <Input value={adminUserId} onInput={(v) => (adminUserId = v)} testid="admin-user-id-input" />
+          </Field>
+          <Field label="Platform Instance ID">
+            <Input value={adminPlatformInstanceId} onInput={(v) => (adminPlatformInstanceId = v)} testid="admin-platform-id-input" />
+          </Field>
+          <Btn type="submit" variant="primary" testid="admin-create-button">
+            {#snippet children()}Create{/snippet}
+          </Btn>
+        </form>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>User ID</th><th>Platform Instance</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody>
+              {#each admins as admin (`${admin.userId}:${admin.platformInstanceId}`)}
+                <tr data-testid="admin-instance-row">
+                  <td>{admin.userId}</td>
+                  <td>{admin.platformInstanceId}</td>
+                  <td>{admin.createdAt ?? 'n/a'}</td>
+                  <td class="admin-table__actions">
+                    <Btn variant="danger" size="sm" testid={`admin-remove-${admin.userId}`} onClick={() => void removeAdmin(admin.userId, admin.platformInstanceId)}>
+                      {#snippet children()}Remove{/snippet}
+                    </Btn>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/snippet}
+    </Panel>
   </div>
 </section>
 
@@ -363,30 +446,24 @@
     gap: 12px;
   }
 
-  .instances-subheader {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .instances-subheader button,
-  .admin-table button {
-    padding: 8px 10px;
-    border: 1px solid var(--strong);
-    border-radius: 2px;
-    background: var(--bg);
-    color: var(--fg);
-  }
-
   .status-success {
     color: var(--success);
   }
 
-  @media (max-width: 720px) {
-    .instances-subheader {
-      flex-direction: column;
-      align-items: stretch;
-    }
+  .unresolved-label {
+    display: inline-block;
+    margin-bottom: 4px;
+    padding: 2px 6px;
+    border: 1px solid var(--warn, #b45309);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--warn, #b45309);
+    font-size: 0.8em;
+  }
+
+  .admin-table__actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
   }
 </style>

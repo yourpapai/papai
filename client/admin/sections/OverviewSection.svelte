@@ -4,8 +4,10 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { fmtBytes } from '../../shared/helpers.js'
   import Bars from '../../shared/ui/Bars.svelte'
-  import KV from '../../shared/ui/KV.svelte'
+  import Meter from '../../shared/ui/Meter.svelte'
+  import MetricCard from '../../shared/ui/MetricCard.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import Spark from '../../shared/ui/Spark.svelte'
 
@@ -14,7 +16,7 @@
   const subjectsTotal = $derived(
     adminGlobals.data?.subjects === undefined
       ? '—'
-      : adminGlobals.data.subjects.dmTotal + adminGlobals.data.subjects.groupTotal,
+      : String(adminGlobals.data.subjects.dmTotal + adminGlobals.data.subjects.groupTotal),
   )
   const subjectsSub = $derived(
     adminGlobals.data?.subjects === undefined
@@ -22,11 +24,15 @@
       : `${adminGlobals.data.subjects.dmTotal} dm · ${adminGlobals.data.subjects.groupTotal} group`,
   )
 
-  const activeTotal = $derived(adminGlobals.data?.active?.activeIn30d ?? '—')
-  const activeSub = $derived(
-    adminGlobals.data?.active === undefined
+  const llmTotal = $derived(
+    adminGlobals.data?.llmUsage === undefined
+      ? '—'
+      : adminGlobals.data.llmUsage.totalCalls.toLocaleString(),
+  )
+  const llmSub = $derived(
+    adminGlobals.data?.llmUsage === undefined
       ? undefined
-      : `${adminGlobals.data.active.activeIn1d} 1d · ${adminGlobals.data.active.activeIn7d} 7d`,
+      : `${adminGlobals.data.llmUsage.mainCalls} main · ${adminGlobals.data.llmUsage.smallCalls} small`,
   )
 
   const toolTotals = $derived.by(() => {
@@ -40,35 +46,25 @@
     }
     return { total, ok, fail: total - ok }
   })
-  const toolTotal = $derived(toolTotals === null ? '—' : toolTotals.total)
+  const toolTotal = $derived(toolTotals === null ? '—' : toolTotals.total.toLocaleString())
   const toolSub = $derived(toolTotals === null ? undefined : `${toolTotals.ok} ok · ${toolTotals.fail} fail`)
-
-  const llmTotal = $derived(adminGlobals.data?.llmUsage?.totalCalls ?? '—')
-  const llmSub = $derived(
-    adminGlobals.data?.llmUsage === undefined
-      ? undefined
-      : `${adminGlobals.data.llmUsage.mainCalls} main · ${adminGlobals.data.llmUsage.smallCalls} small`,
-  )
-
-  function formatBytes(n: number): string {
-    if (n < 1_000) return `${n} B`
-    if (n < 1_000_000) return `${(n / 1_000).toFixed(1)} KB`
-    if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)} MB`
-    return `${(n / 1_000_000_000).toFixed(1)} GB`
-  }
 
   const storageTotal = $derived(
     adminGlobals.data?.storage === undefined
       ? '—'
-      : formatBytes(
+      : fmtBytes(
           adminGlobals.data.storage.sqliteBytes + adminGlobals.data.storage.s3AttachmentBytes,
         ),
   )
   const storageSub = $derived(
     adminGlobals.data?.storage === undefined
       ? undefined
-      : `${formatBytes(adminGlobals.data.storage.sqliteBytes)} sqlite · ${formatBytes(adminGlobals.data.storage.s3AttachmentBytes)} s3`,
+      : `${fmtBytes(adminGlobals.data.storage.sqliteBytes)} sqlite · ${fmtBytes(adminGlobals.data.storage.s3AttachmentBytes)} s3`,
   )
+
+  // Tokens are not always present; show placeholder if unavailable.
+  const tokenTotal = $derived('—')
+  const tokenSub = $derived<string | undefined>(undefined)
 
   const sparkData = $derived(
     adminGlobals.data?.subjects?.growthLast30d?.map((p) => p.dmAdded + p.groupAdded) ?? [],
@@ -79,25 +75,55 @@
     if (tools === undefined) return []
     return tools.slice(0, 8).map((t) => Math.round(t.count * t.successRate))
   })
+
+  interface SurfaceMixRow {
+    label: string
+    n: number
+    total: number
+  }
+
+  const surfaceMix = $derived.by<SurfaceMixRow[]>(() => {
+    const sm = adminGlobals.data?.surfaceMix
+    const subj = adminGlobals.data?.subjects
+    if (sm === undefined || subj === undefined) return []
+    const total = subj.dmTotal + subj.groupTotal
+    return [
+      { label: 'memos', n: sm.subjectsWithMemos, total },
+      { label: 'recurring', n: sm.subjectsWithRecurring, total },
+      { label: 'deferred', n: sm.subjectsWithDeferred, total },
+      { label: 'instructions', n: sm.subjectsWithInstructions, total },
+    ]
+  })
 </script>
 
 <section id="overview" class="admin-section">
   <Panel title="overview">
     {#snippet body()}
-      <div class="admin-overview__kpis">
-        <KV k="subjects" v={subjectsTotal} sub={subjectsSub} />
-        <KV k="active 30d" v={activeTotal} sub={activeSub} />
-        <KV k="llm calls" v={llmTotal} sub={llmSub} />
-        <KV k="tool calls" v={toolTotal} sub={toolSub} />
-        <KV k="storage" v={storageTotal} sub={storageSub} />
+      <div class="overview__kpis" data-testid="admin-overview-kpis">
+        <MetricCard label="subjects" value={subjectsTotal} sub={subjectsSub} />
+        <MetricCard label="llm calls" value={llmTotal} sub={llmSub} accent="var(--accent)" />
+        <MetricCard label="tools" value={toolTotal} sub={toolSub} />
+        <MetricCard label="tokens" value={tokenTotal} sub={tokenSub} />
+        <MetricCard label="storage" value={storageTotal} sub={storageSub} />
       </div>
-      <div class="admin-overview__charts">
-        <div class="admin-overview__spark">
-          <Spark data={sparkData} />
-        </div>
-        <div class="admin-overview__bars">
-          <Bars data={barsData} />
-        </div>
+      <div class="overview__charts">
+        <Panel title="subject growth · 30d">
+          {#snippet body()}
+            <div class="overview__chart-body">
+              <div class="admin-overview__spark"><Spark data={sparkData} /></div>
+              <div class="overview__bars-wrap"><Bars data={barsData} height={56} /></div>
+            </div>
+          {/snippet}
+        </Panel>
+        <Panel title="surface mix">
+          {#snippet body()}
+            <div class="overview__mix">
+              {#each surfaceMix as row (row.label)}
+                <Meter label={row.label} value={row.n} total={row.total} />
+              {/each}
+            </div>
+          {/snippet}
+        </Panel>
       </div>
     {/snippet}
   </Panel>
@@ -107,17 +133,34 @@
   .admin-section {
     scroll-margin-top: 96px;
   }
-  .admin-overview__kpis {
+  .overview__kpis {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
     padding: 12px;
   }
-  .admin-overview__charts {
+  .overview__charts {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 12px;
+    gap: 8px;
+    padding: 0 12px 12px;
+  }
+  .overview__chart-body {
     padding: 12px;
-    border-top: 1px solid var(--hair);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .admin-overview__spark {
+    width: 100%;
+  }
+  .overview__bars-wrap {
+    width: 100%;
+  }
+  .overview__mix {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 </style>

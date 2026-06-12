@@ -33,94 +33,124 @@ const responseFor = (responses: ReadonlyMap<string, Response>, url: string): Pro
   return Promise.resolve(response)
 }
 
+const sampleMappings = [
+  {
+    contextId: 'tg:1001',
+    providerName: 'kaneo',
+    providerUserId: 'ku-1',
+    providerUserLogin: 'alice',
+    displayName: 'Alice',
+    matchedAt: '2026-05-01T00:00:00.000Z',
+    matchMethod: 'manual_nl',
+    confidence: 1,
+  },
+  {
+    contextId: 'tg:1002',
+    providerName: 'kaneo',
+    providerUserId: 'ku-2',
+    providerUserLogin: 'bob',
+    displayName: 'Bob',
+    matchedAt: '2026-05-10T00:00:00.000Z',
+    matchMethod: 'auto',
+    confidence: 0.85,
+  },
+]
+
 describe('IdentitiesSection', () => {
-  test('loads a single identity mapping', async () => {
+  test('renders kit controls: Input for user id filter, Btn for reload', async () => {
+    const responses = new Map<string, Response>([['/admin/identity/mappings', Response.json([])]])
+    setMockFetch((url) => responseFor(responses, url))
+    const { target, component } = render()
+    await drain()
+    expect(target.querySelector('[data-testid="identities-user-id"]')?.closest('.ui-input')).not.toBeNull()
+    expect(target.querySelector('[data-testid="identities-load"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
+  test('loads and renders all identity mappings on mount', async () => {
     const calls: string[] = []
-    const responses = new Map<string, Response>([
-      [
-        '/identity?userId=user-1&provider=kaneo',
-        Response.json({
-          contextId: 'user-1',
-          providerName: 'kaneo',
-          providerUserId: 'provider-1',
-          providerUserLogin: 'ki',
-          displayName: 'Ki',
-          matchedAt: '2026-05-21T00:00:00.000Z',
-          matchMethod: 'manual_nl',
-          confidence: 0.75,
-        }),
-      ],
-    ])
+    const responses = new Map<string, Response>([['/admin/identity/mappings', Response.json(sampleMappings)]])
     setMockFetch((url) => {
       calls.push(url)
       return responseFor(responses, url)
     })
 
     const { target, component } = render()
-    const userInput = target.querySelector<HTMLInputElement>('[data-testid="identity-user-id"]')
-    const providerInput = target.querySelector<HTMLInputElement>('[data-testid="identity-provider"]')
-    userInput!.value = 'user-1'
-    userInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    providerInput!.value = 'kaneo'
-    providerInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    flushSync()
-
-    target.querySelector<HTMLButtonElement>('[data-testid="identity-load"]')!.click()
     await drain()
 
-    expect(calls).toEqual(['/identity?userId=user-1&provider=kaneo'])
-    expect(target.textContent).toContain('user-1')
-    expect(target.textContent).toContain('kaneo')
-    expect(target.textContent).toContain('provider-1')
-    expect(target.textContent).toContain('Ki')
+    expect(calls).toEqual(['/admin/identity/mappings'])
+    expect(target.textContent).toContain('Alice')
+    expect(target.textContent).toContain('alice')
+    expect(target.textContent).toContain('Bob')
     expect(target.textContent).toContain('manual_nl')
-    expect(target.textContent).toContain('0.75')
+    expect(target.textContent).toContain('kaneo')
 
     void unmount(component)
   })
 
-  test('shows empty state when identity is not found', async () => {
-    const responses = new Map<string, Response>([
-      ['/identity?userId=user-2&provider=kaneo', Response.json({ error: 'not found' }, { status: 404 })],
-    ])
+  test('filters rows client-side by contextId substring', async () => {
+    const responses = new Map<string, Response>([['/admin/identity/mappings', Response.json(sampleMappings)]])
     setMockFetch((url) => responseFor(responses, url))
 
     const { target, component } = render()
-    const userInput = target.querySelector<HTMLInputElement>('[data-testid="identity-user-id"]')
-    const providerInput = target.querySelector<HTMLInputElement>('[data-testid="identity-provider"]')
-    userInput!.value = 'user-2'
-    userInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    providerInput!.value = 'kaneo'
-    providerInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    flushSync()
-
-    target.querySelector<HTMLButtonElement>('[data-testid="identity-load"]')!.click()
     await drain()
 
-    expect(target.textContent).toContain('No identity mapping found')
+    const filterInput = target.querySelector<HTMLInputElement>('[data-testid="identities-user-id"]')
+    expect(filterInput).not.toBeNull()
+
+    filterInput!.value = 'tg:1001'
+    filterInput!.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    expect(target.textContent).toContain('Alice')
+    expect(target.textContent).not.toContain('Bob')
 
     void unmount(component)
   })
 
-  test('shows fetch errors', async () => {
+  test('shows empty state when no mappings are returned', async () => {
+    const responses = new Map<string, Response>([['/admin/identity/mappings', Response.json([])]])
+    setMockFetch((url) => responseFor(responses, url))
+
+    const { target, component } = render()
+    await drain()
+
+    expect(target.textContent).toContain('No mappings found')
+
+    void unmount(component)
+  })
+
+  test('shows error when fetch fails', async () => {
     const responses = new Map<string, Response>([
-      ['/identity?userId=user-3&provider=kaneo', Response.json({ error: 'identity failed' }, { status: 500 })],
+      ['/admin/identity/mappings', Response.json({ error: 'identity failed' }, { status: 500 })],
     ])
     setMockFetch((url) => responseFor(responses, url))
 
     const { target, component } = render()
-    const userInput = target.querySelector<HTMLInputElement>('[data-testid="identity-user-id"]')
-    const providerInput = target.querySelector<HTMLInputElement>('[data-testid="identity-provider"]')
-    userInput!.value = 'user-3'
-    userInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    providerInput!.value = 'kaneo'
-    providerInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    flushSync()
-
-    target.querySelector<HTMLButtonElement>('[data-testid="identity-load"]')!.click()
     await drain()
 
     expect(target.textContent).toContain('identity failed')
+
+    void unmount(component)
+  })
+
+  test('reload button re-fetches all mappings', async () => {
+    const calls: string[] = []
+    const responses = new Map<string, Response>([['/admin/identity/mappings', Response.json(sampleMappings)]])
+    setMockFetch((url) => {
+      calls.push(url)
+      return responseFor(responses, url)
+    })
+
+    const { target, component } = render()
+    await drain()
+
+    const reloadBtn = target.querySelector<HTMLButtonElement>('[data-testid="identities-load"]')
+    expect(reloadBtn).not.toBeNull()
+    reloadBtn!.click()
+    await drain()
+
+    expect(calls.filter((u) => u === '/admin/identity/mappings').length).toBeGreaterThanOrEqual(2)
 
     void unmount(component)
   })

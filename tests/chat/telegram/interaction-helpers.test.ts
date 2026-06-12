@@ -8,6 +8,8 @@ import { describe, expect, test } from 'bun:test'
 import { buildTelegramInteraction } from '../../../src/chat/telegram/interaction-helpers.js'
 
 describe('buildTelegramInteraction', () => {
+  const platformInstanceId = 'telegram-default'
+
   test('maps callback query data into an incoming interaction', () => {
     const interaction = buildTelegramInteraction(
       {
@@ -19,6 +21,7 @@ describe('buildTelegramInteraction', () => {
         },
       },
       true,
+      platformInstanceId,
     )
 
     expect(interaction).toEqual({
@@ -45,6 +48,7 @@ describe('buildTelegramInteraction', () => {
         },
       },
       false,
+      platformInstanceId,
     )
 
     expect(interaction).toEqual({
@@ -82,6 +86,7 @@ describe('buildTelegramInteraction', () => {
     const interaction = buildTelegramInteraction(
       { from: { id: 42 }, chat: { id: 99, type: 'private' }, callbackQuery: {} },
       false,
+      platformInstanceId,
     )
 
     expect(interaction).toBeNull()
@@ -95,6 +100,7 @@ describe('buildTelegramInteraction', () => {
         callbackQuery: { data: 'cfg:edit:timezone' },
       },
       false,
+      platformInstanceId,
     )
 
     expect(interaction).toBeNull()

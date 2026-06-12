@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { getUserMessage, systemError, webFetchError } from '../../src/errors.js'
 import type { RateLimitResult, SafeFetchResponse, WebFetchResult } from '../../src/web/types.js'
 import { expectAppError, mockLogger } from '../utils/test-helpers.js'
@@ -20,9 +21,12 @@ type FetchAndExtractDeps = {
   extractPdfText: (bytes: Uint8Array) => Promise<string>
   distillWebContent: (input: {
     storageContextId: string
+    configContextId?: string
     title: string
     content: string
     goal?: string
+    contextType?: 'dm' | 'group'
+    chatUserId?: string
   }) => Promise<{ summary: string; excerpt: string; truncated: boolean }>
   now: () => number
 }
@@ -30,7 +34,9 @@ type FetchAndExtractDeps = {
 type FetchAndExtract = (
   input: {
     storageContextId: string
+    configContextId?: string
     actorUserId?: string
+    contextType?: 'dm' | 'group'
     url: string
     goal?: string
     abortSignal?: AbortSignal
@@ -222,6 +228,73 @@ describe('fetchAndExtract', () => {
       contentType: 'text/plain',
       source: 'fetch',
       fetchedAt: 2_000,
+    })
+  })
+
+  test('passes main config context to distillation for scoped thread storage', async () => {
+    const runFetchAndExtract = getFetchAndExtract(fetchAndExtract)
+    const scopedMainContextId = toScopedContextId({
+      platformInstanceId: 'telegram-secondary',
+      nativeContextId: '-1001',
+    })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-secondary',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const distillWebContent = mock(
+      (input: {
+        storageContextId: string
+        configContextId?: string
+        title: string
+        content: string
+        goal?: string
+        contextType?: 'dm' | 'group'
+        chatUserId?: string
+      }): Promise<{ summary: string; excerpt: string; truncated: boolean }> =>
+        Promise.resolve({ summary: 'scoped', excerpt: input.content, truncated: false }),
+    )
+
+    await runFetchAndExtract(
+      {
+        storageContextId: scopedThreadContextId,
+        actorUserId: 'user-7',
+        contextType: 'group',
+        url: 'https://example.com/thread',
+      },
+      {
+        consumeWebFetchQuota: (_actorId: string, _nowMs?: number): RateLimitResult => ({
+          allowed: true,
+          remaining: 18,
+        }),
+        normalizeWebUrl: (_rawUrl: string): string => 'https://example.com/thread',
+        getCachedWebFetch: (_normalizedUrl: string, _nowMs?: number): WebFetchResult | null => null,
+        putCachedWebFetch: (_normalizedUrl: string, _result: WebFetchResult, _expiresAt: number): void => {},
+        safeFetchContent: (_url: string, _options?: { abortSignal?: AbortSignal }): Promise<SafeFetchResponse> =>
+          Promise.resolve({
+            finalUrl: 'https://example.com/thread',
+            contentType: 'text/plain',
+            body: new TextEncoder().encode('Thread page body'),
+          }),
+        extractHtmlContent: (): Promise<{ title: string; content: string }> => {
+          throw createUnexpectedCallError('extractHtmlContent')
+        },
+        extractPdfText: (): Promise<string> => {
+          throw createUnexpectedCallError('extractPdfText')
+        },
+        distillWebContent,
+        now: (): number => 2_000,
+      },
+    )
+
+    expect(distillWebContent).toHaveBeenCalledWith({
+      storageContextId: scopedThreadContextId,
+      configContextId: scopedMainContextId,
+      title: 'example.com',
+      content: 'Thread page body',
+      goal: undefined,
+      contextType: 'group',
+      chatUserId: 'user-7',
     })
   })
 

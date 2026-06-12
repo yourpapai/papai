@@ -38,7 +38,7 @@ describe('OverviewSection.svelte', () => {
     void unmount(component)
   })
 
-  test('renders active 30d total + 1d/7d sub-label', () => {
+  test('renders tokens KPI as em-dash placeholder (token data not yet available)', () => {
     adminGlobals.data = {
       subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
       active: { activeIn1d: 4, activeIn7d: 12, activeIn30d: 24 },
@@ -46,8 +46,9 @@ describe('OverviewSection.svelte', () => {
       toolMix: { topTools: [], errorTypeCounts: {} },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('24')
-    expect(target.textContent).toContain('4 1d · 12 7d')
+    const kpis = target.querySelector('[data-testid="admin-overview-kpis"]')!
+    expect(kpis.textContent).toContain('tokens')
+    expect(kpis.textContent).toContain('—')
     void unmount(component)
   })
 
@@ -65,7 +66,7 @@ describe('OverviewSection.svelte', () => {
       },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('1500')
+    expect(target.textContent).toContain('1,500')
     expect(target.textContent).toContain('1420 ok · 80 fail')
     void unmount(component)
   })
@@ -78,8 +79,21 @@ describe('OverviewSection.svelte', () => {
       toolMix: { topTools: [], errorTypeCounts: {} },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('20.0 MB')
-    expect(target.textContent).toContain('12.0 MB sqlite · 8.0 MB s3')
+    expect(target.textContent).toContain('19 MB')
+    expect(target.textContent).toContain('11 MB sqlite · 7.6 MB s3')
+    void unmount(component)
+  })
+
+  test('formats storage bytes via the shared fmtBytes (base-1024, 1.4 MB not 1.5 MB)', () => {
+    adminGlobals.data = {
+      subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 1_500_000, s3AttachmentBytes: 0 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    expect(target.textContent).toContain('1.4 MB')
+    expect(target.textContent).not.toContain('1.5 MB')
     void unmount(component)
   })
 
@@ -99,7 +113,7 @@ describe('OverviewSection.svelte', () => {
       },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('1089')
+    expect(target.textContent).toContain('1,089')
     expect(target.textContent).toContain('892 main · 197 small')
     void unmount(component)
   })
@@ -112,7 +126,7 @@ describe('OverviewSection.svelte', () => {
       toolMix: { topTools: [], errorTypeCounts: {} },
     }
     const component = mount(OverviewSection, { target, props: {} })
-    const llmKpi = target.querySelector('.admin-overview__kpis')!
+    const llmKpi = target.querySelector('[data-testid="admin-overview-kpis"]')!
     expect(llmKpi.textContent).toContain('llm calls')
     expect(llmKpi.textContent).toContain('—')
     void unmount(component)
@@ -136,6 +150,27 @@ describe('OverviewSection.svelte', () => {
     const component = mount(OverviewSection, { target, props: {} })
     expect(target.querySelector('.admin-overview__spark')).not.toBeNull()
     expect(target.querySelector('.admin-overview__spark > *')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders surface mix via Meter, clamping over-capacity to warn (A6)', () => {
+    // instructions metric = 11, subjects total = 4 (dmTotal 3 + groupTotal 1)
+    adminGlobals.data = {
+      subjects: { dmTotal: 3, groupTotal: 1, growthLast30d: [] },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+      surfaceMix: {
+        subjectsWithMemos: 0,
+        subjectsWithRecurring: 0,
+        subjectsWithDeferred: 0,
+        subjectsWithInstructions: 11,
+      },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    const overFill = target.querySelector<HTMLElement>('.ui-meter__fill--warn')
+    expect(overFill).not.toBeNull()
+    expect(overFill?.style.width).toBe('100%')
     void unmount(component)
   })
 })

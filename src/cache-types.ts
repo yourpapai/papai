@@ -15,7 +15,6 @@ export type UserCache = {
   facts: CachedFact[]
   instructions: CachedInstruction[] | null
   config: Map<string, string | null>
-  workspaceId: string | null
   tools: unknown
   lastAccessed: number
 }

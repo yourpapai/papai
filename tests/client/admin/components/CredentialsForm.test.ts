@@ -11,20 +11,20 @@ import CredentialsForm from '../../../../client/admin/components/CredentialsForm
 import type { AdminLlmSnapshot } from '../../../../client/shared/api-types.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
-const emptyKey = { value: null, updatedAt: null, updatedBy: null }
+const emptyKey = { value: null, updatedAt: null, updatedBy: null, required: false }
 
 const emptySnapshot: AdminLlmSnapshot = {
-  llm_apikey: emptyKey,
-  llm_baseurl: emptyKey,
-  main_model: emptyKey,
+  llm_apikey: { ...emptyKey, required: true },
+  llm_baseurl: { ...emptyKey, required: true },
+  main_model: { ...emptyKey, required: true },
   small_model: emptyKey,
   embedding_model: emptyKey,
 }
 
 const populated: AdminLlmSnapshot = {
-  llm_apikey: { value: '****1234', updatedAt: 1, updatedBy: 'admin' },
-  llm_baseurl: { value: 'https://api.example.com', updatedAt: 2, updatedBy: 'env' },
-  main_model: { value: 'gpt-9', updatedAt: 3, updatedBy: 'admin' },
+  llm_apikey: { value: '****1234', updatedAt: 1, updatedBy: 'admin', required: true },
+  llm_baseurl: { value: 'https://api.example.com', updatedAt: 2, updatedBy: 'env', required: true },
+  main_model: { value: 'gpt-9', updatedAt: 3, updatedBy: 'admin', required: true },
   small_model: emptyKey,
   embedding_model: emptyKey,
 }
@@ -141,6 +141,16 @@ describe('CredentialsForm', () => {
     void unmount(component)
   })
 
+  test('shows "required" badge for required keys and "optional" badge for optional keys', () => {
+    const { target, component } = render(populated)
+    expect(target.querySelector('[data-testid="badge-required-llm_apikey"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-required-llm_baseurl"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-required-main_model"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-optional-small_model"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-optional-embedding_model"]')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('submitting calls POST /admin/llm and triggers onRefresh on success', async () => {
     const recorded: { body: string | null } = { body: null }
     setMockFetch((url, init) => respondToPost(url, init, recorded))
@@ -163,5 +173,26 @@ describe('CredentialsForm', () => {
     expect(recorded.body).toBe(JSON.stringify({ key: 'main_model', value: 'gpt-99' }))
     expect(m.refreshes).toBeGreaterThanOrEqual(1)
     void unmount(m.component)
+  })
+
+  test('sensitive key masked value renders as ui-secret component', () => {
+    const { target, component } = render(populated)
+    expect(target.querySelector('.ui-secret')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('edit button for llm_apikey has class ui-btn', () => {
+    const { target, component } = render(populated)
+    const editBtn = target.querySelector('[data-testid="edit-llm_apikey"]')
+    expect(editBtn).not.toBeNull()
+    expect(editBtn?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
+  test('does not render an h3 with text "LLM credentials"', () => {
+    const { target, component } = render(populated)
+    const hasHeading = [...target.querySelectorAll('h3')].some((h) => h.textContent === 'LLM credentials')
+    expect(hasHeading).toBe(false)
+    void unmount(component)
   })
 })

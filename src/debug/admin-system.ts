@@ -3,24 +3,29 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { listActivePlatformInstancesSafe } from '../instances/platform-store.js'
+import { listTaskInstancesSafe } from '../instances/task-store.js'
 import { logger } from '../logger.js'
 import { listRecentRequests } from '../usage/recent-requests.js'
 import { RecentRequestsResponseSchema } from './admin-schemas.js'
 
-const CHAT_PROVIDERS = ['telegram', 'mattermost', 'discord'] as const
-const TASK_PROVIDERS = ['kaneo', 'youtrack'] as const
+type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'kontur-talk' | 'unknown'
+type AdminTaskProvider = string
 
-type AdminChatProvider = (typeof CHAT_PROVIDERS)[number] | 'unknown'
-type AdminTaskProvider = (typeof TASK_PROVIDERS)[number] | 'unknown'
+const singleKnownProvider = <T extends string>(values: readonly T[]): T | 'unknown' => {
+  const unique = [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
+  return unique.length === 1 ? unique[0]! : 'unknown'
+}
 
-const safeProviderValue = <const T extends readonly string[]>(
-  value: string | undefined,
-  known: T,
-): T[number] | 'unknown' => (value !== undefined && known.includes(value) ? value : 'unknown')
+const safeChatProvider = (): AdminChatProvider =>
+  singleKnownProvider(listActivePlatformInstancesSafe().instances.map((instance) => instance.type))
 
-const safeChatProvider = (): AdminChatProvider => safeProviderValue(process.env['CHAT_PROVIDER'], CHAT_PROVIDERS)
-
-const safeTaskProvider = (): AdminTaskProvider => safeProviderValue(process.env['TASK_PROVIDER'], TASK_PROVIDERS)
+const safeTaskProvider = (): AdminTaskProvider => {
+  const activeTypes = listTaskInstancesSafe()
+    .instances.filter((instance) => instance.status === 'active')
+    .map((instance) => instance.type)
+  return singleKnownProvider(activeTypes)
+}
 
 const adminUserSet = (): boolean => {
   const adminUserId = process.env['ADMIN_USER_ID']
@@ -50,7 +55,7 @@ const parseLimit = (raw: string | null): number => {
 
 export const handleAdminRecentRequests = (url: URL): Response => {
   const match = /^\/admin\/subjects\/(?<id>[^/]+)\/recent-requests$/u.exec(url.pathname)
-  const rawId = match?.groups?.['id']
+  const rawId = match === null || match.groups === undefined ? undefined : match.groups['id']
   if (rawId === undefined || rawId === '') {
     return new Response(JSON.stringify({ error: 'missing subject id' }), {
       status: 400,

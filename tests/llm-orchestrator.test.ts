@@ -3,16 +3,24 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mock, describe, expect, test, beforeEach, afterAll } from 'bun:test'
+import { mock, describe, expect, test, beforeEach, afterEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { APICallError } from '@ai-sdk/provider'
 import type { ModelMessage } from 'ai'
 
+import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  toScopedContextId,
+  toScopedThreadContextId,
+} from '../src/chat/scoped-context.js'
 import type { ReplyFn } from '../src/chat/types.js'
+import { byokLlmCredentials } from '../src/db/byok-llm-schema.js'
+import { getDrizzleDb } from '../src/db/drizzle.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
-import { defaultDeps, processMessage } from '../src/llm-orchestrator.js'
+import { defaultDeps, processMessage, resolveAiOutputSettingsContextId } from '../src/llm-orchestrator.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -22,13 +30,12 @@ import {
   resetSystemConfigCacheForTesting,
   seedCommonTestPlatformInstances,
   setupTestDb,
+  flushMicrotasks,
 } from './utils/test-helpers.js'
 
 // Capture real modules before mocking (file-level, stays at top)
 const realAi = await import('ai')
 const realOpenAICompatible = await import('@ai-sdk/openai-compatible')
-const realProvisionMod = await import('../src/providers/kaneo/provision.js')
-
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const getToolNames = (tools: GenerateTextArgs['tools']): string[] => (tools === undefined ? [] : Object.keys(tools))
 
@@ -45,6 +52,10 @@ const mentionsNotFound =
   (id: string) =>
   (text: string): boolean =>
     text.includes(id) && text.includes('not found')
+
+/** Returns true when a reply is the restored required-config guard prompt. */
+const mentionsMissingConfig = (text: string): boolean =>
+  text.includes('Missing configuration') && text.includes('/config')
 
 const containsFact = (
   facts: readonly MemoryFact[],
@@ -127,6 +138,7 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
 const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
+import { KaneoClassifiedError } from '../plugins/task-provider-kaneo/classify-error.js'
 import {
   AI_OUTPUT_DETAIL_LEVEL_KEY,
   AI_REASONING_VISIBILITY_KEY,
@@ -134,19 +146,35 @@ import {
 } from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
-import { setConfig } from '../src/config.js'
+import { setConfigValue } from '../src/config.js'
+import { appendHistory } from '../src/history.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
-import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../src/providers/registry.js'
 import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
-import { setKaneoWorkspace } from '../src/users.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from '../src/types/config.js'
 
 const CTX_ID = 'ctx-1'
+
+test('AI output settings context resolves thread to parent group', () => {
+  const threadContextId = toScopedThreadContextId({
+    platformInstanceId: 'telegram-default',
+    nativeContextId: 'group-1',
+    threadId: 'thread-1',
+  })
+
+  expect(resolveAiOutputSettingsContextId(threadContextId)).toBe(
+    getConfigContextIdFromStorageContextId(threadContextId),
+  )
+})
 
 /** Seed the central LLM config used by every orchestrator call. */
 const seedSystemLlmConfig = (): void => {
@@ -161,7 +189,7 @@ const assignKaneoContext = (contextId: string): void => {
     insertTaskInstance({
       id: taskInstanceId,
       type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
+      config: { baseUrl: 'https://kaneo.invalid' },
       status: 'active',
     })
   }
@@ -174,22 +202,41 @@ const assignYouTrackContext = (contextId: string): void => {
     insertTaskInstance({
       id: taskInstanceId,
       type: 'youtrack',
-      config: { url: 'https://yt.invalid' },
+      config: { baseUrl: 'https://yt.invalid' },
       status: 'active',
     })
   }
   setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
 }
 
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+// Contributed kaneo credential key (plugin-namespaced, used by resolver and wizard)
+const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+
 /** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
 const seedConfigForContext = (ctxId: string): void => {
   assignKaneoContext(ctxId)
-  setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
+  // kaneo is now plugin-contributed; resolver and auto-provision both use plugin-namespaced keys
+  setConfigValue(ctxId, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
   setCachedConfig(ctxId, 'timezone', 'UTC')
-  setKaneoWorkspace(ctxId, 'workspace-1')
+  setConfigValue(ctxId, KANEO_PLUGIN_WORKSPACE_KEY, 'workspace-1')
 }
 
 const seedConfig = (): void => seedConfigForContext(CTX_ID)
+
+const insertUnreadableByokConfig = (contextId: string): void => {
+  getDrizzleDb()
+    .insert(byokLlmCredentials)
+    .values({
+      contextId,
+      enabled: true,
+      encryptedConfig: 'not-base64',
+      updatedAt: Date.now(),
+      updatedBy: 'admin-1',
+    })
+    .run()
+}
 
 const createReplyWithTypingSpy = (): { reply: ReplyFn; textCalls: string[]; typingCalls: number[] } => {
   const { reply: baseReply, textCalls } = createMockReply()
@@ -218,7 +265,6 @@ describe('processMessage', () => {
 
   // Provider factory — returns a mock provider to avoid real HTTP calls and env var checks
   const mockProvider = createMockProvider({ name: 'mock' })
-  const resolveMockProvider = (): TaskProvider => mockProvider
 
   // AI SDK — the key control point for success/failure simulation
   // generateText returns a result object with direct values
@@ -233,10 +279,47 @@ describe('processMessage', () => {
     // Register mocks
     mockLogger()
 
-    void mock.module('../src/providers/kaneo/provision.js', () => ({
-      provisionAndConfigure: (): Promise<{ status: string }> => Promise.resolve({ status: 'already_configured' }),
-      maybeProvisionKaneo: realProvisionMod.maybeProvisionKaneo,
-    }))
+    // Register kaneo as contributed (no longer a builtin)
+    registerContributedTaskProviderType('kaneo', {
+      pluginId: KANEO_PLUGIN_ID,
+      factory: (config) => createMockProvider({ name: 'kaneo', ...config }),
+      capabilities: new Set(),
+      displayName: 'Kaneo',
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [
+        {
+          key: 'credential',
+          label: 'Kaneo API key',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+      traits: new Set(),
+    })
+
+    // Register youtrack as contributed (no longer a builtin)
+    registerContributedTaskProviderType('youtrack', {
+      pluginId: YOUTRACK_PLUGIN_ID,
+      factory: (config) => createMockProvider({ name: 'youtrack', ...config }),
+      capabilities: new Set(),
+      displayName: 'YouTrack',
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [
+        {
+          key: 'token',
+          label: 'YouTrack Permanent Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+      traits: new Set(),
+    })
 
     // AI SDK mocks — generateText and stepCountIs replaced for test control.
     // Preserves the real `tool` export so makeTools() works with unmocked tool creation.
@@ -269,6 +352,12 @@ describe('processMessage', () => {
     delete process.env['ADMIN_USER_ID']
   })
 
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+    unregisterContributedTaskProviderType('auto-throw-plugin')
+  })
+
   afterAll(() => {
     // Restore original env vars
     if (originalDemoMode === undefined) delete process.env['DEMO_MODE']
@@ -282,27 +371,26 @@ describe('processMessage', () => {
   // ---------------------------------------------------------------------------
 
   describe('missing configuration', () => {
-    test('group context does not call maybeProvisionKaneo before missing-provider-config handling', async () => {
+    test('group context does not call maybeAutoProvision before providerless fallback', async () => {
       let maybeProvisionCalls = 0
-      const freshGroupCtx = 'group-1:thread-1'
-      assignKaneoContext('group-1')
+      const freshGroupCtx = 'group-yt:thread-1'
+      assignYouTrackContext('group-yt')
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        resolve: resolveMockProvider,
-        getKaneoWorkspace: () => null,
-        maybeProvisionKaneo: () => {
+        resolve: () => null,
+        maybeAutoProvision: () => {
           maybeProvisionCalls++
-          return Promise.resolve()
+          return Promise.resolve(false)
         },
       }
 
       const { reply, textCalls } = createMockReply()
-      await processMessage(reply, freshGroupCtx, 'user-1', null, 'hello', 'group', 'group-1', deps)
+      await processMessage(reply, freshGroupCtx, 'user-1', null, 'hello', 'group', 'group-yt', deps)
 
       expect(maybeProvisionCalls).toBe(0)
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls).toContain('Hello!')
     })
 
     test('replies with bot-misconfigured when system_config is incomplete', async () => {
@@ -313,7 +401,7 @@ describe('processMessage', () => {
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
       expect(textCalls[0]).toContain('not fully configured')
-      expect(textCalls[0]).not.toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('bot-misconfigured path does not send typing', async () => {
@@ -324,34 +412,211 @@ describe('processMessage', () => {
 
       expect(typingCalls).toHaveLength(0)
       expect(textCalls[0]).toContain('not fully configured')
+      expect(textCalls[0]).toContain('/config')
     })
 
-    test('missing Kaneo provider config is derived from assigned task instance', async () => {
-      const freshCtx = 'missing-kaneo-api-key'
-      assignKaneoContext(freshCtx)
+    test('uses complete BYOK config to build the model for the resolved config context', async () => {
+      const configContextId = 'cfg-byok'
+      seedConfigForContext(configContextId)
+      updateByokLlmConfig(
+        configContextId,
+        { llm_apikey: 'sk-byok', llm_baseurl: 'https://byok.invalid/v1', main_model: 'byok-main' },
+        'admin-1',
+      )
+      let generateCalls = 0
+      const buildCalls: Array<{ apiKey: string; baseURL: string; model: string }> = []
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => {
+          generateCalls += 1
+          return defaultDeps.generateText(...args)
+        },
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: (apiKey, baseURL) => {
+          const provider = buildMockOpenAI(apiKey, baseURL)
+          return Object.assign((model: string) => {
+            buildCalls.push({ apiKey, baseURL, model })
+            return provider(model)
+          }, provider)
+        },
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
+
+      expect(buildCalls).toEqual([{ apiKey: 'sk-byok', baseURL: 'https://byok.invalid/v1', model: 'byok-main' }])
+      expect(generateCalls).toBe(1)
+      expect(textCalls).toContain('Hello!')
+    })
+
+    test('passes resolved config context to normal conversation background trim', async () => {
+      const storageContextId = toScopedThreadContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+        threadId: '42',
+      })
+      const configContextId = toScopedContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+      })
+      seedConfigForContext(configContextId)
+      updateByokLlmConfig(
+        configContextId,
+        {
+          llm_apikey: 'sk-byok-normal-trim',
+          llm_baseurl: 'https://byok-normal-trim.invalid/v1',
+          main_model: 'byok-main-trim',
+          small_model: 'byok-small-trim',
+        },
+        'admin-1',
+      )
+      const buildCalls: Array<{ apiKey: string; baseURL: string; model: string }> = []
+      void mock.module('../src/llm-model-builder.js', () => ({
+        buildChatModel: (apiKey: string, baseUrl: string, modelName: string): string => {
+          buildCalls.push({ apiKey, baseURL: baseUrl, model: modelName })
+          return `mock:${modelName}`
+        },
+        getOpenAICompatibleProvider:
+          (apiKey: string, baseUrl: string): ((model: string) => string) =>
+          (model: string): string => {
+            buildCalls.push({ apiKey, baseURL: baseUrl, model })
+            return `mock:${model}`
+          },
+        clearModelBuilderCacheForTesting: (): void => {},
+      }))
+      const generateTextResults: readonly Promise<GenerateTextResult>[] = [
+        Promise.resolve({
+          text: 'Hello!',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        }),
+        Promise.resolve({
+          text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        }),
+      ]
+      let generateCallIndex = 0
+      generateTextImpl = (): Promise<GenerateTextResult> => {
+        const result = generateTextResults[generateCallIndex]!
+        generateCallIndex += 1
+        return result
+      }
+      appendHistory(
+        storageContextId,
+        Array.from({ length: 98 }, (_, index): ModelMessage => ({ role: 'assistant', content: `old ${index}` })),
+      )
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply } = createMockReply()
+      await processMessage(reply, storageContextId, 'user-1', null, 'hello', 'group', configContextId, deps)
+      await flushMicrotasks()
+
+      expect(buildCalls).toContainEqual({
+        apiKey: 'sk-byok-normal-trim',
+        baseURL: 'https://byok-normal-trim.invalid/v1',
+        model: 'byok-small-trim',
+      })
+    })
+
+    test('blocks incomplete BYOK setup before model invocation', async () => {
+      const configContextId = 'cfg-byok-incomplete'
+      seedConfigForContext(configContextId)
+      enableByokForContext(configContextId, 'admin-1')
+      let generateCalls = 0
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => {
+          generateCalls += 1
+          return defaultDeps.generateText(...args)
+        },
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
+
+      expect(textCalls[0]).toContain('BYOK is enabled for this context')
+      expect(generateCalls).toBe(0)
+      expect(getCachedHistory(CTX_ID)).toHaveLength(0)
+    })
+
+    test('blocks unreadable BYOK setup before model invocation', async () => {
+      const configContextId = 'cfg-byok-unreadable'
+      seedConfigForContext(configContextId)
+      insertUnreadableByokConfig(configContextId)
+      let generateCalls = 0
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => {
+          generateCalls += 1
+          return defaultDeps.generateText(...args)
+        },
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
+
+      expect(textCalls[0]).toContain('BYOK credentials for this context are unreadable')
+      expect(generateCalls).toBe(0)
+      expect(getCachedHistory(CTX_ID)).toHaveLength(0)
+    })
+
+    test('does not fail early on missing YouTrack provider config when providerless fallback can answer', async () => {
+      const freshCtx = 'missing-youtrack-token-2'
+      assignYouTrackContext(freshCtx)
 
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        resolve: resolveMockProvider,
-        getKaneoWorkspace: () => null,
-        maybeProvisionKaneo: () => Promise.resolve(),
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
       }
 
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls.length).toBeGreaterThanOrEqual(1)
-      expect(textCalls[0]).toContain('kaneo_apikey')
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls.some(mentionsMissingConfig)).toBe(false)
+      expect(textCalls).toContain('Hello!')
     })
 
-    test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
+    test('invokes the model instead of replying with /config guidance when resolver returns null for assigned Kaneo', async () => {
       const freshCtx = 'missing-kaneo-workspace'
       assignKaneoContext(freshCtx)
-      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
+      setConfigValue(freshCtx, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
       let resolverCalls = 0
+      let generateCalled = 0
+      generateTextImpl = (): Promise<GenerateTextResult> => {
+        generateCalled += 1
+        return defaultGenerateTextResult()
+      }
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
@@ -360,42 +625,42 @@ describe('processMessage', () => {
           resolverCalls++
           return null
         },
-        getKaneoWorkspace: () => null,
-        maybeProvisionKaneo: () => Promise.resolve(),
+        maybeAutoProvision: () => Promise.resolve(false),
       }
 
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(resolverCalls).toBe(1)
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(generateCalled).toBe(1)
+      expect(textCalls).not.toContain('I need /config before I can do that.')
+      expect(textCalls).toContain('Hello!')
     })
 
-    test('missing provider config is derived from assigned task instance', async () => {
+    test('does not fail early on missing provider config derived from the assigned task instance', async () => {
       const freshCtx = 'missing-youtrack-token'
       assignYouTrackContext(freshCtx)
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        resolve: resolveMockProvider,
-        getKaneoWorkspace: () => null,
-        maybeProvisionKaneo: () => Promise.resolve(),
+        resolve: () => null,
+        maybeAutoProvision: () => Promise.resolve(false),
       }
 
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls[0]).toContain('youtrack_token')
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls.some(mentionsMissingConfig)).toBe(false)
+      expect(textCalls).toContain('Hello!')
     })
 
-    test('replies with setup guidance when resolver returns null after credentials pass', async () => {
+    test('invokes the model when resolver returns null after credentials pass', async () => {
       const freshCtx = 'resolver-null-context'
       insertTaskInstance({
         id: 'yt-prod-null',
         type: 'youtrack',
-        config: { url: 'https://yt.invalid' },
+        config: { baseUrl: 'https://yt.invalid' },
         status: 'active',
       })
       setContextSettings({
@@ -403,20 +668,83 @@ describe('processMessage', () => {
         taskInstanceId: 'yt-prod-null',
         platformInstanceId: 'telegram-default',
       })
-      setConfig(freshCtx, 'youtrack_token', 'perm:abc')
+      setConfigValue(freshCtx, 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
+      let generateCalled = 0
+      generateTextImpl = (): Promise<GenerateTextResult> => {
+        generateCalled += 1
+        return defaultGenerateTextResult()
+      }
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: () => null,
-        getKaneoWorkspace: () => null,
-        maybeProvisionKaneo: () => Promise.resolve(),
+        maybeAutoProvision: () => Promise.resolve(false),
       }
 
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(generateCalled).toBe(1)
+      expect(textCalls).not.toContain('I need /config before I can do that.')
+      expect(textCalls).toContain('Hello!')
+    })
+
+    test('dm context calls maybeAutoProvision with generic provider context', async () => {
+      const autoProvisionCalls: Array<{ contextId: string; chatUserId: string; username: string | null }> = []
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: (_reply, contextId, chatUserId, username) => {
+          autoProvisionCalls.push({ contextId, chatUserId, username })
+          return Promise.resolve(false)
+        },
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', 'alice', 'hello', 'dm', undefined, deps)
+
+      expect(autoProvisionCalls).toEqual([{ contextId: CTX_ID, chatUserId: 'user-1', username: 'alice' }])
+      expect(textCalls).toContain('Hello!')
+    })
+
+    test('dm context still reaches providerless fallback when generic auto-provision hook throws', async () => {
+      registerContributedTaskProviderType('auto-throw-provider', {
+        pluginId: 'auto-throw-plugin',
+        factory: () => createMockProvider({ name: 'auto-throw-provider' }),
+        capabilities: new Set(),
+        displayName: 'Auto Throw Provider',
+        autoProvision: () => {
+          throw new Error('auto provision exploded')
+        },
+        instanceConfigSchema: [],
+        contextConfigSchema: [],
+      })
+      insertTaskInstance({
+        id: 'auto-throw-instance',
+        type: 'auto-throw-provider',
+        config: { baseUrl: 'https://auto.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: CTX_ID,
+        taskInstanceId: 'auto-throw-instance',
+        platformInstanceId: 'telegram-default',
+      })
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        maybeAutoProvision: defaultDeps.maybeAutoProvision,
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, CTX_ID, 'user-1', 'alice', 'hello', 'dm', undefined, deps)
+
+      expect(textCalls).toContain('Hello!')
     })
   })
 
@@ -703,8 +1031,7 @@ describe('processMessage', () => {
       await processMessage(reply, 'tool-details-ctx', 'user-1', null, 'create a task', 'dm')
 
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
-      expect(textCalls[1]).toContain('create_task')
+      expect(textCalls[1]).toContain('Tool `create_task` failed')
     })
 
     test('handles non-Error objects in tool failure callback without default warning', async () => {
@@ -822,7 +1149,7 @@ describe('processMessage', () => {
       await processMessage(reply, 'reasoning-visible-ctx', 'user-1', null, 'think', 'dm')
 
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Reasoning')
       expect(textCalls[1]).toContain('Provider reasoning available')
       expect(textCalls[1]).not.toContain('visible reasoning summary')
     })
@@ -853,7 +1180,7 @@ describe('processMessage', () => {
       await processMessage(reply, 'reasoning-raw-ctx', 'user-1', null, 'think', 'dm')
 
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Reasoning')
       expect(textCalls[1]).toContain('raw reasoning payload')
     })
 
@@ -885,7 +1212,7 @@ describe('processMessage', () => {
       await processMessage(reply, threadCtx, 'user-1', null, 'think', 'group', parentConfigCtx)
 
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Reasoning')
       expect(textCalls[1]).toContain('Provider reasoning available')
       expect(textCalls[1]).not.toContain('thread scoped reasoning')
     })
@@ -926,7 +1253,7 @@ describe('processMessage', () => {
 
       expect(textCalls).toHaveLength(2)
       expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Reasoning')
       const history = getCachedHistory(ctx)
       expect(history).toHaveLength(2)
       expect(history[0]!.role).toBe('user')
@@ -1003,8 +1330,8 @@ describe('processMessage', () => {
 
       await processMessage(reply, 'tool-results-ctx', 'user-1', null, 'create a test task', 'dm')
 
-      // Should complete without error - tool results passed directly to fact extraction
-      expect(textCalls.length).toBeGreaterThanOrEqual(0)
+      expect(textCalls).toEqual(['Task created successfully!'])
+      expect(textCalls).not.toContain('An unexpected error occurred. Please try again later.')
     })
 
     test('tool results with unmatched toolCallId still process successfully', async () => {
@@ -1033,8 +1360,8 @@ describe('processMessage', () => {
 
       await processMessage(reply, 'tool-results-missing-ctx', 'user-1', null, 'do something', 'dm')
 
-      // Should complete without error
-      expect(textCalls.length).toBeGreaterThanOrEqual(0)
+      expect(textCalls).toEqual(['Done!'])
+      expect(textCalls).not.toContain('An unexpected error occurred. Please try again later.')
     })
 
     test('persists facts from all tool-call steps', async () => {
@@ -1130,7 +1457,7 @@ describe('processMessage', () => {
       })
 
       // No mapping should be created
-      const mapping = getIdentityMapping(GROUP_CTX, 'mock')
+      const mapping = getIdentityMapping(USER_ID, 'mock')
       expect(mapping).toBeNull()
     })
 
@@ -1144,7 +1471,7 @@ describe('processMessage', () => {
       })
 
       // No mapping should be created
-      const mapping = getIdentityMapping(GROUP_CTX, 'mock')
+      const mapping = getIdentityMapping(USER_ID, 'mock')
       expect(mapping).toBeNull()
     })
 
@@ -1246,14 +1573,16 @@ describe('processMessage', () => {
       // Seed config for the group context
       seedConfigForContext(GROUP_CTX)
 
-      // Track how many times tools are built by capturing makeTools calls
+      // Track how many times descriptors are built by capturing buildToolDescriptors calls
       let toolBuildCount = 0
-      const { makeTools: realMakeTools } = await import('../src/tools/index.js')
+      const { buildToolDescriptors: realBuildToolDescriptors, applyToolPreferences } =
+        await import('../src/tools/index.js')
 
       void mock.module('../src/tools/index.js', () => ({
-        makeTools: (provider: TaskProvider, options: MakeToolsOptions): unknown => {
+        applyToolPreferences,
+        buildToolDescriptors: (provider: TaskProvider, options: MakeToolsOptions): unknown => {
           toolBuildCount++
-          return realMakeTools(provider, options)
+          return realBuildToolDescriptors(provider, options)
         },
       }))
 
@@ -1382,12 +1711,14 @@ describe('processMessage', () => {
       seedConfigForContext('dm-ctx-2')
 
       let toolBuildCount = 0
-      const { makeTools: realMakeTools } = await import('../src/tools/index.js')
+      const { buildToolDescriptors: realBuildToolDescriptors, applyToolPreferences } =
+        await import('../src/tools/index.js')
 
       void mock.module('../src/tools/index.js', () => ({
-        makeTools: (provider: TaskProvider, options: MakeToolsOptions): unknown => {
+        applyToolPreferences,
+        buildToolDescriptors: (provider: TaskProvider, options: MakeToolsOptions): unknown => {
           toolBuildCount++
-          return realMakeTools(provider, options)
+          return realBuildToolDescriptors(provider, options)
         },
       }))
 
@@ -1408,8 +1739,8 @@ describe('processMessage', () => {
     })
   })
 
-  describe('tool routing', () => {
-    test('passes an intent-routed tool subset to the model', async () => {
+  describe('tool exposure', () => {
+    test('passes the full tool set to the model for memo-like prompts', async () => {
       seedConfigForContext(CTX_ID)
       let capturedToolNames: string[] = []
       generateTextImpl = (args: GenerateTextArgs): Promise<GenerateTextResult> => {
@@ -1422,7 +1753,7 @@ describe('processMessage', () => {
 
       expect(capturedToolNames).toContain('save_memo')
       expect(capturedToolNames).toContain('search_memos')
-      expect(capturedToolNames).not.toContain('create_task')
+      expect(capturedToolNames).toContain('create_task')
     })
   })
 })

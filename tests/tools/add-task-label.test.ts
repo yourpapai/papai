@@ -7,13 +7,12 @@ import { describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { makeAddTaskLabelTool } from '../../src/tools/add-task-label.js'
-import { createMockProvider } from './mock-provider.js'
+import { createMockKaneoProvider } from './mock-provider.js'
 
 describe('makeAddTaskLabelTool direct', () => {
   test('returns already_present for Kaneo when task already has label by visible name', async () => {
     const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
-    const provider = createMockProvider({
-      name: 'kaneo',
+    const provider = createMockKaneoProvider({
       listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
       listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
       addTaskLabel,

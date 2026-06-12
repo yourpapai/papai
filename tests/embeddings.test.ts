@@ -5,10 +5,12 @@
 
 import { mock, beforeEach, describe, expect, test } from 'bun:test'
 
+import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { llmUsageEvents } from '../src/db/schema.js'
-import { getEmbedding, tryGetEmbedding } from '../src/embeddings.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { getEmbedding, getEmbeddingForContext, tryGetEmbedding } from '../src/embeddings.js'
+import { setSystemConfig } from '../src/system-config.js'
+import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
 type EmbedResult = { embedding: number[]; usage?: { tokens: number } }
 type MockProvider = { embeddingModel: (name: string) => string }
@@ -132,5 +134,67 @@ describe('tryGetEmbedding', () => {
 
     const rows = getDrizzleDb().select().from(llmUsageEvents).all()
     expect(rows).toEqual([])
+  })
+})
+
+describe('getEmbeddingForContext', () => {
+  let embedImpl = (): Promise<EmbedResult> => Promise.resolve({ embedding: [0.1, 0.2, 0.3] })
+  let providerCalls: Array<{ apiKey: string; baseUrl: string }> = []
+  let embedModels: string[] = []
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    embedImpl = (): Promise<EmbedResult> => Promise.resolve({ embedding: [0.1, 0.2, 0.3] })
+    providerCalls = []
+    embedModels = []
+    void mock.module('ai', () => ({
+      embed: (..._args: unknown[]): Promise<EmbedResult> => embedImpl(),
+    }))
+    void mock.module('@ai-sdk/openai-compatible', () => ({
+      createOpenAICompatible: (opts: { apiKey: string; baseURL: string }): MockProvider => {
+        providerCalls.push({ apiKey: opts.apiKey, baseUrl: opts.baseURL })
+        return {
+          embeddingModel: (name: string): string => {
+            embedModels.push(name)
+            return name
+          },
+        }
+      },
+    }))
+  })
+
+  test('uses BYOK embedding model for the enabled context without global config', async () => {
+    updateByokLlmConfig(
+      'ctx-byok-embedding',
+      {
+        llm_apikey: 'sk-byok-embedding',
+        llm_baseurl: 'https://byok-embedding.invalid/v1',
+        main_model: 'byok-main-embedding',
+        embedding_model: 'byok-embed-model',
+      },
+      'admin-1',
+    )
+    embedImpl = (): Promise<EmbedResult> => Promise.resolve({ embedding: [0.9, 0.8] })
+
+    const result = await getEmbeddingForContext('hello', 'ctx-byok-embedding')
+
+    expect(result).toEqual([0.9, 0.8])
+    expect(providerCalls).toEqual([{ apiKey: 'sk-byok-embedding', baseUrl: 'https://byok-embedding.invalid/v1' }])
+    expect(embedModels).toEqual(['byok-embed-model'])
+  })
+
+  test('returns null for incomplete BYOK without falling back to global config', async () => {
+    enableByokForContext('ctx-byok-embedding-incomplete', 'admin-1')
+    resetSystemConfigCacheForTesting()
+    setSystemConfig('llm_apikey', 'sk-global-embedding', 'env')
+    setSystemConfig('llm_baseurl', 'https://global-embedding.invalid/v1', 'env')
+    setSystemConfig('main_model', 'global-main-embedding', 'env')
+    setSystemConfig('embedding_model', 'global-embed-model', 'env')
+
+    const result = await getEmbeddingForContext('hello', 'ctx-byok-embedding-incomplete')
+
+    expect(result).toBeNull()
+    expect(providerCalls).toHaveLength(0)
   })
 })

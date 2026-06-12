@@ -64,11 +64,18 @@ function resolveLocationUrl(response: Response, currentUrl: URL): URL {
   }
 }
 
+function assertHttps(url: URL): void {
+  if (url.protocol !== 'https:') {
+    throw new Error('Plugin provider httpFetch requires an https URL')
+  }
+}
+
 async function validateHop(
   url: URL,
   hostSet: ReadonlySet<string>,
   assertPublicUrl: (url: URL) => Promise<void>,
 ): Promise<void> {
+  assertHttps(url)
   if (!hostSet.has(url.hostname.toLowerCase())) {
     throw new Error(`Host '${url.hostname}' is not in the plugin providerAllowedHosts allowlist`)
   }
@@ -82,6 +89,62 @@ function getMethod(fetchInit: RequestInit): string {
   return fetchInit.method
 }
 
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308
+}
+
+function stripRequestBodyHeaders(headers: HeadersInit | undefined): HeadersInit | undefined {
+  if (headers === undefined) {
+    return undefined
+  }
+
+  const nextHeaders = new Headers(headers)
+  nextHeaders.delete('Content-Encoding')
+  nextHeaders.delete('Content-Language')
+  nextHeaders.delete('Content-Location')
+  nextHeaders.delete('Content-Type')
+  nextHeaders.delete('Content-Length')
+
+  return nextHeaders
+}
+
+function stripAuthorizationHeader(headers: HeadersInit | undefined): HeadersInit | undefined {
+  if (headers === undefined) {
+    return undefined
+  }
+
+  const nextHeaders = new Headers(headers)
+  nextHeaders.delete('Authorization')
+
+  return nextHeaders
+}
+
+function isSameOrigin(fromUrl: URL, toUrl: URL): boolean {
+  return fromUrl.origin === toUrl.origin
+}
+
+function buildRedirectFetchInit(fetchInit: RequestInit, status: number): RequestInit {
+  const method = getMethod(fetchInit).toUpperCase()
+  const shouldRewriteToGet =
+    ((status === 301 || status === 302) && method === 'POST') ||
+    (status === 303 && method !== 'GET' && method !== 'HEAD')
+
+  if (!shouldRewriteToGet) {
+    return fetchInit
+  }
+
+  const { body: _ignoredBody, headers, ...rest } = fetchInit
+  return { ...rest, headers: stripRequestBodyHeaders(headers), method: 'GET' }
+}
+
+function sanitizeRedirectFetchInit(fetchInit: RequestInit, currentUrl: URL, redirectUrl: URL): RequestInit {
+  if (isSameOrigin(currentUrl, redirectUrl)) {
+    return fetchInit
+  }
+
+  return { ...fetchInit, headers: stripAuthorizationHeader(fetchInit.headers) }
+}
+
 async function fetchWithRedirects(
   currentUrl: URL,
   fetchInit: RequestInit,
@@ -92,7 +155,7 @@ async function fetchWithRedirects(
 ): Promise<Response> {
   logger.debug({ host: currentUrl.hostname, method: getMethod(fetchInit) }, 'plugin provider httpFetch')
   const response = await deps.fetch(currentUrl.toString(), fetchInit)
-  const isRedirect = response.status >= 300 && response.status < 400
+  const isRedirect = isRedirectStatus(response.status)
 
   if (!isRedirect) {
     return response
@@ -109,7 +172,14 @@ async function fetchWithRedirects(
   // redirect target. This is acceptable because every hop must pass both the
   // allowlist check and assertPublicUrl, so headers only ever reach hosts the
   // plugin manifest already trusts.
-  return fetchWithRedirects(redirectUrl, fetchInit, hostSet, deps, logger, redirectsLeft - 1)
+  return fetchWithRedirects(
+    redirectUrl,
+    sanitizeRedirectFetchInit(buildRedirectFetchInit(fetchInit, response.status), currentUrl, redirectUrl),
+    hostSet,
+    deps,
+    logger,
+    redirectsLeft - 1,
+  )
 }
 
 export function buildProviderRuntime(
@@ -117,12 +187,12 @@ export function buildProviderRuntime(
   logger: PluginLogger,
   deps: ProviderRuntimeDeps = defaultDeps,
 ): PluginProviderRuntime {
-  // Private enforcement set. Never exposed directly — callers get a separate
-  // copy so mutating the exposed set cannot affect enforcement.
+  // Private enforcement set. Never exposed directly; httpFetch closes over this
+  // copy, so mutations to the exposed Set cannot affect enforcement.
   const hostSet: ReadonlySet<string> = new Set(allowedHosts.map((h) => h.toLowerCase()))
 
-  // Expose a separate Set instance so that mutations to the exposed copy do NOT
-  // affect the private enforcement set that httpFetch closes over.
+  // This is a diagnostic copy, not a security boundary. Object.freeze() does not
+  // make Set entries immutable; security comes from the private hostSet above.
   const exposedHosts: ReadonlySet<string> = Object.freeze(new Set(hostSet))
 
   return Object.freeze({

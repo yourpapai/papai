@@ -4,480 +4,207 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-papai is a chat bot that manages tasks via LLM tool-calling. A user sends natural-language messages through configured chat platform instances (Telegram, Mattermost, or Discord), the bot invokes a configurable OpenAI-compatible LLM (via Vercel AI SDK), executes capability-gated task-tracker tools, and replies with the result. Runtime behavior depends on the source platform instance, assigned task instance, conversation context, and per-user or group-targeted configuration stored in SQLite.
+papai is a chat bot that manages tasks via LLM tool-calling. A user sends natural-language messages through configured chat platform instances (Telegram, Mattermost, Discord, or Kontur Talk), the bot invokes a configurable OpenAI-compatible LLM (via Vercel AI SDK), executes capability-gated task-tracker tools, and replies. Runtime behavior depends on the source platform instance, assigned task instance, conversation context, and per-user or group-targeted configuration stored in SQLite.
 
-Notable current behaviors:
+Notable non-obvious behaviors:
 
-- Telegram and Mattermost group contexts are thread-aware via thread-scoped storage context IDs; Discord group contexts are not thread-scoped today
-- chat startup runs through `ChatRouter`, which manages DB-backed platform instances and tags incoming messages/interactions with `platformInstanceId`
-- `/setup` and `/config` are DM-driven and can target either personal settings or a managed group
-- the bot supports incoming files, file-to-task relay, identity mapping, memo search, recurring tasks, deferred prompts, and public web fetching
-- an optional local debug server serves separate `client/debug/` and `client/admin/` clients for live observability and operator/admin workflows
+- Telegram and Mattermost group contexts are thread-aware via thread-scoped storage context IDs; **Discord group contexts are not thread-scoped**.
+- Chat startup runs through `ChatRouter`, which manages DB-backed platform instances and tags incoming messages/interactions with `platformInstanceId`.
+- **All configuration happens in the settings web UI**, not in chat. `/config` (DM only) issues a single-use link to it; `SETTINGS_PUBLIC_BASE_URL` must be set or `/config` refuses. The `/plugin` and `/set` chat commands are retired. Chat callback config flows (`gsel:`/`cfg:`/`wizard_`/`plg:`/`tgl:`) were removed; `interaction-router.ts` is now a near-empty safe sink.
+- **Telegram and Discord** treat a user's reply to the **bot's own message** in a group as equivalent to an `@mention` — the bot processes it without an explicit mention. Mattermost and Kontur Talk are not affected by this path.
+- Settings-UI admin "Users" adds accept `@username`. Live resolution is tried first (`resolveSettingsUserId`); when the platform cannot resolve it (Telegram's Bot API never can for user accounts), a **pending entry** is stored (`users.platform_user_id = 'placeholder-<uuid>'`) and rebound case-insensitively to the real ID on the user's first DM (`src/auth.ts` → `resolveUserByUsername`). Group-member adds stay strict and 422 on unresolvable usernames.
+- Supports incoming files, file-to-task relay, identity mapping, memo search, recurring tasks, deferred prompts, public web fetch.
 
 ## Commands
 
-All scripts can be run as `bun <script>` or `bun run <script>`.
+Run scripts as `bun <script>`. Full list is in `package.json`; below are only the ones with non-obvious semantics.
 
-- `bun start` — build the debug/admin clients and run the bot
-- `bun start:debug` — build the debug/admin clients and run the bot with `DEBUG_SERVER=true`
-- `bun build:client` — bundle the debug/admin UIs from `client/{debug,admin}/` to `public/`
-- `bun storybook` — run the dashboard component harness on http://localhost:6006 (Storybook + Vite, dev-only)
-- `bun build:storybook` — build the static story site to `storybook-static/` (git-ignored)
-- `bun check:bundle-isolation` — rebuild the client and assert the dev-only `client/stories/**` harness never leaked into the production debug/admin bundles
-- `bun review-loop:start` — run the review-loop workflow
-- `bun lint` — lint with oxlint
-- `bun lint:agent-strict -- <paths...>` — stricter agent-focused lint pass for selected paths
-- `bun lint:fix` — lint with auto-fix
-- `bun format` — format with oxfmt
-- `bun format:check` — check formatting without writing
-- `bun knip` — check for unused dependencies/exports
-- `bun duplicates` — detect duplicate code blocks
-- `bun typecheck` — TypeScript type checking
-- `bun security` — run Semgrep security scan locally
-- `bun security:ci` — run security scan with CI outputs
-- `bun test` — run the curated main unit/integration suites (excludes client and E2E)
-- `bun test:client` — run debug/admin UI tests with happy-dom
-- `bun test:watch` — run unit tests in watch mode
-- `bun test:coverage` — run unit tests with coverage
-- `bun test:mutate` — run mutation tests with Stryker
-- `bun test:mutate:changed` — run incremental mutation tests
-- `bun test:mutate:full` — force a full mutation run
-- `bun test:e2e` — run Docker-backed E2E tests
-- `bun test:e2e:watch` — run E2E tests in watch mode
-- `bun check` — run lint/typecheck/format checks for staged files
-- `bun check:full` — run the broader full check suite via `scripts/check.sh`
-- `bun check:verbose` — run lint, typecheck, format:check, knip, test, and duplicates in parallel
-- `bun review-loop:test` — run the review-loop workspace test suite
-- `bun review-loop:typecheck` — run review-loop workspace TypeScript checks
-- `bun review-loop:lint` — lint the review-loop workspace
-- `bun review-loop:format:check` — check review-loop workspace formatting
-- `bun fix` — auto-fix lint and format issues
-- `bun changelog:preview` — preview changelog generation with git-cliff
-- `bun changelog:generate` — regenerate `CHANGELOG.md`
-- `bun install` — install dependencies
+- `bun start` / `bun start:debug` — build debug/admin clients, then run the bot (TS runs directly under Bun, no backend build). `:debug` sets `DEBUG_SERVER=true`.
+- `bun build:client` — bundle `client/{debug,admin,settings}/` to `public/` (`CLIENT_BUILD_OUTDIR` overrides the output dir; used by tests to build into a temp dir). The debug-server test suites **fail fast** if `public/` bundles are missing instead of building them — run `bun build:client` once before `bun run test` on a clean checkout.
+- `bun run test` — all server-side suites; **excludes client and E2E** via `bunfig.toml`. Runs `bun test --parallel` (one worker process per file, implies `--isolate`), the project default. On a 12-core machine this is ~2.5x faster than serial. In CI (`CI=true`), `scripts/check.sh` runs the suite **serially** instead — worker-per-file on a 4-vCPU hosted runner, on top of the other concurrent checks, exhausts the VM and gets the runner shut down mid-job. Bare `bun test` (Bun's built-in runner, not the script) still runs **serially** — Bun has no `bunfig.toml` key for `--parallel`, so use `bun run test` or `bun test --parallel` for the fast path. `bun test:serial` is the explicit serial escape hatch for debugging isolation-sensitive failures. Note: tests must be isolation-clean (no cross-file shared state, no fixed-wall-clock timing assertions — poll for conditions instead) since each file runs in its own process.
+- `bun test:client` — `tests/client/` with happy-dom (`tests/client-setup.ts`).
+- `bun test:e2e` — Docker-backed Kaneo E2E (`tests/e2e/bun-test-setup.ts`).
+- `bun test:mutate:changed` — paired mutation run vs `origin/master`; this is what CI uses.
+- `bun test:mutate:file <paths...>` — fast per-file paired run (`ignoreStatic:false` + companion tests), bypasses the static-bucket artifact.
+- `bun check` — staged-file lint/typecheck/format; `bun check:full` runs `scripts/check.sh`.
+- `bun check:bundle-isolation` — asserts the dev-only `client/stories/**` harness never leaked into production bundles.
 
-`bun start` and `bun start:debug` both build the debug/admin clients first. The server runs TypeScript directly under Bun; there is no separate backend build step.
-
-## Testing
-
-Main commands:
-
-```bash
-bun test
-bun test:client
-bun test:e2e
-```
-
-- `bun test` runs the curated main non-client, non-E2E suites defined in `package.json`.
-- `bun test:client` runs `tests/client/` with `tests/client-setup.ts`.
-- `bun test:e2e` runs the Docker-backed Kaneo end-to-end suite with `tests/e2e/bun-test-setup.ts`.
-
-Mutation testing is available locally through Stryker, but it is not currently part of the automated repo-local write-hook pipeline.
+Other scripts (`lint`, `lint:fix`, `format`, `knip`, `duplicates`, `typecheck`, `security`, `changelog:*`, `review-loop:*`, `storybook`) do what their names imply.
 
 ## TDD Enforcement (Hooks)
 
-Every `Write`, `Edit`, and `MultiEdit` on a file in `src/` or `client/` triggers an automated hook pipeline. The pipeline enforces Red → Green → Refactor by running checks sequentially and blocking when a check fails.
+Every `Write`/`Edit`/`MultiEdit` on an implementation file in `src/` or `client/` triggers an automated hook pipeline enforcing Red → Green → Refactor; it runs checks sequentially and **blocks** on failure.
 
-### Scope
+**Scope** — only implementation files: path starts with `src/`/`client/`, extension `.ts`/`.js`/`.tsx`/`.jsx`, not a test (`*.test.*`/`*.spec.*`). Everything else passes through, but test-file edits still verify the changed test passes. The `client/` tree mirrors `src/` for test resolution (`client/debug/foo.ts` → `tests/client/debug/foo.test.ts`).
 
-Only **implementation files in `src/` or `client/`** are checked:
+**Pipeline** — before write: (1) write-policy gate, (2) test-first gate, (3) API surface snapshot. After write: (4) test tracker for new tests, (5) import gate for tests under `tests/`, (6) targeted test run + coverage regression check, (7) API surface diff check.
 
-- path starts with `src/` or `client/`
-- extension is `.ts`, `.js`, `.tsx`, or `.jsx`
-- not a test file (`*.test.*` / `*.spec.*`)
+**Write protections (blocked escape hatches):**
 
-Everything else passes through without the implementation pipeline. Test-file edits still verify that the changed test passes.
+- `.oxlintrc.json` is protected from direct write-tool edits.
+- Inline suppressions (`eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-nocheck`) are blocked before writes complete.
+- Bash-hook policy blocks `git stash` and `git checkout --`.
 
-The `client/` tree mirrors `src/` for test resolution: `client/debug/foo.ts` maps to `tests/client/debug/foo.test.ts`.
-
-### Pipeline
-
-Before write:
-
-1. write-policy gate
-2. test-first gate
-3. API surface snapshot
-
-After write:
-
-4. test tracker for newly written tests
-5. import gate for test files under `tests/`
-6. targeted test run plus coverage regression check
-7. API surface diff check
-
-### Additional Write Protections
-
-The repo also blocks a few unsafe AI-editing escape hatches:
-
-- `.oxlintrc.json` is protected from direct write-tool edits by hook policy
-- inline suppression comments such as `eslint-disable`, `oxlint-disable`, `@ts-ignore`, and `@ts-nocheck` are blocked before writes complete
-- bash-hook policy blocks `git stash` and `git checkout --` in the Claude/bash flow
-
-Fix the underlying issue instead of trying to bypass linting or hook policy.
-
-## Security
-
-- `bun security` — local Semgrep run
-- `bun security:ci` — CI-oriented Semgrep run
-
-Security checks cover OWASP-style issues, TypeScript/JavaScript pitfalls, and AI/LLM-specific concerns such as prompt-injection-adjacent unsafe fetch behavior and accidental secret exposure.
+Fix the underlying issue rather than bypassing linting or hook policy.
 
 ## Required Environment Variables
 
-Required at startup:
+**Required at startup:** `ADMIN_USER_ID` — stored as the initial authorized `platform_user_id`, so it must match the user ID string the active adapter sees (numeric for Telegram; the platform user ID string, not a display name, for Mattermost/Discord/Kontur Talk).
 
-- `ADMIN_USER_ID`
+**Central LLM credentials** live in the admin-owned `system_config` SQLite table, seeded once from env on first start and read from the DB after. If any of the three required entries is missing at runtime, the bot logs `WARN` and replies "the bot is not fully configured" until set via env+restart or `/admin#system`:
 
-The bot also needs central LLM credentials before it can serve any message.
-They live in the admin-owned `system_config` SQLite table, seeded once from
-environment variables on first start and from the DB on subsequent starts:
-
-- `LLM_API_KEY` (seeded into `system_config.llm_apikey`)
-- `LLM_BASE_URL` (seeded into `system_config.llm_baseurl`)
-- `MAIN_MODEL` (seeded into `system_config.main_model`)
+- `LLM_API_KEY` → `llm_apikey`, `LLM_BASE_URL` → `llm_baseurl`, `MAIN_MODEL` → `main_model`
 - `SMALL_MODEL` — optional; callsites fall back to `main_model`
 - `EMBEDDING_MODEL` — optional; memo semantic search degrades to keyword-only
-- `INSTANCE_CONFIG_KEY` — 32-byte AES-256-GCM key (64 hex chars) used to
-  encrypt `platform_instances.config` and `task_instances.config` at rest.
-  Non-hex values are SHA-256-hashed. When unset, a derived host-local
-  fallback key is used and a one-shot `WARN` is logged at startup;
-  production deployments must set this explicitly.
 
-If `system_config` is missing any of the three required entries at runtime,
-the bot logs `WARN` at startup and replies "the bot is not fully configured"
-to incoming messages until the admin sets them via env + restart or through
-`/admin#system`.
+**`INSTANCE_CONFIG_KEY`** — 32-byte AES-256-GCM key (64 hex chars) encrypting `platform_instances.config` and `task_instances.config` at rest. Non-hex values are treated as passphrases (scrypt-derived). When unset, a host-local fallback key is used and a one-shot `WARN` logs at startup; **production must set this explicitly**.
 
-`ADMIN_USER_ID` is stored as the initial authorized `platform_user_id`, so it must match the user ID string the active chat adapter sees. For Telegram this is numeric; for Mattermost and Discord it is the platform user ID string, not a display name.
+**First-run env bootstrap (only when the instance tables are empty):**
 
-First-run env bootstrap requirements when the instance tables are empty:
+- `CHAT_PROVIDER` (`telegram`|`mattermost`|`discord`|`kontur-talk`), plus provider creds: Telegram `TELEGRAM_BOT_TOKEN`; Mattermost `MATTERMOST_URL`+`MATTERMOST_BOT_TOKEN`; Discord `DISCORD_BOT_TOKEN`; Kontur Talk `KONTUR_TALK_JWT_TOKEN`.
+- After bootstrap, platform selection comes from `context_settings`, base config from `platform_instances`, per-context creds from `user_config`.
+- **Task instances are not env-bootstrapped.** Create them via `/admin#instances`, then approve `task-provider-kaneo`/`task-provider-youtrack` in the settings UI admin Plugins area (super admin) after deploying. Removed bootstrap vars: `TASK_PROVIDER`, `YOUTRACK_URL`, and the Kaneo URLs below.
 
-- `CHAT_PROVIDER` (`telegram`, `mattermost`, or `discord`)
-- `TASK_PROVIDER` (`kaneo` or `youtrack`)
+**`SETTINGS_PUBLIC_BASE_URL`** — **required** external base URL (e.g. `https://bot.example.com`); builds single-use settings links. The settings session cookie adds `Secure` only when the request is HTTPS (`X-Forwarded-Proto: https` behind a proxy, else the request URL scheme) — over plain HTTP it is omitted so the browser keeps the cookie. Unset → `/config` refuses; no in-chat fallback.
 
-Chat-provider bootstrap requirements:
+**Optional runtime flags:** `DEBUG_SERVER`, `DEBUG_HOSTNAME`, `DEBUG_PORT`, `LOG_LEVEL`, `DEMO_MODE`. `KANEO_CLIENT_URL`/`KANEO_INTERNAL_URL` are no longer bootstrap vars but are still read at runtime by the Kaneo provisioning route (`src/debug/settings/provision-routes.ts`); `KANEO_INTERNAL_URL` also carries internal bot-to-Kaneo traffic.
 
-- Telegram: `TELEGRAM_BOT_TOKEN`
-- Mattermost: `MATTERMOST_URL`, `MATTERMOST_BOT_TOKEN`
-- Discord: `DISCORD_BOT_TOKEN`
+**File attachments (S3-compatible):** required to receive/persist/attach files. `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (required); `S3_ENDPOINT` (required for non-AWS: MinIO/R2/B2), `S3_REGION`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE=true` for MinIO (optional).
 
-Task-provider bootstrap requirements:
+**Dashboard (`DEBUG_SERVER=true`):** the dashboard requires a session cookie minted via the bot — DM `/dashboard` for a one-time sign-in link. `DASHBOARD_BASE_URL` (default `SETTINGS_PUBLIC_BASE_URL`, else `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`), `DASHBOARD_SESSION_TTL_SECONDS` (default `28800`), `DASHBOARD_CLAIM_TTL_SECONDS` (default `300`). See `docs/deployment/dashboard-access.md`.
 
-- Kaneo: `KANEO_CLIENT_URL`
-- YouTrack: `YOUTRACK_URL`
-
-`CHAT_PROVIDER` and `TASK_PROVIDER` are used only by first-run env bootstrap when the instance tables are empty. After bootstrap, platform/task instance selection is read from `context_settings`, platform/task instance base config lives in `platform_instances` and `task_instances`, and per-context credentials stay in `user_config`.
-
-Optional but important runtime flags include:
-
-- `DEBUG_SERVER`, `DEBUG_HOSTNAME`, `DEBUG_PORT`, `DEBUG_TOKEN`
-- `LOG_LEVEL`
-- `DEMO_MODE`
-- `KANEO_INTERNAL_URL` for internal bot-to-Kaneo traffic
-
-When `DEBUG_SERVER=true`, the local UI is split by audience:
-
-- `/debug` — engineer/live observability surface
-- `/admin` — operator/configuration and durable records surface
-- `/dashboard` — compatibility redirect to `/debug`
-
-The admin system surface lives at `/admin#system` and includes the
-credentials form backed by `GET`/`POST /admin/llm`. The admin billing
-surface lives at `/admin#billing`, and the admin stats surface lives at
-`/admin#stats` and uses `GET /stats/global` and `GET /stats/subject/:id`.
-The admin instances surface lives at `/admin#instances` and manages
-platform instances, task instances, and admin assignments through
-`/api/platform-instances`, `/api/task-instances`, and `/api/admins`.
-When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer
-token. When it is unset, read-only debug/admin routes remain available
-without a token. `POST /admin/llm` is the special case: it returns 401
-when `DEBUG_TOKEN` is unset, so production-style deployments behind a
-reverse proxy keep the write surface closed by default.
-
-#### Anonymity contract for `/stats/*`
-
-`/stats/global` and `/stats/subject/:id` are constrained to anonymous,
-aggregate-shaped data only:
-
-- Allowed: counts, byte sizes, oldest/newest timestamps, enum
-  distributions (e.g. `byStatus`, `byProvider`, `byExtension`), and
-  hashed/keyed identifiers for high-cardinality strings (rrule
-  patterns, web-fetch hostnames). The keying salt is the
-  `stats_anonymity_salt` row in `system_config`, seeded lazily on
-  first read and never rotated automatically.
-- Never returned: message text, memo bodies, observation text,
-  attachment filenames, raw URLs/paths, usernames or display names,
-  workspace names, tags, project names, status names, RRULE text,
-  any other free-form content.
-
-Any leak of content from these routes is a release-blocking defect.
-
-The remaining credentials live in the per-user config store and are managed through `/setup` and `/config`, not through a `/set` command.
-
-### File Attachments (S3-compatible Object Storage)
-
-Required when the bot needs to receive, persist, or attach files to tasks.
-
-| Variable               | Required | Description                                                           |
-| ---------------------- | -------- | --------------------------------------------------------------------- |
-| `S3_BUCKET`            | Yes      | S3 bucket name where attachment objects are stored                    |
-| `S3_ACCESS_KEY_ID`     | Yes      | Access key for the S3-compatible service                              |
-| `S3_SECRET_ACCESS_KEY` | Yes      | Secret key for the S3-compatible service                              |
-| `S3_ENDPOINT`          | No\*     | Endpoint URL. Required for non-AWS providers such as MinIO, R2, or B2 |
-| `S3_REGION`            | No       | AWS region (e.g. `us-east-1`)                                         |
-| `S3_PREFIX`            | No       | Optional key prefix inside the bucket                                 |
-| `S3_FORCE_PATH_STYLE`  | No       | Set to `true` for MinIO                                               |
-
-Common runtime config keys (per-user, set via `/setup` or `/config`):
-
-- `timezone`
-
-LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`,
-`embedding_model`) are admin-owned and live in `system_config`, not in
-`user_config` — see the "Required Environment Variables" section above.
-
-Provider-specific per-user runtime keys:
-
-- Kaneo: `kaneo_apikey`
-- YouTrack: `youtrack_token`
+**Per-user runtime config keys** (managed in the settings UI): `timezone`; `mcp_endpoints` (JSON array of external MCP endpoints `{ id, url (https only), label?, headers?, enabled, toolFilter? }`, registered in `src/config-keys.ts`); Kaneo `plugin:task-provider-kaneo:provider:{credential,workspaceId}`; YouTrack `plugin:task-provider-youtrack:provider:token`; AI output visibility `ai_tool_visibility` / `ai_reasoning_visibility` (`on`/`off`, default `off`) and `ai_output_detail_level` (`sanitized`/`raw`, default `sanitized`) — surfaced as enum `ConfigField`s (`kind: 'ai-output'`) in the settings UI "AI output" section, read by `getAiOutputSettings` (`src/ai-output-settings.ts`).
 
 ## Architecture
 
 ```text
-User (Telegram/Mattermost/Discord)
-  -> ChatRouter
-  -> source ChatProvider instance
-  -> bot.ts
-     -> group-settings selector / config editor / setup wizard interception
-     -> message queue + reply-context enrichment + file relay
+User (Telegram/Mattermost/Discord/Kontur Talk)
+  -> ChatRouter -> source ChatProvider instance
+  -> bot.ts (message queue + reply-context enrichment + file relay)
      -> llm-orchestrator.ts
-        -> makeTools(provider, { storageContextId, chatUserId, mode, contextType })
+        -> await makeTools(provider, { storageContextId, chatUserId, mode, contextType })
         -> wrapped tool execution with structured failure results
-        -> provider adapters / web fetch / memo / recurring / deferred tools
+        -> provider adapters / web fetch / memo / recurring / deferred / MCP tools
      -> reply via ReplyFn
-Optional: debug server + debug/admin clients
+Optional: debug server + debug/admin/settings clients
 ```
 
-### Main Modules
+Non-command text goes straight to the LLM queue with no interception (`src/bot.ts`).
 
-- `src/index.ts` — startup, env validation, DB initialization, instance bootstrap, chat router startup, scheduler/poller start, optional debug server start
-- `src/bot.ts` — command registration, auth checks, interception flow, queueing, interaction routing
-- `src/chat/types.ts` — `ChatProvider`, `ReplyFn`, `IncomingMessage`, `IncomingInteraction`, context-rendering types
-- `src/chat/registry.ts` — chat provider registry (`telegram`, `mattermost`, `discord`)
-- `src/chat/router.ts` — `ChatRouter` runtime fan-out over active platform instances; tags incoming messages/interactions with `platformInstanceId` and routes proactive sends back to the source instance
-- `src/chat/startup.ts` — command-menu registration when supported by provider capabilities
-- `src/chat/interaction-router.ts` — config-editor, group-selector, and wizard callback routing
-- `src/config.ts` — per-user config store
-- `src/conversation.ts` / `src/history.ts` / `src/memory.ts` — history, summary, and fact management
-- `src/attachments/` — durable attachment workspace: ingest, S3 blob store, metadata, manifest, and resolver
-- `src/message-queue/` — message coalescing and orderly orchestrator dispatch
-- `src/group-settings/` — DM selection of personal vs group settings target
-- `src/identity/` — chat-to-provider identity mapping and “me” resolution
-- `src/tools/` — context-aware, capability-gated tool assembly and tool wrappers
-- `src/providers/` — Kaneo and YouTrack normalized provider implementations
-- `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache
-- `src/debug/`, `client/debug/`, and `client/admin/` — optional debug server plus split `/debug` and `/admin` UIs. `/debug` is the engineer-facing live observability surface. `/admin` is the operator-facing configuration and durable-records surface. Billing at `/admin#billing` reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The credentials form lives in the System section at `/admin#system`; `src/debug/admin-llm.ts` serves `GET`/`POST /admin/llm`, writes through `setSystemConfig()`, and masks `llm_apikey` values server-side. The Instances section at `/admin#instances` is backed by `src/debug/instance-routes.ts` and manages platform instances, task instances, and admin assignments.
-- `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
-- `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes are bearer-token gated only when `DEBUG_TOKEN` is configured. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
-- `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. The `/plugin` admin command (DM, bot-admin only) manages discovery, approval, rejection, and per-context enable/disable. See `docs/plugins/developer-guide.md`.
-- `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Runtime task-provider construction goes through `TaskProviderResolver`, and chat startup goes through `ChatRouter`.
+### Module map (one line each)
+
+- `src/index.ts` — startup, env validation, DB init, instance bootstrap, router/scheduler/poller/debug-server start.
+- `src/bot.ts` — command registration, auth, queueing, interaction routing.
+- `src/chat/` — `ChatProvider` interface (`types.ts`), provider registry (`registry.ts`, `createChatProviderFromConfig`), `ChatRouter` fan-out (`router.ts`), command-menu registration (`startup.ts`), and the now-inert `interaction-router.ts`.
+- `src/config.ts` / `conversation.ts` / `history.ts` / `memory.ts` — per-user config; history, summary, fact management.
+- `src/attachments/` — durable attachment workspace (ingest, S3 blob store, metadata, manifest, resolver).
+- `src/message-queue/` — message coalescing + orderly orchestrator dispatch.
+- `src/group-settings/` — admin group-context support for the settings UI (`admin-group-list.ts`, `admin-scope.ts`, `registry.ts` observation store, `access.ts`).
+- `src/identity/` — chat→provider identity mapping and "me" resolution.
+- `src/tools/` — context-aware, capability-gated tool assembly + wrappers. See `src/tools/CLAUDE.md`.
+- `src/providers/` — normalized provider types/utilities. Kaneo and YouTrack are now first-party plugin-contributed providers under `plugins/`. See `src/providers/CLAUDE.md`.
+- `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache.
+- `src/instances/` — DB-backed platform/task instance model: AES-256-GCM encryption, per-table CRUD stores, env→DB bootstrap. DB is source of truth after migration `040`; env only consulted when tables empty. Construction goes through `TaskProviderResolver` / `ChatRouter`.
+- `src/usage/` — LLM/tool usage recorders: one row per LLM turn (`llm_usage_events`) and per tool execution (`tool_call_events`); `event_id` is a deterministic SHA-256 hash; inert outbox columns reserved for a future forwarder.
+- `src/stats/` — anonymous DB-wide aggregates via Drizzle; `getSubjectStats()`/`getGlobalStats()` (global cached 60s), consumed by `/admin#stats` via `/stats/*`. High-cardinality identifiers keyed-hashed with `stats_anonymity_salt`. **See anonymity contract below.**
+- `src/plugins/` — trusted local plugin system (see Plugin System).
+- `src/mcp/` — MCP adapter: connects to external MCP servers and exposes their tools as AI SDK tools. Sources: user `mcp_endpoints` and plugin-declared `mcp` blocks. `makeTools()` swallows all MCP failures so a dead server never breaks the pipeline. Only `streamable-http` is runtime-supported. See `src/mcp/CLAUDE.md`.
+- `src/settings/` — settings-UI access model: one-time auth-code issuance, token crypto, SQLite sessions with synchronizer-token CSRF, principal resolution, `requireScope` guard, rate limiting (`SETTINGS_PUBLIC_BASE_URL` via `config.ts`). Tables from migration `050_settings_auth`.
+- `src/debug/` + `client/{debug,admin,settings}/` — optional debug server and three UIs (below).
+
+### Debug/settings server surfaces
+
+- `/debug` — engineer live-observability surface; `/admin` — operator config + durable records; `/dashboard` → redirects to `/debug`. `/admin#system` (LLM creds via `GET`/`POST /admin/llm`, `llm_apikey` masked server-side), `/admin#billing`, `/admin#stats` (`/stats/*`), `/admin#instances` (`/api/platform-instances`, `/api/task-instances`, `/api/admins`). Instance routes degrade gracefully: unreadable encrypted rows are reported in an `unreadable` array and skipped at startup with warnings, not aborts.
+- **Settings trust domain is strictly separate from the operator domain.** `server.ts` routes `/settings`, `/settings.js`, `/settings.css`, and `/settings/api/*` **before** any `DEBUG_TOKEN` check. Per-capability handlers (`src/debug/settings/` and `settings/admin/`) each authenticate the settings session, verify the `X-Settings-CSRF` header on writes, and resolve a validated `contextId` via `requireScope`. No settings cookie ever satisfies a `DEBUG_TOKEN` route; admin handlers are thin wrappers over the same stores.
+- `client/settings/` is a Svelte SPA bootstrapped from the single-use `/config` link, gating sections by role + context; data flows through Zod-validated fetchers against `/settings/api/*`.
+
+#### Anonymity contract for `/stats/*`
+
+`/stats/global` and `/stats/subject/:id` are constrained to anonymous, aggregate-shaped data only:
+
+- **Allowed:** counts, byte sizes, oldest/newest timestamps, enum distributions (`byStatus`, `byProvider`, `byExtension`), and hashed/keyed identifiers for high-cardinality strings (rrule patterns, web-fetch hostnames). Keying salt is the `stats_anonymity_salt` row in `system_config`, seeded lazily on first read and never auto-rotated.
+- **Never returned:** message text, memo bodies, observation text, attachment filenames, raw URLs/paths, usernames or display names, workspace names, tags, project names, status names, RRULE text, any other free-form content.
+
+Any leak of content from these routes is a **release-blocking defect**.
 
 ## Plugin System
 
-Trusted, repository-local first-party plugins only — no sandbox, no marketplace, no npm install, no hot reload, no plugin secret store, and no raw provider/DB/env/network access.
+Trusted, repository-local first-party plugins only — no sandbox, marketplace, npm install, hot reload, secret store, or raw provider/DB/env/network access. The restricted runtime API is **not a sandbox guarantee** (plugin code runs in-process). Full reference: `docs/plugins/developer-guide.md` and the `docs/plugins/examples/hello-world/` example.
 
-### Layout
+- **Layout** — `plugins/<plugin-id>/` (lowercase kebab-case; manifest `id` must match the dir). `plugin.json` validated by `pluginManifestSchema` (`src/plugins/types.ts`); entry default-exports a factory `() => { activate(ctx), deactivate?(ctx) }`. `PLUGIN_API_VERSION` is `1`; mismatched `apiVersion` is rejected.
+- **Lifecycle** — (1) Discover (scan + hash → `plugin_admin_state` `discovered`; missing `plugins/` dir fails fast when `DEBUG_SERVER=true`, else WARN+degraded via `startup-guard.ts`); (2) Approve in settings UI (keyed to manifest hash — any source change clears approval); (3) Activate on next startup (per-plugin timeout `activationTimeoutMs` 100–10000ms default 5000, bounded `p-limit`, isolated failures logged to `plugin_runtime_events`); (4) Enable per `contextId` (or `defaultEnabled: true`); (5) Eligibility — `getPluginContextEligibility()` → `inactive`/`disabled`/`config_missing`/`capability_missing`/`eligible` (per-context only; never breaks global activation).
+- **Storage** (migration `039_plugins`) — `plugin_admin_state`, `plugin_context_state`, `plugin_kv` (gated by `storage` permission), `plugin_runtime_events`. Only approval state is persisted; runtime state is recomputed.
+- **Context facade** — frozen `PluginContext` exposes only `pluginId`/`contextId`/`permissions`, `log.*`, `kv.*` (needs `storage`), `adminConfig.get`, `providerRuntime` (needs `provider.task`/`http`; every hop must match `providerAllowedHosts` + pass public-URL checks), `identity` (needs `identity` + exactly one task provider type), and `registration.*` (rejected unless declared in `contributes.*`). Plugins never get a raw `TaskProvider`/`ChatProvider`/DB handle/`process.env`. Tool executions get a request-scoped `PluginToolRuntimeContext`.
+- **Naming** — tool `plugin_<sanitized-id>__<tool>`; command `plugin_<sanitized-id>_<command>`; scheduled-job owner `plugin:<pluginId>:<jobName>` (runs only where enabled + eligible). Prompt fragments are sync strings/functions, budgeted 2,000 chars/fragment, 8,000 total.
+- **Permissions (MVP)** — `storage`, `scheduler`, `commands`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, `http`. Raw chat send, raw provider/DB access, and unallowlisted network access are not exposed.
+- **Admin** — discover/approve/reject/enable-disable entirely in the settings UI admin area; approve/reject take effect next startup, enable/disable on next tool/prompt assembly.
 
-- Plugin packages live at `plugins/<plugin-id>/` (lowercase kebab-case ID; manifest `id` must match the directory name).
-- Each plugin has a `plugin.json` (validated by `pluginManifestSchema` in `src/plugins/types.ts`) and an entry point such as `index.ts` whose default export is a factory `() => { activate(ctx), deactivate?(ctx) }`.
-- Plugin API version is pinned by `PLUGIN_API_VERSION` (currently `1`); manifests declaring a different `apiVersion` are rejected as incompatible.
+## Tools
 
-### Lifecycle
+Tool exposure is **capability-gated and context-dependent** (`dm` vs `group`, `normal` vs `proactive`, presence of a storage context, provider identity support). The full tool list is enumerated in `src/tools/` (core CRUD plus capability-gated provider tools for deletion, counting, relations, comments, projects, labels, statuses, work items, attachments, collaboration; and user/context tools for memos, recurring tasks, deferred prompts, instructions, group history, `web_fetch`, identity). Phase-five provider features (sprints, activities, saved queries, agiles) exist at the provider layer without tool wrappers yet.
 
-1. **Discover** — startup scans `plugins/`, hashes manifest + entry point content, and records each plugin in `plugin_admin_state` with state `discovered`.
-2. **Approve** — bot admin runs `/plugin approve <id>` (DM-only). Approval is keyed to the manifest hash; any change to manifest or entry source clears approval and reverts the plugin to `discovered`.
-3. **Activate** — on next startup, approved plugins are imported with a per-plugin activation timeout (`activationTimeoutMs`, 100–10000ms, default 5000) and bounded `p-limit` concurrency. Activation failures are isolated; `plugin_runtime_events` records `activated`/`deactivated`/`error` rows.
-4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group `contextId` via `/plugin enable <id> [context-id]`, the `plg:` inline buttons in `/config`, or `defaultEnabled: true` in the manifest. Per-context state lives in `plugin_context_state`.
-5. **Eligibility** — `getPluginContextEligibility(pluginId, contextId)` returns `inactive`, `disabled`, `config_missing`, `capability_missing`, or `eligible`. Missing required `configRequirements` or missing capabilities on the context's assigned platform/task instance is per-context only; it hides the plugin's tools and prompt fragments for that context without breaking activation globally.
+**User-configurable access** — beyond capability + context gating, each personal or managed-group context assigns every tool a three-state permission stored as JSON under the reserved `tool_prefs` key (`{ domainDefaults, toolOverrides }`), applied as the final step in `makeTools()`:
 
-### Storage
+- `allow` (default) — exposed normally.
+- `deny` — removed from the set.
+- `ask` — exposed wrapped: input schema gains a `_permission_reason` field and execution is gated on explicit per-call user permission.
 
-Migration `039_plugins` creates four SQLite tables:
+The system prompt (`src/system-prompt.ts`) is composed from permission-aware fragments: never instructs the agent to use a denied tool, lists ask-gated tools with their permission requirement, and appends an "Unavailable tools" line for denied domains. Managed in the Tools section of the settings UI. MCP-sourced tools (`mcp_<server>__<tool>` for user endpoints, `plugin_<server>__<tool>` for plugin-sourced) are subject to the same per-context permissions.
 
-| Table                   | Purpose                                                                                                  |
-| ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| `plugin_admin_state`    | Per-plugin admin approval, state, approving admin, approved/last-seen manifest hash, compatibility note. |
-| `plugin_context_state`  | Per-(plugin, context) enable flag.                                                                       |
-| `plugin_kv`             | Per-(plugin, context, key) string KV, gated by the `storage` permission.                                 |
-| `plugin_runtime_events` | Recent runtime events (activation, deactivation, error) for diagnostics in `/plugin info`.               |
+**Result compaction (experimental, default OFF)** — per-context reduction flags live as JSON under the reserved `tool_context_flags` config key (read via `resolveReductionFlags` in `src/tools/feature-flags.ts`; `TOOL_CONTEXT_REDUCTION_DISABLED=true` is a global kill switch; flag writes invalidate the cached tool descriptors; managed per context in the settings UI super-admin **Feature flags** section, `/settings/api/admin/feature-flags`). With `result_compaction` ON, `prepareLlmInvocation` wraps the toolset per turn (`src/tools/compaction/wrap-compaction.ts`, applied after `applyToolPreferences`): successful tool results over 8 KB are stored in a per-context TTL/LRU store and replaced by a `_compacted` envelope (query-aware SMALL_MODEL summary, or preview-only truncation on summarizer failure); the flag-gated `expand_result` tool (registered only in `normal` mode — proactive runs never compact) pages the stored raw result. Failures, already-compacted envelopes, and non-serializable results are never compacted; flag OFF is a reference-identical pass-through.
 
-Runtime state values (`active`, `incompatible`, `config_missing`, `error`) are recomputed in memory; only approval-related state is persisted.
-
-### Plugin Context Facade
-
-Activation receives a frozen `PluginContext` exposing only:
-
-- `ctx.pluginId`, `ctx.contextId` (activation runs against `__system__`), `ctx.permissions`
-- `ctx.log.{debug,info,warn,error}(data, msg)` — pino child logger scoped by `pluginId`. Never log secrets.
-- `ctx.kv.{get,set,delete,list}` — context-scoped string KV, **only** when the `storage` permission is declared. Without it, all KV calls throw. KV is not a secret store.
-- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob}` — registrations are rejected unless the contribution name was declared in `contributes.{tools,promptFragments,commands,jobs}`.
-
-Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `process.env`. Tool executions receive a request-scoped `PluginToolRuntimeContext` with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade (`getTask`, `listTasks`, `searchTasks`, `createTask`, `updateTask`), and the plugin/context KV.
-
-### Contribution Naming
-
-- LLM-facing tool name: `plugin_<sanitized-plugin-id>__<tool-name>` (e.g., `plugin_hello_world__greet`).
-- Command name: `plugin_<sanitized-plugin-id>_<command-name>`, registered through the same `ChatProvider.registerCommand` path as core commands.
-- Scheduled job owner: `plugin:<pluginId>:<jobName>`, executed only for contexts where the plugin is enabled and eligible.
-- Prompt fragments are synchronous strings or sync functions; appended to the system prompt with a 2,000-char-per-fragment / 8,000-char-total budget.
-
-### Permissions (MVP)
-
-`storage`, `tasks.read`, `tasks.write`, `commands`, `scheduler`, `chat.send`. Only `storage`, `tasks.read`, and `tasks.write` have runtime gating today; the others are declared for future enforcement. Raw chat sending, raw provider access, raw DB access, and arbitrary network access are not exposed.
-
-### Admin Command
-
-`/plugin` is DM-only and bot-admin-only. Subcommands: `list`, `info <id>`, `approve <id>`, `reject <id>`, `enable <id> [context-id]`, `disable <id> [context-id]`. Approve/reject take effect on next startup; enable/disable take effect on the next tool/prompt assembly.
-
-## Available Tools
-
-Tool exposure is capability-gated and also depends on context (`dm` vs `group`, `normal` vs `proactive`, presence of a storage context, and provider identity support).
-
-### Core Tools
-
-- `create_task`
-- `update_task`
-- `search_tasks`
-- `list_tasks`
-- `get_task`
-- `get_current_time`
-
-### Capability-Gated Provider Tools
-
-- task deletion: `delete_task`
-- task counting: `count_tasks`
-- relations: `add_task_relation`, `update_task_relation`, `remove_task_relation`
-- comments: `get_comments`, `add_comment`, `update_comment`, `remove_comment`, `add_comment_reaction`, `remove_comment_reaction`
-- projects: `list_projects`, `create_project`, `update_project`, `delete_project`, `list_project_team`, `add_project_member`, `remove_project_member`
-- labels: `list_labels`, `create_label`, `update_label`, `remove_label`, `add_task_label`, `remove_task_label`
-- statuses: `list_statuses`, `create_status`, `update_status`, `delete_status`, `reorder_statuses`
-- work items: `list_work`, `log_work`, `update_work`, `remove_work`
-- attachments: `list_attachments`, `upload_attachment`, `remove_attachment`
-- collaboration: `list_watchers`, `add_watcher`, `remove_watcher`, `add_vote`, `remove_vote`, `set_visibility`, `find_user`
-
-### User / Context Tools
-
-- memos: `save_memo`, `search_memos`, `list_memos`, `archive_memos`, `promote_memo`
-- recurring tasks: `create_recurring_task`, `list_recurring_tasks`, `update_recurring_task`, `pause_recurring_task`, `resume_recurring_task`, `skip_recurring_task`, `delete_recurring_task`
-- deferred prompts: `create_deferred_prompt`, `list_deferred_prompts`, `get_deferred_prompt`, `update_deferred_prompt`, `cancel_deferred_prompt`
-- instructions: `save_instruction`, `list_instructions`, `delete_instruction`
-- group history: `lookup_group_history`
-- web: `web_fetch`
-- identity: `set_my_identity`, `clear_my_identity`
-
-Current phase-five provider features such as sprints, activities, saved queries, and agiles are available at the provider layer but do not yet have corresponding tool wrappers.
-
-### User-Configurable Tool Access
-
-Beyond capability + context gating, each personal or managed-group context can disable
-tools. Preferences are an opt-out denylist (default: all enabled) stored as JSON under a
-reserved `tool_prefs` config key and applied as the final filter in `makeTools()`. The
-system prompt (`src/system-prompt.ts`) is composed from tool-gated fragments so it never
-instructs the agent to use a disabled tool, and appends an "Unavailable tools" line for
-partially-disabled domains. Managed via the "🧰 Tools" section of `/config`.
+**Progressive disclosure (experimental, default OFF)** — with `progressive_disclosure` ON (same `tool_context_flags` key; same super-admin Feature flags section), `buildFullToolSet` applies `maybeApplyDisclosure` (`src/tools/disclosure/wire.ts`) after compaction: a turn-scoped `DisclosureSession` is created, `search_tools`/`load_tool` meta-tools are injected, and `invokeModel` attaches a `prepareStep` so each step's `activeTools` is only core (`get_current_time`) ∪ meta (`search_tools`, `load_tool`, `expand_result` when registered) ∪ explicitly loaded names — full tool schemas stay registered for execution/permissions but are not serialized until loaded. `search_tools` returns ranked schema-less briefs (`semantic_tool_retrieval` ON → BYOK-aware embedding-backed retriever resolving per-context credentials, recording usage, with per-endpoint+model brief caches and lexical fallback, OFF → lexical); a latched stall fallback opens all tools after 2 steps with no real loads, or when the last 2 completed steps were nothing but `search_tools`/`load_tool` churn (`disclosure:fallback` event). The system prompt gains a TOOL DISCOVERY preamble (advertises `expand_result` only when registered). `disclosure:search`/`disclosure:load` events carry counts/lengths only. Flag OFF is a reference-identical pass-through.
 
 ## Logging
 
-Logging is mandatory and uses pino with structured metadata-first calls.
-
-- `debug` — function entry, parameters, internal state, outbound request setup
-- `info` — successful high-value operations
-- `warn` — invalid input, degraded handling, blocked confirmation, expected recoverable issues
-- `error` — caught exceptions and failed external calls
-
-Never log tokens, API keys, session cookies, or other sensitive user data.
-
-## Testing Notes
-
-See `tests/CLAUDE.md` for detailed helper and mocking guidance.
-
-Important current points:
-
-- prefer DI over `mock.module()` where the module already supports it
-- helper functions such as `schemaValidates()`, `getToolExecutor()`, `setMockFetch()`, and `restoreFetch()` live in `tests/utils/test-helpers.ts`
-- `tests/mock-reset.ts` resets common mocked modules before each test and restores spies after each test
-- the repo still contains a mix of DI-first and legacy delayed-import/mock suites; follow the existing local pattern when touching those files unless you are intentionally refactoring the test style
+Mandatory; pino with structured metadata-first calls. `debug` — function entry/params/internal state/outbound setup; `info` — successful high-value ops; `warn` — invalid input, degraded handling, blocked confirmation, expected recoverable issues; `error` — caught exceptions and failed external calls. **Never log tokens, API keys, session cookies, or other sensitive data.**
 
 ## Key Conventions
 
-- Runtime: **Bun**
-- Validation: **Zod v4**
-- LLM integration: **Vercel AI SDK**
-- Chat platforms: **Grammy**, Mattermost REST/WebSocket, **discord.js**
-- Strict TypeScript
-- Use `.js` extension in import paths
-- Error extraction: `error instanceof Error ? error.message : String(error)`
-- Use `p-limit` for bounded concurrency instead of unbounded `Promise.all` over remote operations
-- Never add lint-disable or type-ignore comments; hook policy blocks them and the underlying issue must be fixed instead
-- If a `max-lines` or `max-lines-per-function` lint rule fails, treat it as a design signal: split the file or extract smaller focused functions instead of deleting blank lines, compressing formatting, or otherwise gaming the limit
+- Runtime **Bun**; validation **Zod v4**; LLM via **Vercel AI SDK**; chat via **Grammy** / Mattermost REST+WebSocket / **discord.js**.
+- Strict TypeScript; **use `.js` extension in import paths**.
+- Error extraction: `error instanceof Error ? error.message : String(error)`.
+- Use `p-limit` for bounded concurrency over remote ops, not unbounded `Promise.all`.
+- **Never add lint-disable or type-ignore comments** — hook policy blocks them; fix the underlying issue.
+- A `max-lines` / `max-lines-per-function` failure is a **design signal**: split the file or extract functions; do not game the limit by deleting blank lines or compressing formatting.
+
+## Testing Notes
+
+See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports it. Helpers (`schemaValidates()`, `getToolExecutor()`, `setMockFetch()`, `restoreFetch()`) live in `tests/utils/test-helpers.ts`; `tests/mock-reset.ts` resets common mocks per test. The repo mixes DI-first and legacy delayed-import/mock suites — follow the local pattern unless intentionally refactoring style. Mutation testing (Stryker) is local-only, not in the write-hook pipeline.
 
 ## Path-Scoped Conventions
-
-Detailed conventions live in path-scoped `CLAUDE.md` files:
 
 | Path                      | Covers                                                                 |
 | ------------------------- | ---------------------------------------------------------------------- |
 | `src/providers/CLAUDE.md` | normalized provider interface, capabilities, provider-layer rules      |
 | `src/tools/CLAUDE.md`     | tool assembly, execution wrapping, confirmations, context gating       |
-| `src/commands/CLAUDE.md`  | command handler rules and DM/group setup flow                          |
+| `src/commands/CLAUDE.md`  | command handler rules and current command surface                      |
 | `src/chat/CLAUDE.md`      | chat provider interface, capabilities, context rendering, interactions |
-| `tests/CLAUDE.md`         | helpers, mocks, mock reset, E2E test guidance                          |
-| `review-loop/CLAUDE.md`   | review-loop workspace structure, scripts, storage, and TDD rules       |
+| `src/mcp/CLAUDE.md`       | external MCP server adapter, connection pooling, tool namespacing      |
+| `tests/CLAUDE.md`         | helpers, mocks, mock reset, E2E guidance                               |
+| `review-loop/CLAUDE.md`   | review-loop workspace structure, scripts, storage, TDD rules           |
 
-Plugin authors should also consult `docs/plugins/developer-guide.md` (manifest schema, factory contract, context API, permissions) and the working example under `docs/plugins/examples/hello-world/`.
-
-The `codeindex` MCP server now lives in a separate project at `~/Projects/papai/codeindex/`. See its `CLAUDE.md` for structure and scripts.
+Plugin authors: `docs/plugins/developer-guide.md` + `docs/plugins/examples/hello-world/`. The `codeindex` MCP server lives in a separate project at `~/Projects/papai/codeindex/`.
 
 ## Pi Workflow
 
-When the current harness supports `obra/superpowers` skills, preserve that workflow instead of replacing it with unrelated agent packages.
-
-- Load `using-superpowers` at the start of the session before taking action.
-- Load any other applicable `obra/superpowers` skill before responding, editing files, or running commands.
-- Do not rely on memory of skill contents; load the current skill text each time.
+When the harness supports `obra/superpowers` skills, preserve that workflow. Load `using-superpowers` at session start before acting; load any other applicable skill before responding, editing, or running commands; do not rely on memory of skill contents — load the current text each time.
 
 ## Codebase Search Protocol
 
-When working inside this project, prefer the `codeindex` MCP server tools for structural code queries.
+Prefer the `codeindex` MCP server for structural code queries.
 
-### Tool selection
+| When                                    | Use                                                     |
+| --------------------------------------- | ------------------------------------------------------- |
+| Exact symbol / export / qualified name  | `code_symbol` with `limit: 5`                           |
+| Keyword / concept / exploratory         | `code_search` with `scopeTiers: ["exported", "member"]` |
+| Found a symbol, need callers/dependents | `code_impact`                                           |
+| Stale data suspected after edits        | `code_index` with `mode: "incremental"`                 |
 
-| When                                                      | Use                                                     |
-| --------------------------------------------------------- | ------------------------------------------------------- |
-| You know the exact symbol, export name, or qualified name | `code_symbol` with `limit: 5`                           |
-| Keyword, concept, or exploratory search                   | `code_search` with `scopeTiers: ["exported", "member"]` |
-| You found a symbol and need callers/references/dependents | `code_impact`                                           |
-| Stale data suspected after edits                          | `code_index` with `mode: "incremental"`                 |
+Shape queries with `kinds` (e.g. `["function_declaration", ...]`) and `scopeTiers` (prefer `["exported", "member"]`). Fallback to `grep`/`glob` **only** for non-indexed files (config, markdown, `.json`, non-JS/TS); `read` individual files as last resort.
 
-### Query-shaping tips
+**Do not:** use `grep` for symbol defs/usage inside `src/`/`client/`; use `glob src/**/*.ts` to discover symbols by filename; use `task explore` for structural navigation; run the codeindex CLI directly. An auto-reindex plugin runs incremental reindexing after `write`/`edit`/`multiedit` under `src/`/`client/`; call `code_index` `incremental` explicitly if you suspect staleness.
 
-- Use `kinds` to narrow results to specific declarations (e.g., `["function_declaration", "class_declaration", "interface_declaration"]`).
-- Use `scopeTiers` to skip local-variable noise. Prefer `["exported", "member"]` unless local symbols are intentionally needed.
-- Use `code_symbol` for names you know (e.g., `resolveMattermostUserId`, `src/chat/mattermost/index#MattermostChatProvider>resolveUserId`).
-- Use `code_search` for concepts (e.g., `mattermost user identity`, `task provider resolver`).
+## Security
 
-### Fallback
-
-1. **Fallback** — Use `grep` or `glob` ONLY for files outside the indexed source tree (config files, markdown, `.json`, non-JS/TS assets).
-2. **Last resort** — Use `read` on individual files when `codeindex` returns no results and the file is known to exist.
-
-### Do not
-
-- Do NOT use `grep` to search for symbol definitions or usage inside `src/` or `client/`.
-- Do NOT use `glob` with `src/**/*.ts` to discover symbols by filename.
-- Do NOT use `task explore` for structural codebase navigation when the repository is indexed.
-- Do NOT run the codeindex CLI directly in conversation; use the MCP tools instead.
-
-### Auto-reindexing
-
-This repository includes an auto-reindex plugin. After `write`/`edit`/`multiedit` calls on files under `src/` or `client/`, incremental reindexing happens automatically. If you suspect stale data, call `code_index` with mode `incremental` explicitly.
+`bun security` (local Semgrep) / `bun security:ci`. Covers OWASP-style issues, TS/JS pitfalls, and AI/LLM concerns (prompt-injection-adjacent unsafe fetch, accidental secret exposure).

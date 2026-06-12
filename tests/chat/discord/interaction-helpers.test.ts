@@ -11,6 +11,7 @@ import {
 } from '../../../src/chat/discord/interaction-helpers.js'
 
 describe('buildDiscordInteraction', () => {
+  const platformInstanceId = 'discord-default'
   const baseCtx: DiscordInteractionContext = {
     user: { id: '123456', username: 'testuser' },
     customId: 'button:action',
@@ -25,7 +26,7 @@ describe('buildDiscordInteraction', () => {
       channel: { type: 1 },
     }
 
-    const result = buildDiscordInteraction(dmCtx, false)
+    const result = buildDiscordInteraction(dmCtx, false, platformInstanceId)
 
     expect(result).not.toBeNull()
     expect(result?.kind).toBe('button')
@@ -45,7 +46,7 @@ describe('buildDiscordInteraction', () => {
       channel: { type: 0 },
     }
 
-    const result = buildDiscordInteraction(groupCtx, true)
+    const result = buildDiscordInteraction(groupCtx, true, platformInstanceId)
 
     expect(result).not.toBeNull()
     expect(result?.kind).toBe('button')
@@ -65,7 +66,7 @@ describe('buildDiscordInteraction', () => {
       customId: '',
     }
 
-    const result = buildDiscordInteraction(emptyCtx, false)
+    const result = buildDiscordInteraction(emptyCtx, false, platformInstanceId)
 
     expect(result).toBeNull()
   })
@@ -76,7 +77,7 @@ describe('buildDiscordInteraction', () => {
       user: { id: '123456', username: '' },
     }
 
-    const result = buildDiscordInteraction(noUsernameCtx, false)
+    const result = buildDiscordInteraction(noUsernameCtx, false, platformInstanceId)
 
     expect(result).not.toBeNull()
     expect(result?.user.username).toBeNull()
@@ -88,7 +89,7 @@ describe('buildDiscordInteraction', () => {
       channel: null,
     }
 
-    const result = buildDiscordInteraction(nullChannelCtx, false)
+    const result = buildDiscordInteraction(nullChannelCtx, false, platformInstanceId)
 
     expect(result).not.toBeNull()
     expect(result?.contextType).toBe('group')

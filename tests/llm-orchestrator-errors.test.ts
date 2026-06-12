@@ -5,10 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { classifyKaneoError, KaneoClassifiedError } from '../plugins/task-provider-kaneo/classify-error.js'
+import { KaneoApiError } from '../plugins/task-provider-kaneo/errors.js'
 import { getUserMessage, providerError, systemError } from '../src/errors.js'
 import { ProviderClassifiedError } from '../src/providers/errors.js'
-import { classifyKaneoError, KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
-import { KaneoApiError } from '../src/providers/kaneo/errors.js'
 
 describe('Error handling in llm-orchestrator', () => {
   describe('classifyKaneoError with context', () => {

@@ -3,25 +3,31 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export type ToolDomain =
-  | 'task'
-  | 'project'
-  | 'comment'
-  | 'label'
-  | 'status'
-  | 'attachment'
-  | 'work'
-  | 'sprint'
-  | 'query'
-  | 'collaboration'
-  | 'memo'
-  | 'recurring'
-  | 'deferred'
-  | 'instruction'
-  | 'history'
-  | 'web'
-  | 'identity'
-  | 'time'
+export const TOOL_DOMAINS = [
+  'task',
+  'project',
+  'comment',
+  'label',
+  'status',
+  'attachment',
+  'work',
+  'sprint',
+  'query',
+  'collaboration',
+  'memo',
+  'recurring',
+  'deferred',
+  'instruction',
+  'history',
+  'web',
+  'identity',
+  'time',
+  'mcp',
+  'plugin',
+  'memory',
+] as const
+
+export type ToolDomain = (typeof TOOL_DOMAINS)[number]
 
 export type ToolOperation = 'read' | 'create' | 'update' | 'delete' | 'manage'
 
@@ -134,6 +140,11 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   archive_memos: write('memo', 'update'),
   promote_memo: write('memo', 'create'),
 
+  search_memory: read('memory'),
+  list_memory: read('memory'),
+  remember_memory: write('memory', 'create'),
+  forget_memory: destructive('memory'),
+
   create_recurring_task: write('recurring', 'create'),
   list_recurring_tasks: read('recurring'),
   update_recurring_task: write('recurring', 'update'),
@@ -157,5 +168,18 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
 }
 
 export function getToolMetadata(toolName: string): ToolClassification | undefined {
-  return TOOL_METADATA[toolName]
+  const staticMeta = TOOL_METADATA[toolName]
+  if (staticMeta !== undefined) return staticMeta
+
+  // MCP tools: mcp_<server-id>__<tool_name>
+  if (toolName.startsWith('mcp_')) {
+    return { domain: 'mcp', operation: 'read', risk: 'open-world' }
+  }
+
+  // Plugin tools: plugin_<plugin-id>__<tool_name>
+  if (toolName.startsWith('plugin_')) {
+    return { domain: 'plugin', operation: 'read', risk: 'open-world' }
+  }
+
+  return undefined
 }

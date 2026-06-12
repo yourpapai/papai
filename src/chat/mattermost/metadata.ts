@@ -6,6 +6,8 @@
 import type { ChatCapability, ChatProviderConfigRequirement, ChatProviderTraits } from '../types.js'
 
 export const mattermostCapabilities: ReadonlySet<ChatCapability> = new Set<ChatCapability>([
+  'interactions.callbacks',
+  'messages.buttons',
   'messages.delete',
   'messages.files',
   'messages.reply-context',
@@ -19,6 +21,6 @@ export const mattermostTraits: ChatProviderTraits = {
 }
 
 export const mattermostConfigRequirements: readonly ChatProviderConfigRequirement[] = [
-  { key: 'MATTERMOST_URL', label: 'Mattermost URL', required: true },
-  { key: 'MATTERMOST_BOT_TOKEN', label: 'Mattermost Bot Token', required: true },
+  { key: 'baseUrl', label: 'Mattermost URL', required: true },
+  { key: 'token', label: 'Mattermost Bot Token', required: true },
 ]

@@ -60,9 +60,22 @@ describe('DebugDetailRail.svelte', () => {
         },
       },
     })
-    const closeBtn = target.querySelector<HTMLButtonElement>('.debug-detail-rail__close')!
+    const closeBtn = target.querySelector<HTMLButtonElement>('.debug-detail-rail__header .ui-btn')!
     closeBtn.click()
     expect(cleared).toBe(true)
     void unmount(component)
+  })
+
+  test('renders the close control as a kit Btn', () => {
+    const c = mount(DebugDetailRail, {
+      target,
+      props: {
+        selected: { kind: 'log', payload: { entry: { time: 0, level: 30, msg: 'x' }, index: 0 } },
+        onClear: () => {},
+      },
+    })
+    const closeBtn = target.querySelector('.debug-detail-rail__header .ui-btn')
+    expect(closeBtn).not.toBeNull()
+    void unmount(c)
   })
 })

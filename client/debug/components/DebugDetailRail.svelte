@@ -4,6 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import Btn from '../../shared/ui/Btn.svelte'
   import Caption from '../../shared/ui/Caption.svelte'
 
   import FailureDetail from './FailureDetail.svelte'
@@ -49,7 +50,7 @@
   {:else}
     <div class="debug-detail-rail__header">
       <span class="debug-detail-rail__label">{headerLabel}</span>
-      <button class="debug-detail-rail__close" onclick={onClear}>✕</button>
+      <Btn variant="ghost" size="sm" onClick={onClear}>{#snippet children()}✕{/snippet}</Btn>
     </div>
     <div class="debug-detail-rail__body">
       {#if selected.kind === 'turn'}
@@ -101,19 +102,6 @@
     color: var(--fg2);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-  }
-  .debug-detail-rail__close {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--fg2);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 2px;
-  }
-  .debug-detail-rail__close:hover {
-    background: var(--raised);
   }
   .debug-detail-rail__body {
     flex: 1;

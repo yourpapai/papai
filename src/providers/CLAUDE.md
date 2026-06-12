@@ -1,5 +1,16 @@
 # Provider Conventions
 
+## Built-In vs Plugin Providers
+
+`createProvider` resolves task providers exclusively through the plugin-contributed registry. There are no built-in task provider factories; **`builtinDescriptorSeeds`** is empty.
+
+Both first-party providers are plugin-contributed:
+
+- **Kaneo**: `plugins/task-provider-kaneo/` — canonical reference implementation.
+- **YouTrack**: `plugins/task-provider-youtrack/` — second provider-plugin example with a simpler config schema (instance **`baseUrl`**, context **`token`**).
+
+Providers are registered via `ctx.registration.registerTaskProviderType()` in an approved, active plugin. `createProvider` resolves only through the contributed registry.
+
 ## Interface
 
 All providers implement `TaskProvider` from `src/providers/types.ts`. Core methods are required; optional methods are gated by `Capability` strings (e.g. `'tasks.archive'`, `'comments.create'`).

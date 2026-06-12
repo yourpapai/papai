@@ -151,6 +151,61 @@ describe('nextOccurrence', () => {
     expect(next?.toISOString()).toBe('2026-03-08T13:00:00.000Z')
   })
 
+  it('finds the next occurrence when dtstart is decades in the past', () => {
+    // RRuleTemporal.next() enumerates from DTSTART; without a windowed scan a
+    // ~30-year-old daily rule exceeds the library's maxIterations and throws.
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+        dtstartUtc: '1996-01-01T09:00:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:00Z'),
+    )
+    expect(next?.toISOString()).toBe('2026-06-16T09:00:00.000Z')
+  })
+
+  it('finds the next occurrence for an aged HOURLY rule (cron */hour translation)', () => {
+    // HOURLY hits maxIterations after ~14 months of dtstart age.
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=HOURLY;BYMINUTE=30',
+        dtstartUtc: '2024-01-01T00:30:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:00Z'),
+    )
+    expect(next?.toISOString()).toBe('2026-06-15T12:30:00.000Z')
+  })
+
+  it('finds the next occurrence for a MINUTELY rule with a recent dtstart', () => {
+    // MINUTELY packs 10,080 occurrences into 7 days, so any scan window must
+    // stay under the library's 10k iteration cap.
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=MINUTELY',
+        dtstartUtc: '2026-06-15T11:50:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:30Z'),
+    )
+    expect(next?.toISOString()).toBe('2026-06-15T12:01:00.000Z')
+  })
+
+  it('returns null instead of throwing for a rule that can never match', () => {
+    // February 30th never exists; the library's iteration cap fires instead of
+    // terminating, and that must surface as a degraded null, not a throw.
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30',
+        dtstartUtc: '2026-01-01T09:00:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:00Z'),
+    )
+    expect(next).toBeNull()
+  })
+
   it('handles DST spring-forward in America/New_York correctly', () => {
     // 2026-03-08 is spring-forward in America/New_York (2:00 → 3:00)
     const next = nextOccurrence(

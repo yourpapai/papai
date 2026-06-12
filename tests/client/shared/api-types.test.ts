@@ -55,7 +55,6 @@ describe('api-types', () => {
       factsCount: 5,
       summary: null,
       configKeys: ['llm_apikey'],
-      workspaceId: null,
     }
 
     const wizard: Wizard = {
@@ -227,6 +226,7 @@ describe('api-types', () => {
       value: 'sk-proj-...',
       updatedAt: 123456789,
       updatedBy: 'user123',
+      required: true,
     }
 
     const llmSnapshot: AdminLlmSnapshot = {

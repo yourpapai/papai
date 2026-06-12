@@ -52,6 +52,9 @@ const globalPayload = (overrides: Partial<GlobalStats> | null): GlobalStats => {
     toolMix: {
       topTools: [{ toolName: 'create_task', count: 8, successRate: 1 }],
       errorTypeCounts: {},
+      totalCalls: 8,
+      totalSuccessRate: 1,
+      toolCallGrowth30d: [{ date: '2026-05-01', count: 5 }],
     },
     llmUsage: {
       totalCalls: 0,
@@ -112,37 +115,43 @@ afterEach(() => {
 })
 
 describe('admin StatsPanel', () => {
-  test('renders title and window selector', () => {
+  test('renders title and window Seg buttons', () => {
     installFetch({ payload: null, status: null, error: null })
     const { target, component } = render(freshState())
     expect(target.textContent).toContain('Stats')
-    const select = target.querySelector<HTMLSelectElement>('[data-testid="stats-window-select"]')
-    expect(select).not.toBeNull()
+    const segBtns = target.querySelectorAll('.ui-seg__btn')
+    expect(segBtns.length).toBeGreaterThan(0)
+    const labels = Array.from(segBtns).map((b) => b.textContent?.trim())
+    expect(labels).toContain('30d')
+    expect(labels).toContain('7d')
+    expect(labels).toContain('1d')
     void unmount(component)
   })
 
-  test('fetches /stats/global on mount and renders DM total + active counts', async () => {
+  test('fetches /stats/global on mount and renders active counts', async () => {
     const calls = installFetch({ payload: null, status: null, error: null })
     const { target, component } = render(freshState())
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
     expect(calls.some((url) => url.startsWith('/stats/global'))).toBe(true)
-    expect(target.textContent).toMatch(/42/u)
-    expect(target.textContent).toMatch(/Group total/u)
+    // active 1d = 3, 7d = 9, 30d = 21 from globalPayload; total subjects = 42+7 = 49
+    expect(target.textContent).toMatch(/3/u)
+    expect(target.textContent).toMatch(/9/u)
+    expect(target.textContent).toMatch(/21/u)
     void unmount(component)
   })
 
-  test('refetches when the window selector changes', async () => {
+  test('refetches when the window Seg button changes', async () => {
     const calls = installFetch({ payload: null, status: null, error: null })
     const state = freshState()
     const { target, component } = render(state)
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
-    const select = target.querySelector<HTMLSelectElement>('[data-testid="stats-window-select"]')
-    expect(select).not.toBeNull()
-    const selectEl = select!
-    selectEl.value = '7d'
-    selectEl.dispatchEvent(new Event('change', { bubbles: true }))
+    // Find and click the 7d button
+    const segBtns = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn'))
+    const btn7d = segBtns.find((b) => b.textContent?.trim() === '7d')
+    expect(btn7d).not.toBeUndefined()
+    btn7d!.click()
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
     expect(calls.some((url) => url.includes('window=7d'))).toBe(true)
@@ -155,6 +164,102 @@ describe('admin StatsPanel', () => {
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
     expect(target.textContent).toMatch(/boom/u)
+    void unmount(component)
+  })
+
+  test('renders all four distribution row labels', async () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    expect(target.textContent).toContain('memos / subject')
+    expect(target.textContent).toContain('recurring / subject')
+    expect(target.textContent).toContain('messages / subject')
+    expect(target.textContent).toContain('attach bytes / subject')
+    void unmount(component)
+  })
+
+  test('renders tool calls panel with total calls and top tool', async () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    expect(target.textContent).toContain('tool calls')
+    expect(target.textContent).toContain('create_task')
+    void unmount(component)
+  })
+
+  test('formats storage bytes via the shared fmtBytes (base-1024, no decimals >=10)', async () => {
+    const payload = globalPayload({ storage: { sqliteBytes: 277806, s3AttachmentBytes: 0 } })
+    installFetch({ payload, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    expect(target.textContent).toContain('271 KB')
+    expect(target.textContent).not.toContain('271.3 KB')
+    void unmount(component)
+  })
+
+  test('flags active-subject count exceeding total via Stat warn state (A5)', async () => {
+    const payload = globalPayload({
+      active: { activeIn1d: 1, activeIn7d: 2, activeIn30d: 13 },
+      subjects: {
+        dmTotal: 3,
+        groupTotal: 1,
+        growthLast30d: [{ date: '2026-05-01', dmAdded: 1, groupAdded: 0 }],
+      },
+    })
+    installFetch({ payload, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    expect(target.querySelector('.ui-stat__value--over')).not.toBeNull()
+    expect(target.textContent).toContain('exceeds total')
+    void unmount(component)
+  })
+
+  test('tool-calls panel renders exactly one DataTable header set (A3 guard)', async () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    // Scope to the tool-calls panel so the distributions table headers are excluded
+    const panelTitles = [...target.querySelectorAll('.ui-panel__title')]
+    const toolCallsTitle = panelTitles.find((el) => el.textContent?.trim() === 'tool calls')
+    expect(toolCallsTitle).not.toBeUndefined()
+    const toolCallsPanel = toolCallsTitle!.closest('.ui-panel')
+    expect(toolCallsPanel).not.toBeNull()
+    const headerCells = [...toolCallsPanel!.querySelectorAll('.ui-datatable__th')]
+    const headerLabels = headerCells.map((th) => th.textContent?.trim())
+    expect(headerLabels).toEqual(['Tool', 'Calls', 'Success'])
+    void unmount(component)
+  })
+
+  test('renders the Stats header via PageHeader (single title, no hand-rolled header)', () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    expect(target.querySelector('[data-testid="admin-section-title"]')?.textContent).toBe('Stats')
+    expect(target.querySelector('.ui-page-header')).not.toBeNull()
+    expect(target.querySelector('.stats-panel__header')).toBeNull()
+    void unmount(component)
+  })
+
+  test('tool-calls chart renders before the table, not overlapping (A2 guard)', async () => {
+    installFetch({ payload: null, status: null, error: null })
+    const { target, component } = render(freshState())
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+    // Scope to the tool-calls panel to avoid the distributions table being found first
+    const panelTitles = [...target.querySelectorAll('.ui-panel__title')]
+    const toolCallsTitle = panelTitles.find((el) => el.textContent?.trim() === 'tool calls')
+    expect(toolCallsTitle).not.toBeUndefined()
+    const toolCallsPanel = toolCallsTitle!.closest('.ui-panel')
+    expect(toolCallsPanel).not.toBeNull()
+    const spark = toolCallsPanel!.querySelector('.stats-panel__sparkline')
+    const table = toolCallsPanel!.querySelector('.ui-datatable')
+    expect(spark).not.toBeNull()
+    expect(table).not.toBeNull()
+    expect(spark!.compareDocumentPosition(table!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     void unmount(component)
   })
 })

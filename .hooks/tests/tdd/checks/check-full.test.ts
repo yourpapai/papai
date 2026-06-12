@@ -6,9 +6,13 @@ describe('formatCheckResult', () => {
   test('formats single failure', () => {
     const result = formatCheckResult([{ check: 'lint', files: ['src/foo.ts', 'src/bar.ts'] }])
     expect(result).toBe(
-      '`bun check:full` found issues. Fix before stopping:\n\n' +
-        '- lint: 2 files (src/foo.ts, src/bar.ts)\n\n' +
-        'Run `bun check:full` for details.',
+      [
+        '`bun check:full` failed with the following failed checks:',
+        '- lint',
+        '',
+        'Fix the failed check(s), then rerun:',
+        'bun run lint',
+      ].join('\n'),
     )
   })
 
@@ -19,20 +23,30 @@ describe('formatCheckResult', () => {
       { check: 'test', files: ['tests/c.test.ts', 'tests/d.test.ts'] },
     ])
     expect(result).toBe(
-      '`bun check:full` found issues. Fix before stopping:\n\n' +
-        '- lint: 1 file (src/a.ts)\n' +
-        '- typecheck: 1 file (src/b.ts)\n' +
-        '- test: 2 files (tests/c.test.ts, tests/d.test.ts)\n\n' +
-        'Run `bun check:full` for details.',
+      [
+        '`bun check:full` failed with the following failed checks:',
+        '- lint',
+        '- typecheck',
+        '- test',
+        '',
+        'Fix the failed check(s), then rerun:',
+        'bun run lint',
+        'bun run typecheck',
+        'bun run test',
+      ].join('\n'),
     )
   })
 
   test('formats failure with no parseable files', () => {
     const result = formatCheckResult([{ check: 'knip', files: [] }])
     expect(result).toBe(
-      '`bun check:full` found issues. Fix before stopping:\n\n' +
-        '- knip: issues found (no file paths detected)\n\n' +
-        'Run `bun check:full` for details.',
+      [
+        '`bun check:full` failed with the following failed checks:',
+        '- knip',
+        '',
+        'Fix the failed check(s), then rerun:',
+        'bun run knip',
+      ].join('\n'),
     )
   })
 })

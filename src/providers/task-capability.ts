@@ -47,3 +47,10 @@ export type TaskCapability =
   | 'sprints.assign'
   | 'activities.read'
   | 'queries.saved'
+
+export type TaskProviderTrait =
+  | 'workspace-scoped'
+  | 'task-label-read-requires-provider-specific-api'
+  | 'supports-command-language'
+  | 'command-language:youtrack'
+  | 'custom-fields'

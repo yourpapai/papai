@@ -18,6 +18,11 @@
   padding: 14px;
   border-right: 1px solid var(--border);
   background: var(--surface);
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: 100vh;
+  overflow-y: auto;
 }
 
 .admin-sidebar a {
@@ -157,6 +162,8 @@
     flex-flow: row wrap;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+    position: static;
+    max-height: none;
   }
 
   .admin-section-header {

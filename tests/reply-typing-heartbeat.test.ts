@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ReplyFn } from '../src/chat/types.js'
 import { withReplyTypingHeartbeat } from '../src/reply-typing-heartbeat.js'
-import { mockLogger } from './utils/test-helpers.js'
+import { mockLogger, waitFor } from './utils/test-helpers.js'
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -74,9 +74,8 @@ describe('reply typing heartbeat', () => {
     await withReplyTypingHeartbeat(
       reply,
       async () => {
-        await wait(55)
+        await waitFor(() => typingCalls.length >= 2)
 
-        expect(typingCalls.length).toBeGreaterThanOrEqual(2)
         expect(textCalls).toHaveLength(0)
       },
       { intervalMs: 20 },
@@ -129,9 +128,8 @@ describe('reply typing heartbeat', () => {
     await withReplyTypingHeartbeat(
       reply,
       async (wrappedReply) => {
-        await wait(25)
         // Should have retried typing after initial failure
-        expect(typingCalls.length).toBeGreaterThanOrEqual(1)
+        await waitFor(() => typingCalls.length >= 1)
         await wrappedReply.text('done')
       },
       { intervalMs: 20 },
@@ -160,9 +158,8 @@ describe('reply typing heartbeat', () => {
     await withReplyTypingHeartbeat(
       reply,
       async (wrappedReply) => {
-        await wait(100)
         // Should continue despite errors and eventually succeed
-        expect(typingCalls.length).toBeGreaterThanOrEqual(1)
+        await waitFor(() => typingCalls.length >= 1)
         await wrappedReply.text('done')
       },
       { intervalMs: 20 },
@@ -224,8 +221,7 @@ describe('reply typing heartbeat', () => {
     await withReplyTypingHeartbeat(
       reply,
       async (wrappedReply) => {
-        await wait(25)
-        expect(typingCalls.length).toBeGreaterThanOrEqual(1)
+        await waitFor(() => typingCalls.length >= 1)
         await wrappedReply.text('done')
       },
       { intervalMs: 20 },

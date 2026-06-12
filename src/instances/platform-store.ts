@@ -8,12 +8,20 @@ import { eq } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { platformInstances } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { rowsToInstancesSafe } from './decode-result.js'
 import { decryptInstanceConfig, encryptInstanceConfig } from './encryption.js'
-import type { InstanceConfig, InstanceStatus, PlatformInstance, PlatformInstanceType } from './types.js'
+import type {
+  InstanceConfig,
+  InstanceDecodeFailure,
+  InstanceDecodeResult,
+  InstanceStatus,
+  PlatformInstance,
+  PlatformInstanceType,
+} from './types.js'
 
 const log = logger.child({ scope: 'instances:platform-store' })
 
-const PLATFORM_INSTANCE_TYPES: readonly PlatformInstanceType[] = ['telegram', 'mattermost', 'discord']
+const PLATFORM_INSTANCE_TYPES: readonly PlatformInstanceType[] = ['telegram', 'mattermost', 'discord', 'kontur-talk']
 const INSTANCE_STATUSES: readonly InstanceStatus[] = ['pending', 'active', 'stopped']
 
 export interface InsertPlatformInstanceInput {
@@ -48,6 +56,13 @@ const rowToInstance = (row: typeof platformInstances.$inferSelect): PlatformInst
   createdAt: row.createdAt,
 })
 
+const decodeFailure = (row: typeof platformInstances.$inferSelect, error: unknown): InstanceDecodeFailure => ({
+  table: 'platform_instances',
+  id: row.id,
+  type: row.type,
+  error: error instanceof Error ? error.message : String(error),
+})
+
 export const insertPlatformInstance = (input: InsertPlatformInstanceInput): void => {
   getDrizzleDb()
     .insert(platformInstances)
@@ -71,8 +86,18 @@ export const listPlatformInstances = (): PlatformInstance[] => {
   return rows.map((row) => rowToInstance(row))
 }
 
-export const listActivePlatformInstances = (): PlatformInstance[] =>
-  listPlatformInstances().filter((instance) => instance.status === 'active')
+export const listPlatformInstancesSafe = (): InstanceDecodeResult<PlatformInstance> => {
+  const rows = getDrizzleDb().select().from(platformInstances).all()
+  return rowsToInstancesSafe(rows, rowToInstance, decodeFailure)
+}
+
+export const listActivePlatformInstancesSafe = (): InstanceDecodeResult<PlatformInstance> => {
+  const result = listPlatformInstancesSafe()
+  return {
+    instances: result.instances.filter((instance) => instance.status === 'active'),
+    failures: result.failures,
+  }
+}
 
 export const updatePlatformInstance = (id: string, patch: UpdatePlatformInstanceInput): void => {
   const set: Partial<typeof platformInstances.$inferInsert> = {}

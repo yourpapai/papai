@@ -5,11 +5,17 @@
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import { persistIncomingAttachments } from '../../src/attachments/index.js'
-import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { listActiveAttachments, persistIncomingAttachments, stageFileMetadata } from '../../src/attachments/index.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  toScopedContextId,
+  toScopedThreadContextId,
+} from '../../src/chat/scoped-context.js'
 import type { IncomingFile } from '../../src/chat/types.js'
 import { createAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
 import { getIdentityMapping } from '../../src/identity/mapping.js'
+import { listInstructions } from '../../src/instructions.js'
+import { listMemoryRecords } from '../../src/long-term-memory/store.js'
 import { listMemos } from '../../src/memos.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
@@ -17,8 +23,8 @@ import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../src/plugins/typ
 import type { TaskProvider } from '../../src/providers/types.js'
 import { listRecurringTasks } from '../../src/recurring.js'
 import { makeTools } from '../../src/tools/index.js'
-import { buildTools } from '../../src/tools/tools-builder.js'
-import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { buildProviderlessTools, buildTools } from '../../src/tools/tools-builder.js'
+import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 type DeferredListResult = Readonly<{ prompts: readonly Readonly<{ prompt: string }>[] }>
@@ -121,6 +127,130 @@ describe('buildTools', () => {
     expect(rawIdentity).not.toBeNull()
     expect(rawIdentity!.providerUserLogin).toBe('alice')
     expect(getIdentityMapping(scopedContextId, provider.name)).toBeNull()
+  })
+
+  it('uses parent group context for durable tools in scoped thread contexts', async () => {
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-42',
+    })
+    const parentContextId = getConfigContextIdFromStorageContextId(threadContextId)
+    const provider = createMockProvider()
+    const tools = buildTools(provider, 'user-123', threadContextId, 'normal', 'group', 'alice')
+
+    await getToolExecutor(tools['save_memo'])({ content: 'shared group memo' })
+    await getToolExecutor(tools['remember_memory'])({
+      content: 'The group remembers release notes are reviewed in the main channel.',
+      kind: 'procedure',
+    })
+    await getToolExecutor(tools['save_instruction'])({ text: 'Prefer concise replies' })
+    await getToolExecutor(tools['create_recurring_task'])({
+      title: 'Shared recurring task',
+      projectId: 'project-1',
+      triggerType: 'on_complete',
+    })
+    await getToolExecutor(tools['create_deferred_prompt'])({
+      prompt: 'Check blocked tasks',
+      condition: { field: 'task.status', op: 'eq', value: 'blocked' },
+      execution: { mode: 'lightweight', delivery_brief: 'Report blocked tasks' },
+    })
+
+    expect(parentContextId).not.toBe(threadContextId)
+    expect(listMemos(parentContextId).map((memo) => memo.content)).toContain('shared group memo')
+    expect(listMemos(threadContextId).map((memo) => memo.content)).not.toContain('shared group memo')
+    expect(
+      listMemoryRecords({ scopeId: parentContextId, scopeType: 'group', status: 'active' }).map((r) => r.content),
+    ).toContain('The group remembers release notes are reviewed in the main channel.')
+    expect(listMemoryRecords({ scopeId: threadContextId, scopeType: 'group', status: 'active' })).toEqual([])
+    expect(listInstructions(parentContextId).map((instruction) => instruction.text)).toContain('Prefer concise replies')
+    expect(listInstructions(threadContextId).map((instruction) => instruction.text)).not.toContain(
+      'Prefer concise replies',
+    )
+    expect(listRecurringTasks(parentContextId).map((task) => task.title)).toContain('Shared recurring task')
+    expect(listRecurringTasks(threadContextId).map((task) => task.title)).not.toContain('Shared recurring task')
+    const parentAlertPrompts = listAlertPrompts(parentContextId)
+    expect(parentAlertPrompts.map((prompt) => prompt.prompt)).toContain('Check blocked tasks')
+    expect(listAlertPrompts(threadContextId).map((prompt) => prompt.prompt)).not.toContain('Check blocked tasks')
+    expect(parentAlertPrompts[0]!.deliveryTarget.storageContextId).toBe(threadContextId)
+  })
+
+  it('keeps workspace and staged-file tools scoped to the current thread context', async () => {
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-42',
+    })
+    const parentContextId = getConfigContextIdFromStorageContextId(threadContextId)
+    const threadFile: IncomingFile = {
+      fileId: 'platform-thread-file',
+      filename: 'thread-note.txt',
+      mimeType: 'text/plain',
+      size: 12,
+      content: Buffer.from('thread file'),
+    }
+    const parentFile: IncomingFile = {
+      fileId: 'platform-parent-file',
+      filename: 'parent-note.txt',
+      mimeType: 'text/plain',
+      size: 12,
+      content: Buffer.from('parent file'),
+    }
+
+    await persistIncomingAttachments({ contextId: threadContextId, sourceProvider: 'telegram', files: [threadFile] })
+    await persistIncomingAttachments({ contextId: parentContextId, sourceProvider: 'telegram', files: [parentFile] })
+    const stagedThreadFile = stageFileMetadata({
+      contextId: threadContextId,
+      messageId: null,
+      senderId: 'user-123',
+      senderUsername: 'alice',
+      filename: 'thread-staged.txt',
+      mimeType: null,
+      size: null,
+      platformFileId: 'staged-thread-file',
+      sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-default',
+    })
+    const stagedParentFile = stageFileMetadata({
+      contextId: parentContextId,
+      messageId: null,
+      senderId: 'user-123',
+      senderUsername: 'alice',
+      filename: 'parent-staged.txt',
+      mimeType: null,
+      size: null,
+      platformFileId: 'staged-parent-file',
+      sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-default',
+    })
+    const stagedDownloadFn = mock(() => Promise.resolve(Buffer.from('resolved thread file')))
+
+    const provider = createMockProvider({ capabilities: new Set(['attachments.list']) })
+    const tools = buildTools(provider, 'user-123', threadContextId, 'normal', 'group', undefined, stagedDownloadFn)
+
+    const files = await getToolExecutor(tools['list_files'])({})
+    const staged = await getToolExecutor(tools['search_staged_files'])({ query: 'staged' })
+    const resolved = await getToolExecutor(tools['resolve_staged_file'])({ stagedId: stagedThreadFile.stagedId })
+    const threadAttachmentsAfterResolve = listActiveAttachments(threadContextId)
+    const resolvedThreadAttachment = threadAttachmentsAfterResolve.find(
+      (attachment) => attachment.filename === 'thread-staged.txt',
+    )
+
+    expect(files).toEqual([expect.objectContaining({ filename: 'thread-note.txt' })])
+    expect(staged).toEqual([expect.objectContaining({ filename: 'thread-staged.txt' })])
+    expect(resolved).toEqual({
+      status: 'resolved',
+      attachmentId: resolvedThreadAttachment!.attachmentId,
+      filename: 'thread-staged.txt',
+    })
+    expect(stagedDownloadFn).toHaveBeenCalledWith('staged-thread-file', 'telegram', 'telegram-default')
+    expect(threadAttachmentsAfterResolve.map((attachment) => attachment.filename)).toContain('thread-staged.txt')
+    expect(listActiveAttachments(parentContextId).map((attachment) => attachment.filename)).not.toContain(
+      'thread-staged.txt',
+    )
+    expect(listActiveAttachments(threadContextId).map((attachment) => attachment.filename)).not.toContain(
+      stagedParentFile.filename,
+    )
   })
 
   it('should conditionally add project tools', () => {
@@ -247,18 +377,23 @@ describe('buildTools', () => {
     expect(tools).not.toHaveProperty('run_saved_query')
   })
 
-  it('should expose apply_youtrack_command only for the YouTrack provider', () => {
-    const provider = createMockProvider({ name: 'youtrack' as const })
+  it('should expose apply_youtrack_command only for providers with the YouTrack command-language trait', () => {
+    const provider = createMockProvider({
+      name: 'custom',
+      traits: new Set(['command-language:youtrack']),
+    })
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
     expect(tools).toHaveProperty('apply_youtrack_command')
 
-    const nonYouTrackTools = buildTools(createMockProvider({ name: 'mock' }), 'user-123', 'user-123', 'normal')
-    expect(nonYouTrackTools).not.toHaveProperty('apply_youtrack_command')
+    const spoofedProvider = createMockProvider({ name: 'youtrack' as const, traits: new Set() })
+    const spoofedTools = buildTools(spoofedProvider, 'user-123', 'user-123', 'normal')
+    expect(spoofedTools).not.toHaveProperty('apply_youtrack_command')
   })
 
   it('should not expose apply_youtrack_command when tasks.commands capability is absent', () => {
     const provider = createMockProvider({
       name: 'youtrack' as const,
+      traits: new Set(['command-language:youtrack']),
       capabilities: new Set(
         [...createMockProvider().capabilities].filter((capability) => capability !== 'tasks.commands'),
       ),
@@ -272,6 +407,7 @@ describe('buildTools', () => {
   it('should not expose apply_youtrack_command when applyCommand is missing', () => {
     const provider = createMockProvider({
       name: 'youtrack' as const,
+      traits: new Set(['command-language:youtrack']),
       applyCommand: undefined,
     })
 
@@ -281,7 +417,7 @@ describe('buildTools', () => {
   })
 
   it('should not expose apply_youtrack_command in proactive mode', () => {
-    const provider = createMockProvider({ name: 'youtrack' as const })
+    const provider = createMockProvider({ name: 'youtrack' as const, traits: new Set(['command-language:youtrack']) })
 
     const tools = buildTools(provider, 'user-123', 'user-123', 'proactive')
 
@@ -304,6 +440,88 @@ describe('buildTools', () => {
     expect(tools).not.toHaveProperty('list_memos')
     expect(tools).not.toHaveProperty('create_recurring_task')
     expect(tools).not.toHaveProperty('save_instruction')
+    expect(tools).not.toHaveProperty('remember_memory')
+  })
+
+  it('exposes memory tools when storage context and context type are available', () => {
+    const provider = createMockProvider()
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal', 'dm')
+
+    expect(tools).toHaveProperty('search_memory')
+    expect(tools).toHaveProperty('remember_memory')
+    expect(tools).toHaveProperty('forget_memory')
+    expect(tools).toHaveProperty('list_memory')
+  })
+
+  it('does not expose memory tools without context type', () => {
+    const provider = createMockProvider()
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
+
+    expect(tools).not.toHaveProperty('search_memory')
+    expect(tools).not.toHaveProperty('remember_memory')
+    expect(tools).not.toHaveProperty('forget_memory')
+    expect(tools).not.toHaveProperty('list_memory')
+  })
+
+  it('builds only provider-independent tools for providerless invocation', () => {
+    const tools = buildProviderlessTools('user-123', 'group-456:thread-1', 'normal', 'group')
+
+    expect(tools).toHaveProperty('get_current_time')
+    expect(tools).toHaveProperty('save_memo')
+    expect(tools).toHaveProperty('search_memos')
+    expect(tools).toHaveProperty('list_memos')
+    expect(tools).toHaveProperty('archive_memos')
+    expect(tools).toHaveProperty('search_memory')
+    expect(tools).toHaveProperty('remember_memory')
+    expect(tools).toHaveProperty('forget_memory')
+    expect(tools).toHaveProperty('list_memory')
+    expect(tools).toHaveProperty('create_recurring_task')
+    expect(tools).toHaveProperty('list_recurring_tasks')
+    expect(tools).toHaveProperty('save_instruction')
+    expect(tools).toHaveProperty('list_instructions')
+    expect(tools).toHaveProperty('delete_instruction')
+    expect(tools).toHaveProperty('lookup_group_history')
+    expect(tools).toHaveProperty('web_fetch')
+    expect(tools).toHaveProperty('create_deferred_prompt')
+    expect(tools).toHaveProperty('list_deferred_prompts')
+
+    expect(tools).not.toHaveProperty('create_task')
+    expect(tools).not.toHaveProperty('update_task')
+    expect(tools).not.toHaveProperty('search_tasks')
+    expect(tools).not.toHaveProperty('get_task')
+    expect(tools).not.toHaveProperty('list_projects')
+    expect(tools).not.toHaveProperty('get_comments')
+    expect(tools).not.toHaveProperty('list_statuses')
+    expect(tools).not.toHaveProperty('log_work')
+    expect(tools).not.toHaveProperty('add_task_relation')
+    expect(tools).not.toHaveProperty('set_my_identity')
+    expect(tools).not.toHaveProperty('promote_memo')
+  })
+
+  it('exposes only schedule-based deferred prompt creation in providerless mode', async () => {
+    const tools = buildProviderlessTools('user-123', 'group-456:thread-1', 'normal')
+    const createDeferredPrompt = tools['create_deferred_prompt']
+
+    expect(createDeferredPrompt).toBeDefined()
+    expect(
+      schemaValidates(createDeferredPrompt!, {
+        prompt: 'Remind me later',
+        schedule: { fire_at: { date: '2027-01-15', time: '09:00' } },
+      }),
+    ).toBe(true)
+    expect(
+      schemaValidates(createDeferredPrompt!, {
+        prompt: 'Alert me when a task is blocked',
+        condition: { field: 'task.status', op: 'eq', value: 'blocked' },
+      }),
+    ).toBe(false)
+
+    const result = await getToolExecutor(createDeferredPrompt!)({
+      prompt: 'Alert me when a task is blocked',
+      condition: { field: 'task.status', op: 'eq', value: 'blocked' },
+    })
+
+    expect(result).toEqual({ error: 'Task-dependent deferred alerts require a task provider.' })
   })
 
   it('should add lookup_group_history when contextId is a legacy thread', () => {
@@ -495,10 +713,10 @@ describe('makeTools direct integration', () => {
     await setupTestDb()
   })
 
-  it('exposes direct tools by default', () => {
+  it('exposes direct tools by default', async () => {
     const provider = createMockProvider()
 
-    const tools = makeTools(provider, {
+    const tools = await makeTools(provider, {
       storageContextId: 'user-123',
       chatUserId: 'user-123',
       contextType: 'dm',
@@ -508,19 +726,19 @@ describe('makeTools direct integration', () => {
     expect(tools).not.toHaveProperty('papai_tool')
   })
 
-  it('keeps internal context gating available through direct tool exposure', () => {
+  it('keeps internal context gating available through direct tool exposure', async () => {
     const provider = createMockProvider({
       identityResolver: {
         searchUsers: () => Promise.resolve([]),
       },
     })
 
-    const dmTools = makeTools(provider, {
+    const dmTools = await makeTools(provider, {
       storageContextId: 'user-123',
       chatUserId: 'user-123',
       contextType: 'dm',
     })
-    const groupTools = makeTools(provider, {
+    const groupTools = await makeTools(provider, {
       storageContextId: 'group-123',
       chatUserId: 'user-123',
       contextType: 'group',
@@ -558,7 +776,9 @@ describe('makeTools direct integration', () => {
         requiredChatCapabilities: [],
         configRequirements: [],
         providerCapabilities: [],
+        providerTraits: [],
         providerConfigSchema: [],
+        providerContextConfigSchema: [],
         providerAllowedHosts: [],
       },
       pluginDir: '/tmp/task-five-plugin',
@@ -589,7 +809,7 @@ describe('makeTools direct integration', () => {
       plugin.manifest,
     )
 
-    const tools = makeTools(createMockProvider(), {
+    const tools = await makeTools(createMockProvider(), {
       storageContextId,
       chatUserId: 'chat-user-task-five',
       contextType: 'dm',
@@ -632,7 +852,9 @@ describe('makeTools direct integration', () => {
         requiredChatCapabilities: [],
         configRequirements: [],
         providerCapabilities: [],
+        providerTraits: [],
         providerConfigSchema: [],
+        providerContextConfigSchema: [],
         providerAllowedHosts: [],
       },
       pluginDir: '/tmp/task-five-disabled-plugin',
@@ -662,7 +884,7 @@ describe('makeTools direct integration', () => {
       plugin.manifest,
     )
 
-    const tools = makeTools(createMockProvider(), {
+    const tools = await makeTools(createMockProvider(), {
       storageContextId,
       chatUserId: 'chat-user-task-five',
       contextType: 'dm',
@@ -703,7 +925,9 @@ describe('makeTools direct integration', () => {
           { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' },
         ],
         providerCapabilities: [],
+        providerTraits: [],
         providerConfigSchema: [],
+        providerContextConfigSchema: [],
         providerAllowedHosts: [],
       },
       pluginDir: '/tmp/task-six-missing-config-plugin',
@@ -734,7 +958,7 @@ describe('makeTools direct integration', () => {
       plugin.manifest,
     )
 
-    const tools = makeTools(createMockProvider(), {
+    const tools = await makeTools(createMockProvider(), {
       storageContextId,
       chatUserId: 'chat-user-task-six',
       contextType: 'dm',

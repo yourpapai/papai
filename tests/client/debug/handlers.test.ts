@@ -62,7 +62,6 @@ describe('handleStateInit', () => {
           factsCount: 0,
           summary: null,
           configKeys: [],
-          workspaceId: null,
         },
       ],
       scheduler: { running: true, tickCount: 1 },
@@ -115,7 +114,6 @@ describe('handleCacheEvent', () => {
       factsCount: 0,
       summary: null,
       configKeys: [],
-      workspaceId: null,
     })
     handleCacheEvent(s, { userId: 'u1', field: 'history' })
     expect(s.sessions.get('u1')!.historyLength).toBe(3)
@@ -132,7 +130,6 @@ describe('handleCacheExpire', () => {
       factsCount: 0,
       summary: null,
       configKeys: [],
-      workspaceId: null,
     })
     s.wizards.set('u1', { userId: 'u1', currentStep: 1, totalSteps: 3 })
     handleCacheExpire(s, { userId: 'u1' })

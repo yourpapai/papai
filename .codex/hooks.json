@@ -1,0 +1,61 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/ki/Projects/yourpapai/papai/.codex/hooks/pre-bash.mjs'"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/ki/Projects/yourpapai/papai/.codex/hooks/pre-tool-use.mjs'",
+            "timeout": 200,
+            "statusMessage": "TDD checks (pre-edit)..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/ki/Projects/yourpapai/papai/.codex/hooks/post-tool-use.mjs'",
+            "timeout": 200,
+            "statusMessage": "TDD checks (post-edit)..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/ki/Projects/yourpapai/papai/.codex/hooks/stop.mjs'",
+            "timeout": 300,
+            "statusMessage": "Running full check..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/ki/Projects/yourpapai/papai/.codex/hooks/doc-review-stop.mjs'",
+            "timeout": 200,
+            "statusMessage": "Checking doc review..."
+          }
+        ]
+      }
+    ]
+  }
+}

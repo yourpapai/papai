@@ -7,25 +7,55 @@
  * Configuration types shared between production and tests.
  */
 
-// Task-tracker specific config keys.
-// Note: kaneo_workspace_id is auto-provisioned and not user-visible.
-export type TaskProviderConfigKey = 'kaneo_apikey' | 'kaneo_workspace_id' | 'youtrack_token'
-export const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id' satisfies TaskProviderConfigKey
+// Plugin-namespaced config keys for the task-provider-kaneo plugin.
+// These are plain string constants (not ConfigKey union members); the flat
+// legacy keys ('kaneo_apikey', 'kaneo_workspace_id') were renamed to these
+// by migration 048_namespace_kaneo_config.
+export const KANEO_PLUGIN_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+export const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:workspaceId'
 
 // User preference config keys (always available)
 export type PreferenceConfigKey = 'timezone'
 
-// All per-user config keys. LLM credentials live in `system_config` (see
-// `src/system-config.ts`) and are owned by the bot admin, not per-user.
-export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey
+// MCP endpoint config keys
+export type McpConfigKey = 'mcp_endpoints'
 
-// All valid config keys (not filtered by provider)
-// Note: kaneo_workspace_id is auto-provisioned and stored separately
+// AI output visibility config keys (always available)
+export type AiOutputConfigKey = 'ai_tool_visibility' | 'ai_reasoning_visibility' | 'ai_output_detail_level'
+
+// Static per-user config keys. Provider-specific keys ('kaneo_apikey',
+// 'kaneo_workspace_id', 'youtrack_token', etc.) are no longer part of this
+// union; they are plugin-namespaced dynamic keys handled via
+// setConfigValue/getConfigValue + isAllowedDynamicConfigKey.
+// LLM credentials live in `system_config` (see `src/system-config.ts`)
+// and are owned by the bot admin, not per-user.
+export type ConfigKey = PreferenceConfigKey | McpConfigKey | AiOutputConfigKey
+
+export type ConfigFieldOption = {
+  readonly value: string
+  readonly label: string
+}
+
+export type ConfigField = {
+  readonly key: string
+  readonly storageKey: string
+  readonly label: string
+  readonly required: boolean
+  readonly sensitive: boolean
+  readonly kind: 'preference' | 'provider-context' | 'plugin-context' | 'ai-output'
+  readonly control?: 'text' | 'toggle' | 'select'
+  // Only meaningful for 'toggle'/'select' controls; ignored for 'text'.
+  readonly options?: readonly ConfigFieldOption[]
+}
+
+// All valid static config keys (preference and MCP only; provider keys are
+// handled via the dynamic-config path).
 export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
-  'kaneo_apikey',
-  KANEO_WORKSPACE_CONFIG_KEY,
-  'youtrack_token',
   'timezone',
+  'mcp_endpoints',
+  'ai_tool_visibility',
+  'ai_reasoning_visibility',
+  'ai_output_detail_level',
 ]
 
 /**
@@ -33,4 +63,26 @@ export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
  */
 export function isConfigKey(key: string): key is ConfigKey {
   return (ALL_CONFIG_KEYS as readonly string[]).includes(key)
+}
+
+const PLUGIN_PROVIDER_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:provider:[A-Za-z0-9][A-Za-z0-9_.-]*$/u
+const PLUGIN_CONTEXT_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:[a-z][a-z0-9_]*$/u
+
+/**
+ * Reserved system-internal config keys. Not user-visible in the settings UI
+ * (no matching ConfigField entry), but must be writable via setConfigValue so
+ * that writes trigger the TOOL_ASSEMBLY_CONFIG_KEYS cache-invalidation path.
+ */
+const SYSTEM_RESERVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
+  // see REDUCTION_FLAGS_CONFIG_KEY in src/tools/feature-flags.ts
+  'tool_context_flags',
+])
+
+export function isAllowedDynamicConfigKey(key: string): boolean {
+  return (
+    isConfigKey(key) ||
+    PLUGIN_PROVIDER_CONFIG_KEY_PATTERN.test(key) ||
+    PLUGIN_CONTEXT_CONFIG_KEY_PATTERN.test(key) ||
+    SYSTEM_RESERVED_CONFIG_KEYS.has(key)
+  )
 }

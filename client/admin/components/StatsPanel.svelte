@@ -7,6 +7,15 @@
   import { untrack } from 'svelte'
 
   import type { GlobalStats, StatsWindow } from '../../shared/api-types.js'
+  import { fmtBytes } from '../../shared/helpers.js'
+  import Bars from '../../shared/ui/Bars.svelte'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import DataTable from '../../shared/ui/DataTable.svelte'
+  import MetricCard from '../../shared/ui/MetricCard.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Panel from '../../shared/ui/Panel.svelte'
+  import Seg from '../../shared/ui/Seg.svelte'
+  import Stat from '../../shared/ui/Stat.svelte'
   import { fetchStatsGlobal } from '../fetchers.js'
 
   interface StatsState {
@@ -20,17 +29,10 @@
 
   let { dashboard }: Props = $props()
 
-  const WINDOWS: readonly StatsWindow[] = ['1d', '7d', '30d', 'all']
+  const WINDOWS: StatsWindow[] = ['1d', '7d', '30d', 'all']
 
   let loading = $state(false)
   let error: string | null = $state(null)
-
-  function formatBytes(n: number): string {
-    if (n < 1024) return `${n} B`
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
-    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`
-  }
 
   async function loadStats(): Promise<void> {
     loading = true
@@ -44,10 +46,7 @@
     }
   }
 
-  function onWindowChange(event: Event): void {
-    const target = event.currentTarget
-    if (!(target instanceof HTMLSelectElement)) return
-    const next = target.value
+  function onWindowChange(next: string): void {
     if (next === '1d' || next === '7d' || next === '30d' || next === 'all') {
       dashboard.statsWindow = next
       void loadStats()
@@ -59,93 +58,212 @@
       void loadStats()
     })
   })
+
+  interface DistRow {
+    metric: string
+    n: number
+    min: number
+    p50: number
+    p90: number
+    p99: number
+    max: number
+    mean: number
+  }
+
+  const distRows = $derived.by<DistRow[]>(() => {
+    const g = dashboard.globalStats
+    if (g === null) return []
+    const d = g.distributions
+    return [
+      {
+        metric: 'memos / subject',
+        n: d.memosPerSubject.count,
+        min: d.memosPerSubject.min,
+        p50: d.memosPerSubject.p50,
+        p90: d.memosPerSubject.p90,
+        p99: d.memosPerSubject.p99,
+        max: d.memosPerSubject.max,
+        mean: Number(d.memosPerSubject.mean.toFixed(2)),
+      },
+      {
+        metric: 'recurring / subject',
+        n: d.recurringTasksPerSubject.count,
+        min: d.recurringTasksPerSubject.min,
+        p50: d.recurringTasksPerSubject.p50,
+        p90: d.recurringTasksPerSubject.p90,
+        p99: d.recurringTasksPerSubject.p99,
+        max: d.recurringTasksPerSubject.max,
+        mean: Number(d.recurringTasksPerSubject.mean.toFixed(2)),
+      },
+      {
+        metric: 'messages / subject',
+        n: d.messageMetadataPerSubject.count,
+        min: d.messageMetadataPerSubject.min,
+        p50: d.messageMetadataPerSubject.p50,
+        p90: d.messageMetadataPerSubject.p90,
+        p99: d.messageMetadataPerSubject.p99,
+        max: d.messageMetadataPerSubject.max,
+        mean: Number(d.messageMetadataPerSubject.mean.toFixed(2)),
+      },
+      {
+        metric: 'attach bytes / subject',
+        n: d.attachmentBytesPerSubject.count,
+        min: d.attachmentBytesPerSubject.min,
+        p50: d.attachmentBytesPerSubject.p50,
+        p90: d.attachmentBytesPerSubject.p90,
+        p99: d.attachmentBytesPerSubject.p99,
+        max: d.attachmentBytesPerSubject.max,
+        mean: Number(d.attachmentBytesPerSubject.mean.toFixed(2)),
+      },
+    ]
+  })
+
+  const distColumns = [
+    { key: 'metric' as const, label: '' },
+    { key: 'n' as const, label: 'N', align: 'right' as const },
+    { key: 'min' as const, label: 'Min', align: 'right' as const },
+    { key: 'p50' as const, label: 'P50', align: 'right' as const },
+    { key: 'p90' as const, label: 'P90', align: 'right' as const },
+    { key: 'p99' as const, label: 'P99', align: 'right' as const },
+    { key: 'max' as const, label: 'Max', align: 'right' as const },
+    { key: 'mean' as const, label: 'Mean', align: 'right' as const },
+  ]
+
+  interface TopToolRow {
+    tool: string
+    count: number
+    success: string
+  }
+
+  const topToolRows = $derived.by<TopToolRow[]>(() => {
+    const g = dashboard.globalStats
+    if (g === null) return []
+    return g.toolMix.topTools.slice(0, 8).map((t) => ({
+      tool: t.toolName,
+      count: t.count,
+      success: `${Math.round(t.successRate * 100)}%`,
+    }))
+  })
+
+  const topToolColumns = [
+    { key: 'tool' as const, label: 'Tool' },
+    { key: 'count' as const, label: 'Calls', align: 'right' as const },
+    { key: 'success' as const, label: 'Success', align: 'right' as const },
+  ]
+
+  const growthData = $derived.by<number[]>(() => {
+    const g = dashboard.globalStats
+    if (g === null) return []
+    return g.toolMix.toolCallGrowth30d.map((p) => p.count)
+  })
+
+  const totalSubjects = $derived.by<number>(() => {
+    const g = dashboard.globalStats
+    if (g === null) return 0
+    return g.subjects.dmTotal + g.subjects.groupTotal
+  })
 </script>
 
-<section class="panel stats-panel">
-  <header class="stats-header">
-    <div>
-      <p class="eyebrow">Anonymous analytics</p>
-      <h2 data-testid="admin-section-title">Stats</h2>
-    </div>
-    <label>
-      Window:
-      <select
-        data-testid="stats-window-select"
+<div class="stats-panel" data-testid="stats-panel">
+  <PageHeader eyebrow="Anonymous analytics" title="Stats" titleTestId="admin-section-title">
+    {#snippet action()}
+      <Seg
+        options={[...WINDOWS]}
         value={dashboard.statsWindow}
-        onchange={onWindowChange}>
-        {#each WINDOWS as w (w)}
-          <option value={w}>{w}</option>
-        {/each}
-      </select>
-    </label>
-    <button
-      type="button"
-      data-testid="stats-refresh"
-      onclick={() => {
-        void loadStats()
-      }}>{loading ? 'Refreshing…' : 'Refresh'}</button>
-    {#if error !== null}
-      <span class="status-error">{error}</span>
-    {/if}
-  </header>
+        onChange={onWindowChange} />
+      <Btn variant="secondary" size="sm" onClick={() => { void loadStats() }} disabled={loading}>
+        {#snippet children()}{loading ? 'Refreshing…' : 'Refresh'}{/snippet}
+      </Btn>
+      {#if error !== null}
+        <span class="status-error" data-testid="stats-error">{error}</span>
+      {/if}
+    {/snippet}
+  </PageHeader>
 
   {#if dashboard.globalStats !== null}
     {@const g = dashboard.globalStats}
-    <section class="stats-summary">
-      <h3>Subjects</h3>
-      <dl class="stats-list">
-        <dt>DM total</dt><dd data-testid="stats-dm-total">{g.subjects.dmTotal}</dd>
-        <dt>Group total</dt><dd data-testid="stats-group-total">{g.subjects.groupTotal}</dd>
-        <dt>Active 1d / 7d / 30d</dt>
-        <dd>{g.active.activeIn1d} / {g.active.activeIn7d} / {g.active.activeIn30d}</dd>
-      </dl>
-      <h3>Storage</h3>
-      <dl class="stats-list">
-        <dt>SQLite</dt><dd>{formatBytes(g.storage.sqliteBytes)}</dd>
-        <dt>S3 attachments (active)</dt><dd>{formatBytes(g.storage.s3AttachmentBytes)}</dd>
-      </dl>
-      <h3>Identity mix</h3>
-      <dl class="stats-list">
-        {#each Object.entries(g.identityMix.byProvider) as [provider, count] (provider)}
-          <dt>{provider}</dt><dd>{count}</dd>
-        {/each}
-        <dt>Kaneo workspaces</dt><dd>{g.identityMix.kaneoWorkspaces}</dd>
-      </dl>
-      <h3>Surface mix</h3>
-      <dl class="stats-list">
-        <dt>w/ recurring</dt><dd>{g.surfaceMix.subjectsWithRecurring}</dd>
-        <dt>w/ deferred</dt><dd>{g.surfaceMix.subjectsWithDeferred}</dd>
-        <dt>w/ memos</dt><dd>{g.surfaceMix.subjectsWithMemos}</dd>
-        <dt>w/ instructions</dt><dd>{g.surfaceMix.subjectsWithInstructions}</dd>
-      </dl>
-      <h3>Distributions (memos/subject)</h3>
-      <dl class="stats-list">
-        <dt>count / mean</dt><dd>{g.distributions.memosPerSubject.count} / {g.distributions.memosPerSubject.mean.toFixed(2)}</dd>
-        <dt>p50 / p90 / p99 / max</dt>
-        <dd>{g.distributions.memosPerSubject.p50} / {g.distributions.memosPerSubject.p90} / {g.distributions.memosPerSubject.p99} / {g.distributions.memosPerSubject.max}</dd>
-      </dl>
-      <h3>Top hosts (keyed-hashed)</h3>
-      {#if g.webFetches.topHosts.length === 0}
-        <span class="placeholder">No web fetches</span>
-      {:else}
-        <ul class="stats-list">
-          {#each g.webFetches.topHosts as h (h.hostHash)}
-            <li><code>{h.hostHash.slice(0, 12)}</code>: {h.count}</li>
-          {/each}
-        </ul>
-      {/if}
-      <h3>Top tools</h3>
-      {#if g.toolMix.topTools.length === 0}
-        <span class="placeholder">No tool calls</span>
-      {:else}
-        <ul class="stats-list">
-          {#each g.toolMix.topTools as t (t.toolName)}
-            <li>{t.toolName}: {t.count} (success {(t.successRate * 100).toFixed(0)}%)</li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
+    <div class="stats-panel__grid">
+      <Panel title="active subjects">
+        {#snippet body()}
+          <div class="stats-panel__metrics">
+            <Stat label="1d" value={g.active.activeIn1d} of={totalSubjects} />
+            <Stat label="7d" value={g.active.activeIn7d} of={totalSubjects} />
+            <Stat label="30d" value={g.active.activeIn30d} of={totalSubjects} />
+          </div>
+        {/snippet}
+      </Panel>
+
+      <Panel title="storage">
+        {#snippet body()}
+          <div class="stats-panel__metrics">
+            <MetricCard label="sqlite" value={fmtBytes(g.storage.sqliteBytes)} />
+            <MetricCard label="s3 attachments" value={fmtBytes(g.storage.s3AttachmentBytes)} />
+          </div>
+        {/snippet}
+      </Panel>
+    </div>
+
+    <Panel title="distributions">
+      {#snippet body()}
+        <DataTable columns={distColumns} rows={distRows} rowKey="metric" />
+      {/snippet}
+    </Panel>
+
+    <Panel title="tool calls">
+      {#snippet body()}
+        <div class="stats-panel__metrics">
+          <MetricCard label="total calls" value={g.toolMix.totalCalls} />
+          <MetricCard
+            label="success rate"
+            value={g.toolMix.totalCalls > 0 ? `${Math.round(g.toolMix.totalSuccessRate * 100)}%` : '—'} />
+        </div>
+        {#if growthData.length > 0}
+          <div class="stats-panel__sparkline">
+            <Bars data={growthData} />
+          </div>
+        {/if}
+        {#if topToolRows.length > 0}
+          <DataTable columns={topToolColumns} rows={topToolRows} rowKey="tool" />
+        {:else}
+          <span class="placeholder">No tool calls</span>
+        {/if}
+      {/snippet}
+    </Panel>
   {:else if !loading && error === null}
     <span class="placeholder">No stats loaded yet</span>
   {/if}
-</section>
+</div>
+
+<style>
+  .stats-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stats-panel__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stats-panel__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    padding: 12px;
+  }
+  .stats-panel__sparkline {
+    padding: 8px 12px 4px;
+  }
+  .placeholder {
+    padding: 24px;
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: center;
+  }
+  .status-error {
+    color: var(--danger);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+</style>

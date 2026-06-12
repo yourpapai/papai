@@ -31,11 +31,14 @@ export function addDeferredPromptTools(
   contextId: string | undefined,
   contextType: ContextType | undefined,
   username: string | null | undefined,
+  allowTaskConditions = true,
 ): void {
   if (storageOwnerId === undefined || chatUserId === undefined) return
   const ctxId = getContextId(contextId, storageOwnerId)
   const ctxType = getContextType(contextType)
-  tools['create_deferred_prompt'] = makeCreateDeferredPromptTool(storageOwnerId, ctxId, ctxType, username, chatUserId)
+  tools['create_deferred_prompt'] = makeCreateDeferredPromptTool(storageOwnerId, ctxId, ctxType, username, chatUserId, {
+    allowTaskConditions,
+  })
   tools['list_deferred_prompts'] = makeListDeferredPromptsTool(storageOwnerId)
   tools['get_deferred_prompt'] = makeGetDeferredPromptTool(storageOwnerId)
   tools['update_deferred_prompt'] = makeUpdateDeferredPromptTool(storageOwnerId)

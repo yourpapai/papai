@@ -6,7 +6,7 @@
 import type { ModelMessage } from 'ai'
 import { sql } from 'drizzle-orm'
 
-import { syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb, syncWorkspaceToDb } from './cache-db.js'
+import { syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb } from './cache-db.js'
 import { parseHistoryFromDb } from './cache-helpers.js'
 import { userCacheStore } from './cache-store.js'
 import type { CachedFact, UserCache } from './cache-types.js'
@@ -14,7 +14,6 @@ import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memoryFacts, memorySummary, userConfig } from './db/schema.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
-import { KANEO_WORKSPACE_CONFIG_KEY } from './types/config.js'
 
 export { addCachedInstruction, deleteCachedInstruction, getCachedInstructions } from './cache-instructions.js'
 export { cleanupExpiredCaches, evictUser } from './cache-eviction.js'
@@ -35,7 +34,6 @@ export function getOrCreateCache(userId: string): UserCache {
       facts: [],
       instructions: null,
       config: new Map(),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     }
@@ -167,33 +165,6 @@ export function setCachedConfig(userId: string, key: string, value: string): voi
   emitUser('cache:sync', userId, { field: 'config', operation: 'set' })
 }
 
-export function getCachedWorkspace(userId: string): string | null {
-  const cache = getOrCreateCache(userId)
-  if (cache.workspaceId === null && !cache.config.has('workspace_loaded')) {
-    log.debug({ userId }, 'Loading workspace from DB into cache')
-    const row = getDrizzleDb()
-      .select({ value: userConfig.value })
-      .from(userConfig)
-      .where(sql`${userConfig.userId} = ${userId} AND ${userConfig.key} = ${KANEO_WORKSPACE_CONFIG_KEY}`)
-      .get()
-    if (row === undefined) {
-      cache.workspaceId = null
-    } else {
-      cache.workspaceId = row.value
-    }
-    cache.config.set('workspace_loaded', 'true')
-    emitUser('cache:load', userId, { field: 'workspace' })
-  }
-  return cache.workspaceId
-}
-
-export function setCachedWorkspace(userId: string, workspaceId: string): void {
-  const cache = getOrCreateCache(userId)
-  cache.workspaceId = workspaceId
-  syncWorkspaceToDb(userId, workspaceId)
-  emitUser('cache:sync', userId, { field: 'workspace', operation: 'set' })
-}
-
 export function getCachedTools(userId: string): unknown {
   const tools = getOrCreateCache(userId).tools
   return tools === null ? undefined : tools
@@ -208,17 +179,53 @@ export function clearCachedTools(userId: string): void {
 }
 
 /**
- * Clear cached tools for a context id and all of its derived group cache keys.
- * DM cache key is the bare contextId; group cache keys are `${contextId}:${chatUserId}:${username}`.
+ * Clear cached tools for a context id and all derived tool-descriptor cache keys.
+ * Supports both legacy raw context keys and the current llm-orchestrator descriptor
+ * keys scoped by provider mode and staged-download availability.
  */
 export function clearCachedToolsByPrefix(contextId: string): void {
-  const prefix = `${contextId}:`
+  const currentPrefixes = [
+    `provider-backed:no-staged-download:${contextId}`,
+    `provider-backed:with-staged-download:${contextId}`,
+    `providerless:no-staged-download:${contextId}`,
+    `providerless:with-staged-download:${contextId}`,
+  ]
+  const legacyPrefix = `${contextId}:`
   for (const [key, cache] of userCacheStore) {
-    if (key === contextId || key.startsWith(prefix)) {
+    if (
+      key === contextId ||
+      key.startsWith(legacyPrefix) ||
+      currentPrefixes.some((prefix) => key === prefix || key.startsWith(`${prefix}:`))
+    ) {
       cache.tools = null
     }
   }
   log.debug({ contextId }, 'Cleared cached tools by prefix')
+}
+
+export function getLatestCachedToolsForContext(contextId: string): unknown {
+  const currentPrefixes = [
+    `provider-backed:no-staged-download:${contextId}`,
+    `provider-backed:with-staged-download:${contextId}`,
+    `providerless:no-staged-download:${contextId}`,
+    `providerless:with-staged-download:${contextId}`,
+  ]
+  const legacyPrefix = `${contextId}:`
+  let latestTools: unknown = undefined
+  let latestAccessed = -1
+
+  for (const [key, cache] of userCacheStore) {
+    if (cache.tools === null) continue
+    const matchesContext =
+      key === contextId ||
+      key.startsWith(legacyPrefix) ||
+      currentPrefixes.some((prefix) => key === prefix || key.startsWith(`${prefix}:`))
+    if (!matchesContext || cache.lastAccessed < latestAccessed) continue
+    latestTools = cache.tools
+    latestAccessed = cache.lastAccessed
+  }
+
+  return latestTools
 }
 
 export function clearCachedFacts(userId: string): void {

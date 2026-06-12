@@ -14,7 +14,9 @@ describe('mapDiscordMessage', () => {
   })
 
   const botId = 'bot-snowflake'
+  // adminId is used as the author id in the "does not mark admin users" test.
   const adminId = 'admin-snowflake'
+  const platformInstanceId = 'discord-default'
 
   function makeMsg(...args: [] | [overrides: Partial<DiscordMessageLike>]): DiscordMessageLike {
     const overrides = args.length === 0 ? {} : args[0]
@@ -33,7 +35,7 @@ describe('mapDiscordMessage', () => {
 
   test('maps a guild message that @mentions the bot', () => {
     const msg = makeMsg({ content: `<@${botId}> /help` })
-    const result = mapDiscordMessage(msg, botId, adminId)
+    const result = mapDiscordMessage(msg, botId, platformInstanceId)
     expect(result).not.toBeNull()
     expect(result!.user.id).toBe('user-1')
     expect(result!.user.username).toBe('alice')
@@ -51,7 +53,7 @@ describe('mapDiscordMessage', () => {
       content: 'what is the status?',
       mentions: { has: () => false },
     })
-    const result = mapDiscordMessage(msg, botId, adminId)
+    const result = mapDiscordMessage(msg, botId, platformInstanceId)
     expect(result).not.toBeNull()
     expect(result!.contextType).toBe('dm')
     expect(result!.contextId).toBe('user-1')
@@ -64,24 +66,24 @@ describe('mapDiscordMessage', () => {
       author: { id: adminId, username: 'admin', bot: false },
       content: `<@${botId}> hello`,
     })
-    const result = mapDiscordMessage(msg, botId, adminId)
+    const result = mapDiscordMessage(msg, botId, platformInstanceId)
     expect(result).not.toBeNull()
     expect(result!.user.isAdmin).toBe(false)
   })
 
   test('returns null for bot-authored messages', () => {
     const msg = makeMsg({ author: { id: 'some-bot', username: 'other', bot: true } })
-    expect(mapDiscordMessage(msg, botId, adminId)).toBeNull()
+    expect(mapDiscordMessage(msg, botId, platformInstanceId)).toBeNull()
   })
 
   test('returns null for unsupported MessageType variants', () => {
     const msg = makeMsg({ type: 7 })
-    expect(mapDiscordMessage(msg, botId, adminId)).toBeNull()
+    expect(mapDiscordMessage(msg, botId, platformInstanceId)).toBeNull()
   })
 
   test('returns null for guild message that does not mention the bot', () => {
     const msg = makeMsg({ content: 'unrelated chatter', mentions: { has: () => false } })
-    expect(mapDiscordMessage(msg, botId, adminId)).toBeNull()
+    expect(mapDiscordMessage(msg, botId, platformInstanceId)).toBeNull()
   })
 
   test('preserves replyToMessageId from message.reference', () => {
@@ -90,7 +92,7 @@ describe('mapDiscordMessage', () => {
       reference: { messageId: 'parent-msg-99' },
       type: 19,
     })
-    const result = mapDiscordMessage(msg, botId, adminId)
+    const result = mapDiscordMessage(msg, botId, platformInstanceId)
     expect(result!.replyToMessageId).toBe('parent-msg-99')
   })
 
@@ -107,7 +109,7 @@ describe('mapDiscordMessage', () => {
         type: 0,
       },
       botId,
-      adminId,
+      platformInstanceId,
     )
 
     expect(mapped).not.toBeNull()
@@ -117,9 +119,38 @@ describe('mapDiscordMessage', () => {
 
   test('uses the provided platform instance ID', () => {
     const msg = makeMsg({ content: `<@${botId}> /help` })
-    const result = mapDiscordMessage(msg, botId, adminId, 'discord-secondary')
+    const result = mapDiscordMessage(msg, botId, 'discord-secondary')
 
     expect(result).not.toBeNull()
     expect(result!.platformInstanceId).toBe('discord-secondary')
+  })
+
+  test('passes group message with isReplyToBot even without mention', () => {
+    const msg = makeMsg({
+      content: 'what about this?',
+      mentions: { has: () => false },
+      reference: { messageId: 'bot-msg-1' },
+    })
+    const result = mapDiscordMessage(msg, botId, platformInstanceId, true)
+    expect(result).not.toBeNull()
+    expect(result!.isReplyToBot).toBe(true)
+    expect(result!.isMentioned).toBe(false)
+    expect(result!.replyToMessageId).toBe('bot-msg-1')
+  })
+
+  test('still returns null for group message without mention and without isReplyToBot', () => {
+    const msg = makeMsg({
+      content: 'unrelated chatter',
+      mentions: { has: () => false },
+    })
+    const result = mapDiscordMessage(msg, botId, platformInstanceId, false)
+    expect(result).toBeNull()
+  })
+
+  test('defaults isReplyToBot to false when parameter omitted', () => {
+    const msg = makeMsg({ content: `<@${botId}> hello` })
+    const result = mapDiscordMessage(msg, botId, platformInstanceId)
+    expect(result).not.toBeNull()
+    expect(result!.isReplyToBot).toBe(false)
   })
 })

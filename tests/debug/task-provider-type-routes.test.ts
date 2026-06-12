@@ -3,9 +3,49 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { handleTaskProviderTypes } from '../../src/debug/task-provider-type-routes.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import { createMockProvider } from '../tools/mock-provider.js'
+import { mockLogger } from '../utils/test-helpers.js'
+
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+
+const registerYouTrackContributed = (): void => {
+  mockLogger()
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'youtrack_token',
+      },
+    ],
+    traits: new Set(['command-language:youtrack']),
+  })
+}
+
+beforeEach(() => {
+  registerYouTrackContributed()
+})
+
+afterEach(() => {
+  unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+})
 
 const route = (path: string, method = 'GET'): Response | null => {
   const req = new Request(`http://debug.test${path}`, { method })
@@ -33,36 +73,51 @@ const assertObject = (value: unknown): object => {
 const pick = (value: object, key: string): unknown => Reflect.get(value, key)
 
 describe('handleTaskProviderTypes', () => {
-  test('GET /api/task-provider-types returns 200 with built-in catalog containing kaneo and youtrack', async () => {
+  test('GET /api/task-provider-types returns 200 with catalog containing youtrack (plugin-contributed)', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
 
     expect(res.status).toBe(200)
     const body = assertArray(await readJson(res))
     const types = body.map((entry) => pick(assertObject(entry), 'type'))
-    expect(types).toContain('kaneo')
+    expect(types).not.toContain('kaneo')
     expect(types).toContain('youtrack')
   })
 
-  test('GET /api/task-provider-types kaneo entry has source builtin and capabilities array', async () => {
+  test('GET /api/task-provider-types youtrack entry has source plugin and capabilities array', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
-    const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
-    const kaneo = assertObject(kaneoRaw)
+    const youtrackRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack')
+    const youtrack = assertObject(youtrackRaw)
 
-    expect(pick(kaneo, 'source')).toBe('builtin')
-    expect(Array.isArray(pick(kaneo, 'capabilities'))).toBe(true)
+    expect(pick(youtrack, 'source')).toEqual({ plugin: YOUTRACK_PLUGIN_ID })
+    expect(Array.isArray(pick(youtrack, 'capabilities'))).toBe(true)
   })
 
-  test('GET /api/task-provider-types kaneo entry has correct displayName, configSchema key and sensitive flag', async () => {
+  test('GET /api/task-provider-types youtrack entry has correct displayName, instance field key and sensitive flag', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
-    const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
-    const kaneo = assertObject(kaneoRaw)
+    const youtrackRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack')
+    const youtrack = assertObject(youtrackRaw)
 
-    expect(pick(kaneo, 'displayName')).toBe('Kaneo')
-    const firstField = assertObject(assertArray(pick(kaneo, 'configSchema'))[0])
+    expect(pick(youtrack, 'displayName')).toBe('YouTrack')
+    const firstField = assertObject(assertArray(pick(youtrack, 'instanceConfigSchema'))[0])
     expect(pick(firstField, 'key')).toBe('baseUrl')
     expect(pick(firstField, 'sensitive')).toBe(false)
+    expect(pick(firstField, 'scope')).toBeUndefined()
+  })
+
+  test('GET /api/task-provider-types returns split schemas and traits', async () => {
+    const res = expectResponse(route('/api/task-provider-types'))
+    const body = assertArray(await readJson(res))
+    const youtrack = assertObject(body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack'))
+
+    expect(assertArray(pick(youtrack, 'instanceConfigSchema')).map((f) => pick(assertObject(f), 'key'))).toEqual([
+      'baseUrl',
+    ])
+    expect(
+      assertArray(pick(youtrack, 'contextConfigSchema')).map((f) => pick(assertObject(f), 'storageKey')),
+    ).toContain('youtrack_token')
+    expect(assertArray(pick(youtrack, 'traits'))).toContain('command-language:youtrack')
   })
 
   test('returns null for non-matching paths', () => {
@@ -76,15 +131,16 @@ describe('handleTaskProviderTypes', () => {
 })
 
 describe('handleTaskProviderTypes scope filtering', () => {
-  test('omits user-scoped fields from the catalog response', async () => {
+  test('separates instance-scoped and context-scoped fields in the catalog response (youtrack contributed)', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
-    const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
-    const kaneo = assertObject(kaneoRaw)
-    const keys = assertArray(pick(kaneo, 'configSchema')).map((f) => pick(assertObject(f), 'key'))
+    const youtrackRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack')
+    const youtrack = assertObject(youtrackRaw)
+    const instanceKeys = assertArray(pick(youtrack, 'instanceConfigSchema')).map((f) => pick(assertObject(f), 'key'))
+    const contextKeys = assertArray(pick(youtrack, 'contextConfigSchema')).map((f) => pick(assertObject(f), 'key'))
 
-    expect(keys).toContain('baseUrl')
-    expect(keys).not.toContain('credential')
-    expect(keys).not.toContain('workspaceId')
+    expect(instanceKeys).toContain('baseUrl')
+    expect(instanceKeys).not.toContain('token')
+    expect(contextKeys).toContain('token')
   })
 })

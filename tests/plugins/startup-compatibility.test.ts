@@ -3,14 +3,51 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ChatCapability, ChatProvider } from '../../src/chat/types.js'
 import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
 import type { PluginCompatibilityInstance } from '../../src/plugins/registry.js'
 import { collectStartupCompatibilityInstances } from '../../src/plugins/startup-compatibility.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import type { TaskCapability } from '../../src/providers/task-capability.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { createMockChat } from '../utils/test-helpers.js'
+
+// Register kaneo and youtrack as contributed for these tests (neither is a builtin).
+// Kaneo has 'comments.read' capability but not 'workItems.list' (that's YouTrack only).
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+
+beforeAll(() => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set<TaskCapability>(['comments.read']),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [],
+    contextConfigSchema: [],
+    traits: new Set(),
+  })
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set<TaskCapability>(['workItems.list', 'comments.read']),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [],
+    contextConfigSchema: [],
+    traits: new Set(),
+  })
+})
+
+afterAll(() => {
+  unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+  unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+})
 
 const platformInstance = (id: string, status: PlatformInstance['status']): PlatformInstance => ({
   id,
@@ -23,7 +60,7 @@ const platformInstance = (id: string, status: PlatformInstance['status']): Platf
 const taskInstance = (id: string, type: TaskInstance['type'], status: TaskInstance['status']): TaskInstance => ({
   id,
   type,
-  config: { url: `https://${id}.invalid` },
+  config: { baseUrl: `https://${id}.invalid` },
   status,
   createdAt: 'now',
 })
@@ -59,6 +96,18 @@ describe('startup plugin compatibility collection', () => {
     const entry = singleCompatibilityEntry(result)
     expect(entry.taskCapabilities.has('workItems.list')).toBe(true)
     expect(entry.chatCapabilities.has('messages.buttons')).toBe(true)
+  })
+
+  test('includes chat capabilities from configured platform instances before router startup', () => {
+    const router = new ChatRouter(
+      (): ChatProvider => createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
+    )
+    router.addInstance('telegram-a', 'telegram', { token: 'x' })
+
+    const result = collectStartupCompatibilityInstances(router, [], [platformInstance('telegram-a', 'active')])
+
+    expect(result).toHaveLength(1)
+    expect(singleCompatibilityEntry(result).chatCapabilities.has('messages.buttons')).toBe(true)
   })
 
   test('builds a Cartesian product of active task and chat capability sets', async () => {
@@ -107,5 +156,21 @@ describe('startup plugin compatibility collection', () => {
     const entry = singleCompatibilityEntry(result)
     expect(entry.taskCapabilities.size).toBe(0)
     expect(entry.chatCapabilities.size).toBe(0)
+  })
+
+  test('skips unknown task provider types while collecting startup compatibility', () => {
+    const router = new ChatRouter(() => createMockChat())
+    router.addInstance('telegram-a', 'telegram', { token: 'x' })
+
+    const instances = collectStartupCompatibilityInstances(
+      router,
+      [
+        { id: 'ghost-task', type: 'ghost-provider', config: {}, status: 'active', createdAt: new Date().toISOString() },
+        { id: 'kaneo-a', type: 'kaneo', config: {}, status: 'active', createdAt: new Date().toISOString() },
+      ],
+      [{ id: 'telegram-a', type: 'telegram', config: {}, status: 'active', createdAt: new Date().toISOString() }],
+    )
+
+    expect(instances.length).toBeGreaterThan(0)
   })
 })

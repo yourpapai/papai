@@ -15,7 +15,7 @@
   })
 </script>
 
-<Story name="Populated" args={{ dashboard: makeDashboardState() }} />
+<Story name="Default" args={{ dashboard: makeDashboardState() }} />
 
 <Story
   name="Detail selected"

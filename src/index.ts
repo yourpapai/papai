@@ -10,13 +10,16 @@ import { setupBot, type BotDeps } from './bot.js'
 import { createChatProviderFromConfig } from './chat/registry.js'
 import { ChatRouter } from './chat/router.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
+import { startSweeper } from './dashboard-auth/sweeper.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-router-runtime.js'
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
-import { listActivePlatformInstances } from './instances/platform-store.js'
-import { listTaskInstances } from './instances/task-store.js'
+import { warnUnresolvedTaskInstances } from './instances/health.js'
+import { runKaneoLegacyRepair } from './instances/kaneo-legacy-repair.js'
+import { listActivePlatformInstancesSafe } from './instances/platform-store.js'
+import { listTaskInstancesSafe } from './instances/task-store.js'
 import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
@@ -24,9 +27,11 @@ import { discoverPlugins } from './plugins/discovery.js'
 import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from './plugins/loader.js'
 import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
 import { collectStartupCompatibilityInstances } from './plugins/startup-compatibility.js'
+import { evaluateStartupGuard } from './plugins/startup-guard.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
+import { warnIfLegacyDebugToken } from './startup-helpers.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
 import { initUsageRecorder } from './usage/index.js'
 
@@ -72,9 +77,12 @@ initializeMessageCache()
 
 const adminUserId = process.env['ADMIN_USER_ID']!
 
-const activePlatformInstances = listActivePlatformInstances()
+const activePlatformResult = listActivePlatformInstancesSafe()
+for (const failure of activePlatformResult.failures) {
+  log.warn(failure, 'Skipping unreadable active platform instance during startup')
+}
 const chatProvider = new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
-for (const instance of activePlatformInstances) {
+for (const instance of activePlatformResult.instances) {
   try {
     chatProvider.addInstance(instance.id, instance.type, instance.config)
   } catch (error) {
@@ -109,13 +117,59 @@ const processMessage: BotDeps['processMessage'] = (...args) =>
 const stagedDownloadFn = createStagedDownloadFn()
 const botDeps: BotDeps = { processMessage, stagedDownloadFn }
 
+// Discover and activate plugins before command registration so contributed commands are registered.
+const pluginDir = 'plugins'
+const { plugins: discoveredPlugins, errors: pluginErrors, directoryMissing } = discoverPlugins(pluginDir)
+if (pluginErrors.length > 0) {
+  log.warn({ errors: pluginErrors.map((e) => e.reason) }, 'Some plugins failed discovery')
+}
+const guardDecision = evaluateStartupGuard({
+  directoryMissing,
+  debugServerEnabled: process.env['DEBUG_SERVER'] === 'true',
+})
+if (guardDecision.action === 'exit') {
+  log.fatal({ reason: guardDecision.reason }, 'Refusing to start: misconfigured deployment')
+  process.exit(1)
+}
+if (guardDecision.action === 'warn') {
+  log.warn({ reason: guardDecision.reason }, 'Starting in degraded mode')
+}
+syncRegistryFromDb(discoveredPlugins)
+try {
+  const taskInstanceResult = listTaskInstancesSafe()
+  for (const failure of taskInstanceResult.failures) {
+    log.warn(failure, 'Skipping unreadable task instance during plugin compatibility evaluation')
+  }
+  const compatibilityInstances = collectStartupCompatibilityInstances(
+    chatProvider,
+    taskInstanceResult.instances,
+    activePlatformResult.instances,
+  )
+  pluginRegistry.evaluateCompatibilityAcrossInstances(compatibilityInstances)
+} catch (error) {
+  log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Plugin compatibility evaluation skipped')
+}
+const toActivate = pluginRegistry.getApprovedCompatiblePlugins()
+await activatePlugins(toActivate)
+const activatedPluginIds = getActivatedPluginIds()
+log.info({ activeCount: activatedPluginIds.length, requestedCount: toActivate.length }, 'Plugin activation complete')
+
+const kaneoPluginActive = activatedPluginIds.includes('task-provider-kaneo')
+if (kaneoPluginActive) {
+  const kaneoRepairSummary = runKaneoLegacyRepair()
+  log.info({ kaneoRepairSummary }, 'Kaneo legacy repair evaluated')
+}
+
+warnUnresolvedTaskInstances()
+warnIfLegacyDebugToken()
+
 setupBot(chatProvider, adminUserId, botDeps)
 
 await chatProvider.start()
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 
-const [firstActivePlatformInstance] = activePlatformInstances
+const [firstActivePlatformInstance] = activePlatformResult.instances
 const announcementPlatformInstanceId =
   firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
 if (announcementPlatformInstanceId === undefined) {
@@ -128,40 +182,13 @@ startScheduler(chatProvider)
 
 startPollers(chatProvider, (contextId) => defaultTaskProviderResolver.resolve(contextId))
 
-// Start the central scheduler with all cleanup tasks
 scheduler.startAll()
 
-// Discover and activate plugins
-const pluginDir = 'plugins'
-const { plugins: discoveredPlugins, errors: pluginErrors } = discoverPlugins(pluginDir)
-if (pluginErrors.length > 0) {
-  log.warn({ errors: pluginErrors.map((e) => e.reason) }, 'Some plugins failed discovery')
-}
-syncRegistryFromDb(discoveredPlugins)
-try {
-  const compatibilityInstances = collectStartupCompatibilityInstances(
-    chatProvider,
-    listTaskInstances(),
-    activePlatformInstances,
-  )
-  pluginRegistry.evaluateCompatibilityAcrossInstances(compatibilityInstances)
-} catch (error) {
-  log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Plugin compatibility evaluation skipped')
-}
-const toActivate = pluginRegistry.getApprovedCompatiblePlugins()
-await activatePlugins(toActivate)
-log.info(
-  { activeCount: getActivatedPluginIds().length, requestedCount: toActivate.length },
-  'Plugin activation complete',
-)
+const stopSweeper = startSweeper()
 
-let stopDebugServerFn: (() => void) | null = null
-
-if (process.env['DEBUG_SERVER'] === 'true') {
-  const { startDebugServer, stopDebugServer } = await import('./debug/server.js')
-  startDebugServer(adminUserId)
-  stopDebugServerFn = stopDebugServer
-}
+const { startDebugServer, stopDebugServer } = await import('./debug/server.js')
+startDebugServer(adminUserId, { debugEnabled: process.env['DEBUG_SERVER'] === 'true' })
+const stopDebugServerFn: (() => void) | null = stopDebugServer
 
 // Graceful shutdown handlers
 const shutdown = (signal: string): void => {
@@ -173,6 +200,7 @@ const shutdown = (signal: string): void => {
       stopScheduler()
       scheduler.stopAll()
       stopPollers()
+      stopSweeper()
       if (stopDebugServerFn !== null) stopDebugServerFn()
       return chatProvider.stop()
     })

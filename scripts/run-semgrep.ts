@@ -75,7 +75,17 @@ function buildScanArgs(options: RunOptions): string[] {
     args.push('--autofix')
   }
 
-  for (const exclude of ['tests', 'node_modules', '.git', 'dist', 'public', '*.test.ts', '*.spec.ts', '.semgrep/bin']) {
+  for (const exclude of [
+    'tests',
+    'node_modules',
+    '.git',
+    'dist',
+    'public',
+    '.stryker-tmp',
+    '*.test.ts',
+    '*.spec.ts',
+    '.semgrep/bin',
+  ]) {
     args.push('--exclude', exclude)
   }
 

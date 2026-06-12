@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { isAppError, systemError, type AppError, webFetchError } from '../errors.js'
 import { logger } from '../logger.js'
 import { getCachedWebFetch, putCachedWebFetch } from './cache.js'
@@ -21,6 +22,7 @@ export const DEFAULT_TTL_MS = 15 * 60 * 1000
 
 type FetchAndExtractInput = {
   storageContextId: string
+  configContextId?: string
   actorUserId?: string
   contextType?: 'dm' | 'group'
   url: string
@@ -185,9 +187,11 @@ async function distillProcessedContent(
   processed: ProcessedWebContent,
   deps: FetchAndExtractDeps,
 ): Promise<Awaited<ReturnType<FetchAndExtractDeps['distillWebContent']>>> {
+  const configContextId = input.configContextId ?? getConfigContextIdFromStorageContextId(input.storageContextId)
   try {
     return await deps.distillWebContent({
       storageContextId: input.storageContextId,
+      ...(input.configContextId !== undefined || configContextId !== input.storageContextId ? { configContextId } : {}),
       title: processed.title,
       content: processed.content,
       goal: input.goal,

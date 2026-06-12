@@ -5,8 +5,12 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq, sql } from 'drizzle-orm'
+
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ChatCapability } from '../../src/chat/types.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { pluginRuntimeEvents } from '../../src/db/schema.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { namespacedCommandName, registerPluginCommands } from '../../src/plugins/command-contributions.js'
@@ -15,6 +19,7 @@ import {
   contributionRegistry,
   namespacedJobName,
   namespacedToolName,
+  resetContributionCollisionStateForTesting,
   runPluginScheduledJob,
   sanitizePluginId,
   type PluginScheduledJobDeps,
@@ -31,6 +36,7 @@ import {
   setPluginEnabledForContext,
 } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
+import { pluginManifestSchema } from '../../src/plugins/types.js'
 import { scheduler } from '../../src/scheduler-instance.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
@@ -51,6 +57,14 @@ type MakeManifestArgs = readonly [] | readonly [overrides: ManifestOverrides]
 
 type MakeRuntimeArgs = readonly [] | readonly [overrides: Partial<PluginToolSetRuntime>]
 
+function expectTaskProvider(
+  runtimeContext: Parameters<PluginContributions['tools'][number]['execute']>[1],
+): NonNullable<Parameters<PluginContributions['tools'][number]['execute']>[1]['taskProvider']> {
+  expect(runtimeContext.taskProvider).toBeDefined()
+  if (runtimeContext.taskProvider === undefined) throw new Error('Expected taskProvider to be defined')
+  return runtimeContext.taskProvider
+}
+
 function getManifestOverrides(args: MakeManifestArgs): ManifestOverrides {
   if (args.length === 0) return {}
   return args[0]
@@ -59,6 +73,28 @@ function getManifestOverrides(args: MakeManifestArgs): ManifestOverrides {
 function getRuntimeOverrides(args: MakeRuntimeArgs): Partial<PluginToolSetRuntime> {
   if (args.length === 0) return {}
   return args[0]
+}
+
+function requireValue<T>(value: T | undefined, label: string): T {
+  if (value === undefined) throw new Error(`${label} was unexpectedly undefined`)
+  return value
+}
+
+function getRecentRuntimeEvents(
+  pluginId: string,
+  limit = 20,
+): Array<{ eventType: string; message: string | null; occurredAt: string }> {
+  return getDrizzleDb()
+    .select({
+      eventType: pluginRuntimeEvents.eventType,
+      message: pluginRuntimeEvents.message,
+      occurredAt: pluginRuntimeEvents.occurredAt,
+    })
+    .from(pluginRuntimeEvents)
+    .where(eq(pluginRuntimeEvents.pluginId, pluginId))
+    .orderBy(sql`${pluginRuntimeEvents.occurredAt} DESC, rowid DESC`)
+    .limit(limit)
+    .all()
 }
 
 function makeManifest(...args: MakeManifestArgs): PluginManifest {
@@ -85,7 +121,9 @@ function makeManifest(...args: MakeManifestArgs): PluginManifest {
     requiredChatCapabilities: [],
     configRequirements: [],
     providerCapabilities: [],
+    providerTraits: [],
     providerConfigSchema: [],
+    providerContextConfigSchema: [],
     providerAllowedHosts: [],
   }
   return { ...base, ...overrides, contributes: { ...base.contributes, ...overrides.contributes } }
@@ -160,16 +198,48 @@ describe('plugin command and job naming', () => {
   })
 })
 
+describe('plugin manifest permission validation', () => {
+  test('manifest rejects commands without commands permission', () => {
+    const parsed = pluginManifestSchema.safeParse({
+      id: 'cmd-plugin',
+      name: 'Cmd Plugin',
+      version: '1.0.0',
+      description: 'test',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { commands: ['sync'] },
+    })
+
+    expect(parsed.success).toBe(false)
+  })
+
+  test('manifest rejects jobs without scheduler permission', () => {
+    const parsed = pluginManifestSchema.safeParse({
+      id: 'job-plugin',
+      name: 'Job Plugin',
+      version: '1.0.0',
+      description: 'test',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { jobs: ['daily'] },
+    })
+
+    expect(parsed.success).toBe(false)
+  })
+})
+
 describe('PluginContributionRegistry', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
     resetPluginRegistryForTesting()
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
     contributionRegistry.deregister('other-plugin')
   })
 
   afterEach(() => {
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
     contributionRegistry.deregister('other-plugin')
     resetPluginRegistryForTesting()
@@ -260,6 +330,7 @@ describe('PluginContributionRegistry', () => {
         taskProviderTypes: [],
       },
     })
+    markPluginActive(manifest)
     contributionRegistry.register(
       'test-plugin',
       {
@@ -278,6 +349,7 @@ describe('PluginContributionRegistry', () => {
       },
       manifest,
     )
+    setPluginEnabledForContext('test-plugin', 'user-1', true)
     const { provider, commandHandlers } = createMockChatWithCommandHandlers()
 
     registerPluginCommands(provider)
@@ -296,6 +368,60 @@ describe('PluginContributionRegistry', () => {
 
     expect(commandHandlers.has('plugin_test_plugin_sync')).toBe(true)
     expect(executed).toBe(true)
+  })
+
+  test('plugin command handler refuses execution when plugin is disabled for the context', async () => {
+    let executed = false
+    const textCalls: string[] = []
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: ['sync'],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [
+          {
+            name: 'sync',
+            description: 'Sync plugin data',
+            execute: (): void => {
+              executed = true
+            },
+          },
+        ],
+        jobs: [],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'user-1', false)
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    registerPluginCommands(provider)
+    await commandHandlers.get('plugin_test_plugin_sync')!(
+      createDmMessage('user-1'),
+      {
+        text: (text) => {
+          textCalls.push(text)
+          return Promise.resolve()
+        },
+        formatted: () => Promise.resolve(),
+        typing: () => {},
+        buttons: () => Promise.resolve(),
+      },
+      createAuth('user-1'),
+    )
+
+    expect(executed).toBe(false)
+    expect(textCalls[0]).toContain('disabled')
   })
 
   test('runs scheduled jobs only for explicitly enabled plugin contexts', async () => {
@@ -321,7 +447,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -341,6 +467,52 @@ describe('PluginContributionRegistry', () => {
     expect(taskState!.running).toBe(true)
   })
 
+  test('scheduled jobs include configured and explicit contexts once when plugin is default enabled', async () => {
+    const seenContexts: string[] = []
+    const manifest = makeManifest({
+      defaultEnabled: true,
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['daily'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    markPluginActive(manifest)
+    seedTestPlatformInstance({ id: 'telegram-a' })
+    seedTestTaskInstance({ id: 'task-a' })
+    setContextSettings({ contextId: 'ctx-default-a', taskInstanceId: 'task-a', platformInstanceId: 'telegram-a' })
+    setContextSettings({ contextId: 'ctx-default-b', taskInstanceId: 'task-a', platformInstanceId: 'telegram-a' })
+    setPluginEnabledForContext('test-plugin', 'ctx-default-a', true)
+    setPluginEnabledForContext('test-plugin', 'ctx-default-b', false)
+    setPluginEnabledForContext('test-plugin', 'ctx-explicit', true)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: ({ contextId }): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+
+    await runPluginScheduledJob('test-plugin', 'daily')
+
+    expect(seenContexts).toHaveLength(2)
+    expect(new Set(seenContexts)).toEqual(new Set(['ctx-default-a', 'ctx-explicit']))
+  })
+
   test('scheduled jobs skip contexts that are not plugin eligible', async () => {
     const seenContexts: string[] = []
     const manifest = makeManifest({
@@ -358,7 +530,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -391,7 +563,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -438,7 +610,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -477,7 +649,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -518,7 +690,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -539,9 +711,104 @@ describe('PluginContributionRegistry', () => {
     expect(seenContexts).toEqual([])
   })
 
-  test('scheduled jobs require resolver for required task capabilities', async () => {
+  test('jobs with task permissions receive a task-provider facade', async () => {
+    seedTestPlatformInstance({ id: 'platform-a' })
+    seedTestTaskInstance({ id: 'task-a', type: 'kaneo' })
+    setContextSettings({ contextId: 'ctx-job', platformInstanceId: 'platform-a', taskInstanceId: 'task-a' })
+
+    const provider = createMockProvider()
+    const searchCalls: string[] = []
+    provider.searchTasks = (params): Promise<[]> => {
+      searchCalls.push(params.query)
+      return Promise.resolve([])
+    }
+
+    const manifest = makeManifest({
+      permissions: ['tasks.read'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['sync'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+      defaultEnabled: true,
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        jobs: [
+          {
+            name: 'sync',
+            intervalMs: 60_000,
+            execute: async (runtime): Promise<void> => {
+              expect(runtime.pluginId).toBe('test-plugin')
+              await runtime.taskProvider!.searchTasks({ query: 'jobs-can-read' })
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+
+    await runPluginScheduledJob('test-plugin', 'sync', { resolveTaskProvider: () => provider })
+
+    expect(searchCalls).toEqual(['jobs-can-read'])
+  })
+
+  test('jobs without task permissions do not resolve a provider', async () => {
+    seedTestPlatformInstance({ id: 'platform-a' })
+    seedTestTaskInstance({ id: 'task-a', type: 'kaneo' })
+    setContextSettings({ contextId: 'ctx-job', platformInstanceId: 'platform-a', taskInstanceId: 'task-a' })
+
+    let resolveCalls = 0
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['sync'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+      defaultEnabled: true,
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        jobs: [
+          {
+            name: 'sync',
+            intervalMs: 60_000,
+            execute: (runtime): void => {
+              expect('taskProvider' in runtime).toBe(false)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+
+    await runPluginScheduledJob('test-plugin', 'sync', {
+      resolveTaskProvider: () => {
+        resolveCalls += 1
+        return createMockProvider()
+      },
+    })
+
+    expect(resolveCalls).toBe(0)
+  })
+
+  test('scheduled jobs with only required task capabilities do not resolve a provider', async () => {
     const seenContexts: string[] = []
-    const resolvedContexts: string[] = []
+    let resolveCalls = 0
     const manifest = makeManifest({
       requiredTaskCapabilities: ['workItems.list'],
       contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
@@ -557,7 +824,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -568,14 +835,14 @@ describe('PluginContributionRegistry', () => {
     setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
 
     await runPluginScheduledJob('test-plugin', 'daily', {
-      resolveTaskProvider: (contextId) => {
-        resolvedContexts.push(contextId)
-        return null
+      resolveTaskProvider: () => {
+        resolveCalls += 1
+        return createMockProvider()
       },
     })
 
-    expect(resolvedContexts).toEqual(['ctx-enabled'])
-    expect(seenContexts).toEqual([])
+    expect(resolveCalls).toBe(0)
+    expect(seenContexts).toEqual(['ctx-enabled'])
   })
 
   test('scheduled jobs continue after one context throws', async () => {
@@ -608,7 +875,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               const execution = executions.get(contextId)
               expect(execution).toBeDefined()
               execution!()
@@ -658,10 +925,12 @@ describe('buildPluginToolSet', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
   })
 
   afterEach(() => {
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
   })
 
@@ -723,6 +992,35 @@ describe('buildPluginToolSet', () => {
     expect(result).toEqual({ storageContextId: 'ctx-1', chatUserId: 'user-1', kvValue: undefined })
   })
 
+  test('omits taskProvider from runtime context when providerless runtime is used', async () => {
+    const manifest = makeManifest({ permissions: [] })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'Checks provider presence',
+            execute: (_input, runtimeContext): Promise<unknown> =>
+              Promise.resolve({
+                hasTaskProviderKey: 'taskProvider' in runtimeContext,
+                hasTaskProviderValue: Boolean(runtimeContext.taskProvider),
+              }),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime({ provider: undefined }))
+    const execute = getToolExecutor(tools['plugin_test_plugin__my_tool'])
+
+    const result = await execute({}, { toolCallId: 'call-1' })
+
+    expect(result).toEqual({ hasTaskProviderKey: false, hasTaskProviderValue: false })
+  })
+
   test('exposes read facade when tasks.read permission is declared', async () => {
     const manifest = makeManifest({ permissions: ['tasks.read'] })
     const getTaskResult = { id: 'task-1', title: 'Task 1', url: 'https://example.test/task-1' }
@@ -736,7 +1034,7 @@ describe('buildPluginToolSet', () => {
           {
             name: 'my_tool',
             description: 'A test tool',
-            execute: (_input, runtimeContext): Promise<unknown> => runtimeContext.taskProvider.getTask('task-1'),
+            execute: (_input, runtimeContext): Promise<unknown> => expectTaskProvider(runtimeContext).getTask('task-1'),
           },
         ],
         promptFragments: [],
@@ -763,7 +1061,7 @@ describe('buildPluginToolSet', () => {
           {
             name: 'my_tool',
             description: 'A test tool',
-            execute: (_input, runtimeContext): Promise<unknown> => runtimeContext.taskProvider.getTask('task-1'),
+            execute: (_input, runtimeContext): Promise<unknown> => expectTaskProvider(runtimeContext).getTask('task-1'),
           },
         ],
         promptFragments: [],
@@ -800,7 +1098,7 @@ describe('buildPluginToolSet', () => {
             name: 'my_tool',
             description: 'A test tool',
             execute: (_input, runtimeContext): Promise<unknown> =>
-              runtimeContext.taskProvider.createTask({ projectId: 'project-1', title: 'New task' }),
+              expectTaskProvider(runtimeContext).createTask({ projectId: 'project-1', title: 'New task' }),
           },
         ],
         promptFragments: [],
@@ -827,7 +1125,47 @@ describe('buildPluginToolSet', () => {
     )
   })
 
-  test('skips tools that collide with existing tool names', () => {
+  test('identity claims are bound to the runtime chat user', async () => {
+    const manifest = makeManifest({
+      permissions: ['identity', 'provider.task'],
+      contributes: {
+        tools: ['my_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['test-provider'],
+      },
+    })
+
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'Claims current actor identity',
+            execute: (_input, runtime): Promise<unknown> => {
+              runtime.identity!.recordClaim('provider-user', 'provider-login', 'Display Name')
+              return Promise.resolve('ok')
+            },
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime({ chatUserId: 'actor-1' }))
+    const result = await getToolExecutor(tools['plugin_test_plugin__my_tool'])({})
+
+    expect(result).toBe('ok')
+    const { getIdentityMapping } = await import('../../src/identity/mapping.js')
+    expect(getIdentityMapping('actor-1', 'test-provider')!.providerUserId).toBe('provider-user')
+    expect(getIdentityMapping('victim-1', 'test-provider')).toBeNull()
+  })
+
+  test('skips tools that collide with existing tool names and records a runtime event', () => {
     const manifest = makeManifest()
     contributionRegistry.register(
       'test-plugin',
@@ -844,8 +1182,47 @@ describe('buildPluginToolSet', () => {
       manifest,
     )
     const existing = new Set(['plugin_test_plugin__my_tool'])
-    const tools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
-    expect(Object.keys(tools)).toHaveLength(0)
+
+    const firstTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const secondTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const events = getRecentRuntimeEvents('test-plugin', 5)
+
+    expect(Object.keys(firstTools)).toHaveLength(0)
+    expect(Object.keys(secondTools)).toHaveLength(0)
+    expect(events).toHaveLength(1)
+    const event = requireValue(events[0], 'collision runtime event')
+    expect(event.eventType).toBe('skipped')
+    expect(event.message).toBe(
+      "Tool contribution 'plugin_test_plugin__my_tool' skipped because the name already exists",
+    )
+  })
+
+  test('collision suppression resets between tests when explicitly reset', () => {
+    const manifest = makeManifest()
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'A test tool',
+            execute: (): Promise<unknown> => Promise.resolve('ok'),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+    const existing = new Set(['plugin_test_plugin__my_tool'])
+
+    const firstTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    resetContributionCollisionStateForTesting()
+    const secondTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const events = getRecentRuntimeEvents('test-plugin', 5)
+
+    expect(Object.keys(firstTools)).toHaveLength(0)
+    expect(Object.keys(secondTools)).toHaveLength(0)
+    expect(events).toHaveLength(2)
   })
 })
 
@@ -853,10 +1230,12 @@ describe('buildPluginPromptSection', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
   })
 
   afterEach(() => {
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
   })
 
@@ -898,6 +1277,39 @@ describe('buildPluginPromptSection', () => {
     )
     buildPluginPromptSection(['test-plugin'])
     expect(called).toBe(true)
+  })
+
+  test('prompt section skips throwing fragment and keeps later fragments', () => {
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: ['bad', 'good'],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [
+          {
+            name: 'bad',
+            content: (): string => {
+              throw new Error('fragment boom')
+            },
+          },
+          { name: 'good', content: 'SAFE_FRAGMENT' },
+        ],
+        commands: [],
+        jobs: [],
+      },
+      manifest,
+    )
+
+    expect(buildPluginPromptSection(['test-plugin'])).toContain('SAFE_FRAGMENT')
   })
 
   test('truncates fragment exceeding per-plugin limit', () => {

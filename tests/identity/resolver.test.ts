@@ -43,7 +43,7 @@ function searchUsersEmailLoginExact(query: string): Promise<UserRecord[]> {
 const mockProvider: TaskProvider = {
   name: 'mock',
   capabilities: new Set(),
-  configRequirements: [],
+  traits: new Set(),
   preferredUserIdentifier: 'id',
   identityResolver: {
     searchUsers: searchUsersDefault,

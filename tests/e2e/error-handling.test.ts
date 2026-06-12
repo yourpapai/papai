@@ -7,13 +7,13 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 setDefaultTimeout(10000)
 
-import { KaneoClassifiedError } from '../../src/providers/kaneo/classify-error.js'
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { createTask } from '../../src/providers/kaneo/create-task.js'
-import { deleteTask } from '../../src/providers/kaneo/delete-task.js'
-import { getComments } from '../../src/providers/kaneo/get-comments.js'
-import { getTask } from '../../src/providers/kaneo/get-task.js'
-import { updateTask } from '../../src/providers/kaneo/update-task.js'
+import { KaneoClassifiedError } from '../../plugins/task-provider-kaneo/classify-error.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
+import { deleteTask } from '../../plugins/task-provider-kaneo/delete-task.js'
+import { getComments } from '../../plugins/task-provider-kaneo/get-comments.js'
+import { getTask } from '../../plugins/task-provider-kaneo/get-task.js'
+import { updateTask } from '../../plugins/task-provider-kaneo/update-task.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
 
 describe('E2E: Error Handling', () => {

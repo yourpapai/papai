@@ -32,9 +32,9 @@ import {
 } from './client-factory.js'
 import { matchDiscordCommand } from './commands.js'
 import { renderDiscordContext } from './context-renderer.js'
-import { handleDiscordGroupSettingsSelection } from './group-settings.js'
 import { resolveDiscordGroupLabel, resolveDiscordGuildFromContext, resolveDiscordUserLabel } from './label-helpers.js'
-import { mapDiscordMessage } from './map-message.js'
+import { CHANNEL_TYPE_DM, mapDiscordMessage } from './map-message.js'
+import { isBotMentioned } from './mention-helpers.js'
 import { discordCapabilities, discordConfigRequirements, discordTraits } from './metadata.js'
 import { buildDiscordReplyContext } from './reply-context.js'
 import { createDiscordReplyFn } from './reply-helpers.js'
@@ -44,24 +44,36 @@ export type { DiscordClientFactory, DiscordClientLike, DispatchableMessage }
 export { defaultClientFactory }
 const log = logger.child({ scope: 'chat:discord' })
 type OnMessageHandler = (msg: IncomingMessage, reply: ReplyFn) => Promise<void>
-type DiscordConstructorArgs =
-  | []
-  | [clientFactory: DiscordClientFactory | undefined]
-  | [clientFactory: DiscordClientFactory | undefined, tokenOverride: string | undefined]
-  | [
-      clientFactory: DiscordClientFactory | undefined,
-      tokenOverride: string | undefined,
-      platformInstanceId: string | undefined,
-    ]
-
-const resolveToken = (tokenOverride: string | undefined): string | undefined => {
-  if (tokenOverride === undefined) return process.env['DISCORD_BOT_TOKEN']
-  return tokenOverride
+type DiscordConstructorConfig = {
+  readonly clientFactory?: DiscordClientFactory
+  readonly token?: string
+  readonly platformInstanceId: string
 }
 
-const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
-  if (platformInstanceId === undefined) return 'discord-default'
-  return platformInstanceId
+/**
+ * Determine if an unmentioned group message is a reply to the bot's own message.
+ * Skips the fetch when the bot is already mentioned (passes the group filter regardless)
+ * or when the message is in a DM channel.
+ */
+async function resolveIsReplyToBot(message: DispatchableMessage, botId: string, mentioned: boolean): Promise<boolean> {
+  if (message.reference?.messageId === undefined) return false
+  if (message.channel.type === CHANNEL_TYPE_DM) return false
+  if (mentioned) return false
+  const messages = message.channel.messages
+  if (messages === undefined) return false
+  try {
+    const parent = await messages.fetch(message.reference.messageId)
+    return parent.author.id === botId
+  } catch (error: unknown) {
+    log.warn(
+      {
+        messageId: message.reference.messageId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'failed to fetch parent message for reply-to-bot detection',
+    )
+    return false
+  }
 }
 
 export class DiscordChatProvider implements ChatProvider {
@@ -81,17 +93,18 @@ export class DiscordChatProvider implements ChatProvider {
   private messageHandler: OnMessageHandler | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private client: DiscordClientLike | null = null
-  constructor(...args: DiscordConstructorArgs) {
-    const clientFactory = args[0]
-    const tokenOverride = args.length >= 2 ? args[1] : undefined
-    const token = resolveToken(tokenOverride)
+  constructor(config: DiscordConstructorConfig) {
+    const token = config.token
     if (token === undefined || token.trim() === '') {
       throw new Error('DISCORD_BOT_TOKEN environment variable is required')
     }
-    const platformInstanceId = resolvePlatformInstanceId(args.length >= 3 ? args[2] : undefined)
+    const platformInstanceId = config.platformInstanceId
+    if (platformInstanceId === undefined || platformInstanceId.trim() === '') {
+      throw new Error('platformInstanceId is required')
+    }
     this.token = token
     this.platformInstanceId = platformInstanceId
-    this.clientFactory = typeof clientFactory === 'function' ? clientFactory : defaultClientFactory
+    this.clientFactory = typeof config.clientFactory === 'function' ? config.clientFactory : defaultClientFactory
     log.debug(
       { platformInstanceId: this.platformInstanceId, tokenLength: this.token.length },
       'DiscordChatProvider constructed',
@@ -150,19 +163,18 @@ export class DiscordChatProvider implements ChatProvider {
   }
 
   start(): Promise<void> {
-    const adminUserId = typeof process.env['ADMIN_USER_ID'] === 'string' ? process.env['ADMIN_USER_ID'] : ''
     const client = this.clientFactory()
     this.client = client
     client.on('messageCreate', (rawMsg) => {
       if (!isDispatchableMessage(rawMsg)) return
-      this.dispatchMessage(rawMsg, client.user === null ? '' : client.user.id, adminUserId).catch((error: unknown) => {
+      this.dispatchMessage(rawMsg, client.user === null ? '' : client.user.id).catch((error: unknown) => {
         log.error({ error: error instanceof Error ? error.message : String(error) }, 'messageCreate dispatch failed')
       })
     })
 
     client.on('interactionCreate', (rawInteraction) => {
       if (!isButtonInteraction(rawInteraction)) return
-      this.dispatchButtonInteraction(rawInteraction, adminUserId).catch((error: unknown) => {
+      this.dispatchButtonInteraction(rawInteraction).catch((error: unknown) => {
         log.error(
           { error: error instanceof Error ? error.message : String(error) },
           'interactionCreate dispatch failed',
@@ -193,39 +205,24 @@ export class DiscordChatProvider implements ChatProvider {
   testSetClient(c: DiscordClientLike): void {
     this.client = c
   }
-  testDispatchMessage(message: DispatchableMessage, botId: string, adminUserId: string): Promise<void> {
-    return this.dispatchMessage(message, botId, adminUserId)
+  testDispatchMessage(message: DispatchableMessage, botId: string): Promise<void> {
+    return this.dispatchMessage(message, botId)
   }
 
-  async testDispatchButtonInteraction(
-    interaction: ButtonInteractionLike,
-    _botId: string,
-    adminUserId: string,
-  ): Promise<void> {
-    await this.dispatchButtonInteraction(interaction, adminUserId)
+  async testDispatchButtonInteraction(interaction: ButtonInteractionLike, _botId: string): Promise<void> {
+    await this.dispatchButtonInteraction(interaction)
   }
 
-  private async dispatchButtonInteraction(interaction: ButtonInteractionLike, adminUserId: string): Promise<void> {
+  private async dispatchButtonInteraction(interaction: ButtonInteractionLike): Promise<void> {
     await tryDeferUpdate(interaction)
 
-    const result = buildInteraction(interaction, adminUserId, this.platformInstanceId)
+    const result = buildInteraction(interaction, this.platformInstanceId)
     if (result === null) {
       log.debug({ customId: interaction.customId }, 'Could not build incoming interaction, skipping')
       return
     }
 
     const { incoming, channel } = result
-
-    // Handle group-settings selector callbacks before standard routing
-    if (
-      await handleDiscordGroupSettingsSelection(
-        interaction,
-        incoming.user.id,
-        incoming.platformInstanceId,
-        result.reply,
-      )
-    )
-      return
 
     if (this.interactionHandler === null) {
       const auth = checkAuthorizationExtended(
@@ -244,7 +241,6 @@ export class DiscordChatProvider implements ChatProvider {
         channel,
         incoming.contextId,
         incoming.contextType,
-        adminUserId,
         this.commands,
         this.messageHandler,
         this.platformInstanceId,
@@ -254,8 +250,11 @@ export class DiscordChatProvider implements ChatProvider {
     await this.interactionHandler(incoming, result.reply)
   }
 
-  private async dispatchMessage(message: DispatchableMessage, botId: string, adminUserId: string): Promise<void> {
-    const mapped = mapDiscordMessage(message, botId, adminUserId, this.platformInstanceId)
+  private async dispatchMessage(message: DispatchableMessage, botId: string): Promise<void> {
+    const mentioned = isBotMentioned(message.mentions, botId, 'group')
+    const isReplyToBot = await resolveIsReplyToBot(message, botId, mentioned)
+
+    const mapped = mapDiscordMessage(message, botId, this.platformInstanceId, isReplyToBot)
     if (mapped === null) return
     const reply = createDiscordReplyFn({
       channel: message.channel,

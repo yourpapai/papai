@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { routeToolsForMessage } from '../src/tools/tool-router.js'
 import {
   createBenchmarkStore,
   evaluateBenchmarkScenario,
@@ -38,17 +37,10 @@ export {
 }
 
 export const toolsForMode = (mode: BenchmarkMode, prompt: string, store: BenchmarkStore): BenchmarkToolSetup => {
+  void mode
+  void prompt
   const directTools = buildDirectTools(store)
   const fullToolCount = Object.keys(directTools).length
-
-  if (mode === 'direct_routed') {
-    const routed = routeToolsForMessage(prompt, directTools)
-    return {
-      tools: routed.tools,
-      fullToolCount: routed.fullToolCount,
-      exposedToolCount: routed.exposedToolCount,
-    }
-  }
 
   return { tools: directTools, fullToolCount, exposedToolCount: fullToolCount }
 }

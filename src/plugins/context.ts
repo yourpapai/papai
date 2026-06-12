@@ -4,23 +4,15 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import {
-  registerContributedTaskProviderType,
-  type TaskProviderFactory,
-  type TaskProviderConfigValidator,
-} from '../providers/registry.js'
-import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
+import type { TaskProviderAutoProvision, TaskProviderFactory, TaskProviderProvision } from '../providers/registry.js'
+import type { ProviderConfigField } from '../providers/types.js'
+import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
+import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
+import { buildActivationGuard, buildNamedRegistrationHandlers, type ActivationGuard } from './registration-support.js'
+import type { PluginContributions } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
-import type {
-  PluginContributions,
-  PluginManifest,
-  PluginPermission,
-  PluginCommand,
-  PluginTool,
-  PluginPromptFragment,
-  PluginScheduledJob,
-} from './types.js'
+import type { PluginManifest, PluginCommand, PluginTool, PluginPromptFragment, PluginScheduledJob } from './types.js'
 
 /** Context-scoped KV store exposed to a plugin. */
 export type PluginKvStore = {
@@ -44,6 +36,14 @@ export type PluginAdminConfig = {
 }
 
 /** Registration API given to a plugin's activate() function. */
+type TaskProviderRegistrationInput =
+  | TaskProviderFactory
+  | {
+      factory: TaskProviderFactory
+      autoProvision?: TaskProviderAutoProvision
+      provision?: TaskProviderProvision
+    }
+
 export type PluginRegistration = {
   /** Register a tool contribution. The name must match a declared contributes.tools entry. */
   registerTool(tool: PluginTool): void
@@ -54,24 +54,21 @@ export type PluginRegistration = {
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
   /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
-  registerTaskProviderType(
-    type: string,
-    descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator },
-  ): void
+  registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void
 }
 
 /** Full context passed to a plugin's activate() function. */
 export type PluginContext = {
   readonly pluginId: string
   readonly contextId: string
-  readonly permissions: ReadonlySet<PluginPermission>
+  readonly permissions: PluginPermissionSet
   readonly kv: PluginKvStore
   readonly log: PluginLogger
   readonly registration: PluginRegistration
   /** Present only when the 'provider.task' or 'http' permission is held. */
   readonly providerRuntime?: PluginProviderRuntime
   /** Present only when 'identity' is held and the plugin declares one task provider type. */
-  readonly identity?: PluginIdentityFacade
+  readonly identity?: PluginIdentityLookupFacade
   readonly adminConfig: PluginAdminConfig
 }
 
@@ -97,7 +94,8 @@ function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
       kvDelete(pluginId, contextId, key)
     },
     list(prefix?: string): Array<{ key: string; value: string }> {
-      return kvList(pluginId, contextId, prefix).map((row) => ({ key: row.key, value: row.value }))
+      const rows = prefix === undefined ? kvList(pluginId, contextId) : kvList(pluginId, contextId, prefix)
+      return rows.map((row) => ({ key: row.key, value: row.value }))
     },
   })
 }
@@ -120,13 +118,25 @@ function buildPluginLogger(pluginId: string): PluginLogger {
   })
 }
 
+const toProviderConfigField = (
+  field: { key: string; label: string; required: boolean; sensitive: boolean; storageKey?: string },
+  scope: ProviderConfigField['scope'],
+): ProviderConfigField => ({
+  key: field.key,
+  label: field.label,
+  required: field.required,
+  sensitive: field.sensitive,
+  scope,
+  ...(field.storageKey === undefined ? {} : { storageKey: field.storageKey }),
+})
+
 function buildRegisterTaskProviderType(
   manifest: PluginManifest,
-): (type: string, descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator }) => void {
-  return function registerTaskProviderType(
-    type: string,
-    descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator },
-  ): void {
+  collected: PluginContributions,
+  activationGuard: ActivationGuard,
+): (type: string, input: TaskProviderRegistrationInput) => void {
+  return function registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void {
+    activationGuard.assertOpen()
     if (!manifest.permissions.includes('provider.task')) {
       throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
     }
@@ -136,52 +146,71 @@ function buildRegisterTaskProviderType(
         `Task provider type '${type}' is not declared in plugin manifest contributes.taskProviderTypes (declared: [${declared.join(', ')}])`,
       )
     }
-    registerContributedTaskProviderType(type, {
-      pluginId: manifest.id,
-      factory: descriptor.factory,
-      validateConfig: descriptor.validateConfig,
+    if (collected.taskProviderRegistration !== undefined) {
+      throw new Error(`Task provider type '${type}' was registered more than once`)
+    }
+    const registration = typeof input === 'function' ? { factory: input } : input
+    collected.taskProviderRegistration = {
+      type,
+      factory: registration.factory,
+      autoProvision: registration.autoProvision,
+      provision: registration.provision,
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
-      configSchema: manifest.providerConfigSchema,
-    })
+      instanceConfigSchema: manifest.providerConfigSchema.map((field) => toProviderConfigField(field, 'instance')),
+      contextConfigSchema: (manifest.providerContextConfigSchema ?? []).map((field) =>
+        toProviderConfigField(field, 'context'),
+      ),
+      traits: new Set(manifest.providerTraits),
+    }
   }
 }
 
-function buildRegistration(manifest: PluginManifest, collected: PluginContributions): PluginRegistration {
-  const declaredTools = new Set(manifest.contributes.tools)
-  const declaredFragments = new Set(manifest.contributes.promptFragments)
-  const declaredCommands = new Set(manifest.contributes.commands)
-  const declaredJobs = new Set(manifest.contributes.jobs)
-
-  return Object.freeze({
-    registerTool(pluginTool: PluginTool): void {
-      if (!declaredTools.has(pluginTool.name)) {
-        throw new Error(`Tool '${pluginTool.name}' is not declared in plugin manifest contributes.tools`)
-      }
-      collected.tools.push(pluginTool)
+function buildRegistration(
+  manifest: PluginManifest,
+  collected: PluginContributions,
+  activationGuard: ActivationGuard,
+): PluginRegistration {
+  const namedRegistrations = buildNamedRegistrationHandlers(manifest, {
+    activationGuard,
+    registerTool: (tool) => {
+      collected.tools.push(tool)
     },
-    registerPromptFragment(fragment: PluginPromptFragment): void {
-      if (!declaredFragments.has(fragment.name)) {
-        throw new Error(
-          `Prompt fragment '${fragment.name}' is not declared in plugin manifest contributes.promptFragments`,
-        )
-      }
+    registerPromptFragment: (fragment) => {
       collected.promptFragments.push(fragment)
     },
-    registerCommand(command: PluginCommand): void {
-      if (!declaredCommands.has(command.name)) {
-        throw new Error(`Command '${command.name}' is not declared in plugin manifest contributes.commands`)
-      }
+    registerCommand: (command) => {
       collected.commands = [...(collected.commands ?? []), command]
     },
-    registerScheduledJob(job: PluginScheduledJob): void {
-      if (!declaredJobs.has(job.name)) {
-        throw new Error(`Scheduled job '${job.name}' is not declared in plugin manifest contributes.jobs`)
-      }
+    registerScheduledJob: (job) => {
       collected.jobs = [...(collected.jobs ?? []), job]
     },
-    registerTaskProviderType: buildRegisterTaskProviderType(manifest),
   })
+  return Object.freeze({
+    registerTool(tool: PluginTool): void {
+      namedRegistrations.registerTool(tool)
+    },
+    registerPromptFragment(fragment: PluginPromptFragment): void {
+      namedRegistrations.registerPromptFragment(fragment)
+    },
+    registerCommand(command: PluginCommand): void {
+      namedRegistrations.registerCommand(command)
+    },
+    registerScheduledJob(job: PluginScheduledJob): void {
+      namedRegistrations.registerScheduledJob(job)
+    },
+    registerTaskProviderType: buildRegisterTaskProviderType(manifest, collected, activationGuard),
+  })
+}
+
+type BuildPluginContextOptions = {
+  registrationInitiallyOpen?: boolean
+}
+
+export type BuiltPluginContext = {
+  ctx: PluginContext
+  collected: PluginContributions
+  closeRegistration(): void
 }
 
 /**
@@ -191,9 +220,14 @@ function buildRegistration(manifest: PluginManifest, collected: PluginContributi
 export function buildPluginContext(
   manifest: PluginManifest,
   contextId: string,
-): { ctx: PluginContext; collected: PluginContributions } {
-  const permissions = new Set(manifest.permissions) as ReadonlySet<PluginPermission>
+  options: BuildPluginContextOptions = {},
+): BuiltPluginContext {
+  const permissions = buildPermissions(manifest.permissions)
   const collected: PluginContributions = { tools: [], promptFragments: [], commands: [], jobs: [] }
+  const activationGuard = buildActivationGuard()
+  if (options.registrationInitiallyOpen === false) {
+    activationGuard.close()
+  }
 
   const kv = permissions.has('storage') ? buildKvStore(manifest.id, contextId) : buildDeniedKvStore(manifest.id)
   const log = buildPluginLogger(manifest.id)
@@ -206,7 +240,7 @@ export function buildPluginContext(
   const [declaredProviderType] = declaredTypes
   const identity =
     permissions.has('identity') && declaredTypes.length === 1 && declaredProviderType !== undefined
-      ? buildIdentityFacade(declaredProviderType)
+      ? buildIdentityLookupFacade(declaredProviderType)
       : undefined
 
   const ctx: PluginContext = Object.freeze({
@@ -215,13 +249,35 @@ export function buildPluginContext(
     permissions,
     kv,
     log,
-    registration: buildRegistration(manifest, collected),
+    registration: buildRegistration(manifest, collected, activationGuard),
     providerRuntime,
     identity,
     adminConfig: buildAdminConfig(manifest),
   })
 
-  return { ctx, collected }
+  return {
+    ctx,
+    collected,
+    closeRegistration(): void {
+      activationGuard.close()
+    },
+  }
+}
+
+export async function runWithClosedRegistration<T>(
+  builtContext: BuiltPluginContext,
+  callback: (ctx: PluginContext) => Promise<T> | T,
+): Promise<T> {
+  const result = callback(builtContext.ctx)
+  if (!(result instanceof Promise)) {
+    builtContext.closeRegistration()
+    return result
+  }
+  try {
+    return await result
+  } finally {
+    builtContext.closeRegistration()
+  }
 }
 
 function buildDeniedKvStore(pluginId: string): PluginKvStore {

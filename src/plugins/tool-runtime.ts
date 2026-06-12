@@ -6,7 +6,9 @@
 import { loadAttachmentRecord } from '../attachments/store.js'
 import type { TaskProvider } from '../providers/types.js'
 import { consumeWebFetchQuota } from '../web/rate-limit.js'
-import { kvDelete, kvGet, kvList, kvSet } from './store.js'
+import { buildIdentityFacade } from './identity-facade.js'
+import type { PluginScheduledJobRuntimeContext } from './runtime-types.js'
+import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
   PluginAttachmentFacade,
   PluginManifest,
@@ -15,7 +17,7 @@ import type {
 } from './types.js'
 
 export type PluginToolSetRuntime = {
-  provider: TaskProvider
+  provider?: TaskProvider
   storageContextId: string
   chatUserId: string
 }
@@ -50,36 +52,53 @@ function buildRuntimeKv(
       kvDelete(pluginId, contextId, key)
     },
     list(prefix?: string): Array<{ key: string; value: string }> {
-      return kvList(pluginId, contextId, prefix).map((row) => ({ key: row.key, value: row.value }))
+      const rows = prefix === undefined ? kvList(pluginId, contextId) : kvList(pluginId, contextId, prefix)
+      return rows.map((row) => ({ key: row.key, value: row.value }))
     },
   })
 }
 
-function buildTaskProviderFacade(
+function buildRuntimeAdminConfig(pluginId: string, manifest: PluginManifest): PluginToolRuntimeContext['adminConfig'] {
+  const adminKeys = new Set(manifest.configRequirements.filter((req) => req.scope === 'admin').map((req) => req.key))
+
+  return Object.freeze({
+    get(key: string): string | undefined {
+      if (!adminKeys.has(key)) return undefined
+      return getPluginAdminConfig(pluginId, key)
+    },
+  })
+}
+
+export function buildPluginTaskProviderFacade(
   pluginId: string,
-  provider: TaskProvider,
+  provider: TaskProvider | undefined,
   canRead: boolean,
   canWrite: boolean,
 ): PluginTaskProviderFacade {
   return Object.freeze({
     getTask(taskId: string) {
       if (!canRead) deny(pluginId, 'tasks.read')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.getTask(taskId)
     },
     listTasks(projectId: string, params) {
       if (!canRead) deny(pluginId, 'tasks.read')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.listTasks(projectId, params)
     },
     searchTasks(params) {
       if (!canRead) deny(pluginId, 'tasks.read')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.searchTasks(params)
     },
     createTask(params) {
       if (!canWrite) deny(pluginId, 'tasks.write')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.createTask(params)
     },
     updateTask(taskId: string, params) {
       if (!canWrite) deny(pluginId, 'tasks.write')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.updateTask(taskId, params)
     },
   }) satisfies PluginTaskProviderFacade
@@ -111,6 +130,26 @@ function buildAttachmentsFacade(
   })
 }
 
+export function buildPluginScheduledJobRuntimeContext(
+  pluginId: string,
+  contextId: string,
+  manifest: PluginManifest,
+  provider: TaskProvider | undefined,
+): PluginScheduledJobRuntimeContext {
+  if (provider === undefined) return { pluginId, contextId }
+
+  return {
+    pluginId,
+    contextId,
+    taskProvider: buildPluginTaskProviderFacade(
+      pluginId,
+      provider,
+      manifest.permissions.includes('tasks.read'),
+      manifest.permissions.includes('tasks.write'),
+    ),
+  }
+}
+
 // Intentionally shares the web_fetch rate-limit bucket (20 req / 5 min per actor).
 // Ungated: rate limiting is a safety mechanism, not a capability — any plugin may self-throttle.
 function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
@@ -123,23 +162,37 @@ function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
   })
 }
 
+const buildRuntimeIdentity = (manifest: PluginManifest, chatUserId: string): PluginToolRuntimeContext['identity'] => {
+  const [providerType] = manifest.contributes.taskProviderTypes
+  if (!manifest.permissions.includes('identity')) return undefined
+  if (manifest.contributes.taskProviderTypes.length !== 1 || providerType === undefined) return undefined
+  return buildIdentityFacade(providerType, chatUserId)
+}
+
 export function buildPluginToolRuntimeContext(
   pluginId: string,
   manifest: PluginManifest,
   runtime: PluginToolSetRuntime,
 ): PluginToolRuntimeContext {
   const permissions = new Set(manifest.permissions)
+  const identity = buildRuntimeIdentity(manifest, runtime.chatUserId)
+  const taskProvider =
+    runtime.provider === undefined
+      ? undefined
+      : buildPluginTaskProviderFacade(
+          pluginId,
+          runtime.provider,
+          permissions.has('tasks.read'),
+          permissions.has('tasks.write'),
+        )
   return Object.freeze({
     pluginId,
     storageContextId: runtime.storageContextId,
     chatUserId: runtime.chatUserId,
-    taskProvider: buildTaskProviderFacade(
-      pluginId,
-      runtime.provider,
-      permissions.has('tasks.read'),
-      permissions.has('tasks.write'),
-    ),
     kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
+    adminConfig: buildRuntimeAdminConfig(pluginId, manifest),
+    ...(taskProvider === undefined ? {} : { taskProvider }),
+    ...(identity === undefined ? {} : { identity }),
     rateLimit: buildRateLimit(),
     attachments: buildAttachmentsFacade(pluginId, runtime.storageContextId, permissions.has('attachments.read')),
   })

@@ -13,7 +13,7 @@ import {
   makeUpdateLabelTool,
 } from '../../src/tools/label-tools.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
-import { createMockProvider } from './mock-provider.js'
+import { createMockKaneoProvider, createMockProvider } from './mock-provider.js'
 
 interface Label {
   id: string
@@ -173,8 +173,7 @@ describe('Label Tools', () => {
 
     test('returns already_exists for Kaneo when reusable workspace label already exists', async () => {
       const createLabel = mock(() => Promise.resolve({ id: 'label-new', name: 'Feature', color: '#ff0000' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listLabels: mock(() => Promise.resolve([{ id: 'label-1', name: 'Feature', color: '#ff0000' }])),
         createLabel,
       })

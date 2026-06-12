@@ -4,14 +4,19 @@
 // See LICENSE in the project root for details.
 
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import * as fs from 'node:fs'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { logger } from '../logger.js'
+import { readPluginSourceGraph } from './discovery-imports.js'
 import { pluginManifestSchema } from './types.js'
 import type { DiscoveredPlugin } from './types.js'
 
 const log = logger.child({ scope: 'plugins:discovery' })
+
+export const discoveryPathOps: { realpathSync: (path: fs.PathLike) => string } = {
+  realpathSync: (path) => fs.realpathSync(path),
+}
 
 export type DiscoveryError = {
   directoryName: string
@@ -21,11 +26,34 @@ export type DiscoveryError = {
 export type DiscoveryResult = {
   plugins: DiscoveredPlugin[]
   errors: DiscoveryError[]
+  /**
+   * True when the configured plugins directory did not exist on disk at the
+   * time of discovery. Indicates a deployment misconfiguration (e.g. the
+   * Docker image was built without `COPY plugins ./plugins`).
+   */
+  directoryMissing: boolean
+}
+
+export function isPathInsideDirectory(
+  directoryPath: string,
+  candidatePath: string,
+  pathOps: {
+    isAbsolute(path: string): boolean
+    relative(from: string, to: string): string
+    resolve(...paths: string[]): string
+    sep: string
+  } = { isAbsolute: (path) => resolve(path) === path, relative, resolve, sep },
+): boolean {
+  const relativePath = pathOps.relative(pathOps.resolve(directoryPath), pathOps.resolve(candidatePath))
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith(`..${pathOps.sep}`) && relativePath !== '..' && !pathOps.isAbsolute(relativePath))
+  )
 }
 
 function isRealDirectory(path: string): boolean {
   try {
-    const stat = lstatSync(path)
+    const stat = fs.lstatSync(path)
     if (stat.isSymbolicLink()) return false
     return stat.isDirectory()
   } catch {
@@ -33,27 +61,74 @@ function isRealDirectory(path: string): boolean {
   }
 }
 
-function computeManifestHash(manifestContent: string, entryPointContent: string): string {
-  return createHash('sha256')
-    .update(`${manifestContent.length}:`)
-    .update(manifestContent)
-    .update(`${entryPointContent.length}:`)
-    .update(entryPointContent)
-    .digest('hex')
+function resolveRealPathInsidePlugin(pluginDir: string, candidatePath: string, specifier: string): string {
+  const realPluginDir = discoveryPathOps.realpathSync(pluginDir)
+  const realCandidatePath = discoveryPathOps.realpathSync(candidatePath)
+  if (!isPathInsideDirectory(realPluginDir, realCandidatePath)) {
+    throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
+  }
+  return realCandidatePath
+}
+
+const isRelativePluginImport = (specifier: string): boolean => specifier.startsWith('./') || specifier.startsWith('../')
+
+function wrapPluginImportVerificationError(specifier: string, error: unknown): Error {
+  const cause = error instanceof Error ? error : new Error(String(error))
+  return new Error(`Failed to verify plugin import path for ${specifier}: ${cause.message}`, { cause })
+}
+
+const makeDiscoveryError = (directoryName: string, reason: string): DiscoveryError => ({ directoryName, reason })
+
+function resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string {
+  const candidate = resolve(join(dirname(fromFile), specifier))
+  if (!isPathInsideDirectory(pluginDir, candidate)) {
+    throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
+  }
+
+  const candidates = candidate.endsWith('.ts')
+    ? [candidate]
+    : candidate.endsWith('.js')
+      ? [candidate, `${candidate.slice(0, -3)}.ts`]
+      : [`${candidate}.ts`, `${candidate}.js`, join(candidate, 'index.ts'), join(candidate, 'index.js')]
+
+  const resolvedPath = candidates.find((path) => fs.existsSync(path))
+  if (resolvedPath === undefined) throw new Error(`Imported plugin file not found: ${specifier}`)
+
+  try {
+    resolveRealPathInsidePlugin(pluginDir, resolvedPath, specifier)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Plugin import resolves outside plugin directory:')) {
+      throw error
+    }
+    throw wrapPluginImportVerificationError(specifier, error)
+  }
+
+  return resolvedPath
+}
+
+function computePluginManifestHash(manifestContent: string, sourceFiles: readonly string[]): string {
+  const hash = createHash('sha256')
+  hash.update(`${manifestContent.length}:`).update(manifestContent)
+
+  const sourceRoot = sourceFiles[0] === undefined ? '' : dirname(sourceFiles[0])
+
+  for (const filePath of sourceFiles) {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const relativeFilePath = sourceRoot === '' ? filePath : relative(sourceRoot, filePath).split(sep).join('/')
+    hash.update(`${relativeFilePath.length}:`).update(relativeFilePath)
+    hash.update(`${content.length}:`).update(content)
+  }
+
+  return hash.digest('hex')
 }
 
 function resolveEntryPoint(pluginDir: string, main: string): string | null {
   const resolved = resolve(join(pluginDir, main))
-  // Ensure the entry point stays inside the plugin directory (not above or at the dir itself)
-  if (!resolved.startsWith(resolve(pluginDir) + '/')) {
-    return null
-  }
+  if (!isPathInsideDirectory(pluginDir, resolved)) return null
   try {
-    const realPluginDir = realpathSync(pluginDir)
-    const realEntryPoint = realpathSync(resolved)
-    if (!realEntryPoint.startsWith(realPluginDir + '/')) return null
+    resolveRealPathInsidePlugin(pluginDir, resolved, main)
   } catch {
-    return resolved
+    return null
   }
   return resolved
 }
@@ -64,29 +139,59 @@ function parseAndValidateManifest(
 ): { manifest: ReturnType<typeof pluginManifestSchema.parse>; manifestContent: string } | DiscoveryError {
   let manifestContent: string
   try {
-    manifestContent = readFileSync(manifestPath, 'utf-8')
-    JSON.parse(manifestContent)
+    manifestContent = fs.readFileSync(manifestPath, 'utf-8')
   } catch (error) {
-    return {
-      directoryName: dirName,
-      reason: `Invalid JSON in plugin.json: ${error instanceof Error ? error.message : String(error)}`,
-    }
+    return makeDiscoveryError(
+      dirName,
+      `Failed to read plugin.json: ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 
-  const parseResult = pluginManifestSchema.safeParse(JSON.parse(manifestContent) as unknown)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(manifestContent) as unknown
+  } catch (error) {
+    return makeDiscoveryError(
+      dirName,
+      `Invalid JSON in plugin.json: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+
+  const parseResult = pluginManifestSchema.safeParse(parsed)
   if (!parseResult.success) {
     const issues = parseResult.error.issues.map((i) => i.message).join('; ')
-    return { directoryName: dirName, reason: `Manifest validation failed: ${issues}` }
+    return makeDiscoveryError(dirName, `Manifest validation failed: ${issues}`)
   }
 
-  if (parseResult.data.id !== dirName) {
-    return {
-      directoryName: dirName,
-      reason: `Plugin id "${parseResult.data.id}" does not match directory name "${dirName}"`,
-    }
-  }
+  if (parseResult.data.id !== dirName)
+    return makeDiscoveryError(dirName, `Plugin id "${parseResult.data.id}" does not match directory name "${dirName}"`)
 
   return { manifest: parseResult.data, manifestContent }
+}
+
+function resolveEntrypointForDiscovery(
+  pluginDir: string,
+  main: string | undefined,
+): { entryPoint: string; sourceFiles: string[] } | DiscoveryError {
+  if (main === undefined) return { entryPoint: '', sourceFiles: [] }
+
+  const entryPoint = resolveEntryPoint(pluginDir, main)
+  if (entryPoint === null) return makeDiscoveryError('', `Entry point "${main}" resolves outside the plugin directory`)
+
+  try {
+    const sourceFiles = readPluginSourceGraph(
+      entryPoint,
+      pluginDir,
+      {
+        isRelativePluginImport,
+        resolveEntryImport,
+      },
+      fs.readFileSync,
+    )
+    return { entryPoint, sourceFiles }
+  } catch (error) {
+    return makeDiscoveryError('', error instanceof Error ? error.message : String(error))
+  }
 }
 
 function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin | DiscoveryError {
@@ -100,7 +205,7 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   }
 
   const manifestPath = join(pluginDir, 'plugin.json')
-  if (!existsSync(manifestPath)) {
+  if (!fs.existsSync(manifestPath)) {
     return { directoryName: dirName, reason: 'Missing plugin.json' }
   }
 
@@ -108,50 +213,35 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   if ('reason' in parsed) return parsed
 
   const { manifest, manifestContent } = parsed
-  const entryPoint = resolveEntryPoint(pluginDir, manifest.main)
-  if (entryPoint === null) {
-    return {
-      directoryName: dirName,
-      reason: `Entry point "${manifest.main}" resolves outside the plugin directory`,
-    }
-  }
 
-  let entryPointContent: string
-  try {
-    entryPointContent = readFileSync(entryPoint, 'utf-8')
-  } catch (error) {
-    return {
-      directoryName: dirName,
-      reason: `Entry point file not readable: ${error instanceof Error ? error.message : String(error)}`,
-    }
-  }
+  const ep = resolveEntrypointForDiscovery(pluginDir, manifest.main)
+  if ('reason' in ep) return { ...ep, directoryName: dirName }
 
   return {
     manifest,
     pluginDir: resolve(pluginDir),
-    entryPoint,
-    manifestHash: computeManifestHash(manifestContent, entryPointContent),
+    entryPoint: ep.entryPoint,
+    manifestHash: computePluginManifestHash(manifestContent, ep.sourceFiles),
   }
 }
 
-/** Discover plugins in the given directory. Returns sorted (by id) plugins and errors. */
 export function discoverPlugins(pluginsDir: string): DiscoveryResult {
   log.debug({ pluginsDir }, 'Starting plugin discovery')
 
-  if (!existsSync(pluginsDir)) {
+  if (!fs.existsSync(pluginsDir)) {
     log.debug({ pluginsDir }, 'Plugins directory does not exist — no plugins to discover')
-    return { plugins: [], errors: [] }
+    return { plugins: [], errors: [], directoryMissing: true }
   }
 
   let entries: string[]
   try {
-    entries = readdirSync(pluginsDir).sort()
+    entries = fs.readdirSync(pluginsDir).sort()
   } catch (error) {
     log.warn(
       { pluginsDir, error: error instanceof Error ? error.message : String(error) },
       'Failed to read plugins directory',
     )
-    return { plugins: [], errors: [] }
+    return { plugins: [], errors: [], directoryMissing: false }
   }
 
   const plugins: DiscoveredPlugin[] = []
@@ -162,7 +252,6 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
     if (entry === '.gitkeep' || entry.startsWith('.')) continue
 
     const result = discoverOne(pluginsDir, entry)
-
     if ('reason' in result) {
       errors.push(result)
       log.warn({ dirName: entry, reason: result.reason }, 'Plugin discovery error')
@@ -181,8 +270,5 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
   }
 
   log.info({ discovered: plugins.length, errors: errors.length }, 'Plugin discovery complete')
-  return { plugins, errors }
+  return { plugins, errors, directoryMissing: false }
 }
-
-/** Compute a hash for a manifest+entrypoint combo. Re-exported for tests. */
-export { computeManifestHash }

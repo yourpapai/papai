@@ -31,6 +31,13 @@ function extractSignal(init: RequestInit | undefined): AbortSignal | null | unde
   return init.signal
 }
 
+function getHeaderValue(headers: HeadersInit | undefined, name: string): string | null {
+  if (headers === undefined) {
+    return null
+  }
+  return new Headers(headers).get(name)
+}
+
 function makeDeps(): TestDeps {
   const fetchSpy = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
   const assertSpy = mock((_url: URL) => Promise.resolve())
@@ -44,6 +51,18 @@ describe('buildProviderRuntime.httpFetch', () => {
     const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
 
     await expect(runtime.httpFetch('https://evil.example.com/x')).rejects.toThrow()
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(assertSpy).not.toHaveBeenCalled()
+  })
+
+  test('rejects a plain http URL before SSRF validation or fetch', async () => {
+    mockLogger()
+    const { fetchSpy, assertSpy, ...deps } = makeDeps()
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await expect(runtime.httpFetch('http://api.kaneo.io/v1/tasks')).rejects.toThrow(
+      'Plugin provider httpFetch requires an https URL',
+    )
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(assertSpy).not.toHaveBeenCalled()
   })
@@ -98,6 +117,55 @@ describe('buildProviderRuntime.httpFetch', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 
+  test('strips Authorization on redirect to the same hostname with a different port', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://api.kaneo.io:8443/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      headers: { authorization: 'Bearer secret' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'authorization')).toBeNull()
+  })
+
+  test('keeps Authorization on same-origin redirect', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      headers: { authorization: 'Bearer secret' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'authorization')).toBe('Bearer secret')
+  })
+
+  test('rejects a redirect that downgrades to http before SSRF validation or second fetch', async () => {
+    mockLogger()
+    const { fetchSpy, assertSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'http://api.kaneo.io/v2/tasks' } }),
+    )
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await expect(runtime.httpFetch('https://api.kaneo.io/v1/tasks')).rejects.toThrow(
+      'Plugin provider httpFetch requires an https URL',
+    )
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(assertSpy).toHaveBeenCalledTimes(1)
+  })
+
   test('rejects when redirects exceed the maximum allowed count', async () => {
     mockLogger()
     const { fetchSpy, ...deps } = makeDeps()
@@ -108,9 +176,104 @@ describe('buildProviderRuntime.httpFetch', () => {
     const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
 
     await expect(runtime.httpFetch('https://api.kaneo.io/start')).rejects.toThrow()
-    // fetch call count must be bounded (max redirects + 1 initial = 6 total for MAX_REDIRECTS=5)
-    expect(fetchSpy.mock.calls.length).toBeLessThanOrEqual(7)
-    expect(fetchSpy.mock.calls.length).toBeGreaterThan(1)
+    expect(fetchSpy.mock.calls.length).toBe(6)
+  })
+
+  test('returns a non-redirect 304 response directly without requiring location', async () => {
+    mockLogger()
+    const { fetchSpy, assertSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 304 }))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    const response = await runtime.httpFetch('https://api.kaneo.io/v1/tasks')
+
+    expect(response.status).toBe(304)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(assertSpy).toHaveBeenCalledTimes(1)
+  })
+
+  test('preserves PUT method and body across a 302 redirect replay', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      method: 'PUT',
+      body: 'title=Task',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'PUT', body: 'title=Task' })
+  })
+
+  test('preserves POST method and body across a 307 redirect replay', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 307, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      method: 'POST',
+      body: 'title=Task',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'POST', body: 'title=Task' })
+  })
+
+  test('rewrites a 303 PUT redirect replay to GET and drops the original body', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 303, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      method: 'PUT',
+      body: 'title=Task',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' })
+    expect(fetchSpy.mock.calls[1]?.[1]?.body).toBeUndefined()
+  })
+
+  test('rewritten GET redirect replay drops body-specific headers', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 303, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      method: 'POST',
+      body: 'title=Task',
+      headers: {
+        'content-length': '10',
+        'content-type': 'application/x-www-form-urlencoded',
+        authorization: 'Bearer secret',
+      },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' })
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'content-type')).toBeNull()
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'content-length')).toBeNull()
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'authorization')).toBe('Bearer secret')
   })
 
   test('allowedHosts is a separate copy so mutating it cannot affect enforcement', async () => {
@@ -131,6 +294,19 @@ describe('buildProviderRuntime.httpFetch', () => {
 
     // Also confirm allowedHosts does not contain the host we tried to access
     expect(runtime.allowedHosts.has('evil.example.com')).toBe(false)
+  })
+
+  test('mutating exposed allowedHosts does not affect httpFetch enforcement', async () => {
+    const runtime = buildProviderRuntime(['allowed.example'], makeLogger(), {
+      fetch: () => Promise.resolve(new Response('ok')),
+      assertPublicUrl: () => Promise.resolve(),
+    })
+    const addToSet = Reflect.get(Set.prototype, 'add')
+    Reflect.apply(addToSet, runtime.allowedHosts, ['evil.example'])
+
+    await expect(runtime.httpFetch('https://evil.example/data')).rejects.toThrow(
+      "Host 'evil.example' is not in the plugin providerAllowedHosts allowlist",
+    )
   })
 
   test('fetch receives an AbortSignal even when caller provides no init', async () => {
