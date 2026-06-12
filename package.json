@@ -37,6 +37,7 @@
     "security:ci": "bun run scripts/run-semgrep.ts --ci",
     "test": "bun test --parallel",
     "test:serial": "bun test",
+    "test:prompt-regression": "bun test tests/prompt-regression",
     "test:client": "bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
