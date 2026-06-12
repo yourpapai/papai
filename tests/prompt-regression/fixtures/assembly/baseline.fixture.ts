@@ -80,6 +80,11 @@ export const assemblyFixtures: readonly AssemblyFixture[] = [
       description: 'Memory setup expects low-trust compact and long-term memory labels.',
       ownerArea: 'context',
       roadmapPhase: 'phase-0',
+      pending: {
+        reason: 'The assembly harness does not yet apply setup.memory or expose context-block assertions.',
+        expectedFixPhase: 'phase-1',
+        unskipWhen: 'Assembly harness supports context-block assertions for compacted and long-term memory.',
+      },
     },
     setup: {
       contextType: 'dm',
@@ -89,7 +94,7 @@ export const assemblyFixtures: readonly AssemblyFixture[] = [
     },
     expected: {
       prompt: {
-        mustContain: ['You are papai'],
+        mustContain: ['<memory trust="compacted_low">', '<long_term_memory trust="profile_and_retrieved_low">'],
       },
     },
   },
