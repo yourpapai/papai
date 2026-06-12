@@ -170,6 +170,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0165](0165-command-retirement-parity-gate.md)                | Command Retirement — Parity Gate Verification                                                                 | 2026-05-30 | Implemented                                                 | `9e19f7e7`  |
 | [0166](0166-storybook-harness-pr1.md)                         | Storybook Harness — PR 1 (Vertical Slice)                                                                     | 2026-05-23 | Implemented                                                 | `9e19f7e7`  |
 | [0167](0167-provider-abstraction-leaks-fix.md)                | Provider Abstraction Leaks Fix                                                                                | 2026-03-30 | Implemented                                                 | `9e19f7e7`  |
+| [0168](0168-attachment-transformer-plugin-hook.md)            | Attachment Transformer Plugin Hook                                                                            | 2026-06-12 | Implemented                                                 |             |
 
 ## ADR Status Legend
 

@@ -7,6 +7,8 @@ See LICENSE in the project root for details.
 
 # Audio Message Transcription Implementation Plan
 
+**Status:** Superseded by `docs/superpowers/specs/2026-06-12-audio-transcribe-ux-fixes-design.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Enable speech-to-text transcription for Telegram `voice` and `audio` messages using a Whisper-compatible STT endpoint, with transcription becoming first-class content the LLM reasons over.

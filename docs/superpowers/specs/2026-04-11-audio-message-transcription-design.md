@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Audio Message Transcription Design: Whisper-Compatible STT for Telegram Voice/Audio
 
 **Date:** 2026-04-11
-**Status:** Draft
+**Status:** Superseded by `docs/superpowers/specs/2026-06-12-audio-transcribe-ux-fixes-design.md`
 **Scope:** Speech-to-text transcription for Telegram `voice` and `audio` messages, layered on top of the shared attachment pipeline from the file-attachments design (same date). Video, TTS responses, vision, frame extraction, and Mattermost/Discord audio are explicitly out of scope.
 
 ## Problem Statement

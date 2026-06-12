@@ -56,27 +56,29 @@ Required fields: `id`, `name`, `version`, `description`, and `apiVersion`.
 
 Supported optional fields:
 
-| Field                           | Description                                                                                                                                                             |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main`                          | Entry point path for non-MCP-only plugins.                                                                                                                              |
-| `contributes.tools`             | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                                              |
-| `contributes.promptFragments`   | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                                         |
-| `contributes.commands`          | Command names the plugin may register with `ctx.registration.registerCommand()`. Requires `commands`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.   |
-| `contributes.jobs`              | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Requires `scheduler`. Runtime job owners are `plugin:<pluginId>:<jobName>`. |
-| `contributes.configKeys`        | Plugin-owned context config keys exposed in `/config`. Each key must have a matching context-scoped `configRequirements` entry.                                         |
-| `contributes.taskProviderTypes` | At most one plugin-owned task provider type. Requires `provider.task`.                                                                                                  |
-| `providerCapabilities`          | Task capabilities exposed by the contributed provider type.                                                                                                             |
-| `providerConfigSchema`          | Instance-scoped config fields for the contributed provider type.                                                                                                        |
-| `providerContextConfigSchema`   | Context-scoped credential/config fields for the contributed provider type.                                                                                              |
-| `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`. Available to `http` plugins and contributed task-provider plugins.                                            |
-| `providerConfigValidator`       | Optional named export for validating contributed provider config before task-instance writes are persisted.                                                             |
-| `mcp`                           | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                                              |
-| `permissions`                   | Permission claims checked by framework facades.                                                                                                                         |
-| `defaultEnabled`                | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                                            |
-| `requiredTaskCapabilities`      | Task provider capabilities required before activation and per-context eligibility.                                                                                      |
-| `requiredChatCapabilities`      | Chat platform capabilities required before activation and per-context eligibility.                                                                                      |
-| `configRequirements`            | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                                                     |
-| `activationTimeoutMs`           | Activation timeout in milliseconds, between `100` and `10000`.                                                                                                          |
+| Field                                | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                               | Entry point path for non-MCP-only plugins.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `contributes.tools`                  | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `contributes.promptFragments`        | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `contributes.commands`               | Command names the plugin may register with `ctx.registration.registerCommand()`. Requires `commands`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.                                                                                                                                                                                                                                                                                                                                                                          |
+| `contributes.jobs`                   | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Requires `scheduler`. Runtime job owners are `plugin:<pluginId>:<jobName>`.                                                                                                                                                                                                                                                                                                                                                                        |
+| `contributes.configKeys`             | Plugin-owned context config keys exposed in `/config`. Each key must have a matching context-scoped `configRequirements` entry.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `contributes.attachmentTransformers` | Attachment transformer names the plugin may register with `ctx.registration.registerAttachmentTransformer()`. Requires `attachments.read` permission.                                                                                                                                                                                                                                                                                                                                                                                          |
+| `contributes.taskProviderTypes`      | At most one plugin-owned task provider type. Requires `provider.task`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `providerCapabilities`               | Task capabilities exposed by the contributed provider type.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `providerConfigSchema`               | Instance-scoped config fields for the contributed provider type.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `providerContextConfigSchema`        | Context-scoped credential/config fields for the contributed provider type.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `providerAllowedHosts`               | Static host allowlist used by `ctx.providerRuntime.httpFetch()`. Available to `http` plugins and contributed task-provider plugins.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `providerAllowedHostsFromConfig`     | List of **admin-scoped** config keys whose runtime values contribute their host to the HTTP allowlist at call time. Schema-validated: every referenced key must exist in `configRequirements` with `scope: 'admin'`. Hosts contributed this way bypass the public-IP restriction (useful for self-hosted endpoints on a LAN) because admin config is operator-trusted input at the same trust level as manifest approval. Static `providerAllowedHosts` entries keep the public-IP restriction. Requires `http` or `provider.task` permission. |
+| `providerConfigValidator`            | Optional named export for validating contributed provider config before task-instance writes are persisted.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `mcp`                                | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `permissions`                        | Permission claims checked by framework facades.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `defaultEnabled`                     | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `requiredTaskCapabilities`           | Task provider capabilities required before activation and per-context eligibility.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `requiredChatCapabilities`           | Chat platform capabilities required before activation and per-context eligibility.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `configRequirements`                 | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `activationTimeoutMs`                | Activation timeout in milliseconds, between `100` and `10000`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 The manifest `id` must match the directory name. The entry point must stay inside the plugin directory and must be a relative `.ts` or `.js` path without `..` components.
 
@@ -119,21 +121,22 @@ Object-style default exports such as `export default { activate() {} }` are reje
 
 The `ctx` object is frozen and exposes only framework-owned facades:
 
-| API                                                 | Description                                                                                                                               |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.pluginId`                                      | Plugin ID.                                                                                                                                |
-| `ctx.contextId`                                     | Activation context ID. Activation currently uses the system context; tool and job execution are context-scoped separately.                |
-| `ctx.permissions`                                   | Readonly set of requested permissions.                                                                                                    |
-| `ctx.log.debug/info/warn/error(data, msg)`          | Structured plugin logger. Never log secrets.                                                                                              |
-| `ctx.kv.get/set/delete/list`                        | Plugin/context KV store, available only with `storage` permission. KV is not a secret store.                                              |
-| `ctx.adminConfig.get(key)`                          | Read-only admin-scoped plugin config for keys declared with `scope: "admin"`.                                                             |
-| `ctx.providerRuntime`                               | Provider runtime helpers, present with `provider.task` or `http` permission.                                                              |
-| `ctx.identity`                                      | Identity facade, present with `identity` permission when exactly one task provider type is declared.                                      |
-| `ctx.registration.registerTool(tool)`               | Register a declared `PluginTool`.                                                                                                         |
-| `ctx.registration.registerPromptFragment(fragment)` | Register a declared prompt fragment.                                                                                                      |
-| `ctx.registration.registerCommand(command)`         | Register a declared command. Requires `commands`.                                                                                         |
-| `ctx.registration.registerScheduledJob(job)`        | Register a declared scheduled job. Requires `scheduler`.                                                                                  |
-| `ctx.registration.registerTaskProviderType(...)`    | Register the plugin's single declared task provider type, either as a factory or `{ factory, autoProvision? }`. Requires `provider.task`. |
+| API                                                           | Description                                                                                                                               |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.pluginId`                                                | Plugin ID.                                                                                                                                |
+| `ctx.contextId`                                               | Activation context ID. Activation currently uses the system context; tool and job execution are context-scoped separately.                |
+| `ctx.permissions`                                             | Readonly set of requested permissions.                                                                                                    |
+| `ctx.log.debug/info/warn/error(data, msg)`                    | Structured plugin logger. Never log secrets.                                                                                              |
+| `ctx.kv.get/set/delete/list`                                  | Plugin/context KV store, available only with `storage` permission. KV is not a secret store.                                              |
+| `ctx.adminConfig.get(key)`                                    | Read-only admin-scoped plugin config for keys declared with `scope: "admin"`.                                                             |
+| `ctx.providerRuntime`                                         | Provider runtime helpers, present with `provider.task` or `http` permission.                                                              |
+| `ctx.identity`                                                | Identity facade, present with `identity` permission when exactly one task provider type is declared.                                      |
+| `ctx.registration.registerTool(tool)`                         | Register a declared `PluginTool`.                                                                                                         |
+| `ctx.registration.registerPromptFragment(fragment)`           | Register a declared prompt fragment.                                                                                                      |
+| `ctx.registration.registerCommand(command)`                   | Register a declared command. Requires `commands`.                                                                                         |
+| `ctx.registration.registerScheduledJob(job)`                  | Register a declared scheduled job. Requires `scheduler`.                                                                                  |
+| `ctx.registration.registerAttachmentTransformer(transformer)` | Register a declared attachment transformer. Requires `attachments.read`. See "Attachment Transformers" section.                           |
+| `ctx.registration.registerTaskProviderType(...)`              | Register the plugin's single declared task provider type, either as a factory or `{ factory, autoProvision? }`. Requires `provider.task`. |
 
 Undeclared registrations throw during activation. Command registration also requires `commands`, and scheduled job registration requires `scheduler`. Activation failure cleans framework-owned contributions and records runtime diagnostics.
 
@@ -147,7 +150,23 @@ plugin_<sanitized-plugin-id>__<tool-name>
 
 For example, `hello-world` plus `greet` becomes `plugin_hello_world__greet`.
 
-Tool execution receives a request-scoped runtime context with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade, plugin/context KV, and a permission-gated `attachments` facade (`attachments.read` permission) for reading stored attachment metadata and bytes scoped to the current storage context. The raw task provider is not exposed.
+Tool execution receives a request-scoped runtime context with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade, plugin/context KV, and:
+
+- `adminConfig.get(key)` — read-only admin-scoped config for keys declared with `scope: "admin"`.
+- `contextConfig.get(key)` — context-scoped config for keys declared with `scope: "context"` in `configRequirements`. The same key name may exist in both admin and context scopes — they are independent stores. Typical pattern: context-scoped value overrides admin-scoped value (`contextConfig.get('api_key') ?? adminConfig.get('api_key')`).
+- `attachments` facade (`attachments.read` permission) for reading stored attachment metadata and bytes scoped to the current storage context. The raw task provider is not exposed.
+
+The `PluginAttachmentRecord` type exposed to tools and transformers includes:
+
+| Field           | Type                             | Description                                                                                                                     |
+| --------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `attachmentId`  | `string`                         | Stable attachment identifier.                                                                                                   |
+| `filename`      | `string`                         | Original filename.                                                                                                              |
+| `mimeType`      | `string \| undefined`            | MIME type when available.                                                                                                       |
+| `size`          | `number \| undefined`            | File size in bytes when available.                                                                                              |
+| `createdAt`     | `string`                         | ISO-8601 creation timestamp.                                                                                                    |
+| `origin`        | `'voice' \| 'file' \| undefined` | How the file arrived; `undefined` for legacy rows without origin data.                                                          |
+| `forwardedFrom` | `string \| undefined`            | Display name of the original sender when the source message was forwarded. Display name only — not a stable identity reference. |
 
 When a plugin declares `permissions: ["identity"]` and exactly one `contributes.taskProviderTypes` value, tool executions receive `runtimeContext.identity`. Declaring a task provider type also requires `provider.task`, so runtime identity provider plugins need `identity` plus the manifest/provider-task requirements. The facade supports `lookupForChatUser(chatUserId)` and `recordClaim(providerUserId, providerLogin, displayName?)`. `recordClaim(...)` always writes for the current runtime actor, not an arbitrary chat-user target. Claims are recorded as `manual_nl` mappings and are not treated as auto-verified.
 
@@ -174,6 +193,105 @@ Plugin command handlers run only when the plugin is active and eligible for the 
 Plugin jobs are registered through `ctx.registration.registerScheduledJob()` with an `intervalMs` and an `execute(runtime)` function. The runtime always includes `pluginId` and `contextId`, and includes a permission-gated `taskProvider` facade only when the plugin declares `tasks.read` or `tasks.write`. Jobs are registered with owner names like `plugin:<pluginId>:<jobName>` and execute only for contexts where the plugin is enabled and eligible.
 
 Declaring `contributes.jobs` and calling `ctx.registration.registerScheduledJob()` both require the `scheduler` permission.
+
+## Attachment Transformers
+
+Attachment transformers let a plugin pre-process new attachments before the LLM turn starts. Core dispatches transformers from active, enabled, eligible plugins against each new attachment, and injects the result as a formatted line into the turn message. The plugin returns plain text; **core owns all message formatting and bracket-sanitization**, so a transformer cannot inject unfenced content into prompt structure.
+
+### Manifest and registration
+
+Declare transformer names in `contributes.attachmentTransformers` and hold `attachments.read` permission:
+
+```json
+{
+  "permissions": ["attachments.read", "storage"],
+  "contributes": {
+    "attachmentTransformers": ["my-transformer"]
+  }
+}
+```
+
+Register during `activate`:
+
+```typescript
+ctx.registration.registerAttachmentTransformer({
+  name: 'my-transformer',
+  mimePrefixes: ['audio/'],
+  filenameExtensions: ['.ogg', '.opus', '.mp3'],
+  origins: ['voice'],
+  timeoutMs: 30000,
+  async transform(record, runtimeContext) {
+    const { bytes } = await runtimeContext.attachments.read(record.attachmentId)
+    // ... process bytes ...
+    return { ok: true, text: 'transcript text', meta: { language: 'en', durationSec: 15 } }
+  },
+})
+```
+
+### Registration shape
+
+```typescript
+type PluginAttachmentTransformer = {
+  name: string
+  /** Matched against attachment mimeType, e.g. ['audio/'] */
+  mimePrefixes: readonly string[]
+  /** Fallback match when the attachment has no MIME type, e.g. ['.ogg', '.mp3'] */
+  filenameExtensions?: readonly string[]
+  /** Restrict to attachment origins; omitted means all origins */
+  origins?: readonly ('voice' | 'file')[]
+  /** Per-call budget enforced by core; clamped to 1000–120000 ms, default 30000 */
+  timeoutMs?: number
+  transform(
+    record: PluginAttachmentRecord,
+    runtimeContext: PluginToolRuntimeContext,
+  ): Promise<AttachmentTransformResult>
+}
+
+type AttachmentTransformResult =
+  | { ok: true; text: string; meta?: { language?: string; durationSec?: number } }
+  | { ok: false; reason: string }
+```
+
+### Dispatch rules
+
+For each new attachment in a turn, core:
+
+1. Collects transformers from all active, enabled, eligible plugins for the current context, sorted by plugin ID for determinism.
+2. Finds the first transformer whose `mimePrefixes` match (or, when `mimeType` is absent, whose `filenameExtensions` match) and whose `origins` filter passes.
+3. Executes the transformer with its per-call `timeoutMs` budget.
+4. At most one transformer runs per attachment per turn.
+
+A wall-clock budget of 120 seconds covers the entire batch so N slow transforms cannot stall a turn for N × per-record timeout.
+
+### Result rendering (core-owned)
+
+Core formats and sanitizes the transformer's plain-text output:
+
+- Success: `[Voice attachment att_x (0:15, en): "transcript"]` — duration/language from `meta`, each omitted when absent.
+- Forwarded: `[Forwarded voice from "Alice" att_x (0:15): "transcript"]`.
+- Failure or timeout: `[Voice attachment att_x: transcription unavailable — <reason>]`.
+
+Any transformer exception or timeout is caught at the dispatch boundary and rendered as a failure line. A transform can never block or drop the turn.
+
+### Execute-time config and the dual-scope override pattern
+
+Transformers (and tools sharing the same pipeline) should read credentials at execute time, not at activation, so that config changes take effect on the next message without a restart:
+
+```typescript
+const apiKey = runtimeContext.contextConfig.get('api_key') ?? runtimeContext.adminConfig.get('api_key')
+const model = runtimeContext.contextConfig.get('model') ?? runtimeContext.adminConfig.get('model') ?? 'default-model'
+const baseUrl = runtimeContext.adminConfig.get('base_url') ?? 'https://api.example.com'
+```
+
+Context-scoped `api_key` and `model` let individual users or groups bring their own credentials (BYOK), while `base_url` stays admin-only to prevent a context owner from redirecting requests carrying the admin's key to an arbitrary host.
+
+### KV caching convention
+
+Use the plugin KV store with `transcript:<attachmentId>` keys to cache results. Include a `cachedAt` field and prune stale entries opportunistically (e.g. via `kv.list` on each write, removing entries older than 30 days). Cached results mean queue coalescing and orchestrator retries never bill the upstream API twice for the same bytes.
+
+### Working example
+
+See `plugins/audio-transcribe/` for a complete first-party transformer that transcribes voice notes via a Whisper-compatible endpoint, shares its pipeline with the `transcribe` tool, and uses the dual-scope override pattern and KV caching described above.
 
 ## Permissions
 
