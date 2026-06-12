@@ -17,11 +17,24 @@ describe('attachments schema', () => {
     await setupTestDb()
   })
 
-  test('exposes the attachments table through Drizzle', () => {
-    expect(attachments.attachmentId).toBeDefined()
-    expect(attachments.contextId).toBeDefined()
-    expect(attachments.filename).toBeDefined()
-    expect(attachments.status).toBeDefined()
+  test('origin and forwardedFrom default to null when omitted', () => {
+    const db = getDrizzleDb()
+    const now = new Date().toISOString()
+    db.insert(attachments)
+      .values({
+        attachmentId: 'att_null_origin_test',
+        contextId: 'ctx-null',
+        sourceProvider: 'telegram',
+        filename: 'file.txt',
+        checksum: 'def456',
+        blobKey: 'blobs/file.txt',
+        status: 'available',
+        createdAt: now,
+      })
+      .run()
+    const row = db.select().from(attachments).where(eq(attachments.attachmentId, 'att_null_origin_test')).get()
+    expect(row?.origin).toBeNull()
+    expect(row?.forwardedFrom).toBeNull()
   })
 
   test('attachments accepts origin and forwarded_from', () => {

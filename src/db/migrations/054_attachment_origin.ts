@@ -10,11 +10,24 @@ import type { Migration } from '../migrate.js'
 
 const log = logger.child({ scope: 'migration:054' })
 
+const columnExists = (db: Database, table: string, column: string): boolean => {
+  const rows = db.query<{ name: string }, []>(`PRAGMA table_info(${table})`).all()
+  return rows.some((row) => row.name === column)
+}
+
 const up = (db: Database): void => {
-  db.run(`ALTER TABLE attachments ADD COLUMN origin TEXT`)
-  db.run(`ALTER TABLE attachments ADD COLUMN forwarded_from TEXT`)
-  db.run(`ALTER TABLE staged_files ADD COLUMN origin TEXT`)
-  db.run(`ALTER TABLE staged_files ADD COLUMN forwarded_from TEXT`)
+  if (!columnExists(db, 'attachments', 'origin')) {
+    db.run(`ALTER TABLE attachments ADD COLUMN origin TEXT`)
+  }
+  if (!columnExists(db, 'attachments', 'forwarded_from')) {
+    db.run(`ALTER TABLE attachments ADD COLUMN forwarded_from TEXT`)
+  }
+  if (!columnExists(db, 'staged_files', 'origin')) {
+    db.run(`ALTER TABLE staged_files ADD COLUMN origin TEXT`)
+  }
+  if (!columnExists(db, 'staged_files', 'forwarded_from')) {
+    db.run(`ALTER TABLE staged_files ADD COLUMN forwarded_from TEXT`)
+  }
   log.info('migration 054: attachment origin columns added')
 }
 
