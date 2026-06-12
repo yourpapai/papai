@@ -20,7 +20,8 @@ export { persistIncomingAttachments } from './ingest.js'
 export { listActiveAttachments } from './workspace.js'
 export {
   buildAttachmentManifest,
-  buildHistoryAttachmentLines,
+  renderAttachedLine,
+  sanitizeForBracket,
   selectAttachmentsForTurn,
   supportsAttachmentModelInput,
 } from './resolver.js'

@@ -9,11 +9,12 @@ import {
   isS3Configured,
   listActiveAttachments,
   loadAttachmentRecord,
+  renderAttachedLine,
   selectAttachmentsForTurn,
   supportsAttachmentModelInput,
 } from './attachments/index.js'
 import type { AttachmentRef, StoredAttachment } from './attachments/types.js'
-import { transformNewAttachments, type TransformLine } from './plugins/attachment-transform.js'
+import { hasContextTransformers, transformNewAttachments, type TransformLine } from './plugins/attachment-transform.js'
 import { getUserTimezoneOrDefault } from './utils/config-timezone.js'
 import { formatCurrentTimeTag } from './utils/current-time-format.js'
 
@@ -60,7 +61,7 @@ const buildTurnLines = (
   for (const ref of selected) {
     const transformed = transforms.get(ref.attachmentId)
     if (transformed === undefined) {
-      const line = `[User attached ${ref.attachmentId}: ${ref.filename}]`
+      const line = renderAttachedLine(ref.attachmentId, ref.filename)
       liveLines.push(line)
       historyLines.push(line)
     } else {
@@ -71,39 +72,28 @@ const buildTurnLines = (
   return { liveLines, historyLines }
 }
 
-export const buildUserTurnMessages = async (
+// \n\n intentionally separates attachment lines from the user's text so the
+// LLM clearly sees them as structured metadata rather than inline prose.
+const formatTurnContent = (timeTag: string, lines: string[], text: string): string =>
+  `${timeTag}\n${lines.join('\n')}\n\n${text}`
+
+const buildFullPathMessages = async (
   contextId: string,
   chatUserId: string,
   modelName: string,
+  timeTag: string,
   text: string,
+  selected: readonly AttachmentRef[],
   newAttachmentIds: readonly string[],
 ): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
-  const timeTag = formatCurrentTimeTag(new Date(), getUserTimezoneOrDefault(chatUserId))
-  const prefixedText = `${timeTag}\n${text}`
-
-  const textOnly = (): { modelMessage: ModelMessage; historyMessage: ModelMessage } => ({
-    modelMessage: { role: 'user', content: prefixedText } as ModelMessage,
-    historyMessage: { role: 'user', content: prefixedText } as ModelMessage,
-  })
-
-  if (!isS3Configured()) return textOnly()
-
-  const activeAttachments = listActiveAttachments(contextId)
-  const selected = selectAttachmentsForTurn({ text, newAttachmentIds, activeAttachments })
-
-  if (selected.length === 0) return textOnly()
-
   const records = await loadAttachmentRecords(contextId, selected)
   const newIds = new Set(newAttachmentIds)
   const newRecords = records.filter((record) => newIds.has(record.attachmentId))
   const transforms = await transformNewAttachments(contextId, chatUserId, newRecords)
-
   const { liveLines, historyLines } = buildTurnLines(selected, transforms)
-
-  const liveContent = `${timeTag}\n${liveLines.join('\n')}\n\n${text}`
-  const historyContent = `${timeTag}\n${historyLines.join('\n')}\n\n${text}`
+  const liveContent = formatTurnContent(timeTag, liveLines, text)
+  const historyContent = formatTurnContent(timeTag, historyLines, text)
   const historyMessage: ModelMessage = { role: 'user', content: historyContent }
-
   if (supportsAttachmentModelInput(modelName)) {
     const parts: AttachmentPart[] = []
     for (const record of records) {
@@ -113,6 +103,34 @@ export const buildUserTurnMessages = async (
     parts.push({ type: 'text', text: liveContent })
     return { modelMessage: { role: 'user', content: parts } as ModelMessage, historyMessage }
   }
-
   return { modelMessage: { role: 'user', content: liveContent } as ModelMessage, historyMessage }
+}
+
+export const buildUserTurnMessages = (
+  contextId: string,
+  chatUserId: string,
+  modelName: string,
+  text: string,
+  newAttachmentIds: readonly string[],
+): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
+  const timeTag = formatCurrentTimeTag(new Date(), getUserTimezoneOrDefault(chatUserId))
+  const prefixedText = `${timeTag}\n${text}`
+  const textOnly = {
+    modelMessage: { role: 'user', content: prefixedText } as ModelMessage,
+    historyMessage: { role: 'user', content: prefixedText } as ModelMessage,
+  }
+  if (!isS3Configured()) return Promise.resolve(textOnly)
+  const activeAttachments = listActiveAttachments(contextId)
+  const selected = selectAttachmentsForTurn({ text, newAttachmentIds, activeAttachments })
+  if (selected.length === 0) return Promise.resolve(textOnly)
+  // Fast path: text-only models with no active transformers need no blob reads.
+  // Pass-through lines are built directly from the selected refs.
+  if (!supportsAttachmentModelInput(modelName) && !hasContextTransformers(contextId)) {
+    const { liveLines, historyLines } = buildTurnLines(selected, new Map())
+    return Promise.resolve({
+      modelMessage: { role: 'user', content: formatTurnContent(timeTag, liveLines, text) } as ModelMessage,
+      historyMessage: { role: 'user', content: formatTurnContent(timeTag, historyLines, text) } as ModelMessage,
+    })
+  }
+  return buildFullPathMessages(contextId, chatUserId, modelName, timeTag, text, selected, newAttachmentIds)
 }

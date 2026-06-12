@@ -3,18 +3,82 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { StoredAttachment } from '../../src/attachments/types.js'
 import {
   executeTransformer,
+  hasContextTransformers,
   matchesTransformer,
   renderTransformLine,
   transformNewAttachments,
 } from '../../src/plugins/attachment-transform.js'
 import type { PluginAttachmentRecord } from '../../src/plugins/attachment-types.js'
+import { contributionRegistry, resetContributionCollisionStateForTesting } from '../../src/plugins/contributions.js'
+import {
+  pluginRegistry,
+  resetPluginRegistryForTesting,
+  setPluginEnabledForContext,
+} from '../../src/plugins/registry.js'
+import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
+import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import type { PluginToolRuntimeContext } from '../../src/plugins/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+// ---------------------------------------------------------------------------
+// Registry helpers shared by Fix 2 / Fix 4 tests
+// ---------------------------------------------------------------------------
+
+function makeTransformerManifest(id = 'test-transform-plugin'): PluginManifest {
+  return {
+    id,
+    name: 'Test Transform Plugin',
+    version: '1.0.0',
+    description: 'test',
+    apiVersion: PLUGIN_API_VERSION,
+    main: 'index.ts',
+    contributes: {
+      tools: [],
+      promptFragments: [],
+      commands: [],
+      jobs: [],
+      configKeys: [],
+      taskProviderTypes: [],
+      attachmentTransformers: ['voice-transcriber'],
+    },
+    permissions: ['attachments.read'],
+    defaultEnabled: false,
+    activationTimeoutMs: 5000,
+    requiredTaskCapabilities: [],
+    requiredChatCapabilities: [],
+    configRequirements: [],
+    providerCapabilities: [],
+    providerTraits: [],
+    providerConfigSchema: [],
+    providerContextConfigSchema: [],
+    providerAllowedHosts: [],
+  }
+}
+
+function makeDiscoveredPlugin(manifest: PluginManifest): DiscoveredPlugin {
+  return {
+    manifest,
+    pluginDir: `/tmp/${manifest.id}`,
+    entryPoint: `/tmp/${manifest.id}/index.ts`,
+    manifestHash: `hash-${manifest.id}`,
+  }
+}
+
+function registerActiveTransformerPlugin(
+  manifest: PluginManifest,
+  contributions: PluginContributions,
+  contextId: string,
+): void {
+  pluginRegistry.registerDiscovered(makeDiscoveredPlugin(manifest))
+  pluginRegistry.markActive(manifest.id)
+  contributionRegistry.register(manifest.id, contributions, manifest)
+  setPluginEnabledForContext(manifest.id, contextId, true)
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -265,6 +329,15 @@ describe('transformNewAttachments', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    resetPluginRegistryForTesting()
+    resetContributionCollisionStateForTesting()
+    contributionRegistry.deregister('test-transform-plugin')
+  })
+
+  afterEach(() => {
+    contributionRegistry.deregister('test-transform-plugin')
+    resetPluginRegistryForTesting()
+    resetContributionCollisionStateForTesting()
   })
 
   test('returns empty map when no records', async () => {
@@ -274,5 +347,130 @@ describe('transformNewAttachments', () => {
   test('returns empty map when no plugins are active for the context', async () => {
     const records = [makeStoredVoiceAttachment()]
     expect((await transformNewAttachments('ctx-none', 'user-1', records)).size).toBe(0)
+  })
+
+  // Fix 2: wall-clock budget — when the deadline is already past for the second record,
+  // the transformer must NOT be called for it and a failure line must be returned.
+  test('skips transformer and returns failure line when deadline is exhausted before dispatch', async () => {
+    const invocationCount = { n: 0 }
+    const manifest = makeTransformerManifest()
+    registerActiveTransformerPlugin(
+      manifest,
+      {
+        tools: [],
+        promptFragments: [],
+        attachmentTransformers: [
+          {
+            name: 'voice-transcriber',
+            mimePrefixes: ['audio/'],
+            origins: ['voice'],
+            transform: (): Promise<{ ok: true; text: string }> => {
+              invocationCount.n += 1
+              return Promise.resolve({ ok: true as const, text: 'ok' })
+            },
+          },
+        ],
+      },
+      'ctx-budget',
+    )
+
+    // Fake clock sequence (called once per budget check):
+    //   call 0: deadline setup    → T       (deadline = T + 120_000)
+    //   call 1: record1 check     → T       (before deadline → dispatch record1)
+    //   call 2+: record2 check    → T+120_000 (at deadline → skip record2)
+    const T = Date.now()
+    // Enough entries so array access is always in-bounds; last value repeats for record2+.
+    const clockValues = [T, T, T + 120_000, T + 120_000, T + 120_000]
+    let clockIdx = 0
+    const fakeClock = (): number => {
+      const v = clockValues[clockIdx]
+      clockIdx += 1
+      return v!
+    }
+
+    const record1 = makeStoredVoiceAttachment()
+    const record2: StoredAttachment = {
+      ...makeStoredVoiceAttachment(),
+      attachmentId: 'att_stored_2',
+    }
+    const result = await transformNewAttachments('ctx-budget', 'user-1', [record1, record2], fakeClock)
+
+    // Transformer was called only for record1
+    expect(invocationCount.n).toBe(1)
+    // Both records have entries
+    expect(result.size).toBe(2)
+    // record1 succeeded (has a transform line)
+    expect(result.get(record1.attachmentId)?.line).toContain('"ok"')
+    // record2 got the deadline-exhausted failure line
+    const r2 = result.get(record2.attachmentId)
+    expect(r2?.line).toContain('transcription unavailable')
+    expect(r2?.line).toContain('timed out')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// hasContextTransformers
+// ---------------------------------------------------------------------------
+
+describe('hasContextTransformers', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    resetPluginRegistryForTesting()
+    resetContributionCollisionStateForTesting()
+    contributionRegistry.deregister('test-transform-plugin')
+  })
+
+  afterEach(() => {
+    contributionRegistry.deregister('test-transform-plugin')
+    resetPluginRegistryForTesting()
+    resetContributionCollisionStateForTesting()
+  })
+
+  test('returns false when no plugins are active for the context', () => {
+    expect(hasContextTransformers('ctx-empty')).toBe(false)
+  })
+
+  test('returns true when at least one active transformer is registered for the context', () => {
+    const manifest = makeTransformerManifest()
+    registerActiveTransformerPlugin(
+      manifest,
+      {
+        tools: [],
+        promptFragments: [],
+        attachmentTransformers: [
+          {
+            name: 'voice-transcriber',
+            mimePrefixes: ['audio/'],
+            transform: (): Promise<{ ok: true; text: string }> => Promise.resolve({ ok: true as const, text: 'x' }),
+          },
+        ],
+      },
+      'ctx-has-transformer',
+    )
+    expect(hasContextTransformers('ctx-has-transformer')).toBe(true)
+  })
+
+  test('returns false when plugin is active globally but disabled for the context', () => {
+    const manifest = makeTransformerManifest()
+    pluginRegistry.registerDiscovered(makeDiscoveredPlugin(manifest))
+    pluginRegistry.markActive(manifest.id)
+    contributionRegistry.register(
+      manifest.id,
+      {
+        tools: [],
+        promptFragments: [],
+        attachmentTransformers: [
+          {
+            name: 'voice-transcriber',
+            mimePrefixes: ['audio/'],
+            transform: (): Promise<{ ok: true; text: string }> => Promise.resolve({ ok: true as const, text: 'x' }),
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext(manifest.id, 'ctx-disabled', false)
+    expect(hasContextTransformers('ctx-disabled')).toBe(false)
   })
 })

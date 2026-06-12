@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { renderAttachedLine, sanitizeForBracket } from '../attachments/resolver.js'
 import type { StoredAttachment } from '../attachments/types.js'
 import { logger } from '../logger.js'
 import type { PluginAttachmentRecord } from './attachment-types.js'
@@ -44,10 +45,6 @@ export function matchesTransformer(
 
 const collapseWhitespace = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim()
 
-// Untrusted text must not be able to fabricate or close bracket tokens; the
-// LLM treats [...] lines as core-owned structure.
-const sanitizeForBracket = (s: string): string => s.replaceAll('[', '(').replaceAll(']', ')').replaceAll('"', "'")
-
 const clean = (s: string): string => sanitizeForBracket(collapseWhitespace(s))
 
 const formatDuration = (totalSeconds: number): string => {
@@ -69,11 +66,10 @@ export function renderTransformLine(
   result: AttachmentTransformResult,
 ): TransformLine {
   const label = labelFor(record)
-  const safeFilename = sanitizeForBracket(record.filename)
   if (!result.ok) {
     return {
       line: `[${label}: transcription unavailable — ${clean(result.reason)}]`,
-      historyLine: `[User attached ${record.attachmentId}: ${safeFilename}]`,
+      historyLine: renderAttachedLine(record.attachmentId, record.filename),
     }
   }
   const metaParts: string[] = []
@@ -84,7 +80,7 @@ export function renderTransformLine(
   const truncated = text.length > HISTORY_TRANSCRIPT_MAX ? `${text.slice(0, HISTORY_TRANSCRIPT_MAX)}…` : text
   return {
     line: `[${label}${meta}: "${text}"]`,
-    historyLine: `[User attached ${record.attachmentId}: ${safeFilename} — "${truncated}"]`,
+    historyLine: `[User attached ${record.attachmentId}: ${sanitizeForBracket(record.filename)} — "${truncated}"]`,
   }
 }
 
@@ -168,25 +164,48 @@ const collectContextTransformers = (contextId: string): ContextTransformer[] => 
 }
 
 /**
+ * Returns true if there is at least one active attachment transformer registered
+ * for the given context. Cheap check used as a fast-path guard.
+ */
+export function hasContextTransformers(contextId: string): boolean {
+  return collectContextTransformers(contextId).length > 0
+}
+
+/**
  * Transform new attachments for the current turn. Returns a map keyed by
  * attachmentId with the live manifest line and the persisted-history line.
  * Failures never throw: every error converges on a failure marker line.
+ *
+ * A wall-clock budget of MAX_TIMEOUT_MS (120 s) covers the entire batch so
+ * N slow transforms cannot stall a turn for N × per-record timeout. Records
+ * whose turn is reached after the deadline are skipped with a failure line
+ * instead of being dispatched. The optional `nowFn` param overrides
+ * Date.now() for deterministic testing.
  */
 export async function transformNewAttachments(
   contextId: string,
   chatUserId: string,
   records: readonly StoredAttachment[],
+  nowFn: () => number = Date.now,
 ): Promise<Map<string, TransformLine>> {
   const result = new Map<string, TransformLine>()
   if (records.length === 0) return result
   const transformers = collectContextTransformers(contextId)
   if (transformers.length === 0) return result
 
+  const deadline = nowFn() + MAX_TIMEOUT_MS
+
   await records.reduce(async (chain, stored) => {
     await chain
     const record = toPluginRecord(stored)
     const matched = transformers.find((entry) => matchesTransformer(entry.transformer, record))
     if (matched === undefined) return
+    // Wall-clock budget guard: if the deadline has passed, skip dispatch and
+    // return a failure line rather than stalling the turn further.
+    if (nowFn() >= deadline) {
+      result.set(stored.attachmentId, renderTransformLine(record, { ok: false, reason: 'transformation timed out' }))
+      return
+    }
     const runtimeContext = buildPluginToolRuntimeContext(matched.pluginId, matched.manifest, {
       storageContextId: contextId,
       chatUserId,
