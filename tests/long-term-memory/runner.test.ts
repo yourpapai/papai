@@ -98,6 +98,42 @@ describe('runMemoryExtractionInBackground', () => {
     expect(updated?.confidence).toBe(0.7)
   })
 
+  test('stores background source and canonical timestamps for extracted records', async () => {
+    const extractedPatch: MemoryPatch = {
+      profile: null,
+      records: [
+        {
+          kind: 'fact',
+          content: 'Release notes expire after launch.',
+          summary: null,
+          tags: [],
+          confidence: 0.8,
+          source: 'background',
+          evidence: {},
+          expiresAt: '2026-06-13T00:00:00Z',
+          validFrom: 'not-a-date',
+        },
+      ],
+      updates: [],
+    }
+    await runMemoryExtractionInBackground({
+      storageContextId: 'ctx-1',
+      configContextId: 'cfg-1',
+      contextType: 'dm',
+      history,
+      deps: {
+        extractMemoryPatch: () => Promise.resolve(extractedPatch),
+        now: () => '2026-06-12T00:00:00.000Z',
+        randomUUID: () => 'mem-sanitized',
+      },
+    })
+
+    const [record] = listMemoryRecords({ scopeId: 'ctx-1', scopeType: 'personal' })
+    expect(record?.source).toBe('background')
+    expect(record?.expiresAt).toBe('2026-06-13T00:00:00.000Z')
+    expect(record?.validFrom).toBeNull()
+  })
+
   test('respects disabled profile and skips extraction', async () => {
     setMemoryCaptureEnabled({ scopeId: 'ctx-disabled', scopeType: 'personal' }, false, '2026-06-12T00:00:00.000Z')
     let calls = 0

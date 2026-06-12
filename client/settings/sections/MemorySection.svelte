@@ -244,12 +244,12 @@
 
   <Confirm
     open={pendingClear}
-    title="Clear all memory records"
+    title="Clear memory for this context"
     danger
     confirmLabel="Clear memory"
     onCancel={() => (pendingClear = false)}
     onConfirm={() => { pendingClear = false; void clearRecords() }}>
-    {#snippet body()}<p>Clear all memory records for this context? This cannot be undone.</p>{/snippet}
+    {#snippet body()}<p>Clear the memory profile and all memory records for this context? This cannot be undone.</p>{/snippet}
   </Confirm>
 </section>
 

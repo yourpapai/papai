@@ -89,6 +89,13 @@ const inFlight = new Set<string>()
 
 const scopeKey = (scope: MemoryScope): string => `${scope.scopeType}:${scope.scopeId}`
 
+const canonicalIsoOrNull = (value: string | undefined): string | null => {
+  if (value === undefined) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString()
+}
+
 const logConfigFailure = (
   input: RunMemoryExtractionInput,
   scope: MemoryScope,
@@ -121,14 +128,14 @@ const insertRecords = (scope: MemoryScope, patch: MemoryPatch, deps: RunMemoryEx
       tags: record.tags,
       confidence: record.confidence,
       status: 'active',
-      source: record.source,
+      source: 'background',
       evidence: record.evidence,
       createdAt: now,
       updatedAt: now,
       lastSeenAt: now,
-      validFrom: record.validFrom ?? null,
-      validUntil: record.validUntil ?? null,
-      expiresAt: record.expiresAt ?? null,
+      validFrom: canonicalIsoOrNull(record.validFrom),
+      validUntil: canonicalIsoOrNull(record.validUntil),
+      expiresAt: canonicalIsoOrNull(record.expiresAt),
     })
     return count + 1
   }, 0)

@@ -295,7 +295,8 @@ describe('MemorySection', () => {
     await drain()
 
     expect(calls.find((call) => call.url === '/settings/api/memory/clear')).toBeUndefined()
-    expect(target.textContent).toContain('Clear all memory records')
+    expect(target.textContent).toContain('Clear memory for this context')
+    expect(target.textContent).toContain('memory profile and all memory records')
 
     const confirmButtons = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).filter((button) =>
       button.textContent?.includes('Clear memory'),

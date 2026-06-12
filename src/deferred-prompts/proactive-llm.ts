@@ -9,8 +9,6 @@ import { generateText, stepCountIs, type ModelMessage } from 'ai'
 import { getCachedHistory } from '../cache.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
-import { runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
-import { appendHistory } from '../history.js'
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { logger } from '../logger.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
@@ -23,6 +21,7 @@ import {
   getStorageContextId,
   modelIdForLightweight,
   persistContextResponse,
+  persistLightweightResponse,
   persistProactiveResults,
   resultTextOrDone,
   resolveFullProvider,
@@ -132,17 +131,7 @@ async function invokeLightweight(
   })
 
   const assistantMessages = result.response.messages
-  if (assistantMessages.length > 0) {
-    const history = getCachedHistory(storageContextId)
-    appendHistory(storageContextId, assistantMessages)
-    log.debug(
-      { userId: createdByUserId, storageContextId, count: assistantMessages.length },
-      'Lightweight response appended to history',
-    )
-    const updatedHistory = [...history, ...assistantMessages]
-    if (shouldTriggerTrim(updatedHistory, config.mainModel))
-      void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
-  }
+  persistLightweightResponse(createdByUserId, storageContextId, configContextId, config.mainModel, assistantMessages)
   return resultTextOrDone(result.text)
 }
 
@@ -181,7 +170,14 @@ async function invokeWithContext(
     timeout: 1_200_000,
   })
 
-  persistContextResponse(storageContextId, configContextId, history, config.mainModel, result.response.messages)
+  persistContextResponse(
+    storageContextId,
+    configContextId,
+    deliveryTarget.contextType,
+    history,
+    config.mainModel,
+    result.response.messages,
+  )
   return resultTextOrDone(result.text)
 }
 
@@ -241,12 +237,14 @@ async function runFullGeneration(
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
+  const previousHistory = getCachedHistory(prepared.storageContextId)
   persistProactiveResults(
     createdByUserId,
     prepared.storageContextId,
     configContextId,
+    execCtx.deliveryTarget.contextType,
     result,
-    getCachedHistory(prepared.storageContextId),
+    previousHistory,
     config.mainModel,
   )
   return resultTextOrDone(result.text)

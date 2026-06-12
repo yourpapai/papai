@@ -5,10 +5,12 @@
 
 import type { ModelMessage } from 'ai'
 
+import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { logger } from '../logger.js'
+import { runMemoryExtractionInBackground } from '../long-term-memory/runner.js'
 import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from '../memory.js'
 import type { TaskProvider } from '../providers/types.js'
@@ -99,9 +101,29 @@ export const buildContextMessages = (
   return [...messagesWithMemory, ...buildMetadataMessages(metadata), { role: 'user', content: wrapPrompt(prompt) }]
 }
 
+export const persistLightweightResponse = (
+  creatorId: string,
+  storageContextId: string,
+  configContextId: string,
+  mainModel: string,
+  assistantMessages: readonly ModelMessage[],
+): void => {
+  if (assistantMessages.length === 0) return
+  const history = getCachedHistory(storageContextId)
+  appendHistory(storageContextId, assistantMessages)
+  log.debug(
+    { userId: creatorId, storageContextId, count: assistantMessages.length },
+    'Lightweight response appended to history',
+  )
+  const updatedHistory = [...history, ...assistantMessages]
+  if (shouldTriggerTrim(updatedHistory, mainModel))
+    void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
+}
+
 export const persistContextResponse = (
   storageContextId: string,
   configContextId: string,
+  contextType: 'dm' | 'group',
   history: readonly ModelMessage[],
   mainModel: string,
   assistantMessages: ModelMessage[],
@@ -109,8 +131,15 @@ export const persistContextResponse = (
   if (assistantMessages.length === 0) return
   appendHistory(storageContextId, assistantMessages)
   const updatedHistory = [...history, ...assistantMessages]
-  if (shouldTriggerTrim(updatedHistory, mainModel))
+  if (shouldTriggerTrim(updatedHistory, mainModel)) {
     void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
+    void runMemoryExtractionInBackground({
+      storageContextId,
+      configContextId,
+      contextType,
+      history: updatedHistory,
+    })
+  }
 }
 
 export const buildFullSystemPrompt = (
@@ -140,6 +169,7 @@ export function persistProactiveResults(
   creatorId: string,
   storageContextId: string,
   configContextId: string,
+  contextType: 'dm' | 'group',
   result: LlmResult,
   history: readonly ModelMessage[],
   mainModel: string,
@@ -156,8 +186,15 @@ export function persistProactiveResults(
   if (msgs.length > 0) {
     appendHistory(storageContextId, msgs)
     const updated = [...history, ...msgs]
-    if (shouldTriggerTrim(updated, mainModel))
+    if (shouldTriggerTrim(updated, mainModel)) {
       void runTrimInBackground(storageContextId, updated, undefined, configContextId)
+      void runMemoryExtractionInBackground({
+        storageContextId,
+        configContextId,
+        contextType,
+        history: updated,
+      })
+    }
   }
   log.debug({ userId: creatorId, toolCalls: toolCallCount(result) }, 'Proactive LLM response received')
 }

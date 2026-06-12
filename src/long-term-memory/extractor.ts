@@ -7,47 +7,54 @@ import { generateText, type LanguageModel, type ModelMessage } from 'ai'
 import { z } from 'zod'
 
 import { serializeHistoryForTrimPrompt } from '../memory.js'
-import {
-  MemoryKindSchema,
-  MemorySourceSchema,
-  MemoryStatusSchema,
-  type MemoryRecord,
-  type MemoryEvidence,
-} from './types.js'
+import { MemoryKindSchema, MemoryStatusSchema, type MemoryRecord, type MemoryEvidence } from './types.js'
+
+const MAX_PROFILE_LENGTH = 4_000
+const MAX_RECORDS_PER_PATCH = 20
+const MAX_UPDATES_PER_PATCH = 50
+const MAX_CONTENT_LENGTH = 2_000
+const MAX_SUMMARY_LENGTH = 240
+const MAX_TAGS_PER_RECORD = 12
+const MAX_TAG_LENGTH = 48
+const MAX_EVIDENCE_VALUES = 20
+const MAX_EVIDENCE_VALUE_LENGTH = 512
+
+const IsoTimestampSchema = z.iso.datetime().transform((value) => new Date(value).toISOString())
+const EvidenceValueSchema = z.string().min(1).max(MAX_EVIDENCE_VALUE_LENGTH)
 
 const MemoryEvidenceSchema: z.ZodType<MemoryEvidence> = z
   .object({
-    messageIds: z.array(z.string()).optional(),
-    actorIds: z.array(z.string()).optional(),
-    timestamps: z.array(z.string()).optional(),
-    contextId: z.string().optional(),
+    messageIds: z.array(EvidenceValueSchema).max(MAX_EVIDENCE_VALUES).optional(),
+    actorIds: z.array(EvidenceValueSchema).max(MAX_EVIDENCE_VALUES).optional(),
+    timestamps: z.array(IsoTimestampSchema).max(MAX_EVIDENCE_VALUES).optional(),
+    contextId: EvidenceValueSchema.optional(),
   })
   .readonly()
 
 const MemoryPatchRecordSchema = z.object({
   kind: MemoryKindSchema,
-  content: z.string().min(1),
-  summary: z.string().nullable(),
-  tags: z.array(z.string()),
+  content: z.string().min(1).max(MAX_CONTENT_LENGTH),
+  summary: z.string().min(1).max(MAX_SUMMARY_LENGTH).nullable(),
+  tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(MAX_TAGS_PER_RECORD),
   confidence: z.number().min(0).max(1),
-  source: MemorySourceSchema,
+  source: z.literal('background'),
   evidence: MemoryEvidenceSchema,
-  expiresAt: z.string().optional(),
-  validFrom: z.string().optional(),
-  validUntil: z.string().optional(),
+  expiresAt: IsoTimestampSchema.optional(),
+  validFrom: IsoTimestampSchema.optional(),
+  validUntil: IsoTimestampSchema.optional(),
 })
 
 const MemoryPatchUpdateSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1).max(256),
   status: MemoryStatusSchema.optional(),
-  content: z.string().min(1).optional(),
+  content: z.string().min(1).max(MAX_CONTENT_LENGTH).optional(),
   confidence: z.number().min(0).max(1).optional(),
 })
 
 export const MemoryPatchSchema = z.object({
-  profile: z.string().nullable(),
-  records: z.array(MemoryPatchRecordSchema),
-  updates: z.array(MemoryPatchUpdateSchema),
+  profile: z.string().min(1).max(MAX_PROFILE_LENGTH).nullable(),
+  records: z.array(MemoryPatchRecordSchema).max(MAX_RECORDS_PER_PATCH),
+  updates: z.array(MemoryPatchUpdateSchema).max(MAX_UPDATES_PER_PATCH),
 })
 
 export type MemoryPatch = z.infer<typeof MemoryPatchSchema>

@@ -33,6 +33,7 @@ describe('parseMemoryPatch', () => {
 
     expect(patch.profile).toContain('Prefers concise')
     expect(patch.records[0]?.kind).toBe('preference')
+    expect(patch.records[0]?.evidence.timestamps).toEqual(['2026-06-12T00:00:00.000Z'])
     expect(patch.records[0]?.expiresAt).toBeUndefined()
     expect(patch.updates).toEqual([{ id: 'mem-1', status: 'stale', confidence: 0.4 }])
   })
@@ -61,6 +62,81 @@ describe('parseMemoryPatch', () => {
               confidence: 1.2,
               source: 'background',
               evidence: {},
+            },
+          ],
+          updates: [],
+        }),
+      ),
+    ).toThrow(/^invalid memory patch:/u)
+  })
+
+  test('rejects privileged sources from model output', () => {
+    expect(() =>
+      parseMemoryPatch(
+        JSON.stringify({
+          profile: null,
+          records: [
+            {
+              kind: 'fact',
+              content: 'A remembered fact.',
+              summary: null,
+              tags: [],
+              confidence: 0.8,
+              source: 'explicit',
+              evidence: {},
+            },
+          ],
+          updates: [],
+        }),
+      ),
+    ).toThrow(/^invalid memory patch:/u)
+  })
+
+  test('rejects oversized model output before persistence', () => {
+    expect(() =>
+      parseMemoryPatch(
+        JSON.stringify({
+          profile: 'x'.repeat(4_001),
+          records: [],
+          updates: [],
+        }),
+      ),
+    ).toThrow(/^invalid memory patch:/u)
+
+    expect(() =>
+      parseMemoryPatch(
+        JSON.stringify({
+          profile: null,
+          records: Array.from({ length: 21 }, () => ({
+            kind: 'fact',
+            content: 'A remembered fact.',
+            summary: null,
+            tags: [],
+            confidence: 0.8,
+            source: 'background',
+            evidence: {},
+          })),
+          updates: [],
+        }),
+      ),
+    ).toThrow(/^invalid memory patch:/u)
+  })
+
+  test('rejects non-ISO expiration timestamps', () => {
+    expect(() =>
+      parseMemoryPatch(
+        JSON.stringify({
+          profile: null,
+          records: [
+            {
+              kind: 'fact',
+              content: 'A remembered fact.',
+              summary: null,
+              tags: [],
+              confidence: 0.8,
+              source: 'background',
+              evidence: {},
+              expiresAt: 'tomorrow',
             },
           ],
           updates: [],

@@ -531,6 +531,13 @@ describe('dispatchExecution', () => {
           steps: undefined,
           response: { messages: [] },
         }),
+        Promise.resolve({
+          text: JSON.stringify({ profile: null, records: [], updates: [] }),
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          response: { messages: [] },
+        }),
       ]
       let callIndex = 0
       generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
@@ -563,6 +570,7 @@ describe('dispatchExecution', () => {
 
       expect(buildModelCalls).toEqual([
         { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-main' },
+        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
         { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
       ])
     })
