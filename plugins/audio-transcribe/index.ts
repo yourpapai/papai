@@ -57,10 +57,16 @@ async function executeTranscribe(
   const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
   if (cached !== undefined) return cached
 
-  // Resolve config and check for missing API key before consuming rate-limit quota.
-  // A misconfigured deployment must report not_configured, not rate_limited.
-  const { apiKey } = resolveConfig(runtimeContext)
-  if (apiKey === undefined || apiKey.trim() === '' || httpFetch === undefined) {
+  // Resolve config and check for missing or incomplete config before consuming rate-limit quota.
+  // A misconfigured deployment must report not_configured or incomplete_context_override, not rate_limited.
+  const config = resolveConfig(runtimeContext)
+  if (!config.ok) {
+    return {
+      error: 'incomplete_context_override',
+      message: 'set both api_key and base_url in this context, or clear both',
+    }
+  }
+  if (config.apiKey === undefined || config.apiKey.trim() === '' || httpFetch === undefined) {
     return { error: 'not_configured', message: 'audio-transcribe: api_key missing or providerRuntime unavailable' }
   }
 
@@ -88,10 +94,16 @@ async function runTransform(
   const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
   if (cached !== undefined) return toTransformResult(cached)
 
-  // Resolve config and check for missing API key before consuming rate-limit quota.
-  // A misconfigured deployment must report not configured, not rate limited.
-  const { apiKey } = resolveConfig(runtimeContext)
-  if (apiKey === undefined || apiKey.trim() === '' || httpFetch === undefined) {
+  // Resolve config and check for missing or incomplete config before consuming rate-limit quota.
+  // A misconfigured deployment must report not configured or incomplete context override, not rate limited.
+  const config = resolveConfig(runtimeContext)
+  if (!config.ok) {
+    return {
+      ok: false,
+      reason: 'incomplete context override — set both api_key and base_url in this context, or clear both',
+    }
+  }
+  if (config.apiKey === undefined || config.apiKey.trim() === '' || httpFetch === undefined) {
     return { ok: false, reason: 'not configured — the admin can set a transcription API key in the settings UI' }
   }
 

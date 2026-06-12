@@ -22,11 +22,9 @@ export type TranscribeResult = {
   durationSec?: number
 }
 
-export type ResolvedConfig = {
-  apiKey: string | undefined
-  baseUrl: string
-  model: string
-}
+export type ResolvedConfig =
+  | { ok: true; apiKey: string | undefined; baseUrl: string; model: string }
+  | { ok: false; error: 'incomplete_context_override' }
 
 export const apiResponseSchema = z.object({
   text: z.string(),
@@ -53,10 +51,24 @@ export function normalizeModel(raw: string | undefined): string {
 }
 
 export function resolveConfig(runtimeContext: PluginToolRuntimeContext): ResolvedConfig {
+  const contextKey = runtimeContext.contextConfig.get('api_key')
+  const contextBase = runtimeContext.contextConfig.get('base_url')
+  // Treat empty strings as unset
+  const normalizedContextKey = contextKey !== undefined && contextKey.trim() !== '' ? contextKey : undefined
+  const normalizedContextBase = contextBase !== undefined && contextBase.trim() !== '' ? contextBase : undefined
+  const model = normalizeModel(runtimeContext.contextConfig.get('model') ?? runtimeContext.adminConfig.get('model'))
+  // Both must be set together or both must be absent
+  if ((normalizedContextKey === undefined) !== (normalizedContextBase === undefined)) {
+    return { ok: false, error: 'incomplete_context_override' }
+  }
+  if (normalizedContextKey !== undefined && normalizedContextBase !== undefined) {
+    return { ok: true, apiKey: normalizedContextKey, baseUrl: normalizeBaseUrl(normalizedContextBase), model }
+  }
   return {
-    apiKey: runtimeContext.contextConfig.get('api_key') ?? runtimeContext.adminConfig.get('api_key'),
+    ok: true,
+    apiKey: runtimeContext.adminConfig.get('api_key'),
     baseUrl: normalizeBaseUrl(runtimeContext.adminConfig.get('base_url')),
-    model: normalizeModel(runtimeContext.contextConfig.get('model') ?? runtimeContext.adminConfig.get('model')),
+    model,
   }
 }
 
@@ -219,7 +231,14 @@ export function transcribeRecord(
   runtimeContext: PluginToolRuntimeContext,
   httpFetch: HttpFetch | undefined,
 ): Promise<TranscribeResult | { error: string; status?: number; message?: string }> {
-  const { apiKey, baseUrl, model } = resolveConfig(runtimeContext)
+  const config = resolveConfig(runtimeContext)
+  if (!config.ok) {
+    return Promise.resolve({
+      error: 'incomplete_context_override',
+      message: 'audio-transcribe: set both api_key and base_url in this context, or clear both',
+    })
+  }
+  const { apiKey, baseUrl, model } = config
   if (apiKey === undefined || apiKey.trim() === '' || httpFetch === undefined) {
     return Promise.resolve({
       error: 'not_configured',
@@ -244,6 +263,8 @@ export const describeLoadFailure = (result: unknown): string => {
 export const describeApiFailure = (result: { error: string }): string => {
   if (result.error === 'not_configured')
     return 'not configured — the admin can set a transcription API key in the settings UI'
+  if (result.error === 'incomplete_context_override')
+    return 'incomplete context override — set both api_key and base_url in this context, or clear both'
   if (result.error === 'timeout') return 'transcription timed out — try again'
   return 'transcription service error'
 }

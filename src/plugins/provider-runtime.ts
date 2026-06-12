@@ -88,15 +88,16 @@ async function validateHop(
   url: URL,
   hostSet: ReadonlySet<string>,
   dynamicHosts: DynamicHostsFn,
+  contextHosts: DynamicHostsFn,
   assertPublicUrl: (url: URL) => Promise<void>,
 ): Promise<void> {
   const host = url.hostname.toLowerCase()
-  // Dynamic hosts are operator-trusted (same trust level as manifest approval).
+  // Admin-sourced dynamic hosts are operator-trusted (same trust level as manifest approval).
   // They bypass both the https requirement and the public-IP check — deliberate,
   // to support self-hosted LAN endpoints that are commonly served over plain http.
   if (dynamicHosts().has(host)) return
   assertHttps(url)
-  if (!hostSet.has(host)) {
+  if (!hostSet.has(host) && !contextHosts().has(host)) {
     throw new Error(`Host '${url.hostname}' is not in the plugin providerAllowedHosts allowlist`)
   }
   await assertPublicUrl(url)
@@ -170,6 +171,7 @@ async function fetchWithRedirects(
   fetchInit: RequestInit,
   hostSet: ReadonlySet<string>,
   dynamicHosts: DynamicHostsFn,
+  contextHosts: DynamicHostsFn,
   deps: ProviderRuntimeDeps,
   logger: PluginLogger,
   redirectsLeft: number,
@@ -187,10 +189,11 @@ async function fetchWithRedirects(
   }
 
   const redirectUrl = resolveLocationUrl(response, currentUrl)
-  // Redirect hops are validated against both the static and dynamic host sets.
-  // Dynamic hosts still bypass https + public-IP checks on redirect hops — same
+  // Redirect hops are validated against the static, admin-dynamic, and context host sets.
+  // Admin-dynamic hosts still bypass https + public-IP checks on redirect hops — same
   // operator-trusted rationale as for the initial request.
-  await validateHop(redirectUrl, hostSet, dynamicHosts, deps.assertPublicUrl)
+  // Context hosts receive full standard validation on every hop (https + assertPublicUrl).
+  await validateHop(redirectUrl, hostSet, dynamicHosts, contextHosts, deps.assertPublicUrl)
 
   // The caller's init (including any Authorization header) is forwarded to the
   // redirect target. This is acceptable because every hop must pass both the
@@ -201,17 +204,32 @@ async function fetchWithRedirects(
     sanitizeRedirectFetchInit(buildRedirectFetchInit(fetchInit, response.status), currentUrl, redirectUrl),
     hostSet,
     dynamicHosts,
+    contextHosts,
     deps,
     logger,
     redirectsLeft - 1,
   )
 }
 
+/**
+ * Build a frozen PluginProviderRuntime that enforces two tiers of host allowlisting:
+ *
+ * - **Admin-sourced dynamic hosts** (`dynamicHosts`): operator-trusted (same trust level as
+ *   manifest approval). These bypass the https requirement and the public-IP (SSRF) check,
+ *   allowing self-hosted LAN endpoints that are commonly served over plain http.
+ *
+ * - **Context-sourced hosts** (`contextHosts`): user/group-scoped, NOT operator-trusted.
+ *   These pass the allowlist membership check but receive full standard validation:
+ *   https is required and assertPublicUrl (SSRF guard) is always enforced.
+ *
+ * Static manifest hosts (`allowedHosts`) also receive full standard validation.
+ */
 export function buildProviderRuntime(
   allowedHosts: readonly string[],
   logger: PluginLogger,
   deps: ProviderRuntimeDeps | undefined = defaultDeps,
   dynamicHosts: DynamicHostsFn = noDynamicHosts,
+  contextHosts: DynamicHostsFn = noDynamicHosts,
 ): PluginProviderRuntime {
   const resolvedDeps = deps ?? defaultDeps
 
@@ -228,12 +246,21 @@ export function buildProviderRuntime(
     logger,
     async httpFetch(rawUrl: string, init?: RequestInit): Promise<Response> {
       const url = parseProviderUrl(rawUrl)
-      await validateHop(url, hostSet, dynamicHosts, resolvedDeps.assertPublicUrl)
+      await validateHop(url, hostSet, dynamicHosts, contextHosts, resolvedDeps.assertPublicUrl)
 
       const signal = composeSignal(init === undefined ? undefined : init.signal)
       const fetchInit = buildFetchInit(init, signal)
 
-      return fetchWithRedirects(url, fetchInit, hostSet, dynamicHosts, resolvedDeps, logger, MAX_REDIRECTS)
+      return fetchWithRedirects(
+        url,
+        fetchInit,
+        hostSet,
+        dynamicHosts,
+        contextHosts,
+        resolvedDeps,
+        logger,
+        MAX_REDIRECTS,
+      )
     },
   })
 }

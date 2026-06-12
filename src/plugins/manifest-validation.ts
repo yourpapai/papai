@@ -144,9 +144,7 @@ export function hasAttachmentTransformerPermission(m: ManifestValidationInput): 
 }
 
 export function hasProviderAllowedHostsFromConfig(m: ManifestValidationInput): boolean {
-  return m.providerAllowedHostsFromConfig.every((key) =>
-    m.configRequirements.some((req) => req.key === key && req.scope === 'admin'),
-  )
+  return m.providerAllowedHostsFromConfig.every((key) => m.configRequirements.some((req) => req.key === key))
 }
 
 export function hasRequiredMainForManifest(m: ManifestValidationInput): boolean {

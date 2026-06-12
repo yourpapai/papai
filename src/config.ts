@@ -3,8 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { eq } from 'drizzle-orm'
+
 import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from './cache.js'
 import { getConfigKeysForContext, isSensitiveProviderStorageKey } from './config-keys.js'
+import { getDrizzleDb } from './db/drizzle.js'
+import { userConfig } from './db/schema.js'
 import { logger } from './logger.js'
 import { REDUCTION_FLAGS_CONFIG_KEY } from './tools/feature-flags.js'
 import { isAllowedDynamicConfigKey, isConfigKey as isKnownConfigKey, type ConfigKey } from './types/config.js'
@@ -106,6 +110,16 @@ export function getPluginConfig(contextId: string, pluginId: string, key: string
 export function setPluginConfig(contextId: string, pluginId: string, key: string, value: string): void {
   setCachedConfig(contextId, getPluginConfigStorageKey(pluginId, key), value)
   clearCachedToolsByPrefix(contextId)
+}
+
+/** Distinct stored values of a context-scoped plugin config key across all contexts. */
+export function listPluginConfigValues(pluginId: string, key: string): string[] {
+  const rows = getDrizzleDb()
+    .selectDistinct({ value: userConfig.value })
+    .from(userConfig)
+    .where(eq(userConfig.key, getPluginConfigStorageKey(pluginId, key)))
+    .all()
+  return rows.map((r) => r.value.trim()).filter((v) => v.length > 0)
 }
 
 export function maskValue(key: string, value: string): string {

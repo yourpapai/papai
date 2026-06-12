@@ -12,9 +12,11 @@ import {
   getConfigValue,
   isConfigKey,
   isSensitiveKey,
+  listPluginConfigValues,
   maskValue,
   setConfig,
   setConfigValue,
+  setPluginConfig,
 } from '../src/config.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
@@ -277,5 +279,57 @@ describe('isSensitiveKey', () => {
   test('returns false for non-sensitive keys', () => {
     expect(isSensitiveKey('timezone')).toBe(false)
     expect(isSensitiveKey('plugin:plugin-tracker:provider:workspaceId')).toBe(false)
+  })
+})
+
+const CTX_1 = 'ctx-lpcv-1'
+const CTX_2 = 'ctx-lpcv-2'
+const LPCV_PLUGIN_ID = 'audio-transcribe'
+const LPCV_KEY = 'default-language'
+
+describe('listPluginConfigValues', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    clearUserCache(CTX_1)
+    clearUserCache(CTX_2)
+  })
+
+  test('returns distinct values set across multiple contexts', async () => {
+    setPluginConfig(CTX_1, LPCV_PLUGIN_ID, LPCV_KEY, 'en')
+    setPluginConfig(CTX_2, LPCV_PLUGIN_ID, LPCV_KEY, 'fr')
+    await Promise.resolve()
+    const values = listPluginConfigValues(LPCV_PLUGIN_ID, LPCV_KEY)
+    expect(values.sort()).toEqual(['en', 'fr'])
+  })
+
+  test('deduplicates when multiple contexts share the same value', async () => {
+    setPluginConfig(CTX_1, LPCV_PLUGIN_ID, LPCV_KEY, 'en')
+    setPluginConfig(CTX_2, LPCV_PLUGIN_ID, LPCV_KEY, 'en')
+    await Promise.resolve()
+    const values = listPluginConfigValues(LPCV_PLUGIN_ID, LPCV_KEY)
+    expect(values).toEqual(['en'])
+  })
+
+  test('does not include values for a different plugin key', async () => {
+    setPluginConfig(CTX_1, LPCV_PLUGIN_ID, LPCV_KEY, 'en')
+    setPluginConfig(CTX_1, LPCV_PLUGIN_ID, 'other-key', 'should-not-appear')
+    await Promise.resolve()
+    const values = listPluginConfigValues(LPCV_PLUGIN_ID, LPCV_KEY)
+    expect(values).toEqual(['en'])
+    expect(values).not.toContain('should-not-appear')
+  })
+
+  test('returns empty array when key is not set in any context', () => {
+    const values = listPluginConfigValues(LPCV_PLUGIN_ID, LPCV_KEY)
+    expect(values).toEqual([])
+  })
+
+  test('filters out empty and whitespace-only stored values', async () => {
+    setPluginConfig(CTX_1, LPCV_PLUGIN_ID, LPCV_KEY, 'en')
+    setPluginConfig(CTX_2, LPCV_PLUGIN_ID, LPCV_KEY, '   ')
+    await Promise.resolve()
+    const values = listPluginConfigValues(LPCV_PLUGIN_ID, LPCV_KEY)
+    expect(values).toEqual(['en'])
   })
 })

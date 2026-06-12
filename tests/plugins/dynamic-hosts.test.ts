@@ -5,7 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { buildDynamicHosts } from '../../src/plugins/dynamic-hosts.js'
+import { setPluginConfig } from '../../src/config.js'
+import { buildContextDynamicHosts, buildDynamicHosts } from '../../src/plugins/dynamic-hosts.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
@@ -112,5 +113,82 @@ describe('buildDynamicHosts', () => {
     expect(hosts.has('whisper.lan')).toBe(true)
     expect(hosts.has('api.example.com')).toBe(true)
     expect(hosts.size).toBe(2)
+  })
+})
+
+describe('buildContextDynamicHosts', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('returns empty set when no context-scoped keys match', () => {
+    const thunk = buildContextDynamicHosts(
+      makeManifest({
+        providerAllowedHostsFromConfig: ['base_url'],
+        configRequirements: [{ key: 'base_url', scope: 'admin', label: 'Base URL', required: false, sensitive: false }],
+      }),
+    )
+    expect(thunk().size).toBe(0)
+  })
+
+  test('returns hostnames from values across two different contexts', async () => {
+    const manifest = makeManifest({
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [{ key: 'base_url', scope: 'context', label: 'Base URL', required: false, sensitive: false }],
+    })
+    setPluginConfig('ctx-a', 'test-plugin', 'base_url', 'http://host-a.lan')
+    setPluginConfig('ctx-b', 'test-plugin', 'base_url', 'https://host-b.example.com')
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve()
+      }, 0)
+    })
+    const thunk = buildContextDynamicHosts(manifest)
+    const hosts = thunk()
+    expect(hosts.has('host-a.lan')).toBe(true)
+    expect(hosts.has('host-b.example.com')).toBe(true)
+    expect(hosts.size).toBe(2)
+  })
+
+  test('is evaluated lazily — config set after thunk construction is reflected', async () => {
+    const manifest = makeManifest({
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [{ key: 'base_url', scope: 'context', label: 'Base URL', required: false, sensitive: false }],
+    })
+    const thunk = buildContextDynamicHosts(manifest)
+    expect(thunk().size).toBe(0)
+    setPluginConfig('ctx-lazy', 'test-plugin', 'base_url', 'http://lazy.lan')
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve()
+      }, 0)
+    })
+    expect(thunk().has('lazy.lan')).toBe(true)
+  })
+
+  test('invalid URL values warn-and-skip, returning an empty set', () => {
+    const manifest = makeManifest({
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [{ key: 'base_url', scope: 'context', label: 'Base URL', required: false, sensitive: false }],
+    })
+    setPluginConfig('ctx-bad', 'test-plugin', 'base_url', 'not-a-valid-url')
+    const thunk = buildContextDynamicHosts(manifest)
+    expect(thunk().size).toBe(0)
+  })
+
+  test('keys with only admin-scope requirement are ignored', async () => {
+    const manifest = makeManifest({
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [{ key: 'base_url', scope: 'admin', label: 'Base URL', required: false, sensitive: false }],
+    })
+    setPluginConfig('ctx-a', 'test-plugin', 'base_url', 'http://host-a.lan')
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve()
+      }, 0)
+    })
+    const thunk = buildContextDynamicHosts(manifest)
+    expect(thunk().size).toBe(0)
   })
 })

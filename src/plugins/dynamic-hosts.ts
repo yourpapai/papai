@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { listPluginConfigValues } from '../config.js'
 import { logger } from '../logger.js'
 import type { DynamicHostsFn } from './provider-runtime.js'
 import { getPluginAdminConfig } from './store.js'
@@ -30,6 +31,31 @@ export function buildDynamicHosts(manifest: PluginManifest): DynamicHostsFn {
         hosts.add(new URL(value).hostname.toLowerCase())
       } catch {
         log.warn({ pluginId: manifest.id, key }, 'providerAllowedHostsFromConfig value is not a valid URL; skipping')
+      }
+    }
+    return hosts
+  }
+}
+
+/** Hosts from CONTEXT-scoped config values for keys declared in
+ * providerAllowedHostsFromConfig. Unlike admin-sourced hosts these are NOT
+ * operator-trusted: callers must apply full https + public-IP validation. */
+export function buildContextDynamicHosts(manifest: PluginManifest): DynamicHostsFn {
+  const keys = (manifest.providerAllowedHostsFromConfig ?? []).filter((key) =>
+    manifest.configRequirements.some((req) => req.key === key && req.scope === 'context'),
+  )
+  return (): ReadonlySet<string> => {
+    const hosts = new Set<string>()
+    for (const key of keys) {
+      for (const value of listPluginConfigValues(manifest.id, key)) {
+        try {
+          hosts.add(new URL(value).hostname.toLowerCase())
+        } catch {
+          log.warn(
+            { pluginId: manifest.id, key },
+            'providerAllowedHostsFromConfig context value is not a valid URL; skipping',
+          )
+        }
       }
     }
     return hosts

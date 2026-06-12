@@ -1,7 +1,7 @@
 {
   "id": "audio-transcribe",
   "name": "Audio Transcribe",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Transcribes voice notes automatically before the LLM turn and audio attachments on demand via an OpenAI-compatible /v1/audio/transcriptions API",
   "apiVersion": 1,
   "main": "index.ts",
@@ -25,7 +25,14 @@
       "sensitive": true,
       "scope": "context"
     },
-    { "key": "model", "label": "Model (context override)", "required": false, "sensitive": false, "scope": "context" }
+    { "key": "model", "label": "Model (context override)", "required": false, "sensitive": false, "scope": "context" },
+    {
+      "key": "base_url",
+      "label": "Base URL (context override)",
+      "required": false,
+      "sensitive": false,
+      "scope": "context"
+    }
   ],
   "activationTimeoutMs": 3000
 }

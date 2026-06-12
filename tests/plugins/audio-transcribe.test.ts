@@ -135,6 +135,7 @@ type RuntimeOverrides = {
   kvBacking?: Map<string, string>
   adminApiKey?: string | undefined
   contextApiKey?: string | undefined
+  contextBaseUrl?: string | undefined
   contextModel?: string | undefined
   adminModel?: string | undefined
   adminBaseUrl?: string | undefined
@@ -187,6 +188,7 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
     contextConfig: {
       get: (key: string) => {
         if (key === 'api_key') return overrides.contextApiKey
+        if (key === 'base_url') return overrides.contextBaseUrl
         if (key === 'model') return overrides.contextModel
         return undefined
       },
@@ -221,10 +223,11 @@ describe('audio-transcribe plugin', () => {
 
   test('v2 plugin.json manifest parses correctly', () => {
     const parsed = pluginManifestSchema.parse(manifest)
-    expect(parsed.version).toBe('2.0.0')
+    expect(parsed.version).toBe('2.1.0')
     expect(parsed.contributes.attachmentTransformers).toContain('audio-transcribe')
     expect(parsed.configRequirements.map((r) => `${r.key}:${r.scope}`)).toContain('api_key:admin')
     expect(parsed.configRequirements.map((r) => `${r.key}:${r.scope}`)).toContain('api_key:context')
+    expect(parsed.configRequirements.map((r) => `${r.key}:${r.scope}`)).toContain('base_url:context')
     expect(parsed.providerAllowedHostsFromConfig).toContain('base_url')
   })
 
@@ -521,12 +524,16 @@ describe('audio-transcribe plugin', () => {
 
     await registeredTool.value!.execute(
       { attachment_id: 'att_1' },
-      createMockRuntimeContext({ contextApiKey: 'ctx-key', adminApiKey: 'admin-key' }),
+      createMockRuntimeContext({
+        contextApiKey: 'ctx-key',
+        contextBaseUrl: 'https://custom.example.com',
+        adminApiKey: 'admin-key',
+      }),
       createMockOptions(),
     )
 
     expect(mockHttpFetch).toHaveBeenCalledWith(
-      expect.any(String),
+      'https://custom.example.com/v1/audio/transcriptions',
       expect.objectContaining({ headers: { Authorization: 'Bearer ctx-key' } }),
     )
   })
@@ -557,8 +564,9 @@ describe('audio-transcribe plugin', () => {
   test('context model overrides admin model (resolveConfig)', () => {
     // Test config resolution directly via the exported resolveConfig function
     const runtimeContext = createMockRuntimeContext({ contextModel: 'ctx-model', adminModel: 'admin-model' })
-    const { model } = resolveConfig(runtimeContext)
-    expect(model).toBe('ctx-model')
+    const config = resolveConfig(runtimeContext)
+    assert(config.ok, 'expected resolveConfig to return ok: true')
+    expect(config.model).toBe('ctx-model')
   })
 
   test('key changes apply without re-activation (execute-time read)', async () => {
@@ -876,5 +884,145 @@ describe('audio-transcribe plugin', () => {
     expect(describeApiFailure({ error: 'api_error' })).toBe('transcription service error')
     expect(describeApiFailure({ error: 'network_error' })).toBe('transcription service error')
     expect(describeApiFailure({ error: 'bad_response' })).toBe('transcription service error')
+  })
+
+  // ── context override pairing ──────────────────────────────────────────────
+
+  test('full context pair (api_key + base_url) → uses context key AND context base_url', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'ctx result', language: 'en', duration: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    await registeredTool.value!.execute(
+      { attachment_id: 'att_1' },
+      createMockRuntimeContext({
+        contextApiKey: 'ctx-key',
+        contextBaseUrl: 'https://custom.example.com',
+        adminApiKey: 'admin-key',
+        adminBaseUrl: 'https://api.openai.com',
+      }),
+      createMockOptions(),
+    )
+
+    expect(mockHttpFetch).toHaveBeenCalledWith(
+      'https://custom.example.com/v1/audio/transcriptions',
+      expect.objectContaining({ headers: { Authorization: 'Bearer ctx-key' } }),
+    )
+  })
+
+  test('context base_url WITHOUT api_key → incomplete_context_override (tool)', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(new Response('', { status: 200 }))
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const result = await registeredTool.value!.execute(
+      { attachment_id: 'att_1' },
+      createMockRuntimeContext({
+        contextBaseUrl: 'https://custom.example.com',
+        adminApiKey: 'admin-key',
+      }),
+      createMockOptions(),
+    )
+
+    expect(result).toMatchObject({ error: 'incomplete_context_override' })
+    expect(mockHttpFetch).not.toHaveBeenCalled()
+  })
+
+  test('context api_key WITHOUT base_url → incomplete_context_override (tool)', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(new Response('', { status: 200 }))
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const result = await registeredTool.value!.execute(
+      { attachment_id: 'att_1' },
+      createMockRuntimeContext({
+        contextApiKey: 'ctx-key',
+        adminApiKey: 'admin-key',
+      }),
+      createMockOptions(),
+    )
+
+    expect(result).toMatchObject({ error: 'incomplete_context_override' })
+    expect(mockHttpFetch).not.toHaveBeenCalled()
+  })
+
+  test('context base_url WITHOUT api_key → transformer returns incomplete context override reason', async () => {
+    const mockHttpFetch = mock()
+    const { ctx, registeredTransformer } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const record = makeVoiceRecord()
+    const runtimeContext = createMockRuntimeContext({
+      contextBaseUrl: 'https://custom.example.com',
+      adminApiKey: 'admin-key',
+    })
+
+    const result: AttachmentTransformResult = await registeredTransformer.value!.transform(record, runtimeContext)
+
+    assertTransformFailed(result)
+    expect(result.reason).toContain('incomplete context override')
+    expect(result.reason).toContain('set both api_key and base_url')
+  })
+
+  test('model-only context override still works (no pairing required)', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'hello', language: 'en', duration: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const runtimeContext = createMockRuntimeContext({
+      contextModel: 'custom-model',
+      adminApiKey: 'admin-key',
+    })
+    const config = resolveConfig(runtimeContext)
+    assert(config.ok, 'expected resolveConfig to return ok: true')
+    expect(config.model).toBe('custom-model')
+
+    const result = await registeredTool.value!.execute({ attachment_id: 'att_1' }, runtimeContext, createMockOptions())
+
+    expect(result).toMatchObject({ text: 'hello' })
+  })
+
+  test('neither context key nor base_url → admin pair is used', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'hello', language: 'en', duration: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    await registeredTool.value!.execute(
+      { attachment_id: 'att_1' },
+      createMockRuntimeContext({ adminApiKey: 'admin-key', adminBaseUrl: 'https://api.openai.com' }),
+      createMockOptions(),
+    )
+
+    expect(mockHttpFetch).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/audio/transcriptions',
+      expect.objectContaining({ headers: { Authorization: 'Bearer admin-key' } }),
+    )
+  })
+
+  test('describeApiFailure maps incomplete_context_override to correct message', () => {
+    expect(describeApiFailure({ error: 'incomplete_context_override' })).toBe(
+      'incomplete context override — set both api_key and base_url in this context, or clear both',
+    )
   })
 })

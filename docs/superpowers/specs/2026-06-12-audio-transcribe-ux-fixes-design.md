@@ -26,15 +26,15 @@ The shipped `audio-transcribe` plugin transcribes lazily through an LLM tool. Ve
 
 ## Decisions (resolved during brainstorming)
 
-| Question       | Decision                                                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trigger model  | Deterministic pre-turn transcription via a new generic core hook (Approach A: attachment transformers); the LLM tool remains as a fallback. |
-| Credentials    | Admin-scoped key as deployment default; optional context-scoped `api_key`/`model` overrides. `base_url` stays admin-only.                   |
-| Failure UX     | Failures are injected into the turn as marker lines; the turn always proceeds; no hard-fail replies.                                        |
-| Platforms      | All platforms, matched by MIME/extension + origin; no provider branching in the transcription path.                                         |
-| Endpoints      | New `providerAllowedHostsFromConfig` manifest field lets admin-set `base_url` contribute its host to the HTTP allowlist.                    |
-| Tool retention | The `transcribe` tool stays for re-transcription with a language hint and for on-demand transcription of audio files.                       |
-| Hook shape     | Generic attachment-transformer registration (`mimePrefixes`/`filenameExtensions`/`origins` filters), not a transcription-specific hook.     |
+| Question       | Decision                                                                                                                                                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trigger model  | Deterministic pre-turn transcription via a new generic core hook (Approach A: attachment transformers); the LLM tool remains as a fallback.                                                                                   |
+| Credentials    | Admin-scoped key as deployment default; optional context-scoped `api_key`/`model` overrides. `base_url` stays admin-only. (**Amended 2026-06-12:** context `base_url` override added with strict pairing — see §5 amendment.) |
+| Failure UX     | Failures are injected into the turn as marker lines; the turn always proceeds; no hard-fail replies.                                                                                                                          |
+| Platforms      | All platforms, matched by MIME/extension + origin; no provider branching in the transcription path.                                                                                                                           |
+| Endpoints      | New `providerAllowedHostsFromConfig` manifest field lets admin-set `base_url` contribute its host to the HTTP allowlist.                                                                                                      |
+| Tool retention | The `transcribe` tool stays for re-transcription with a language hint and for on-demand transcription of audio files.                                                                                                         |
+| Hook shape     | Generic attachment-transformer registration (`mimePrefixes`/`filenameExtensions`/`origins` filters), not a transcription-specific hook.                                                                                       |
 
 ## Goals
 
@@ -138,6 +138,9 @@ Any transformer exception or timeout is caught at the dispatch boundary and rend
 - `contributes.attachmentTransformers: ["audio-transcribe"]`; the transformer registers `{ mimePrefixes: ['audio/'], filenameExtensions: ['.ogg', '.opus', '.mp3', '.m4a', '.wav', '.webm'], origins: ['voice'] }`.
 - `api_key` (admin scope) becomes `required: false` so the plugin stays eligible when unconfigured and failures surface as marker lines instead of hidden contributions.
 - New context-scoped optional `api_key` and `model`. `base_url` stays admin-only: a context-settable endpoint would let a context owner redirect requests carrying the admin's key to an arbitrary host.
+
+> **Amended 2026-06-12:** Context `base_url` override added with strict pairing — see implementation. If context sets `base_url`, it must also set `api_key`, and vice versa; only one set returns `incomplete_context_override`. Admin-config hosts remain operator-trusted (bypass HTTPS/public-IP); context-config hosts are untrusted-tier (full validation required).
+
 - New `providerAllowedHostsFromConfig: ["base_url"]` (see §6).
 
 **Config resolution, at execute time** (kills the stale closure; rotation applies on the next message):
@@ -159,6 +162,8 @@ baseUrl = adminConfig.get('base_url')                                ?? 'https:/
 New optional manifest field listing **admin-scoped** config keys whose values contribute their host to the plugin's HTTP allowlist (schema-validated: every referenced key must exist in `configRequirements` with `scope: 'admin'`). The provider runtime computes the allowlist per call as static `providerAllowedHosts` ∪ host of each referenced admin config value.
 
 Hosts contributed this way bypass the public-IP restriction that static hosts enforce — deliberately, to support self-hosted Whisper on a LAN. This is safe because admin config is operator-trusted input at the same trust level as manifest approval; LLM-controlled inputs cannot influence the target host. Static manifest hosts keep the public-IP restriction.
+
+> **Amended 2026-06-12:** A second (untrusted) tier was added: context-config-sourced hosts pass the allowlist membership check but still require full HTTPS + public-IP validation. See `buildContextDynamicHosts` in `src/plugins/dynamic-hosts.ts` and the `contextHosts` parameter of `buildProviderRuntime`.
 
 ### 7. Error handling summary
 

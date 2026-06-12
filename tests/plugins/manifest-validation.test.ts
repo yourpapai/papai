@@ -84,14 +84,14 @@ describe('hasProviderAllowedHostsFromConfig', () => {
     ).toBe(false)
   })
 
-  test('returns false when a config host key references a context-scoped requirement', () => {
+  test('returns true when a config host key references a context-scoped requirement', () => {
     expect(
       hasProviderAllowedHostsFromConfig({
         ...baseInput,
         providerAllowedHostsFromConfig: ['base_url'],
         configRequirements: [{ key: 'base_url', scope: 'context' }],
       }),
-    ).toBe(false)
+    ).toBe(true)
   })
 })
 

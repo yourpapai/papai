@@ -66,6 +66,8 @@ Before turn assembly, staged files from the current message with `origin: 'voice
 
 `PluginToolRuntimeContext` gains `contextConfig: { get(key: string): string | undefined }` resolving context-scoped `configRequirements` values. The same key name may exist in both admin and context scopes — they are independent stores. The `audio-transcribe` plugin uses this to let individual contexts supply their own `api_key` and `model` while keeping `base_url` admin-only (a context-owner-settable endpoint would let a context redirect requests carrying the admin's key to an arbitrary host).
 
+> **Amended 2026-06-12:** Context-scoped `base_url` override added in plugin v2.1 with strict credential pairing and two-tier host trust. Context `base_url` requires context `api_key` (and vice versa); mismatched pairs return `incomplete_context_override`. Admin-config hosts bypass HTTPS/public-IP checks (operator-trusted tier); context-config hosts pass allowlist membership but require full validation (untrusted tier). See `buildContextDynamicHosts` (`src/plugins/dynamic-hosts.ts`) and the `contextHosts` param of `buildProviderRuntime`.
+
 Credentials are resolved at execute time, not at activation, so rotation and first-time setup take effect on the next message.
 
 ### 5. `providerAllowedHostsFromConfig` manifest field

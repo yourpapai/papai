@@ -6,9 +6,11 @@
 import { describe, expect, mock, test } from 'bun:test'
 
 import type { PluginLogger } from '../../src/plugins/context.js'
-import type { ProviderRuntimeDeps } from '../../src/plugins/provider-runtime.js'
+import type { DynamicHostsFn, ProviderRuntimeDeps } from '../../src/plugins/provider-runtime.js'
 import { buildProviderRuntime } from '../../src/plugins/provider-runtime.js'
 import { mockLogger } from '../utils/test-helpers.js'
+
+const noDynamicHostsFn: DynamicHostsFn = () => new Set()
 
 type FetchSpy = ReturnType<typeof mock<(_url: string, _init?: RequestInit) => Promise<Response>>>
 type AssertSpy = ReturnType<typeof mock<(_url: URL) => Promise<void>>>
@@ -496,5 +498,118 @@ describe('buildProviderRuntime.httpFetch dynamic hosts', () => {
     const response = await runtime.httpFetch('http://whisper.lan/v1/transcribe')
     expect(response.status).toBe(200)
     expect(assertPublicUrl).not.toHaveBeenCalled()
+  })
+})
+
+describe('buildProviderRuntime.httpFetch context hosts', () => {
+  // SECURITY RATIONALE: context hosts are sourced from per-context (user/group) config —
+  // they are NOT operator-trusted. They pass the allowlist membership check but receive
+  // FULL standard validation: https is required and assertPublicUrl (SSRF guard) is enforced.
+
+  test('context-tier host with https and passing assertPublicUrl succeeds', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok', { status: 200 })))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.resolve())
+    const runtime = buildProviderRuntime(
+      [],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      noDynamicHostsFn,
+      () => new Set(['context.example.com']),
+    )
+
+    const response = await runtime.httpFetch('https://context.example.com/v1/data')
+    expect(response.status).toBe(200)
+    // assertPublicUrl must be called — context hosts are NOT trusted, full SSRF check runs
+    expect(assertPublicUrl).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('context-tier host with http is rejected — https is required', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.resolve())
+    const runtime = buildProviderRuntime(
+      [],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      noDynamicHostsFn,
+      () => new Set(['context.example.com']),
+    )
+
+    await expect(runtime.httpFetch('http://context.example.com/v1/data')).rejects.toThrow(
+      'Plugin provider httpFetch requires an https URL',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(assertPublicUrl).not.toHaveBeenCalled()
+  })
+
+  test('context-tier host failing assertPublicUrl is rejected', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.reject(new Error('private address')))
+    const runtime = buildProviderRuntime(
+      [],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      noDynamicHostsFn,
+      () => new Set(['context.example.com']),
+    )
+
+    await expect(runtime.httpFetch('https://context.example.com/v1/data')).rejects.toThrow('private address')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('redirect to a context-tier host applies full https and assertPublicUrl checks', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.resolve())
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://context.example.com/v2/data' } }),
+    )
+    fetchMock.mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const runtime = buildProviderRuntime(
+      ['api.static.example'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      noDynamicHostsFn,
+      () => new Set(['context.example.com']),
+    )
+
+    const response = await runtime.httpFetch('https://api.static.example/redirect-me')
+    expect(response.status).toBe(200)
+    // assertPublicUrl called for both hops: initial static host + redirect to context host
+    expect(assertPublicUrl).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('host in neither static, dynamic, nor context set is rejected', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.resolve())
+    const runtime = buildProviderRuntime(
+      ['api.static.example'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['dynamic.lan']),
+      () => new Set(['context.example.com']),
+    )
+
+    await expect(runtime.httpFetch('https://evil.example/steal')).rejects.toThrow(/allowlist/u)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('admin dynamic host still bypasses https and public-IP even when contextHosts is provided', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok', { status: 200 })))
+    // assertPublicUrl would reject private addresses; it must NOT be called for the dynamic host
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.reject(new Error('private address')))
+    const runtime = buildProviderRuntime(
+      [],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+      () => new Set(['context.example.com']),
+    )
+
+    // whisper.lan is in the admin dynamic set — http is allowed, assertPublicUrl skipped
+    const response = await runtime.httpFetch('http://whisper.lan/v1/transcribe')
+    expect(response.status).toBe(200)
+    expect(assertPublicUrl).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
