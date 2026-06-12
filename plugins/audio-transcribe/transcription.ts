@@ -137,6 +137,9 @@ export async function loadAudioAttachment(
         result: { error: 'unsupported_media_type', mimeType: record.mimeType ?? null },
       }
     }
+    // The facade returns record+bytes atomically, so the blob is already in memory
+    // when this guard fires — it prevents the API call, not the allocation; a
+    // pre-fetch metadata check would need a facade change.
     const size = record.size ?? bytes.byteLength
     if (size > MAX_AUDIO_BYTES) {
       return {
@@ -238,7 +241,9 @@ export const describeLoadFailure = (result: unknown): string => {
   return 'transcription service error'
 }
 
-export const describeApiFailure = (result: { error: string }): string =>
-  result.error === 'not_configured'
-    ? 'not configured — the admin can set a transcription API key in the settings UI'
-    : 'transcription service error'
+export const describeApiFailure = (result: { error: string }): string => {
+  if (result.error === 'not_configured')
+    return 'not configured — the admin can set a transcription API key in the settings UI'
+  if (result.error === 'timeout') return 'transcription timed out — try again'
+  return 'transcription service error'
+}

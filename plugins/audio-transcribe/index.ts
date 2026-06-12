@@ -42,11 +42,6 @@ async function executeTranscribe(
   runtimeContext: PluginToolRuntimeContext,
   httpFetch: HttpFetch | undefined,
 ): Promise<unknown> {
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
-  if (!rateResult.allowed) {
-    return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
-  }
-
   let parsed: z.infer<typeof transcribeInputSchema>
   try {
     parsed = transcribeInputSchema.parse(input)
@@ -60,6 +55,11 @@ async function executeTranscribe(
   const cacheKey = `transcript:${parsed.attachment_id}`
   const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
   if (cached !== undefined) return cached
+
+  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
+  if (!rateResult.allowed) {
+    return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
+  }
 
   const audio = await loadAudioAttachment(runtimeContext, parsed.attachment_id)
   if (!audio.ok) return audio.result

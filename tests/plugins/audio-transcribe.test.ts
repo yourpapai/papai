@@ -10,7 +10,7 @@ import type { ToolExecutionOptions } from 'ai'
 
 import factory from '../../plugins/audio-transcribe/index.js'
 import manifest from '../../plugins/audio-transcribe/plugin.json'
-import { resolveConfig } from '../../plugins/audio-transcribe/transcription.js'
+import { describeApiFailure, resolveConfig } from '../../plugins/audio-transcribe/transcription.js'
 import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
 import type {
   AttachmentTransformResult,
@@ -37,6 +37,7 @@ function createMockContext(
   overrides: {
     config?: AdminConfigOverrides
     httpFetch?: (url: string, init?: RequestInit) => Promise<Response>
+    noProviderRuntime?: boolean
   } = {},
 ): {
   ctx: PluginContext
@@ -73,11 +74,14 @@ function createMockContext(
     kv: { get: () => undefined, set: () => {}, delete: () => {}, list: () => [] },
     log: createMockLogger(),
     registration,
-    providerRuntime: {
-      httpFetch: overrides.httpFetch ?? mock(),
-      allowedHosts: new Set(['api.openai.com', 'api.groq.com']),
-      logger: createMockLogger(),
-    },
+    providerRuntime:
+      overrides.noProviderRuntime === true
+        ? undefined
+        : {
+            httpFetch: overrides.httpFetch ?? mock(),
+            allowedHosts: new Set(['api.openai.com', 'api.groq.com']),
+            logger: createMockLogger(),
+          },
     adminConfig: {
       get: (key: string) => {
         if (key === 'api_key') return apiKey
@@ -741,5 +745,92 @@ describe('audio-transcribe plugin', () => {
 
     assertTransformFailed(result)
     expect(result.reason).toContain('rate limited')
+  })
+
+  // ── fix 1: cache-before-rate-limit ───────────────────────────────────────
+
+  test('cache hit is returned even when the context is rate-limited (quota not consumed)', async () => {
+    const mockHttpFetch = mock()
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    // Pre-seed the cache so the tool should return a cached result immediately
+    const kvBacking = new Map<string, string>()
+    kvBacking.set(
+      'transcript:att_cached',
+      JSON.stringify({ text: 'cached result', language: 'en', durationSec: 2, cachedAt: new Date().toISOString() }),
+    )
+
+    const result = await registeredTool.value!.execute(
+      { attachment_id: 'att_cached' },
+      // Rate-limited: without the fix this would return rate_limited before checking cache
+      createMockRuntimeContext({ rateAllowed: false, retryAfterSec: 60, kvBacking }),
+      createMockOptions(),
+    )
+
+    // Must return cached transcript, NOT a rate_limited error
+    expect(result).toEqual({ text: 'cached result', language: 'en', durationSec: 2 })
+    expect(mockHttpFetch).not.toHaveBeenCalled()
+  })
+
+  // ── fix 2: FormData body assertions ─────────────────────────────────────
+
+  test('happy-path tool call sends correct FormData: model, file, and language fields', async () => {
+    const capturedInits: (RequestInit | undefined)[] = []
+    const mockHttpFetch = mock((_url: string, init?: RequestInit) => {
+      capturedInits.push(init)
+      return Promise.resolve(
+        new Response(JSON.stringify({ text: 'bonjour', language: 'fr', duration: 1.2 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    await registeredTool.value!.execute(
+      { attachment_id: 'att_1', language: 'fr' },
+      createMockRuntimeContext({ adminModel: 'whisper-1' }),
+      createMockOptions(),
+    )
+
+    expect(capturedInits).toHaveLength(1)
+    const body = capturedInits.at(0)?.body
+    assert(body instanceof FormData, 'expected request body to be FormData')
+    expect(body.get('model')).toBe('whisper-1')
+    expect(body.get('file')).toBeInstanceOf(Blob)
+    expect(body.get('language')).toBe('fr')
+  })
+
+  // ── fix 4: httpFetch-undefined (providerRuntime: undefined) ──────────────
+
+  test('returns not_configured when providerRuntime is undefined (distinct from missing api_key)', async () => {
+    const { ctx, registeredTool } = createMockContext({ noProviderRuntime: true })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const result = await registeredTool.value!.execute(
+      { attachment_id: 'att_1' },
+      createMockRuntimeContext({ adminApiKey: 'some-key' }),
+      createMockOptions(),
+    )
+
+    // providerRuntime: undefined → httpFetch is undefined → not_configured
+    expect(result).toMatchObject({ error: 'not_configured' })
+  })
+
+  // ── fix 5: timeout reason distinction ───────────────────────────────────
+
+  test('describeApiFailure maps timeout error to "transcription timed out — try again"', () => {
+    expect(describeApiFailure({ error: 'timeout' })).toBe('transcription timed out — try again')
+  })
+
+  test('describeApiFailure maps non-timeout, non-config errors to "transcription service error"', () => {
+    expect(describeApiFailure({ error: 'api_error' })).toBe('transcription service error')
+    expect(describeApiFailure({ error: 'network_error' })).toBe('transcription service error')
+    expect(describeApiFailure({ error: 'bad_response' })).toBe('transcription service error')
   })
 })
