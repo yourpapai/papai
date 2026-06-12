@@ -78,7 +78,7 @@ async function executeTranscribe(
   const audio = await loadAudioAttachment(runtimeContext, parsed.attachment_id)
   if (!audio.ok) return audio.result
 
-  const apiResult = await transcribeRecord(audio.record, audio.bytes, parsed.language, runtimeContext, httpFetch)
+  const apiResult = await transcribeRecord(audio.record, audio.bytes, parsed.language, config, httpFetch)
   if ('error' in apiResult) return apiResult
 
   writeCache(runtimeContext.kv, cacheKey, apiResult)
@@ -113,7 +113,7 @@ async function runTransform(
   const audio = await loadAudioAttachment(runtimeContext, record.attachmentId)
   if (!audio.ok) return { ok: false, reason: describeLoadFailure(audio.result) }
 
-  const apiResult = await transcribeRecord(audio.record, audio.bytes, undefined, runtimeContext, httpFetch)
+  const apiResult = await transcribeRecord(audio.record, audio.bytes, undefined, config, httpFetch)
   if ('error' in apiResult) return { ok: false, reason: describeApiFailure(apiResult) }
 
   writeCache(runtimeContext.kv, cacheKey, apiResult)

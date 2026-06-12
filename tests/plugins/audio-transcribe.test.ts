@@ -10,7 +10,12 @@ import type { ToolExecutionOptions } from 'ai'
 
 import factory from '../../plugins/audio-transcribe/index.js'
 import manifest from '../../plugins/audio-transcribe/plugin.json'
-import { describeApiFailure, resolveConfig } from '../../plugins/audio-transcribe/transcription.js'
+import {
+  DEFAULT_MODEL,
+  describeApiFailure,
+  normalizeModel,
+  resolveConfig,
+} from '../../plugins/audio-transcribe/transcription.js'
 import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
 import type {
   AttachmentTransformResult,
@@ -1024,5 +1029,28 @@ describe('audio-transcribe plugin', () => {
     expect(describeApiFailure({ error: 'incomplete_context_override' })).toBe(
       'incomplete context override — set both api_key and base_url in this context, or clear both',
     )
+  })
+})
+
+describe('normalizeModel input validation', () => {
+  test('valid model name passes through unchanged', () => {
+    expect(normalizeModel('whisper-1')).toBe('whisper-1')
+    expect(normalizeModel('openai/whisper-1')).toBe('openai/whisper-1')
+    expect(normalizeModel('whisper-large-v3-turbo')).toBe('whisper-large-v3-turbo')
+    expect(normalizeModel('model.v2:latest')).toBe('model.v2:latest')
+  })
+
+  test('model name with injection characters falls back to DEFAULT_MODEL', () => {
+    expect(normalizeModel('<script>alert(1)</script>')).toBe(DEFAULT_MODEL)
+    expect(normalizeModel('model\ninjection')).toBe(DEFAULT_MODEL)
+    expect(normalizeModel('model name with spaces')).toBe(DEFAULT_MODEL)
+    expect(normalizeModel('../../../etc/passwd')).toBe(DEFAULT_MODEL)
+  })
+
+  test('model name exceeding 128 chars falls back to DEFAULT_MODEL', () => {
+    const longName = 'a'.repeat(129)
+    expect(normalizeModel(longName)).toBe(DEFAULT_MODEL)
+    const exactLimit = 'a'.repeat(128)
+    expect(normalizeModel(exactLimit)).toBe(exactLimit)
   })
 })

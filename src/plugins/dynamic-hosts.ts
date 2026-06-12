@@ -39,12 +39,24 @@ export function buildDynamicHosts(manifest: PluginManifest): DynamicHostsFn {
 
 /** Hosts from CONTEXT-scoped config values for keys declared in
  * providerAllowedHostsFromConfig. Unlike admin-sourced hosts these are NOT
- * operator-trusted: callers must apply full https + public-IP validation. */
+ * operator-trusted: callers must apply full https + public-IP validation.
+ *
+ * Non-empty results are cached for 30 seconds to avoid a DB scan on every
+ * httpFetch call and redirect hop. Empty results are never cached so that
+ * newly-added context config is picked up without a process restart. */
 export function buildContextDynamicHosts(manifest: PluginManifest): DynamicHostsFn {
   const keys = (manifest.providerAllowedHostsFromConfig ?? []).filter((key) =>
     manifest.configRequirements.some((req) => req.key === key && req.scope === 'context'),
   )
+  let cached: ReadonlySet<string> | undefined
+  let cachedAt = 0
+  const TTL_MS = 30_000
   return (): ReadonlySet<string> => {
+    const now = Date.now()
+    // Only serve the cache when it is non-empty and still within the TTL.
+    // Empty results are re-checked every call so newly-added context config
+    // is reflected without a process restart.
+    if (cached !== undefined && cached.size > 0 && now - cachedAt < TTL_MS) return cached
     const hosts = new Set<string>()
     for (const key of keys) {
       for (const value of listPluginConfigValues(manifest.id, key)) {
@@ -58,6 +70,8 @@ export function buildContextDynamicHosts(manifest: PluginManifest): DynamicHosts
         }
       }
     }
+    cached = hosts
+    cachedAt = now
     return hosts
   }
 }

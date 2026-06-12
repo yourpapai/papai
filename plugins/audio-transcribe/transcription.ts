@@ -47,7 +47,11 @@ export function normalizeBaseUrl(raw: string | undefined): string {
 
 export function normalizeModel(raw: string | undefined): string {
   const value = (raw ?? '').trim()
-  return value === '' ? DEFAULT_MODEL : value
+  if (value === '') return DEFAULT_MODEL
+  // Restrict to safe characters to prevent model-name injection into API calls.
+  // Must start with alphanumeric; allows . _ : / - for paths like openai/whisper-1.
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/u.test(value)) return DEFAULT_MODEL
+  return value
 }
 
 export function resolveConfig(runtimeContext: PluginToolRuntimeContext): ResolvedConfig {
@@ -228,21 +232,14 @@ export function transcribeRecord(
   record: PluginAttachmentRecord,
   bytes: Buffer,
   language: string | undefined,
-  runtimeContext: PluginToolRuntimeContext,
-  httpFetch: HttpFetch | undefined,
+  config: Extract<ResolvedConfig, { ok: true }>,
+  httpFetch: HttpFetch,
 ): Promise<TranscribeResult | { error: string; status?: number; message?: string }> {
-  const config = resolveConfig(runtimeContext)
-  if (!config.ok) {
-    return Promise.resolve({
-      error: 'incomplete_context_override',
-      message: 'audio-transcribe: set both api_key and base_url in this context, or clear both',
-    })
-  }
   const { apiKey, baseUrl, model } = config
-  if (apiKey === undefined || apiKey.trim() === '' || httpFetch === undefined) {
+  if (apiKey === undefined || apiKey.trim() === '') {
     return Promise.resolve({
       error: 'not_configured',
-      message: 'audio-transcribe: api_key missing or providerRuntime unavailable',
+      message: 'audio-transcribe: api_key missing',
     })
   }
   const body = buildMultipartBody(record, bytes, model, language)

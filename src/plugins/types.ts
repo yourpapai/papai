@@ -229,8 +229,12 @@ export const pluginManifestSchema = z
     message: "Declaring contributes.attachmentTransformers requires the 'attachments.read' permission",
     path: ['contributes', 'attachmentTransformers'],
   })
+  // Scope is deliberately not checked here: admin-scoped keys use the trusted
+  // admin tier (bypasses https/public-IP), context-scoped keys use the untrusted
+  // context tier (full https + public-IP validation) via buildContextDynamicHosts.
   .refine(hasProviderAllowedHostsFromConfig, {
-    message: 'providerAllowedHostsFromConfig keys must reference admin-scoped configRequirements',
+    message:
+      'providerAllowedHostsFromConfig keys must reference at least one configRequirements entry (admin or context scope)',
     path: ['providerAllowedHostsFromConfig'],
   })
 
