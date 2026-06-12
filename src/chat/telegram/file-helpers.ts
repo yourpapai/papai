@@ -34,7 +34,7 @@ type FileCandidate = {
   filename: string
   mimeType?: string
   size?: number
-  origin?: 'voice' | 'file'
+  origin?: 'voice'
   forwardedFrom?: string
 }
 
@@ -101,7 +101,7 @@ const extractForwardedFrom = (msg: ExtractFilesInput['message']): string | undef
   if (fwd.sender_user_name !== undefined) return fwd.sender_user_name
   if (fwd.sender_chat?.title !== undefined) return fwd.sender_chat.title
   if (fwd.chat?.title !== undefined) return fwd.chat.title
-  return 'unknown sender'
+  return undefined
 }
 
 /** Build the list of file candidates from a message (synchronous). */

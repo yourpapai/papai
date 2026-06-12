@@ -87,6 +87,36 @@ describe('origin and forwardedFrom fields', () => {
     const candidates = extractFileCandidatesFromContext({ message: { voice: { file_id: 'v1' } } })
     expect(candidates[0]?.forwardedFrom).toBeUndefined()
   })
+
+  test('forwarded from a group sets forwardedFrom to the group title', () => {
+    const candidates = extractFileCandidatesFromContext({
+      message: {
+        voice: { file_id: 'v1' },
+        forward_origin: { type: 'chat', sender_chat: { title: 'My Group' } },
+      },
+    })
+    expect(candidates[0]?.forwardedFrom).toBe('My Group')
+  })
+
+  test('forwarded from a channel sets forwardedFrom to the channel title', () => {
+    const candidates = extractFileCandidatesFromContext({
+      message: {
+        voice: { file_id: 'v1' },
+        forward_origin: { type: 'channel', chat: { title: 'My Channel' } },
+      },
+    })
+    expect(candidates[0]?.forwardedFrom).toBe('My Channel')
+  })
+
+  test('unrecognized forward_origin shape yields no forwardedFrom', () => {
+    const candidates = extractFileCandidatesFromContext({
+      message: {
+        voice: { file_id: 'v1' },
+        forward_origin: { type: 'mystery' },
+      },
+    })
+    expect(candidates[0]?.forwardedFrom).toBeUndefined()
+  })
 })
 
 describe('extractFilesFromContext', () => {
