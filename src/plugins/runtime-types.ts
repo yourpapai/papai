@@ -24,6 +24,11 @@ export type PluginTaskProviderFacade = Pick<
   'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
 >
 
+/** Context-scoped plugin config declared in configRequirements with scope 'context'. */
+export type PluginContextConfig = {
+  get(key: string): string | undefined
+}
+
 export type PluginToolRuntimeContext = {
   pluginId: string
   storageContextId: string
@@ -31,6 +36,8 @@ export type PluginToolRuntimeContext = {
   taskProvider?: PluginTaskProviderFacade
   kv: PluginContext['kv']
   adminConfig: PluginAdminConfig
+  /** Context-scoped plugin config declared in configRequirements with scope 'context'. */
+  contextConfig: PluginContextConfig
   /** Identity claims are bound to this runtime actor. */
   identity?: PluginIdentityFacade
   rateLimit: {

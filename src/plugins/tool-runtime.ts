@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { loadAttachmentRecord } from '../attachments/store.js'
+import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
 import { consumeWebFetchQuota } from '../web/rate-limit.js'
 import { buildIdentityFacade } from './identity-facade.js'
@@ -69,6 +70,22 @@ function buildRuntimeAdminConfig(pluginId: string, manifest: PluginManifest): Pl
   })
 }
 
+function buildRuntimeContextConfig(
+  pluginId: string,
+  contextId: string,
+  manifest: PluginManifest,
+): PluginToolRuntimeContext['contextConfig'] {
+  const contextKeys = new Set(
+    manifest.configRequirements.filter((req) => req.scope === 'context').map((req) => req.key),
+  )
+  return Object.freeze({
+    get(key: string): string | undefined {
+      if (!contextKeys.has(key)) return undefined
+      return getPluginConfig(contextId, pluginId, key) ?? undefined
+    },
+  })
+}
+
 export function buildPluginTaskProviderFacade(
   pluginId: string,
   provider: TaskProvider | undefined,
@@ -123,6 +140,8 @@ function buildAttachmentsFacade(
           mimeType: stored.mimeType,
           size: stored.size,
           createdAt: stored.createdAt,
+          ...(stored.origin === undefined ? {} : { origin: stored.origin }),
+          ...(stored.forwardedFrom === undefined ? {} : { forwardedFrom: stored.forwardedFrom }),
         },
         bytes: stored.content,
       }
@@ -191,6 +210,7 @@ export function buildPluginToolRuntimeContext(
     chatUserId: runtime.chatUserId,
     kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
     adminConfig: buildRuntimeAdminConfig(pluginId, manifest),
+    contextConfig: buildRuntimeContextConfig(pluginId, runtime.storageContextId, manifest),
     ...(taskProvider === undefined ? {} : { taskProvider }),
     ...(identity === undefined ? {} : { identity }),
     rateLimit: buildRateLimit(),

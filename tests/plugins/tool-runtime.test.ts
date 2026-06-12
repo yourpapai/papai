@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { saveAttachment } from '../../src/attachments/store.js'
+import { setPluginConfig } from '../../src/config.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from '../../src/plugins/tool-runtime.js'
 import { pluginManifestSchema, type PluginManifest } from '../../src/plugins/types.js'
@@ -150,6 +151,68 @@ describe('buildPluginToolRuntimeContext', () => {
       )
 
       await expect(ctx.attachments.read(saved.attachmentId)).rejects.toThrow(/attachment_not_found/u)
+    })
+
+    test('attachments.read surfaces origin and forwardedFrom on the record', async () => {
+      const saved = await saveAttachment({
+        contextId: 'ctx-1',
+        sourceProvider: 'telegram',
+        filename: 'voice.ogg',
+        status: 'available',
+        content: Buffer.from('audio'),
+        mimeType: 'audio/ogg',
+        origin: 'voice',
+        forwardedFrom: 'Alice',
+      })
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({ permissions: ['attachments.read'] }),
+        makeRuntime({ storageContextId: 'ctx-1' }),
+      )
+      const { record } = await ctx.attachments.read(saved.attachmentId)
+      expect(record.origin).toBe('voice')
+      expect(record.forwardedFrom).toBe('Alice')
+    })
+  })
+
+  describe('contextConfig facade', () => {
+    test('resolves declared context-scoped keys and hides others', () => {
+      setPluginConfig('ctx-1', 'test-plugin', 'api_key', 'ctx-key-1')
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({
+          configRequirements: [
+            { key: 'api_key', label: 'API Key', required: false, sensitive: true, scope: 'context' },
+          ],
+        }),
+        makeRuntime({ storageContextId: 'ctx-1' }),
+      )
+      expect(ctx.contextConfig.get('api_key')).toBe('ctx-key-1')
+      expect(ctx.contextConfig.get('undeclared')).toBeUndefined()
+    })
+
+    test('returns undefined for a declared key with no stored value', () => {
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({
+          configRequirements: [
+            { key: 'api_key', label: 'API Key', required: false, sensitive: true, scope: 'context' },
+          ],
+        }),
+        makeRuntime({ storageContextId: 'ctx-1' }),
+      )
+      expect(ctx.contextConfig.get('api_key')).toBeUndefined()
+    })
+
+    test('does not expose admin-scoped keys through contextConfig', () => {
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({
+          configRequirements: [{ key: 'api_key', label: 'API Key', required: false, sensitive: true, scope: 'admin' }],
+        }),
+        makeRuntime({ storageContextId: 'ctx-1' }),
+      )
+      expect(ctx.contextConfig.get('api_key')).toBeUndefined()
     })
   })
 

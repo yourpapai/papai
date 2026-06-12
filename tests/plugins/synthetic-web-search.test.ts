@@ -104,6 +104,9 @@ function createMockRuntimeContext(
       get: (key: string) =>
         key === 'api_key' ? ('apiKey' in overrides ? overrides.apiKey : 'test-api-key') : undefined,
     },
+    contextConfig: {
+      get: () => undefined,
+    },
   } as PluginToolRuntimeContext
 }
 

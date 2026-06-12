@@ -15,6 +15,10 @@ export type PluginAttachmentRecord = {
   mimeType: string | undefined
   size: number | undefined
   createdAt: string
+  /** How the file arrived ('voice' for voice notes); undefined for legacy rows. */
+  origin?: 'voice' | 'file'
+  /** Original sender display name when the source message was forwarded. */
+  forwardedFrom?: string
 }
 
 /**

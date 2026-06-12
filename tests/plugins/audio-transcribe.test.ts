@@ -151,6 +151,9 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
     adminConfig: {
       get: () => undefined,
     },
+    contextConfig: {
+      get: () => undefined,
+    },
     attachments: overrides.attachments ?? createMockAttachments().facade,
   }
 }
