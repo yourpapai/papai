@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { TaskProvider } from '../../../src/providers/types.js'
-import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
+import { partitionToolNames, setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
 import { createMockProvider } from '../../tools/mock-provider.js'
 import type { PromptRegressionSetup } from './fixture-types.js'
 
@@ -26,10 +26,11 @@ export function buildPromptRegressionContext(setup: PromptRegressionSetup): Buil
   const contextId = setup.contextId ?? `ctx-${setup.contextType}-${setup.provider}`
   const chatUserId = setup.chatUserId ?? 'user-prompt-regression'
   const provider = setup.provider === 'providerless' ? null : createMockProvider()
-  const enabledToolNames = new Set(setup.enabledTools ?? ['get_current_time'])
+  const configuredToolNames = setup.enabledTools ?? ['get_current_time']
 
   const prefs = buildToolPrefs(setup)
   if (Object.keys(prefs.toolOverrides).length > 0) setToolPrefs(contextId, prefs)
+  const enabledToolNames = partitionToolNames(prefs, configuredToolNames).exposed
 
   return { contextId, chatUserId, provider, enabledToolNames }
 }

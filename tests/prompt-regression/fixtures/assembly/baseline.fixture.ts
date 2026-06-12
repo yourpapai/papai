@@ -18,6 +18,7 @@ export const assemblyFixtures: readonly AssemblyFixture[] = [
       contextType: 'dm',
       provider: 'kaneo',
       enabledTools: ['create_task', 'update_task', 'web_fetch', 'save_instruction', 'delete_task'],
+      deniedTools: ['delete_task'],
     },
     expected: {
       prompt: {
@@ -26,7 +27,7 @@ export const assemblyFixtures: readonly AssemblyFixture[] = [
       },
       tools: {
         include: ['create_task', 'update_task', 'web_fetch'],
-        exclude: ['delete_project'],
+        exclude: ['delete_project', 'delete_task'],
       },
     },
   },
