@@ -288,6 +288,78 @@ describe('bot-attachments', () => {
     })
   })
 
+  describe('origin and forwardedFrom propagation', () => {
+    test('DM ingest persists origin and forwardedFrom from IncomingFile', async () => {
+      const { persistIncomingAttachments } = await import('../src/attachments/ingest.js')
+      const refs = await persistIncomingAttachments({
+        contextId: 'ctx-dm',
+        sourceProvider: 'telegram',
+        files: [
+          {
+            fileId: 'f1',
+            filename: 'voice.ogg',
+            content: Buffer.from('audio'),
+            mimeType: 'audio/ogg',
+            origin: 'voice',
+            forwardedFrom: 'Alice',
+          },
+        ],
+      })
+      const stored = await loadAttachmentRecord('ctx-dm', refs[0]!.attachmentId)
+      expect(stored?.origin).toBe('voice')
+      expect(stored?.forwardedFrom).toBe('Alice')
+    })
+
+    test('group staging passes candidate origin and forwardedFrom to stageFileMetadata', async () => {
+      const { stageGroupFileCandidates } = await import('../src/bot-attachments.js')
+      const staged: StageFileParams[] = []
+      const msg: IncomingMessage = {
+        ...createGroupMessage('group-user', 'hello'),
+        messageId: 'msg-origin-test',
+        fileCandidates: [
+          makeCandidate({
+            fileId: 'pf1',
+            filename: 'voice.ogg',
+            mimeType: 'audio/ogg',
+            origin: 'voice',
+            forwardedFrom: 'Alice',
+          }),
+        ],
+      }
+
+      stageGroupFileCandidates(
+        { storageContextId: 'ctx-g', msg, sourceProvider: 'telegram' },
+        {
+          stageFileMetadataFn: (params) => {
+            staged.push(params)
+            return {
+              stagedId: 'stg_origin',
+              contextId: params.contextId,
+              messageId: params.messageId,
+              senderId: params.senderId,
+              senderUsername: params.senderUsername,
+              filename: params.filename,
+              mimeType: params.mimeType,
+              size: params.size,
+              platformFileId: params.platformFileId,
+              sourceProvider: params.sourceProvider,
+              sourcePlatformInstanceId: params.sourcePlatformInstanceId,
+              status: 'staged',
+              attachmentId: null,
+              createdAt: 'now',
+              expiresAt: 'later',
+              origin: params.origin,
+              forwardedFrom: params.forwardedFrom,
+            }
+          },
+        },
+      )
+
+      expect(staged[0]?.origin).toBe('voice')
+      expect(staged[0]?.forwardedFrom).toBe('Alice')
+    })
+  })
+
   describe('resolveMessageAttachments', () => {
     test('ingests DM files when present', async () => {
       const { resolveMessageAttachments } = await import('../src/bot-attachments.js')
