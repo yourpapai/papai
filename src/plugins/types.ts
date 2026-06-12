@@ -16,6 +16,7 @@ import {
   hasProviderManifestPermission,
   hasRequiredMainForManifest,
   isValidMainPath,
+  transformerNameSchema,
 } from './manifest-validation.js'
 
 export type { PluginAttachmentFacade, PluginAttachmentRecord } from './attachment-types.js'
@@ -164,7 +165,7 @@ const pluginContributesSchema = z.strictObject({
   jobs: z.array(z.string().min(1).max(64)).optional().default([]),
   configKeys: z.array(configKeySchema).optional().default([]),
   taskProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
-  attachmentTransformers: z.array(toolNameSchema).optional().default([]),
+  attachmentTransformers: z.array(transformerNameSchema).optional().default([]),
 })
 
 const configRequirementBaseSchema = z.strictObject({
@@ -227,7 +228,7 @@ export const pluginManifestSchema = z
     providerConfigSchema: z.array(providerInstanceConfigRequirementSchema).optional().default([]),
     providerContextConfigSchema: z.array(providerContextConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
-    providerAllowedHostsFromConfig: z.array(z.string().min(1)).optional().default([]),
+    providerAllowedHostsFromConfig: z.array(configKeySchema).optional().default([]),
     providerConfigValidator: z
       .string()
       .min(1)
@@ -267,7 +268,7 @@ export const pluginManifestSchema = z
   })
   .refine(hasAttachmentTransformerPermission, {
     message: "Declaring contributes.attachmentTransformers requires the 'attachments.read' permission",
-    path: ['permissions'],
+    path: ['contributes', 'attachmentTransformers'],
   })
   .refine(hasProviderAllowedHostsFromConfig, {
     message: 'providerAllowedHostsFromConfig keys must reference admin-scoped configRequirements',
@@ -275,8 +276,7 @@ export const pluginManifestSchema = z
   })
 
 export type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
-// Fields with Zod `.default([])` are optional on the hand-constructed type so test fixtures and
-// non-provider plugins may omit them.
+// Fields with Zod `.default([])` are optional on the hand-constructed type; test fixtures and non-provider plugins may omit them.
 export type PluginManifest = Omit<
   ParsedPluginManifest,
   'providerContextConfigSchema' | 'providerTraits' | 'contributes' | 'providerAllowedHostsFromConfig'

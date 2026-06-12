@@ -5,7 +5,15 @@
 
 import { posix, win32 } from 'node:path'
 
+import { z } from 'zod'
+
 import type { TaskProviderTrait } from '../providers/types.js'
+
+export const transformerNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][a-z0-9_-]*$/u, 'Transformer name must be lowercase (kebab-case or snake_case)')
 
 export const PLUGIN_MANIFEST_PROVIDER_TRAITS = [
   'workspace-scoped',
@@ -54,7 +62,9 @@ export function hasProviderManifestPermission(m: ManifestValidationInput): boole
   const hasTaskProviderPermission =
     m.permissions.includes('provider.task') && m.contributes.taskProviderTypes.length > 0
   const allowsProviderHosts =
-    m.providerAllowedHosts.length === 0 || m.permissions.includes('http') || hasTaskProviderPermission
+    (m.providerAllowedHosts.length === 0 && m.providerAllowedHostsFromConfig.length === 0) ||
+    m.permissions.includes('http') ||
+    hasTaskProviderPermission
   const allowsTaskProviderFields =
     (m.providerCapabilities.length === 0 &&
       m.providerConfigSchema.length === 0 &&
@@ -90,7 +100,8 @@ export function hasRequiredMainForManifest(m: ManifestValidationInput): boolean 
     m.contributes.promptFragments.length +
     m.contributes.commands.length +
     m.contributes.jobs.length +
-    m.contributes.taskProviderTypes.length
+    m.contributes.taskProviderTypes.length +
+    m.contributes.attachmentTransformers.length
   const hasProviderMetadata =
     m.providerCapabilities.length > 0 ||
     m.providerConfigSchema.length > 0 ||

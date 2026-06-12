@@ -8,6 +8,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   hasAttachmentTransformerPermission,
   hasProviderAllowedHostsFromConfig,
+  hasProviderManifestPermission,
+  hasRequiredMainForManifest,
 } from '../../src/plugins/manifest-validation.js'
 
 const baseInput = {
@@ -90,5 +92,81 @@ describe('hasProviderAllowedHostsFromConfig', () => {
         configRequirements: [{ key: 'base_url', scope: 'context' }],
       }),
     ).toBe(false)
+  })
+})
+
+describe('hasProviderManifestPermission (fix 2: providerAllowedHostsFromConfig)', () => {
+  test('returns true when both providerAllowedHosts and providerAllowedHostsFromConfig are empty', () => {
+    expect(hasProviderManifestPermission({ ...baseInput })).toBe(true)
+  })
+
+  test('returns true when providerAllowedHosts is non-empty and http permission is present', () => {
+    expect(
+      hasProviderManifestPermission({
+        ...baseInput,
+        permissions: ['http'],
+        providerAllowedHosts: ['example.com'],
+      }),
+    ).toBe(true)
+  })
+
+  test('returns false when providerAllowedHostsFromConfig is non-empty and no http or provider.task permission', () => {
+    // fix 2: providerAllowedHostsFromConfig alone must also require http or provider.task
+    expect(
+      hasProviderManifestPermission({
+        ...baseInput,
+        permissions: [],
+        providerAllowedHosts: [],
+        providerAllowedHostsFromConfig: ['base_url'],
+      }),
+    ).toBe(false)
+  })
+
+  test('returns true when providerAllowedHostsFromConfig is non-empty and http permission is present', () => {
+    expect(
+      hasProviderManifestPermission({
+        ...baseInput,
+        permissions: ['http'],
+        providerAllowedHosts: [],
+        providerAllowedHostsFromConfig: ['base_url'],
+      }),
+    ).toBe(true)
+  })
+})
+
+describe('hasRequiredMainForManifest (fix 1: attachmentTransformers count)', () => {
+  test('returns false for mcp-only manifest with no runtime contributions (no main required)', () => {
+    // mcp-only with zero contributions: main must be absent (returns true when main is absent)
+    expect(
+      hasRequiredMainForManifest({
+        ...baseInput,
+        main: undefined,
+        mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
+      }),
+    ).toBe(true)
+  })
+
+  test('returns false (requires main) for mcp + attachmentTransformers manifest without main', () => {
+    // fix 1: attachmentTransformers count must be included in runtimeContributionCount
+    // so this manifest is NOT mcp-only and must have main
+    expect(
+      hasRequiredMainForManifest({
+        ...baseInput,
+        main: undefined,
+        mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
+        contributes: { ...baseInput.contributes, attachmentTransformers: ['my_transformer'] },
+      }),
+    ).toBe(false)
+  })
+
+  test('returns true (main present satisfies) for mcp + attachmentTransformers manifest with main', () => {
+    expect(
+      hasRequiredMainForManifest({
+        ...baseInput,
+        main: 'index.ts',
+        mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
+        contributes: { ...baseInput.contributes, attachmentTransformers: ['my_transformer'] },
+      }),
+    ).toBe(true)
   })
 })
