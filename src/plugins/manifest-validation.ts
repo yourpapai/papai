@@ -5,12 +5,23 @@
 
 import { posix, win32 } from 'node:path'
 
+import type { TaskProviderTrait } from '../providers/types.js'
+
+export const PLUGIN_MANIFEST_PROVIDER_TRAITS = [
+  'workspace-scoped',
+  'task-label-read-requires-provider-specific-api',
+  'supports-command-language',
+  'command-language:youtrack',
+  'custom-fields',
+] as const satisfies readonly TaskProviderTrait[]
+
 type ManifestValidationInput = {
   permissions: readonly string[]
   providerCapabilities: readonly unknown[]
   providerConfigSchema: readonly unknown[]
   providerContextConfigSchema?: readonly unknown[]
   providerAllowedHosts: readonly string[]
+  providerAllowedHostsFromConfig: readonly string[]
   providerConfigValidator?: string
   contributes: {
     configKeys: readonly string[]
@@ -19,6 +30,7 @@ type ManifestValidationInput = {
     commands: readonly unknown[]
     jobs: readonly unknown[]
     taskProviderTypes: readonly unknown[]
+    attachmentTransformers: readonly unknown[]
   }
   configRequirements: readonly {
     key: string
@@ -59,6 +71,16 @@ export function hasMatchingContextConfigKeys(m: ManifestValidationInput): boolea
 
   return [...configKeys].every((key) =>
     m.configRequirements.some((requirement) => requirement.key === key && requirement.scope === 'context'),
+  )
+}
+
+export function hasAttachmentTransformerPermission(m: ManifestValidationInput): boolean {
+  return m.contributes.attachmentTransformers.length === 0 || m.permissions.includes('attachments.read')
+}
+
+export function hasProviderAllowedHostsFromConfig(m: ManifestValidationInput): boolean {
+  return m.providerAllowedHostsFromConfig.every((key) =>
+    m.configRequirements.some((req) => req.key === key && req.scope === 'admin'),
   )
 }
 

@@ -314,3 +314,63 @@ describe('pluginManifestSchema strict validation', () => {
     expect(result.success).toBe(false)
   })
 })
+
+describe('pluginManifestSchema attachmentTransformers and providerAllowedHostsFromConfig', () => {
+  test('accepts contributes.attachmentTransformers with attachments.read permission', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'audio-transcribe',
+      name: 'Audio Transcribe',
+      version: '1.0.0',
+      description: 'transcribes audio attachments',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { tools: [], promptFragments: [], attachmentTransformers: ['my_transformer'] },
+      permissions: ['attachments.read'],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects attachmentTransformers without attachments.read permission', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'audio-transcribe-no-perm',
+      name: 'Audio Transcribe No Perm',
+      version: '1.0.0',
+      description: 'transcribes audio attachments',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { tools: [], promptFragments: [], attachmentTransformers: ['my_transformer'] },
+      permissions: [],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('accepts providerAllowedHostsFromConfig referencing an admin-scoped config key', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'http-config-hosts',
+      name: 'HTTP Config Hosts',
+      version: '1.0.0',
+      description: 'uses config-sourced allowed hosts',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: ['http'],
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [{ key: 'base_url', label: 'Base URL', required: false, sensitive: false, scope: 'admin' }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects providerAllowedHostsFromConfig referencing a context-scoped or missing key', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'http-config-hosts-bad',
+      name: 'HTTP Config Hosts Bad',
+      version: '1.0.0',
+      description: 'uses config-sourced allowed hosts without admin scope',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: ['http'],
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [],
+    })
+    expect(result.success).toBe(false)
+  })
+})
