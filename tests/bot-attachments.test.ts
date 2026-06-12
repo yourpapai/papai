@@ -290,22 +290,24 @@ describe('bot-attachments', () => {
 
   describe('origin and forwardedFrom propagation', () => {
     test('DM ingest persists origin and forwardedFrom from IncomingFile', async () => {
-      const { persistIncomingAttachments } = await import('../src/attachments/ingest.js')
-      const refs = await persistIncomingAttachments({
-        contextId: 'ctx-dm',
-        sourceProvider: 'telegram',
+      const { resolveMessageAttachments } = await import('../src/bot-attachments.js')
+      const chat = createMockChat()
+      const msg: IncomingMessage = {
+        ...createDmMessage('ctx-dm'),
         files: [
-          {
+          makeFile({
             fileId: 'f1',
             filename: 'voice.ogg',
             content: Buffer.from('audio'),
             mimeType: 'audio/ogg',
             origin: 'voice',
             forwardedFrom: 'Alice',
-          },
+          }),
         ],
-      })
-      const stored = await loadAttachmentRecord('ctx-dm', refs[0]!.attachmentId)
+      }
+
+      const result = await resolveMessageAttachments(chat, msg, 'ctx-dm')
+      const stored = await loadAttachmentRecord('ctx-dm', result.newAttachmentIds[0]!)
       expect(stored?.origin).toBe('voice')
       expect(stored?.forwardedFrom).toBe('Alice')
     })
@@ -357,6 +359,47 @@ describe('bot-attachments', () => {
 
       expect(staged[0]?.origin).toBe('voice')
       expect(staged[0]?.forwardedFrom).toBe('Alice')
+    })
+
+    test('group staging produces origin: null, forwardedFrom: null for candidate without those fields', async () => {
+      const { stageGroupFileCandidates } = await import('../src/bot-attachments.js')
+      const staged: StageFileParams[] = []
+      const msg: IncomingMessage = {
+        ...createGroupMessage('group-user', 'hello'),
+        messageId: 'msg-no-origin',
+        fileCandidates: [makeCandidate({ fileId: 'pf-plain' })],
+      }
+
+      stageGroupFileCandidates(
+        { storageContextId: 'ctx-g2', msg, sourceProvider: 'telegram' },
+        {
+          stageFileMetadataFn: (params) => {
+            staged.push(params)
+            return {
+              stagedId: 'stg_plain',
+              contextId: params.contextId,
+              messageId: params.messageId,
+              senderId: params.senderId,
+              senderUsername: params.senderUsername,
+              filename: params.filename,
+              mimeType: params.mimeType,
+              size: params.size,
+              platformFileId: params.platformFileId,
+              sourceProvider: params.sourceProvider,
+              sourcePlatformInstanceId: params.sourcePlatformInstanceId,
+              status: 'staged',
+              attachmentId: null,
+              createdAt: 'now',
+              expiresAt: 'later',
+              origin: params.origin,
+              forwardedFrom: params.forwardedFrom,
+            }
+          },
+        },
+      )
+
+      expect(staged[0]?.origin).toBeNull()
+      expect(staged[0]?.forwardedFrom).toBeNull()
     })
   })
 
