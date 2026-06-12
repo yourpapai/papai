@@ -8,7 +8,6 @@ import {
   ByokResponseSchema,
   BootstrapSchema,
   ConfigResponseSchema,
-  ContextTaskInstanceResponseSchema,
   GroupMembersResponseSchema,
   GroupTaskInstanceResponseSchema,
   IdentityResponseSchema,
@@ -221,9 +220,7 @@ export const patchGroupTaskInstance = (input: { taskInstanceId: string; contextI
   writeJson('/settings/api/group/task-instance', 'PATCH', input, (b) => b)
 
 export const fetchContextTaskInstance = (contextId: string): Promise<ContextTaskInstanceResponse> =>
-  getJson(`/settings/api/context/task-instance?${ctxQuery(contextId)}`, (b) =>
-    ContextTaskInstanceResponseSchema.parse(b),
-  )
+  getJson(`/settings/api/context/task-instance?${ctxQuery(contextId)}`, (b) => GroupTaskInstanceResponseSchema.parse(b))
 
 export const patchContextTaskInstance = (input: { taskInstanceId: string; contextId: string }): Promise<unknown> =>
   writeJson('/settings/api/context/task-instance', 'PATCH', input, (b) => b)
