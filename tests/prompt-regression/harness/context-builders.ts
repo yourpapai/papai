@@ -22,8 +22,12 @@ function buildToolPrefs(setup: PromptRegressionSetup): ToolPrefs {
   return { domainDefaults: {}, toolOverrides }
 }
 
-export function buildPromptRegressionContext(setup: PromptRegressionSetup): BuiltPromptRegressionContext {
-  const contextId = setup.contextId ?? `ctx-${setup.contextType}-${setup.provider}`
+export function buildPromptRegressionContext(
+  setup: PromptRegressionSetup,
+  fixtureId?: string,
+): BuiltPromptRegressionContext {
+  const contextId =
+    setup.contextId ?? (fixtureId === undefined ? `ctx-${setup.contextType}-${setup.provider}` : `ctx-${fixtureId}`)
   const chatUserId = setup.chatUserId ?? 'user-prompt-regression'
   const provider = setup.provider === 'providerless' ? null : createMockProvider()
   const configuredToolNames = setup.enabledTools ?? ['get_current_time']

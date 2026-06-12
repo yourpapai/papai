@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { assertContainsAll, assertContainsNone, normalizePromptText } from './assertions.js'
+import { assertContainsAll, assertContainsNone, assertInOrder, normalizePromptText } from './assertions.js'
 
 describe('prompt regression assertions', () => {
   test('normalizePromptText trims trailing spaces and collapses repeated blank lines', () => {
@@ -20,5 +20,15 @@ describe('prompt regression assertions', () => {
 
   test('assertContainsNone reports forbidden text', () => {
     expect(() => assertContainsNone('hello secret world', ['secret'])).toThrow('Expected text not to contain "secret"')
+  })
+
+  test('assertInOrder accepts ordered text markers', () => {
+    expect(() => assertInOrder('alpha\nbeta\ngamma', ['alpha', 'gamma'])).not.toThrow()
+  })
+
+  test('assertInOrder reports out-of-order text markers', () => {
+    expect(() => assertInOrder('alpha\nbeta\ngamma', ['gamma', 'alpha'])).toThrow(
+      'Expected text marker "alpha" to appear after "gamma"',
+    )
   })
 })

@@ -25,7 +25,9 @@ describe('prompt regression assembly fixtures', () => {
   }
 
   test('pending assembly fixtures are documented', () => {
-    expect(pending.map((fixture) => fixture.meta.id)).toContain('assembly-tool-context-reduction-flags-on')
-    expect(pending.map((fixture) => fixture.meta.id)).toContain('assembly-memory-trust-labels')
+    expect(pending.map((fixture) => fixture.meta.id)).toEqual([
+      'assembly-memory-trust-labels',
+      'assembly-tool-context-reduction-flags-on',
+    ])
   })
 })

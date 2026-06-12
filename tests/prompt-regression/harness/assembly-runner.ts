@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../../../src/system-prompt.js'
-import { assertContainsAll, assertContainsNone, normalizePromptText } from './assertions.js'
+import { assertContainsAll, assertContainsNone, assertInOrder, normalizePromptText } from './assertions.js'
 import { buildPromptRegressionContext } from './context-builders.js'
 import type { AssemblyFixture } from './fixture-types.js'
 
@@ -14,7 +14,7 @@ export interface AssemblyFixtureResult {
 }
 
 export function evaluateAssemblyFixture(fixture: AssemblyFixture): AssemblyFixtureResult {
-  const ctx = buildPromptRegressionContext(fixture.setup)
+  const ctx = buildPromptRegressionContext(fixture.setup, fixture.meta.id)
   const prompt =
     ctx.provider === null
       ? buildProviderlessSystemPrompt(ctx.contextId, ctx.enabledToolNames, { askPermissionAvailable: true })
@@ -33,6 +33,7 @@ export function runAssemblyFixture(fixture: AssemblyFixture): AssemblyFixtureRes
 
   assertContainsAll(result.prompt, expectedPrompt?.mustContain)
   assertContainsNone(result.prompt, expectedPrompt?.mustNotContain)
+  assertInOrder(result.prompt, expectedPrompt?.sectionOrder)
 
   for (const name of expectedTools?.include ?? []) {
     if (!result.enabledToolNames.includes(name)) throw new Error(`Expected active tool ${name}`)
