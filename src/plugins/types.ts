@@ -230,14 +230,11 @@ export type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
 // Fields with Zod `.default([])` are optional on the hand-constructed type; test fixtures and non-provider plugins may omit them.
 export type PluginManifest = Omit<
   ParsedPluginManifest,
-  'providerContextConfigSchema' | 'providerTraits' | 'contributes' | 'providerAllowedHostsFromConfig'
+  'providerContextConfigSchema' | 'providerTraits' | 'providerAllowedHostsFromConfig'
 > & {
   providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
   providerTraits?: ParsedPluginManifest['providerTraits']
   providerAllowedHostsFromConfig?: ParsedPluginManifest['providerAllowedHostsFromConfig']
-  contributes: Omit<ParsedPluginManifest['contributes'], 'attachmentTransformers'> & {
-    attachmentTransformers?: ParsedPluginManifest['contributes']['attachmentTransformers']
-  }
 }
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {

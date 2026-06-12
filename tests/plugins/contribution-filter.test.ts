@@ -31,6 +31,7 @@ function makeManifest(contributes: Partial<PluginManifest['contributes']> = {}):
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
+      attachmentTransformers: [],
       ...contributes,
     },
     permissions: [],

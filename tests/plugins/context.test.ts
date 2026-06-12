@@ -36,6 +36,7 @@ function makeManifest(...args: readonly [] | readonly [overrides: Partial<Plugin
       jobs: ['allowed_job'],
       configKeys: [],
       taskProviderTypes: [],
+      attachmentTransformers: [],
     },
     permissions: ['storage'],
     defaultEnabled: false,
@@ -249,6 +250,7 @@ describe('buildPluginContext', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: ['custom-tracker'],
+          attachmentTransformers: [],
         },
         providerCapabilities: ['labels.list'],
       })
@@ -305,6 +307,7 @@ describe('buildPluginContext', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: ['metadata-tracker'],
+          attachmentTransformers: [],
         },
         providerCapabilities: ['tasks.commands'],
         providerTraits: ['supports-command-language'],
@@ -345,6 +348,7 @@ describe('buildPluginContext', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: ['kaneo'],
+          attachmentTransformers: [],
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
@@ -363,6 +367,7 @@ describe('buildPluginContext', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: ['kaneo'],
+          attachmentTransformers: [],
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
@@ -381,6 +386,7 @@ describe('buildPluginContext', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: ['custom-tracker'],
+          attachmentTransformers: [],
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
@@ -463,6 +469,7 @@ describe('buildPluginContext', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: ['kaneo'],
+          attachmentTransformers: [],
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
@@ -479,6 +486,7 @@ describe('buildPluginContext', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: ['kaneo'],
+          attachmentTransformers: [],
         },
       })
 

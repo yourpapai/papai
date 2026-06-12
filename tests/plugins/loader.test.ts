@@ -79,6 +79,7 @@ function makeManifest(
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
+      attachmentTransformers: [],
     },
     permissions: [],
     defaultEnabled: false,
@@ -188,6 +189,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: [],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -239,6 +241,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: [],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -287,6 +290,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: [],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -358,6 +362,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: [],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -396,6 +401,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['late-timeout-provider'],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -438,6 +444,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['late-timeout-provider'],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -477,6 +484,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['duplicate-provider'],
+        attachmentTransformers: [],
       },
     })
     const secondPlugin = makePlugin('second-duplicate-provider-plugin', secondEntry, {
@@ -488,6 +496,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['duplicate-provider'],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(firstPlugin)
@@ -532,6 +541,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['validated-provider'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'validateDemoConfig',
     })
@@ -568,6 +578,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['missing-validator-provider'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'validateMissingConfig',
     })
@@ -605,6 +616,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['bad-validator-provider'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'validateBadConfig',
     })
@@ -640,6 +652,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['default-validator-provider'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'default',
     })
@@ -677,6 +690,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['forgotten-provider'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'validateForgottenProviderConfig',
     })
@@ -718,6 +732,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: [],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -822,6 +837,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: [],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -866,6 +882,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: [],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -896,6 +913,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['demo'],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -935,6 +953,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['validated-plugin-tracker'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'validateTrackerConfig',
     })
@@ -979,6 +998,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['threaded-validator-tracker'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'validateThreadedConfig',
     })
@@ -1021,6 +1041,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['legacy-validated-plugin-tracker'],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -1074,6 +1095,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['malformed-validator-tracker'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'validateTrackerConfig',
     })
@@ -1111,6 +1133,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['invalid-validator-tracker'],
+        attachmentTransformers: [],
       },
       providerConfigValidator: 'validateTrackerConfig',
     })
@@ -1144,6 +1167,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['demo-stop'],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)
@@ -1174,6 +1198,7 @@ describe('activatePlugins', () => {
         jobs: [],
         configKeys: [],
         taskProviderTypes: ['demo-retire'],
+        attachmentTransformers: [],
       },
     })
     approvePlugin(plugin)

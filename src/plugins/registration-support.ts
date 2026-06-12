@@ -45,7 +45,7 @@ function collectRegisteredNames(manifest: PluginManifest): RegistrationNames {
     declaredFragments: new Set(manifest.contributes.promptFragments),
     declaredCommands: new Set(manifest.contributes.commands),
     declaredJobs: new Set(manifest.contributes.jobs),
-    declaredTransformers: new Set(manifest.contributes.attachmentTransformers ?? []),
+    declaredTransformers: new Set(manifest.contributes.attachmentTransformers),
     registeredTools: new Set<string>(),
     registeredFragments: new Set<string>(),
     registeredCommands: new Set<string>(),
@@ -176,6 +176,7 @@ function buildScheduledJobRegistration(
 }
 
 function buildAttachmentTransformerRegistration(
+  manifest: PluginManifest,
   names: RegistrationNames,
   args: {
     activationGuard: ActivationGuard
@@ -191,6 +192,9 @@ function buildAttachmentTransformerRegistration(
     activationGuard: args.activationGuard,
     readName: (transformer) => transformer.name,
     onRegister: (transformer) => {
+      if (!manifest.permissions.includes('attachments.read')) {
+        throw new Error(`Plugin ${manifest.id} cannot register attachment transformers without 'attachments.read'`)
+      }
       args.registerAttachmentTransformer(transformer)
     },
   })
@@ -219,6 +223,6 @@ export function buildNamedRegistrationHandlers(
     registerPromptFragment: buildPromptFragmentRegistration(names, args),
     registerCommand: buildCommandRegistration(manifest, names, args),
     registerScheduledJob: buildScheduledJobRegistration(manifest, names, args),
-    registerAttachmentTransformer: buildAttachmentTransformerRegistration(names, args),
+    registerAttachmentTransformer: buildAttachmentTransformerRegistration(manifest, names, args),
   }
 }

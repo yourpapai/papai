@@ -470,6 +470,7 @@ function makePluginCommandManifest(pluginId: string): PluginManifest {
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
+      attachmentTransformers: [],
     },
     permissions: [],
     defaultEnabled: false,

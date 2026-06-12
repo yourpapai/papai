@@ -106,4 +106,18 @@ describe('buildNamedRegistrationHandlers — attachment transformer', () => {
 
     expect(() => handlers.registerAttachmentTransformer(makeNoop())).toThrow(/registered more than once/u)
   })
+
+  test('registerAttachmentTransformer throws when attachments.read permission is missing', () => {
+    const guard = buildActivationGuard()
+    const handlers = buildNamedRegistrationHandlers(makeManifest({ permissions: [] }), {
+      activationGuard: guard,
+      registerTool: () => {},
+      registerPromptFragment: () => {},
+      registerCommand: () => {},
+      registerScheduledJob: () => {},
+      registerAttachmentTransformer: () => {},
+    })
+
+    expect(() => handlers.registerAttachmentTransformer(makeNoop())).toThrow(/attachments\.read/u)
+  })
 })

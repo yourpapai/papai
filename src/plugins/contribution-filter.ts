@@ -14,17 +14,7 @@ import type {
   PluginTool,
 } from './types.js'
 
-const log = logger.child({ scope: 'plugins:contributions' })
-
-const getRawCommands = (rawContributions: PluginContributions): readonly PluginCommand[] => {
-  if (rawContributions.commands === undefined) return []
-  return rawContributions.commands
-}
-
-const getRawJobs = (rawContributions: PluginContributions): readonly PluginScheduledJob[] => {
-  if (rawContributions.jobs === undefined) return []
-  return rawContributions.jobs
-}
+const log = logger.child({ scope: 'plugins:contribution-filter' })
 
 export function getValidTools(
   pluginId: string,
@@ -58,7 +48,7 @@ export function getValidCommands(
   manifest: PluginManifest,
 ): PluginCommand[] {
   const declaredCommands = new Set(manifest.contributes.commands)
-  return getRawCommands(rawContributions).filter((command) => {
+  return (rawContributions.commands ?? []).filter((command) => {
     if (declaredCommands.has(command.name)) return true
     log.warn({ pluginId, commandName: command.name }, 'Plugin contributed undeclared command — skipping')
     return false
@@ -71,7 +61,7 @@ export function getValidJobs(
   manifest: PluginManifest,
 ): PluginScheduledJob[] {
   const declaredJobs = new Set(manifest.contributes.jobs)
-  return getRawJobs(rawContributions).filter((job) => {
+  return (rawContributions.jobs ?? []).filter((job) => {
     if (declaredJobs.has(job.name)) return true
     log.warn({ pluginId, jobName: job.name }, 'Plugin contributed undeclared scheduled job — skipping')
     return false
@@ -83,7 +73,7 @@ export function getValidAttachmentTransformers(
   rawContributions: PluginContributions,
   manifest: PluginManifest,
 ): PluginAttachmentTransformer[] {
-  const declaredTransformers = new Set(manifest.contributes.attachmentTransformers ?? [])
+  const declaredTransformers = new Set(manifest.contributes.attachmentTransformers)
   return (rawContributions.attachmentTransformers ?? []).filter((transformer) => {
     if (declaredTransformers.has(transformer.name)) return true
     log.warn(
