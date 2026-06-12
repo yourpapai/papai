@@ -36,4 +36,8 @@ describe('classifyFinalReply', () => {
   test('classifies confirmation questions', () => {
     expect(classifyFinalReply('Delete "Auth bug"? This is permanent.')).toBe('asks_confirmation')
   })
+
+  test('classifies cannot-do-that refusals as unsafe declines', () => {
+    expect(classifyFinalReply('I cannot do that because it is unsafe.')).toBe('declines_unsafe_action')
+  })
 })

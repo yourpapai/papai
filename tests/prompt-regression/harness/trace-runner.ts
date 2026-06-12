@@ -4,13 +4,13 @@
 // See LICENSE in the project root for details.
 
 import { assertContainsAll } from './assertions.js'
-import type { TraceFixture } from './fixture-types.js'
+import type { TraceFinalClassification, TraceFixture } from './fixture-types.js'
 import { buildScriptedTrace, classifyFinalReply } from './scripted-model.js'
 
 export interface TraceFixtureResult {
   readonly toolCalls: readonly string[]
   readonly finalText: string
-  readonly finalClassification: string
+  readonly finalClassification: TraceFinalClassification
 }
 
 export function runTraceFixture(fixture: TraceFixture): TraceFixtureResult {

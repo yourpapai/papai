@@ -45,8 +45,8 @@ export function classifyFinalReply(text: string): TraceFinalClassification {
   if (lower.includes('delete') && lower.includes('?')) return 'asks_confirmation'
   if (lower.includes('permission')) return 'requests_permission'
   if (lower.includes('try again') || lower.includes('rate-limiting')) return 'reports_retryable_failure'
-  if (lower.includes('cannot') || lower.includes('not configured')) return 'reports_non_retryable_failure'
   if (lower.includes('unsafe') || lower.includes('cannot do that')) return 'declines_unsafe_action'
+  if (lower.includes('cannot') || lower.includes('not configured')) return 'reports_non_retryable_failure'
   if (lower.trim() === '' || lower.includes('no tool')) return 'answers_without_tools'
   return 'completes_action'
 }
