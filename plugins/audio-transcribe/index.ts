@@ -26,6 +26,19 @@ const transcribeInputSchema = z.object({
   language: z.string().min(2).max(8).optional(),
 })
 
+const parseTranscribeInput = (
+  input: unknown,
+): z.infer<typeof transcribeInputSchema> | { error: string; message: string } => {
+  try {
+    return transcribeInputSchema.parse(input)
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return { error: 'validation_error', message: err.message }
+    }
+    throw err
+  }
+}
+
 const toTransformResult = (result: TranscribeResult): AttachmentTransformResult => ({
   ok: true as const,
   text: result.text,
@@ -44,15 +57,8 @@ async function executeTranscribe(
   runtimeContext: PluginToolRuntimeContext,
   httpFetch: HttpFetch | undefined,
 ): Promise<unknown> {
-  let parsed: z.infer<typeof transcribeInputSchema>
-  try {
-    parsed = transcribeInputSchema.parse(input)
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return { error: 'validation_error', message: err.message }
-    }
-    throw err
-  }
+  const parsed = parseTranscribeInput(input)
+  if ('error' in parsed) return parsed
 
   const cacheKey = `transcript:${parsed.attachment_id}`
   const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
