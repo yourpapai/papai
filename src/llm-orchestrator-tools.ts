@@ -29,6 +29,22 @@ const log = logger.child({ scope: 'llm-orchestrator:tools' })
 const isToolSet = (value: unknown): value is ToolSet =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/** Injectable collaborators for prepareLlmInvocation; tests override these instead of mocking modules. */
+export interface PrepareLlmInvocationDeps {
+  buildToolDescriptors: typeof buildToolDescriptors
+  buildProviderlessToolDescriptors: typeof buildProviderlessToolDescriptors
+  resolveReductionFlags: typeof resolveReductionFlags
+  applyResultCompaction: typeof applyResultCompaction
+}
+
+// Built lazily at call time so module-level mocks (mock.module live bindings) still apply.
+const defaultDeps = (): PrepareLlmInvocationDeps => ({
+  buildToolDescriptors,
+  buildProviderlessToolDescriptors,
+  resolveReductionFlags,
+  applyResultCompaction,
+})
+
 const getOrCreateDescriptors = async (
   contextId: string,
   chatUserId: string,
@@ -36,6 +52,7 @@ const getOrCreateDescriptors = async (
   provider: TaskProvider | null,
   contextType: 'dm' | 'group' | undefined,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
+  deps: PrepareLlmInvocationDeps,
 ): Promise<ToolSet> => {
   const providerCacheScope = provider === null ? 'providerless' : 'provider-backed'
   const stagedDownloadScope = stagedDownloadFn === undefined ? 'no-staged-download' : 'with-staged-download'
@@ -56,8 +73,8 @@ const getOrCreateDescriptors = async (
   }
   const descriptors =
     provider === null
-      ? await buildProviderlessToolDescriptors(descriptorOptions)
-      : await buildToolDescriptors(provider, descriptorOptions)
+      ? await deps.buildProviderlessToolDescriptors(descriptorOptions)
+      : await deps.buildToolDescriptors(provider, descriptorOptions)
   setCachedTools(cacheKey, descriptors)
   return descriptors
 }
@@ -110,6 +127,7 @@ export function buildLlmInvocationOpts(
 
 const buildFullToolSet = async (
   opts: LlmInvocationOptions,
+  deps: PrepareLlmInvocationDeps,
 ): Promise<{ tools: ToolSet; enabledToolNames: Set<string>; disclosure: DisclosureSession | undefined }> => {
   const { contextId, chatUserId, username, contextType, provider, userText, stagedDownloadFn, askPermission } = opts
   const descriptors = await getOrCreateDescriptors(
@@ -119,10 +137,11 @@ const buildFullToolSet = async (
     provider,
     contextType,
     stagedDownloadFn,
+    deps,
   )
   const prefTools = applyToolPreferences(descriptors, contextId, askPermission)
-  const flags = resolveReductionFlags(contextId)
-  const compacted = applyResultCompaction(prefTools, {
+  const flags = deps.resolveReductionFlags(contextId)
+  const compacted = deps.applyResultCompaction(prefTools, {
     storageContextId: contextId,
     userIntent: userText,
     enabled: flags.resultCompaction,
@@ -143,6 +162,7 @@ const buildFullToolSet = async (
 
 export const prepareLlmInvocation = async (
   opts: LlmInvocationOptions,
+  deps: PrepareLlmInvocationDeps = defaultDeps(),
 ): Promise<{
   tools: ToolSet
   validatedMessages: ModelMessage[]
@@ -150,7 +170,7 @@ export const prepareLlmInvocation = async (
   disclosure: DisclosureSession | undefined
 }> => {
   const { contextId, configId, history } = opts
-  const { tools, enabledToolNames, disclosure } = await buildFullToolSet(opts)
+  const { tools, enabledToolNames, disclosure } = await buildFullToolSet(opts, deps)
   const timezone = resolveTimezone(configId)
   const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history)
   const validatedMessages = validateToolResults(messagesWithMemory)

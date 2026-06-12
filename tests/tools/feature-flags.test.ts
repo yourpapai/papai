@@ -3,130 +3,131 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it, mock, beforeEach } from 'bun:test'
+import { beforeEach, describe, expect, it } from 'bun:test'
 
-import { toScopedThreadContextId, getConfigContextIdFromStorageContextId } from '../../src/chat/scoped-context.js'
+import { setCachedConfig } from '../../src/cache.js'
+import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import {
+  parseReductionFlagsJson,
+  REDUCTION_FLAGS_CONFIG_KEY,
+  resolveReductionFlags,
+} from '../../src/tools/feature-flags.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
-const getCachedConfig = mock((_c: string, _k: string): string | null => null)
-void mock.module('../../src/cache.js', () => ({ getCachedConfig }))
+const ALL_OFF = {
+  progressiveDisclosure: false,
+  resultCompaction: false,
+  semanticToolRetrieval: false,
+}
 
-const { resolveReductionFlags, REDUCTION_FLAGS_CONFIG_KEY, parseReductionFlagsJson } =
-  await import('../../src/tools/feature-flags.js')
+// Unique context per test: the in-memory config cache outlives individual tests.
+let ctxCounter = 0
+const freshCtx = (): string => `ff-ctx-${++ctxCounter}`
 
 describe('resolveReductionFlags', () => {
-  beforeEach(() => {
-    getCachedConfig.mockReset()
-    getCachedConfig.mockImplementation(() => null)
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
     delete process.env['TOOL_CONTEXT_REDUCTION_DISABLED']
   })
 
   it('defaults every flag to false when no config present', () => {
-    const flags = resolveReductionFlags('ctx-1')
-    expect(flags).toEqual({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+    expect(resolveReductionFlags(freshCtx())).toEqual(ALL_OFF)
   })
 
   it('reads per-context overrides from the reserved key', () => {
-    getCachedConfig.mockReturnValue(JSON.stringify({ result_compaction: true }))
-    expect(resolveReductionFlags('ctx-1').resultCompaction).toBe(true)
-    expect(getCachedConfig).toHaveBeenCalledWith(expect.any(String), REDUCTION_FLAGS_CONFIG_KEY)
+    const ctx = freshCtx()
     // Pin the literal key so a constant-mutation can't satisfy both sides simultaneously
     expect(REDUCTION_FLAGS_CONFIG_KEY).toBe('tool_context_flags')
-    expect(getCachedConfig).toHaveBeenCalledWith(expect.any(String), 'tool_context_flags')
+    setCachedConfig(ctx, 'tool_context_flags', JSON.stringify({ result_compaction: true }))
+    expect(resolveReductionFlags(ctx).resultCompaction).toBe(true)
   })
 
   it('reads progressive_disclosure flag independently', () => {
-    getCachedConfig.mockReturnValue(JSON.stringify({ progressive_disclosure: true }))
-    const flags = resolveReductionFlags('ctx-1')
+    const ctx = freshCtx()
+    setCachedConfig(ctx, REDUCTION_FLAGS_CONFIG_KEY, JSON.stringify({ progressive_disclosure: true }))
+    const flags = resolveReductionFlags(ctx)
     expect(flags.progressiveDisclosure).toBe(true)
     expect(flags.resultCompaction).toBe(false)
     expect(flags.semanticToolRetrieval).toBe(false)
   })
 
   it('reads semantic_tool_retrieval flag independently', () => {
-    getCachedConfig.mockReturnValue(JSON.stringify({ semantic_tool_retrieval: true }))
-    const flags = resolveReductionFlags('ctx-1')
+    const ctx = freshCtx()
+    setCachedConfig(ctx, REDUCTION_FLAGS_CONFIG_KEY, JSON.stringify({ semantic_tool_retrieval: true }))
+    const flags = resolveReductionFlags(ctx)
     expect(flags.semanticToolRetrieval).toBe(true)
     expect(flags.progressiveDisclosure).toBe(false)
     expect(flags.resultCompaction).toBe(false)
   })
 
   it('returns all-false when config value is a JSON array (not a record)', () => {
-    getCachedConfig.mockReturnValue(JSON.stringify([{ result_compaction: true }]))
-    expect(resolveReductionFlags('ctx-1')).toEqual({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+    const ctx = freshCtx()
+    setCachedConfig(ctx, REDUCTION_FLAGS_CONFIG_KEY, JSON.stringify([{ result_compaction: true }]))
+    expect(resolveReductionFlags(ctx)).toEqual(ALL_OFF)
   })
 
   it('returns all-false when config value is a JSON string (not a record)', () => {
-    getCachedConfig.mockReturnValue(JSON.stringify('result_compaction'))
-    expect(resolveReductionFlags('ctx-1')).toEqual({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+    const ctx = freshCtx()
+    setCachedConfig(ctx, REDUCTION_FLAGS_CONFIG_KEY, JSON.stringify('result_compaction'))
+    expect(resolveReductionFlags(ctx)).toEqual(ALL_OFF)
   })
 
   it('returns all-false when config value is an empty string', () => {
-    getCachedConfig.mockReturnValue('')
-    expect(resolveReductionFlags('ctx-1')).toEqual({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+    const ctx = freshCtx()
+    setCachedConfig(ctx, REDUCTION_FLAGS_CONFIG_KEY, '')
+    expect(resolveReductionFlags(ctx)).toEqual(ALL_OFF)
   })
 
   it('returns all-false when config value is whitespace-only', () => {
-    getCachedConfig.mockReturnValue('   ')
-    expect(resolveReductionFlags('ctx-1')).toEqual({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+    const ctx = freshCtx()
+    setCachedConfig(ctx, REDUCTION_FLAGS_CONFIG_KEY, '   ')
+    expect(resolveReductionFlags(ctx)).toEqual(ALL_OFF)
   })
 
   it('treats non-boolean true values as false for flags', () => {
-    getCachedConfig.mockReturnValue(JSON.stringify({ result_compaction: 'yes', progressive_disclosure: 1 }))
-    expect(resolveReductionFlags('ctx-1')).toEqual({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+    const ctx = freshCtx()
+    setCachedConfig(
+      ctx,
+      REDUCTION_FLAGS_CONFIG_KEY,
+      JSON.stringify({ result_compaction: 'yes', progressive_disclosure: 1 }),
+    )
+    expect(resolveReductionFlags(ctx)).toEqual(ALL_OFF)
   })
 
   it('kill switch forces every flag OFF regardless of config', () => {
+    const ctx = freshCtx()
     process.env['TOOL_CONTEXT_REDUCTION_DISABLED'] = 'true'
-    getCachedConfig.mockImplementation(() => JSON.stringify({ result_compaction: true, progressive_disclosure: true }))
-    expect(resolveReductionFlags('ctx-1')).toEqual({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+    setCachedConfig(
+      ctx,
+      REDUCTION_FLAGS_CONFIG_KEY,
+      JSON.stringify({ result_compaction: true, progressive_disclosure: true }),
+    )
+    expect(resolveReductionFlags(ctx)).toEqual(ALL_OFF)
   })
 
   it('ignores corrupt JSON and returns all-false', () => {
-    getCachedConfig.mockImplementation(() => '{not json')
-    expect(resolveReductionFlags('ctx-1')).toEqual({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
+    const ctx = freshCtx()
+    setCachedConfig(ctx, REDUCTION_FLAGS_CONFIG_KEY, '{not json')
+    expect(resolveReductionFlags(ctx)).toEqual(ALL_OFF)
   })
 
-  it('passes the derived config context id (not the thread-scoped id) to getCachedConfig', () => {
+  it('reads flags from the derived config context id, not the thread-scoped id', () => {
     const threadScopedId = toScopedThreadContextId({
       platformInstanceId: 'plat-1',
-      nativeContextId: 'grp-42',
+      nativeContextId: `grp-${freshCtx()}`,
       threadId: 'thread-7',
     })
-    const expectedConfigContextId = getConfigContextIdFromStorageContextId(threadScopedId)
-    resolveReductionFlags(threadScopedId)
-    expect(getCachedConfig).toHaveBeenCalledWith(expectedConfigContextId, REDUCTION_FLAGS_CONFIG_KEY)
+    const configContextId = getConfigContextIdFromStorageContextId(threadScopedId)
+    expect(configContextId).not.toBe(threadScopedId)
+
+    // Flags stored under the raw thread-scoped id must NOT be picked up...
+    setCachedConfig(threadScopedId, REDUCTION_FLAGS_CONFIG_KEY, JSON.stringify({ result_compaction: true }))
+    expect(resolveReductionFlags(threadScopedId)).toEqual(ALL_OFF)
+
+    // ...while flags under the derived config context id are.
+    setCachedConfig(configContextId, REDUCTION_FLAGS_CONFIG_KEY, JSON.stringify({ result_compaction: true }))
+    expect(resolveReductionFlags(threadScopedId).resultCompaction).toBe(true)
   })
 })
 

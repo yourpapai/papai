@@ -5,117 +5,63 @@
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import type { ToolSet } from 'ai'
+import { tool, type ToolSet } from 'ai'
+import { z } from 'zod'
 
+import { prepareLlmInvocation, type PrepareLlmInvocationDeps } from '../src/llm-orchestrator-tools.js'
 import type { CompactionContext } from '../src/tools/compaction/types.js'
 import type { ReductionFlags } from '../src/tools/feature-flags.js'
+import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
-const resolveReductionFlagsMock = mock(
-  (_storageContextId: string): ReductionFlags => ({
-    progressiveDisclosure: false,
-    resultCompaction: true,
-    semanticToolRetrieval: false,
-  }),
-)
+const d = (): ToolSet[string] => tool({ description: 'd', inputSchema: z.object({}), execute: () => ({}) })
 
-const applyResultCompactionMock = mock((tools: ToolSet, _ctx: CompactionContext): ToolSet => tools)
+const flags = (resultCompaction: boolean): ReductionFlags => ({
+  progressiveDisclosure: false,
+  resultCompaction,
+  semanticToolRetrieval: false,
+})
 
-void mock.module('../src/tools/feature-flags.js', () => ({
-  resolveReductionFlags: resolveReductionFlagsMock,
-  REDUCTION_FLAGS_CONFIG_KEY: 'tool_context_flags',
-}))
+const applyResultCompactionSpy = mock((tools: ToolSet, _ctx: CompactionContext): ToolSet => tools)
 
-void mock.module('../src/tools/compaction/wrap-compaction.js', () => ({
-  applyResultCompaction: applyResultCompactionMock,
-}))
-
-void mock.module('../src/cache.js', () => ({
-  getCachedTools: (): unknown => ({ list_tasks: { description: 'd', execute: (): Record<string, never> => ({}) } }),
-  setCachedTools: (): void => {},
-  getCachedConfig: (): null => null,
-  setCachedConfig: (): void => {},
-  clearCachedToolsByPrefix: (): void => {},
-}))
-
-void mock.module('../src/conversation.js', () => ({
-  buildMessagesWithMemory: (_c: string, h: unknown): { messages: unknown; memoryMsg: null } => ({
-    messages: h,
-    memoryMsg: null,
-  }),
-}))
-
-void mock.module('../src/llm-orchestrator-validation.js', () => ({
-  validateToolResults: (m: unknown): unknown => m,
-}))
-
-void mock.module('../src/llm-orchestrator-config.js', () => ({
-  resolveTimezone: (): string => 'UTC',
-}))
-
-void mock.module('../src/tools/index.js', () => ({
+const makeDeps = (f: ReductionFlags): PrepareLlmInvocationDeps => ({
   buildToolDescriptors: (): Promise<ToolSet> => Promise.resolve({}),
-  buildProviderlessToolDescriptors: (): Promise<ToolSet> => Promise.resolve({}),
-  applyToolPreferences: (tools: ToolSet): ToolSet => tools,
-}))
+  buildProviderlessToolDescriptors: (): Promise<ToolSet> => Promise.resolve({ list_tasks: d() }),
+  resolveReductionFlags: (): ReductionFlags => f,
+  applyResultCompaction: applyResultCompactionSpy,
+})
 
-const { prepareLlmInvocation } = await import('../src/llm-orchestrator-tools.js')
+const optsFor = (contextId: string, userText: string): Parameters<typeof prepareLlmInvocation>[0] => ({
+  contextId,
+  configId: contextId,
+  chatUserId: 'u1',
+  username: null,
+  contextType: 'dm',
+  provider: null,
+  history: [],
+  userText,
+  stagedDownloadFn: undefined,
+  askPermission: undefined,
+})
 
 describe('prepareLlmInvocation compaction wiring', () => {
-  beforeEach(() => {
-    resolveReductionFlagsMock.mockReset()
-    resolveReductionFlagsMock.mockReturnValue({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
-    applyResultCompactionMock.mockReset()
-    applyResultCompactionMock.mockImplementation((tools: ToolSet): ToolSet => tools)
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    applyResultCompactionSpy.mockClear()
   })
 
   it('applies compaction with enabled=true and the user text as intent', async () => {
-    resolveReductionFlagsMock.mockReturnValue({
-      progressiveDisclosure: false,
-      resultCompaction: true,
-      semanticToolRetrieval: false,
-    })
-    await prepareLlmInvocation({
-      contextId: 'ctx-1',
-      configId: 'ctx-1',
-      chatUserId: 'u1',
-      username: null,
-      contextType: 'dm',
-      provider: null,
-      history: [],
-      userText: 'find overdue tasks',
-      stagedDownloadFn: undefined,
-      askPermission: undefined,
-    })
-    expect(applyResultCompactionMock).toHaveBeenCalledTimes(1)
-    const ctxArg: CompactionContext = applyResultCompactionMock.mock.calls[0]![1]
+    await prepareLlmInvocation(optsFor('comp-ctx-on', 'find overdue tasks'), makeDeps(flags(true)))
+    expect(applyResultCompactionSpy).toHaveBeenCalledTimes(1)
+    const ctxArg: CompactionContext = applyResultCompactionSpy.mock.calls[0]![1]
     expect(ctxArg.enabled).toBe(true)
     expect(ctxArg.userIntent).toBe('find overdue tasks')
   })
 
   it('applies compaction with enabled=false when the flag is OFF', async () => {
-    resolveReductionFlagsMock.mockReturnValue({
-      progressiveDisclosure: false,
-      resultCompaction: false,
-      semanticToolRetrieval: false,
-    })
-    await prepareLlmInvocation({
-      contextId: 'ctx-1',
-      configId: 'ctx-1',
-      chatUserId: 'u1',
-      username: null,
-      contextType: 'dm',
-      provider: null,
-      history: [],
-      userText: 'hi',
-      stagedDownloadFn: undefined,
-      askPermission: undefined,
-    })
-    expect(applyResultCompactionMock).toHaveBeenCalledTimes(1)
-    const ctxArg: CompactionContext = applyResultCompactionMock.mock.calls[0]![1]
+    await prepareLlmInvocation(optsFor('comp-ctx-off', 'hi'), makeDeps(flags(false)))
+    expect(applyResultCompactionSpy).toHaveBeenCalledTimes(1)
+    const ctxArg: CompactionContext = applyResultCompactionSpy.mock.calls[0]![1]
     expect(ctxArg.enabled).toBe(false)
   })
 })

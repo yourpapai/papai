@@ -3,21 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { Mock } from 'bun:test'
 
-import type { LlmConfigMissing } from '../../../src/llm-config-resolver.js'
-
-void mock.module('../../../src/llm-config-resolver.js', () => ({
-  resolveEffectiveLlmConfig: (): LlmConfigMissing => ({
-    ok: false,
-    type: 'missing',
-    source: 'global',
-    missing: ['llm_apikey'],
-  }),
-}))
-
 import { buildSummarizerDeps, summarizeResult, type SummarizerDeps } from '../../../src/tools/compaction/summarizer.js'
+import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 type GenerateOpts = { system: string; prompt: string }
 type GenerateFn = (opts: GenerateOpts) => Promise<{ text: string }>
@@ -66,7 +56,14 @@ describe('summarizeResult', () => {
 })
 
 describe('buildSummarizerDeps', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   it('returns null when per-context config resolution fails', () => {
+    // Empty test DB: no system_config LLM credentials and no BYOK entries,
+    // so resolveEffectiveLlmConfig reports missing config.
     expect(buildSummarizerDeps('cfg-ctx')).toBeNull()
   })
 })

@@ -3,16 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
-void mock.module('../../../src/debug/event-bus.js', () => ({ emitUser: (): void => {} }))
-
-const { createDisclosureSession } = await import('../../../src/tools/disclosure/registry.js')
-const { createDisclosurePrepareStep } = await import('../../../src/tools/disclosure/prepare-step.js')
-const { CORE_TOOL_NAMES } = await import('../../../src/tools/disclosure/core.js')
+import { CORE_TOOL_NAMES } from '../../../src/tools/disclosure/core.js'
+import { createDisclosurePrepareStep } from '../../../src/tools/disclosure/prepare-step.js'
+import { createDisclosureSession } from '../../../src/tools/disclosure/registry.js'
 
 const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
 

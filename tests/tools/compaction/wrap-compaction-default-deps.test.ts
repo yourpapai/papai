@@ -7,24 +7,12 @@
 // in applyResultCompaction. All other suites supply explicit deps; this file
 // intentionally omits them.
 //
-// A top-level mock.module is required to make buildSummarizerDeps return null
-// (unconfigured), which exercises the truncation fallback path.  The mock must be
-// installed before any import of the module under test, so it lives at the top level
-// and this file has its own mock.module boundary (separate from wrap-compaction.test.ts).
+// The empty test DB carries no system_config LLM credentials and no BYOK entries,
+// so resolveEffectiveLlmConfig reports missing config and buildSummarizerDeps
+// returns null (unconfigured), which exercises the truncation fallback path.
 
-import { describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it } from 'bun:test'
 import assert from 'node:assert/strict'
-
-import type { LlmConfigMissing } from '../../../src/llm-config-resolver.js'
-
-void mock.module('../../../src/llm-config-resolver.js', () => ({
-  resolveEffectiveLlmConfig: (): LlmConfigMissing => ({
-    ok: false,
-    type: 'missing',
-    source: 'global',
-    missing: ['llm_apikey'],
-  }),
-}))
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
@@ -35,7 +23,7 @@ import {
 } from '../../../src/tools/compaction/result-store.js'
 import { isCompactedEnvelope } from '../../../src/tools/compaction/types.js'
 import { applyResultCompaction } from '../../../src/tools/compaction/wrap-compaction.js'
-import { getToolExecutor } from '../../utils/test-helpers.js'
+import { getToolExecutor, mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 function toolReturning(value: unknown): ToolSet[string] {
   return tool({ description: 'x', inputSchema: z.object({}), execute: () => Promise.resolve(value) })
@@ -44,6 +32,11 @@ function toolReturning(value: unknown): ToolSet[string] {
 const big = { rows: Array.from({ length: 2000 }, (_, i) => ({ i, v: 'xxxxxxxxxx' })) }
 
 describe('applyResultCompaction — default deps (no explicit summarizer)', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   it('produces a compacted envelope with summary:null when deps are omitted and config is unconfigured', async () => {
     clearResultStoreForTesting()
     setResultStoreClockForTesting(() => 1_000)

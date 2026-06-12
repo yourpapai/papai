@@ -3,19 +3,22 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
-const emitUser = mock(() => {})
-void mock.module('../../../src/debug/event-bus.js', () => ({ emitUser }))
+import { subscribe, unsubscribe, type DebugEvent } from '../../../src/debug/event-bus.js'
+import { CORE_TOOL_NAMES } from '../../../src/tools/disclosure/core.js'
+import { makeLoadToolTool } from '../../../src/tools/disclosure/load-tool.js'
+import { createDisclosureSession } from '../../../src/tools/disclosure/registry.js'
+import { getToolExecutor } from '../../utils/test-helpers.js'
 
-const { makeLoadToolTool } = await import('../../../src/tools/disclosure/load-tool.js')
-const { createDisclosureSession } = await import('../../../src/tools/disclosure/registry.js')
-const { CORE_TOOL_NAMES } = await import('../../../src/tools/disclosure/core.js')
-const { getToolExecutor } = await import('../../utils/test-helpers.js')
+let events: DebugEvent[] = []
+const listener = (event: DebugEvent): void => {
+  events.push(event)
+}
 
 const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
 
@@ -39,6 +42,15 @@ function isLoadOut(val: unknown): val is LoadOut {
 }
 
 describe('load_tool', () => {
+  beforeEach(() => {
+    events = []
+    subscribe(listener)
+  })
+
+  afterEach(() => {
+    unsubscribe(listener)
+  })
+
   it('loads known tools and reports unknown ones, returning the new active count', async () => {
     const tools: ToolSet = { get_current_time: d(), search_tools: d(), load_tool: d(), list_tasks: d(), get_task: d() }
     const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
@@ -49,7 +61,7 @@ describe('load_tool', () => {
     expect(out.unknown).toEqual(['bogus'])
     expect(session.activeToolNames()).toContain('list_tasks')
     expect(out.nowActive).toBe(session.activeToolNames().length)
-    expect(emitUser).toHaveBeenCalled()
+    expect(events.some((e) => e.type === 'disclosure:load')).toBe(true)
   })
 
   it('reports an all-unknown batch without activating anything', async () => {

@@ -3,17 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
-const emitUser = mock(() => {})
-void mock.module('../../../src/debug/event-bus.js', () => ({ emitUser }))
+import { subscribe, unsubscribe, type DebugEvent } from '../../../src/debug/event-bus.js'
+import { CORE_TOOL_NAMES, DISCLOSURE_STALL_STEPS } from '../../../src/tools/disclosure/core.js'
+import { createDisclosurePrepareStep } from '../../../src/tools/disclosure/prepare-step.js'
+import { createDisclosureSession } from '../../../src/tools/disclosure/registry.js'
 
-const { createDisclosurePrepareStep } = await import('../../../src/tools/disclosure/prepare-step.js')
-const { createDisclosureSession } = await import('../../../src/tools/disclosure/registry.js')
-const { CORE_TOOL_NAMES, DISCLOSURE_STALL_STEPS } = await import('../../../src/tools/disclosure/core.js')
+let events: DebugEvent[] = []
+const listener = (event: DebugEvent): void => {
+  events.push(event)
+}
+const fallbackEvents = (): DebugEvent[] => events.filter((e) => e.type === 'disclosure:fallback')
 
 const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
 
@@ -24,7 +28,12 @@ function freshSession(): ReturnType<typeof createDisclosureSession> {
 
 describe('createDisclosurePrepareStep', () => {
   beforeEach(() => {
-    emitUser.mockReset()
+    events = []
+    subscribe(listener)
+  })
+
+  afterEach(() => {
+    unsubscribe(listener)
   })
 
   it('returns the active tool subset on early steps', () => {
@@ -47,27 +56,25 @@ describe('createDisclosurePrepareStep', () => {
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
     expect(prep({ stepNumber: DISCLOSURE_STALL_STEPS })).toEqual({})
     expect(prep({ stepNumber: DISCLOSURE_STALL_STEPS + 1 })).toEqual({})
-    expect(emitUser).toHaveBeenCalledTimes(1)
+    expect(fallbackEvents()).toHaveLength(1)
   })
 
-  it('emitUser receives the exact stall stepNumber in the payload', () => {
+  it('the fallback event carries the exact stall stepNumber and user scope', () => {
     const session = freshSession()
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
     prep({ stepNumber: DISCLOSURE_STALL_STEPS })
-    // Third arg must be the payload object containing stepNumber = DISCLOSURE_STALL_STEPS.
-    expect(emitUser).toHaveBeenCalledWith(
-      'disclosure:fallback',
-      'ctx-1',
-      { stepNumber: DISCLOSURE_STALL_STEPS },
-      undefined,
-    )
+    const [event] = fallbackEvents()
+    expect(event).toBeDefined()
+    expect(event?.data).toEqual({ stepNumber: DISCLOSURE_STALL_STEPS })
+    expect(event?.scope).toEqual({ kind: 'user', userId: 'ctx-1' })
+    expect(event?.turnId).toBeUndefined()
   })
 
-  it('passes turnId as 4th arg to emitUser on fallback when provided', () => {
+  it('the fallback event carries the turnId when provided', () => {
     const session = freshSession()
     const prep = createDisclosurePrepareStep(session, 'ctx-1', 'turn-42')
     prep({ stepNumber: DISCLOSURE_STALL_STEPS })
-    expect(emitUser).toHaveBeenCalledWith('disclosure:fallback', 'ctx-1', expect.anything(), 'turn-42')
+    expect(fallbackEvents()[0]?.turnId).toBe('turn-42')
   })
 
   it('does not fall back once a tool has been loaded', () => {
@@ -87,7 +94,7 @@ describe('createDisclosurePrepareStep', () => {
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
     const out = prep({ stepNumber: 5, steps: [realStep, metaStep, metaStep] })
     expect(out).toEqual({})
-    expect(emitUser).toHaveBeenCalledTimes(1)
+    expect(fallbackEvents()).toHaveLength(1)
   })
 
   it('does not churn-fallback when a recent step called a real tool', () => {
@@ -96,7 +103,7 @@ describe('createDisclosurePrepareStep', () => {
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
     const out = prep({ stepNumber: 5, steps: [metaStep, realStep] })
     expect(out.activeTools).toBeDefined()
-    expect(emitUser).not.toHaveBeenCalled()
+    expect(fallbackEvents()).toHaveLength(0)
   })
 
   it('a step with zero tool calls does not count toward churn', () => {
@@ -113,7 +120,7 @@ describe('createDisclosurePrepareStep', () => {
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
     expect(prep({ stepNumber: 5, steps: [metaStep, metaStep] })).toEqual({})
     expect(prep({ stepNumber: 6, steps: [metaStep, metaStep, realStep] })).toEqual({})
-    expect(emitUser).toHaveBeenCalledTimes(1)
+    expect(fallbackEvents()).toHaveLength(1)
   })
 
   it('a step mixing meta and real tool calls does not count toward churn', () => {
@@ -123,7 +130,7 @@ describe('createDisclosurePrepareStep', () => {
     const mixedStep = { toolCalls: [{ toolName: 'search_tools' }, { toolName: 'list_tasks' }] }
     const out = prep({ stepNumber: 5, steps: [mixedStep, mixedStep] })
     expect(out.activeTools).toBeDefined()
-    expect(emitUser).not.toHaveBeenCalled()
+    expect(fallbackEvents()).toHaveLength(0)
   })
 
   it('an empty or too-short steps window never counts as churn after a load', () => {
@@ -132,6 +139,6 @@ describe('createDisclosurePrepareStep', () => {
     const prep = createDisclosurePrepareStep(session, 'ctx-1')
     expect(prep({ stepNumber: 5, steps: [] }).activeTools).toBeDefined()
     expect(prep({ stepNumber: 6, steps: [metaStep] }).activeTools).toBeDefined()
-    expect(emitUser).not.toHaveBeenCalled()
+    expect(fallbackEvents()).toHaveLength(0)
   })
 })

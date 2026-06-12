@@ -3,22 +3,24 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
-const emitUser = mock(() => {})
-void mock.module('../../../src/debug/event-bus.js', () => ({ emitUser }))
+import { subscribe, unsubscribe, type DebugEvent } from '../../../src/debug/event-bus.js'
+import { isToolFailureResult } from '../../../src/tool-failure.js'
+import { CORE_TOOL_NAMES } from '../../../src/tools/disclosure/core.js'
+import { createDisclosureSession } from '../../../src/tools/disclosure/registry.js'
+import { makeSearchToolsTool } from '../../../src/tools/disclosure/search-tools.js'
+import { LexicalToolRetriever, type ToolRetriever } from '../../../src/tools/disclosure/tool-retriever.js'
+import { getToolExecutor } from '../../utils/test-helpers.js'
 
-const { makeSearchToolsTool } = await import('../../../src/tools/disclosure/search-tools.js')
-const { createDisclosureSession } = await import('../../../src/tools/disclosure/registry.js')
-const { CORE_TOOL_NAMES } = await import('../../../src/tools/disclosure/core.js')
-const { LexicalToolRetriever } = await import('../../../src/tools/disclosure/tool-retriever.js')
-import type { ToolRetriever } from '../../../src/tools/disclosure/tool-retriever.js'
-const { getToolExecutor } = await import('../../utils/test-helpers.js')
-const { isToolFailureResult } = await import('../../../src/tool-failure.js')
+let events: DebugEvent[] = []
+const listener = (event: DebugEvent): void => {
+  events.push(event)
+}
 
 const d = (desc: string): ToolSet[string] => tool({ description: desc, inputSchema: z.object({}), execute: () => ({}) })
 
@@ -40,6 +42,15 @@ function isSearchOut(val: unknown): val is SearchOut {
 }
 
 describe('search_tools', () => {
+  beforeEach(() => {
+    events = []
+    subscribe(listener)
+  })
+
+  afterEach(() => {
+    unsubscribe(listener)
+  })
+
   it('returns ranked briefs without input schemas', async () => {
     const tools: ToolSet = {
       get_current_time: d('Get the time.'),
@@ -59,7 +70,7 @@ describe('search_tools', () => {
       alreadyLoaded: false,
     })
     expect(out.results.every((r) => !('inputSchema' in r))).toBe(true)
-    expect(emitUser).toHaveBeenCalled()
+    expect(events.some((e) => e.type === 'disclosure:search')).toBe(true)
   })
 
   it('does not surface always-on tools as discoverable', async () => {
