@@ -10,7 +10,8 @@ import {
   resetBlobStoreForTesting,
   setBlobStoreForTesting,
   createInMemoryBlobStoreForTesting,
-} from '../src/attachments/blob-store.js'
+  saveAttachment,
+} from '../src/attachments/index.js'
 import { setCachedConfig } from '../src/cache.js'
 import { buildUserTurnMessages } from '../src/llm-orchestrator-attachments.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -74,6 +75,91 @@ describe('llm-orchestrator-attachments', () => {
       assert(typeof utcContent === 'string', 'expected string content')
       assert(typeof tzContent === 'string', 'expected string content')
       expect(utcContent).not.toBe(tzContent)
+    })
+
+    test('audio attachments never become file parts for multimodal models', async () => {
+      process.env['S3_BUCKET'] = 'test'
+      process.env['S3_ACCESS_KEY_ID'] = 'key'
+      process.env['S3_SECRET_ACCESS_KEY'] = 'secret'
+
+      const savedAudio = await saveAttachment({
+        contextId: 'ctx-a',
+        sourceProvider: 'telegram',
+        filename: 'voice.ogg',
+        status: 'available',
+        content: Buffer.from('audio'),
+        mimeType: 'audio/ogg',
+        origin: 'voice',
+      })
+      const { modelMessage } = await buildUserTurnMessages('ctx-a', 'u1', 'gpt-4o', 'listen', [savedAudio.attachmentId])
+      assert(Array.isArray(modelMessage.content), 'expected multimodal content parts array')
+      const parts = modelMessage.content as { type: string }[]
+      expect(parts.some((p) => p.type === 'file')).toBe(false)
+    })
+
+    test('multimodal text part includes the attachment lines', async () => {
+      process.env['S3_BUCKET'] = 'test'
+      process.env['S3_ACCESS_KEY_ID'] = 'key'
+      process.env['S3_SECRET_ACCESS_KEY'] = 'secret'
+
+      const savedImage = await saveAttachment({
+        contextId: 'ctx-b',
+        sourceProvider: 'telegram',
+        filename: 'pic.png',
+        status: 'available',
+        content: Buffer.from('png'),
+        mimeType: 'image/png',
+      })
+      const { modelMessage } = await buildUserTurnMessages('ctx-b', 'u1', 'gpt-4o', 'see', [savedImage.attachmentId])
+      assert(Array.isArray(modelMessage.content), 'expected multimodal content parts array')
+      const parts = modelMessage.content as { type: string; text?: string }[]
+      const textPart = parts.find((p) => p.type === 'text')
+      expect(textPart?.text).toContain(`[User attached ${savedImage.attachmentId}: pic.png]`)
+    })
+
+    test('text-only and multimodal paths carry identical attachment lines', async () => {
+      process.env['S3_BUCKET'] = 'test'
+      process.env['S3_ACCESS_KEY_ID'] = 'key'
+      process.env['S3_SECRET_ACCESS_KEY'] = 'secret'
+
+      const saved = await saveAttachment({
+        contextId: 'ctx-c',
+        sourceProvider: 'telegram',
+        filename: 'doc.pdf',
+        status: 'available',
+        content: Buffer.from('pdf'),
+        mimeType: 'application/pdf',
+      })
+      const textOnlyResult = await buildUserTurnMessages('ctx-c', 'u1', 'small-model', 'read', [saved.attachmentId])
+      const multi = await buildUserTurnMessages('ctx-c', 'u1', 'gpt-4o', 'read', [saved.attachmentId])
+      assert(typeof textOnlyResult.modelMessage.content === 'string', 'expected string content for text-only model')
+      assert(Array.isArray(multi.modelMessage.content), 'expected multimodal content parts array')
+      const parts = multi.modelMessage.content as { type: string; text?: string }[]
+      const textPart = parts.find((p) => p.type === 'text')
+      expect(textPart?.text).toBe(textOnlyResult.modelMessage.content)
+    })
+
+    test('without active transformer plugins, attachment lines pass through unchanged', async () => {
+      process.env['S3_BUCKET'] = 'test'
+      process.env['S3_ACCESS_KEY_ID'] = 'key'
+      process.env['S3_SECRET_ACCESS_KEY'] = 'secret'
+
+      const saved = await saveAttachment({
+        contextId: 'ctx-d',
+        sourceProvider: 'telegram',
+        filename: 'voice.ogg',
+        status: 'available',
+        content: Buffer.from('a'),
+        mimeType: 'audio/ogg',
+        origin: 'voice',
+      })
+      const { modelMessage, historyMessage } = await buildUserTurnMessages('ctx-d', 'u1', 'small-model', 'hi', [
+        saved.attachmentId,
+      ])
+      assert(typeof modelMessage.content === 'string', 'expected string content for text-only model')
+      assert(typeof historyMessage.content === 'string', 'expected string content for history message')
+      expect(modelMessage.content).toContain(`[User attached ${saved.attachmentId}: voice.ogg]`)
+      expect(historyMessage.content).toContain(`[User attached ${saved.attachmentId}: voice.ogg]`)
     })
   })
 })
