@@ -9,6 +9,37 @@ See LICENSE in the project root for details.
 
 This file is a reference snapshot of what the bot actually sends to the LLM today. Nothing here is a proposal. All other files in this report cite back to paths and line ranges listed below.
 
+## 2026-06-12 refresh delta
+
+This file intentionally preserves the original April 2026 "verbatim" audit below. For brainstorming and planning, treat the following current-state deltas as superseding stale statements later in this snapshot.
+
+### System prompt
+
+- `src/system-prompt.ts` now wraps current time in `<current_time>` and tells the model it may use that value without calling a time tool.
+- Prompt fragments are included only when their `requiredTools` are present.
+- User tool preferences are reflected in prompt text: ask-gated tools are listed with the requirement to ask permission, and denied domains/tools are listed as unavailable.
+- The prompt is still prose-heavy and does not yet render a compact `<capabilities>` block with active provider/domain state, missing domains, and fallback behavior.
+
+### Memory and context
+
+- Compact memory now renders as `<memory trust="compacted_low">`.
+- Long-term memory now renders as `<long_term_memory trust="profile_and_retrieved_low">`.
+- Both blocks escape XML-sensitive characters and cap the amount of injected context.
+- Remaining gap: the system prompt does not yet give a strong rule for resolving conflicts between current user instructions, stale memory, retrieved memory, web content, files, and task-provider content.
+
+### Tools and failures
+
+- `ToolRisk` metadata exists with `read`, `write`, `destructive`, and `open-world` categories.
+- Failure payloads still use `status`, `message`, optional `code`, `retryable`, and optional `details`; they do not yet include a standard `recovery` or `user_action` contract.
+- Confirmation gating still exposes the 0.85 threshold in schema descriptions and returns a minimal `confirmation_required` result.
+
+### Orchestration and UX
+
+- The main model loop now calls `generateText` with `stopWhen: stepCountIs(25)`.
+- The main loop still does not use AI SDK `prepareStep` for model routing, active-tool narrowing, or phase-specific prompts.
+- Telegram and Discord have LLM-output formatters; Mattermost still sends Markdown mostly as generated.
+- Typing heartbeat is implemented while waiting for LLM/tool work.
+
 ## 1. System-prompt assembly
 
 Built by `buildSystemPrompt(provider, contextId)` in `src/system-prompt.ts:84-87`, called from `src/llm-orchestrator.ts:126`:
@@ -345,11 +376,15 @@ processMessage(chatMessage)
         })
 ```
 
-No `prepareStep`, no `stopWhen` other than the default, no small-model routing, no retry loop on tool validation errors beyond what the model does on its own.
+April snapshot conclusion: no `prepareStep`, no `stopWhen` other than the default, no small-model routing, no retry loop on tool validation errors beyond what the model does on its own.
+
+2026-06-12 refresh: the main loop now has explicit `stopWhen: stepCountIs(25)`, but still has no `prepareStep` and no main-loop model routing.
 
 ## 4. What the user sees on Telegram/Mattermost/Discord
 
-Reply is whatever the last assistant turn contains, passed to the active chat adapter's `ReplyFn`. The prompt tells the model: "format as Markdown links: [Task title](url). Never output raw IDs. Keep replies short and friendly. Don't use tables." There is no platform-aware post-processor for Telegram MarkdownV2 escape rules, Mattermost MFM, or Discord markdown.
+April snapshot conclusion: reply is whatever the last assistant turn contains, passed to the active chat adapter's `ReplyFn`. The prompt tells the model: "format as Markdown links: [Task title](url). Never output raw IDs. Keep replies short and friendly. Don't use tables." There is no platform-aware post-processor for Telegram MarkdownV2 escape rules, Mattermost MFM, or Discord markdown.
+
+2026-06-12 refresh: Telegram and Discord now have LLM-output formatting, and typing heartbeat is implemented. Mattermost still mostly passes Markdown through.
 
 ---
 

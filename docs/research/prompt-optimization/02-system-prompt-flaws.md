@@ -9,6 +9,10 @@ See LICENSE in the project root for details.
 
 This file analyses the prompt in `src/system-prompt.ts` line-by-line, names the flaws using vocabulary from the external sources, and proposes a rewrite that is (a) structured with delimiters, (b) capability-aware, and (c) enriched with compact few-shot examples. Verbatim of the current prompt is in [`01-current-state-audit.md`](./01-current-state-audit.md).
 
+## 2026-06-12 refresh note
+
+Several April findings are now partially addressed. `src/system-prompt.ts` gates prompt fragments by available tools, surfaces ask/denied tool preferences, and uses `<current_time>`. Compact and long-term memory blocks now carry low-trust XML tags. The remaining high-value work is not "add more prose"; it is to make the prompt easier to test and plan around: explicit sections, a compact capabilities contract, untrusted-content boundaries, few-shots, and snapshot coverage.
+
 ## 1. Flaws
 
 Each flaw is tagged with a severity (H/M/L) mirroring the overview, and a citation number into [`10-references.md`](./10-references.md).
@@ -19,7 +23,7 @@ The base prompt concatenates sections using `SCREAMING_HEADING — prose — bul
 
 ### F-02 (H) Describes capabilities that may not be present
 
-The prompt unconditionally talks about `create_deferred_prompt`, `create_recurring_task`, `web_fetch`, `add_task_relation`, memos, etc. But the tool set is capability-gated: in `proactive` mode deferred prompts are removed; in DM contexts identity tools are stripped; Kaneo vs YouTrack expose different subsets. A model that sees a bullet "Use `create_deferred_prompt` …" but no such tool in the function list is more likely to hallucinate or to ask the user a question it should have resolved internally. Anthropic: "Too many tools or overlapping tools can also distract agents from pursuing efficient strategies." ([10](./10-references.md) #3)
+The April audit found that the prompt unconditionally talked about `create_deferred_prompt`, `create_recurring_task`, `web_fetch`, `add_task_relation`, memos, etc. The current code now gates many fragments by available tools and lists ask/denied tools, which reduces the issue. The remaining gap is that the prompt still does not expose a compact, planning-friendly capability contract with active domains, unavailable domains, and fallback rules. Anthropic: "Too many tools or overlapping tools can also distract agents from pursuing efficient strategies." ([10](./10-references.md) #3)
 
 ### F-03 (H) No examples of correct tool-call shape
 
@@ -35,7 +39,7 @@ Anthropic: "Telling Claude too forcefully what not to do can sometimes backfire 
 
 ### F-06 (M) No explicit role for memory/facts/provider context
 
-The prompt doesn't tell the model that the `=== Memory context ===` system message that follows is (a) a compacted summary not verbatim history, (b) lower trust than direct user input, and (c) may be out of date. Without that label, the model may over-rely on stale facts or quote the summary as if it were a user message. ([10](./10-references.md) #14)
+The April audit found that memory lacked trust framing. Compact and long-term memory are now tagged as low trust, which reduces the issue. The prompt still should tell the model that memory is compacted, lower trust than the current user message, and may be stale. Without that rule, the model may over-rely on old facts or quote summaries as if they were user messages. ([10](./10-references.md) #14)
 
 ### F-07 (M) "Confidence" rule is stated but not exemplified
 

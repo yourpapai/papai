@@ -7,11 +7,11 @@ See LICENSE in the project root for details.
 
 # 10 — References
 
-External sources cited in this report. Each entry lists the canonical URL, the publisher, and a one-line summary of what we cite it for. Accessed 2026-04-21.
+External sources cited in this report. Each entry lists the canonical URL, the publisher, and a one-line summary of what we cite it for. Initial audit accessed 2026-04-21; refreshed 2026-06-12.
 
 ## Core guidance
 
-1. **Anthropic — _Building Effective Agents_.** https://www.anthropic.com/research/building-effective-agents
+1. **Anthropic — _Building Effective Agents_.** https://www.anthropic.com/engineering/building-effective-agents
    Core framework: workflows vs agents, augmented LLMs, the five agentic patterns (prompt chaining, routing, parallelisation, orchestrator-workers, evaluator-optimiser), and the rule "add multi-step complexity only when simpler solutions fall short." Cited throughout, especially in [`00`](./00-overview.md), [`09`](./09-orchestration-routing.md).
 
 2. **Anthropic — _Effective context engineering for AI agents_.** https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
@@ -39,8 +39,8 @@ External sources cited in this report. Each entry lists the canonical URL, the p
 
 ## Prompt engineering for Claude
 
-9. **Anthropic — _Prompting best practices_ (Claude 4.7 era).** https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices
-   Verbosity calibration for 4.7, section structure, role prompting, negative-prompting cautions. Cited in [`02`](./02-system-prompt-flaws.md).
+9. **Anthropic — _Prompting best practices_.** https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices
+   Current Claude guidance for examples, XML tags, output style, role prompting, and negative-prompting cautions. Cited in [`02`](./02-system-prompt-flaws.md).
 
 10. **Comet — _Few-Shot Prompting for Agentic Systems: Teaching by Example_.** https://www.comet.com/site/blog/few-shot-prompting/
     Why 3–5 examples beat paragraphs of rules; specific guidance for routing and tool-calling. Cited in [`02`](./02-system-prompt-flaws.md).
@@ -125,8 +125,8 @@ External sources cited in this report. Each entry lists the canonical URL, the p
 
 ## Vercel AI SDK specifics
 
-35. **Vercel AI SDK Core — _streamText reference_.** https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text
-    `stopWhen`, `prepareStep`, `experimental_onToolCallStart/Finish`, tool-execution observation.
+35. **Vercel AI SDK Core — _generateText reference_.** https://ai-sdk.dev/docs/reference/ai-sdk-core/generate-text
+    AI SDK v6 reference for `stopWhen`, `prepareStep`, active tools, tool choice, system/messages, and multi-step tool execution.
 
 36. **vercel/ai — issue #10269: Tool Execution Super Unreliable After ~5 Messages in Conversation.** https://github.com/vercel/ai/issues/10269
     Reference for the "model narrates instead of calling tools" failure mode; mitigations via `toolChoice`.
@@ -144,6 +144,83 @@ External sources cited in this report. Each entry lists the canonical URL, the p
 
 40. **Hugo Bowne-Anderson — _Patterns and Anti-Patterns for Building with LLMs_.** https://medium.com/marvelous-mlops/patterns-and-anti-patterns-for-building-with-llms-42ea9c2ddc90
     Production-grade anti-patterns; useful cross-check.
+
+## 2026-06-12 refresh additions
+
+41. **OpenAI — _Prompting guide_.** https://developers.openai.com/api/docs/guides/prompting
+    Current OpenAI guidance for task framing, examples, and prompt structure.
+
+42. **OpenAI — _Reasoning models guide_.** https://developers.openai.com/api/docs/guides/reasoning
+    Reasoning-effort tuning, tool-use planning, and defining task constraints and output formats.
+
+43. **OpenAI — _Structured outputs guide_.** https://developers.openai.com/api/docs/guides/structured-outputs
+    Schema-first response/function contracts, key naming, descriptions, and output validation.
+
+44. **OpenAI — _Hardening OpenAI Atlas against prompt injection attacks_.** https://openai.com/index/hardening-atlas-against-prompt-injection/
+    Browser-agent prompt-injection risk framing, confirmation review, and scoped instructions.
+
+45. **OWASP Cheat Sheet Series — _LLM Prompt Injection Prevention Cheat Sheet_.** https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html
+    Structured prompts, remote-content sanitization, HITL controls, agent-specific defenses, and monitoring.
+
+46. **MCP — _Tool annotations_.** https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/
+    `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`; annotations are client hints, not trusted policy.
+
+47. **Wang et al. — _Self-Consistency Improves Chain of Thought Reasoning in Language Models_.** https://arxiv.org/abs/2203.11171
+    Background for offline sampling/eval strategies and high-value planning tasks.
+
+48. **Zhou et al. — _Least-to-Most Prompting Enables Complex Reasoning in Large Language Models_.** https://arxiv.org/abs/2205.10625
+    Background for decomposing complex task-management requests.
+
+49. **Wang et al. — _Plan-and-Solve Prompting_.** https://arxiv.org/abs/2305.04091
+    Background for planning-before-solving prompts and complex workflow handling.
+
+50. **Yao et al. — _ReAct: Synergizing Reasoning and Acting in Language Models_.** https://arxiv.org/abs/2210.03629
+    Background for interleaving model reasoning with tool actions and observations.
+
+51. **Shinn et al. — _Reflexion: Language Agents with Verbal Reinforcement Learning_.** https://arxiv.org/abs/2303.11366
+    Background for reflection loops and offline prompt improvement.
+
+52. **Madaan et al. — _Self-Refine: Iterative Refinement with Self-Feedback_.** https://arxiv.org/abs/2303.17651
+    Background for critique-and-revise patterns, especially offline evaluation.
+
+53. **Yao et al. — _Tree of Thoughts: Deliberate Problem Solving with Large Language Models_.** https://arxiv.org/abs/2305.10601
+    Background for branching search on complex planning problems; likely not first-cycle runtime work.
+
+54. **Zhou et al. — _Large Language Models Are Human-Level Prompt Engineers_.** https://arxiv.org/abs/2211.01910
+    Introduces Automatic Prompt Engineer (APE), useful after fixture datasets exist.
+
+55. **Pryzant et al. — _Automatic Prompt Optimization with "Gradient Descent" and Beam Search_.** https://arxiv.org/abs/2305.03495
+    Background for eval-guided prompt editing.
+
+56. **Yang et al. — _Large Language Models as Optimizers_.** https://arxiv.org/abs/2309.03409
+    Introduces OPRO-style optimization for prompts and other natural-language programs.
+
+57. **Fernando et al. — _Promptbreeder: Self-Referential Self-Improvement via Prompt Evolution_.** https://arxiv.org/abs/2309.16797
+    Background for evolutionary prompt search; later-stage only.
+
+58. **Khattab et al. — _DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines_.** https://arxiv.org/abs/2310.03714
+    Useful for thinking about prompts as optimizable signatures/modules once papai has eval data.
+
+59. **Liu et al. — _A Survey of Context Engineering for Large Language Models_.** https://arxiv.org/abs/2507.13334
+    Context selection, compression, memory, and retrieval framing.
+
+60. **Chen et al. — _StruQ: Defending Against Prompt Injection with Structured Queries_.** https://arxiv.org/abs/2402.06363
+    Separating trusted instructions from untrusted data.
+
+61. **Debenedetti et al. — _CaMeL: Defeating Prompt Injections by Design_.** https://arxiv.org/abs/2503.18813
+    Capability and least-privilege thinking around agents that consume untrusted data.
+
+62. **Arawjo et al. — _ChainForge: A Visual Toolkit for Prompt Engineering and LLM Hypothesis Testing_.** https://arxiv.org/abs/2309.09128
+    Prompt comparison and hypothesis-testing workflow ideas.
+
+63. **Sahoo et al. — _A Systematic Survey of Prompt Engineering in Large Language Models_.** https://arxiv.org/abs/2402.07927
+    Broad taxonomy for prompt techniques and evaluation dimensions.
+
+64. **arXiv — _WebAgentGuard: Mitigating the Prompt Injection Attack in Web Browsing Agent_.** https://arxiv.org/abs/2604.12284
+    Recent 2026 web-agent prompt-injection defense work; useful as a watch-list item rather than immediate design dependency.
+
+65. **Vercel AI SDK Core — _streamText reference_.** https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text
+    Companion reference for streaming agent loops, `stopWhen`, and `prepareStep`.
 
 ---
 

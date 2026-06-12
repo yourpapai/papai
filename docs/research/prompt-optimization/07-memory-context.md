@@ -9,6 +9,10 @@ See LICENSE in the project root for details.
 
 Covers: the `=== Memory context ===` block, the `TRIM_PROMPT` summariser, the custom instructions block, and how to budget the context window so the model stays on task without burning tokens. The raw material is in [`01-current-state-audit.md`](./01-current-state-audit.md) §1.3, §1.5.
 
+## 2026-06-12 refresh note
+
+The highest-risk memory framing gaps from the original audit are now partly addressed. Compact memory now renders as `<memory trust="compacted_low">`, and long-term memory now renders as `<long_term_memory trust="profile_and_retrieved_low">`. Both blocks escape XML-sensitive content and cap injected records. The remaining work is context engineering: retrieval timing, conflict rules, stale-memory handling, and eval coverage.
+
 ## 1. Principle: the context window is a budget
 
 > "Every new token introduced depletes this budget by some amount, increasing the need to carefully curate the tokens available to the LLM." — Anthropic, _Effective context engineering for AI agents_. ([10](./10-references.md) #2)
@@ -19,11 +23,11 @@ Treat the context as three logical layers. In papai's codebase these are concate
 2. **Memory layer** — summaries + facts from prior turns. Compacted, low trust.
 3. **Turn layer** — the user's current message, current tool results. Immediate, high trust.
 
-Today's prompt merges 1 and 3 implicitly and puts 2 as a system message just before the user turn. That is fine structurally, but the model has no label to distinguish them.
+Today's prompt merges 1 and 3 implicitly and puts 2 as a system message just before the user turn. Memory now has low-trust labels, but the top-level prompt still needs explicit use rules for stale, conflicting, or instruction-like memory.
 
 ## 2. The memory block today — evaluation
 
-The block (src/memory.ts:262-282) looks like:
+The original block (src/memory.ts:262-282 at the time of the April audit) looked like:
 
 ```text
 === Memory context ===
@@ -39,12 +43,17 @@ What works:
 - **Summary + recent entities is the right split.** Matches Zep / Letta patterns for "summary memory + entity memory". ([10](./10-references.md) #27)
 - **Prepending as a system message** (not in the system prompt) means the model doesn't confuse it with hard rules.
 
-What doesn't:
+What changed since April:
 
-- **No trust label.** The model treats it as authoritative even when it is summarised and potentially stale.
+- Compact memory now uses an XML-like low-trust wrapper.
+- Recent entities are capped and carry staleness semantics.
+- Long-term memory is now a separate low-trust block with profile and retrieved records.
+
+What still doesn't:
+
+- **Prompt-level trust rule is still thin.** The block is labeled, but the system prompt should say how to use it.
 - **IDs are raw.** Anthropic's "prefer natural-language identifiers over cryptic identifiers" ([10](./10-references.md) #3) — "tsk_42" is the wrong side of that line.
-- **No freshness signal.** `last seen 2026-04-19` is a date, not a TTL. A fact last seen 30 days ago should be flagged stale; a fact from today is fresh.
-- **No entity limit.** The block can grow arbitrarily long. No eviction policy is visible.
+- **Freshness and entity limits are now partly implemented.** The remaining work is to test the model's behavior when memory is stale or conflicts with the user.
 - **No "just-in-time" retrieval.** The entity list dumps everything known, every turn. Anthropic's JIT pattern suggests storing pointers + using a `lookup_entity(identifier)` tool. ([10](./10-references.md) #2)
 
 ## 3. Proposed memory-block layout

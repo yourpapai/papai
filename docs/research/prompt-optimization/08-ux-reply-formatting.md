@@ -9,9 +9,13 @@ See LICENSE in the project root for details.
 
 The prompt currently says: `"When referencing tasks or projects, format them as Markdown links: [Task title](url). Never output raw IDs. Keep replies short and friendly. Don't use tables."` That's 25 words for cross-platform reply formatting. This file expands it into concrete rules per platform, covers progress signals, empty/error states, transparency, and when to show the model's reasoning.
 
+## 2026-06-12 refresh note
+
+Reply UX is no longer prompt-only. Telegram and Discord now apply LLM-output formatting, and typing heartbeat is implemented while the bot waits on model/tool work. Mattermost still mostly passes Markdown through. The remaining recommendations should focus on reply-shape contracts, platform fixtures, and safe next-action suggestions rather than generic Markdown advice.
+
 ## 1. Principle: the model produces intent, the adapter renders presentation
 
-Today the model produces Markdown and each chat adapter passes it through. That mostly works, but:
+Today the model produces Markdown and adapter behavior is mixed. Telegram and Discord now have LLM-output formatting; Mattermost mostly passes Markdown through. That mostly works, but:
 
 - **Telegram MarkdownV2** reserves `_`, `*`, `[`, `]`, `(`, `)`, `~`, `` ` ``, `>`, `#`, `+`, `-`, `=`, `|`, `{`, `}`, `.`, `!` — any of them outside a styled span must be escaped with `\`. A Markdown link containing an unescaped `.` in the URL raises 400. ([10](./10-references.md) #29)
 - **Mattermost** renders a GFM-ish superset (tables supported; inline code blocks, block quotes).
@@ -37,7 +41,7 @@ Finer rules (to be enforced by example, not by a new rule per case):
 
 ## 3. Progress signals
 
-Chat platforms expose a "typing..." indicator. Use it to signal liveness during multi-tool turns.
+Chat platforms expose a "typing..." indicator. papai now has a typing heartbeat path; keep it covered by tests and extend platform support where adapters allow it.
 
 - **Telegram:** `sendChatAction("typing")` — renews every 5s. The adapter can emit this on each tool call and when the final reply is assembled.
 - **Mattermost:** `"posted":{"typing":true}` via WebSocket.
