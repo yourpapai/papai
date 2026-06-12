@@ -47,6 +47,48 @@ describe('extractFileCandidatesFromContext', () => {
   })
 })
 
+describe('origin and forwardedFrom fields', () => {
+  test('voice candidate is tagged origin voice', () => {
+    const candidates = extractFileCandidatesFromContext({
+      message: { voice: { file_id: 'v1', file_size: 10 } },
+    })
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]?.origin).toBe('voice')
+  })
+
+  test('audio and document candidates have no voice origin', () => {
+    const candidates = extractFileCandidatesFromContext({
+      message: { audio: { file_id: 'a1', file_name: 'song.mp3', mime_type: 'audio/mpeg' } },
+    })
+    expect(candidates[0]?.origin).toBeUndefined()
+  })
+
+  test('forwarded message sets forwardedFrom from a visible user', () => {
+    const candidates = extractFileCandidatesFromContext({
+      message: {
+        voice: { file_id: 'v1' },
+        forward_origin: { type: 'user', sender_user: { first_name: 'Alice', last_name: 'Smith' } },
+      },
+    })
+    expect(candidates[0]?.forwardedFrom).toBe('Alice Smith')
+  })
+
+  test('forwarded message sets forwardedFrom from a hidden user name', () => {
+    const candidates = extractFileCandidatesFromContext({
+      message: {
+        voice: { file_id: 'v1' },
+        forward_origin: { type: 'hidden_user', sender_user_name: 'Bob' },
+      },
+    })
+    expect(candidates[0]?.forwardedFrom).toBe('Bob')
+  })
+
+  test('non-forwarded message has no forwardedFrom', () => {
+    const candidates = extractFileCandidatesFromContext({ message: { voice: { file_id: 'v1' } } })
+    expect(candidates[0]?.forwardedFrom).toBeUndefined()
+  })
+})
+
 describe('extractFilesFromContext', () => {
   test('downloads and returns files with content', async () => {
     const content = Buffer.from('file-content')
