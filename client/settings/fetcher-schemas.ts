@@ -24,17 +24,19 @@ export type BootstrapData = z.infer<typeof BootstrapSchema>
 
 // --- Config ---
 
-export const ConfigFieldSchema = z.object({
+const StoredConfigValueSchema = z.object({
   key: z.string(),
-  storageKey: z.string(),
   label: z.string(),
   required: z.boolean(),
   sensitive: z.boolean(),
+  hasValue: z.boolean(),
+  value: z.string(),
+})
+export const ConfigFieldSchema = StoredConfigValueSchema.extend({
+  storageKey: z.string(),
   kind: z.string(),
   control: z.enum(['text', 'toggle', 'select']).optional(),
   options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
-  hasValue: z.boolean(),
-  value: z.string(),
 })
 export type ConfigField = z.infer<typeof ConfigFieldSchema>
 
@@ -43,14 +45,7 @@ export type ConfigResponse = z.infer<typeof ConfigResponseSchema>
 
 // --- BYOK ---
 
-export const ByokFieldSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  required: z.boolean(),
-  sensitive: z.boolean(),
-  hasValue: z.boolean(),
-  value: z.string(),
-})
+export const ByokFieldSchema = StoredConfigValueSchema
 export const ByokResponseSchema = z.object({
   enabled: z.boolean(),
   complete: z.boolean(),
@@ -98,6 +93,29 @@ export type ToolsResponse = z.infer<typeof ToolsResponseSchema>
 export type ToolDomainView = z.infer<typeof ToolDomainSchema>
 export type ToolEntry = z.infer<typeof ToolEntrySchema>
 
+export const MemoryRecordSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  content: z.string(),
+  summary: z.string().nullable(),
+  tags: z.array(z.string()),
+  confidence: z.number(),
+  status: z.string(),
+  source: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  lastSeenAt: z.string(),
+})
+export const MemoryResponseSchema = z.object({
+  contextId: z.string(),
+  scopeType: z.enum(['personal', 'group']),
+  enabled: z.boolean(),
+  profile: z.string(),
+  records: z.array(MemoryRecordSchema),
+})
+export type MemoryRecordView = z.infer<typeof MemoryRecordSchema>
+export type MemoryResponse = z.infer<typeof MemoryResponseSchema>
+
 // --- MCP ---
 
 export const McpEndpointSchema = z.object({
@@ -126,13 +144,7 @@ export const PluginEligibilitySchema = z.union([
 ])
 export type PluginEligibility = z.infer<typeof PluginEligibilitySchema>
 
-export const PluginConfigFieldSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  required: z.boolean(),
-  sensitive: z.boolean(),
-  hasValue: z.boolean(),
-})
+export const PluginConfigFieldSchema = StoredConfigValueSchema.omit({ value: true })
 export const PluginEntrySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -188,11 +200,7 @@ export const GroupTaskInstanceResponseSchema = z.object({
 })
 export type GroupTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponseSchema>
 
-export const ContextTaskInstanceResponseSchema = z.object({
-  contextId: z.string(),
-  taskInstanceId: z.string().nullable(),
-  available: z.array(TaskInstanceOptionSchema),
-})
+export const ContextTaskInstanceResponseSchema = GroupTaskInstanceResponseSchema
 export type ContextTaskInstanceResponse = z.infer<typeof ContextTaskInstanceResponseSchema>
 
 // --- Admin (lenient: store-shaped rows rendered generically) ---
@@ -206,12 +214,7 @@ export const AdminInstanceRowSchema = z
     createdAt: z.union([z.string(), z.number()]).nullable().optional(),
   })
   .loose()
-const InstanceDecodeFailureSchema = z.object({
-  table: z.string(),
-  id: z.string(),
-  type: z.string(),
-  error: z.string(),
-})
+const InstanceDecodeFailureSchema = z.object({ table: z.string(), id: z.string(), type: z.string(), error: z.string() })
 export const AdminInstancesResponseSchema = z.object({
   instances: z.array(AdminInstanceRowSchema),
   unreadable: z.array(InstanceDecodeFailureSchema).optional(),
@@ -220,12 +223,8 @@ export type AdminInstanceDecodeFailure = z.infer<typeof InstanceDecodeFailureSch
 export type AdminInstanceRow = z.infer<typeof AdminInstanceRowSchema>
 export type AdminInstancesResponse = z.infer<typeof AdminInstancesResponseSchema>
 
-export const ProviderTypeFieldSchema = z.object({
-  key: z.string(),
+export const ProviderTypeFieldSchema = StoredConfigValueSchema.omit({ hasValue: true, value: true }).extend({
   storageKey: z.string().optional(),
-  label: z.string(),
-  required: z.boolean(),
-  sensitive: z.boolean(),
 })
 export const ProviderTypeSchema = z
   .object({

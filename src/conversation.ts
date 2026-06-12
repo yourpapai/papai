@@ -10,6 +10,9 @@ import { getCachedHistory, setCachedHistory } from './cache.js'
 import { emitUser } from './debug/event-bus.js'
 import { resolveEffectiveLlmConfig } from './llm-config-resolver.js'
 import { logger } from './logger.js'
+import { buildLongTermMemoryContextMessage } from './long-term-memory/context.js'
+import { resolveMemoryScope } from './long-term-memory/scope.js'
+import { getMemoryProfile, listMemoryRecords } from './long-term-memory/store.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
 import { estimateMessagesTokens, resolveMaxTokens } from './model-context.js'
 
@@ -57,10 +60,28 @@ const logTrimConfigFailure = (
   )
 }
 
-export const buildMessagesWithMemory = (userId: string, history: readonly ModelMessage[]): MessagesWithMemory => {
+export const buildMessagesWithMemory = (
+  userId: string,
+  history: readonly ModelMessage[],
+  contextType: 'dm' | 'group' = 'dm',
+): MessagesWithMemory => {
   const summary = loadSummary(userId)
   const facts = loadFacts(userId)
-  const memoryMsg = buildMemoryContextMessage(summary, facts)
+  const compactedMemoryMsg = buildMemoryContextMessage(summary, facts)
+  const scope = resolveMemoryScope({ storageContextId: userId, contextType })
+  const profile = getMemoryProfile(scope)?.profile ?? null
+  const records = listMemoryRecords({ ...scope, status: 'active', limit: 3 })
+  const longTermMemoryMsg = buildLongTermMemoryContextMessage({ profile, records })
+  const memoryMessages = [compactedMemoryMsg, longTermMemoryMsg].filter(
+    (message): message is { role: 'system'; content: string } => message !== null,
+  )
+  const memoryMsg =
+    memoryMessages.length === 0
+      ? null
+      : {
+          role: 'system' as const,
+          content: memoryMessages.map((message) => message.content).join('\n'),
+        }
   return { messages: memoryMsg === null ? [...history] : [memoryMsg, ...history], memoryMsg }
 }
 

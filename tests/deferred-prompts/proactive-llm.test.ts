@@ -19,6 +19,7 @@ import type { DeferredExecutionContext } from '../../src/deferred-prompts/proact
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
+import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { loadFacts } from '../../src/memory.js'
 import { setSystemConfig } from '../../src/system-config.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
@@ -266,6 +267,26 @@ describe('dispatchExecution', () => {
       expect(messageIncludesText(messages, 'history message')).toBe(true)
     })
 
+    test('uses group long-term memory for group thread delivery context', async () => {
+      setupUserConfig()
+      saveMemoryProfile(
+        { scopeId: '-1001', scopeType: 'group' },
+        '## Group memory\n- Group standups happen at 10:00',
+        '2026-06-12T00:00:00.000Z',
+      )
+      saveMemoryProfile(
+        { scopeId: '-1001:42', scopeType: 'personal' },
+        '## Personal memory\n- This personal thread scope should not be injected',
+        '2026-06-12T00:00:00.000Z',
+      )
+
+      await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
+
+      const messages = generateTextCalls[0]!.messages
+      expect(messageIncludesText(messages, 'Group standups happen at 10:00')).toBe(true)
+      expect(messageIncludesText(messages, 'This personal thread scope should not be injected')).toBe(false)
+    })
+
     test('includes get_current_time tool only', async () => {
       setupUserConfig()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
@@ -350,6 +371,27 @@ describe('dispatchExecution', () => {
       await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
       const messages = generateTextCalls[0]!.messages
       expect(messageIncludesText(messages, 'full mode history')).toBe(true)
+    })
+
+    test('full mode uses group long-term memory for group thread delivery context', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      saveMemoryProfile(
+        { scopeId: '-1001', scopeType: 'group' },
+        '## Group memory\n- Group escalations use the incident queue',
+        '2026-06-12T00:00:00.000Z',
+      )
+      saveMemoryProfile(
+        { scopeId: '-1001:42', scopeType: 'personal' },
+        '## Personal memory\n- This personal thread profile should not be injected',
+        '2026-06-12T00:00:00.000Z',
+      )
+
+      await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      const messages = generateTextCalls[0]!.messages
+      expect(messageIncludesText(messages, 'Group escalations use the incident queue')).toBe(true)
+      expect(messageIncludesText(messages, 'This personal thread profile should not be injected')).toBe(false)
     })
 
     test('falls back to providerless full execution when provider cannot be built', async () => {
@@ -489,6 +531,13 @@ describe('dispatchExecution', () => {
           steps: undefined,
           response: { messages: [] },
         }),
+        Promise.resolve({
+          text: JSON.stringify({ profile: null, records: [], updates: [] }),
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          response: { messages: [] },
+        }),
       ]
       let callIndex = 0
       generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
@@ -521,6 +570,7 @@ describe('dispatchExecution', () => {
 
       expect(buildModelCalls).toEqual([
         { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-main' },
+        { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
         { apiKey: 'sk-byok-full-trim', baseURL: 'https://byok-full-trim.invalid/v1', modelId: 'byok-full-small' },
       ])
     })

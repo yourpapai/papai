@@ -8,6 +8,7 @@ import type { ModelMessage } from 'ai'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { appendHistory } from './history.js'
 import { logger } from './logger.js'
+import { runMemoryExtractionInBackground } from './long-term-memory/runner.js'
 
 const log = logger.child({ scope: 'llm-history' })
 
@@ -21,6 +22,7 @@ export const appendAssistantHistory = (
   mainModel: string,
   history: readonly ModelMessage[],
   assistantMessages: ModelMessage[],
+  contextType: 'dm' | 'group' = 'dm',
 ): void => {
   if (assistantMessages.length > 0) {
     appendHistory(contextId, assistantMessages)
@@ -29,5 +31,30 @@ export const appendAssistantHistory = (
   const combined = [...history, ...assistantMessages]
   if (shouldTriggerTrim(combined, mainModel)) {
     void runTrimInBackground(contextId, combined, undefined, configId)
+    void runMemoryExtractionInBackground({
+      storageContextId: contextId,
+      contextType,
+      configContextId: configId,
+      history: combined,
+    })
   }
+}
+
+export const appendAssistantTurnHistory = (
+  contextId: string,
+  configId: string,
+  mainModel: string,
+  baseHistory: readonly ModelMessage[],
+  historyMessage: ModelMessage,
+  assistantMessages: ModelMessage[],
+  contextType: 'dm' | 'group',
+): void => {
+  appendAssistantHistory(
+    contextId,
+    configId,
+    mainModel,
+    [...baseHistory, historyMessage],
+    assistantMessages,
+    contextType,
+  )
 }
