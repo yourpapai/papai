@@ -23,6 +23,8 @@ export const attachments = sqliteTable(
     createdAt: text('created_at').notNull(),
     clearedAt: text('cleared_at'),
     lastUsedAt: text('last_used_at'),
+    origin: text('origin'),
+    forwardedFrom: text('forwarded_from'),
   },
   (table) => [
     index('idx_attachments_context_active').on(table.contextId, table.isActive, table.createdAt),

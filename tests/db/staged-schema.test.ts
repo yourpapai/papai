@@ -280,4 +280,25 @@ describe('stagedFiles schema', () => {
 
     expect(row!.status).toBe('staged')
   })
+
+  it('staged_files accepts origin and forwarded_from', () => {
+    const db = getDrizzleDb()
+    db.insert(stagedFiles)
+      .values({
+        stagedId: 'stg_origin_test',
+        contextId: 'ctx-origin',
+        senderId: 'user-1',
+        filename: 'voice.ogg',
+        platformFileId: 'pf-origin-1',
+        sourceProvider: 'telegram',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        expiresAt: '2027-01-01T00:00:00.000Z',
+        origin: 'voice',
+        forwardedFrom: 'Alice',
+      })
+      .run()
+    const row = db.select().from(stagedFiles).where(eq(stagedFiles.stagedId, 'stg_origin_test')).get()
+    expect(row?.origin).toBe('voice')
+    expect(row?.forwardedFrom).toBe('Alice')
+  })
 })
