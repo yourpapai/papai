@@ -19,7 +19,7 @@ import type {
   StagedFileRef,
   StagedResolutionError,
 } from './types.js'
-import { toSourceProvider, toStagedStatus, toUndefinedIfNull } from './types.js'
+import { toAttachmentOrigin, toSourceProvider, toStagedStatus, toUndefinedIfNull } from './types.js'
 
 const log = logger.child({ scope: 'attachments:staged' })
 
@@ -44,6 +44,8 @@ const toRef = (row: StagedRow): StagedFileRef => ({
   attachmentId: row.attachmentId,
   createdAt: row.createdAt,
   expiresAt: row.expiresAt,
+  origin: toAttachmentOrigin(row.origin) ?? null,
+  forwardedFrom: row.forwardedFrom,
 })
 
 const buildStagedValues = (
@@ -67,6 +69,8 @@ const buildStagedValues = (
   attachmentId: null,
   createdAt: nowIso,
   expiresAt: expiresIso,
+  origin: params.origin,
+  forwardedFrom: params.forwardedFrom,
 })
 
 export function stageFileMetadata(params: StageFileParams): StagedFileRef {
@@ -94,6 +98,8 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
         createdAt: nowIso,
         expiresAt: expiresIso,
         status: 'staged',
+        origin: params.origin,
+        forwardedFrom: params.forwardedFrom,
       },
     })
     .run()
@@ -245,6 +251,8 @@ const downloadAndPersist = async (
   const mimeType = toUndefinedIfNull(row.mimeType)
   const size = toUndefinedIfNull(row.size)
   const sourceMessageId = toUndefinedIfNull(row.messageId)
+  const origin = toAttachmentOrigin(row.origin)
+  const forwardedFrom = toUndefinedIfNull(row.forwardedFrom)
 
   const attachmentRef = await saveAttachment({
     contextId: row.contextId,
@@ -256,6 +264,8 @@ const downloadAndPersist = async (
     status: 'available',
     sourceMessageId,
     sourceFileId: row.platformFileId,
+    ...(origin === undefined ? {} : { origin }),
+    ...(forwardedFrom === undefined ? {} : { forwardedFrom }),
   })
 
   markStagedResolved(stagedId, attachmentRef.attachmentId)

@@ -18,6 +18,7 @@ import type {
   SaveAttachmentInput,
   StoredAttachment,
 } from './types.js'
+import { toAttachmentOrigin } from './types.js'
 
 const STATUS_BY_VALUE: Readonly<Record<string, AttachmentStatus>> = {
   available: 'available',
@@ -63,6 +64,8 @@ export async function saveAttachment(input: SaveAttachmentInput): Promise<Attach
       createdAt,
       clearedAt: null,
       lastUsedAt: null,
+      origin: input.origin ?? null,
+      forwardedFrom: input.forwardedFrom ?? null,
     })
     .run()
 
@@ -107,5 +110,8 @@ export async function loadAttachmentRecord(contextId: string, attachmentId: stri
   if (row.sourceFileId !== null) stored.sourceFileId = row.sourceFileId
   if (row.clearedAt !== null) stored.clearedAt = row.clearedAt
   if (row.lastUsedAt !== null) stored.lastUsedAt = row.lastUsedAt
+  const origin = toAttachmentOrigin(row.origin)
+  if (origin !== undefined) stored.origin = origin
+  if (row.forwardedFrom !== null) stored.forwardedFrom = row.forwardedFrom
   return stored
 }

@@ -214,6 +214,8 @@ describe('bot-attachments', () => {
               attachmentId: null,
               createdAt: 'now',
               expiresAt: 'later',
+              origin: null,
+              forwardedFrom: null,
             }
           },
         },

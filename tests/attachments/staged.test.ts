@@ -18,9 +18,10 @@ import { toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const stageFileMetadata = (
-  params: Omit<StageFileParams, 'sourcePlatformInstanceId'> &
-    Partial<Pick<StageFileParams, 'sourcePlatformInstanceId'>>,
-): StagedFileRef => rawStageFileMetadata({ sourcePlatformInstanceId: 'telegram-default', ...params })
+  params: Omit<StageFileParams, 'sourcePlatformInstanceId' | 'origin' | 'forwardedFrom'> &
+    Partial<Pick<StageFileParams, 'sourcePlatformInstanceId' | 'origin' | 'forwardedFrom'>>,
+): StagedFileRef =>
+  rawStageFileMetadata({ sourcePlatformInstanceId: 'telegram-default', origin: null, forwardedFrom: null, ...params })
 
 describe('staged file cache', () => {
   beforeEach(async () => {
@@ -607,5 +608,32 @@ describe('staged file cache', () => {
     })
 
     expect(calls).toEqual([{ fileId: 'file-1', sourceProvider: 'telegram', sourcePlatformInstanceId: 'telegram-a' }])
+  })
+
+  test('stageFileMetadata persists origin and forwardedFrom; resolveStagedFile threads them onto the attachment', async () => {
+    const { loadAttachmentRecord } = await import('../../src/attachments/store.js')
+    const staged = stageFileMetadata({
+      contextId: 'ctx-voice',
+      messageId: 'm-1',
+      senderId: 'u-1',
+      senderUsername: null,
+      filename: 'voice.ogg',
+      mimeType: 'audio/ogg',
+      size: 5,
+      platformFileId: 'pf-voice-1',
+      sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'pi-1',
+      origin: 'voice',
+      forwardedFrom: 'Alice',
+    })
+    expect(staged.origin).toBe('voice')
+    expect(staged.forwardedFrom).toBe('Alice')
+
+    const result = await resolveStagedFile(staged.stagedId, 'ctx-voice', () => Promise.resolve(Buffer.from('audio')))
+    assert.ok('attachmentId' in result, 'expected resolution to produce an attachment')
+    assert.ok(!('message' in result), 'expected no error message on successful resolution')
+    const stored = await loadAttachmentRecord('ctx-voice', result.attachmentId)
+    expect(stored?.origin).toBe('voice')
+    expect(stored?.forwardedFrom).toBe('Alice')
   })
 })

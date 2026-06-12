@@ -73,6 +73,8 @@ export function stageGroupFileCandidates(
         platformFileId: candidate.fileId,
         sourceProvider: params.sourceProvider,
         sourcePlatformInstanceId: params.msg.platformInstanceId,
+        origin: null,
+        forwardedFrom: null,
       })
     } catch (error: unknown) {
       log.warn(

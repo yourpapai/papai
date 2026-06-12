@@ -84,4 +84,33 @@ describe('attachment store', () => {
 
     expect(await loadAttachmentRecord('ctx-store', ref.attachmentId)).toBeNull()
   })
+
+  test('persists and round-trips origin and forwardedFrom', async () => {
+    const ref = await saveAttachment({
+      contextId: 'ctx-origin',
+      sourceProvider: 'telegram',
+      filename: 'voice.ogg',
+      status: 'available',
+      content: Buffer.from('audio'),
+      mimeType: 'audio/ogg',
+      origin: 'voice',
+      forwardedFrom: 'Alice',
+    })
+    const stored = await loadAttachmentRecord('ctx-origin', ref.attachmentId)
+    expect(stored?.origin).toBe('voice')
+    expect(stored?.forwardedFrom).toBe('Alice')
+  })
+
+  test('origin and forwardedFrom are absent when not provided', async () => {
+    const ref = await saveAttachment({
+      contextId: 'ctx-origin',
+      sourceProvider: 'telegram',
+      filename: 'doc.pdf',
+      status: 'available',
+      content: Buffer.from('pdf'),
+    })
+    const stored = await loadAttachmentRecord('ctx-origin', ref.attachmentId)
+    expect(stored?.origin).toBeUndefined()
+    expect(stored?.forwardedFrom).toBeUndefined()
+  })
 })
