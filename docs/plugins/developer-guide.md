@@ -147,7 +147,7 @@ plugin_<sanitized-plugin-id>__<tool-name>
 
 For example, `hello-world` plus `greet` becomes `plugin_hello_world__greet`.
 
-Tool execution receives a request-scoped runtime context with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade, and plugin/context KV. The raw task provider is not exposed.
+Tool execution receives a request-scoped runtime context with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade, plugin/context KV, and a permission-gated `attachments` facade (`attachments.read` permission) for reading stored attachment metadata and bytes scoped to the current storage context. The raw task provider is not exposed.
 
 When a plugin declares `permissions: ["identity"]` and exactly one `contributes.taskProviderTypes` value, tool executions receive `runtimeContext.identity`. Declaring a task provider type also requires `provider.task`, so runtime identity provider plugins need `identity` plus the manifest/provider-task requirements. The facade supports `lookupForChatUser(chatUserId)` and `recordClaim(providerUserId, providerLogin, displayName?)`. `recordClaim(...)` always writes for the current runtime actor, not an arbitrary chat-user target. Claims are recorded as `manual_nl` mappings and are not treated as auto-verified.
 
@@ -179,16 +179,17 @@ Declaring `contributes.jobs` and calling `ctx.registration.registerScheduledJob(
 
 Supported MVP permissions:
 
-| Permission      | Effect                                                                                   |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| `storage`       | Enables plugin KV access. Without it, KV calls fail closed.                              |
-| `tasks.read`    | Enables read methods on the task-provider facade.                                        |
-| `tasks.write`   | Enables write methods on the task-provider facade.                                       |
-| `provider.task` | Allows registering one declared task-provider type and exposes provider runtime helpers. |
-| `identity`      | Exposes identity facade when exactly one task-provider type is declared.                 |
-| `http`          | Exposes provider runtime HTTP helper without requiring a contributed task provider.      |
-| `commands`      | Required to declare `contributes.commands` and register commands.                        |
-| `scheduler`     | Required to declare `contributes.jobs` and register scheduled jobs.                      |
+| Permission         | Effect                                                                                                                                                                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `storage`          | Enables plugin KV access. Without it, KV calls fail closed.                                                                                                                                  |
+| `tasks.read`       | Enables read methods on the task-provider facade.                                                                                                                                            |
+| `tasks.write`      | Enables write methods on the task-provider facade.                                                                                                                                           |
+| `provider.task`    | Allows registering one declared task-provider type and exposes provider runtime helpers.                                                                                                     |
+| `identity`         | Exposes identity facade when exactly one task-provider type is declared.                                                                                                                     |
+| `http`             | Exposes provider runtime HTTP helper without requiring a contributed task provider.                                                                                                          |
+| `commands`         | Required to declare `contributes.commands` and register commands.                                                                                                                            |
+| `scheduler`        | Required to declare `contributes.jobs` and register scheduled jobs.                                                                                                                          |
+| `attachments.read` | Enables `runtimeContext.attachments.read(attachmentId)` in tool executions, returning metadata and bytes for attachments in the current storage context only. Without it, reads fail closed. |
 
 Unsupported in the MVP: raw chat provider access, raw task provider access, raw DB access, raw environment access, encrypted plugin secrets, arbitrary network access, and sandbox isolation.
 

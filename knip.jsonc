@@ -135,6 +135,7 @@
     "client/shared/ui/status-tone.ts": ["files", "exports"],
     // Plugin entry-point default exports are imported dynamically by the plugin
     // loader (by path), so knip sees no static importer. Each new plugin adds a line.
+    "plugins/audio-transcribe/index.ts": ["exports"],
     "plugins/synthetic-web-search/index.ts": ["exports"],
     "plugins/task-provider-kaneo/index.ts": ["exports"],
     "plugins/task-provider-youtrack/index.ts": ["exports"],
