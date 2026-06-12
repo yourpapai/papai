@@ -5,6 +5,134 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] - 2026-06-12
+
+### Added
+
+- **tools:** Per-context reduction feature flags with kill switch
+- **compaction:** Envelope types and tuning constants
+- **compaction:** Pure size-gate with failure/envelope/non-serializable guards
+- **compaction:** Per-context TTL+LRU result store with injected clock
+- **compaction:** Query-aware SMALL_MODEL summarizer with fallback
+- **compaction:** Expand_result paging tool
+- **compaction:** Per-turn result-compaction wrap layer
+- **compaction:** Register expand_result when compaction flag is on
+- **orchestrator:** Apply per-turn result compaction behind the flag
+- **disclosure:** Core/meta tool-name constants and stall threshold
+- **disclosure:** Tool-brief builder from descriptions + metadata
+- **disclosure:** ToolRetriever interface + lexical implementation
+- **disclosure:** Embedding-backed retriever with lexical fallback and brief cache
+- **disclosure:** Turn-scoped DisclosureSession registry
+- **disclosure:** Search_tools tool returning ranked schema-less briefs
+- **disclosure:** Load_tool batch activation tool
+- **disclosure:** PrepareStep factory with stall fallback
+- **disclosure:** MaybeApplyDisclosure wiring helper
+- **disclosure:** Discovery preamble in system prompt behind option
+- **disclosure:** Thread DisclosureSession into generateText prepareStep
+- **memory:** Token-based trim triggering and bounded trim prompt
+- **memory:** Trust-labelled memory block with staleness and eviction (R-07)
+- **admin:** Feature-flags snapshot and update module
+- **admin:** Super-admin feature-flags settings API
+- **settings-ui:** Feature-flags admin fetchers
+- **settings-ui:** Super-admin feature-flags section
+- **memory:** Add long-term memory schema
+- **memory:** Normalize long-term memory scopes
+- **memory:** Add long-term memory store
+- **memory:** Inject bounded long-term context
+- **memory:** Capture long-term memory in background
+- **memory:** Expose long-term memory tools
+- **memory:** Add settings API controls
+- **memory:** Add settings memory controls
+- **memory:** Retire stale long-term memories
+
+### Changed
+
+- **compaction:** Drop vestigial model field from summarizer DI contract
+- **disclosure:** Document conditional expand_result membership, tighten union test
+- **disclosure:** Distinct-term lexical scoring + rank contract docs
+- **disclosure:** Require toolsForBriefs and hoist brief building
+- **prompt:** Extract preference prompt lines into system-prompt-prefs
+- **flags:** Export strict reduction-flags JSON parser
+
+### Documentation
+
+- **plan:** Re-anchor part 2 disclosure plan to post-part-1 code
+- Document progressive disclosure flag behavior
+- Design spec for PR #151 review-fix batch
+- Implementation plan for PR #151 review-fix batch
+- Reflect proactive gating, LRU store, and churn stall guard
+- Note BYOK-aware semantic tool retrieval
+- Design spec for admin feature-flags settings section
+- Implementation plan for admin feature-flags section
+- Feature flags managed in settings UI admin section
+- Design long-term memory architecture
+- Plan long-term memory implementation
+- Clarify long-term memory schema split
+
+### Fixed
+
+- **compaction:** Require non-empty handle in envelope guard
+- **compaction:** Type expand_result failure, kebab logger scope, TTL-expiry test
+- **compaction:** Summarizer-dep rejection falls back to truncation envelope
+- **config:** Invalidate tool descriptor cache on reduction-flag writes
+- **compaction:** Clarify character-offset hint and evict empty context maps
+- **disclosure:** First-sentence extraction skips single-letter abbreviations
+- **disclosure:** Per-model embedding cache + dimension-mismatch guard
+- **disclosure:** Expose defensive copy of session allNames
+- **disclosure:** Only advertise expand_result in preamble when registered
+- **disclosure:** Correlate fallback event with turnId
+- **disclosure:** Stall guard ignores always-on loads; wrap meta tools in structured failures
+- **compaction:** Expand_result failures carry the SDK toolCallId
+- **disclosure:** One reduction-flag snapshot per turn
+- **compaction:** True LRU result store and neutral unavailability message
+- **disclosure:** Ask line no longer advertises ungated injected meta-tools
+- **compaction:** Do not register expand_result on the proactive path
+- **disclosure:** BYOK-aware tool retrieval with usage recording and throw-safe embeds
+- **llm:** Shared memoized model builder; per-context summarizer credentials
+- **llm:** Migrate remaining chat-model callsites; isolation-clean builder tests
+- **llm:** Collision-proof provider cache key; cover default compaction deps
+- **disclosure:** Catch post-load search/load churn with a latched stall guard
+- **memory:** Preserve tool-call/result pairing during smart trim
+- **conversation:** Guard against overlapping background trims
+- **ci:** Run server test suite serially on CI runners
+- **admin:** Exclude placeholder users from feature-flags roster
+- **admin:** Feature-flags write uses PATCH; cover bot-admin write rejection
+- **settings-ui:** Split sidebar builder; add feature-flags section test
+- **memory:** Harden long-term memory schema
+- **memory:** Isolate record store by scope type
+- **memory:** Bound long-term record query
+- **memory:** Isolate group memory profiles
+- **memory:** Use group context for deferred memory
+- **memory:** Bound memory tool inputs
+- **memory:** Guard malformed settings record ids
+- **memory:** Harden settings memory controls
+- **memory:** Harden background memory extraction
+- **settings-ui:** Drop duplicate ContextTaskInstanceResponseSchema alias
+
+### Miscellaneous
+
+- **compaction:** Lint/type/format/mutation cleanup for part 1
+- **compaction:** Knip allowlist for store test seams + doc updates
+- **disclosure:** Gate + mutation cleanup for part 2
+
+### Testing
+
+- **tools:** Pin reserved config key in feature-flags test
+- **tools:** Cover scoped-context derivation and full corrupt-JSON shape
+- **compaction:** Pin size-gate boundary, coherence, and undefined-serialization cases
+- **orchestrator:** Harden compaction wiring test defaults and call assertion
+- **disclosure:** Drop duplicate embedding retriever suite
+- **disclosure:** All-unknown load batch + idempotent description
+- **disclosure:** Reset emit mock per test and pin stall boundary
+- **disclosure:** Pin load_tool registration and copy-on-write in wire
+- **disclosure:** ActiveTools widening across a scripted loop
+- **disclosure:** Flag-off keeps full eager tool set
+- **disclosure:** Kill retriever and registry mutation survivors
+- **disclosure:** Kill churn-guard mutants; log stall reason
+- **settings-ui:** Pin feature-flags request body and wrong-type rejection
+- Kill behavioral mutation survivors; fix client/ paired mutation support
+- **admin:** Cover malformed-body 400 on feature-flags PATCH
+- Replace leaky top-level mock.module with DI and real deps
 ## [6.1.7] - 2026-06-11
 
 ### Added
