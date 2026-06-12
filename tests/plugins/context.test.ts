@@ -618,4 +618,66 @@ describe('buildPluginContext', () => {
       expect(ctx.adminConfig.get('timezone')).toBeUndefined()
     })
   })
+
+  describe('providerRuntime dynamic hosts from admin config', () => {
+    // The thunk is constructed at context-build time but evaluated lazily per httpFetch call,
+    // so admin config set after context construction is picked up without restart.
+
+    test('host from admin config is allowed once config is set, with a mocked fetch', async () => {
+      // Build a manifest that declares providerAllowedHostsFromConfig -> ['base_url']
+      // with base_url as an admin-scoped configRequirement.
+      const manifest = pluginManifestSchema.parse({
+        id: 'dynamic-host-plugin',
+        name: 'Dynamic Host Plugin',
+        version: '1.0.0',
+        description: 'Tests dynamic host resolution from admin config',
+        apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
+        permissions: ['http'],
+        providerAllowedHosts: [],
+        providerAllowedHostsFromConfig: ['base_url'],
+        configRequirements: [{ key: 'base_url', label: 'Base URL', required: true, scope: 'admin' }],
+      })
+
+      // Set admin config AFTER context construction to verify lazy evaluation
+      const { ctx } = buildPluginContext(manifest, '__system__')
+
+      // Before setting config: host not in dynamic set, not in static set -> rejected
+      await expect(ctx.providerRuntime!.httpFetch('http://whisper.lan:9000/v1/transcribe')).rejects.toThrow()
+
+      // Set admin config -> dynamic host thunk will return whisper.lan on next call
+      setPluginAdminConfig('dynamic-host-plugin', 'base_url', 'http://whisper.lan:9000', 'admin')
+
+      // httpFetch with a mock is not injectable through buildPluginContext directly;
+      // instead we verify the lazy-read behavior indirectly: the call should now
+      // proceed past the host check (reaching the real fetch) and either succeed or
+      // throw a network error — not an allowlist error.
+      // We test this by asserting that a call to a disallowed host still throws allowlist,
+      // while the now-configured host does NOT throw an allowlist error.
+      await expect(ctx.providerRuntime!.httpFetch('http://unknown-host.lan/v1/transcribe')).rejects.toThrow()
+      // The configured host is in the dynamic set — the rejection must not be an allowlist rejection
+      await expect(ctx.providerRuntime!.httpFetch('http://whisper.lan:9000/v1/transcribe')).rejects.toThrow(
+        /ECONNREFUSED|fetch|network|connect|socket|timeout|abort/iu,
+      )
+    })
+
+    test('host is not allowed when admin config key is empty', async () => {
+      const manifest = pluginManifestSchema.parse({
+        id: 'empty-config-plugin',
+        name: 'Empty Config Plugin',
+        version: '1.0.0',
+        description: 'Tests that empty config values are skipped',
+        apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
+        permissions: ['http'],
+        providerAllowedHosts: [],
+        providerAllowedHostsFromConfig: ['base_url'],
+        configRequirements: [{ key: 'base_url', label: 'Base URL', required: false, scope: 'admin' }],
+      })
+
+      // admin config not set -> dynamic set empty -> host not allowed
+      const { ctx } = buildPluginContext(manifest, '__system__')
+      await expect(ctx.providerRuntime!.httpFetch('http://whisper.lan/v1/transcribe')).rejects.toThrow()
+    })
+  })
 })

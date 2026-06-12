@@ -6,6 +6,7 @@
 import { logger } from '../logger.js'
 import type { TaskProviderAutoProvision, TaskProviderFactory, TaskProviderProvision } from '../providers/registry.js'
 import type { ProviderConfigField } from '../providers/types.js'
+import { buildDynamicHosts } from './dynamic-hosts.js'
 import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
@@ -241,7 +242,7 @@ export function buildPluginContext(
   const log = buildPluginLogger(manifest.id)
   const providerRuntime =
     permissions.has('provider.task') || permissions.has('http')
-      ? buildProviderRuntime(manifest.providerAllowedHosts, log)
+      ? buildProviderRuntime(manifest.providerAllowedHosts, log, undefined, buildDynamicHosts(manifest))
       : undefined
 
   const declaredTypes = manifest.contributes.taskProviderTypes

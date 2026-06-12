@@ -12,6 +12,18 @@ export type PluginProviderRuntime = {
   readonly logger: PluginLogger
 }
 
+/** Returns the set of hosts contributed by admin-scoped plugin config at call time.
+ *
+ * SECURITY RATIONALE: admin config is operator-trusted (same trust level as approving the
+ * manifest). LLM/tool inputs can never influence this set — only an operator-level admin
+ * can write admin config values. Dynamic hosts intentionally bypass the https requirement
+ * and the public-IP (SSRF) check so that self-hosted LAN endpoints (often http://) work.
+ * Static manifest hosts keep all existing checks. The thunk is evaluated lazily per
+ * request so admin config changes apply without restart. */
+export type DynamicHostsFn = () => ReadonlySet<string>
+
+const noDynamicHosts: DynamicHostsFn = () => new Set()
+
 export interface ProviderRuntimeDeps {
   fetch: (url: string, init?: RequestInit) => Promise<Response>
   assertPublicUrl: (url: URL) => Promise<void>
@@ -73,10 +85,16 @@ function assertHttps(url: URL): void {
 async function validateHop(
   url: URL,
   hostSet: ReadonlySet<string>,
+  dynamicHosts: DynamicHostsFn,
   assertPublicUrl: (url: URL) => Promise<void>,
 ): Promise<void> {
+  const host = url.hostname.toLowerCase()
+  // Dynamic hosts are operator-trusted (same trust level as manifest approval).
+  // They bypass both the https requirement and the public-IP check — deliberate,
+  // to support self-hosted LAN endpoints that are commonly served over plain http.
+  if (dynamicHosts().has(host)) return
   assertHttps(url)
-  if (!hostSet.has(url.hostname.toLowerCase())) {
+  if (!hostSet.has(host)) {
     throw new Error(`Host '${url.hostname}' is not in the plugin providerAllowedHosts allowlist`)
   }
   await assertPublicUrl(url)
@@ -149,6 +167,7 @@ async function fetchWithRedirects(
   currentUrl: URL,
   fetchInit: RequestInit,
   hostSet: ReadonlySet<string>,
+  dynamicHosts: DynamicHostsFn,
   deps: ProviderRuntimeDeps,
   logger: PluginLogger,
   redirectsLeft: number,
@@ -166,16 +185,20 @@ async function fetchWithRedirects(
   }
 
   const redirectUrl = resolveLocationUrl(response, currentUrl)
-  await validateHop(redirectUrl, hostSet, deps.assertPublicUrl)
+  // Redirect hops are validated against both the static and dynamic host sets.
+  // Dynamic hosts still bypass https + public-IP checks on redirect hops — same
+  // operator-trusted rationale as for the initial request.
+  await validateHop(redirectUrl, hostSet, dynamicHosts, deps.assertPublicUrl)
 
   // The caller's init (including any Authorization header) is forwarded to the
   // redirect target. This is acceptable because every hop must pass both the
-  // allowlist check and assertPublicUrl, so headers only ever reach hosts the
-  // plugin manifest already trusts.
+  // allowlist check and assertPublicUrl (or be a trusted dynamic host), so headers
+  // only ever reach hosts the plugin manifest already trusts.
   return fetchWithRedirects(
     redirectUrl,
     sanitizeRedirectFetchInit(buildRedirectFetchInit(fetchInit, response.status), currentUrl, redirectUrl),
     hostSet,
+    dynamicHosts,
     deps,
     logger,
     redirectsLeft - 1,
@@ -185,8 +208,11 @@ async function fetchWithRedirects(
 export function buildProviderRuntime(
   allowedHosts: readonly string[],
   logger: PluginLogger,
-  deps: ProviderRuntimeDeps = defaultDeps,
+  deps: ProviderRuntimeDeps | undefined = defaultDeps,
+  dynamicHosts: DynamicHostsFn = noDynamicHosts,
 ): PluginProviderRuntime {
+  const resolvedDeps = deps ?? defaultDeps
+
   // Private enforcement set. Never exposed directly; httpFetch closes over this
   // copy, so mutations to the exposed Set cannot affect enforcement.
   const hostSet: ReadonlySet<string> = new Set(allowedHosts.map((h) => h.toLowerCase()))
@@ -200,12 +226,12 @@ export function buildProviderRuntime(
     logger,
     async httpFetch(rawUrl: string, init?: RequestInit): Promise<Response> {
       const url = parseProviderUrl(rawUrl)
-      await validateHop(url, hostSet, deps.assertPublicUrl)
+      await validateHop(url, hostSet, dynamicHosts, resolvedDeps.assertPublicUrl)
 
       const signal = composeSignal(init === undefined ? undefined : init.signal)
       const fetchInit = buildFetchInit(init, signal)
 
-      return fetchWithRedirects(url, fetchInit, hostSet, deps, logger, MAX_REDIRECTS)
+      return fetchWithRedirects(url, fetchInit, hostSet, dynamicHosts, resolvedDeps, logger, MAX_REDIRECTS)
     },
   })
 }
