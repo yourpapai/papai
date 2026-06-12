@@ -648,6 +648,32 @@ describe('bot-attachments', () => {
       expect(stored?.filename).toBe('good.ogg')
     })
 
+    test('duplicate staged ids in input → downloadFn called once, one attachment id returned', async () => {
+      const ref = stageFileMetadata({
+        contextId: 'ctx-dedup',
+        messageId: 'm-dedup',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'voice.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-dedup',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      let downloadCount = 0
+      const downloadFn = (): Promise<Buffer | null> => {
+        downloadCount++
+        return Promise.resolve(Buffer.from('audio'))
+      }
+      // Pass the same stagedId twice (simulating two coalesced messages for same file)
+      const ids = await resolveVoiceStagedFiles('ctx-dedup', [ref.stagedId, ref.stagedId], downloadFn)
+      expect(downloadCount).toBe(1)
+      expect(ids).toHaveLength(1)
+    })
+
     test('TOCTOU: already-resolved staged id returns the prior attachment id', async () => {
       const ref = stageFileMetadata({
         contextId: 'ctx-toctou',

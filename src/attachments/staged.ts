@@ -74,47 +74,42 @@ const buildStagedValues = (
   forwardedFrom: params.forwardedFrom,
 })
 
-export function stageFileMetadata(params: StageFileParams): StagedFileRef {
+const upsertAndFetch = (params: StageFileParams, stagedId: string, nowIso: string, expiresIso: string): StagedRow => {
   const db = getDrizzleDb()
-  const now = new Date()
-  const expiresAt = new Date(now.getTime() + DEFAULT_TTL_MS)
-  const nowIso = now.toISOString()
-  const expiresIso = expiresAt.toISOString()
-
-  const stagedId = `stg_${randomUUID()}`
-  const values = buildStagedValues(params, stagedId, nowIso, expiresIso)
-
+  const {
+    stagedId: _sid,
+    contextId: _cid,
+    platformFileId: _pid,
+    attachmentId: _aid,
+    sourceProvider: _sp,
+    ...updateSet
+  } = buildStagedValues(params, stagedId, nowIso, expiresIso)
+  // Re-sending the same platform file intentionally re-stages it; a later resolution creates a NEW attachment
+  // (re-sent file = new attachment), which also means eager voice resolution after a platform re-delivery
+  // downloads again by design.
   db.insert(stagedFiles)
-    .values(values)
+    .values(buildStagedValues(params, stagedId, nowIso, expiresIso))
     .onConflictDoUpdate({
       target: [stagedFiles.platformFileId, stagedFiles.contextId],
-      set: {
-        messageId: params.messageId === undefined ? null : params.messageId,
-        senderId: params.senderId,
-        senderUsername: params.senderUsername === undefined ? null : params.senderUsername,
-        filename: params.filename,
-        mimeType: params.mimeType === undefined ? null : params.mimeType,
-        size: params.size === undefined ? null : params.size,
-        sourcePlatformInstanceId: params.sourcePlatformInstanceId,
-        createdAt: nowIso,
-        expiresAt: expiresIso,
-        status: 'staged',
-        origin: params.origin,
-        forwardedFrom: params.forwardedFrom,
-      },
+      set: { ...updateSet, status: 'staged' as const },
     })
     .run()
-
-  // After upsert, fetch the row to return the actual stagedId (existing or new)
   const row = db
     .select()
     .from(stagedFiles)
     .where(and(eq(stagedFiles.platformFileId, params.platformFileId), eq(stagedFiles.contextId, params.contextId)))
     .get()
+  if (row === undefined) throw new Error('Failed to retrieve staged file after upsert')
+  return row
+}
 
-  if (row === undefined) {
-    throw new Error('Failed to retrieve staged file after upsert')
-  }
+export function stageFileMetadata(params: StageFileParams): StagedFileRef {
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + DEFAULT_TTL_MS)
+  const nowIso = now.toISOString()
+  const expiresIso = expiresAt.toISOString()
+  const stagedId = `stg_${randomUUID()}`
+  const row = upsertAndFetch(params, stagedId, nowIso, expiresIso)
 
   if (row.stagedId === stagedId) {
     log.info({ stagedId, contextId: params.contextId, filename: params.filename }, 'Staged file metadata')

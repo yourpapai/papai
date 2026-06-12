@@ -150,7 +150,7 @@ async function handleMessage(
     return
   }
   if (shouldIgnoreGroupMessage(msg)) return
-  const voiceStagedIds = findVoiceStagedIds(auth.storageContextId, msg.messageId)
+  const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
   let queueMessage = enqueueMessage
   if (deps.enqueueMessage !== undefined) queueMessage = deps.enqueueMessage

@@ -285,6 +285,38 @@ describe('MessageQueue', () => {
       expect(flushed.text).toBe('[@alice]: Hello from thread')
     })
 
+    it('should accumulate voiceStagedIds from all messages in order', () => {
+      queue.enqueue(
+        {
+          text: 'First',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+          voiceStagedIds: ['stg_a'],
+        },
+        mockReply,
+      )
+      queue.enqueue(
+        {
+          text: 'Second',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+          voiceStagedIds: ['stg_b', 'stg_c'],
+        },
+        mockReply,
+      )
+
+      const flushed = queue.forceFlush()
+      expect(flushed).not.toBeNull()
+      assert(flushed !== null)
+      expect(flushed.voiceStagedIds).toEqual(['stg_a', 'stg_b', 'stg_c'])
+    })
+
     it('should accumulate newAttachmentIds from all messages', () => {
       queue.enqueue(
         {

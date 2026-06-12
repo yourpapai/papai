@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import pLimit from 'p-limit'
+
 import {
   findStagedFilesByMessageId,
   isS3Configured,
@@ -186,8 +188,10 @@ export async function resolveVoiceStagedFiles(
   downloadFn: StagedFileDownloadFn | undefined,
 ): Promise<string[]> {
   if (!isS3Configured() || stagedIds.length === 0 || downloadFn === undefined) return []
+  const uniqueIds = [...new Set(stagedIds)]
+  const limit = pLimit(3)
   const resolved = await Promise.all(
-    stagedIds.map((stagedId) => resolveSingleStagedId(stagedId, storageContextId, downloadFn)),
+    uniqueIds.map((stagedId) => limit(() => resolveSingleStagedId(stagedId, storageContextId, downloadFn))),
   )
   return resolved.filter((id): id is string => id !== null)
 }
