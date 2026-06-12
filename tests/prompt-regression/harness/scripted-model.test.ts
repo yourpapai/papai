@@ -34,6 +34,10 @@ describe('classifyFinalReply', () => {
     expect(classifyFinalReply('I found two matching tasks. Which one?')).toBe('asks_clarification')
   })
 
+  test('classifies create-task detail questions as clarification questions', () => {
+    expect(classifyFinalReply('Which project or title should I use for that task?')).toBe('asks_clarification')
+  })
+
   test('classifies confirmation questions', () => {
     expect(classifyFinalReply('Delete "Auth bug"? This is permanent.')).toBe('asks_confirmation')
   })
@@ -50,5 +54,9 @@ describe('classifyFinalReply', () => {
     expect(classifyFinalReply('The task tracker is not configured for this context.')).toBe(
       'reports_non_retryable_failure',
     )
+  })
+
+  test('classifies empty search answers as answers without tools', () => {
+    expect(classifyFinalReply('No matching tasks found.')).toBe('answers_without_tools')
   })
 })

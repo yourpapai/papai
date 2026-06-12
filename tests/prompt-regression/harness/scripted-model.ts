@@ -51,13 +51,21 @@ export function buildScriptedTrace(script: readonly TraceScriptStep[]): Scripted
 
 export function classifyFinalReply(text: string): TraceFinalClassification {
   const lower = text.toLowerCase()
-  if (lower.includes('which one') || lower.includes('which task')) return 'asks_clarification'
+  if (
+    lower.includes('which one') ||
+    lower.includes('which task') ||
+    lower.includes('which project') ||
+    lower.includes('which title')
+  ) {
+    return 'asks_clarification'
+  }
   if (lower.includes('delete') && lower.includes('?')) return 'asks_confirmation'
   if (lower.includes('permission')) return 'requests_permission'
   if (lower.includes('try again') || lower.includes('rate-limiting')) return 'reports_retryable_failure'
   if (lower.includes('unsafe') || lower.includes('cannot do that')) return 'declines_unsafe_action'
   if (lower.includes('will not delete') || lower.includes("won't delete")) return 'answers_without_tools'
   if (lower.includes('cannot') || lower.includes('not configured')) return 'reports_non_retryable_failure'
+  if (lower.includes('no matching') || lower.includes('no results')) return 'answers_without_tools'
   if (lower.trim() === '' || lower.includes('no tool')) return 'answers_without_tools'
   return 'completes_action'
 }
