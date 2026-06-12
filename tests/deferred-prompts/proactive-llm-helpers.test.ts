@@ -3,20 +3,27 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
+
+import type { ModelMessage } from 'ai'
 
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
+import * as conversationModule from '../../src/conversation.js'
 import {
   buildMetadataMessages,
   buildMinimalSystemPrompt,
   getStorageContextId,
   modelIdForLightweight,
+  persistContextResponse,
+  persistProactiveResults,
   resultTextOrDone,
   timezoneOrUtc,
   toolCallCount,
   wrapPrompt,
 } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
+import * as historyModule from '../../src/history.js'
+import * as memoryRunnerModule from '../../src/long-term-memory/runner.js'
 
 const dmTarget: DeferredDeliveryTarget = {
   contextId: 'user-1',
@@ -29,6 +36,18 @@ const dmTarget: DeferredDeliveryTarget = {
 }
 
 describe('proactive-llm-helpers', () => {
+  const spies: Array<{ mockRestore: () => void }> = []
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  const track = <T extends { mockRestore: () => void }>(spy: T): T => {
+    spies.push(spy)
+    return spy
+  }
+
   test('uses thread-scoped storage context for group threads', () => {
     expect(
       getStorageContextId({
@@ -73,5 +92,61 @@ describe('proactive-llm-helpers', () => {
       { role: 'system', content: '[CONTEXT FROM CREATION TIME]\nSnapshot' },
     ])
     expect(wrapPrompt('drink water')).toBe('===DEFERRED_TASK===\ndrink water\n===END_DEFERRED_TASK===')
+  })
+
+  test('context-mode persistence triggers long-term extraction when trimming', () => {
+    const extractionCalls: unknown[][] = []
+    track(spyOn(historyModule, 'appendHistory').mockImplementation(() => undefined))
+    track(spyOn(conversationModule, 'shouldTriggerTrim').mockReturnValue(true))
+    track(spyOn(conversationModule, 'runTrimInBackground').mockResolvedValue(undefined))
+    track(
+      spyOn(memoryRunnerModule, 'runMemoryExtractionInBackground').mockImplementation((...args: unknown[]) => {
+        extractionCalls.push(args)
+        return Promise.resolve()
+      }),
+    )
+    const history: ModelMessage[] = [{ role: 'user', content: 'Remember the release cadence.' }]
+    const assistantMessages: ModelMessage[] = [{ role: 'assistant', content: 'Captured.' }]
+
+    persistContextResponse('ctx:thread', 'cfg', 'group', history, 'gpt-main', assistantMessages)
+
+    expect(extractionCalls[0]?.[0]).toEqual({
+      storageContextId: 'ctx:thread',
+      configContextId: 'cfg',
+      contextType: 'group',
+      history: [...history, ...assistantMessages],
+    })
+  })
+
+  test('full-mode persistence triggers long-term extraction when trimming', () => {
+    const extractionCalls: unknown[][] = []
+    track(spyOn(historyModule, 'appendHistory').mockImplementation(() => undefined))
+    track(spyOn(conversationModule, 'shouldTriggerTrim').mockReturnValue(true))
+    track(spyOn(conversationModule, 'runTrimInBackground').mockResolvedValue(undefined))
+    track(
+      spyOn(memoryRunnerModule, 'runMemoryExtractionInBackground').mockImplementation((...args: unknown[]) => {
+        extractionCalls.push(args)
+        return Promise.resolve()
+      }),
+    )
+    const history: ModelMessage[] = [{ role: 'user', content: 'Ship notes every Friday.' }]
+    const assistantMessages: ModelMessage[] = [{ role: 'assistant', content: 'Done.' }]
+
+    persistProactiveResults(
+      'creator',
+      'ctx',
+      'cfg',
+      'dm',
+      { response: { messages: assistantMessages }, text: 'Done.', toolCalls: [] },
+      history,
+      'gpt-main',
+    )
+
+    expect(extractionCalls[0]?.[0]).toEqual({
+      storageContextId: 'ctx',
+      configContextId: 'cfg',
+      contextType: 'dm',
+      history: [...history, ...assistantMessages],
+    })
   })
 })

@@ -169,10 +169,10 @@ export const prepareLlmInvocation = async (
   enabledToolNames: ReadonlySet<string>
   disclosure: DisclosureSession | undefined
 }> => {
-  const { contextId, configId, history } = opts
+  const { contextId, configId, contextType, history } = opts
   const { tools, enabledToolNames, disclosure } = await buildFullToolSet(opts, deps)
   const timezone = resolveTimezone(configId)
-  const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history)
+  const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history, contextType)
   const validatedMessages = validateToolResults(messagesWithMemory)
   log.debug(
     { contextId, historyLength: history.length, hasMemory: memoryMsg !== null, timezone },

@@ -103,7 +103,7 @@
     "dependency-cruiser": "^17.4.3",
     "drizzle-kit": "^0.31.10",
     "happy-dom": "^20.8.9",
-    "jscpd": "^4.2.2",
+    "jscpd": "^5.0.7",
     "knip": "^6.14.1",
     "msw": "^2",
     "msw-storybook-addon": "^2.0.7",

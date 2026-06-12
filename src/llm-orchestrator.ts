@@ -14,7 +14,7 @@ import { appendHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
 import { resolveEffectiveLlmConfig, type EffectiveLlmConfig } from './llm-config-resolver.js'
-import { appendAssistantHistory } from './llm-history.js'
+import { appendAssistantTurnHistory } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
@@ -250,30 +250,30 @@ export const processMessage = async (
   const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId)
   if (resolvedLlm === null) return
   const turn = await buildHistory(contextId, chatUserId, resolvedLlm.mainModel, userText, newAttachmentIds)
+  const invocationSource = { reply, contextId, chatUserId, username, userText, contextType }
   appendHistory(contextId, [turn.historyMessage])
   const startedAt = Date.now()
   try {
     const result = await callLlm({
-      reply,
-      contextId,
-      chatUserId,
-      username,
+      ...invocationSource,
       history: [...turn.baseHistory, turn.modelMessage],
-      userText,
-      contextType,
       deps,
       configId,
       resolvedLlm,
       turnId: resolvedTurnId,
     })
-    const priorHistory = [...turn.baseHistory, turn.historyMessage]
-    appendAssistantHistory(contextId, configId, resolvedLlm.mainModel, priorHistory, result.response.messages)
+    appendAssistantTurnHistory(
+      contextId,
+      configId,
+      resolvedLlm.mainModel,
+      turn.baseHistory,
+      turn.historyMessage,
+      result.response.messages,
+      contextType,
+    )
   } catch (error) {
     await handleLlmTurnError({
-      reply,
-      contextId,
-      chatUserId,
-      contextType,
+      ...invocationSource,
       mainModel: resolvedLlm.mainModel,
       startedAt,
       baseHistory: turn.baseHistory,

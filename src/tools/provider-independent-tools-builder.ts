@@ -20,6 +20,7 @@ import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructio
 import { makeListMemosTool } from './list-memos.js'
 import { makeListRecurringTasksTool } from './list-recurring-tasks.js'
 import { makeLookupGroupHistoryTool } from './lookup-group-history.js'
+import { makeForgetMemoryTool, makeListMemoryTool, makeRememberMemoryTool, makeSearchMemoryTool } from './memory.js'
 import { makePauseRecurringTaskTool } from './pause-recurring-task.js'
 import { makeUpdateRecurringTaskTool } from './recurring-tools.js'
 import { makeResumeRecurringTaskTool } from './resume-recurring-task.js'
@@ -42,6 +43,14 @@ function addMemoTools(tools: ToolSet, userId: string | undefined): void {
   tools['search_memos'] = makeSearchMemosTool(userId)
   tools['list_memos'] = makeListMemosTool(userId)
   tools['archive_memos'] = makeArchiveMemosTool(userId)
+}
+
+function addMemoryTools(tools: ToolSet, contextId: string | undefined, contextType: ContextType | undefined): void {
+  if (contextId === undefined || contextType === undefined) return
+  tools['search_memory'] = makeSearchMemoryTool({ storageContextId: contextId, contextType })
+  tools['remember_memory'] = makeRememberMemoryTool({ storageContextId: contextId, contextType })
+  tools['forget_memory'] = makeForgetMemoryTool({ storageContextId: contextId, contextType })
+  tools['list_memory'] = makeListMemoryTool({ storageContextId: contextId, contextType })
 }
 
 function addRecurringTools(tools: ToolSet, userId: string | undefined): void {
@@ -97,6 +106,7 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
   }
   addRecurringTools(tools, storageOwnerId)
   addMemoTools(tools, storageOwnerId)
+  addMemoryTools(tools, contextId, contextType)
   addInstructionTools(tools, storageOwnerId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
   if (contextId !== undefined) tools['web_fetch'] = makeWebFetchTool(contextId, storageOwnerId, contextType)

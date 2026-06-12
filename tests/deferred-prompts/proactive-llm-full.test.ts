@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import type { ToolSet } from 'ai'
 
 import { userCachesForTesting } from '../../src/cache.js'
+import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -28,7 +29,10 @@ void mock.module('../../src/mcp/index.js', () => ({
   convertMcpToolsToToolSet: mock(() => ({})),
 }))
 
-const { buildFullToolSet } = await import('../../src/deferred-prompts/proactive-llm-full.js')
+const { buildFullMessages, buildFullToolSet } = await import('../../src/deferred-prompts/proactive-llm-full.js')
+
+const includesMessageText = (messages: readonly { content: unknown }[], text: string): boolean =>
+  messages.some((message) => typeof message.content === 'string' && message.content.includes(text))
 
 beforeEach(async () => {
   void mock.module('../../src/mcp/user-endpoints.js', () => ({
@@ -70,5 +74,33 @@ describe('buildFullToolSet async', () => {
 
     expect(Object.keys(reminder.tools).toSorted()).toEqual(Object.keys(neutral.tools).toSorted())
     expect(reminder.enabledToolNames).toEqual(neutral.enabledToolNames)
+  })
+})
+
+describe('buildFullMessages', () => {
+  test('uses group long-term memory for group thread contexts', () => {
+    saveMemoryProfile(
+      { scopeId: 'group-1', scopeType: 'group' },
+      '## Group memory\n- Group release notes ship on Fridays',
+      '2026-06-12T00:00:00.000Z',
+    )
+    saveMemoryProfile(
+      { scopeId: 'group-1:thread-2', scopeType: 'personal' },
+      '## Personal memory\n- This personal thread memory should not be injected',
+      '2026-06-12T00:00:00.000Z',
+    )
+
+    const { messages } = buildFullMessages(
+      'user-1',
+      'group-1:thread-2',
+      'scheduled',
+      'Summarize releases',
+      undefined,
+      { mode: 'full', delivery_brief: 'Release digest', context_snapshot: null },
+      'group',
+    )
+
+    expect(includesMessageText(messages, 'Group release notes ship on Fridays')).toBe(true)
+    expect(includesMessageText(messages, 'This personal thread memory should not be injected')).toBe(false)
   })
 })

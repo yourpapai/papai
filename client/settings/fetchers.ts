@@ -12,6 +12,7 @@ import {
   GroupMembersResponseSchema,
   GroupTaskInstanceResponseSchema,
   IdentityResponseSchema,
+  MemoryResponseSchema,
   McpResponseSchema,
   PluginsResponseSchema,
   ProvisionResultSchema,
@@ -23,6 +24,7 @@ import {
   type GroupMembersResponse,
   type GroupTaskInstanceResponse,
   type IdentityResponse,
+  type MemoryResponse,
   type McpEndpoint,
   type McpResponse,
   type PluginsResponse,
@@ -129,6 +131,30 @@ export const setToolPermission = (
     | { kind: 'domain'; domain: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
     | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
 ): Promise<ToolsResponse> => writeJson('/settings/api/tools/toggle', 'POST', input, (b) => ToolsResponseSchema.parse(b))
+
+// --- Memory ---
+
+export const fetchMemory = (contextId: string): Promise<MemoryResponse> =>
+  getJson(`/settings/api/memory?${ctxQuery(contextId)}`, (b) => MemoryResponseSchema.parse(b))
+
+export const updateMemoryProfile = (input: { contextId: string; profile: string }): Promise<unknown> =>
+  writeJson('/settings/api/memory/profile', 'PATCH', input, (b) => b)
+
+export const setMemoryCapture = (input: { contextId: string; enabled: boolean }): Promise<unknown> =>
+  writeJson('/settings/api/memory/capture', 'PATCH', input, (b) => b)
+
+export const clearMemory = (input: { contextId: string }): Promise<unknown> =>
+  writeJson('/settings/api/memory/clear', 'POST', input, (b) => b)
+
+export const archiveMemoryRecord = (contextId: string, id: string): Promise<unknown> =>
+  settingsFetch(`/settings/api/memory/records/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ contextId }),
+  }).then(async (res) => {
+    const body = await readBody(res)
+    requireOk(res, body)
+    return body
+  })
 
 // --- MCP ---
 

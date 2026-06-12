@@ -71,4 +71,27 @@ describe('tool metadata', () => {
       })
     }
   })
+
+  test('classifies memory tools by read/write/destructive risk', () => {
+    expect(getToolMetadata('search_memory')).toEqual({
+      domain: 'memory',
+      operation: 'read',
+      risk: 'read',
+    })
+    expect(getToolMetadata('list_memory')).toEqual({
+      domain: 'memory',
+      operation: 'read',
+      risk: 'read',
+    })
+    expect(getToolMetadata('remember_memory')).toEqual({
+      domain: 'memory',
+      operation: 'create',
+      risk: 'write',
+    })
+    expect(getToolMetadata('forget_memory')).toEqual({
+      domain: 'memory',
+      operation: 'delete',
+      risk: 'destructive',
+    })
+  })
 })
