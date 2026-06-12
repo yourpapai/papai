@@ -10,7 +10,7 @@ import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './id
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { buildActivationGuard, buildNamedRegistrationHandlers, type ActivationGuard } from './registration-support.js'
-import type { PluginContributions } from './runtime-types.js'
+import type { PluginAttachmentTransformer, PluginContributions } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type { PluginManifest, PluginCommand, PluginTool, PluginPromptFragment, PluginScheduledJob } from './types.js'
 
@@ -53,6 +53,8 @@ export type PluginRegistration = {
   registerCommand(command: PluginCommand): void
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
+  /** Register an attachment transformer. The name must match a declared contributes.attachmentTransformers entry. */
+  registerAttachmentTransformer(transformer: PluginAttachmentTransformer): void
   /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
   registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void
 }
@@ -185,6 +187,9 @@ function buildRegistration(
     registerScheduledJob: (job) => {
       collected.jobs = [...(collected.jobs ?? []), job]
     },
+    registerAttachmentTransformer: (transformer) => {
+      collected.attachmentTransformers = [...(collected.attachmentTransformers ?? []), transformer]
+    },
   })
   return Object.freeze({
     registerTool(tool: PluginTool): void {
@@ -198,6 +203,9 @@ function buildRegistration(
     },
     registerScheduledJob(job: PluginScheduledJob): void {
       namedRegistrations.registerScheduledJob(job)
+    },
+    registerAttachmentTransformer(transformer: PluginAttachmentTransformer): void {
+      namedRegistrations.registerAttachmentTransformer(transformer)
     },
     registerTaskProviderType: buildRegisterTaskProviderType(manifest, collected, activationGuard),
   })

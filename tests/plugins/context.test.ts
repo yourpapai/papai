@@ -499,6 +499,81 @@ describe('buildPluginContext', () => {
     })
   })
 
+  describe('registerAttachmentTransformer', () => {
+    test('collects a declared transformer', () => {
+      const manifest = makeManifest({
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+          attachmentTransformers: ['my-transformer'],
+        },
+        permissions: ['attachments.read'],
+      })
+      const { ctx, collected } = buildPluginContext(manifest, '__system__')
+      ctx.registration.registerAttachmentTransformer({
+        name: 'my-transformer',
+        mimePrefixes: ['audio/'],
+        transform: () => Promise.resolve({ ok: true, text: 'hi' }),
+      })
+      expect(collected.attachmentTransformers).toHaveLength(1)
+    })
+
+    test('rejects an undeclared transformer name', () => {
+      const manifest = makeManifest({
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+          attachmentTransformers: [],
+        },
+        permissions: ['attachments.read'],
+      })
+      const { ctx } = buildPluginContext(manifest, '__system__')
+      expect(() =>
+        ctx.registration.registerAttachmentTransformer({
+          name: 'nope',
+          mimePrefixes: ['audio/'],
+          transform: () => Promise.resolve({ ok: true, text: 'hi' }),
+        }),
+      ).toThrow(/not declared/u)
+    })
+
+    test('rejects duplicate registration of the same transformer', () => {
+      const manifest = makeManifest({
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+          attachmentTransformers: ['my-transformer'],
+        },
+        permissions: ['attachments.read'],
+      })
+      const { ctx } = buildPluginContext(manifest, '__system__')
+      ctx.registration.registerAttachmentTransformer({
+        name: 'my-transformer',
+        mimePrefixes: ['audio/'],
+        transform: () => Promise.resolve({ ok: true, text: 'hi' }),
+      })
+      expect(() =>
+        ctx.registration.registerAttachmentTransformer({
+          name: 'my-transformer',
+          mimePrefixes: ['audio/'],
+          transform: () => Promise.resolve({ ok: true, text: 'hi' }),
+        }),
+      ).toThrow(/registered more than once/u)
+    })
+  })
+
   describe('adminConfig', () => {
     test('provides adminConfig when plugin declares admin-scoped config requirements', () => {
       setPluginAdminConfig('test-plugin', 'api_key', 'sk-test-123', 'admin')

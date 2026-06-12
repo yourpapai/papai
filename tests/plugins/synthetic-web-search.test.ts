@@ -39,6 +39,7 @@ function createMockContext(
     },
     registerCommand: () => {},
     registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
     registerTaskProviderType: () => {},
   }
 

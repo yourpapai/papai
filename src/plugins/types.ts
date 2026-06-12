@@ -10,18 +10,24 @@ import { mcpPluginConfigSchema } from '../mcp/types.js'
 import type { TaskCapability } from '../providers/types.js'
 import {
   PLUGIN_MANIFEST_PROVIDER_TRAITS,
+  configKeySchema,
   hasAttachmentTransformerPermission,
   hasMatchingContextConfigKeys,
   hasProviderAllowedHostsFromConfig,
   hasProviderManifestPermission,
   hasRequiredMainForManifest,
   isValidMainPath,
-  transformerNameSchema,
+  pluginContributesSchema,
+  pluginIdSchema,
+  providerConfigFieldKeySchema,
+  providerHostSchema,
 } from './manifest-validation.js'
 
 export type { PluginAttachmentFacade, PluginAttachmentRecord } from './attachment-types.js'
 
 export type {
+  AttachmentTransformResult,
+  PluginAttachmentTransformer,
   PluginCommand,
   PluginContributions,
   PluginFactory,
@@ -112,61 +118,6 @@ const CHAT_CAPABILITY_VALUES = [
   'files.receive',
   'users.resolve',
 ] as const satisfies readonly ChatCapability[]
-
-const pluginIdSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-z0-9-]*$/u, 'Plugin ID must be lowercase kebab-case starting with a letter')
-
-const toolNameSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-z0-9_]*$/u, 'Tool name must be snake_case starting with a letter')
-
-const commandNameSchema = z
-  .string()
-  .min(1)
-  .max(32)
-  .regex(/^[a-z][a-z0-9_-]*$/u, 'Command name must be lowercase')
-
-const configKeySchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-z0-9_]*$/u, 'Config key must be snake_case starting with a letter')
-
-const providerTypeSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-z0-9-]*$/u, 'Provider type must be lowercase kebab-case starting with a letter')
-
-const providerConfigFieldKeySchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-zA-Z0-9_]*$/u, 'Provider config field key must start with a letter')
-
-const providerHostSchema = z
-  .string()
-  .min(1)
-  .max(253)
-  .regex(
-    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/iu,
-    'Provider allowed host must be a valid hostname',
-  )
-
-const pluginContributesSchema = z.strictObject({
-  tools: z.array(toolNameSchema).optional().default([]),
-  promptFragments: z.array(z.string().min(1).max(64)).optional().default([]),
-  commands: z.array(commandNameSchema).optional().default([]),
-  jobs: z.array(z.string().min(1).max(64)).optional().default([]),
-  configKeys: z.array(configKeySchema).optional().default([]),
-  taskProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
-  attachmentTransformers: z.array(transformerNameSchema).optional().default([]),
-})
 
 const configRequirementBaseSchema = z.strictObject({
   key: configKeySchema,
