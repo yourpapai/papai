@@ -44,6 +44,12 @@ export function matchesTransformer(
 
 const collapseWhitespace = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim()
 
+// Untrusted text must not be able to fabricate or close bracket tokens; the
+// LLM treats [...] lines as core-owned structure.
+const sanitizeForBracket = (s: string): string => s.replaceAll('[', '(').replaceAll(']', ')').replaceAll('"', "'")
+
+const clean = (s: string): string => sanitizeForBracket(collapseWhitespace(s))
+
 const formatDuration = (totalSeconds: number): string => {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = Math.floor(totalSeconds % 60)
@@ -52,7 +58,7 @@ const formatDuration = (totalSeconds: number): string => {
 
 const labelFor = (record: Pick<PluginAttachmentRecord, 'attachmentId' | 'origin' | 'forwardedFrom'>): string => {
   if (record.forwardedFrom !== undefined) {
-    return `Forwarded voice from "${record.forwardedFrom}" ${record.attachmentId}`
+    return `Forwarded voice from "${sanitizeForBracket(record.forwardedFrom)}" ${record.attachmentId}`
   }
   if (record.origin === 'voice') return `Voice attachment ${record.attachmentId}`
   return `Attachment ${record.attachmentId}`
@@ -63,21 +69,22 @@ export function renderTransformLine(
   result: AttachmentTransformResult,
 ): TransformLine {
   const label = labelFor(record)
+  const safeFilename = sanitizeForBracket(record.filename)
   if (!result.ok) {
     return {
-      line: `[${label}: transcription unavailable — ${collapseWhitespace(result.reason)}]`,
-      historyLine: `[User attached ${record.attachmentId}: ${record.filename}]`,
+      line: `[${label}: transcription unavailable — ${clean(result.reason)}]`,
+      historyLine: `[User attached ${record.attachmentId}: ${safeFilename}]`,
     }
   }
   const metaParts: string[] = []
   if (result.meta?.durationSec !== undefined) metaParts.push(formatDuration(result.meta.durationSec))
   if (result.meta?.language !== undefined) metaParts.push(result.meta.language)
   const meta = metaParts.length === 0 ? '' : ` (${metaParts.join(', ')})`
-  const text = collapseWhitespace(result.text)
+  const text = clean(result.text)
   const truncated = text.length > HISTORY_TRANSCRIPT_MAX ? `${text.slice(0, HISTORY_TRANSCRIPT_MAX)}…` : text
   return {
     line: `[${label}${meta}: "${text}"]`,
-    historyLine: `[User attached ${record.attachmentId}: ${record.filename} — "${truncated}"]`,
+    historyLine: `[User attached ${record.attachmentId}: ${safeFilename} — "${truncated}"]`,
   }
 }
 
@@ -86,6 +93,14 @@ const clampTimeout = (timeoutMs: number | undefined): number => {
   return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, timeoutMs))
 }
 
+/**
+ * Execute a single attachment transformer with a bounded timeout.
+ *
+ * NOTE: the timeout does NOT cancel the in-flight transform — cancellation is
+ * cooperative-only. If the transform does not honour cancellation signals, the
+ * plugin call may keep running (and holding its runtime context) after this
+ * function returns the failure line.
+ */
 export async function executeTransformer(
   transformer: PluginAttachmentTransformer,
   record: PluginAttachmentRecord,
@@ -98,8 +113,15 @@ export async function executeTransformer(
       resolve({ ok: false, reason: 'transformation timed out' })
     }, timeoutMs)
   })
+  // Capture the promise before racing so we can attach a suppression handler.
+  // If the timeout wins, the transform promise may still reject later; without
+  // this handler that would become an unhandled rejection.
+  const transformPromise = transformer.transform(record, runtimeContext)
+  transformPromise.catch(() => {
+    // Late rejection after the timeout already produced a failure line; swallow.
+  })
   try {
-    const result = await Promise.race([transformer.transform(record, runtimeContext), timeout])
+    const result = await Promise.race([transformPromise, timeout])
     return renderTransformLine(record, result)
   } catch (error) {
     log.warn(
