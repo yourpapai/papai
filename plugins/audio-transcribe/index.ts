@@ -13,6 +13,7 @@ import {
   describeLoadFailure,
   loadAudioAttachment,
   readCachedTranscript,
+  resolveConfig,
   transcribeRecord,
   writeCache,
   type HttpFetch,
@@ -56,6 +57,13 @@ async function executeTranscribe(
   const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
   if (cached !== undefined) return cached
 
+  // Resolve config and check for missing API key before consuming rate-limit quota.
+  // A misconfigured deployment must report not_configured, not rate_limited.
+  const { apiKey } = resolveConfig(runtimeContext)
+  if (apiKey === undefined || apiKey.trim() === '' || httpFetch === undefined) {
+    return { error: 'not_configured', message: 'audio-transcribe: api_key missing or providerRuntime unavailable' }
+  }
+
   const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
   if (!rateResult.allowed) {
     return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
@@ -79,6 +87,13 @@ async function runTransform(
   const cacheKey = `transcript:${record.attachmentId}`
   const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
   if (cached !== undefined) return toTransformResult(cached)
+
+  // Resolve config and check for missing API key before consuming rate-limit quota.
+  // A misconfigured deployment must report not configured, not rate limited.
+  const { apiKey } = resolveConfig(runtimeContext)
+  if (apiKey === undefined || apiKey.trim() === '' || httpFetch === undefined) {
+    return { ok: false, reason: 'not configured — the admin can set a transcription API key in the settings UI' }
+  }
 
   const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
   if (!rateResult.allowed) return { ok: false, reason: 'rate limited — try again shortly' }

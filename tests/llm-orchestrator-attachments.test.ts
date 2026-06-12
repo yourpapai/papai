@@ -320,6 +320,63 @@ describe('llm-orchestrator-attachments', () => {
       expect(modelMessage.content).not.toContain(`[User attached ${saved.attachmentId}: voice.ogg]`)
     })
 
+    // Fix 1 (voice carry-over): a voice attachment mentioned by id in a LATER turn (newAttachmentIds=[])
+    // must still get the transformer line, not the plain [User attached ...] pass-through.
+    test('voice attachment mentioned in a later turn receives transformer line, not plain pass-through', async () => {
+      process.env['S3_BUCKET'] = 'test'
+      process.env['S3_ACCESS_KEY_ID'] = 'key'
+      process.env['S3_SECRET_ACCESS_KEY'] = 'secret'
+
+      const manifest = makeTranscriberManifest('carry-over-plugin')
+      pluginRegistry.registerDiscovered(makeDiscoveredPlugin(manifest))
+      pluginRegistry.markActive(manifest.id)
+      contributionRegistry.register(
+        manifest.id,
+        {
+          tools: [],
+          promptFragments: [],
+          attachmentTransformers: [
+            {
+              name: 'voice-transcriber',
+              mimePrefixes: ['audio/'],
+              origins: ['voice'],
+              transform: (): Promise<{ ok: true; text: string }> =>
+                Promise.resolve({ ok: true as const, text: 'carry-over transcript' }),
+            },
+          ],
+        },
+        manifest,
+      )
+      setPluginEnabledForContext(manifest.id, 'ctx-carryover', true)
+
+      const saved = await saveAttachment({
+        contextId: 'ctx-carryover',
+        sourceProvider: 'telegram',
+        filename: 'voice.ogg',
+        status: 'available',
+        content: Buffer.from('audio'),
+        mimeType: 'audio/ogg',
+        origin: 'voice',
+      })
+
+      // First turn: warms the KV cache (newAttachmentIds includes the id)
+      await buildUserTurnMessages('ctx-carryover', 'u1', 'small-model', 'listen', [saved.attachmentId])
+
+      // Second turn: newAttachmentIds=[] but text mentions the attachment id — carry-over
+      const { modelMessage } = await buildUserTurnMessages(
+        'ctx-carryover',
+        'u1',
+        'small-model',
+        `what did ${saved.attachmentId} say`,
+        [],
+      )
+
+      assert(typeof modelMessage.content === 'string', 'expected string content')
+      // Must contain the transformer line, not the plain [User attached ...] form
+      expect(modelMessage.content).toContain('"carry-over transcript"')
+      expect(modelMessage.content).not.toContain(`[User attached ${saved.attachmentId}: voice.ogg]`)
+    })
+
     // Fix 4: text-only model with no transformers skips loadAttachmentRecords (fast path)
     test('text-only model with no active transformers still renders correct pass-through lines', async () => {
       process.env['S3_BUCKET'] = 'test'

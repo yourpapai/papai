@@ -88,8 +88,14 @@ const buildFullPathMessages = async (
 ): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
   const records = await loadAttachmentRecords(contextId, selected)
   const newIds = new Set(newAttachmentIds)
-  const newRecords = records.filter((record) => newIds.has(record.attachmentId))
-  const transforms = await transformNewAttachments(contextId, chatUserId, newRecords)
+  // Dispatch over new records PLUS any selected voice-origin record (carry-over).
+  // A voice attachment mentioned by id in a later turn (newAttachmentIds=[]) would
+  // otherwise render as a plain [User attached …] line even though the plugin's KV
+  // cache holds its transcript. The transformer is cache-first, so carry-over cache
+  // hits are free; an expired-cache carry-over re-transcribes, which is the desired
+  // deterministic behaviour.
+  const transformable = records.filter((record) => newIds.has(record.attachmentId) || record.origin === 'voice')
+  const transforms = await transformNewAttachments(contextId, chatUserId, transformable)
   const { liveLines, historyLines } = buildTurnLines(selected, transforms)
   const liveContent = formatTurnContent(timeTag, liveLines, text)
   const historyContent = formatTurnContent(timeTag, historyLines, text)
@@ -125,6 +131,10 @@ export const buildUserTurnMessages = (
   if (selected.length === 0) return Promise.resolve(textOnly)
   // Fast path: text-only models with no active transformers need no blob reads.
   // Pass-through lines are built directly from the selected refs.
+  // Note: hasContextTransformers walks the plugin registry here, and transformNewAttachments
+  // (called via buildFullPathMessages) walks it again. The duplicate walk only occurs when
+  // the model is text-only AND transformers are registered — a rare configuration — so the
+  // cost is negligible and restructuring to pass through a pre-collected list is not warranted.
   if (!supportsAttachmentModelInput(modelName) && !hasContextTransformers(contextId)) {
     const { liveLines, historyLines } = buildTurnLines(selected, new Map())
     return Promise.resolve({

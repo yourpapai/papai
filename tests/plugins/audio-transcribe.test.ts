@@ -747,6 +747,50 @@ describe('audio-transcribe plugin', () => {
     expect(result.reason).toContain('rate limited')
   })
 
+  // ── fix 2: not_configured before rate-limit (tool path) ─────────────────
+
+  test('tool returns not_configured when rate-limited AND api_key is missing (config checked first)', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(new Response('', { status: 200 }))
+    const { facade, readMock } = createMockAttachments()
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const result = await registeredTool.value!.execute(
+      { attachment_id: 'att_1' },
+      createMockRuntimeContext({ rateAllowed: false, retryAfterSec: 30, adminApiKey: undefined, attachments: facade }),
+      createMockOptions(),
+    )
+
+    // Must return not_configured, NOT rate_limited — config check must precede rate-limit check
+    expect(result).toMatchObject({ error: 'not_configured' })
+    expect(readMock).not.toHaveBeenCalled()
+    expect(mockHttpFetch).not.toHaveBeenCalled()
+  })
+
+  // ── fix 2: not_configured before rate-limit (transformer path) ───────────
+
+  test('transformer returns not configured when rate-limited AND api_key is missing (config checked first)', async () => {
+    const mockHttpFetch = mock()
+    const { ctx, registeredTransformer } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const record = makeVoiceRecord()
+    const runtimeContext = createMockRuntimeContext({
+      adminApiKey: undefined,
+      rateAllowed: false,
+      retryAfterSec: 30,
+    })
+
+    const result: AttachmentTransformResult = await registeredTransformer.value!.transform(record, runtimeContext)
+
+    // Must report not configured, NOT rate limited — config check must precede rate-limit check
+    assertTransformFailed(result)
+    expect(result.reason).toContain('not configured')
+    expect(result.reason).not.toContain('rate limited')
+  })
+
   // ── fix 1: cache-before-rate-limit ───────────────────────────────────────
 
   test('cache hit is returned even when the context is rate-limited (quota not consumed)', async () => {
