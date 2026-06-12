@@ -17,7 +17,7 @@ export type PluginAttachmentRecord = {
   createdAt: string
   /** How the file arrived ('voice' for voice notes); undefined for legacy rows. */
   origin?: 'voice' | 'file'
-  /** Original sender display name when the source message was forwarded. */
+  /** Original sender display name when the source message was forwarded. Display name only — not a stable identity reference. */
   forwardedFrom?: string
 }
 

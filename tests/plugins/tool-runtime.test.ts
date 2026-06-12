@@ -214,6 +214,20 @@ describe('buildPluginToolRuntimeContext', () => {
       )
       expect(ctx.contextConfig.get('api_key')).toBeUndefined()
     })
+
+    test("cannot read another plugin's config for the same key and context", () => {
+      setPluginConfig('ctx-1', 'other-plugin', 'api_key', 'other-plugin-secret')
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({
+          configRequirements: [
+            { key: 'api_key', label: 'API Key', required: false, sensitive: true, scope: 'context' },
+          ],
+        }),
+        makeRuntime({ storageContextId: 'ctx-1' }),
+      )
+      expect(ctx.contextConfig.get('api_key')).toBeUndefined()
+    })
   })
 
   test('tool runtime exposes identity facade for identity provider plugins', () => {

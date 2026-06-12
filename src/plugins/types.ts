@@ -173,6 +173,14 @@ export const pluginManifestSchema = z
     defaultEnabled: z.boolean().optional().default(false),
     requiredTaskCapabilities: z.array(z.enum(TASK_CAPABILITY_VALUES)).optional().default([]),
     requiredChatCapabilities: z.array(z.enum(CHAT_CAPABILITY_VALUES)).optional().default([]),
+    /**
+     * Per-plugin config requirements declared by scope.
+     *
+     * The same key MAY be declared in both 'admin' and 'context' scopes; the two are
+     * stored independently and exposed through separate facades (`adminConfig` /
+     * `contextConfig`). This dual-scope pattern is how per-context overrides of an
+     * admin default are built — no uniqueness constraint is enforced across scopes.
+     */
     configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
     providerCapabilities: z.array(z.enum(TASK_CAPABILITY_VALUES)).optional().default([]),
     providerTraits: z.array(z.enum(PLUGIN_MANIFEST_PROVIDER_TRAITS)).optional().default([]),
