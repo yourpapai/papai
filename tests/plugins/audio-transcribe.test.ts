@@ -13,6 +13,7 @@ import manifest from '../../plugins/audio-transcribe/plugin.json'
 import {
   DEFAULT_MODEL,
   describeApiFailure,
+  normalizeLanguage,
   normalizeModel,
   resolveConfig,
 } from '../../plugins/audio-transcribe/transcription.js'
@@ -1052,5 +1053,167 @@ describe('normalizeModel input validation', () => {
     expect(normalizeModel(longName)).toBe(DEFAULT_MODEL)
     const exactLimit = 'a'.repeat(128)
     expect(normalizeModel(exactLimit)).toBe(exactLimit)
+  })
+})
+
+describe('normalizeLanguage input validation', () => {
+  test('valid 2-letter code passes through unchanged', () => {
+    expect(normalizeLanguage('en')).toBe('en')
+    expect(normalizeLanguage('ru')).toBe('ru')
+    expect(normalizeLanguage('zh')).toBe('zh')
+  })
+
+  test('valid longer code passes through unchanged', () => {
+    expect(normalizeLanguage('yue')).toBe('yue')
+    expect(normalizeLanguage('ENGLISH')).toBe('ENGLISH')
+    expect(normalizeLanguage('abcdefgh')).toBe('abcdefgh')
+  })
+
+  test('undefined returns undefined', () => {
+    expect(normalizeLanguage(undefined)).toBeUndefined()
+  })
+
+  test('trailing whitespace is trimmed before validation', () => {
+    // 'ru ' trims to 'ru' → valid
+    expect(normalizeLanguage('ru ')).toBe('ru')
+  })
+
+  test('embedded control char makes language invalid → returns undefined', () => {
+    expect(normalizeLanguage('e\r\nn')).toBeUndefined()
+  })
+
+  test('null bytes and other non-alpha chars → returns undefined', () => {
+    expect(normalizeLanguage('e\0n')).toBeUndefined()
+    expect(normalizeLanguage('en-US')).toBeUndefined()
+    expect(normalizeLanguage('123')).toBeUndefined()
+  })
+
+  test('too-short (1 char) or too-long (9+ chars) → returns undefined', () => {
+    expect(normalizeLanguage('a')).toBeUndefined()
+    expect(normalizeLanguage('abcdefghi')).toBeUndefined()
+  })
+})
+
+describe('normalizeLanguage applied in buildMultipartBody', () => {
+  test('valid language is included in FormData', async () => {
+    const capturedInits: (RequestInit | undefined)[] = []
+    const mockHttpFetch = mock((_url: string, init?: RequestInit) => {
+      capturedInits.push(init)
+      return Promise.resolve(
+        new Response(JSON.stringify({ text: 'bonjour', language: 'fr', duration: 1.0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    await registeredTool.value!.execute(
+      { attachment_id: 'att_1', language: 'fr' },
+      createMockRuntimeContext(),
+      createMockOptions(),
+    )
+
+    const body = capturedInits.at(0)?.body
+    assert(body instanceof FormData, 'expected request body to be FormData')
+    expect(body.get('language')).toBe('fr')
+  })
+
+  test('language with embedded control char is dropped from FormData', async () => {
+    const capturedInits: (RequestInit | undefined)[] = []
+    const mockHttpFetch = mock((_url: string, init?: RequestInit) => {
+      capturedInits.push(init)
+      return Promise.resolve(
+        new Response(JSON.stringify({ text: 'bonjour', language: 'fr', duration: 1.0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    await registeredTool.value!.execute(
+      { attachment_id: 'att_1', language: 'e\r\nn' },
+      createMockRuntimeContext(),
+      createMockOptions(),
+    )
+
+    const body = capturedInits.at(0)?.body
+    assert(body instanceof FormData, 'expected request body to be FormData')
+    // Invalid language must be dropped — field absent, not forwarded to the API
+    expect(body.get('language')).toBeNull()
+  })
+
+  test('language with trailing whitespace is normalized and present in FormData', async () => {
+    const capturedInits: (RequestInit | undefined)[] = []
+    const mockHttpFetch = mock((_url: string, init?: RequestInit) => {
+      capturedInits.push(init)
+      return Promise.resolve(
+        new Response(JSON.stringify({ text: 'hi', language: 'ru', duration: 1.0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    await registeredTool.value!.execute(
+      { attachment_id: 'att_1', language: 'ru ' },
+      createMockRuntimeContext(),
+      createMockOptions(),
+    )
+
+    const body = capturedInits.at(0)?.body
+    assert(body instanceof FormData, 'expected request body to be FormData')
+    // Trailing space trimmed → 'ru' passes validation → present in FormData
+    expect(body.get('language')).toBe('ru')
+  })
+})
+
+describe('XOR guard: whitespace-only base_url edge cases', () => {
+  test('whitespace-only context base_url + real context api_key → treated as unset → incomplete_context_override', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(new Response('', { status: 200 }))
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const result = await registeredTool.value!.execute(
+      { attachment_id: 'att_1' },
+      createMockRuntimeContext({
+        contextBaseUrl: '   ',
+        contextApiKey: 'ctx-key',
+        adminApiKey: 'admin-key',
+      }),
+      createMockOptions(),
+    )
+
+    // whitespace-only base_url → normalized to undefined; api_key is set → XOR mismatch → incomplete_context_override
+    expect(result).toMatchObject({ error: 'incomplete_context_override' })
+    expect(mockHttpFetch).not.toHaveBeenCalled()
+  })
+
+  test('context api_key WITHOUT base_url → transformer returns incomplete context override reason', async () => {
+    const mockHttpFetch = mock()
+    const { ctx, registeredTransformer } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const record = makeVoiceRecord()
+    const runtimeContext = createMockRuntimeContext({
+      contextApiKey: 'ctx-key',
+      adminApiKey: 'admin-key',
+    })
+
+    const result: AttachmentTransformResult = await registeredTransformer.value!.transform(record, runtimeContext)
+
+    assertTransformFailed(result)
+    expect(result.reason).toContain('incomplete context override')
+    expect(result.reason).toContain('set both api_key and base_url')
   })
 })

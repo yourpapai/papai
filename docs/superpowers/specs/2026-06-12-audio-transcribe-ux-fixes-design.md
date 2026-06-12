@@ -146,9 +146,25 @@ Any transformer exception or timeout is caught at the dispatch boundary and rend
 **Config resolution, at execute time** (kills the stale closure; rotation applies on the next message):
 
 ```text
-apiKey  = contextConfig.get('api_key') ?? adminConfig.get('api_key')            // undefined → not_configured failure
-model   = contextConfig.get('model')   ?? adminConfig.get('model')   ?? 'whisper-1'
-baseUrl = adminConfig.get('base_url')                                ?? 'https://api.openai.com'
+contextKey  = contextConfig.get('api_key')  // trim; empty → undefined
+contextBase = contextConfig.get('base_url') // trim; empty → undefined
+
+// XOR → incomplete failure
+if ((contextKey === undefined) !== (contextBase === undefined)):
+  return { ok: false, error: 'incomplete_context_override' }
+
+// Both set → context pair
+if contextKey !== undefined && contextBase !== undefined:
+  apiKey  = contextKey
+  baseUrl = normalizeBaseUrl(contextBase)   // context-tier: full HTTPS + public-IP validation
+
+// Neither set → admin pair
+else:
+  apiKey  = adminConfig.get('api_key')      // undefined → not_configured failure
+  baseUrl = normalizeBaseUrl(adminConfig.get('base_url') ?? 'https://api.openai.com')
+                                            // admin-tier: operator-trusted, bypasses public-IP restriction
+
+model = contextConfig.get('model') ?? adminConfig.get('model') ?? 'whisper-1'
 ```
 
 **Shared internals.** The transformer and the `transcribe` tool call one internal transcription function: same KV cache (`transcript:<attachment_id>`), same 24 MiB cap, same config resolution, same error vocabulary, and the same audio acceptance rule — `audio/*` MIME, falling back to the filename-extension list when the attachment has no MIME type. The extension fallback applies on the tool path too, fixing today's `unsupported_media_type` rejection of Telegram audio files that arrive without a `mime_type`. The tool keeps its surface (`attachment_id`, optional `language`).
@@ -179,7 +195,7 @@ Every failure converges on the same behavior: the turn proceeds and the model se
 
 ## Testing
 
-- **Core:** manifest schema (contribution list, `attachments.read` refinement, `providerAllowedHostsFromConfig` referencing only admin-scoped keys); registration gating; dispatch (MIME match, extension fallback, origin filter, eligibility, first-match determinism, timeout, exception → failure line); rendering (meta omission, forwarded attribution, failure reasons); `recordToPart` never emits `audio/*` parts; multimodal and text paths produce identical text content; history truncation at 120 chars; group eager-resolve fires only for `origin: 'voice'` staged files; `contextConfig` facade; allowlist-from-config including the public-IP bypass applying only to config-contributed hosts.
+- **Core:** manifest schema (contribution list, `attachments.read` refinement, `providerAllowedHostsFromConfig` referencing only admin- or context-scoped keys — admin values are operator-trusted; context values get full HTTPS + public-IP validation); registration gating; dispatch (MIME match, extension fallback, origin filter, eligibility, first-match determinism, timeout, exception → failure line); rendering (meta omission, forwarded attribution, failure reasons); `recordToPart` never emits `audio/*` parts; multimodal and text paths produce identical text content; history truncation at 120 chars; group eager-resolve fires only for `origin: 'voice'` staged files; `contextConfig` facade; allowlist-from-config including the public-IP bypass applying only to admin-config-contributed hosts.
 - **Adapters:** Telegram voice/audio origin tagging and `forward_origin` capture; Discord voice-message flag; Mattermost defaults to `'file'`.
 - **Migration:** new nullable columns on `attachments` and `staged_files`.
 - **Plugin:** transform happy path; config resolution order (context → admin → default); execute-time reads (rotation without restart); cache hit and prune; the existing tool test suite stays green.

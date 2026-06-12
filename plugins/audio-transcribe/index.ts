@@ -12,6 +12,7 @@ import {
   describeApiFailure,
   describeLoadFailure,
   loadAudioAttachment,
+  normalizeLanguage,
   readCachedTranscript,
   resolveConfig,
   transcribeRecord,
@@ -78,7 +79,13 @@ async function executeTranscribe(
   const audio = await loadAudioAttachment(runtimeContext, parsed.attachment_id)
   if (!audio.ok) return audio.result
 
-  const apiResult = await transcribeRecord(audio.record, audio.bytes, parsed.language, config, httpFetch)
+  const apiResult = await transcribeRecord(
+    audio.record,
+    audio.bytes,
+    normalizeLanguage(parsed.language),
+    config,
+    httpFetch,
+  )
   if ('error' in apiResult) return apiResult
 
   writeCache(runtimeContext.kv, cacheKey, apiResult)

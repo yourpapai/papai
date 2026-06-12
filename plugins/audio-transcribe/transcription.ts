@@ -54,6 +54,12 @@ export function normalizeModel(raw: string | undefined): string {
   return value
 }
 
+export function normalizeLanguage(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined
+  const value = raw.trim()
+  return /^[a-z]{2,8}$/iu.test(value) ? value : undefined
+}
+
 export function resolveConfig(runtimeContext: PluginToolRuntimeContext): ResolvedConfig {
   const contextKey = runtimeContext.contextConfig.get('api_key')
   const contextBase = runtimeContext.contextConfig.get('base_url')
