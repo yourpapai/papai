@@ -136,30 +136,58 @@ export async function resolveMessageAttachments(
 }
 
 /**
- * Eagerly resolve voice-origin staged files for the message being processed.
+ * Cheap synchronous lookup — returns the staged-row ids of voice-origin files
+ * attached to the given message. No download or network call is made.
+ */
+export function findVoiceStagedIds(storageContextId: string, messageId: string | undefined): string[] {
+  if (!isS3Configured() || messageId === undefined) return []
+  return findStagedFilesByMessageId(storageContextId, messageId)
+    .filter((staged) => staged.origin === 'voice')
+    .map((staged) => staged.stagedId)
+}
+
+/**
+ * Eagerly resolve voice-origin staged files identified by their staged ids.
  * Group chats stage files lazily; a voice note addressed to the bot IS the
  * message, so it must be available before the LLM turn starts. Ordinary
  * staged files keep lazy resolution via the resolve_staged_file tool.
+ *
+ * Per-id errors (network/S3/thrown) are caught and skipped — the function
+ * always resolves and never throws.
  */
-export function resolveVoiceStagedFiles(
+async function resolveSingleStagedId(
+  stagedId: string,
   storageContextId: string,
-  messageId: string | undefined,
+  downloadFn: StagedFileDownloadFn,
+): Promise<string | null> {
+  try {
+    const result = await resolveStagedFile(stagedId, storageContextId, downloadFn)
+    if ('attachmentId' in result && result.attachmentId !== null && result.attachmentId !== 'unknown') {
+      return result.attachmentId
+    }
+    log.warn({ stagedId, contextId: storageContextId }, 'Eager voice staged-file resolution failed')
+    return null
+  } catch (error: unknown) {
+    log.warn(
+      {
+        stagedId,
+        contextId: storageContextId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Eager voice staged-file resolution threw',
+    )
+    return null
+  }
+}
+
+export async function resolveVoiceStagedFiles(
+  storageContextId: string,
+  stagedIds: readonly string[],
   downloadFn: StagedFileDownloadFn | undefined,
 ): Promise<string[]> {
-  if (!isS3Configured() || messageId === undefined || downloadFn === undefined) return Promise.resolve([])
-  const voiceStaged = findStagedFilesByMessageId(storageContextId, messageId).filter(
-    (staged) => staged.origin === 'voice',
+  if (!isS3Configured() || stagedIds.length === 0 || downloadFn === undefined) return []
+  const resolved = await Promise.all(
+    stagedIds.map((stagedId) => resolveSingleStagedId(stagedId, storageContextId, downloadFn)),
   )
-  return voiceStaged.reduce(
-    async (chain, staged) => {
-      const acc = await chain
-      const result = await resolveStagedFile(staged.stagedId, storageContextId, downloadFn)
-      if ('attachmentId' in result && result.attachmentId !== null && result.attachmentId !== 'unknown') {
-        return [...acc, result.attachmentId]
-      }
-      log.warn({ stagedId: staged.stagedId, storageContextId }, 'Eager voice staged-file resolution failed')
-      return acc
-    },
-    Promise.resolve([] as string[]),
-  )
+  return resolved.filter((id): id is string => id !== null)
 }

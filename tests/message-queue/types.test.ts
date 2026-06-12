@@ -16,6 +16,7 @@ describe('QueueItem interface', () => {
       storageContextId: '456',
       contextType: 'dm',
       newAttachmentIds: [],
+      voiceStagedIds: [],
     }
     expect(item.text).toBe('Hello')
     expect(item.storageContextId).toBe('456')
@@ -39,6 +40,7 @@ describe('CoalescedItem interface', () => {
       storageContextId: '456',
       contextType: 'dm',
       newAttachmentIds: [],
+      voiceStagedIds: [],
       reply: mockReply,
       turnId: 'test-turn-id',
     }

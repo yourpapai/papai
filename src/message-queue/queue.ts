@@ -147,9 +147,11 @@ export class MessageQueue {
   private collectMessageContent(isThread: boolean): {
     texts: string[]
     attachmentIds: string[]
+    voiceStagedIds: string[]
   } {
     const texts: string[] = []
     const attachmentIds: string[] = []
+    const voiceStagedIds: string[] = []
     for (const msg of this.messages) {
       if (isThread && msg.item.username !== null) {
         texts.push(`[@${msg.item.username}]: ${msg.item.text}`)
@@ -157,8 +159,9 @@ export class MessageQueue {
         texts.push(msg.item.text)
       }
       attachmentIds.push(...msg.item.newAttachmentIds)
+      voiceStagedIds.push(...msg.item.voiceStagedIds)
     }
-    return { texts, attachmentIds }
+    return { texts, attachmentIds, voiceStagedIds }
   }
 
   private flush(): CoalescedItem | null {
@@ -176,7 +179,7 @@ export class MessageQueue {
 
     const isThread = firstMessage.item.contextType === 'group' && this.storageContextId.includes(':')
     const isDm = firstMessage.item.contextType === 'dm'
-    const { texts, attachmentIds } = this.collectMessageContent(isThread)
+    const { texts, attachmentIds, voiceStagedIds } = this.collectMessageContent(isThread)
     const text = isDm ? texts.join('\n\n') : texts.join('\n')
 
     const turnId = randomUUID()
@@ -189,6 +192,7 @@ export class MessageQueue {
       configContextId: lastMessage.item.configContextId,
       contextType: lastMessage.item.contextType,
       newAttachmentIds: attachmentIds,
+      voiceStagedIds,
       reply: lastMessage.reply,
       turnId,
     }
