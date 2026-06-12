@@ -5,8 +5,25 @@
 
 export type StrykerBunConfig = Record<string, unknown> & {
   testFiles?: string[]
+  bunArgs?: string[]
   timeout?: number
 }
+
+/**
+ * Normalize a test file path so Bun treats it as a path, not a pattern.
+ * Without the "./" prefix, Bun applies pathIgnorePatterns during discovery
+ * and silently drops tests/client/** entries in the Stryker sandbox.
+ */
+export const toRelativeTestFilePath = (p: string): string => (p.startsWith('./') || p.startsWith('/') ? p : `./${p}`)
+
+/**
+ * Return true when any of the test files live under tests/client/ or tests/e2e/,
+ * which are excluded by bunfig.toml pathIgnorePatterns. The stryker-bun-runner
+ * copies pathIgnorePatterns into the sanitized sandbox bunfig, so we must pass
+ * --path-ignore-patterns '' as a bunArg to clear it for these runs.
+ */
+const needsPathIgnoreOverride = (testFiles: string[]): boolean =>
+  testFiles.some((f) => f.includes('tests/client/') || f.includes('tests/e2e/'))
 
 export type StrykerConfig = Record<string, unknown> & {
   appendPlugins?: string[]
@@ -50,10 +67,19 @@ export function buildPairedConfig(input: BuildPairedConfigInput): PairedStrykerC
 
   const baseBun = base.bun ?? {}
   const baseThresholds = base.thresholds ?? { high: 80, low: 60, break: 0 }
+  const normalizedTestFiles = testFiles.map(toRelativeTestFilePath)
+  const baseBunArgs = Array.isArray(baseBun.bunArgs) ? baseBun.bunArgs : []
+  const extraBunArgs = needsPathIgnoreOverride(normalizedTestFiles) ? ['--path-ignore-patterns', ''] : []
+  const bunArgs = [...baseBunArgs, ...extraBunArgs]
+  const resolvedBun: StrykerBunConfig & { testFiles: string[] } = {
+    ...baseBun,
+    testFiles: normalizedTestFiles,
+    ...(bunArgs.length > 0 ? { bunArgs } : {}),
+  }
   const next: PairedStrykerConfig = {
     ...base,
     mutate: [srcFile],
-    bun: { ...baseBun, testFiles: [...testFiles] },
+    bun: resolvedBun,
     ignoreStatic: false,
     incremental: false,
     reporters: ['json'],

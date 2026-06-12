@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { tool } from 'ai'
 import type { LanguageModel, ModelMessage, ToolSet } from 'ai'
 import { generateText } from 'ai'
@@ -12,6 +11,7 @@ import { z } from 'zod'
 import { getCachedHistory } from '../cache.js'
 import { getMainContextIdFromThreadContextId } from '../chat/scoped-context.js'
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
+import { buildChatModel } from '../llm-model-builder.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tools:lookup-group-history' })
@@ -63,11 +63,7 @@ const defaultDeps: LookupGroupHistoryDeps = {
       return null
     }
 
-    return createOpenAICompatible({
-      name: 'openai-compatible',
-      apiKey: resolved.llmApiKey,
-      baseURL: resolved.llmBaseUrl,
-    })(resolved.smallModel)
+    return buildChatModel(resolved.llmApiKey, resolved.llmBaseUrl, resolved.smallModel)
   },
 }
 

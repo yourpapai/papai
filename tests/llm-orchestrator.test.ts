@@ -472,13 +472,18 @@ describe('processMessage', () => {
         'admin-1',
       )
       const buildCalls: Array<{ apiKey: string; baseURL: string; model: string }> = []
-      void mock.module('@ai-sdk/openai-compatible', () => ({
-        createOpenAICompatible:
-          (opts: { apiKey: string; baseURL: string }): ((model: string) => string) =>
+      void mock.module('../src/llm-model-builder.js', () => ({
+        buildChatModel: (apiKey: string, baseUrl: string, modelName: string): string => {
+          buildCalls.push({ apiKey, baseURL: baseUrl, model: modelName })
+          return `mock:${modelName}`
+        },
+        getOpenAICompatibleProvider:
+          (apiKey: string, baseUrl: string): ((model: string) => string) =>
           (model: string): string => {
-            buildCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, model })
+            buildCalls.push({ apiKey, baseURL: baseUrl, model })
             return `mock:${model}`
           },
+        clearModelBuilderCacheForTesting: (): void => {},
       }))
       const generateTextResults: readonly Promise<GenerateTextResult>[] = [
         Promise.resolve({

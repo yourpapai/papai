@@ -49,6 +49,7 @@ import * as _identityMapping from '../src/identity/mapping.js'
 import * as _instancesBootstrap from '../src/instances/bootstrap.js'
 import * as _platformStore from '../src/instances/platform-store.js'
 import * as _taskStore from '../src/instances/task-store.js'
+import * as _llmModelBuilder from '../src/llm-model-builder.js'
 import * as _logger from '../src/logger.js'
 import * as _mcpIndex from '../src/mcp/index.js'
 import * as _mcpPluginEndpoints from '../src/mcp/plugin-endpoints.js'
@@ -78,6 +79,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/chat/interaction-router.js', { ..._interactionRouter }],
   ['ai', { ..._ai }],
   ['@ai-sdk/openai-compatible', { ..._openaiCompat }],
+  ['../src/llm-model-builder.js', { ..._llmModelBuilder }],
   ['../src/announcements.js', { ..._announcements }],
   ['../src/attachments/index.js', { ..._attachmentsIndex }],
   ['../src/attachments/staged-download.js', { ..._stagedDownload }],

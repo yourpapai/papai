@@ -11,7 +11,7 @@ import {
   AdminInstancesResponseSchema,
   BootstrapSchema,
   ConfigResponseSchema,
-  ContextTaskInstanceResponseSchema,
+  GroupTaskInstanceResponseSchema,
   IdentityResponseSchema,
   ProviderTypesResponseSchema,
   McpResponseSchema,
@@ -145,8 +145,8 @@ describe('fetcher-schemas', () => {
     expect(parsed.instances).toHaveLength(1)
   })
 
-  test('ContextTaskInstanceResponseSchema parses a bound payload', () => {
-    const parsed = ContextTaskInstanceResponseSchema.parse({
+  test('GroupTaskInstanceResponseSchema parses a bound payload', () => {
+    const parsed = GroupTaskInstanceResponseSchema.parse({
       contextId: 'user:1',
       taskInstanceId: 'yt-default',
       available: [{ id: 'yt-default', type: 'youtrack', status: 'active' }],
@@ -155,8 +155,8 @@ describe('fetcher-schemas', () => {
     expect(parsed.available[0]?.type).toBe('youtrack')
   })
 
-  test('ContextTaskInstanceResponseSchema accepts a null taskInstanceId', () => {
-    const parsed = ContextTaskInstanceResponseSchema.parse({
+  test('GroupTaskInstanceResponseSchema accepts a null taskInstanceId', () => {
+    const parsed = GroupTaskInstanceResponseSchema.parse({
       contextId: 'user:1',
       taskInstanceId: null,
       available: [],

@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
 import { getAiOutputSettings } from './ai-output-settings.js'
@@ -16,6 +15,7 @@ import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
 import { resolveEffectiveLlmConfig, type EffectiveLlmConfig } from './llm-config-resolver.js'
 import { appendAssistantTurnHistory } from './llm-history.js'
+import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
@@ -35,7 +35,6 @@ import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { missingSystemConfigKeys } from './system-config.js'
-import { fetchWithoutTimeout } from './utils/fetch.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
 
@@ -45,8 +44,7 @@ export const resolveAiOutputSettingsContextId = (contextId: string): string =>
 const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => stepCountIs(...args),
-  buildOpenAI: (apiKey: string, baseURL: string) =>
-    createOpenAICompatible({ name: 'openai-compatible', apiKey, baseURL, fetch: fetchWithoutTimeout }),
+  buildOpenAI: (apiKey: string, baseURL: string) => getOpenAICompatibleProvider(apiKey, baseURL),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   maybeAutoProvision: (reply, contextId, chatUserId, username) =>
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
@@ -190,9 +188,8 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     await ensureRequiredConfig(reply, contextId, configId)
     await maybeAutoLinkIdentity(chatUserId, username, provider)
   }
-  const { tools, validatedMessages, enabledToolNames } = await prepareLlmInvocation(
-    buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn),
-  )
+  const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
+  const { tools, validatedMessages, enabledToolNames, disclosure } = await prepareLlmInvocation(invocationOpts)
   const progressReporter = createProgressReporterForContext(reply, contextId)
   const result = await invokeModelWithTyping(reply, {
     contextId,
@@ -206,6 +203,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     messages: validatedMessages,
     deps,
     progressReporter,
+    disclosure,
     turnId,
   })
   const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length

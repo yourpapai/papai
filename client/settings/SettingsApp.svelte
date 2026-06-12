@@ -33,6 +33,33 @@
   import AdminPluginsApprovalSection from './sections/admin/AdminPluginsApprovalSection.svelte'
   import AdminPluginsConfigSection from './sections/admin/AdminPluginsConfigSection.svelte'
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
+  import AdminFeatureFlagsSection from './sections/admin/AdminFeatureFlagsSection.svelte'
+
+  type SidebarItem = SidebarGroup['items'][number]
+
+  function buildAdminSidebarItems(session: typeof settingsSession): SidebarItem[] {
+    const items: SidebarItem[] = []
+    if (session.isBotAdmin) {
+      items.push(
+        { id: 'instances', label: 'Instances' },
+        { id: 'system', label: 'System' },
+        { id: 'byok-admin', label: 'BYOK LLM' },
+        { id: 'plugin-config', label: 'Plugin config' },
+        { id: 'users', label: 'Users' },
+        { id: 'groups', label: 'Groups' },
+        { id: 'announce', label: 'Announce' },
+      )
+    }
+    // super admins are always bot admins, so items already has the bot-admin entries here
+    if (session.isSuperAdmin) {
+      items.push(
+        { id: 'admins', label: 'Admins' },
+        { id: 'plugin-approval', label: 'Plugin approval' },
+        { id: 'feature-flags', label: 'Feature flags' },
+      )
+    }
+    return items
+  }
 
   let activeId = $state(window.location.hash.slice(1) || 'profile')
 
@@ -66,23 +93,8 @@
         ],
       },
     ]
-    const admin: SidebarGroup = { kicker: 'Admin', danger: true, items: [] }
-    if (settingsSession.isBotAdmin) {
-      admin.items = [
-        { id: 'instances', label: 'Instances' },
-        { id: 'system', label: 'System' },
-        { id: 'byok-admin', label: 'BYOK LLM' },
-        { id: 'plugin-config', label: 'Plugin config' },
-        { id: 'users', label: 'Users' },
-        { id: 'groups', label: 'Groups' },
-        { id: 'announce', label: 'Announce' },
-      ]
-    }
-    // super admins are always bot admins, so admin.items already has the bot-admin entries here
-    if (settingsSession.isSuperAdmin) {
-      admin.items = [...admin.items, { id: 'admins', label: 'Admins' }, { id: 'plugin-approval', label: 'Plugin approval' }]
-    }
-    if (admin.items.length > 0) list.push(admin)
+    const adminItems = buildAdminSidebarItems(settingsSession)
+    if (adminItems.length > 0) list.push({ kicker: 'Admin', danger: true, items: adminItems })
     return list
   })
 
@@ -155,6 +167,7 @@
               {#if settingsSession.isSuperAdmin}
                 <AdminAdminsSection />
                 <AdminPluginsApprovalSection catalogContextId={ctx} />
+                <AdminFeatureFlagsSection />
               {/if}
             </div>
           {/if}

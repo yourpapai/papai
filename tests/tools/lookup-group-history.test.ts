@@ -27,7 +27,7 @@ type LookupGroupHistoryInput = {
 }
 
 let generateTextImpl: () => Promise<GenerateTextResult>
-let builtModelCalls: Array<{ apiKey: string; baseURL: string; model: string }>
+let builtModelCalls: Array<{ apiKey: string; baseUrl: string; modelName: string }>
 
 describe('makeLookupGroupHistoryTool', () => {
   beforeEach(async () => {
@@ -42,13 +42,18 @@ describe('makeLookupGroupHistoryTool', () => {
       generateText: (): Promise<GenerateTextResult> => generateTextImpl(),
     }))
 
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (opts: { apiKey: string; baseURL: string }): ((_model: string) => unknown) =>
-        (model: string): unknown => {
-          builtModelCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, model })
-          return { model }
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelName: string): unknown => {
+        builtModelCalls.push({ apiKey, baseUrl, modelName })
+        return { modelName }
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((_model: string) => unknown) =>
+        (modelName: string): unknown => {
+          builtModelCalls.push({ apiKey, baseUrl, modelName })
+          return { modelName }
         },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
   })
 
@@ -118,14 +123,19 @@ describe('executeLookupGroupHistory', () => {
       generateText: (): Promise<GenerateTextResult> => generateTextImpl(),
     }))
 
-    // Mock the openai-compatible module
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (opts: { apiKey: string; baseURL: string }): ((_model: string) => unknown) =>
-        (model: string): unknown => {
-          builtModelCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, model })
-          return { model }
+    // Mock the llm-model-builder module (used by default deps)
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelName: string): unknown => {
+        builtModelCalls.push({ apiKey, baseUrl, modelName })
+        return { modelName }
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((_model: string) => unknown) =>
+        (modelName: string): unknown => {
+          builtModelCalls.push({ apiKey, baseUrl, modelName })
+          return { modelName }
         },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
   })
 
@@ -157,14 +167,19 @@ describe('executeLookupGroupHistory with history', () => {
       generateText: (): Promise<GenerateTextResult> => generateTextImpl(),
     }))
 
-    // Mock the openai-compatible module
-    void mock.module('@ai-sdk/openai-compatible', () => ({
-      createOpenAICompatible:
-        (opts: { apiKey: string; baseURL: string }): ((_model: string) => unknown) =>
-        (model: string): unknown => {
-          builtModelCalls.push({ apiKey: opts.apiKey, baseURL: opts.baseURL, model })
-          return { model }
+    // Mock the llm-model-builder module (used by default deps)
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelName: string): unknown => {
+        builtModelCalls.push({ apiKey, baseUrl, modelName })
+        return { modelName }
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((_model: string) => unknown) =>
+        (modelName: string): unknown => {
+          builtModelCalls.push({ apiKey, baseUrl, modelName })
+          return { modelName }
         },
+      clearModelBuilderCacheForTesting: (): void => {},
     }))
   })
 
@@ -205,8 +220,8 @@ describe('executeLookupGroupHistory with history', () => {
     expect(builtModelCalls).toEqual([
       {
         apiKey: 'sk-byok-history',
-        baseURL: 'https://byok-history.invalid/v1',
-        model: 'byok-small-history',
+        baseUrl: 'https://byok-history.invalid/v1',
+        modelName: 'byok-small-history',
       },
     ])
   })

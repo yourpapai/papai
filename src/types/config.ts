@@ -68,6 +68,21 @@ export function isConfigKey(key: string): key is ConfigKey {
 const PLUGIN_PROVIDER_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:provider:[A-Za-z0-9][A-Za-z0-9_.-]*$/u
 const PLUGIN_CONTEXT_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:[a-z][a-z0-9_]*$/u
 
+/**
+ * Reserved system-internal config keys. Not user-visible in the settings UI
+ * (no matching ConfigField entry), but must be writable via setConfigValue so
+ * that writes trigger the TOOL_ASSEMBLY_CONFIG_KEYS cache-invalidation path.
+ */
+const SYSTEM_RESERVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
+  // see REDUCTION_FLAGS_CONFIG_KEY in src/tools/feature-flags.ts
+  'tool_context_flags',
+])
+
 export function isAllowedDynamicConfigKey(key: string): boolean {
-  return isConfigKey(key) || PLUGIN_PROVIDER_CONFIG_KEY_PATTERN.test(key) || PLUGIN_CONTEXT_CONFIG_KEY_PATTERN.test(key)
+  return (
+    isConfigKey(key) ||
+    PLUGIN_PROVIDER_CONFIG_KEY_PATTERN.test(key) ||
+    PLUGIN_CONTEXT_CONFIG_KEY_PATTERN.test(key) ||
+    SYSTEM_RESERVED_CONFIG_KEYS.has(key)
+  )
 }

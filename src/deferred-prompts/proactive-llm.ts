@@ -3,13 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { generateText, stepCountIs, type ModelMessage } from 'ai'
+import { generateText, stepCountIs, type LanguageModel, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
+import { buildChatModel } from '../llm-model-builder.js'
 import { logger } from '../logger.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
@@ -45,16 +45,13 @@ const makeMinimalTools = (userId: string): { get_current_time: ReturnType<typeof
 export interface ProactiveLlmDeps {
   generateText: typeof generateText
   stepCountIs: typeof stepCountIs
-  buildModel: (
-    config: { apiKey: string; baseURL: string },
-    modelId: string,
-  ) => ReturnType<ReturnType<typeof createOpenAICompatible>>
+  buildModel: (config: { apiKey: string; baseURL: string }, modelId: string) => LanguageModel
 }
 
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => stepCountIs(...args),
-  buildModel: (config, modelId) => createOpenAICompatible({ name: 'openai-compatible', ...config })(modelId),
+  buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
 }
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string; smallModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>

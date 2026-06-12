@@ -3,14 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, type LanguageModel } from 'ai'
 
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
+import { buildChatModel } from '../llm-model-builder.js'
 import { logger } from '../logger.js'
 import { recordUsage } from '../usage/recorder.js'
 import type { ContextType } from '../usage/types.js'
-import { fetchWithoutTimeout } from '../utils/fetch.js'
 
 const log = logger.child({ scope: 'web:distill' })
 
@@ -80,13 +79,7 @@ export interface DistillDeps {
 
 const defaultDeps: DistillDeps = {
   generateText: (...args) => generateText(...args),
-  buildModel: (apiKey, baseUrl, modelId) =>
-    createOpenAICompatible({
-      name: 'openai-compatible',
-      apiKey,
-      baseURL: baseUrl,
-      fetch: fetchWithoutTimeout,
-    })(modelId),
+  buildModel: (apiKey, baseUrl, modelId) => buildChatModel(apiKey, baseUrl, modelId),
 }
 
 export type DistillCallContext = {

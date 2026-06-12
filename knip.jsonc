@@ -75,6 +75,12 @@
     "src/usage/index.ts": ["exports"],
     // resetPermissionPromptForTesting is a test-only seam.
     "src/chat/permission-prompt.ts": ["exports"],
+    // setResultStoreClockForTesting and clearResultStoreForTesting are test-only seams.
+    "src/tools/compaction/result-store.ts": ["exports"],
+    // clearModelBuilderCacheForTesting is a test-only seam.
+    "src/llm-model-builder.ts": ["exports"],
+    // clearBriefEmbeddingCachesForTesting is a test-only seam.
+    "src/tools/disclosure/embedding-tool-retriever.ts": ["exports"],
     // Mattermost action context signing is created ahead of the action adapter integration.
     "src/chat/mattermost/action-signing.ts": ["files"],
     // Mattermost action callback route entry points are created ahead of the web server route wiring.

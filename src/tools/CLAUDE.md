@@ -38,6 +38,30 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
   invoked); `allow` exposes it unchanged; `ask` exposes it wrapped so each call requires user
   permission (the input schema gains `_permission_reason` and execution is gated). Preferences
   are keyed by the same `storageContextId` used elsewhere.
+- **Result compaction is not part of `makeTools()`.** It is a per-turn wrap applied in
+  `prepareLlmInvocation` (`src/llm-orchestrator-tools.ts`) after `applyToolPreferences`,
+  gated by `resolveReductionFlags(contextId).resultCompaction` (`src/tools/feature-flags.ts`,
+  reserved `tool_context_flags` config key, default OFF, `TOOL_CONTEXT_REDUCTION_DISABLED`
+  kill switch). `applyResultCompaction` (`src/tools/compaction/wrap-compaction.ts`) wraps each
+  executable tool: successful results over `COMPACTION_THRESHOLD_BYTES` are stored in the
+  per-context TTL/LRU result store and replaced by a `CompactedEnvelope` (SMALL_MODEL summary
+  or truncation preview + handle). The companion `expand_result` tool (registered in
+  `provider-independent-tools-builder.ts` only when the flag is ON and `mode` is `normal`) pages the stored raw
+  result and is itself never wrapped. Flag OFF returns the toolset reference unchanged.
+- **Progressive disclosure is also not part of `makeTools()`.** `maybeApplyDisclosure`
+  (`src/tools/disclosure/wire.ts`) runs in `buildFullToolSet` after `applyResultCompaction`,
+  gated by `resolveReductionFlags(contextId).progressiveDisclosure`. When ON it copies the
+  toolset, injects `search_tools` (ranked schema-less briefs via a `ToolRetriever` — embedding
+  with lexical fallback when `semanticToolRetrieval` is ON, else lexical) and `load_tool`
+  (batch activation), both bound to one turn-scoped `DisclosureSession` (`registry.ts`, never
+  cached). `invokeModel` attaches `createDisclosurePrepareStep` (`prepare-step.ts`) so per-step
+  `activeTools` = core ∪ meta ∪ loaded, intersected with registered names; after
+  `DISCLOSURE_STALL_STEPS` (2) with no real loads, or when the trailing 2 completed steps contain only `search_tools`/`load_tool` calls, it latches open (`{}`, all tools) and emits
+  `disclosure:fallback` once — loading always-on names does not count. Meta tools are added
+  on top of the compacted set so they are never compaction-wrapped; ask/deny preferences were
+  already applied, so a loaded tool keeps its `ask` wrapper. Debug events
+  (`disclosure:search`/`disclosure:load`/`disclosure:fallback`) carry counts/lengths only —
+  never query text or tool schemas. Flag OFF returns the toolset reference unchanged.
 
 `MakeToolsOptions` controls tool exposure:
 

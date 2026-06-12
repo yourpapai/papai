@@ -17,6 +17,8 @@ const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
 
 const csrfHeader = (init: RequestInit): string => new Headers(init.headers).get('X-Settings-CSRF') ?? ''
+const parseBody = (body: BodyInit | null | undefined): unknown => (typeof body === 'string' ? JSON.parse(body) : null)
+const methodOf = (init: RequestInit): string => (init.method ?? 'GET').toUpperCase()
 
 describe('admin-fetchers', () => {
   test('fetchAdminSystem GETs admin system config', async () => {
@@ -63,5 +65,60 @@ describe('admin-fetchers', () => {
     setMockFetch(() => Promise.resolve(json({ totalUsers: 5, successCount: 5, failCount: 0 })))
     const result = await sendAnnounce({ message: 'hello' })
     expect(result.totalUsers).toBe(5)
+  })
+
+  const flagsSnapshot = {
+    killSwitchEngaged: false,
+    contexts: [
+      {
+        contextId: 'pi:cGktMQ:ctx:dS0x',
+        kind: 'user',
+        label: 'alice',
+        platformInstanceLabel: 'pi-1',
+        flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+      },
+    ],
+  }
+
+  test('fetchAdminFeatureFlags GETs and parses the snapshot', async () => {
+    const { fetchAdminFeatureFlags } = await import('../../../client/settings/admin-fetchers.js')
+    let seenUrl = ''
+    let seenMethod = ''
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenMethod = methodOf(init)
+      return Promise.resolve(json(flagsSnapshot))
+    })
+    const result = await fetchAdminFeatureFlags()
+    expect(seenUrl).toBe('/settings/api/admin/feature-flags')
+    expect(seenMethod).toBe('GET')
+    expect(result.contexts[0]?.label).toBe('alice')
+  })
+
+  test('saveAdminFeatureFlags PATCHes the feature-flags endpoint with CSRF header', async () => {
+    const { saveAdminFeatureFlags } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-ff')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json(flagsSnapshot.contexts[0]))
+    })
+    await saveAdminFeatureFlags({
+      contextId: 'pi:cGktMQ:ctx:dS0x',
+      flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+    })
+    expect(seenUrl).toBe('/settings/api/admin/feature-flags')
+    expect(seenCsrf).toBe('csrf-ff')
+    expect(seenMethod).toBe('PATCH')
+    expect(seenBody).toEqual({
+      contextId: 'pi:cGktMQ:ctx:dS0x',
+      flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+    })
   })
 })

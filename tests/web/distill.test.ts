@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
@@ -297,5 +297,46 @@ describe('distillWebContent', () => {
 
     const rows = getDrizzleDb().select().from(llmUsageEvents).all()
     expect(rows).toEqual([])
+  })
+})
+
+describe('distillWebContent default buildModel dep', () => {
+  beforeEach(async () => {
+    mockLogger()
+    resetSystemConfigCacheForTesting()
+    await setupTestDb()
+  })
+
+  test('default buildModel delegates to buildChatModel from llm-model-builder', async () => {
+    const buildChatModelCalls: Array<{ apiKey: string; baseUrl: string; modelId: string }> = []
+    void mock.module('../../src/llm-model-builder.js', () => ({
+      buildChatModel: (apiKey: string, baseUrl: string, modelId: string): unknown => {
+        buildChatModelCalls.push({ apiKey, baseUrl, modelId })
+        return { id: modelId }
+      },
+      getOpenAICompatibleProvider:
+        (apiKey: string, baseUrl: string): ((_model: string) => unknown) =>
+        (modelId: string): unknown => {
+          buildChatModelCalls.push({ apiKey, baseUrl, modelId })
+          return { id: modelId }
+        },
+      clearModelBuilderCacheForTesting: (): void => {},
+    }))
+    void mock.module('ai', () => ({
+      generateText: (): Promise<{ text: string }> => Promise.resolve({ text: 'summary\n\nexcerpt' }),
+    }))
+
+    const { distillWebContent } = await import('../../src/web/distill.js')
+    seedSystemLlm({ smallModel: 'small-distill' })
+
+    await distillWebContent({
+      storageContextId: 'ctx-default-dep',
+      title: 'Test',
+      content: createLongContent(),
+    })
+
+    expect(buildChatModelCalls).toEqual([
+      { apiKey: 'test-key', baseUrl: 'https://llm.example', modelId: 'small-distill' },
+    ])
   })
 })

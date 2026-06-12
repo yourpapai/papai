@@ -5,13 +5,12 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel, ModelMessage } from 'ai'
 
 import type { ContextType } from '../chat/types.js'
 import { resolveEffectiveLlmConfig, type EffectiveLlmConfig } from '../llm-config-resolver.js'
+import { buildChatModel } from '../llm-model-builder.js'
 import { logger } from '../logger.js'
-import { fetchWithoutTimeout } from '../utils/fetch.js'
 import { extractMemoryPatch, type MemoryPatch } from './extractor.js'
 import { resolveMemoryScope } from './scope.js'
 import {
@@ -55,12 +54,7 @@ export type ExtractMemoryPatchRunInput = Readonly<{
 }>
 
 const buildModel = (config: ResolvedConfig): LanguageModel =>
-  createOpenAICompatible({
-    name: 'openai-compatible',
-    apiKey: config.llmApiKey,
-    baseURL: config.llmBaseUrl,
-    fetch: fetchWithoutTimeout,
-  })(config.smallModel)
+  buildChatModel(config.llmApiKey, config.llmBaseUrl, config.smallModel)
 
 const defaultDeps: RunMemoryExtractionDeps = {
   extractMemoryPatch: (input) => {

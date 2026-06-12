@@ -379,7 +379,7 @@ describe('pairedRun', () => {
     expect(written).toMatchObject({
       mutate: ['src/foo.ts'],
       ignoreStatic: false,
-      bun: { testFiles: ['tests/foo.test.ts'] },
+      bun: { testFiles: ['./tests/foo.test.ts'] },
     })
   })
 })
