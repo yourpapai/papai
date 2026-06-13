@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.0] - 2026-06-13
+
+### Added
+
+- **plugins:** Add attachments.read permission
+- **plugins:** Expose attachments.read facade on tool runtime context
+- **plugins:** Add audio-transcribe plugin with transcribe tool
+- **attachments:** Add origin and forwarded_from columns (migration 054)
+- **attachments:** Persist origin and forwarded_from through store and staged resolution
+- **telegram:** Tag voice origin and capture forward attribution on extracted files
+- **attachments:** Thread origin and forward attribution through ingest and staging
+- **plugins:** Manifest schema for attachment transformers and config-sourced allowed hosts
+- **plugins:** Attachment transformer contribution type and registration
+- **plugins:** Context-scoped config facade and origin metadata on attachment records
+- **plugins:** Admin-config-sourced dynamic hosts for plugin httpFetch
+- **plugins:** Attachment transformer dispatch, timeout isolation, and line rendering
+- **orchestrator:** Pre-turn attachment transforms, audio part suppression, unified turn text
+- **bot:** Eagerly resolve voice-origin staged files before the turn
+- **plugins:** Audio-transcribe v2 — voice transformer, execute-time config, cache pruning
+- **plugins:** Context base_url override with strict credential pairing and two-tier host trust
+- **deferred-prompts:** Mention-driven group reminder delivery + plugin docs
+
+### Changed
+
+- **plugins:** Split transcribe tool input parsing to satisfy function-size lint
+
+### Documentation
+
+- **specs:** Add audio-transcribe UX fixes design (attachment transformers)
+- **plans:** Add audio-transcribe UX fixes implementation plan
+- Attachment transformer hook — guide, ADR, supersede 2026-04-11 STT docs
+
+### Fixed
+
+- **plugins:** Pass lint/typecheck/format for audio-transcribe and split attachment types
+- **db:** Idempotent migration 054 and test cleanups per review
+- **attachments:** Review polish — mapping-convention comment, file-origin round-trip, static import
+- **telegram:** Honest forward-attribution fallback, accurate docs, branch tests
+- **plugins:** Close manifest schema gaps for transformers and config-sourced hosts
+- **plugins:** Required transformer manifest field, registration permission guard, log scope
+- **plugins:** Cross-plugin contextConfig isolation test and config-scope docs
+- **plugins:** Redirect auth-stripping regression tests and dynamic-hosts operator feedback
+- **plugins:** Bracket-injection sanitization and late-rejection handling in attachment transform
+- **orchestrator:** Shared attachment-line rendering, transform budget, fast path, integration test
+- **bot:** Resolve voice staged files post-coalescing with exception safety
+- **bot:** Dedupe and bound voice staged resolution, gate lookup to groups
+- **plugins:** Cache-before-quota in transcribe tool, richer failure reasons and tests
+- **orchestrator:** Carry-over voice transcripts, config-before-quota, polish
+- **plugins:** Address code-review issues from context base_url override
+- **plugins:** Language normalization, user_config key index, base_url override docs and tests
+
+### Miscellaneous
+
+- Register audio-transcribe in knip ignore list and document attachments.read
+
+### Testing
+
+- **db:** Update last-migration assertion for 054
+- **bot-attachments:** Exercise DM origin threading at the right layer; cover absent-field staging
 ## [6.2.0] - 2026-06-12
 
 ### Added
