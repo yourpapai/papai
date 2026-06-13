@@ -314,3 +314,125 @@ describe('pluginManifestSchema strict validation', () => {
     expect(result.success).toBe(false)
   })
 })
+
+describe('pluginManifestSchema attachmentTransformers and providerAllowedHostsFromConfig', () => {
+  test('accepts contributes.attachmentTransformers with attachments.read permission', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'audio-transcribe',
+      name: 'Audio Transcribe',
+      version: '1.0.0',
+      description: 'transcribes audio attachments',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { tools: [], promptFragments: [], attachmentTransformers: ['my_transformer'] },
+      permissions: ['attachments.read'],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects attachmentTransformers without attachments.read permission', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'audio-transcribe-no-perm',
+      name: 'Audio Transcribe No Perm',
+      version: '1.0.0',
+      description: 'transcribes audio attachments',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { tools: [], promptFragments: [], attachmentTransformers: ['my_transformer'] },
+      permissions: [],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('accepts providerAllowedHostsFromConfig referencing an admin-scoped config key', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'http-config-hosts',
+      name: 'HTTP Config Hosts',
+      version: '1.0.0',
+      description: 'uses config-sourced allowed hosts',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: ['http'],
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [{ key: 'base_url', label: 'Base URL', required: false, sensitive: false, scope: 'admin' }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects providerAllowedHostsFromConfig referencing a context-scoped or missing key', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'http-config-hosts-bad',
+      name: 'HTTP Config Hosts Bad',
+      version: '1.0.0',
+      description: 'uses config-sourced allowed hosts without admin scope',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: ['http'],
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('rejects mcp + attachmentTransformers-only manifest without main (fix 1: runtimeContributionCount includes transformers)', () => {
+    // This must FAIL (success === false): an mcp+transformers manifest without main must be rejected
+    // because attachmentTransformers are a runtime contribution and require main.
+    const result = pluginManifestSchema.safeParse({
+      id: 'mcp-transformers-only',
+      name: 'MCP Transformers Only',
+      version: '1.0.0',
+      description: 'mcp and transformers only, no main',
+      apiVersion: 1,
+      contributes: { attachmentTransformers: ['my_transformer'] },
+      permissions: ['attachments.read'],
+      mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('rejects providerAllowedHostsFromConfig without http or provider.task permission (fix 2)', () => {
+    // providerAllowedHostsFromConfig alone (no http or provider.task) must be rejected
+    const result = pluginManifestSchema.safeParse({
+      id: 'config-hosts-no-http-perm',
+      name: 'Config Hosts No HTTP Perm',
+      version: '1.0.0',
+      description: 'config-sourced hosts without http permission',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: [],
+      providerAllowedHostsFromConfig: ['base_url'],
+      configRequirements: [{ key: 'base_url', label: 'Base URL', required: false, sensitive: false, scope: 'admin' }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('accepts kebab-case transformer name audio-transcribe (fix 3)', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'audio-transcribe',
+      name: 'Audio Transcribe',
+      version: '1.0.0',
+      description: 'transcribes audio attachments',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { attachmentTransformers: ['audio-transcribe'] },
+      permissions: ['attachments.read'],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects malformed config key in providerAllowedHostsFromConfig (fix 4)', () => {
+    // 'Base URL' contains uppercase and a space — not a valid config key
+    const result = pluginManifestSchema.safeParse({
+      id: 'config-hosts-bad-key',
+      name: 'Config Hosts Bad Key',
+      version: '1.0.0',
+      description: 'malformed key in providerAllowedHostsFromConfig',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: ['http'],
+      providerAllowedHostsFromConfig: ['Base URL'],
+      configRequirements: [{ key: 'base_url', label: 'Base URL', required: false, sensitive: false, scope: 'admin' }],
+    })
+    expect(result.success).toBe(false)
+  })
+})

@@ -6,9 +6,11 @@
 import { describe, expect, mock, test } from 'bun:test'
 
 import type { PluginLogger } from '../../src/plugins/context.js'
-import type { ProviderRuntimeDeps } from '../../src/plugins/provider-runtime.js'
+import type { DynamicHostsFn, ProviderRuntimeDeps } from '../../src/plugins/provider-runtime.js'
 import { buildProviderRuntime } from '../../src/plugins/provider-runtime.js'
 import { mockLogger } from '../utils/test-helpers.js'
+
+const noDynamicHostsFn: DynamicHostsFn = () => new Set()
 
 type FetchSpy = ReturnType<typeof mock<(_url: string, _init?: RequestInit) => Promise<Response>>>
 type AssertSpy = ReturnType<typeof mock<(_url: URL) => Promise<void>>>
@@ -352,5 +354,262 @@ describe('buildProviderRuntime.httpFetch', () => {
     const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
 
     await expect(runtime.httpFetch('not a url')).rejects.toThrow('Invalid provider httpFetch URL')
+  })
+})
+
+describe('buildProviderRuntime.httpFetch dynamic hosts', () => {
+  // SECURITY RATIONALE: dynamic hosts are sourced exclusively from admin-scoped plugin
+  // config (operator-trusted, same trust level as manifest approval). LLM/tool inputs
+  // can never influence the dynamic set. Dynamic hosts bypass https + public-IP checks
+  // deliberately to support self-hosted endpoints on private networks (often http://).
+  // Static hosts keep all existing checks.
+
+  test('allows a host contributed by dynamicHosts and skips https and public-IP checks for it', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok', { status: 200 })))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.reject(new Error('private address')))
+    const runtime = buildProviderRuntime(
+      ['api.openai.com'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+    )
+    const response = await runtime.httpFetch('http://whisper.lan/v1/audio/transcriptions', { method: 'POST' })
+    expect(response.status).toBe(200)
+    // assertPublicUrl must not be called for dynamic-host requests — it would reject
+    // private/LAN addresses, which are the primary use case for dynamicHosts
+    expect(assertPublicUrl).not.toHaveBeenCalled()
+  })
+
+  test('static hosts still require https and the public-IP check', async () => {
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.reject(new Error('private address')))
+    const runtime = buildProviderRuntime(
+      ['api.openai.com'],
+      makeLogger(),
+      { fetch: mock(), assertPublicUrl },
+      () => new Set(),
+    )
+    // Even an allowlisted static host goes through assertPublicUrl and can be rejected
+    await expect(runtime.httpFetch('https://api.openai.com/x')).rejects.toThrow('private address')
+  })
+
+  test('rejects hosts in neither the static nor the dynamic set', async () => {
+    const runtime = buildProviderRuntime(['api.openai.com'], makeLogger(), undefined, () => new Set(['whisper.lan']))
+    await expect(runtime.httpFetch('https://evil.example/x')).rejects.toThrow(/allowlist/u)
+  })
+
+  test('redirect hop to a dynamic host skips https and public-IP checks', async () => {
+    // First response: 302 to http://whisper.lan/next; whisper.lan is in dynamic set -> allowed
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.reject(new Error('private address')))
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'http://whisper.lan/next' } }),
+    )
+    fetchMock.mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const runtime = buildProviderRuntime(
+      ['api.openai.com'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+    )
+    // Initial request is to a static host (api.openai.com); it will fail assertPublicUrl.
+    // To test only the redirect-hop dynamic-host logic, use a dynamic-host initial URL:
+    const response = await runtime.httpFetch('http://whisper.lan/v1/redirect-me', { method: 'GET' })
+    expect(response.status).toBe(200)
+    // assertPublicUrl called zero times: initial hop is dynamic, redirect hop is also dynamic
+    expect(assertPublicUrl).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('redirect hop to a non-allowlisted host is rejected even when initial host is dynamic', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL) => Promise.resolve())
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://evil.example/steal' } }),
+    )
+    const runtime = buildProviderRuntime(
+      ['api.openai.com'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+    )
+    await expect(runtime.httpFetch('http://whisper.lan/v1/redirect-me', { method: 'GET' })).rejects.toThrow(
+      /allowlist/u,
+    )
+    // Only one fetch — initial; no follow-up to the rejected redirect target
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('strips Authorization when static-host 302-redirects to a dynamic host', async () => {
+    // Regression guard: a redirect from a static host to a different (dynamic) host
+    // must strip Authorization because the origin changes.
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL) => Promise.resolve())
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'http://whisper.lan/next' } }),
+    )
+    fetchMock.mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const runtime = buildProviderRuntime(
+      ['api.openai.com'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+    )
+
+    await runtime.httpFetch('https://api.openai.com/v1/audio', { headers: { authorization: 'Bearer secret' } })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(getHeaderValue(fetchMock.mock.calls[1]?.[1]?.headers, 'authorization')).toBeNull()
+  })
+
+  test('strips Authorization when dynamic-host 302-redirects to a static host', async () => {
+    // Regression guard: a redirect from a dynamic host to a different (static) host
+    // must strip Authorization because the origin changes.
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL) => Promise.resolve())
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://api.openai.com/v2' } }),
+    )
+    fetchMock.mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const runtime = buildProviderRuntime(
+      ['api.openai.com'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+    )
+
+    await runtime.httpFetch('http://whisper.lan/transcribe', { headers: { authorization: 'Bearer secret' } })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(getHeaderValue(fetchMock.mock.calls[1]?.[1]?.headers, 'authorization')).toBeNull()
+  })
+
+  test('dynamic host set is evaluated lazily on each call', async () => {
+    // The thunk is called per-request, so host added after runtime construction is allowed
+    const dynamicSet = new Set<string>()
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok', { status: 200 })))
+    const assertPublicUrl = mock((_url: URL) => Promise.resolve())
+    const runtime = buildProviderRuntime([], makeLogger(), { fetch: fetchMock, assertPublicUrl }, () => dynamicSet)
+
+    // Before adding the host: rejected (https check fires before allowlist when host is unknown)
+    await expect(runtime.httpFetch('http://whisper.lan/v1/transcribe')).rejects.toThrow()
+
+    // After adding the host dynamically: allowed without restart
+    dynamicSet.add('whisper.lan')
+    const response = await runtime.httpFetch('http://whisper.lan/v1/transcribe')
+    expect(response.status).toBe(200)
+    expect(assertPublicUrl).not.toHaveBeenCalled()
+  })
+})
+
+describe('buildProviderRuntime.httpFetch context hosts', () => {
+  // SECURITY RATIONALE: context hosts are sourced from per-context (user/group) config —
+  // they are NOT operator-trusted. They pass the allowlist membership check but receive
+  // FULL standard validation: https is required and assertPublicUrl (SSRF guard) is enforced.
+
+  test('context-tier host with https and passing assertPublicUrl succeeds', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok', { status: 200 })))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.resolve())
+    const runtime = buildProviderRuntime(
+      [],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      noDynamicHostsFn,
+      () => new Set(['context.example.com']),
+    )
+
+    const response = await runtime.httpFetch('https://context.example.com/v1/data')
+    expect(response.status).toBe(200)
+    // assertPublicUrl must be called — context hosts are NOT trusted, full SSRF check runs
+    expect(assertPublicUrl).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('context-tier host with http is rejected — https is required', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.resolve())
+    const runtime = buildProviderRuntime(
+      [],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      noDynamicHostsFn,
+      () => new Set(['context.example.com']),
+    )
+
+    await expect(runtime.httpFetch('http://context.example.com/v1/data')).rejects.toThrow(
+      'Plugin provider httpFetch requires an https URL',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(assertPublicUrl).not.toHaveBeenCalled()
+  })
+
+  test('context-tier host failing assertPublicUrl is rejected', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.reject(new Error('private address')))
+    const runtime = buildProviderRuntime(
+      [],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      noDynamicHostsFn,
+      () => new Set(['context.example.com']),
+    )
+
+    await expect(runtime.httpFetch('https://context.example.com/v1/data')).rejects.toThrow('private address')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('redirect to a context-tier host applies full https and assertPublicUrl checks', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.resolve())
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://context.example.com/v2/data' } }),
+    )
+    fetchMock.mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const runtime = buildProviderRuntime(
+      ['api.static.example'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      noDynamicHostsFn,
+      () => new Set(['context.example.com']),
+    )
+
+    const response = await runtime.httpFetch('https://api.static.example/redirect-me')
+    expect(response.status).toBe(200)
+    // assertPublicUrl called for both hops: initial static host + redirect to context host
+    expect(assertPublicUrl).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('host in neither static, dynamic, nor context set is rejected', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.resolve())
+    const runtime = buildProviderRuntime(
+      ['api.static.example'],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['dynamic.lan']),
+      () => new Set(['context.example.com']),
+    )
+
+    await expect(runtime.httpFetch('https://evil.example/steal')).rejects.toThrow(/allowlist/u)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('admin dynamic host still bypasses https and public-IP even when contextHosts is provided', async () => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok', { status: 200 })))
+    // assertPublicUrl would reject private addresses; it must NOT be called for the dynamic host
+    const assertPublicUrl = mock((_url: URL): Promise<void> => Promise.reject(new Error('private address')))
+    const runtime = buildProviderRuntime(
+      [],
+      makeLogger(),
+      { fetch: fetchMock, assertPublicUrl },
+      () => new Set(['whisper.lan']),
+      () => new Set(['context.example.com']),
+    )
+
+    // whisper.lan is in the admin dynamic set — http is allowed, assertPublicUrl skipped
+    const response = await runtime.httpFetch('http://whisper.lan/v1/transcribe')
+    expect(response.status).toBe(200)
+    expect(assertPublicUrl).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

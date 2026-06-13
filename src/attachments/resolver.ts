@@ -48,6 +48,10 @@ export function selectAttachmentsForTurn(params: {
   return params.activeAttachments.filter((attachment) => selectedIds.has(attachment.attachmentId))
 }
 
-export function buildHistoryAttachmentLines(attachments: readonly AttachmentRef[]): string[] {
-  return attachments.map((attachment) => `[User attached ${attachment.attachmentId}: ${attachment.filename}]`)
-}
+// Untrusted text must not be able to fabricate or close bracket tokens; the
+// LLM treats [...] lines as core-owned structure.
+export const sanitizeForBracket = (s: string): string =>
+  s.replaceAll('[', '(').replaceAll(']', ')').replaceAll('"', "'")
+
+export const renderAttachedLine = (attachmentId: string, filename: string): string =>
+  `[User attached ${attachmentId}: ${sanitizeForBracket(filename)}]`

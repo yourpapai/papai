@@ -38,6 +38,7 @@ function makePromptPlugin(
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
+      attachmentTransformers: [],
     },
     permissions: [...permissions],
     defaultEnabled: true,

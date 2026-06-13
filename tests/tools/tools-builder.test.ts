@@ -210,6 +210,8 @@ describe('buildTools', () => {
       platformFileId: 'staged-thread-file',
       sourceProvider: 'telegram',
       sourcePlatformInstanceId: 'telegram-default',
+      origin: null,
+      forwardedFrom: null,
     })
     const stagedParentFile = stageFileMetadata({
       contextId: parentContextId,
@@ -222,6 +224,8 @@ describe('buildTools', () => {
       platformFileId: 'staged-parent-file',
       sourceProvider: 'telegram',
       sourcePlatformInstanceId: 'telegram-default',
+      origin: null,
+      forwardedFrom: null,
     })
     const stagedDownloadFn = mock(() => Promise.resolve(Buffer.from('resolved thread file')))
 
@@ -768,6 +772,7 @@ describe('makeTools direct integration', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: [],
+          attachmentTransformers: [],
         },
         permissions: ['tasks.read'],
         defaultEnabled: false,
@@ -844,6 +849,7 @@ describe('makeTools direct integration', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: [],
+          attachmentTransformers: [],
         },
         permissions: ['tasks.read'],
         defaultEnabled: false,
@@ -915,6 +921,7 @@ describe('makeTools direct integration', () => {
           jobs: [],
           configKeys: [],
           taskProviderTypes: [],
+          attachmentTransformers: [],
         },
         permissions: ['tasks.read'],
         defaultEnabled: false,

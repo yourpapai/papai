@@ -23,6 +23,8 @@ export const stagedFiles = sqliteTable(
     attachmentId: text('attachment_id'),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at').notNull(),
+    origin: text('origin'),
+    forwardedFrom: text('forwarded_from'),
   },
   (table) => [
     index('idx_staged_context_sender').on(table.contextId, table.senderId, table.expiresAt),

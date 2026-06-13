@@ -52,6 +52,7 @@ function createMockContext(): { ctx: PluginContext; registeredTool: { value: Plu
     registerPromptFragment: () => {},
     registerCommand: () => {},
     registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
     registerTaskProviderType: () => {},
   }
 

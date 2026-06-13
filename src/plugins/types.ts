@@ -7,15 +7,27 @@ import { z } from 'zod'
 
 import type { ChatCapability } from '../chat/types.js'
 import { mcpPluginConfigSchema } from '../mcp/types.js'
-import type { TaskCapability, TaskProviderTrait } from '../providers/types.js'
+import type { TaskCapability } from '../providers/types.js'
 import {
+  PLUGIN_MANIFEST_PROVIDER_TRAITS,
+  configKeySchema,
+  hasAttachmentTransformerPermission,
   hasMatchingContextConfigKeys,
+  hasProviderAllowedHostsFromConfig,
   hasProviderManifestPermission,
   hasRequiredMainForManifest,
   isValidMainPath,
+  pluginContributesSchema,
+  pluginIdSchema,
+  providerConfigFieldKeySchema,
+  providerHostSchema,
 } from './manifest-validation.js'
 
+export type { PluginAttachmentFacade, PluginAttachmentRecord } from './attachment-types.js'
+
 export type {
+  AttachmentTransformResult,
+  PluginAttachmentTransformer,
   PluginCommand,
   PluginContributions,
   PluginFactory,
@@ -41,6 +53,7 @@ export const PLUGIN_PERMISSIONS = [
   'provider.task',
   'identity',
   'http',
+  'attachments.read',
 ] as const
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]
@@ -48,7 +61,6 @@ export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]
 /** Runtime state machine states for a plugin. */
 export type PluginState = 'discovered' | 'approved' | 'rejected' | 'incompatible' | 'active' | 'error'
 
-/** All valid task capability strings (used for manifest validation). */
 const TASK_CAPABILITY_VALUES = [
   'tasks.delete',
   'tasks.count',
@@ -107,60 +119,6 @@ const CHAT_CAPABILITY_VALUES = [
   'users.resolve',
 ] as const satisfies readonly ChatCapability[]
 
-const pluginIdSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-z0-9-]*$/u, 'Plugin ID must be lowercase kebab-case starting with a letter')
-
-const toolNameSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-z0-9_]*$/u, 'Tool name must be snake_case starting with a letter')
-
-const commandNameSchema = z
-  .string()
-  .min(1)
-  .max(32)
-  .regex(/^[a-z][a-z0-9_-]*$/u, 'Command name must be lowercase')
-
-const configKeySchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-z0-9_]*$/u, 'Config key must be snake_case starting with a letter')
-
-const providerTypeSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-z0-9-]*$/u, 'Provider type must be lowercase kebab-case starting with a letter')
-
-const providerConfigFieldKeySchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[a-z][a-zA-Z0-9_]*$/u, 'Provider config field key must start with a letter')
-
-const providerHostSchema = z
-  .string()
-  .min(1)
-  .max(253)
-  .regex(
-    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/iu,
-    'Provider allowed host must be a valid hostname',
-  )
-
-const pluginContributesSchema = z.strictObject({
-  tools: z.array(toolNameSchema).optional().default([]),
-  promptFragments: z.array(z.string().min(1).max(64)).optional().default([]),
-  commands: z.array(commandNameSchema).optional().default([]),
-  jobs: z.array(z.string().min(1).max(64)).optional().default([]),
-  configKeys: z.array(configKeySchema).optional().default([]),
-  taskProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
-})
-
 const configRequirementBaseSchema = z.strictObject({
   key: configKeySchema,
   label: z.string().min(1),
@@ -188,17 +146,6 @@ const mainPathSchema = z.string().refine(isValidMainPath, {
   message: 'main must be a relative .ts or .js path without ".." components',
 })
 
-const taskCapabilityTuple = TASK_CAPABILITY_VALUES
-const taskProviderTraitTuple = [
-  'workspace-scoped',
-  'task-label-read-requires-provider-specific-api',
-  'supports-command-language',
-  'command-language:youtrack',
-  'custom-fields',
-] as const satisfies readonly TaskProviderTrait[]
-const chatCapabilityTuple = CHAT_CAPABILITY_VALUES
-const permissionTuple = PLUGIN_PERMISSIONS
-
 /** Zod schema for a plugin manifest (plugin.json). */
 export const pluginManifestSchema = z
   .strictObject({
@@ -217,20 +164,30 @@ export const pluginManifestSchema = z
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
+      attachmentTransformers: [],
     }),
-    permissions: z.array(z.enum(permissionTuple)).optional().default([]),
+    permissions: z.array(z.enum(PLUGIN_PERMISSIONS)).optional().default([]),
     author: z.string().optional(),
     homepage: z.url().optional(),
     license: z.string().optional(),
     defaultEnabled: z.boolean().optional().default(false),
-    requiredTaskCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
-    requiredChatCapabilities: z.array(z.enum(chatCapabilityTuple)).optional().default([]),
+    requiredTaskCapabilities: z.array(z.enum(TASK_CAPABILITY_VALUES)).optional().default([]),
+    requiredChatCapabilities: z.array(z.enum(CHAT_CAPABILITY_VALUES)).optional().default([]),
+    /**
+     * Per-plugin config requirements declared by scope.
+     *
+     * The same key MAY be declared in both 'admin' and 'context' scopes; the two are
+     * stored independently and exposed through separate facades (`adminConfig` /
+     * `contextConfig`). This dual-scope pattern is how per-context overrides of an
+     * admin default are built — no uniqueness constraint is enforced across scopes.
+     */
     configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
-    providerCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
-    providerTraits: z.array(z.enum(taskProviderTraitTuple)).optional().default([]),
+    providerCapabilities: z.array(z.enum(TASK_CAPABILITY_VALUES)).optional().default([]),
+    providerTraits: z.array(z.enum(PLUGIN_MANIFEST_PROVIDER_TRAITS)).optional().default([]),
     providerConfigSchema: z.array(providerInstanceConfigRequirementSchema).optional().default([]),
     providerContextConfigSchema: z.array(providerContextConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
+    providerAllowedHostsFromConfig: z.array(configKeySchema).optional().default([]),
     providerConfigValidator: z
       .string()
       .min(1)
@@ -268,14 +225,28 @@ export const pluginManifestSchema = z
     message: 'main is required unless the manifest is an explicit MCP-only plugin',
     path: ['main'],
   })
+  .refine(hasAttachmentTransformerPermission, {
+    message: "Declaring contributes.attachmentTransformers requires the 'attachments.read' permission",
+    path: ['contributes', 'attachmentTransformers'],
+  })
+  // Scope is deliberately not checked here: admin-scoped keys use the trusted
+  // admin tier (bypasses https/public-IP), context-scoped keys use the untrusted
+  // context tier (full https + public-IP validation) via buildContextDynamicHosts.
+  .refine(hasProviderAllowedHostsFromConfig, {
+    message:
+      'providerAllowedHostsFromConfig keys must reference at least one configRequirements entry (admin or context scope)',
+    path: ['providerAllowedHostsFromConfig'],
+  })
 
 export type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
-// Provider-plugin fields carry Zod `.default([])`, so a parsed manifest always has them.
-// They are optional on the hand-constructed type so test fixtures and non-provider plugins
-// may omit them.
-export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema' | 'providerTraits'> & {
+// Fields with Zod `.default([])` are optional on the hand-constructed type; test fixtures and non-provider plugins may omit them.
+export type PluginManifest = Omit<
+  ParsedPluginManifest,
+  'providerContextConfigSchema' | 'providerTraits' | 'providerAllowedHostsFromConfig'
+> & {
   providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
   providerTraits?: ParsedPluginManifest['providerTraits']
+  providerAllowedHostsFromConfig?: ParsedPluginManifest['providerAllowedHostsFromConfig']
 }
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {

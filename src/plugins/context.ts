@@ -3,15 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { logger } from '../logger.js'
 import type { TaskProviderAutoProvision, TaskProviderFactory, TaskProviderProvision } from '../providers/registry.js'
 import type { ProviderConfigField } from '../providers/types.js'
+import {
+  buildAdminConfig,
+  buildDeniedKvStore,
+  buildKvStore,
+  buildManifestProviderRuntime,
+  buildPluginLogger,
+} from './context-facade-builders.js'
 import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
-import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
+import type { PluginProviderRuntime } from './provider-runtime.js'
 import { buildActivationGuard, buildNamedRegistrationHandlers, type ActivationGuard } from './registration-support.js'
-import type { PluginContributions } from './runtime-types.js'
-import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
+import type { PluginAttachmentTransformer, PluginContributions } from './runtime-types.js'
 import type { PluginManifest, PluginCommand, PluginTool, PluginPromptFragment, PluginScheduledJob } from './types.js'
 
 /** Context-scoped KV store exposed to a plugin. */
@@ -53,6 +58,8 @@ export type PluginRegistration = {
   registerCommand(command: PluginCommand): void
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
+  /** Register an attachment transformer. The name must match a declared contributes.attachmentTransformers entry. */
+  registerAttachmentTransformer(transformer: PluginAttachmentTransformer): void
   /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
   registerTaskProviderType(type: string, input: TaskProviderRegistrationInput): void
 }
@@ -70,52 +77,6 @@ export type PluginContext = {
   /** Present only when 'identity' is held and the plugin declares one task provider type. */
   readonly identity?: PluginIdentityLookupFacade
   readonly adminConfig: PluginAdminConfig
-}
-
-function buildAdminConfig(manifest: PluginManifest): PluginAdminConfig {
-  const adminKeys = new Set(manifest.configRequirements.filter((req) => req.scope === 'admin').map((req) => req.key))
-  return Object.freeze({
-    get(key: string): string | undefined {
-      if (!adminKeys.has(key)) return undefined
-      return getPluginAdminConfig(manifest.id, key)
-    },
-  })
-}
-
-function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
-  return Object.freeze({
-    get(key: string): string | undefined {
-      return kvGet(pluginId, contextId, key)
-    },
-    set(key: string, value: string): void {
-      kvSet(pluginId, contextId, key, value)
-    },
-    delete(key: string): void {
-      kvDelete(pluginId, contextId, key)
-    },
-    list(prefix?: string): Array<{ key: string; value: string }> {
-      const rows = prefix === undefined ? kvList(pluginId, contextId) : kvList(pluginId, contextId, prefix)
-      return rows.map((row) => ({ key: row.key, value: row.value }))
-    },
-  })
-}
-
-function buildPluginLogger(pluginId: string): PluginLogger {
-  const scopedLog = logger.child({ scope: 'plugin', pluginId })
-  return Object.freeze({
-    debug(data: Record<string, unknown>, msg: string): void {
-      scopedLog.debug(data, msg)
-    },
-    info(data: Record<string, unknown>, msg: string): void {
-      scopedLog.info(data, msg)
-    },
-    warn(data: Record<string, unknown>, msg: string): void {
-      scopedLog.warn(data, msg)
-    },
-    error(data: Record<string, unknown>, msg: string): void {
-      scopedLog.error(data, msg)
-    },
-  })
 }
 
 const toProviderConfigField = (
@@ -185,6 +146,9 @@ function buildRegistration(
     registerScheduledJob: (job) => {
       collected.jobs = [...(collected.jobs ?? []), job]
     },
+    registerAttachmentTransformer: (transformer) => {
+      collected.attachmentTransformers = [...(collected.attachmentTransformers ?? []), transformer]
+    },
   })
   return Object.freeze({
     registerTool(tool: PluginTool): void {
@@ -198,6 +162,9 @@ function buildRegistration(
     },
     registerScheduledJob(job: PluginScheduledJob): void {
       namedRegistrations.registerScheduledJob(job)
+    },
+    registerAttachmentTransformer(transformer: PluginAttachmentTransformer): void {
+      namedRegistrations.registerAttachmentTransformer(transformer)
     },
     registerTaskProviderType: buildRegisterTaskProviderType(manifest, collected, activationGuard),
   })
@@ -233,7 +200,7 @@ export function buildPluginContext(
   const log = buildPluginLogger(manifest.id)
   const providerRuntime =
     permissions.has('provider.task') || permissions.has('http')
-      ? buildProviderRuntime(manifest.providerAllowedHosts, log)
+      ? buildManifestProviderRuntime(manifest, log)
       : undefined
 
   const declaredTypes = manifest.contributes.taskProviderTypes
@@ -278,11 +245,4 @@ export async function runWithClosedRegistration<T>(
   } finally {
     builtContext.closeRegistration()
   }
-}
-
-function buildDeniedKvStore(pluginId: string): PluginKvStore {
-  const deny = (): never => {
-    throw new Error(`Plugin ${pluginId} does not have 'storage' permission`)
-  }
-  return Object.freeze({ get: deny, set: deny, delete: deny, list: deny })
 }

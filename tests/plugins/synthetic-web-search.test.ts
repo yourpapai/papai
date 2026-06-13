@@ -39,6 +39,7 @@ function createMockContext(
     },
     registerCommand: () => {},
     registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
     registerTaskProviderType: () => {},
   }
 
@@ -96,9 +97,15 @@ function createMockRuntimeContext(
         retryAfterSec: overrides.retryAfterSec,
       }),
     },
+    attachments: {
+      read: () => notImplemented(),
+    },
     adminConfig: {
       get: (key: string) =>
         key === 'api_key' ? ('apiKey' in overrides ? overrides.apiKey : 'test-api-key') : undefined,
+    },
+    contextConfig: {
+      get: () => undefined,
     },
   } as PluginToolRuntimeContext
 }

@@ -5,6 +5,14 @@
 
 export type AttachmentStatus = 'available' | 'tool_only' | 'rejected' | 'unavailable'
 
+export type AttachmentOrigin = 'voice' | 'file'
+
+export const toAttachmentOrigin = (value: string | null): AttachmentOrigin | undefined => {
+  if (value === 'voice') return 'voice'
+  if (value === 'file') return 'file'
+  return undefined
+}
+
 export type AttachmentSourceProvider = 'telegram' | 'mattermost' | 'discord' | 'unknown'
 
 export const SOURCE_PROVIDER_BY_NAME: Readonly<Record<string, AttachmentSourceProvider>> = {
@@ -41,6 +49,8 @@ export type StoredAttachment = AttachmentRef & {
     sourceFileId: string
     clearedAt: string | null
     lastUsedAt: string | null
+    origin: AttachmentOrigin
+    forwardedFrom: string
   }>
 
 export type SaveAttachmentInput = {
@@ -54,6 +64,8 @@ export type SaveAttachmentInput = {
   sourceFileId: string
   mimeType: string
   size: number
+  origin: AttachmentOrigin
+  forwardedFrom: string
 }>
 
 export type StagedFileStatus = 'staged' | 'resolved' | 'failed' | 'expired'
@@ -92,6 +104,8 @@ export type StagedFileRef = {
   attachmentId: string | null
   createdAt: string
   expiresAt: string
+  origin: AttachmentOrigin | null
+  forwardedFrom: string | null
 }
 
 export type StageFileParams = {
@@ -105,6 +119,8 @@ export type StageFileParams = {
   platformFileId: string
   sourceProvider: AttachmentSourceProvider
   sourcePlatformInstanceId: string
+  origin: AttachmentOrigin | null
+  forwardedFrom: string | null
 }
 
 export type StagedResolutionError =

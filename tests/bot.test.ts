@@ -138,6 +138,7 @@ const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (ite
     configContextId: item.configContextId,
     contextType: item.contextType,
     newAttachmentIds: item.newAttachmentIds,
+    voiceStagedIds: item.voiceStagedIds,
     reply,
     turnId: 'test-turn-id',
   }).catch(() => {})
@@ -470,6 +471,7 @@ function makePluginCommandManifest(pluginId: string): PluginManifest {
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
+      attachmentTransformers: [],
     },
     permissions: [],
     defaultEnabled: false,
@@ -612,6 +614,44 @@ describe('Bot Authorization Gate (setupBot)', () => {
       expect(lastProcessedStorageId).toBe(scopedGroup('group-queue'))
       expect(lastProcessedConfigContextId).toBe(scopedGroup('group-queue'))
       expect(lastProcessedContextType).toBe('group')
+    })
+
+    test('DM message enqueues empty voiceStagedIds without performing staged-file DB lookup', async () => {
+      addUser('auth-user', ADMIN_ID)
+      setupUserConfig('auth-user')
+
+      // Spy on findVoiceStagedIds via mock.module to detect if it is called for DMs
+      let findVoiceStagedIdsCalled = false
+      const { findVoiceStagedIds: realFindVoiceStagedIds, ...rest } = await import('../src/bot-attachments.js')
+      void mock.module('../src/bot-attachments.js', () => ({
+        ...rest,
+        findVoiceStagedIds: (...args: Parameters<typeof realFindVoiceStagedIds>): string[] => {
+          findVoiceStagedIdsCalled = true
+          return realFindVoiceStagedIds(...args)
+        },
+      }))
+
+      const { provider: spyChat, getMessageHandler: getSpyHandler } = createMockChatForBot()
+      const { setupBot: freshSetupBot } = await import('../src/bot.js')
+      freshSetupBot(spyChat, ADMIN_ID, {
+        processMessage: (): Promise<void> => Promise.resolve(),
+        enqueueMessage: (_item, _reply, _handler): void => {},
+      })
+
+      const spyHandler = getSpyHandler()
+      expect(spyHandler).not.toBeNull()
+      const { reply } = createMockReply()
+      const msg: IncomingMessage = {
+        ...createDmMessage('auth-user'),
+        text: 'hello',
+        messageId: 'msg-dm-spy',
+      }
+      await spyHandler!(msg, reply)
+
+      expect(findVoiceStagedIdsCalled).toBe(false)
+
+      // Restore
+      void mock.module('../src/bot-attachments.js', () => ({ ...rest, findVoiceStagedIds: realFindVoiceStagedIds }))
     })
 
     test('forwards group-scoped configContextId for threaded group messages', async () => {

@@ -159,6 +159,16 @@ describe('pluginManifestSchema', () => {
     })
   })
 
+  describe('attachments.read permission', () => {
+    test('accepts attachments.read as a valid permission', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['attachments.read'],
+      })
+      expect(result.success).toBe(true)
+    })
+  })
+
   describe('task provider type contribution', () => {
     test('accepts a single task provider type with provider.task permission', () => {
       const result = pluginManifestSchema.safeParse({

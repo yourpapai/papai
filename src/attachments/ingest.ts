@@ -27,6 +27,8 @@ const buildInput = (file: IncomingFile, params: PersistIncomingAttachmentsParams
   if (params.sourceMessageId !== undefined) input.sourceMessageId = params.sourceMessageId
   if (file.mimeType !== undefined) input.mimeType = file.mimeType
   if (file.size !== undefined) input.size = file.size
+  if (file.origin !== undefined) input.origin = file.origin
+  if (file.forwardedFrom !== undefined) input.forwardedFrom = file.forwardedFrom
   return input
 }
 

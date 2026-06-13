@@ -38,7 +38,11 @@ export const userConfig = sqliteTable(
     key: text('key').notNull(),
     value: text('value').notNull(),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.key] }), index('idx_user_config_user_id').on(table.userId)],
+  (table) => [
+    primaryKey({ columns: [table.userId, table.key] }),
+    index('idx_user_config_user_id').on(table.userId),
+    index('idx_user_config_key').on(table.key),
+  ],
 )
 
 export { systemConfig } from './system-config-schema.js'

@@ -90,6 +90,10 @@ export type IncomingFile = {
   mimeType: string
   /** File size in bytes (if available) */
   size: number
+  /** How the file arrived. 'voice' for recorded voice notes; absent for ordinary files. */
+  origin: 'voice' | 'file'
+  /** Display name of the original sender when the message was forwarded. */
+  forwardedFrom: string
 }>
 
 export type IncomingFileCandidate = {
@@ -98,6 +102,10 @@ export type IncomingFileCandidate = {
 } & Partial<{
   mimeType: string
   size: number
+  /** How the file arrived. 'voice' for recorded voice notes; absent for ordinary files. */
+  origin: 'voice' | 'file'
+  /** Display name of the original sender when the message was forwarded. */
+  forwardedFrom: string
 }>
 
 /** Context about a message reply or quote. */

@@ -14,6 +14,7 @@ import type {
   TaskProviderProvision,
 } from '../providers/registry.js'
 import type { TaskCapability, ProviderConfigField, TaskProvider, TaskProviderTrait } from '../providers/types.js'
+import type { PluginAttachmentFacade, PluginAttachmentRecord } from './attachment-types.js'
 import type { PluginAdminConfig } from './context.js'
 import type { PluginContext } from './context.js'
 import type { PluginIdentityFacade } from './identity-facade.js'
@@ -23,6 +24,11 @@ export type PluginTaskProviderFacade = Pick<
   'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
 >
 
+/** Context-scoped plugin config declared in configRequirements with scope 'context'. */
+export type PluginContextConfig = {
+  get(key: string): string | undefined
+}
+
 export type PluginToolRuntimeContext = {
   pluginId: string
   storageContextId: string
@@ -30,11 +36,14 @@ export type PluginToolRuntimeContext = {
   taskProvider?: PluginTaskProviderFacade
   kv: PluginContext['kv']
   adminConfig: PluginAdminConfig
+  /** Context-scoped plugin config declared in configRequirements with scope 'context'. */
+  contextConfig: PluginContextConfig
   /** Identity claims are bound to this runtime actor. */
   identity?: PluginIdentityFacade
   rateLimit: {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }
   }
+  attachments: PluginAttachmentFacade
 }
 
 export type PluginScheduledJobRuntimeContext = {
@@ -72,12 +81,33 @@ export type PluginScheduledJob = {
   execute: (runtime: PluginScheduledJobRuntimeContext) => Promise<void> | void
 }
 
+export type AttachmentTransformResult =
+  | { ok: true; text: string; meta?: { language?: string; durationSec?: number } }
+  | { ok: false; reason: string }
+
+export type PluginAttachmentTransformer = {
+  name: string
+  /** Matched against attachment mimeType, e.g. ['audio/'] */
+  mimePrefixes: readonly string[]
+  /** Fallback match when the attachment has no MIME type, e.g. ['.ogg', '.mp3'] */
+  filenameExtensions?: readonly string[]
+  /** Restrict to attachment origins; omitted means all origins */
+  origins?: readonly ('voice' | 'file')[]
+  /** Per-call budget enforced by core; bounded 1000–120000, default 30000 */
+  timeoutMs?: number
+  transform(
+    record: PluginAttachmentRecord,
+    runtimeContext: PluginToolRuntimeContext,
+  ): Promise<AttachmentTransformResult>
+}
+
 /** Registration result from a plugin's activate() call. */
 export type PluginContributions = {
   tools: PluginTool[]
   promptFragments: PluginPromptFragment[]
   commands?: PluginCommand[]
   jobs?: PluginScheduledJob[]
+  attachmentTransformers?: PluginAttachmentTransformer[]
   taskProviderRegistration?: {
     type: string
     factory: TaskProviderFactory

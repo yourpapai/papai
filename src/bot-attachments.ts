@@ -3,13 +3,22 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import pLimit from 'p-limit'
+
 import {
+  findStagedFilesByMessageId,
   isS3Configured,
   listActiveAttachments,
   persistIncomingAttachments,
+  resolveStagedFile,
   stageFileMetadata,
 } from './attachments/index.js'
-import { toSourceProvider, type AttachmentRef, type AttachmentSourceProvider } from './attachments/types.js'
+import {
+  toSourceProvider,
+  type AttachmentRef,
+  type AttachmentSourceProvider,
+  type StagedFileDownloadFn,
+} from './attachments/types.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { ChatProvider, IncomingFile, IncomingFileCandidate, IncomingMessage } from './chat/types.js'
 import { logger } from './logger.js'
@@ -73,6 +82,8 @@ export function stageGroupFileCandidates(
         platformFileId: candidate.fileId,
         sourceProvider: params.sourceProvider,
         sourcePlatformInstanceId: params.msg.platformInstanceId,
+        origin: candidate.origin ?? null,
+        forwardedFrom: candidate.forwardedFrom ?? null,
       })
     } catch (error: unknown) {
       log.warn(
@@ -124,4 +135,63 @@ export async function resolveMessageAttachments(
     newAttachmentIds: [],
     activeAttachments: isS3Configured() ? listActiveAttachments(storageContextId) : [],
   }
+}
+
+/**
+ * Cheap synchronous lookup — returns the staged-row ids of voice-origin files
+ * attached to the given message. No download or network call is made.
+ */
+export function findVoiceStagedIds(storageContextId: string, messageId: string | undefined): string[] {
+  if (!isS3Configured() || messageId === undefined) return []
+  return findStagedFilesByMessageId(storageContextId, messageId)
+    .filter((staged) => staged.origin === 'voice')
+    .map((staged) => staged.stagedId)
+}
+
+/**
+ * Eagerly resolve voice-origin staged files identified by their staged ids.
+ * Group chats stage files lazily; a voice note addressed to the bot IS the
+ * message, so it must be available before the LLM turn starts. Ordinary
+ * staged files keep lazy resolution via the resolve_staged_file tool.
+ *
+ * Per-id errors (network/S3/thrown) are caught and skipped — the function
+ * always resolves and never throws.
+ */
+async function resolveSingleStagedId(
+  stagedId: string,
+  storageContextId: string,
+  downloadFn: StagedFileDownloadFn,
+): Promise<string | null> {
+  try {
+    const result = await resolveStagedFile(stagedId, storageContextId, downloadFn)
+    if ('attachmentId' in result && result.attachmentId !== null && result.attachmentId !== 'unknown') {
+      return result.attachmentId
+    }
+    log.warn({ stagedId, contextId: storageContextId }, 'Eager voice staged-file resolution failed')
+    return null
+  } catch (error: unknown) {
+    log.warn(
+      {
+        stagedId,
+        contextId: storageContextId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Eager voice staged-file resolution threw',
+    )
+    return null
+  }
+}
+
+export async function resolveVoiceStagedFiles(
+  storageContextId: string,
+  stagedIds: readonly string[],
+  downloadFn: StagedFileDownloadFn | undefined,
+): Promise<string[]> {
+  if (!isS3Configured() || stagedIds.length === 0 || downloadFn === undefined) return []
+  const uniqueIds = [...new Set(stagedIds)]
+  const limit = pLimit(3)
+  const resolved = await Promise.all(
+    uniqueIds.map((stagedId) => limit(() => resolveSingleStagedId(stagedId, storageContextId, downloadFn))),
+  )
+  return resolved.filter((id): id is string => id !== null)
 }

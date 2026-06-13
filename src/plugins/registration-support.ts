@@ -3,7 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { PluginCommand, PluginManifest, PluginPromptFragment, PluginScheduledJob, PluginTool } from './types.js'
+import type {
+  PluginAttachmentTransformer,
+  PluginCommand,
+  PluginManifest,
+  PluginPromptFragment,
+  PluginScheduledJob,
+  PluginTool,
+} from './types.js'
 
 export type ActivationGuard = {
   assertOpen(): void
@@ -15,15 +22,22 @@ type RegistrationNames = {
   declaredFragments: ReadonlySet<string>
   declaredCommands: ReadonlySet<string>
   declaredJobs: ReadonlySet<string>
+  declaredTransformers: ReadonlySet<string>
   registeredTools: Set<string>
   registeredFragments: Set<string>
   registeredCommands: Set<string>
   registeredJobs: Set<string>
+  registeredTransformers: Set<string>
 }
 
-type RegistrationKind = 'Tool' | 'Prompt fragment' | 'Command' | 'Scheduled job'
+type RegistrationKind = 'Tool' | 'Prompt fragment' | 'Command' | 'Scheduled job' | 'Attachment transformer'
 
-type SupportedRegistration = PluginTool | PluginPromptFragment | PluginCommand | PluginScheduledJob
+type SupportedRegistration =
+  | PluginTool
+  | PluginPromptFragment
+  | PluginCommand
+  | PluginScheduledJob
+  | PluginAttachmentTransformer
 
 function collectRegisteredNames(manifest: PluginManifest): RegistrationNames {
   return {
@@ -31,10 +45,12 @@ function collectRegisteredNames(manifest: PluginManifest): RegistrationNames {
     declaredFragments: new Set(manifest.contributes.promptFragments),
     declaredCommands: new Set(manifest.contributes.commands),
     declaredJobs: new Set(manifest.contributes.jobs),
+    declaredTransformers: new Set(manifest.contributes.attachmentTransformers),
     registeredTools: new Set<string>(),
     registeredFragments: new Set<string>(),
     registeredCommands: new Set<string>(),
     registeredJobs: new Set<string>(),
+    registeredTransformers: new Set<string>(),
   }
 }
 
@@ -159,6 +175,31 @@ function buildScheduledJobRegistration(
   })
 }
 
+function buildAttachmentTransformerRegistration(
+  manifest: PluginManifest,
+  names: RegistrationNames,
+  args: {
+    activationGuard: ActivationGuard
+    registerAttachmentTransformer(transformer: PluginAttachmentTransformer): void
+  },
+): (transformer: PluginAttachmentTransformer) => void {
+  return buildNamedRegistration({
+    kind: 'Attachment transformer',
+    declarationErrorMessage:
+      "Attachment transformer '{name}' is not declared in plugin manifest contributes.attachmentTransformers",
+    declared: names.declaredTransformers,
+    registered: names.registeredTransformers,
+    activationGuard: args.activationGuard,
+    readName: (transformer) => transformer.name,
+    onRegister: (transformer) => {
+      if (!manifest.permissions.includes('attachments.read')) {
+        throw new Error(`Plugin ${manifest.id} cannot register attachment transformers without 'attachments.read'`)
+      }
+      args.registerAttachmentTransformer(transformer)
+    },
+  })
+}
+
 export function buildNamedRegistrationHandlers(
   manifest: PluginManifest,
   args: {
@@ -167,12 +208,14 @@ export function buildNamedRegistrationHandlers(
     registerPromptFragment(fragment: PluginPromptFragment): void
     registerCommand(command: PluginCommand): void
     registerScheduledJob(job: PluginScheduledJob): void
+    registerAttachmentTransformer(transformer: PluginAttachmentTransformer): void
   },
 ): {
   registerTool(tool: PluginTool): void
   registerPromptFragment(fragment: PluginPromptFragment): void
   registerCommand(command: PluginCommand): void
   registerScheduledJob(job: PluginScheduledJob): void
+  registerAttachmentTransformer(transformer: PluginAttachmentTransformer): void
 } {
   const names = collectRegisteredNames(manifest)
   return {
@@ -180,5 +223,6 @@ export function buildNamedRegistrationHandlers(
     registerPromptFragment: buildPromptFragmentRegistration(names, args),
     registerCommand: buildCommandRegistration(manifest, names, args),
     registerScheduledJob: buildScheduledJobRegistration(manifest, names, args),
+    registerAttachmentTransformer: buildAttachmentTransformerRegistration(manifest, names, args),
   }
 }

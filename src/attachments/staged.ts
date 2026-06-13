@@ -19,7 +19,7 @@ import type {
   StagedFileRef,
   StagedResolutionError,
 } from './types.js'
-import { toSourceProvider, toStagedStatus, toUndefinedIfNull } from './types.js'
+import { toAttachmentOrigin, toSourceProvider, toStagedStatus, toUndefinedIfNull } from './types.js'
 
 const log = logger.child({ scope: 'attachments:staged' })
 
@@ -44,6 +44,9 @@ const toRef = (row: StagedRow): StagedFileRef => ({
   attachmentId: row.attachmentId,
   createdAt: row.createdAt,
   expiresAt: row.expiresAt,
+  origin: toAttachmentOrigin(row.origin) ?? null,
+  // nullable on StagedFileRef; downloadAndPersist maps it to undefined for SaveAttachmentInput
+  forwardedFrom: row.forwardedFrom,
 })
 
 const buildStagedValues = (
@@ -67,47 +70,46 @@ const buildStagedValues = (
   attachmentId: null,
   createdAt: nowIso,
   expiresAt: expiresIso,
+  origin: params.origin,
+  forwardedFrom: params.forwardedFrom,
 })
 
-export function stageFileMetadata(params: StageFileParams): StagedFileRef {
+const upsertAndFetch = (params: StageFileParams, stagedId: string, nowIso: string, expiresIso: string): StagedRow => {
   const db = getDrizzleDb()
-  const now = new Date()
-  const expiresAt = new Date(now.getTime() + DEFAULT_TTL_MS)
-  const nowIso = now.toISOString()
-  const expiresIso = expiresAt.toISOString()
-
-  const stagedId = `stg_${randomUUID()}`
-  const values = buildStagedValues(params, stagedId, nowIso, expiresIso)
-
+  const {
+    stagedId: _sid,
+    contextId: _cid,
+    platformFileId: _pid,
+    attachmentId: _aid,
+    sourceProvider: _sp,
+    ...updateSet
+  } = buildStagedValues(params, stagedId, nowIso, expiresIso)
+  // Re-sending the same platform file intentionally re-stages it; a later resolution creates a NEW attachment
+  // (re-sent file = new attachment), which also means eager voice resolution after a platform re-delivery
+  // downloads again by design.
   db.insert(stagedFiles)
-    .values(values)
+    .values(buildStagedValues(params, stagedId, nowIso, expiresIso))
     .onConflictDoUpdate({
       target: [stagedFiles.platformFileId, stagedFiles.contextId],
-      set: {
-        messageId: params.messageId === undefined ? null : params.messageId,
-        senderId: params.senderId,
-        senderUsername: params.senderUsername === undefined ? null : params.senderUsername,
-        filename: params.filename,
-        mimeType: params.mimeType === undefined ? null : params.mimeType,
-        size: params.size === undefined ? null : params.size,
-        sourcePlatformInstanceId: params.sourcePlatformInstanceId,
-        createdAt: nowIso,
-        expiresAt: expiresIso,
-        status: 'staged',
-      },
+      set: { ...updateSet, status: 'staged' as const },
     })
     .run()
-
-  // After upsert, fetch the row to return the actual stagedId (existing or new)
   const row = db
     .select()
     .from(stagedFiles)
     .where(and(eq(stagedFiles.platformFileId, params.platformFileId), eq(stagedFiles.contextId, params.contextId)))
     .get()
+  if (row === undefined) throw new Error('Failed to retrieve staged file after upsert')
+  return row
+}
 
-  if (row === undefined) {
-    throw new Error('Failed to retrieve staged file after upsert')
-  }
+export function stageFileMetadata(params: StageFileParams): StagedFileRef {
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + DEFAULT_TTL_MS)
+  const nowIso = now.toISOString()
+  const expiresIso = expiresAt.toISOString()
+  const stagedId = `stg_${randomUUID()}`
+  const row = upsertAndFetch(params, stagedId, nowIso, expiresIso)
 
   if (row.stagedId === stagedId) {
     log.info({ stagedId, contextId: params.contextId, filename: params.filename }, 'Staged file metadata')
@@ -245,6 +247,8 @@ const downloadAndPersist = async (
   const mimeType = toUndefinedIfNull(row.mimeType)
   const size = toUndefinedIfNull(row.size)
   const sourceMessageId = toUndefinedIfNull(row.messageId)
+  const origin = toAttachmentOrigin(row.origin)
+  const forwardedFrom = toUndefinedIfNull(row.forwardedFrom)
 
   const attachmentRef = await saveAttachment({
     contextId: row.contextId,
@@ -256,6 +260,8 @@ const downloadAndPersist = async (
     status: 'available',
     sourceMessageId,
     sourceFileId: row.platformFileId,
+    ...(origin === undefined ? {} : { origin }),
+    ...(forwardedFrom === undefined ? {} : { forwardedFrom }),
   })
 
   markStagedResolved(stagedId, attachmentRef.attachmentId)

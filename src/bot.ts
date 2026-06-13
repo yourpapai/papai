@@ -5,7 +5,12 @@
 
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
-import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
+import {
+  findVoiceStagedIds,
+  resolveMessageAttachments,
+  resolveVoiceStagedFiles,
+  stageGroupFileCandidates,
+} from './bot-attachments.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { supportsFileReplies } from './chat/capabilities.js'
@@ -107,6 +112,11 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
   const start = Date.now()
   const tracked = trackReplyUsage(coalescedItem.reply, true)
   try {
+    const voiceAttachmentIds = await resolveVoiceStagedFiles(
+      coalescedItem.storageContextId,
+      coalescedItem.voiceStagedIds,
+      deps.stagedDownloadFn,
+    )
     await deps.processMessage(
       tracked.reply,
       coalescedItem.storageContextId,
@@ -116,7 +126,7 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       coalescedItem.contextType,
       coalescedItem.configContextId,
       { ...defaultDeps, stagedDownloadFn: deps.stagedDownloadFn },
-      coalescedItem.newAttachmentIds,
+      [...voiceAttachmentIds, ...coalescedItem.newAttachmentIds],
       coalescedItem.turnId,
     )
   } finally {
@@ -140,6 +150,7 @@ async function handleMessage(
     return
   }
   if (shouldIgnoreGroupMessage(msg)) return
+  const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
   let queueMessage = enqueueMessage
   if (deps.enqueueMessage !== undefined) queueMessage = deps.enqueueMessage
@@ -152,6 +163,7 @@ async function handleMessage(
       configContextId: auth.configContextId,
       contextType: msg.contextType,
       newAttachmentIds,
+      voiceStagedIds,
     },
     reply,
     (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),

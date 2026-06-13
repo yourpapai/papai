@@ -12,6 +12,18 @@ export type PluginProviderRuntime = {
   readonly logger: PluginLogger
 }
 
+/** Returns the set of hosts contributed by admin-scoped plugin config at call time.
+ *
+ * SECURITY RATIONALE: admin config is operator-trusted (same trust level as approving the
+ * manifest). LLM/tool inputs can never influence this set — only an operator-level admin
+ * can write admin config values. Dynamic hosts intentionally bypass the https requirement
+ * and the public-IP (SSRF) check so that self-hosted LAN endpoints (often http://) work.
+ * Static manifest hosts keep all existing checks. The thunk is evaluated lazily per
+ * request so admin config changes apply without restart. */
+export type DynamicHostsFn = () => ReadonlySet<string>
+
+const noDynamicHosts: DynamicHostsFn = () => new Set()
+
 export interface ProviderRuntimeDeps {
   fetch: (url: string, init?: RequestInit) => Promise<Response>
   assertPublicUrl: (url: URL) => Promise<void>
@@ -25,6 +37,8 @@ const defaultDeps: ProviderRuntimeDeps = {
 // The allowlist is host-only by design: ports are intentionally not part of
 // the allowlist scope. Plugin manifests declare plain hostnames (no colons
 // allowed by pluginManifestSchema), so port-level restriction is not supported.
+// The same port-agnostic semantics apply to dynamic hosts: an admin's
+// http://whisper.lan:9000 covers whisper.lan on any port.
 const MAX_REDIRECTS = 5
 const TIMEOUT_MS = 30_000
 
@@ -73,10 +87,17 @@ function assertHttps(url: URL): void {
 async function validateHop(
   url: URL,
   hostSet: ReadonlySet<string>,
+  dynamicHosts: DynamicHostsFn,
+  contextHosts: DynamicHostsFn,
   assertPublicUrl: (url: URL) => Promise<void>,
 ): Promise<void> {
+  const host = url.hostname.toLowerCase()
+  // Admin-sourced dynamic hosts are operator-trusted (same trust level as manifest approval).
+  // They bypass both the https requirement and the public-IP check — deliberate,
+  // to support self-hosted LAN endpoints that are commonly served over plain http.
+  if (dynamicHosts().has(host)) return
   assertHttps(url)
-  if (!hostSet.has(url.hostname.toLowerCase())) {
+  if (!hostSet.has(host) && !contextHosts().has(host)) {
     throw new Error(`Host '${url.hostname}' is not in the plugin providerAllowedHosts allowlist`)
   }
   await assertPublicUrl(url)
@@ -149,6 +170,8 @@ async function fetchWithRedirects(
   currentUrl: URL,
   fetchInit: RequestInit,
   hostSet: ReadonlySet<string>,
+  dynamicHosts: DynamicHostsFn,
+  contextHosts: DynamicHostsFn,
   deps: ProviderRuntimeDeps,
   logger: PluginLogger,
   redirectsLeft: number,
@@ -166,27 +189,50 @@ async function fetchWithRedirects(
   }
 
   const redirectUrl = resolveLocationUrl(response, currentUrl)
-  await validateHop(redirectUrl, hostSet, deps.assertPublicUrl)
+  // Redirect hops are validated against the static, admin-dynamic, and context host sets.
+  // Admin-dynamic hosts still bypass https + public-IP checks on redirect hops — same
+  // operator-trusted rationale as for the initial request.
+  // Context hosts receive full standard validation on every hop (https + assertPublicUrl).
+  await validateHop(redirectUrl, hostSet, dynamicHosts, contextHosts, deps.assertPublicUrl)
 
   // The caller's init (including any Authorization header) is forwarded to the
   // redirect target. This is acceptable because every hop must pass both the
-  // allowlist check and assertPublicUrl, so headers only ever reach hosts the
-  // plugin manifest already trusts.
+  // allowlist check and assertPublicUrl (or be a trusted dynamic host), so headers
+  // only ever reach hosts the plugin manifest already trusts.
   return fetchWithRedirects(
     redirectUrl,
     sanitizeRedirectFetchInit(buildRedirectFetchInit(fetchInit, response.status), currentUrl, redirectUrl),
     hostSet,
+    dynamicHosts,
+    contextHosts,
     deps,
     logger,
     redirectsLeft - 1,
   )
 }
 
+/**
+ * Build a frozen PluginProviderRuntime that enforces two tiers of host allowlisting:
+ *
+ * - **Admin-sourced dynamic hosts** (`dynamicHosts`): operator-trusted (same trust level as
+ *   manifest approval). These bypass the https requirement and the public-IP (SSRF) check,
+ *   allowing self-hosted LAN endpoints that are commonly served over plain http.
+ *
+ * - **Context-sourced hosts** (`contextHosts`): user/group-scoped, NOT operator-trusted.
+ *   These pass the allowlist membership check but receive full standard validation:
+ *   https is required and assertPublicUrl (SSRF guard) is always enforced.
+ *
+ * Static manifest hosts (`allowedHosts`) also receive full standard validation.
+ */
 export function buildProviderRuntime(
   allowedHosts: readonly string[],
   logger: PluginLogger,
-  deps: ProviderRuntimeDeps = defaultDeps,
+  deps: ProviderRuntimeDeps | undefined = defaultDeps,
+  dynamicHosts: DynamicHostsFn = noDynamicHosts,
+  contextHosts: DynamicHostsFn = noDynamicHosts,
 ): PluginProviderRuntime {
+  const resolvedDeps = deps ?? defaultDeps
+
   // Private enforcement set. Never exposed directly; httpFetch closes over this
   // copy, so mutations to the exposed Set cannot affect enforcement.
   const hostSet: ReadonlySet<string> = new Set(allowedHosts.map((h) => h.toLowerCase()))
@@ -200,12 +246,21 @@ export function buildProviderRuntime(
     logger,
     async httpFetch(rawUrl: string, init?: RequestInit): Promise<Response> {
       const url = parseProviderUrl(rawUrl)
-      await validateHop(url, hostSet, deps.assertPublicUrl)
+      await validateHop(url, hostSet, dynamicHosts, contextHosts, resolvedDeps.assertPublicUrl)
 
       const signal = composeSignal(init === undefined ? undefined : init.signal)
       const fetchInit = buildFetchInit(init, signal)
 
-      return fetchWithRedirects(url, fetchInit, hostSet, deps, logger, MAX_REDIRECTS)
+      return fetchWithRedirects(
+        url,
+        fetchInit,
+        hostSet,
+        dynamicHosts,
+        contextHosts,
+        resolvedDeps,
+        logger,
+        MAX_REDIRECTS,
+      )
     },
   })
 }

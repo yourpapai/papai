@@ -7,7 +7,8 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   buildAttachmentManifest,
-  buildHistoryAttachmentLines,
+  renderAttachedLine,
+  sanitizeForBracket,
   selectAttachmentsForTurn,
   supportsAttachmentModelInput,
 } from '../../src/attachments/resolver.js'
@@ -67,10 +68,35 @@ describe('attachment resolver', () => {
     expect(supportsAttachmentModelInput('llama-3.1-instruct')).toBe(false)
   })
 
-  test('buildHistoryAttachmentLines emits one [User attached ...] line per ref', () => {
-    expect(buildHistoryAttachmentLines(refs)).toEqual([
+  test('renderAttachedLine emits one [User attached ...] line per ref', () => {
+    expect(refs.map((ref) => renderAttachedLine(ref.attachmentId, ref.filename))).toEqual([
       '[User attached att_123: design.pdf]',
       '[User attached att_456: photo.jpg]',
     ])
+  })
+
+  test('sanitizeForBracket replaces [ ] and " with safe equivalents', () => {
+    expect(sanitizeForBracket('a[b]c"d')).toBe("a(b)c'd")
+  })
+
+  test('sanitizeForBracket returns plain strings unchanged', () => {
+    expect(sanitizeForBracket('hello world')).toBe('hello world')
+  })
+
+  test('renderAttachedLine produces the canonical [User attached id: filename] line', () => {
+    expect(renderAttachedLine('att_123', 'design.pdf')).toBe('[User attached att_123: design.pdf]')
+  })
+
+  test('renderAttachedLine sanitizes brackets and quotes in filename', () => {
+    const line = renderAttachedLine('att_1', 'weird[1].ogg')
+    expect(line).toBe('[User attached att_1: weird(1).ogg]')
+    // Only the closing ] at the very end
+    expect(line.indexOf(']')).toBe(line.length - 1)
+    expect(line.split(']').length - 1).toBe(1)
+  })
+
+  test('renderAttachedLine sanitizes double-quotes in filename', () => {
+    const line = renderAttachedLine('att_2', 'say "hello".mp3')
+    expect(line).toBe("[User attached att_2: say 'hello'.mp3]")
   })
 })

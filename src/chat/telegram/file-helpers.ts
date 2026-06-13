@@ -16,13 +16,27 @@ export interface ExtractFilesInput {
     audio?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number }
     video?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number }
     voice?: { file_id: string; file_size?: number }
+    forward_origin?: {
+      type: string
+      sender_user?: { first_name: string; last_name?: string }
+      sender_user_name?: string
+      sender_chat?: { title?: string }
+      chat?: { title?: string }
+    }
   }
 }
 
 /** Callback that downloads a Telegram file by file_id, returning its content or null on failure. */
 export type TelegramFileFetcher = (fileId: string) => Promise<Buffer | null>
 
-type FileCandidate = { fileId: string; filename: string; mimeType?: string; size?: number }
+type FileCandidate = {
+  fileId: string
+  filename: string
+  mimeType?: string
+  size?: number
+  origin?: 'voice'
+  forwardedFrom?: string
+}
 
 const getDocumentCandidate = (msg: ExtractFilesInput['message']): FileCandidate | undefined =>
   msg?.document === undefined
@@ -74,17 +88,34 @@ const getVoiceCandidate = (msg: ExtractFilesInput['message']): FileCandidate | u
         filename: 'voice.ogg',
         mimeType: 'audio/ogg',
         size: msg.voice.file_size,
+        origin: 'voice',
       }
+
+const extractForwardedFrom = (msg: ExtractFilesInput['message']): string | undefined => {
+  const fwd = msg?.forward_origin
+  if (fwd === undefined) return undefined
+  if (fwd.sender_user !== undefined) {
+    const last = fwd.sender_user.last_name
+    return last === undefined ? fwd.sender_user.first_name : `${fwd.sender_user.first_name} ${last}`
+  }
+  if (fwd.sender_user_name !== undefined) return fwd.sender_user_name
+  if (fwd.sender_chat?.title !== undefined) return fwd.sender_chat.title
+  if (fwd.chat?.title !== undefined) return fwd.chat.title
+  return undefined
+}
 
 /** Build the list of file candidates from a message (synchronous). */
 function buildFileCandidates(msg: ExtractFilesInput['message']): FileCandidate[] {
+  const forwardedFrom = extractForwardedFrom(msg)
   return [
     getDocumentCandidate(msg),
     getPhotoCandidate(msg),
     getAudioCandidate(msg),
     getVideoCandidate(msg),
     getVoiceCandidate(msg),
-  ].filter((candidate): candidate is FileCandidate => candidate !== undefined)
+  ]
+    .filter((candidate): candidate is FileCandidate => candidate !== undefined)
+    .map((candidate) => (forwardedFrom === undefined ? candidate : { ...candidate, forwardedFrom }))
 }
 
 /** Extract attached files from a Telegram message context. Exported for testing. */

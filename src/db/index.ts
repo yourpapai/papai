@@ -64,6 +64,8 @@ import { migration050SettingsAuth } from './migrations/050_settings_auth.js'
 import { migration051LegacyContextIdBackfill } from './migrations/051_legacy_context_id_backfill.js'
 import { migration052ByokLlmCredentials } from './migrations/052_byok_llm_credentials.js'
 import { migration053LongTermMemory } from './migrations/053_long_term_memory.js'
+import { migration054AttachmentOrigin } from './migrations/054_attachment_origin.js'
+import { migration055UserConfigKeyIndex } from './migrations/055_user_config_key_index.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -152,6 +154,8 @@ export const MIGRATIONS: readonly Migration[] = [
   migration051LegacyContextIdBackfill,
   migration052ByokLlmCredentials,
   migration053LongTermMemory,
+  migration054AttachmentOrigin,
+  migration055UserConfigKeyIndex,
 ]
 
 export const initDb = (): void => {

@@ -113,6 +113,7 @@ function makeManifest(...args: MakeManifestArgs): PluginManifest {
       jobs: [],
       configKeys: [],
       taskProviderTypes: [],
+      attachmentTransformers: [],
     },
     permissions: [],
     defaultEnabled: false,
@@ -316,6 +317,50 @@ describe('PluginContributionRegistry', () => {
     contributionRegistry.register('test-plugin', { tools: [], promptFragments: [] }, manifest)
     contributionRegistry.deregister('test-plugin')
     expect(contributionRegistry.getContributions('test-plugin')).toBeUndefined()
+  })
+
+  test('register stores declared attachment transformers and drops undeclared ones', () => {
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+        attachmentTransformers: ['audio-transcriber'],
+      },
+      permissions: ['attachments.read'],
+    })
+    const contributions: PluginContributions = {
+      tools: [],
+      promptFragments: [],
+      attachmentTransformers: [
+        {
+          name: 'audio-transcriber',
+          mimePrefixes: ['audio/'],
+          transform: () => Promise.resolve({ ok: true as const, text: 'transcript' }),
+        },
+        {
+          name: 'undeclared-transformer',
+          mimePrefixes: ['video/'],
+          transform: () => Promise.resolve({ ok: true as const, text: 'nope' }),
+        },
+      ],
+    }
+    contributionRegistry.register('test-plugin', contributions, manifest)
+    const result = contributionRegistry.getContributions('test-plugin')
+    expect(result).toBeDefined()
+    expect(result!.attachmentTransformers).toHaveLength(1)
+    expect(result!.attachmentTransformers[0]?.name).toBe('audio-transcriber')
+  })
+
+  test('register stores empty attachmentTransformers when none contributed', () => {
+    const manifest = makeManifest()
+    contributionRegistry.register('test-plugin', { tools: [], promptFragments: [] }, manifest)
+    const result = contributionRegistry.getContributions('test-plugin')
+    expect(result).toBeDefined()
+    expect(result!.attachmentTransformers).toEqual([])
   })
 
   test('registers declared plugin commands with namespaced chat commands', async () => {

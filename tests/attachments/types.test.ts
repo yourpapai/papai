@@ -30,6 +30,8 @@ describe('StagedFileRef', () => {
       attachmentId: null,
       createdAt: '2025-01-01T00:00:00Z',
       expiresAt: '2025-01-01T01:00:00Z',
+      origin: null,
+      forwardedFrom: null,
     }
     expect(ref.stagedId).toBe('staged-1')
     expect(ref.status).toBe('staged')
@@ -56,6 +58,8 @@ describe('StageFileParams', () => {
       platformFileId: 'pf-1',
       sourceProvider: 'telegram',
       sourcePlatformInstanceId: 'telegram-a',
+      origin: null,
+      forwardedFrom: null,
     }
     expect(params.contextId).toBe('ctx-1')
     expect(params.filename).toBe('doc.pdf')

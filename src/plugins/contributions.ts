@@ -11,6 +11,13 @@ import { defaultTaskProviderResolver } from '../providers/resolver.js'
 import type { TaskProvider } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
 import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
+import {
+  getValidAttachmentTransformers,
+  getValidCommands,
+  getValidJobs,
+  getValidPromptFragments,
+  getValidTools,
+} from './contribution-filter.js'
 import { namespacedJobName, namespacedToolName } from './contribution-names.js'
 import { getPluginToolInputSchema } from './input-schema.js'
 import { getPluginContextEligibility } from './registry.js'
@@ -22,6 +29,7 @@ import {
   type PluginToolSetRuntime,
 } from './tool-runtime.js'
 import type {
+  PluginAttachmentTransformer,
   PluginCommand,
   PluginContributions,
   PluginManifest,
@@ -45,6 +53,7 @@ export type ActivePluginContributions = {
   promptFragments: PluginPromptFragment[]
   commands: PluginCommand[]
   jobs: PluginScheduledJob[]
+  attachmentTransformers: PluginAttachmentTransformer[]
 }
 
 export type { PluginToolSetRuntime } from './tool-runtime.js'
@@ -60,16 +69,6 @@ const defaultScheduledJobDeps: PluginScheduledJobDeps = {
 const manifestUsesTaskProviderFacade = (manifest: PluginManifest): boolean => {
   if (manifest.permissions.includes('tasks.read')) return true
   return manifest.permissions.includes('tasks.write')
-}
-
-const getRawCommands = (rawContributions: PluginContributions): readonly PluginCommand[] => {
-  if (rawContributions.commands === undefined) return []
-  return rawContributions.commands
-}
-
-const getRawJobs = (rawContributions: PluginContributions): readonly PluginScheduledJob[] => {
-  if (rawContributions.jobs === undefined) return []
-  return rawContributions.jobs
 }
 
 /** Registry of active plugin contributions (in-memory, per-process). */
@@ -98,64 +97,13 @@ class PluginContributionRegistry {
     })
   }
 
-  private getValidTools(
-    pluginId: string,
-    rawContributions: PluginContributions,
-    manifest: PluginManifest,
-  ): PluginTool[] {
-    const declaredTools = new Set(manifest.contributes.tools)
-    return rawContributions.tools.filter((t) => {
-      if (declaredTools.has(t.name)) return true
-      log.warn({ pluginId, toolName: t.name }, 'Plugin contributed undeclared tool — skipping')
-      return false
-    })
-  }
-
-  private getValidPromptFragments(
-    pluginId: string,
-    rawContributions: PluginContributions,
-    manifest: PluginManifest,
-  ): PluginPromptFragment[] {
-    const declaredFragments = new Set(manifest.contributes.promptFragments)
-    return rawContributions.promptFragments.filter((f) => {
-      if (declaredFragments.has(f.name)) return true
-      log.warn({ pluginId, fragmentName: f.name }, 'Plugin contributed undeclared prompt fragment — skipping')
-      return false
-    })
-  }
-
-  private getValidCommands(
-    pluginId: string,
-    rawContributions: PluginContributions,
-    manifest: PluginManifest,
-  ): PluginCommand[] {
-    const declaredCommands = new Set(manifest.contributes.commands)
-    return getRawCommands(rawContributions).filter((command) => {
-      if (declaredCommands.has(command.name)) return true
-      log.warn({ pluginId, commandName: command.name }, 'Plugin contributed undeclared command — skipping')
-      return false
-    })
-  }
-
-  private getValidJobs(
-    pluginId: string,
-    rawContributions: PluginContributions,
-    manifest: PluginManifest,
-  ): PluginScheduledJob[] {
-    const declaredJobs = new Set(manifest.contributes.jobs)
-    return getRawJobs(rawContributions).filter((job) => {
-      if (declaredJobs.has(job.name)) return true
-      log.warn({ pluginId, jobName: job.name }, 'Plugin contributed undeclared scheduled job — skipping')
-      return false
-    })
-  }
-
   register(pluginId: string, rawContributions: PluginContributions, manifest: PluginManifest): void {
     this.unregisterPluginJobs(pluginId)
-    const validTools = this.getValidTools(pluginId, rawContributions, manifest)
-    const validFragments = this.getValidPromptFragments(pluginId, rawContributions, manifest)
-    const validCommands = this.getValidCommands(pluginId, rawContributions, manifest)
-    const validJobs = this.getValidJobs(pluginId, rawContributions, manifest)
+    const validTools = getValidTools(pluginId, rawContributions, manifest)
+    const validFragments = getValidPromptFragments(pluginId, rawContributions, manifest)
+    const validCommands = getValidCommands(pluginId, rawContributions, manifest)
+    const validJobs = getValidJobs(pluginId, rawContributions, manifest)
+    const validTransformers = getValidAttachmentTransformers(pluginId, rawContributions, manifest)
 
     this.activeContributions.set(pluginId, {
       pluginId,
@@ -164,6 +112,7 @@ class PluginContributionRegistry {
       promptFragments: validFragments,
       commands: validCommands,
       jobs: validJobs,
+      attachmentTransformers: validTransformers,
     })
     this.registerPluginJobs(pluginId, validJobs)
     log.info(
@@ -173,6 +122,7 @@ class PluginContributionRegistry {
         fragmentCount: validFragments.length,
         commandCount: validCommands.length,
         jobCount: validJobs.length,
+        transformerCount: validTransformers.length,
       },
       'Plugin contributions registered',
     )

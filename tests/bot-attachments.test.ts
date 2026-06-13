@@ -11,11 +11,12 @@ import {
   resetBlobStoreForTesting,
   setBlobStoreForTesting,
 } from '../src/attachments/blob-store.js'
-import { listActiveAttachments } from '../src/attachments/index.js'
-import { findStagedFilesByMessageId } from '../src/attachments/staged.js'
+import { listActiveAttachments, stageFileMetadata } from '../src/attachments/index.js'
+import { findStagedFilesByMessageId, resolveStagedFile } from '../src/attachments/staged.js'
 import { loadAttachmentRecord } from '../src/attachments/store.js'
 import type { StagedFileRef, StageFileParams } from '../src/attachments/types.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
+import { findVoiceStagedIds, resolveVoiceStagedFiles } from '../src/bot-attachments.js'
 import { setupBot } from '../src/bot.js'
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider, ReplyFn } from '../src/chat/types.js'
@@ -214,6 +215,8 @@ describe('bot-attachments', () => {
               attachmentId: null,
               createdAt: 'now',
               expiresAt: 'later',
+              origin: null,
+              forwardedFrom: null,
             }
           },
         },
@@ -286,6 +289,121 @@ describe('bot-attachments', () => {
     })
   })
 
+  describe('origin and forwardedFrom propagation', () => {
+    test('DM ingest persists origin and forwardedFrom from IncomingFile', async () => {
+      const { resolveMessageAttachments } = await import('../src/bot-attachments.js')
+      const chat = createMockChat()
+      const msg: IncomingMessage = {
+        ...createDmMessage('ctx-dm'),
+        files: [
+          makeFile({
+            fileId: 'f1',
+            filename: 'voice.ogg',
+            content: Buffer.from('audio'),
+            mimeType: 'audio/ogg',
+            origin: 'voice',
+            forwardedFrom: 'Alice',
+          }),
+        ],
+      }
+
+      const result = await resolveMessageAttachments(chat, msg, 'ctx-dm')
+      const stored = await loadAttachmentRecord('ctx-dm', result.newAttachmentIds[0]!)
+      expect(stored?.origin).toBe('voice')
+      expect(stored?.forwardedFrom).toBe('Alice')
+    })
+
+    test('group staging passes candidate origin and forwardedFrom to stageFileMetadata', async () => {
+      const { stageGroupFileCandidates } = await import('../src/bot-attachments.js')
+      const staged: StageFileParams[] = []
+      const msg: IncomingMessage = {
+        ...createGroupMessage('group-user', 'hello'),
+        messageId: 'msg-origin-test',
+        fileCandidates: [
+          makeCandidate({
+            fileId: 'pf1',
+            filename: 'voice.ogg',
+            mimeType: 'audio/ogg',
+            origin: 'voice',
+            forwardedFrom: 'Alice',
+          }),
+        ],
+      }
+
+      stageGroupFileCandidates(
+        { storageContextId: 'ctx-g', msg, sourceProvider: 'telegram' },
+        {
+          stageFileMetadataFn: (params) => {
+            staged.push(params)
+            return {
+              stagedId: 'stg_origin',
+              contextId: params.contextId,
+              messageId: params.messageId,
+              senderId: params.senderId,
+              senderUsername: params.senderUsername,
+              filename: params.filename,
+              mimeType: params.mimeType,
+              size: params.size,
+              platformFileId: params.platformFileId,
+              sourceProvider: params.sourceProvider,
+              sourcePlatformInstanceId: params.sourcePlatformInstanceId,
+              status: 'staged',
+              attachmentId: null,
+              createdAt: 'now',
+              expiresAt: 'later',
+              origin: params.origin,
+              forwardedFrom: params.forwardedFrom,
+            }
+          },
+        },
+      )
+
+      expect(staged[0]?.origin).toBe('voice')
+      expect(staged[0]?.forwardedFrom).toBe('Alice')
+    })
+
+    test('group staging produces origin: null, forwardedFrom: null for candidate without those fields', async () => {
+      const { stageGroupFileCandidates } = await import('../src/bot-attachments.js')
+      const staged: StageFileParams[] = []
+      const msg: IncomingMessage = {
+        ...createGroupMessage('group-user', 'hello'),
+        messageId: 'msg-no-origin',
+        fileCandidates: [makeCandidate({ fileId: 'pf-plain' })],
+      }
+
+      stageGroupFileCandidates(
+        { storageContextId: 'ctx-g2', msg, sourceProvider: 'telegram' },
+        {
+          stageFileMetadataFn: (params) => {
+            staged.push(params)
+            return {
+              stagedId: 'stg_plain',
+              contextId: params.contextId,
+              messageId: params.messageId,
+              senderId: params.senderId,
+              senderUsername: params.senderUsername,
+              filename: params.filename,
+              mimeType: params.mimeType,
+              size: params.size,
+              platformFileId: params.platformFileId,
+              sourceProvider: params.sourceProvider,
+              sourcePlatformInstanceId: params.sourcePlatformInstanceId,
+              status: 'staged',
+              attachmentId: null,
+              createdAt: 'now',
+              expiresAt: 'later',
+              origin: params.origin,
+              forwardedFrom: params.forwardedFrom,
+            }
+          },
+        },
+      )
+
+      expect(staged[0]?.origin).toBeNull()
+      expect(staged[0]?.forwardedFrom).toBeNull()
+    })
+  })
+
   describe('resolveMessageAttachments', () => {
     test('ingests DM files when present', async () => {
       const { resolveMessageAttachments } = await import('../src/bot-attachments.js')
@@ -348,6 +466,240 @@ describe('bot-attachments', () => {
       } finally {
         Object.assign(process.env, saved)
       }
+    })
+  })
+
+  describe('findVoiceStagedIds', () => {
+    test('returns stagedIds only for voice-origin rows matching the messageId', () => {
+      const voiceRef = stageFileMetadata({
+        contextId: 'ctx-fv',
+        messageId: 'msg-fv',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'voice.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-fv-voice',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      stageFileMetadata({
+        contextId: 'ctx-fv',
+        messageId: 'msg-fv',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'doc.pdf',
+        mimeType: 'application/pdf',
+        size: 4,
+        platformFileId: 'pf-fv-doc',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: null,
+        forwardedFrom: null,
+      })
+      const ids = findVoiceStagedIds('ctx-fv', 'msg-fv')
+      expect(ids).toEqual([voiceRef.stagedId])
+    })
+
+    test('returns [] when messageId is undefined', () => {
+      expect(findVoiceStagedIds('ctx-fv', undefined)).toEqual([])
+    })
+
+    test('returns [] when S3 is not configured', () => {
+      const saved = { ...process.env }
+      delete process.env['S3_BUCKET']
+      delete process.env['S3_ACCESS_KEY_ID']
+      delete process.env['S3_SECRET_ACCESS_KEY']
+      try {
+        expect(findVoiceStagedIds('ctx-fv', 'msg-fv')).toEqual([])
+      } finally {
+        Object.assign(process.env, saved)
+      }
+    })
+  })
+
+  describe('resolveVoiceStagedFiles', () => {
+    test('resolves only voice-origin staged files given their staged ids', async () => {
+      const voiceRef = stageFileMetadata({
+        contextId: 'ctx-g',
+        messageId: 'm-9',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'voice.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-v',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      stageFileMetadata({
+        contextId: 'ctx-g',
+        messageId: 'm-9',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'doc.pdf',
+        mimeType: 'application/pdf',
+        size: 4,
+        platformFileId: 'pf-d',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: null,
+        forwardedFrom: null,
+      })
+      const stagedIds = findVoiceStagedIds('ctx-g', 'm-9')
+      expect(stagedIds).toEqual([voiceRef.stagedId])
+      const ids = await resolveVoiceStagedFiles('ctx-g', stagedIds, () => Promise.resolve(Buffer.from('audio')))
+      expect(ids).toHaveLength(1)
+      const stored = await loadAttachmentRecord('ctx-g', ids[0]!)
+      expect(stored?.origin).toBe('voice')
+      expect(stored?.filename).toBe('voice.ogg')
+    })
+
+    test('returns empty for empty stagedIds or no downloadFn', async () => {
+      expect(await resolveVoiceStagedFiles('ctx-g', [], () => Promise.resolve(null))).toEqual([])
+      expect(await resolveVoiceStagedFiles('ctx-g', ['stg_x'], undefined)).toEqual([])
+    })
+
+    test('tolerates a failing download (returns null)', async () => {
+      const ref = stageFileMetadata({
+        contextId: 'ctx-g2',
+        messageId: 'm-1',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'voice.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-x',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      const ids = await resolveVoiceStagedFiles('ctx-g2', [ref.stagedId], () => Promise.resolve(null))
+      expect(ids).toEqual([])
+    })
+
+    test('does not propagate a thrown error from downloadFn — returns []', async () => {
+      const ref = stageFileMetadata({
+        contextId: 'ctx-throw',
+        messageId: 'm-throw',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'voice.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-throw',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      const throwingDownload = (): Promise<Buffer | null> => {
+        throw new Error('Network failure')
+      }
+      const ids = await resolveVoiceStagedFiles('ctx-throw', [ref.stagedId], throwingDownload)
+      expect(ids).toEqual([])
+    })
+
+    test('skips the failed id and still resolves the rest', async () => {
+      const badRef = stageFileMetadata({
+        contextId: 'ctx-multi',
+        messageId: 'm-multi',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'bad.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-bad',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      const goodRef = stageFileMetadata({
+        contextId: 'ctx-multi',
+        messageId: 'm-multi',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'good.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-good',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      const behaviors: Array<() => Promise<Buffer | null>> = [
+        (): never => {
+          throw new Error('first throws')
+        },
+        (): Promise<Buffer> => Promise.resolve(Buffer.from('audio')),
+      ]
+      let callIdx = 0
+      const downloadFn = (): Promise<Buffer | null> => behaviors[callIdx++]!()
+      const ids = await resolveVoiceStagedFiles('ctx-multi', [badRef.stagedId, goodRef.stagedId], downloadFn)
+      expect(ids).toHaveLength(1)
+      const stored = await loadAttachmentRecord('ctx-multi', ids[0]!)
+      expect(stored?.filename).toBe('good.ogg')
+    })
+
+    test('duplicate staged ids in input → downloadFn called once, one attachment id returned', async () => {
+      const ref = stageFileMetadata({
+        contextId: 'ctx-dedup',
+        messageId: 'm-dedup',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'voice.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-dedup',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      let downloadCount = 0
+      const downloadFn = (): Promise<Buffer | null> => {
+        downloadCount++
+        return Promise.resolve(Buffer.from('audio'))
+      }
+      // Pass the same stagedId twice (simulating two coalesced messages for same file)
+      const ids = await resolveVoiceStagedFiles('ctx-dedup', [ref.stagedId, ref.stagedId], downloadFn)
+      expect(downloadCount).toBe(1)
+      expect(ids).toHaveLength(1)
+    })
+
+    test('TOCTOU: already-resolved staged id returns the prior attachment id', async () => {
+      const ref = stageFileMetadata({
+        contextId: 'ctx-toctou',
+        messageId: 'm-toctou',
+        senderId: 'u1',
+        senderUsername: null,
+        filename: 'voice.ogg',
+        mimeType: 'audio/ogg',
+        size: 4,
+        platformFileId: 'pf-toctou',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'pi',
+        origin: 'voice',
+        forwardedFrom: null,
+      })
+      // Resolve the staged file directly so status becomes 'resolved'
+      const resolveResult = await resolveStagedFile(ref.stagedId, 'ctx-toctou', () =>
+        Promise.resolve(Buffer.from('audio')),
+      )
+      assert.ok('attachmentId' in resolveResult, 'expected AttachmentRef from direct resolution')
+      assert.ok(resolveResult.attachmentId !== null)
+      const priorAttachmentId = resolveResult.attachmentId
+
+      // Now call resolveVoiceStagedFiles with the staged id explicitly
+      const ids = await resolveVoiceStagedFiles('ctx-toctou', [ref.stagedId], () => Promise.resolve(Buffer.from('b')))
+      expect(ids).toEqual([priorAttachmentId])
     })
   })
 })
