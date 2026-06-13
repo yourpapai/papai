@@ -23,6 +23,7 @@ import type {
   IncomingInteraction,
   IncomingMessage,
   ReplyFn,
+  ReplyOptions,
   ResolveUserContext,
 } from '../../src/chat/types.js'
 import { resetDrizzleDbForTesting, setDrizzleDbForTesting } from '../../src/db/drizzle.js'
@@ -274,6 +275,7 @@ export interface MockReplyResult {
   redactCalls: string[]
   fileCalls: ChatFile[]
   embedCalls: EmbedOptions[]
+  formattedOptionsCalls: Array<ReplyOptions | undefined>
   getReplies: () => string[]
   getRedactions: () => string[]
   getEmbeds: () => EmbedOptions[]
@@ -288,13 +290,15 @@ export function createMockReply(): MockReplyResult {
   const redactCalls: string[] = []
   const fileCalls: ChatFile[] = []
   const embedCalls: EmbedOptions[] = []
+  const formattedOptionsCalls: Array<ReplyOptions | undefined> = []
   const reply: ReplyFn = {
     text: (content: string): Promise<void> => {
       textCalls.push(content)
       return Promise.resolve()
     },
-    formatted: (content: string): Promise<void> => {
+    formatted: (content: string, ...rest: [] | [ReplyOptions]): Promise<void> => {
       textCalls.push(content)
+      formattedOptionsCalls.push(rest[0])
       return Promise.resolve()
     },
     file: (file: ChatFile): Promise<void> => {
@@ -322,6 +326,7 @@ export function createMockReply(): MockReplyResult {
     redactCalls,
     fileCalls,
     embedCalls,
+    formattedOptionsCalls,
     getReplies: () => textCalls,
     getRedactions: () => redactCalls,
     getEmbeds: () => embedCalls,

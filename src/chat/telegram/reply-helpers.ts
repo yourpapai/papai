@@ -207,8 +207,13 @@ export async function sendTextReply(
   await ctx.reply(content, { reply_parameters: replyParameters })
 }
 
+/** Minimal context surface {@link sendFormattedReply} needs — just the message reply method. */
+export type ReplyCapableContext = {
+  reply: (text: string, other?: Record<string, unknown>) => Promise<unknown>
+}
+
 export async function sendFormattedReply(
-  ctx: Context,
+  ctx: ReplyCapableContext,
   markdown: string,
   buildReplyParams: ReplyParamsBuilder,
   options: ReplyOptions | undefined,
@@ -218,6 +223,7 @@ export async function sendFormattedReply(
   await ctx.reply(formatted.text, {
     entities: formatted.entities,
     reply_parameters: replyParameters,
+    ...(options?.disableLinkPreview === true ? { link_preview_options: { is_disabled: true } } : {}),
   })
 }
 

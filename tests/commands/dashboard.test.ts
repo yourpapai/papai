@@ -84,6 +84,14 @@ describe('/dashboard command', () => {
     expect(body).toMatch(/5 min/iu)
   })
 
+  test('sends the claim link with link previews disabled', async () => {
+    const { reply, formattedOptionsCalls } = createMockReply()
+    const msg = createDmMessage('u1')
+    const auth = createAuth('u1', { allowed: true, isBotAdmin: true })
+    await lastHandler!(msg, reply, auth)
+    expect(formattedOptionsCalls.some((opts) => opts?.disableLinkPreview === true)).toBe(true)
+  })
+
   test('replies with an identity error when user.id is empty', async () => {
     const { reply, textCalls } = createMockReply()
     const msg = { ...createDmMessage('u1'), user: { id: '', username: null, isAdmin: false } }

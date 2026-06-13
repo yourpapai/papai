@@ -16,8 +16,10 @@ import { formatLlmOutput } from '../../../src/chat/telegram/format.js'
 import {
   createReplyParamsBuilder,
   type ReplacementReplyContext,
+  type ReplyCapableContext,
   type ReplyContext,
   type ReplyParamsBuilder,
+  sendFormattedReply,
   sendReplacementButtonReply,
   sendReplacementTextReply,
 } from '../../../src/chat/telegram/reply-helpers.js'
@@ -35,6 +37,35 @@ type ReplacementCallOptions = Partial<{
   entities: ReturnType<typeof formatLlmOutput>['entities']
   reply_markup: InlineKeyboard
 }>
+
+describe('sendFormattedReply link preview', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  const makeReplyCtx = (): { ctx: ReplyCapableContext; calls: Array<Record<string, unknown> | undefined> } => {
+    const calls: Array<Record<string, unknown> | undefined> = []
+    const ctx: ReplyCapableContext = {
+      reply: (_text: string, opts?: Record<string, unknown>): Promise<unknown> => {
+        calls.push(opts)
+        return Promise.resolve({})
+      },
+    }
+    return { ctx, calls }
+  }
+
+  test('omits link_preview_options by default', async () => {
+    const { ctx, calls } = makeReplyCtx()
+    await sendFormattedReply(ctx, 'hello https://example.com', () => undefined, undefined)
+    expect(calls[0]?.['link_preview_options']).toBeUndefined()
+  })
+
+  test('disables link preview when disableLinkPreview is set', async () => {
+    const { ctx, calls } = makeReplyCtx()
+    await sendFormattedReply(ctx, 'hello https://example.com', () => undefined, { disableLinkPreview: true })
+    expect(calls[0]?.['link_preview_options']).toEqual({ is_disabled: true })
+  })
+})
 
 describe('createReplyParamsBuilder', () => {
   beforeEach(() => {

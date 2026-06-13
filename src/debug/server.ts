@@ -11,7 +11,7 @@ import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
-import { handleAuthClaim, handleAuthLogout, handleAuthWhoami } from './auth-routes.js'
+import { routePublicAuthPaths } from './auth-routes.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
@@ -168,13 +168,6 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
   if (url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/admin.css') {
     return handleClientFile('admin', url.pathname)
   }
-  return null
-}
-
-function routePublicAuthPaths(req: Request, url: URL): Response | null {
-  if (url.pathname === '/auth/claim' && req.method === 'GET') return handleAuthClaim(req, url)
-  if (url.pathname === '/auth/logout' && req.method === 'POST') return handleAuthLogout(req)
-  if (url.pathname === '/auth/whoami' && req.method === 'GET') return handleAuthWhoami(req)
   return null
 }
 

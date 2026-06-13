@@ -129,6 +129,11 @@ const restoreOriginalModules = (): void => {
 
 beforeEach(() => {
   resetDrizzleDbForTesting()
+  // The system_config cache is a module-level Map that survives across test files
+  // in serial mode (`bun test`, CI). Clearing it here keeps serial runs matching
+  // the isolated (`--parallel`) per-file processes, so a config-seeding file can't
+  // leave LLM credentials visible to a later file that assumes none are configured.
+  _systemConfig.systemConfigCacheForTesting.clear()
   setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
   process.env['S3_BUCKET'] = 'test-bucket'
   process.env['S3_ACCESS_KEY_ID'] = 'test-key'

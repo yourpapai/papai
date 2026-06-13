@@ -205,6 +205,8 @@ export type ReplyOptions = Partial<{
   replyToMessageId: string
   /** Post in this thread/topic */
   threadId: string
+  /** Suppress link preview/URL unfurling (Telegram); used for one-time sign-in links so preview crawlers don't fetch the URL. */
+  disableLinkPreview: boolean
 }>
 
 /** Button for interactive messages */

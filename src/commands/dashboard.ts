@@ -61,7 +61,8 @@ export const registerDashboardCommand = (chat: Readonly<ChatProvider>): void => 
     const url = `${defaultBaseUrl()}/auth/claim?n=${claim.nonce}`
     const ttlMinutes = Math.round(getClaimTtlSeconds() / 60)
     await reply.formatted(
-      `Open this link to sign in (copy-paste — clicking may consume it via link previews):\n\n${url}\n\nLink expires in ${ttlMinutes} min and can be used once.`,
+      `Open this link, then press "Sign in" on the page:\n\n${url}\n\nLink expires in ${ttlMinutes} min and can be used once.`,
+      { disableLinkPreview: true },
     )
   }
 

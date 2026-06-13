@@ -12,8 +12,20 @@ import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import { issueClaim, mintSession } from '../../src/dashboard-auth/index.js'
 import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
-import { handleAuthClaim, handleAuthLogout, handleAuthWhoami } from '../../src/debug/auth-routes.js'
+import {
+  handleAuthClaim,
+  handleAuthClaimConfirm,
+  handleAuthLogout,
+  handleAuthWhoami,
+} from '../../src/debug/auth-routes.js'
 import { mockLogger } from '../utils/test-helpers.js'
+
+const claimConfirmRequest = (nonce: string, headers: Record<string, string> = {}): Request =>
+  new Request('http://localhost/auth/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers },
+    body: new URLSearchParams({ n: nonce }).toString(),
+  })
 
 describe('auth route handlers', () => {
   let db: Database
@@ -28,41 +40,76 @@ describe('auth route handlers', () => {
     setStoreDb(null)
   })
 
-  describe('handleAuthClaim', () => {
+  describe('handleAuthClaim (GET interstitial)', () => {
     test('returns 401 for missing nonce', () => {
       const url = new URL('http://localhost/auth/claim')
       const res = handleAuthClaim(new Request('http://localhost/auth/claim'), url)
       expect(res.status).toBe(401)
     })
 
-    test('returns 401 for unknown nonce', () => {
-      const url = new URL('http://localhost/auth/claim?n=unknown')
-      const res = handleAuthClaim(new Request('http://localhost/auth/claim?n=unknown'), url)
-      expect(res.status).toBe(401)
-    })
-
-    test('returns 302 with Set-Cookie and Referrer-Policy for valid nonce', () => {
+    test('renders an HTML confirmation form without consuming the claim', async () => {
       const { nonce } = issueClaim('u1', 'p1')
       const url = new URL(`http://localhost/auth/claim?n=${nonce}`)
       const res = handleAuthClaim(new Request(`http://localhost/auth/claim?n=${nonce}`), url)
+      expect(res.status).toBe(200)
+      expect(res.headers.get('Content-Type')).toContain('text/html')
+      expect(res.headers.get('Cache-Control')).toBe('no-store')
+      expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
+      const html = await res.text()
+      expect(html).toContain('method="post"')
+      expect(html).toContain(`value="${nonce}"`)
+      // The GET must NOT consume the claim — a subsequent POST still succeeds.
+      const post = await handleAuthClaimConfirm(claimConfirmRequest(nonce))
+      expect(post.status).toBe(302)
+    })
+
+    test('HTML-escapes the nonce to avoid injection', async () => {
+      const url = new URL('http://localhost/auth/claim?n=%22%3E%3Cscript%3E')
+      const res = handleAuthClaim(new Request(url.toString()), url)
+      const html = await res.text()
+      expect(html).not.toContain('<script>')
+      expect(html).toContain('&lt;script&gt;')
+    })
+  })
+
+  describe('handleAuthClaimConfirm (POST consume)', () => {
+    test('returns 401 for missing nonce', async () => {
+      const res = await handleAuthClaimConfirm(
+        new Request('http://localhost/auth/claim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: '',
+        }),
+      )
+      expect(res.status).toBe(401)
+    })
+
+    test('returns 401 for unknown nonce', async () => {
+      const res = await handleAuthClaimConfirm(claimConfirmRequest('unknown'))
+      expect(res.status).toBe(401)
+    })
+
+    test('returns 302 with Set-Cookie and Referrer-Policy for valid nonce', async () => {
+      const { nonce } = issueClaim('u1', 'p1')
+      const res = await handleAuthClaimConfirm(claimConfirmRequest(nonce))
       expect(res.status).toBe(302)
       expect(res.headers.get('Location')).toBe('/admin')
       expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
+      expect(res.headers.get('Cache-Control')).toBe('no-store')
       const setCookie = res.headers.get('Set-Cookie')
       expect(setCookie).not.toBeNull()
       expect(setCookie).toContain(`${SESSION_COOKIE_NAME}=`)
     })
 
-    test('GET /auth/claim sets Cache-Control: no-store on the redirect', () => {
+    test('rejects a replayed nonce with 401', async () => {
       const { nonce } = issueClaim('u1', 'p1')
-      const res = handleAuthClaim(
-        new Request(`http://localhost/auth/claim?n=${nonce}`),
-        new URL(`http://localhost/auth/claim?n=${nonce}`),
-      )
-      expect(res.headers.get('Cache-Control')).toBe('no-store')
+      const first = await handleAuthClaimConfirm(claimConfirmRequest(nonce))
+      expect(first.status).toBe(302)
+      const second = await handleAuthClaimConfirm(claimConfirmRequest(nonce))
+      expect(second.status).toBe(401)
     })
 
-    test('GET /auth/claim returns 503 when mintSession fails', () => {
+    test('returns 503 when mintSession fails', async () => {
       // Use a claims-only DB: dashboard_claims exists but dashboard_sessions does not,
       // so consumeClaim succeeds while insertSession (inside mintSession) throws.
       const claimsOnlyDb = new Database(':memory:')
@@ -78,10 +125,7 @@ describe('auth route handlers', () => {
       `)
       setStoreDb(claimsOnlyDb)
       const { nonce } = issueClaim('u1', 'p1')
-      const res = handleAuthClaim(
-        new Request(`http://localhost/auth/claim?n=${nonce}`),
-        new URL(`http://localhost/auth/claim?n=${nonce}`),
-      )
+      const res = await handleAuthClaimConfirm(claimConfirmRequest(nonce))
       claimsOnlyDb.close()
       setStoreDb(db)
       expect(res.status).toBe(503)
@@ -147,15 +191,10 @@ describe('auth route handlers', () => {
     })
   })
 
-  describe('isSecureRequest (via handleAuthClaim)', () => {
-    test('detects https from multi-value X-Forwarded-Proto', () => {
+  describe('isSecureRequest (via handleAuthClaimConfirm)', () => {
+    test('detects https from multi-value X-Forwarded-Proto', async () => {
       const { nonce } = issueClaim('u1', 'p1')
-      const res = handleAuthClaim(
-        new Request(`http://localhost/auth/claim?n=${nonce}`, {
-          headers: { 'X-Forwarded-Proto': 'https, http' },
-        }),
-        new URL(`http://localhost/auth/claim?n=${nonce}`),
-      )
+      const res = await handleAuthClaimConfirm(claimConfirmRequest(nonce, { 'X-Forwarded-Proto': 'https, http' }))
       const setCookie = res.headers.get('Set-Cookie')
       expect(setCookie).not.toBeNull()
       expect(setCookie).toContain('Secure')

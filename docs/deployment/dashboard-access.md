@@ -35,5 +35,6 @@ Run the bot behind oauth2-proxy / Authelia / authentik / Cloudflare Access. The 
 
 1. Operator DMs `/dashboard` to the bot.
 2. Bot replies with a single-use URL valid for 5 minutes.
-3. Clicking the link sets a `HttpOnly; Secure; SameSite=Strict` cookie scoped to `/` and redirects to `/admin`.
-4. Session lasts 8 hours by default. `POST /auth/logout` revokes immediately.
+3. Opening the link (`GET /auth/claim`) renders a confirmation page only — it does **not** consume the nonce. This is deliberate: messaging-platform link-preview crawlers (Telegram, Slack, etc.) issue a `GET` when the link is sent, and consuming on `GET` would burn the single-use claim before the operator opens it. The bot also sends the link with link previews disabled as defense in depth.
+4. Pressing **Sign in** on that page submits `POST /auth/claim`, which consumes the nonce, sets a `HttpOnly; Secure; SameSite=Strict` cookie scoped to `/`, and redirects to `/admin`.
+5. Session lasts 8 hours by default. `POST /auth/logout` revokes immediately.

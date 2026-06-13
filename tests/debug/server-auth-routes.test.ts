@@ -28,9 +28,26 @@ describe('/auth/* routes', () => {
     setStoreDb(null)
   })
 
-  test('GET /auth/claim consumes a nonce, sets cookie, redirects to /admin', async () => {
+  const claimConfirm = (nonce: string): Request =>
+    new Request('http://localhost/auth/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ n: nonce }).toString(),
+    })
+
+  test('GET /auth/claim renders an HTML form without consuming the nonce', async () => {
     const { nonce } = issueClaim('u1', 'p1')
     const res = await routeRequestForTest(new Request(`http://localhost/auth/claim?n=${nonce}`))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toContain('text/html')
+    // Claim survives the GET: the POST still succeeds.
+    const confirm = await routeRequestForTest(claimConfirm(nonce))
+    expect(confirm.status).toBe(302)
+  })
+
+  test('POST /auth/claim consumes a nonce, sets cookie, redirects to /admin', async () => {
+    const { nonce } = issueClaim('u1', 'p1')
+    const res = await routeRequestForTest(claimConfirm(nonce))
     expect(res.status).toBe(302)
     expect(res.headers.get('Location')).toBe('/admin')
     expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
@@ -41,15 +58,15 @@ describe('/auth/* routes', () => {
     expect(setCookie).toContain('SameSite=Strict')
   })
 
-  test('GET /auth/claim rejects unknown nonce with 401', async () => {
-    const res = await routeRequestForTest(new Request('http://localhost/auth/claim?n=deadbeef'))
+  test('POST /auth/claim rejects unknown nonce with 401', async () => {
+    const res = await routeRequestForTest(claimConfirm('deadbeef'))
     expect(res.status).toBe(401)
   })
 
-  test('GET /auth/claim rejects a replayed nonce', async () => {
+  test('POST /auth/claim rejects a replayed nonce', async () => {
     const { nonce } = issueClaim('u1', 'p1')
-    await routeRequestForTest(new Request(`http://localhost/auth/claim?n=${nonce}`))
-    const res = await routeRequestForTest(new Request(`http://localhost/auth/claim?n=${nonce}`))
+    await routeRequestForTest(claimConfirm(nonce))
+    const res = await routeRequestForTest(claimConfirm(nonce))
     expect(res.status).toBe(401)
   })
 
