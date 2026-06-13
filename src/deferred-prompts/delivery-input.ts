@@ -13,7 +13,7 @@ export type CreateDeliveryContext = {
   contextType: ContextType
 } & Partial<Readonly<{ username: string | null }>>
 
-export type DeliveryPolicy = Partial<Readonly<{ audience: 'personal' | 'shared'; mention_user_ids: string[] }>>
+export type DeliveryPolicy = Partial<Readonly<{ mention_user_ids: string[] }>>
 
 function nullableUsername(username: string | null | undefined): string | null {
   if (username === undefined) return null
@@ -31,18 +31,16 @@ function parseGroupDeliveryContext(storageContextId: string): Readonly<{ context
   return { contextId: storageContextId.slice(0, colonIdx), threadId: storageContextId.slice(colonIdx + 1) }
 }
 
-function deliveryAudience(policy: DeliveryPolicy | undefined): 'personal' | 'shared' {
-  if (policy === undefined) return 'personal'
-  if (policy.audience === 'shared') return 'shared'
-  return 'personal'
+// Mentions are the single source of truth: an omitted list defaults to the requester
+// ("remind me"), an explicit empty list means the whole group with no @mention, and an
+// explicit list @mentions exactly those users. Audience is derived from emptiness.
+function mentionUserIds(policy: DeliveryPolicy | undefined, ctxUserId: string): string[] {
+  if (policy === undefined || policy.mention_user_ids === undefined) return [ctxUserId]
+  return policy.mention_user_ids
 }
 
-function mentionUserIds(policy: DeliveryPolicy | undefined, ctxUserId: string): string[] {
-  const audience = deliveryAudience(policy)
-  if (audience === 'shared') return []
-  if (policy === undefined) return [ctxUserId]
-  if (policy.mention_user_ids === undefined) return [ctxUserId]
-  return policy.mention_user_ids
+function deliveryAudience(mentions: readonly string[]): 'personal' | 'shared' {
+  return mentions.length === 0 ? 'shared' : 'personal'
 }
 
 export function buildDeliveryInput(
@@ -57,14 +55,14 @@ export function buildDeliveryInput(
     }
 
   const parsedContext = parseGroupDeliveryContext(ctx.storageContextId)
-  const audience = deliveryAudience(policy)
+  const mentions = mentionUserIds(policy, ctx.userId)
   return {
     contextId: parsedContext.contextId,
     storageContextId: ctx.storageContextId,
     contextType: 'group',
     threadId: parsedContext.threadId,
-    audience,
-    mentionUserIds: mentionUserIds(policy, ctx.userId),
+    audience: deliveryAudience(mentions),
+    mentionUserIds: mentions,
     createdByUserId: ctx.userId,
     createdByUsername: nullableUsername(ctx.username),
   }

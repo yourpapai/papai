@@ -26,13 +26,17 @@ export type DeferredPromptDeliveryInput = DeferredPromptDelivery
 /** Tool-level delivery policy schema (audience + mention targets chosen by the LLM). */
 export const deliveryPolicySchema = z
   .object({
-    audience: z.enum(['personal', 'shared']).describe("'personal' to @mention the creator, 'shared' for no mention"),
     mention_user_ids: z
       .array(z.string())
-      .describe('User IDs to @mention in the delivery message (personal audience only)'),
+      .optional()
+      .describe(
+        'User IDs to @mention when the reminder fires in the group. Omit to @mention the requester; [] for no @mention (whole group); specific IDs to @mention those users.',
+      ),
   })
   .optional()
-  .describe('Delivery policy for group contexts. Omit for DM prompts.')
+  .describe(
+    'Group-only delivery policy — the reminder always fires in the group chat, never in a DM. Omit entirely for DM prompts. In a group, omit mention_user_ids to @mention the requester, pass [] to fire with no @mention, or list user IDs to @mention them.',
+  )
 
 // --- Condition fields and operators ---
 

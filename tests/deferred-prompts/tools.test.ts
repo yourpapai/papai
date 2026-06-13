@@ -548,7 +548,7 @@ describe('delivery classification persistence', () => {
     setConfig(USER_ID, 'timezone', 'UTC')
   })
 
-  test('group scheduled prompt persists personal audience and mention target chosen at creation', async () => {
+  test('group scheduled prompt with an explicit mention list persists personal audience and those mentions', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, '-1001:42', 'group')
     assert.ok(tool.execute)
 
@@ -557,7 +557,6 @@ describe('delivery classification persistence', () => {
         prompt: 'Remind me to send the report',
         schedule: { fire_at: futureFireAt() },
         delivery: {
-          audience: 'personal',
           mention_user_ids: [USER_ID],
         },
         execution: {
@@ -572,6 +571,25 @@ describe('delivery classification persistence', () => {
     const created = getScheduledPrompt(extractId(result), USER_ID)
     expect(created).not.toBeNull()
     expect(created!.deliveryTarget.contextId).toBe('-1001')
+    expect(created!.deliveryTarget.audience).toBe('personal')
+    expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID])
+  })
+
+  test('group scheduled prompt with omitted mention list defaults to @mentioning the creator', async () => {
+    const tool = makeCreateDeferredPromptTool(USER_ID, '-1001:42', 'group')
+    assert.ok(tool.execute)
+
+    const result: unknown = await tool.execute(
+      {
+        prompt: 'Remind me to send the report',
+        schedule: { fire_at: futureFireAt() },
+        delivery: {},
+      },
+      toolCtx,
+    )
+
+    const created = getScheduledPrompt(extractId(result), USER_ID)
+    expect(created).not.toBeNull()
     expect(created!.deliveryTarget.audience).toBe('personal')
     expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID])
   })
@@ -620,7 +638,7 @@ describe('delivery classification persistence', () => {
       {
         prompt: 'Scoped group alert',
         condition: { field: 'task.dueDate', op: 'overdue' },
-        delivery: { audience: 'personal', mention_user_ids: [USER_ID] },
+        delivery: { mention_user_ids: [USER_ID] },
       },
       toolCtx,
     )
@@ -862,7 +880,7 @@ describe('delivery classification persistence', () => {
     expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedThreadContextId)
   })
 
-  test('group alert persists shared audience and no mention targets chosen at creation', async () => {
+  test('group alert with an explicit empty mention list persists shared audience and no mentions', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
     assert.ok(tool.execute)
 
@@ -871,7 +889,6 @@ describe('delivery classification persistence', () => {
         prompt: 'Notify this channel when a task becomes overdue',
         condition: { field: 'task.dueDate', op: 'overdue' },
         delivery: {
-          audience: 'shared',
           mention_user_ids: [],
         },
         execution: {
@@ -890,7 +907,7 @@ describe('delivery classification persistence', () => {
     expect(created!.deliveryTarget.mentionUserIds).toEqual([])
   })
 
-  test('group shared delivery drops stale mention targets chosen by the model', async () => {
+  test('group alert uses an explicit multi-user mention list verbatim as personal audience', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
     assert.ok(tool.execute)
 
@@ -899,12 +916,11 @@ describe('delivery classification persistence', () => {
         prompt: 'Notify this channel when a task becomes overdue',
         condition: { field: 'task.dueDate', op: 'overdue' },
         delivery: {
-          audience: 'shared',
-          mention_user_ids: [USER_ID, 'stale-user-id'],
+          mention_user_ids: [USER_ID, 'teammate-user-id'],
         },
         execution: {
           mode: 'full',
-          delivery_brief: 'Shared group alert for the whole channel',
+          delivery_brief: 'Group alert pinging the on-call pair',
           context_snapshot: 'Group operations alert for overdue work.',
         },
       },
@@ -913,7 +929,7 @@ describe('delivery classification persistence', () => {
 
     const created = getAlertPrompt(extractId(result), USER_ID)
     expect(created).not.toBeNull()
-    expect(created!.deliveryTarget.audience).toBe('shared')
-    expect(created!.deliveryTarget.mentionUserIds).toEqual([])
+    expect(created!.deliveryTarget.audience).toBe('personal')
+    expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID, 'teammate-user-id'])
   })
 })

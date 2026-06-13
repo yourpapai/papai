@@ -198,11 +198,11 @@ export const buildToolCallFinishHandler =
     handleToolCallFinishEvent(ctx, event)
   }
 
-const resolveSystemPrompt = (
-  args: Pick<InvokeModelArgs, 'provider' | 'contextId' | 'enabledToolNames' | 'disclosure'>,
+export const resolveSystemPrompt = (
+  args: Pick<InvokeModelArgs, 'provider' | 'contextId' | 'enabledToolNames' | 'disclosure' | 'contextType'>,
 ): string => {
-  const { provider, contextId, enabledToolNames, disclosure } = args
-  const opts = { askPermissionAvailable: true, progressiveDisclosure: disclosure !== undefined }
+  const { provider, contextId, enabledToolNames, disclosure, contextType } = args
+  const opts = { askPermissionAvailable: true, progressiveDisclosure: disclosure !== undefined, contextType }
   return provider === null
     ? buildProviderlessSystemPrompt(contextId, enabledToolNames, opts)
     : buildSystemPrompt(provider, contextId, enabledToolNames, opts)
@@ -226,7 +226,7 @@ export const invokeModel = async (
     disclosure,
   } = args
   const start = Date.now()
-  const systemPrompt = resolveSystemPrompt({ provider, contextId, enabledToolNames, disclosure })
+  const systemPrompt = resolveSystemPrompt({ provider, contextId, enabledToolNames, disclosure, contextType })
   emitLlmStart(contextId, mainModel, messages, tools, turnId)
   const ctx: ToolCallContext = {
     contextId,

@@ -351,6 +351,53 @@ describe('buildSystemPrompt fragment coherence', () => {
   })
 })
 
+describe('group deferred-prompt delivery guidance', () => {
+  const provider = createMockProvider()
+  const deferredEnabled = new Set(['create_deferred_prompt', 'list_deferred_prompts', 'get_current_time'])
+
+  beforeEach(async () => {
+    mockLogger()
+    mock.restore()
+    await setupTestDb()
+  })
+
+  test('includes group reminder guidance when contextType is group', () => {
+    const prompt = buildSystemPrompt(provider, 'grp-deferred-ctx', deferredEnabled, {
+      askPermissionAvailable: true,
+      contextType: 'group',
+    })
+
+    expect(prompt).toContain('GROUP REMINDERS')
+    expect(prompt).toContain('group chat')
+    expect(prompt).toContain('mention_user_ids')
+  })
+
+  test('omits group reminder guidance in DM context (default)', () => {
+    const prompt = buildSystemPrompt(provider, 'dm-deferred-ctx', deferredEnabled, {
+      askPermissionAvailable: true,
+      contextType: 'dm',
+    })
+
+    expect(prompt).not.toContain('GROUP REMINDERS')
+  })
+
+  test('omits group reminder guidance when contextType is unspecified', () => {
+    const prompt = buildSystemPrompt(provider, 'unspec-deferred-ctx', deferredEnabled)
+
+    expect(prompt).not.toContain('GROUP REMINDERS')
+  })
+
+  test('omits group reminder guidance when deferred tools are disabled even in a group', () => {
+    const enabled = new Set(['create_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, 'grp-no-deferred-ctx', enabled, {
+      askPermissionAvailable: true,
+      contextType: 'group',
+    })
+
+    expect(prompt).not.toContain('GROUP REMINDERS')
+  })
+})
+
 describe('ask-tools instruction', () => {
   const provider = createMockProvider()
 

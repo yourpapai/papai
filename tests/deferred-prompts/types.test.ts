@@ -9,10 +9,30 @@ import assert from 'node:assert/strict'
 import {
   alertConditionSchema,
   CONDITION_FIELDS,
+  deliveryPolicySchema,
   FIELD_OPERATORS,
   rruleInputSchema,
   scheduleSchema,
 } from '../../src/deferred-prompts/types.js'
+
+describe('deliveryPolicySchema', () => {
+  test('description states it is group-only and fires in the group', () => {
+    expect(deliveryPolicySchema.description).toContain('group')
+    expect(deliveryPolicySchema.description).toContain('fires in the group')
+    expect(deliveryPolicySchema.description).toContain('DM')
+  })
+
+  test('documents the mention_user_ids omit / empty / explicit semantics', () => {
+    expect(deliveryPolicySchema.description).toContain('mention_user_ids')
+    expect(deliveryPolicySchema.description).toContain('requester')
+  })
+
+  test('strips a legacy audience field so it is no longer part of the parsed policy', () => {
+    const parsed = deliveryPolicySchema.parse({ audience: 'shared', mention_user_ids: [] })
+    expect(parsed).toEqual({ mention_user_ids: [] })
+    expect(parsed).not.toHaveProperty('audience')
+  })
+})
 
 describe('alertConditionSchema', () => {
   describe('valid leaf conditions', () => {

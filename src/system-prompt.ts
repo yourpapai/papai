@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
+import type { ContextType } from './chat/types.js'
 import { buildInstructionsBlock } from './instructions.js'
 import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { filterProviderlessPluginIds } from './plugins/providerless.js'
@@ -63,6 +64,12 @@ const DEFERRED = `DEFERRED PROMPTS — The user can set up automated tasks and a
 - Use list_deferred_prompts to show active prompts/alerts. Use cancel_deferred_prompt to cancel one.
 - For daily briefings, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0] }.
 - PROMPT CONTENT: When creating a deferred prompt, the prompt field should describe the deliverable action, not the scheduling. Write it as what to DO when it fires, not what to SCHEDULE. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles timing; the prompt handles content.`
+
+const GROUP_DEFERRED = `GROUP REMINDERS — This is a group chat. Any reminder or scheduled prompt you create here fires IN THIS GROUP CHAT, never in a private DM, and is owned by the group, not by one member. Control who gets @mentioned when it fires with delivery.mention_user_ids:
+- "remind me" / a reminder just for the requester → OMIT delivery.mention_user_ids; it fires in this group and @mentions the requester automatically.
+- "remind us" / "remind everyone" / "remind the team" / anything for the whole group → set delivery.mention_user_ids to [] (empty array); it fires in this group with no @mention.
+- To @mention specific people, set delivery.mention_user_ids to their user IDs.
+- If it is unclear whether the reminder is only for the requester or for the whole group, ask ONE short question before creating it.`
 
 const DISCLOSURE_PROTOCOL = `TOOL DISCOVERY — Most tools are not loaded right now. To use a tool you must first find and load it:
 1. Call search_tools with a short natural-language description of what you want to do.
@@ -166,6 +173,7 @@ interface AssembleOptions {
   readonly askPermissionAvailable: boolean
   readonly deferredFragmentText?: string
   readonly progressiveDisclosure?: boolean
+  readonly contextType?: ContextType
 }
 
 function assembleSystemPrompt(
@@ -179,8 +187,9 @@ function assembleSystemPrompt(
   if (options.progressiveDisclosure === true) parts.push(buildDisclosureFragment(enabledToolNames))
   for (const fragment of FRAGMENTS) {
     if (!fragmentIncluded(fragment, enabledToolNames)) continue
-    if (fragment.text === DEFERRED && options.deferredFragmentText !== undefined) {
-      parts.push(options.deferredFragmentText)
+    if (fragment.text === DEFERRED) {
+      const deferredText = options.deferredFragmentText ?? fragment.text
+      parts.push(options.contextType === 'group' ? `${deferredText}\n\n${GROUP_DEFERRED}` : deferredText)
       continue
     }
     parts.push(fragment.text)
@@ -232,19 +241,23 @@ export function buildSystemPrompt(
   provider: TaskProvider,
   contextId: string,
   enabledToolNames: ReadonlySet<string>,
-  options: { askPermissionAvailable: boolean; progressiveDisclosure?: boolean },
+  options: { askPermissionAvailable: boolean; progressiveDisclosure?: boolean; contextType?: ContextType },
 ): string
 export function buildSystemPrompt(
   provider: TaskProvider,
   contextId: string,
   ...args:
-    | readonly [ReadonlySet<string>, { askPermissionAvailable: boolean; progressiveDisclosure?: boolean }?]
+    | readonly [
+        ReadonlySet<string>,
+        { askPermissionAvailable: boolean; progressiveDisclosure?: boolean; contextType?: ContextType }?,
+      ]
     | readonly []
 ): string {
   const enabledToolNames = args[0]
   const options: AssembleOptions = {
     askPermissionAvailable: args[1]?.askPermissionAvailable ?? true,
     progressiveDisclosure: args[1]?.progressiveDisclosure,
+    contextType: args[1]?.contextType,
   }
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const addendum = provider.getPromptAddendum()
@@ -256,7 +269,9 @@ export function buildSystemPrompt(
 export function buildProviderlessSystemPrompt(
   contextId: string,
   enabledToolNames: ReadonlySet<string>,
-  options: { askPermissionAvailable: boolean; progressiveDisclosure?: boolean } = { askPermissionAvailable: true },
+  options: { askPermissionAvailable: boolean; progressiveDisclosure?: boolean; contextType?: ContextType } = {
+    askPermissionAvailable: true,
+  },
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const basePrompt = assembleSystemPrompt(PROVIDERLESS_INTRO, contextId, enabledToolNames, {

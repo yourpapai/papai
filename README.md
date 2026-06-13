@@ -466,6 +466,17 @@ Plugins activate against a frozen `PluginContext` exposing a scoped pino logger,
 
 See [`docs/plugins/developer-guide.md`](docs/plugins/developer-guide.md) for the full manifest schema, factory contract, and permission semantics, plus the runnable example at [`docs/plugins/examples/hello-world/`](docs/plugins/examples/hello-world/).
 
+### Built-in Plugins
+
+Papai ships with four first-party plugins under [`plugins/`](plugins/). All are `defaultEnabled: false` — approve each in the settings UI admin Plugins area (super admin) and enable it per context. Each plugin has its own README with manifest details, configuration, and behavior notes.
+
+| Plugin                                                         | ID                       | Purpose                                                                                                    | Permissions                           |
+| -------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| [Audio Transcribe](plugins/audio-transcribe/README.md)         | `audio-transcribe`       | Auto-transcribes voice notes before the LLM turn and audio files on demand via an OpenAI-compatible API    | `http`, `attachments.read`, `storage` |
+| [Synthetic Web Search](plugins/synthetic-web-search/README.md) | `synthetic-web-search`   | Web search via the Synthetic Search API; returns title/url/markdown text                                   | `http`                                |
+| [Kaneo](plugins/task-provider-kaneo/README.md)                 | `task-provider-kaneo`    | Kaneo task-tracker integration (contributes the `kaneo` provider type; supports auto-provisioning)         | `provider.task`, `identity`           |
+| [YouTrack](plugins/task-provider-youtrack/README.md)           | `task-provider-youtrack` | YouTrack task-tracker integration (contributes the `youtrack` provider type; most fully-featured provider) | `provider.task`, `identity`           |
+
 ---
 
 ## Development

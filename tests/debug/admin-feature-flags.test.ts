@@ -123,6 +123,21 @@ describe('admin-feature-flags', () => {
     expect(userLabels).toEqual(['abe', 'alice', 'bob'])
   })
 
+  it('dedupes a contextId present as both a user row and a group context, preferring the group', () => {
+    // A Telegram group chat id (e.g. -100...) can be persisted as a users row AND
+    // appear in the group registry; both map through toScopedContextId to the same
+    // scoped contextId. The snapshot must emit a single row (otherwise the keyed
+    // {#each} in AdminFeatureFlagsSection throws each_key_duplicate). The group
+    // registry is authoritative for group contexts, so its row wins.
+    addUser({ userId: 'g-1', platformInstanceId: 'pi-1', addedBy: 'boot', username: 'as-user' })
+    const snapshot = getAdminFeatureFlagsSnapshot()
+    const collided = snapshot.contexts.filter((r) => r.contextId === groupCtx)
+    expect(collided).toHaveLength(1)
+    expect(collided[0]).toMatchObject({ kind: 'group', label: 'Dev Team — Acme' })
+    const ids = snapshot.contexts.map((r) => r.contextId)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
   it('labels a group without parentName by displayName alone', () => {
     const soloCtx = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'g-2' })
     upsertKnownGroupContext({ contextId: soloCtx, provider: 'mattermost', displayName: 'Solo', parentName: null })

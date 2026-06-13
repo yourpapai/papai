@@ -44,11 +44,16 @@ const readFlags = (contextId: string): AdminFlagState =>
 const kindRank = (kind: 'user' | 'group'): number => (kind === 'user' ? 0 : 1)
 
 function listContextRows(): AdminFlagContextRow[] {
-  const rows: AdminFlagContextRow[] = []
+  // Keyed by contextId so a native id that exists as both a users row and a group
+  // context (e.g. a Telegram group chat id persisted in `users`) collapses to one
+  // row — otherwise the keyed {#each} in AdminFeatureFlagsSection throws
+  // each_key_duplicate. Group entries are inserted last and overwrite colliding
+  // user rows, since the group registry is authoritative for group contexts.
+  const byContextId = new Map<string, AdminFlagContextRow>()
   for (const instance of listPlatformInstancesSafe().instances) {
     for (const user of listUsers(instance.id).filter((u) => !u.platform_user_id.startsWith('placeholder-'))) {
       const contextId = toScopedContextId({ platformInstanceId: instance.id, nativeContextId: user.platform_user_id })
-      rows.push({
+      byContextId.set(contextId, {
         contextId,
         kind: 'user',
         label: user.username ?? user.platform_user_id,
@@ -57,7 +62,7 @@ function listContextRows(): AdminFlagContextRow[] {
       })
     }
     for (const group of listKnownGroupContextsForPlatform(instance.id)) {
-      rows.push({
+      byContextId.set(group.contextId, {
         contextId: group.contextId,
         kind: 'group',
         label: group.parentName === null ? group.displayName : `${group.displayName} — ${group.parentName}`,
@@ -66,7 +71,9 @@ function listContextRows(): AdminFlagContextRow[] {
       })
     }
   }
-  return rows.toSorted((a, b) => kindRank(a.kind) - kindRank(b.kind) || a.label.localeCompare(b.label))
+  return [...byContextId.values()].toSorted(
+    (a, b) => kindRank(a.kind) - kindRank(b.kind) || a.label.localeCompare(b.label),
+  )
 }
 
 export function getAdminFeatureFlagsSnapshot(): AdminFeatureFlagsSnapshot {
