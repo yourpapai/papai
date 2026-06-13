@@ -3,174 +3,58 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
+// The entry point must stay free of bare-module (e.g. `zod`) and out-of-plugin
+// static imports: the discovery scanner walks the entry graph and rejects both.
+// All real logic — including the `zod` schema — lives in `./runtime.ts`, loaded
+// at activation time via `import.meta.require`, whose targets the scanner treats
+// as opaque (require-mode files are not followed for static imports). This mirrors
+// the `task-provider-kaneo` plugin's lazy-require pattern.
 
-import type { PluginContext } from '../../src/plugins/context.js'
-import type { AttachmentTransformResult, PluginFactory, PluginToolRuntimeContext } from '../../src/plugins/types.js'
-import {
-  AUDIO_EXTENSIONS,
-  describeApiFailure,
-  describeLoadFailure,
-  loadAudioAttachment,
-  normalizeLanguage,
-  readCachedTranscript,
-  resolveConfig,
-  transcribeRecord,
-  writeCache,
-  type HttpFetch,
-  type TranscribeResult,
-} from './transcription.js'
+type PluginLoggerLike = {
+  info(metadata: Record<string, unknown>, message: string): void
+}
 
-const transcribeInputSchema = z.object({
-  attachment_id: z.string().min(1).max(200),
-  language: z.string().min(2).max(8).optional(),
+type PluginContextLike = {
+  log: PluginLoggerLike
+}
+
+type PluginInstanceLike = {
+  activate(ctx: PluginContextLike): Promise<void> | void
+  deactivate?(ctx: PluginContextLike): Promise<void> | void
+}
+
+type PluginFactoryLike = () => PluginInstanceLike
+
+type AudioTranscribeRuntimeModule = {
+  registerAudioTranscribe(ctx: PluginContextLike): void
+}
+
+const requireModule = import.meta.require
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isAudioTranscribeRuntimeModule(value: unknown): value is AudioTranscribeRuntimeModule {
+  return isRecord(value) && typeof value['registerAudioTranscribe'] === 'function'
+}
+
+function getRuntimeModule(): AudioTranscribeRuntimeModule {
+  const moduleValue: unknown = requireModule('./runtime.js')
+  if (!isAudioTranscribeRuntimeModule(moduleValue)) {
+    throw new Error('Invalid audio-transcribe runtime module contract')
+  }
+  return moduleValue
+}
+
+const factory: PluginFactoryLike = () => ({
+  activate(ctx: PluginContextLike): void {
+    getRuntimeModule().registerAudioTranscribe(ctx)
+  },
+
+  deactivate(ctx: PluginContextLike): void {
+    ctx.log.info({}, 'audio-transcribe plugin deactivated')
+  },
 })
-
-const parseTranscribeInput = (
-  input: unknown,
-): z.infer<typeof transcribeInputSchema> | { error: string; message: string } => {
-  try {
-    return transcribeInputSchema.parse(input)
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return { error: 'validation_error', message: err.message }
-    }
-    throw err
-  }
-}
-
-const toTransformResult = (result: TranscribeResult): AttachmentTransformResult => ({
-  ok: true as const,
-  text: result.text,
-  ...(result.language === undefined && result.durationSec === undefined
-    ? {}
-    : {
-        meta: {
-          ...(result.language === undefined ? {} : { language: result.language }),
-          ...(result.durationSec === undefined ? {} : { durationSec: result.durationSec }),
-        },
-      }),
-})
-
-async function executeTranscribe(
-  input: unknown,
-  runtimeContext: PluginToolRuntimeContext,
-  httpFetch: HttpFetch | undefined,
-): Promise<unknown> {
-  const parsed = parseTranscribeInput(input)
-  if ('error' in parsed) return parsed
-
-  const cacheKey = `transcript:${parsed.attachment_id}`
-  const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
-  if (cached !== undefined) return cached
-
-  // Resolve config and check for missing or incomplete config before consuming rate-limit quota.
-  // A misconfigured deployment must report not_configured or incomplete_context_override, not rate_limited.
-  const config = resolveConfig(runtimeContext)
-  if (!config.ok) {
-    return {
-      error: 'incomplete_context_override',
-      message: 'set both api_key and base_url in this context, or clear both',
-    }
-  }
-  if (config.apiKey === undefined || config.apiKey.trim() === '' || httpFetch === undefined) {
-    return { error: 'not_configured', message: 'audio-transcribe: api_key missing or providerRuntime unavailable' }
-  }
-
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
-  if (!rateResult.allowed) {
-    return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
-  }
-
-  const audio = await loadAudioAttachment(runtimeContext, parsed.attachment_id)
-  if (!audio.ok) return audio.result
-
-  const apiResult = await transcribeRecord(
-    audio.record,
-    audio.bytes,
-    normalizeLanguage(parsed.language),
-    config,
-    httpFetch,
-  )
-  if ('error' in apiResult) return apiResult
-
-  writeCache(runtimeContext.kv, cacheKey, apiResult)
-  return apiResult
-}
-
-async function runTransform(
-  record: { attachmentId: string },
-  runtimeContext: PluginToolRuntimeContext,
-  httpFetch: HttpFetch | undefined,
-): Promise<AttachmentTransformResult> {
-  const cacheKey = `transcript:${record.attachmentId}`
-  const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
-  if (cached !== undefined) return toTransformResult(cached)
-
-  // Resolve config and check for missing or incomplete config before consuming rate-limit quota.
-  // A misconfigured deployment must report not configured or incomplete context override, not rate limited.
-  const config = resolveConfig(runtimeContext)
-  if (!config.ok) {
-    return {
-      ok: false,
-      reason: 'incomplete context override — set both api_key and base_url in this context, or clear both',
-    }
-  }
-  if (config.apiKey === undefined || config.apiKey.trim() === '' || httpFetch === undefined) {
-    return { ok: false, reason: 'not configured — the admin can set a transcription API key in the settings UI' }
-  }
-
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
-  if (!rateResult.allowed) return { ok: false, reason: 'rate limited — try again shortly' }
-
-  const audio = await loadAudioAttachment(runtimeContext, record.attachmentId)
-  if (!audio.ok) return { ok: false, reason: describeLoadFailure(audio.result) }
-
-  const apiResult = await transcribeRecord(audio.record, audio.bytes, undefined, config, httpFetch)
-  if ('error' in apiResult) return { ok: false, reason: describeApiFailure(apiResult) }
-
-  writeCache(runtimeContext.kv, cacheKey, apiResult)
-  return toTransformResult(apiResult)
-}
-
-const factory: PluginFactory = () => {
-  let httpFetch: HttpFetch | undefined
-
-  return {
-    activate(ctx: PluginContext): void {
-      httpFetch = ctx.providerRuntime?.httpFetch
-
-      ctx.log.info({}, 'audio-transcribe plugin activated')
-
-      ctx.registration.registerTool({
-        name: 'transcribe',
-        description:
-          'Transcribes an audio attachment to text. Call this when the user asks to transcribe an audio file attachment, or to re-transcribe a voice note with an explicit language.',
-        inputSchema: transcribeInputSchema,
-        execute: (input: unknown, runtimeContext: PluginToolRuntimeContext) =>
-          executeTranscribe(input, runtimeContext, httpFetch),
-      })
-
-      ctx.registration.registerPromptFragment({
-        name: 'audio-transcribe-hint',
-        content:
-          'Voice notes are transcribed automatically: their text appears inline as `[Voice attachment att_<id> …: "…"]` lines. Call the transcribe tool only when (a) the user asks to transcribe an audio FILE attachment (lines like `[User attached att_<id>: song.mp3]`), or (b) a transcript is clearly wrong and the user names the spoken language — then pass `language`. Cached transcripts make repeat calls free.',
-      })
-
-      ctx.registration.registerAttachmentTransformer({
-        name: 'audio-transcribe',
-        mimePrefixes: ['audio/'],
-        filenameExtensions: [...AUDIO_EXTENSIONS],
-        origins: ['voice'],
-        timeoutMs: 60_000,
-        transform: (record, runtimeContext) => runTransform(record, runtimeContext, httpFetch),
-      })
-    },
-
-    deactivate(ctx: PluginContext): void {
-      ctx.log.info({}, 'audio-transcribe plugin deactivated')
-    },
-  }
-}
 
 export default factory
