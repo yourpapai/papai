@@ -152,6 +152,13 @@
     "plugins/task-provider-kaneo/client.ts": ["exports"],
     "plugins/task-provider-kaneo/provider.ts": ["exports"],
     "plugins/task-provider-youtrack/provider.ts": ["exports"],
+    // audio-transcribe moved its zod-using implementation behind an
+    // import.meta.require('./runtime.js') bridge (mirrors task-provider-kaneo) to keep
+    // the discovery scanner's static entry graph free of bare-module imports. Knip
+    // cannot trace the dynamic require, so the runtime module and the transcription
+    // helper it statically imports appear unimported.
+    "plugins/audio-transcribe/runtime.ts": ["files", "exports"],
+    "plugins/audio-transcribe/transcription.ts": ["files"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
   },
