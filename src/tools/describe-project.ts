@@ -20,9 +20,17 @@ export function makeDescribeProjectTool(provider: TaskProvider): ToolSet[string]
       projectId: z.string().describe('Project ID — call list_projects first to obtain this'),
     }),
     execute: async ({ projectId }) => {
-      const fields = (await provider.describeProjectFields?.(projectId)) ?? []
-      log.info({ projectId, count: fields.length }, 'Described project fields')
-      return { projectId, fields }
+      try {
+        const fields = (await provider.describeProjectFields?.(projectId)) ?? []
+        log.info({ projectId, count: fields.length }, 'Described project fields')
+        return { projectId, fields }
+      } catch (error) {
+        log.error(
+          { error: error instanceof Error ? error.message : String(error), tool: 'describe_project' },
+          'Tool execution failed',
+        )
+        throw error
+      }
     },
   })
 }

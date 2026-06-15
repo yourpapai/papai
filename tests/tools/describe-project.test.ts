@@ -17,12 +17,12 @@ const descriptors: ProjectFieldDescriptor[] = [
 describe('describe_project', () => {
   test('returns projectId and fields from provider', async () => {
     mockLogger()
-    const provider = createMockProvider({
-      describeProjectFields: mock((_id: string) => Promise.resolve(descriptors)),
-    })
+    const describeProjectFields = mock((_id: string) => Promise.resolve(descriptors))
+    const provider = createMockProvider({ describeProjectFields })
     const tool = makeDescribeProjectTool(provider)
     const result = await getToolExecutor(tool)({ projectId: '0-1' }, { toolCallId: '1', messages: [] })
     expect(result).toEqual({ projectId: '0-1', fields: descriptors })
+    expect(describeProjectFields).toHaveBeenCalledWith('0-1')
   })
 
   test('returns empty fields when provider returns empty array', async () => {
