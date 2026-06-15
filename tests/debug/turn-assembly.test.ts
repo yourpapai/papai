@@ -3,10 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { emitUser } from '../../src/debug/event-bus.js'
+import type { DebugEvent } from '../../src/debug/event-bus.js'
 import { addClient, init, removeClient } from '../../src/debug/state-collector.js'
 import {
   recentTurns,
@@ -14,6 +15,8 @@ import {
   recentToolFailures,
   inFlightTurns,
   resetTurnBuffers,
+  findTurnById,
+  handleTurnAssembly,
 } from '../../src/debug/turn-assembly.js'
 
 function createMockController(): ReadableStreamDefaultController {
@@ -219,5 +222,25 @@ describe('tool failure ring buffer', () => {
     }
 
     expect(recentToolFailures.length).toBe(1024)
+  })
+})
+
+const startEvent = (turnId: string): DebugEvent => ({
+  type: 'turn:start',
+  timestamp: 1,
+  scope: { kind: 'user', userId: 'u' },
+  data: { turnId, incomingMessageCount: 1 },
+})
+
+describe('findTurnById', () => {
+  beforeEach(() => {
+    resetTurnBuffers()
+  })
+
+  test('resolves a still-running (in-flight) turn', () => {
+    handleTurnAssembly(startEvent('t-run'), () => {})
+    const turn = findTurnById('t-run')
+    expect(turn).toBeDefined()
+    expect(turn!.status).toBe('running')
   })
 })

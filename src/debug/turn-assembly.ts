@@ -85,7 +85,7 @@ export function resetTurnBuffers(): void {
 }
 
 export function findTurnById(turnId: string): Turn | undefined {
-  return recentTurns.find((t) => t.turnId === turnId)
+  return inFlightTurns.get(turnId) ?? recentTurns.find((t) => t.turnId === turnId)
 }
 
 function handleTurnStart(event: DebugEvent): void {
