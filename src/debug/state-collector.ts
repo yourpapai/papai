@@ -118,7 +118,7 @@ function broadcast(event: DebugEvent): void {
     try {
       client.enqueue(payload)
     } catch {
-      clients.delete(client)
+      removeClient(client)
     }
   }
 }
@@ -127,7 +127,7 @@ function sendTo(controller: ReadableStreamDefaultController, event: DebugEvent):
   try {
     controller.enqueue(formatSse(event))
   } catch {
-    clients.delete(controller)
+    removeClient(controller)
   }
 }
 
