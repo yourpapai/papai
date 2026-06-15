@@ -7,7 +7,7 @@ import { APICallError } from '@ai-sdk/provider'
 import type { ModelMessage } from 'ai'
 
 import type { ReplyFn } from './chat/types.js'
-import { emitGlobal, emitUser } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
 import { logger } from './logger.js'
@@ -27,14 +27,14 @@ type ToolCallFinishEvent = {
 }>
 
 export interface LlmOrchestratorSupportDeps {
-  emit: (event: string, payload: Record<string, unknown>) => void
+  emit: (event: string, userId: string, payload: Record<string, unknown>) => void
   log: {
     warn: (context: LogContext, message: string) => void
     error: (context: LogContext, message: string) => void
   }
 }
 
-const defaultDeps: LlmOrchestratorSupportDeps = { emit: emitGlobal, log }
+const defaultDeps: LlmOrchestratorSupportDeps = { emit: emitUser, log }
 
 const resolveSupportDeps = (deps: LlmOrchestratorSupportDeps | undefined): LlmOrchestratorSupportDeps => {
   if (deps === undefined) {
@@ -61,8 +61,7 @@ const emitToolFailure = (
   deps: LlmOrchestratorSupportDeps,
 ): void => {
   const { toolName, toolCallId } = event.toolCall
-  deps.emit('llm:tool_result', {
-    userId: contextId,
+  deps.emit('llm:tool_result', contextId, {
     toolName,
     toolCallId,
     durationMs: event.durationMs,
@@ -86,8 +85,7 @@ const emitToolFailure = (
 
 const emitToolSuccess = (contextId: string, event: ToolCallFinishEvent, deps: LlmOrchestratorSupportDeps): void => {
   const { toolName, toolCallId } = event.toolCall
-  deps.emit('llm:tool_result', {
-    userId: contextId,
+  deps.emit('llm:tool_result', contextId, {
     toolName,
     toolCallId,
     durationMs: event.durationMs,
