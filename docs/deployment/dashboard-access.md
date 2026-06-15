@@ -31,6 +31,27 @@ Run the bot behind oauth2-proxy / Authelia / authentik / Cloudflare Access. The 
 - `DASHBOARD_BASE_URL` should be the externally-reachable origin of the dashboard if it differs from `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`.
 - For HTTPS deployments, the reverse proxy must forward `X-Forwarded-Proto: https` so the bot emits the `Secure` cookie attribute.
 
+## What `DEBUG_SERVER` does and does not gate
+
+`DEBUG_SERVER=true` enables the engineer live-observability surface. When `DEBUG_SERVER=false` (the default for production deployments), the server 404s the following paths — collectively defined as `DEBUG_ONLY_PATHS` in `src/debug/server.ts`:
+
+- `/debug`, `/debug.js`, `/debug.css`
+- `/events` (SSE stream)
+- `/logs`, `/logs/stats`
+- `/dashboard` (redirect alias to `/debug`)
+- `/turns/*` (turn lookup)
+
+**The operator surfaces are not gated by `DEBUG_SERVER`.** The following paths remain reachable whenever the debug server process is running, regardless of the `DEBUG_SERVER` flag:
+
+- `/admin` and its sub-routes (`/admin/llm`, `/admin/system`, `/admin/plugin-config`, etc.)
+- `/billing/*`
+- `/stats/*`
+- Instance API routes (`/api/platform-instances`, `/api/task-instances`, `/api/admins`)
+
+Authorization for these routes is the **dashboard session cookie** (obtained via the `/dashboard` sign-in flow), not `DEBUG_SERVER`. This is intentional: operators need to manage LLM credentials and task/platform instances in production environments where exposing the raw SSE/log streams would be a privacy risk.
+
+> **Tip:** If you want to run only the operator surfaces without the live-observability streams, start the process with `DEBUG_SERVER=false` (or omit the variable). The sign-in flow, `/admin`, `/billing`, `/stats`, and instance routes will all work normally.
+
 ## Sign-in flow
 
 1. Operator DMs `/dashboard` to the bot.
