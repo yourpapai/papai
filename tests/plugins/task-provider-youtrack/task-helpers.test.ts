@@ -3,13 +3,67 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   buildCreateCustomFields,
   buildYouTrackQuery,
   mapYouTrackDueDateValue,
+  validateRequiredCreateFields,
 } from '../../../plugins/task-provider-youtrack/task-helpers.js'
+import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import { createUniqueYouTrackConfig } from './fetch-mock-utils.js'
+
+const queueResponses = (responses: readonly unknown[]): void => {
+  let i = 0
+  setMockFetch(() => {
+    const body = responses[Math.min(i, responses.length - 1)]
+    i += 1
+    return Promise.resolve(
+      new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+  })
+}
+
+describe('validateRequiredCreateFields', () => {
+  beforeEach(() => mockLogger())
+  afterEach(() => restoreFetch())
+
+  test('does not flag a required field that has a default value', async () => {
+    const config = createUniqueYouTrackConfig()
+    queueResponses([
+      [
+        {
+          $type: 'StateProjectCustomField',
+          field: { name: 'State', fieldType: { id: 'state[1]' } },
+          canBeEmpty: false,
+          defaultValues: [{ name: 'Open' }],
+          bundle: { id: 'sb-1', $type: 'StateBundle' },
+        },
+      ],
+    ])
+    const fields = await validateRequiredCreateFields(config, '0-1', 'TEST', {})
+    expect(fields).toHaveLength(1)
+  })
+
+  test('teaching error lists allowed values for a required state field', async () => {
+    const config = createUniqueYouTrackConfig()
+    queueResponses([
+      [
+        {
+          $type: 'StateProjectCustomField',
+          field: { name: 'State', fieldType: { id: 'state[1]' } },
+          canBeEmpty: false,
+          bundle: { id: 'sb-1', $type: 'StateBundle' },
+        },
+      ],
+      [{ name: 'Open' }, { name: 'In Progress', localizedName: 'В работе' }],
+    ])
+    await expect(validateRequiredCreateFields(config, '0-1', 'TEST', {})).rejects.toThrow(
+      /requires these custom fields.*State.*Open, In Progress/u,
+    )
+  })
+})
 
 describe('task-helpers', () => {
   test('maps YouTrack due date timestamps to date-only values', () => {

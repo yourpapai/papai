@@ -7,11 +7,13 @@ import type { ListTasksParams, Task } from 'papai/plugin-types'
 import { providerError } from 'papai/plugin-types'
 import type { z } from 'zod'
 
+import { makeBundleElementFetcher } from './bundle-values.js'
 import { YouTrackClassifiedError } from './classify-error.js'
 import type { YouTrackConfig } from './client.js'
 import { youtrackFetch } from './client.js'
 import { PROJECT_CUSTOM_FIELD_FIELDS, YOUTRACK_DUE_DATE_FIELD_NAME } from './constants.js'
 import { DueDateCustomFieldSchema, mapYouTrackDueDateValue, parseDueDateValue } from './due-date.js'
+import { classifyFieldType, formatAllowed } from './field-engine.js'
 import { paginate } from './helpers.js'
 import { ProjectCustomFieldListSchema, ProjectCustomFieldSchema } from './schemas/bundle.js'
 
@@ -38,7 +40,7 @@ const isStringSimpleProjectField = (field: ProjectCustomField): boolean => {
   return fieldTypeId === 'string' || presentation === 'string'
 }
 const isTextProjectField = (field: ProjectCustomField): boolean => field.$type === 'TextProjectCustomField'
-const fetchProjectCustomFields = async (
+export const fetchProjectCustomFields = async (
   config: Readonly<YouTrackConfig>,
   projectId: string,
 ): Promise<ProjectCustomField[]> => {
@@ -64,22 +66,12 @@ const buildHandledFieldSet = (
 ): Set<string> => {
   const handledFields = new Set<string>()
   for (const fieldName of new Set((customFields ?? []).map((field) => field.name))) {
-    const projectField = projectFieldsByName.get(fieldName)
-    if (projectField === undefined) {
+    if (!projectFieldsByName.has(fieldName)) {
       throw new YouTrackClassifiedError(
         `Unknown custom field for create: ${fieldName}`,
         providerError.validationFailed(
           'customFields',
           `${fieldName} is not a known project field for this YouTrack project`,
-        ),
-      )
-    }
-    if (buildCreateIssueCustomField(projectField, '') === undefined) {
-      throw new YouTrackClassifiedError(
-        `Unsupported custom field for create: ${fieldName}`,
-        providerError.validationFailed(
-          'customFields',
-          `${fieldName} is not a supported YouTrack string/text project field for create_task`,
         ),
       )
     }
@@ -137,6 +129,35 @@ export const buildCreateIssueCustomField = (
   }
   return undefined
 }
+type RequiredFieldDescriptor = { name: string; label: string }
+
+const describeRequiredField = async (
+  field: ProjectCustomField,
+  fetchElements: (segment: string, bundleId: string) => Promise<{ name: string }[]>,
+): Promise<RequiredFieldDescriptor> => {
+  const name = field.field?.name ?? '(unnamed)'
+  const c = classifyFieldType(field)
+  if (c.kind !== 'bundle' || c.bundleSegment === undefined || field.bundle?.id === undefined) {
+    return { name, label: name }
+  }
+  try {
+    const allowed = (await fetchElements(c.bundleSegment, field.bundle.id)).map((e) => e.name)
+    return { name, label: `${name} (one of: ${formatAllowed(allowed)})` }
+  } catch {
+    return { name, label: name }
+  }
+}
+
+const markDedicatedParamFields = (
+  handledFields: Set<string>,
+  params: Readonly<{ status?: string; priority?: string; dueDate?: string; assignee?: string }>,
+): void => {
+  if (params.status !== undefined) handledFields.add('State')
+  if (params.priority !== undefined) handledFields.add('Priority')
+  if (params.assignee !== undefined) handledFields.add('Assignee')
+  if (params.dueDate !== undefined) handledFields.add(YOUTRACK_DUE_DATE_FIELD_NAME)
+}
+
 export const validateRequiredCreateFields = async (
   config: Readonly<YouTrackConfig>,
   projectId: string,
@@ -151,29 +172,23 @@ export const validateRequiredCreateFields = async (
 ): Promise<ProjectCustomField[]> => {
   const projectCustomFields = await fetchProjectCustomFields(config, projectId)
   const handledFields = buildHandledFieldSet(buildProjectFieldsByName(projectCustomFields), params.customFields)
-  if (params.status !== undefined) {
-    handledFields.add('State')
-  }
-  if (params.priority !== undefined) {
-    handledFields.add('Priority')
-  }
-  if (params.assignee !== undefined) {
-    handledFields.add('Assignee')
-  }
-  if (params.dueDate !== undefined) {
-    handledFields.add(YOUTRACK_DUE_DATE_FIELD_NAME)
-  }
-  const requiredFields = projectCustomFields
-    .filter((field) => field.canBeEmpty === false)
-    .map((field) => field.field?.name)
-    .filter((fieldName): fieldName is string => fieldName !== undefined && !handledFields.has(fieldName))
+  markDedicatedParamFields(handledFields, params)
+  const requiredFields = projectCustomFields.filter(
+    (field) =>
+      field.canBeEmpty === false &&
+      (field.defaultValues?.length ?? 0) === 0 &&
+      field.field?.name !== undefined &&
+      !handledFields.has(field.field.name),
+  )
   if (requiredFields.length === 0) return projectCustomFields
+  const fetchElements = makeBundleElementFetcher(config)
+  const described = await Promise.all(requiredFields.map((field) => describeRequiredField(field, fetchElements)))
   throw new YouTrackClassifiedError(
-    `Project ${projectShortName} requires these custom fields: ${requiredFields.join(', ')}`,
+    `Project ${projectShortName} requires these custom fields: ${described.map((d) => d.label).join('; ')}`,
     providerError.workflowValidationFailed(
       projectId,
-      'The project workflow requires additional custom fields before the task can be created.',
-      requiredFields.map((name) => ({ name })),
+      'The project workflow requires additional custom fields before the task can be created. Call describe_project for the full schema and valid values.',
+      described.map((d) => ({ name: d.name })),
     ),
   )
 }
