@@ -61,13 +61,22 @@ export function handleStateInit(state: DashboardState, d: StateInitEvent): void 
         .reverse()
     : []
   if (Array.isArray(d.recentTurns)) {
-    state.turns = d.recentTurns.map(safeParseTurn).filter((t): t is Turn => t !== null)
+    state.turns = d.recentTurns
+      .map(safeParseTurn)
+      .filter((t): t is Turn => t !== null)
+      .reverse()
   }
   if (Array.isArray(d.recentNotifications)) {
-    state.notifications = d.recentNotifications.map(safeParseNotification).filter((n): n is Notification => n !== null)
+    state.notifications = d.recentNotifications
+      .map(safeParseNotification)
+      .filter((n): n is Notification => n !== null)
+      .reverse()
   }
   if (Array.isArray(d.recentToolFailures)) {
-    state.toolFailures = d.recentToolFailures.map(safeParseToolFailure).filter((f): f is ToolFailure => f !== null)
+    state.toolFailures = d.recentToolFailures
+      .map(safeParseToolFailure)
+      .filter((f): f is ToolFailure => f !== null)
+      .reverse()
   }
 }
 
@@ -147,10 +156,11 @@ export function handleTurnStart(state: DashboardState, d: Record<string, unknown
   const turnId = pickString(d, 'turnId')
   if (turnId === '') return
   const incomingMessageCount = typeof d['incomingMessageCount'] === 'number' ? d['incomingMessageCount'] : 1
+  const startedAt = typeof d['startedAt'] === 'number' ? d['startedAt'] : Date.now()
   state.turns.unshift({
     turnId,
     scope: parseScope(d['scope']),
-    startedAt: Date.now(),
+    startedAt,
     status: 'running',
     incomingMessageCount,
     toolCalls: [],
