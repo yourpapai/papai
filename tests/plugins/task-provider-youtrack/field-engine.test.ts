@@ -71,4 +71,25 @@ describe('resolveCustomFieldValue', () => {
     })
     expect(payload).toEqual({ name: 'Notes', $type: 'TextIssueCustomField', value: { text: 'hello' } })
   })
+
+  test('throws a teaching error when an integer field gets a non-numeric value', async () => {
+    const intField = {
+      $type: 'SimpleProjectCustomField',
+      field: { name: 'Story points', fieldType: { id: 'integer' } },
+    }
+    await expect(
+      resolveCustomFieldValue(intField, 'lots', { getBundleElements: () => Promise.reject(new Error('no fetch')) }),
+    ).rejects.toThrow(/Story points.*number/u)
+  })
+
+  test('resolves a valid integer field to a number', async () => {
+    const intField = {
+      $type: 'SimpleProjectCustomField',
+      field: { name: 'Story points', fieldType: { id: 'integer' } },
+    }
+    const payload = await resolveCustomFieldValue(intField, '5', {
+      getBundleElements: () => Promise.reject(new Error('no fetch')),
+    })
+    expect(payload).toEqual({ name: 'Story points', $type: 'SimpleIssueCustomField', value: 5 })
+  })
 })

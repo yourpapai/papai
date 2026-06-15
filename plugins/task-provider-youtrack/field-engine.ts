@@ -154,12 +154,16 @@ export const resolveCustomFieldValue = async (
   switch (c.kind) {
     case 'text':
       return { name, $type: 'TextIssueCustomField', value: { text: rawValue } }
-    case 'simple':
-      return {
-        name,
-        $type: 'SimpleIssueCustomField',
-        value: c.label === 'integer' || c.label === 'float' ? Number(rawValue) : rawValue,
+    case 'simple': {
+      if (c.label === 'integer' || c.label === 'float') {
+        const numeric = Number(rawValue)
+        if (!Number.isFinite(numeric)) {
+          throw fieldError(name, `Field "${name}" expects a number, got "${rawValue}"`)
+        }
+        return { name, $type: 'SimpleIssueCustomField', value: numeric }
       }
+      return { name, $type: 'SimpleIssueCustomField', value: rawValue }
+    }
     case 'date':
       return { name, $type: 'DateIssueCustomField', value: parseDueDateValue(rawValue) }
     case 'period':
