@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { Scope } from '../../src/debug/event-bus.js'
-import { handleLlmTraceEvent, type LlmTrace } from '../../src/debug/llm-trace-collector.js'
+import { handleLlmTraceEvent, pendingTraces, type LlmTrace } from '../../src/debug/llm-trace-collector.js'
 
 const userScope = (userId: string): Scope => ({ kind: 'user', userId })
 
@@ -24,6 +24,7 @@ describe('handleLlmTraceEvent', () => {
   beforeEach(() => {
     pushed = []
     stats = { totalLlmCalls: 0, totalToolCalls: 0 }
+    pendingTraces.clear()
   })
 
   test('accumulates tool calls and userId from scope across start/tool_result/end', () => {
