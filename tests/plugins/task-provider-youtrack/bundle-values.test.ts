@@ -6,16 +6,15 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { makeBundleElementFetcher } from '../../../plugins/task-provider-youtrack/bundle-values.js'
-import type { YouTrackConfig } from '../../../plugins/task-provider-youtrack/client.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
-
-const config: YouTrackConfig = { baseUrl: 'https://test.youtrack.cloud', token: 't' }
+import { createUniqueYouTrackConfig } from './fetch-mock-utils.js'
 
 describe('makeBundleElementFetcher', () => {
   beforeEach(() => mockLogger())
   afterEach(() => restoreFetch())
 
   test('fetches bundle element names and caches by bundle id', async () => {
+    const config = createUniqueYouTrackConfig()
     let calls = 0
     setMockFetch((url) => {
       calls++
@@ -33,8 +32,8 @@ describe('makeBundleElementFetcher', () => {
     const second = await fetcher('state', 'sb-1')
 
     expect(first.map((e) => e.name)).toEqual(['Open', 'In Progress'])
-    const second_element = first[1]
-    expect(second_element?.localizedName).toBe('В работе')
+    const secondElement = first[1]
+    expect(secondElement?.localizedName).toBe('В работе')
     // second call served from cache
     expect(calls).toBe(1)
     expect(second).toEqual(first)
