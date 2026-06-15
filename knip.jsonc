@@ -56,6 +56,8 @@
     "src/debug/state-collector.ts": ["exports"],
     // resetTurnBuffers is a test-only seam.
     "src/debug/turn-assembly.ts": ["exports"],
+    // subscribeCountForTest is a test-only seam.
+    "src/debug/event-bus.ts": ["exports"],
     // setPluginConfig is a test-only seam.
     "src/config.ts": ["exports"],
     // resetPluginRegistryForTesting is a test-only seam.

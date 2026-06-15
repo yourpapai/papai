@@ -22,6 +22,41 @@ let adminVisibility: AdminVisibility = { adminUserId: '', groupIds: new Set() }
 const clients = new Set<ReadableStreamDefaultController>()
 const encoder = new TextEncoder()
 
+const HEARTBEAT_MS = 15000
+const PING_FRAME = encoder.encode(': ping\n\n')
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+function pingClients(): void {
+  for (const client of clients) {
+    try {
+      client.enqueue(PING_FRAME)
+    } catch {
+      removeClient(client)
+    }
+  }
+}
+
+function startHeartbeat(): void {
+  if (heartbeatTimer !== null) return
+  heartbeatTimer = setInterval(pingClients, HEARTBEAT_MS)
+}
+
+function stopHeartbeat(): void {
+  if (heartbeatTimer === null) return
+  clearInterval(heartbeatTimer)
+  heartbeatTimer = null
+}
+
+/** @public -- test seam for the heartbeat ping path */
+export function pingClientsForTest(): void {
+  pingClients()
+}
+
+/** @public -- test seam: drain all SSE clients to restore a clean baseline. */
+export function resetClientsForTest(): void {
+  for (const client of [...clients]) removeClient(client)
+}
+
 export const stats = {
   startedAt: Date.now(),
   totalMessages: 0,
@@ -71,6 +106,7 @@ export function addClient(controller: ReadableStreamDefaultController): void {
 
   if (clients.size === 1) {
     subscribe(onEvent)
+    startHeartbeat()
   }
 }
 
@@ -79,6 +115,7 @@ export function removeClient(controller: ReadableStreamDefaultController): void 
 
   if (clients.size === 0) {
     unsubscribe(onEvent)
+    stopHeartbeat()
   }
 }
 
@@ -118,7 +155,7 @@ function broadcast(event: DebugEvent): void {
     try {
       client.enqueue(payload)
     } catch {
-      clients.delete(client)
+      removeClient(client)
     }
   }
 }
@@ -127,7 +164,7 @@ function sendTo(controller: ReadableStreamDefaultController, event: DebugEvent):
   try {
     controller.enqueue(formatSse(event))
   } catch {
-    clients.delete(controller)
+    removeClient(controller)
   }
 }
 

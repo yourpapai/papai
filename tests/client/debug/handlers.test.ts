@@ -203,6 +203,44 @@ describe('handleLogEntry', () => {
   })
 })
 
+describe('handleStateInit ordering', () => {
+  test('handleStateInit orders turns/notifications/toolFailures newest-first', () => {
+    const state = freshState()
+    const recentTurns: unknown[] = [
+      {
+        turnId: 'old',
+        scope: { kind: 'user', userId: 'u' },
+        startedAt: 1,
+        status: 'ok',
+        incomingMessageCount: 1,
+        toolCalls: [],
+      },
+      {
+        turnId: 'new',
+        scope: { kind: 'user', userId: 'u' },
+        startedAt: 2,
+        status: 'ok',
+        incomingMessageCount: 1,
+        toolCalls: [],
+      },
+    ]
+    handleStateInit(state, { recentTurns })
+    expect(state.turns[0]!.turnId).toBe('new')
+  })
+})
+
+describe('handleTurnStart server startedAt', () => {
+  test('handleTurnStart uses server startedAt when present', () => {
+    const state = freshState()
+    handleTurnStart(state, {
+      turnId: 't1',
+      startedAt: 1234,
+      scope: { kind: 'user', userId: 'u' },
+    })
+    expect(state.turns[0]!.startedAt).toBe(1234)
+  })
+})
+
 describe('handleTurnStart and handleTurnEnd', () => {
   test('start creates a running turn', () => {
     const s = freshState()

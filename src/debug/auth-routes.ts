@@ -100,7 +100,7 @@ export const handleAuthClaimConfirm = async (req: Request): Promise<Response> =>
   return new Response(null, {
     status: 302,
     headers: {
-      Location: '/admin',
+      Location: '/debug',
       'Set-Cookie': setCookie,
       'Referrer-Policy': 'no-referrer',
       'Cache-Control': 'no-store',

@@ -225,6 +225,7 @@ export class MessageQueue {
         turnId: result.turnId,
         contextType: result.contextType,
         incomingMessageCount: textCount,
+        startedAt: Date.now(),
       },
       result.turnId,
       result.contextType,

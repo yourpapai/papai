@@ -232,13 +232,42 @@ describe('SSE emission', () => {
 
     try {
       const buf = new LogRingBuffer(10)
-      buf.push(makeEntry({ msg: 'test event' }))
+      buf.push(makeEntry({ msg: 'Message received from user' }))
 
       expect(captured).not.toBeNull()
       expect(captured!.type).toBe('log:entry')
-      expect(captured!.data['msg']).toBe('test event')
+      expect(captured!.data['msg']).toBe('Message received from user')
     } finally {
       unsubscribe(listener)
     }
+  })
+})
+
+describe('log:entry emit redaction', () => {
+  test('redacts sensitive fields in the broadcast payload but keeps them in the buffer', () => {
+    const buf = new LogRingBuffer(10)
+    const events: DebugEvent[] = []
+    const listener = (e: DebugEvent): void => {
+      events.push(e)
+    }
+    subscribe(listener)
+    try {
+      buf.push(
+        makeEntry({
+          msg: 'Message received from user',
+          userText: 'secret',
+          scope: 'bot',
+          messageLength: 6,
+        }),
+      )
+    } finally {
+      unsubscribe(listener)
+    }
+
+    expect(events).toHaveLength(1)
+    expect(events[0]!.data).not.toHaveProperty('userText')
+    expect(events[0]!.data['messageLength']).toBe(6)
+    // Buffer retains the full entry
+    expect(buf.entries()[0]).toHaveProperty('userText', 'secret')
   })
 })

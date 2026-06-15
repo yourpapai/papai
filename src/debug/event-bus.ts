@@ -58,3 +58,7 @@ export function subscribe(fn: Listener): void {
 export function unsubscribe(fn: Listener): void {
   listeners.delete(fn)
 }
+
+export function subscribeCountForTest(): number {
+  return listeners.size
+}

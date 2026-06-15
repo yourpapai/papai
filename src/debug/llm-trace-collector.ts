@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { Scope } from './event-bus.js'
 import { str, num, bool, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
 
 export type LlmTraceToolCall = {
@@ -46,7 +47,7 @@ type PendingLlmTrace = {
   toolCalls: Array<LlmTraceToolCall>
 }
 
-type TraceEvent = { type: string; timestamp: number; data: Record<string, unknown> }
+type TraceEvent = { type: string; timestamp: number; scope: Scope; data: Record<string, unknown> }
 type TraceCallbacks = {
   pushTrace: (trace: LlmTrace) => void
   broadcastTrace: (trace: LlmTrace, ts: number) => void
@@ -137,13 +138,17 @@ function buildErrorTrace(event: TraceEvent, userId: string, pending: PendingLlmT
   }
 }
 
+function traceKey(event: TraceEvent): string {
+  return event.scope.kind === 'user' ? event.scope.userId : str(event.data['userId'])
+}
+
 export function handleLlmTraceEvent(
   event: TraceEvent,
   callbacks: TraceCallbacks,
   stats: { totalLlmCalls: number; totalToolCalls: number },
   scheduleStatsBroadcast: () => void,
 ): void {
-  const userId = str(event.data['userId'])
+  const userId = traceKey(event)
 
   if (event.type === 'llm:start') {
     pendingTraces.set(userId, {

@@ -16,10 +16,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 describe('llm-orchestrator-support', () => {
   test('handleToolCallFinish emits structured failures and replies with the user message', () => {
     const { reply, getReplies } = createMockReply()
-    const emitCalls: Array<{ event: string; payload: unknown }> = []
+    const emitCalls: Array<{ event: string; userId: string; payload: unknown }> = []
     const deps = {
-      emit: (event: string, payload: unknown): void => {
-        emitCalls.push({ event, payload })
+      emit: (event: string, userId: string, payload: unknown): void => {
+        emitCalls.push({ event, userId, payload })
       },
       log: {
         warn: mock(() => {}),
@@ -43,8 +43,8 @@ describe('llm-orchestrator-support', () => {
     expect(emitCalls).toHaveLength(1)
     expect(emitCalls[0]).toEqual({
       event: 'llm:tool_result',
+      userId: 'ctx-1',
       payload: {
-        userId: 'ctx-1',
         toolName: 'get_task',
         toolCallId: 'call-1',
         durationMs: 25,
@@ -59,10 +59,10 @@ describe('llm-orchestrator-support', () => {
   })
 
   test('handleToolCallFinish logs structured failures when reply is suppressed', () => {
-    const emitCalls: Array<{ event: string; payload: unknown }> = []
+    const emitCalls: Array<{ event: string; userId: string; payload: unknown }> = []
     const deps = {
-      emit: (event: string, payload: unknown): void => {
-        emitCalls.push({ event, payload })
+      emit: (event: string, userId: string, payload: unknown): void => {
+        emitCalls.push({ event, userId, payload })
       },
       log: {
         warn: mock(() => {}),
@@ -97,7 +97,7 @@ describe('llm-orchestrator-support', () => {
   test('handleOrchestratorMessageError replies with the app error message', async () => {
     const { reply, getReplies } = createMockReply()
     const deps = {
-      emit: (_event: string, _payload: unknown): void => {},
+      emit: (_event: string, _userId: string, _payload: unknown): void => {},
       log: {
         warn: mock(() => {}),
         error: mock(() => {}),
