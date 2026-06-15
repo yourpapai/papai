@@ -15,6 +15,7 @@ import { routePublicAuthPaths } from './auth-routes.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
+import { redactLogEntry } from './log-redaction.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleAdminPluginConfigGet, handleAdminPluginConfigPost } from './plugin-config-routes.js'
 import {
@@ -104,7 +105,7 @@ function handleLogs(url: URL): Response {
     limit: parseIntParam(url.searchParams.get('limit')),
   })
 
-  return jsonResponse(results)
+  return jsonResponse(results.map(redactLogEntry))
 }
 
 export type WebServerRouteOptions = Readonly<{ debugEnabled: boolean; mattermostActionSecretForTest?: string }>
