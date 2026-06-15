@@ -246,8 +246,8 @@ describe('Task Tools', () => {
 
       expect(tool.description).toContain('Create a new task')
       expect(dueDateDescription).toContain('For YouTrack, due dates are date-only and time-of-day is ignored')
-      expect(customFieldsDescription).toContain('simple string/text project fields required by YouTrack workflows')
-      expect(customFieldsDescription).toContain('not arbitrary field types')
+      expect(customFieldsDescription).toContain('describe_project to discover field names and allowed values')
+      expect(customFieldsDescription).toContain('any field type')
     })
 
     test('ignores time-of-day for YouTrack dueDate inputs', async () => {

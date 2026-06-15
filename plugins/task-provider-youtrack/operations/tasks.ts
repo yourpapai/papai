@@ -88,7 +88,7 @@ export async function createYouTrackTask(config: YouTrackConfig, params: CreateT
     }
     if (params.description !== undefined) body['description'] = params.description
 
-    const customFields = buildCreateCustomFields(params, projectCustomFields)
+    const customFields = await buildCreateCustomFields(config, params, projectCustomFields)
     if (customFields.length > 0) body['customFields'] = customFields
 
     const raw = await youtrackFetch(config, 'POST', '/api/issues', {

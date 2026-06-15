@@ -344,26 +344,50 @@ const mockCreateWithRequiredUnsupportedField = (): void => {
   })
 }
 
-/** project=1, customFields (non-string simple required field)=rest */
-const mockCreateWithNonStringSimpleField = (): void => {
+/** project=1, customFields (integer simple required field)=2, issue creation=3, enrichment=4 */
+const mockCreateWithIntegerSimpleField = (): void => {
   let callCount = 0
   installFetchMock(() => {
     callCount++
     if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
-    return jsonOk([
-      {
-        id: '82-16',
-        $type: 'SimpleProjectCustomField',
-        field: {
-          id: '58-8',
-          name: 'Story points',
-          $type: 'CustomField',
-          fieldType: { id: 'integer', presentation: 'integer' },
+    if (callCount === 2)
+      return jsonOk([
+        {
+          id: '82-16',
+          $type: 'SimpleProjectCustomField',
+          field: {
+            id: '58-8',
+            name: 'Story points',
+            $type: 'CustomField',
+            fieldType: { id: 'integer', presentation: 'integer' },
+          },
+          canBeEmpty: false,
+          isPublic: true,
         },
-        canBeEmpty: false,
-        isPublic: true,
-      },
-    ])
+      ])
+    if (callCount === 3) return jsonOk(makeIssueResponse())
+    return jsonOk([])
+  })
+}
+
+/** project=1, customFields (State with bundle sb-1)=2, bundle values=3, issue creation captures body=4, enrichment=5 */
+const mockCreateWithBundleStateField = (captureRef: { postBody: unknown }): void => {
+  let callCount = 0
+  setMockFetch((_url: string, init: RequestInit) => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    if (callCount === 2)
+      return jsonOk([
+        {
+          $type: 'StateProjectCustomField',
+          field: { name: 'State', fieldType: { id: 'state[1]' } },
+          canBeEmpty: false,
+          bundle: { id: 'sb-1', $type: 'StateBundle' },
+        },
+      ])
+    if (callCount === 3) return jsonOk([{ name: 'Open' }, { name: 'In Progress', localizedName: 'В работе' }])
+    captureRef.postBody = JSON.parse(z.string().parse(init.body))
+    return jsonOk(makeIssueResponse())
   })
 }
 
@@ -732,10 +756,16 @@ describe('createYouTrackTask', () => {
     })
 
     const body = getFetchBodyAt(2)
-    expect(body['customFields']).toEqual([
-      { name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { name: 'Critical' } },
-      { name: 'State', $type: 'StateIssueCustomField', value: { name: 'In Progress' } },
-    ])
+    expect(body['customFields']).toContainEqual({
+      name: 'Priority',
+      $type: 'SingleEnumIssueCustomField',
+      value: { name: 'Critical' },
+    })
+    expect(body['customFields']).toContainEqual({
+      name: 'State',
+      $type: 'StateIssueCustomField',
+      value: { name: 'In Progress' },
+    })
   })
 
   test('sends assignee custom field when provided', async () => {
@@ -1055,7 +1085,7 @@ describe('createYouTrackTask', () => {
     })
   })
 
-  test('rejects explicitly supplied unsupported custom field types', async () => {
+  test('rejects a supplied enum custom field that has no resolvable bundle', async () => {
     mockCreateWithUnsupportedEnumField()
 
     await expect(
@@ -1067,7 +1097,6 @@ describe('createYouTrackTask', () => {
     ).rejects.toMatchObject({
       appError: {
         code: 'validation-failed',
-        field: 'customFields',
       },
     })
 
@@ -1095,7 +1124,7 @@ describe('createYouTrackTask', () => {
     expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
-  test('rejects supplied required custom field when its project type is unsupported', async () => {
+  test('rejects a required enum custom field that has no resolvable bundle', async () => {
     mockCreateWithRequiredUnsupportedField()
 
     try {
@@ -1109,32 +1138,42 @@ describe('createYouTrackTask', () => {
       assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('validation-failed')
       assert(error.appError.code === 'validation-failed')
-      expect(error.appError.field).toBe('customFields')
       expect(error.appError.reason).toContain('Type')
     }
 
     expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
-  test('rejects supplied required simple project custom field when it is non-string', async () => {
-    mockCreateWithNonStringSimpleField()
+  test('resolves integer simple project custom field and sends numeric value', async () => {
+    mockCreateWithIntegerSimpleField()
 
-    try {
-      await createYouTrackTask(config, {
-        projectId: 'TEST',
-        title: 'Test task',
-        customFields: [{ name: 'Story points', value: '5' }],
-      })
-      throw new Error('Expected createYouTrackTask to reject')
-    } catch (error) {
-      assert(error instanceof YouTrackClassifiedError)
-      expect(error.appError.code).toBe('validation-failed')
-      assert(error.appError.code === 'validation-failed')
-      expect(error.appError.field).toBe('customFields')
-      expect(error.appError.reason).toContain('Story points')
-    }
+    await createYouTrackTask(config, {
+      projectId: 'TEST',
+      title: 'Test task',
+      customFields: [{ name: 'Story points', value: '5' }],
+    })
 
-    expect(fetchMock.mock.calls).toHaveLength(2)
+    const body = getFetchBodyAt(2)
+    expect(body['customFields']).toContainEqual({
+      name: 'Story points',
+      $type: 'SimpleIssueCustomField',
+      value: 5,
+    })
+  })
+
+  test('resolves a localized State value against the bundle before POST', async () => {
+    const { createUniqueYouTrackConfig } = await import('../fetch-mock-utils.js')
+    const uniqueConfig = createUniqueYouTrackConfig()
+    const captureRef: { postBody: unknown } = { postBody: undefined }
+    mockCreateWithBundleStateField(captureRef)
+
+    await createYouTrackTask(uniqueConfig, { projectId: '0-1', title: 'T', status: 'in progress' })
+
+    const body = z
+      .object({ customFields: z.array(z.object({ name: z.string(), $type: z.string(), value: z.unknown() })) })
+      .parse(captureRef.postBody)
+    const state = body.customFields.find((f) => f.name === 'State')
+    expect(state).toEqual({ name: 'State', $type: 'StateIssueCustomField', value: { name: 'In Progress' } })
   })
 })
 

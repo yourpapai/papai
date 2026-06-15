@@ -361,10 +361,16 @@ describe('YouTrackProvider', () => {
 
       const rawBody: unknown = getFetchBodyAt(createCallIndex)
       const customFields = parseCustomFields(rawBody)
-      expect(customFields).toEqual([
-        { name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { name: 'Critical' } },
-        { name: 'State', $type: 'StateIssueCustomField', value: { name: 'In Progress' } },
-      ])
+      expect(customFields).toContainEqual({
+        name: 'Priority',
+        $type: 'SingleEnumIssueCustomField',
+        value: { name: 'Critical' },
+      })
+      expect(customFields).toContainEqual({
+        name: 'State',
+        $type: 'StateIssueCustomField',
+        value: { name: 'In Progress' },
+      })
     })
   })
 

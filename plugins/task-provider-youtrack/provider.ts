@@ -11,6 +11,7 @@ import type {
   Label,
   ListTasksParams,
   Project,
+  ProjectFieldDescriptor,
   RelationType,
   Task,
   TaskCommandResult,
@@ -48,6 +49,7 @@ import {
   removeYouTrackComment,
   updateYouTrackComment,
 } from './operations/comments.js'
+import { describeYouTrackProjectFields } from './operations/project-fields.js'
 import {
   createYouTrackProject,
   deleteYouTrackProject,
@@ -145,6 +147,9 @@ export class YouTrackProvider extends YouTrackPhaseFiveProvider implements TaskP
   }
   listProjects(): Promise<Project[]> {
     return listYouTrackProjects(this.config)
+  }
+  describeProjectFields(projectId: string): Promise<ProjectFieldDescriptor[]> {
+    return describeYouTrackProjectFields(this.config, projectId)
   }
   createProject(params: { name: string; description?: string }): Promise<Project> {
     return createYouTrackProject(this.config, params)

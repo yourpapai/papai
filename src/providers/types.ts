@@ -15,6 +15,7 @@ import type {
   Label,
   ListTasksParams,
   Project,
+  ProjectFieldDescriptor,
   RelationType,
   SavedQuery,
   SetTaskVisibilityParams,
@@ -42,6 +43,7 @@ export type {
   Label,
   ListTasksParams,
   Project,
+  ProjectFieldDescriptor,
   ProviderConfigField,
   RelationType,
   SavedQuery,
@@ -136,6 +138,7 @@ export interface TaskProvider {
   // --- Optional: projects.* ---
   getProject?(projectId: string): Promise<Project>
   listProjects?(): Promise<Project[]>
+  describeProjectFields?(projectId: string): Promise<ProjectFieldDescriptor[]>
   createProject?(params: { name: string; description?: string }): Promise<Project>
   updateProject?(projectId: string, params: { name?: string; description?: string }): Promise<Project>
   deleteProject?(projectId: string): Promise<{ id: string }>

@@ -133,6 +133,15 @@ export type Project = {
   url: string
 }
 
+export interface ProjectFieldDescriptor {
+  name: string
+  type: string
+  multi: boolean
+  required: boolean
+  defaultValue?: string
+  allowedValues?: string[]
+}
+
 export type Comment = {
   id: string
   body: string
