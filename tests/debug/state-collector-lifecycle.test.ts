@@ -38,6 +38,28 @@ describe('state-collector heartbeat', () => {
     // The live client received the state:init frame plus a comment-frame ping.
     expect(enqueued.length).toBeGreaterThanOrEqual(2)
   })
+
+  test('ping dead client routes through removeClient, unsubscribing onEvent', () => {
+    init('admin')
+
+    const enqueueMock = mock<(chunk: unknown) => void>(() => {})
+    const controller = track({
+      enqueue: (chunk: unknown): void => enqueueMock(chunk),
+      close: (): void => {},
+      error: (): void => {},
+      desiredSize: 1,
+    })
+
+    addClient(controller)
+    expect(subscribeCountForTest()).toBe(1)
+
+    enqueueMock.mockImplementation(() => {
+      throw new Error('closed')
+    })
+    pingClientsForTest()
+
+    expect(subscribeCountForTest()).toBe(0)
+  })
 })
 
 describe('state-collector client lifecycle', () => {
