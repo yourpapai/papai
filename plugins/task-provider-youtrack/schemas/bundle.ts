@@ -49,6 +49,15 @@ export const ProjectCustomFieldSchema = z.object({
       $type: z.string().optional(),
     })
     .optional(),
+  defaultValues: z.array(z.object({ name: z.string(), localizedName: z.string().nullable().optional() })).optional(),
 })
 
 export const ProjectCustomFieldListSchema = z.array(ProjectCustomFieldSchema)
+
+export const BundleElementSchema = z.object({
+  name: z.string(),
+  localizedName: z.string().nullable().optional(),
+  ordinal: z.number().optional(),
+})
+
+export const BundleElementListSchema = z.array(BundleElementSchema)

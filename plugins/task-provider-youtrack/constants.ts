@@ -54,7 +54,7 @@ export const YOUTRACK_INLINE_LIST_CUSTOM_FIELDS = ['State', 'Priority', YOUTRACK
 export const COMMENT_FIELDS = `id,text,author(id,$type,login,name),created,updated,reactions(${REACTION_FIELDS})`
 export const PROJECT_FIELDS = 'id,name,shortName,description,archived'
 export const PROJECT_CUSTOM_FIELD_FIELDS =
-  'id,$type,canBeEmpty,isPublic,field(id,name,$type,fieldType(id,presentation)),bundle(id,$type)'
+  'id,$type,canBeEmpty,isPublic,field(id,name,localizedName,$type,fieldType(id,presentation)),bundle(id,$type),defaultValues(name,localizedName)'
 export const TAG_FIELDS = 'id,name,color(id,background)'
 export const ATTACHMENT_FIELDS = 'id,name,mimeType,size,url,thumbnailURL,author(login),created'
 export const WORK_ITEM_FIELDS = 'id,date,duration(minutes,presentation),text,author(id,login,name),type(id,name)'
