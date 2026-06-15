@@ -225,8 +225,7 @@ describe('state-collector', () => {
         messageCount: 5,
         toolCount: 10,
       })
-      emitGlobal('llm:tool_result', {
-        userId: 'admin-1',
+      emitUser('llm:tool_result', 'admin-1', {
         toolName: 'create_task',
         toolCallId: 'call-1',
         durationMs: 500,
@@ -284,8 +283,7 @@ describe('state-collector', () => {
       addClient(track(ctrl))
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
-      emitGlobal('llm:tool_result', {
-        userId: 'admin-1',
+      emitUser('llm:tool_result', 'admin-1', {
         toolName: 'search_tasks',
         toolCallId: 'call-2',
         durationMs: 300,
