@@ -93,7 +93,7 @@ describe('auth route handlers', () => {
       const { nonce } = issueClaim('u1', 'p1')
       const res = await handleAuthClaimConfirm(claimConfirmRequest(nonce))
       expect(res.status).toBe(302)
-      expect(res.headers.get('Location')).toBe('/admin')
+      expect(res.headers.get('Location')).toBe('/debug')
       expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
       expect(res.headers.get('Cache-Control')).toBe('no-store')
       const setCookie = res.headers.get('Set-Cookie')

@@ -45,11 +45,11 @@ describe('/auth/* routes', () => {
     expect(confirm.status).toBe(302)
   })
 
-  test('POST /auth/claim consumes a nonce, sets cookie, redirects to /admin', async () => {
+  test('POST /auth/claim consumes a nonce, sets cookie, redirects to /debug', async () => {
     const { nonce } = issueClaim('u1', 'p1')
     const res = await routeRequestForTest(claimConfirm(nonce))
     expect(res.status).toBe(302)
-    expect(res.headers.get('Location')).toBe('/admin')
+    expect(res.headers.get('Location')).toBe('/debug')
     expect(res.headers.get('Referrer-Policy')).toBe('no-referrer')
     const setCookie = res.headers.get('Set-Cookie')
     expect(setCookie).not.toBeNull()
