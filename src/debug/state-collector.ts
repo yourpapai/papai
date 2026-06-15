@@ -52,6 +52,11 @@ export function pingClientsForTest(): void {
   pingClients()
 }
 
+/** @public -- test seam: drain all SSE clients to restore a clean baseline. */
+export function resetClientsForTest(): void {
+  for (const client of [...clients]) removeClient(client)
+}
+
 export const stats = {
   startedAt: Date.now(),
   totalMessages: 0,

@@ -3,10 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { emitGlobal, subscribeCountForTest } from '../../src/debug/event-bus.js'
-import { addClient, init, pingClientsForTest, removeClient } from '../../src/debug/state-collector.js'
+import {
+  addClient,
+  init,
+  pingClientsForTest,
+  removeClient,
+  resetClientsForTest,
+} from '../../src/debug/state-collector.js'
 
 // Track controllers so afterEach tears down shared module singletons (clients set,
 // onEvent subscription, heartbeat interval) between tests in this file.
@@ -16,8 +22,13 @@ const track = (c: ReadableStreamDefaultController): ReadableStreamDefaultControl
   return c
 }
 
+beforeEach(() => {
+  resetClientsForTest()
+})
+
 afterEach(() => {
   for (const c of added.splice(0)) removeClient(c)
+  resetClientsForTest()
 })
 
 describe('state-collector heartbeat', () => {
@@ -50,15 +61,16 @@ describe('state-collector heartbeat', () => {
       desiredSize: 1,
     })
 
+    const before = subscribeCountForTest()
     addClient(controller)
-    expect(subscribeCountForTest()).toBe(1)
+    expect(subscribeCountForTest()).toBe(before + 1)
 
     enqueueMock.mockImplementation(() => {
       throw new Error('closed')
     })
     pingClientsForTest()
 
-    expect(subscribeCountForTest()).toBe(0)
+    expect(subscribeCountForTest()).toBe(before)
   })
 })
 
@@ -75,8 +87,9 @@ describe('state-collector client lifecycle', () => {
       desiredSize: 1,
     })
 
+    const before = subscribeCountForTest()
     addClient(controller)
-    expect(subscribeCountForTest()).toBe(1)
+    expect(subscribeCountForTest()).toBe(before + 1)
 
     // Flip the mock so subsequent enqueue throws, then broadcast via emitGlobal.
     // broadcast -> enqueue throws -> removeClient -> unsubscribes onEvent
@@ -84,6 +97,6 @@ describe('state-collector client lifecycle', () => {
       throw new Error('closed')
     })
     emitGlobal('log:entry', { level: 30, time: 't', msg: 'x' })
-    expect(subscribeCountForTest()).toBe(0)
+    expect(subscribeCountForTest()).toBe(before)
   })
 })
