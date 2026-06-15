@@ -870,6 +870,29 @@ describe('MessageQueue', () => {
       expect(turnStartEvent.data['incomingMessageCount']).toBe(1)
     })
 
+    it('turn:start payload carries a server startedAt timestamp', () => {
+      queue.enqueue(
+        {
+          text: 'Hello',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+          voiceStagedIds: [],
+        },
+        mockReply,
+      )
+      queue.forceFlush()
+
+      const turnStartEvent = events.find((e) => e.type === 'turn:start')
+      expect(turnStartEvent).toBeDefined()
+      assert(turnStartEvent !== undefined)
+      const startedAt = turnStartEvent.data['startedAt']
+      expect(typeof startedAt).toBe('number')
+      expect(startedAt).toBeGreaterThan(0)
+    })
+
     it('should emit turn:end with status ok on successful handler', async () => {
       const handler = async (_coalesced: CoalescedItem): Promise<void> => {
         await Promise.resolve()
