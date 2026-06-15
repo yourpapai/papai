@@ -68,6 +68,7 @@ function handleEvents(req: Request): Response {
     start(controller): void {
       ctrl = controller
       addClient(controller)
+      controller.enqueue(new TextEncoder().encode('retry: 3000\n\n'))
       req.signal.addEventListener('abort', () => {
         removeClient(controller)
       })

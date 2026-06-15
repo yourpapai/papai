@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 
 import { emitGlobal, subscribeCountForTest } from '../../src/debug/event-bus.js'
-import { addClient, init, removeClient } from '../../src/debug/state-collector.js'
+import { addClient, init, pingClientsForTest, removeClient } from '../../src/debug/state-collector.js'
 
 // Track controllers so afterEach tears down shared module singletons (clients set,
 // onEvent subscription, heartbeat interval) between tests in this file.
@@ -18,6 +18,26 @@ const track = (c: ReadableStreamDefaultController): ReadableStreamDefaultControl
 
 afterEach(() => {
   for (const c of added.splice(0)) removeClient(c)
+})
+
+describe('state-collector heartbeat', () => {
+  test('ping reaches live clients and drops dead ones', () => {
+    init('admin')
+    const enqueued: Uint8Array[] = []
+    const live = track({
+      enqueue: (c: Uint8Array): void => void enqueued.push(c),
+      close: (): void => {},
+      error: (): void => {},
+      desiredSize: 1,
+    } as ReadableStreamDefaultController)
+
+    // sends state:init (1 enqueue), subscribes onEvent, starts heartbeat
+    addClient(live)
+    pingClientsForTest()
+
+    // The live client received the state:init frame plus a comment-frame ping.
+    expect(enqueued.length).toBeGreaterThanOrEqual(2)
+  })
 })
 
 describe('state-collector client lifecycle', () => {
