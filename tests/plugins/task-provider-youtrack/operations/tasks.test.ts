@@ -1085,7 +1085,7 @@ describe('createYouTrackTask', () => {
     })
   })
 
-  test('rejects explicitly supplied unsupported custom field types', async () => {
+  test('rejects a supplied enum custom field that has no resolvable bundle', async () => {
     mockCreateWithUnsupportedEnumField()
 
     await expect(
@@ -1124,7 +1124,7 @@ describe('createYouTrackTask', () => {
     expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
-  test('rejects supplied required custom field when its project type is unsupported', async () => {
+  test('rejects a required enum custom field that has no resolvable bundle', async () => {
     mockCreateWithRequiredUnsupportedField()
 
     try {
