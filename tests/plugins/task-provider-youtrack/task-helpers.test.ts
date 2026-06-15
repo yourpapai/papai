@@ -90,7 +90,8 @@ describe('task-helpers', () => {
     )
   })
 
-  test('adds supported create-time custom fields alongside standard fields', () => {
+  test('adds supported create-time custom fields alongside standard fields', async () => {
+    const config = createUniqueYouTrackConfig()
     const projectCustomFields = [
       {
         id: '82-13',
@@ -106,25 +107,25 @@ describe('task-helpers', () => {
       },
     ] as const
 
-    expect(
-      buildCreateCustomFields(
-        {
-          priority: 'High',
-          customFields: [{ name: 'Environment details', value: 'Needs staging parity' }],
-        },
-        projectCustomFields,
-      ),
-    ).toEqual([
+    // Priority not in project schema → legacy fallback; Environment details is TextProjectCustomField → engine
+    const result = await buildCreateCustomFields(
+      config,
       {
-        name: 'Priority',
-        $type: 'SingleEnumIssueCustomField',
-        value: { name: 'High' },
+        priority: 'High',
+        customFields: [{ name: 'Environment details', value: 'Needs staging parity' }],
       },
-      {
-        name: 'Environment details',
-        $type: 'TextIssueCustomField',
-        value: { text: 'Needs staging parity' },
-      },
-    ])
+      projectCustomFields,
+    )
+
+    expect(result).toContainEqual({
+      name: 'Priority',
+      $type: 'SingleEnumIssueCustomField',
+      value: { name: 'High' },
+    })
+    expect(result).toContainEqual({
+      name: 'Environment details',
+      $type: 'TextIssueCustomField',
+      value: { text: 'Needs staging parity' },
+    })
   })
 })

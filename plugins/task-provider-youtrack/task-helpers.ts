@@ -12,8 +12,10 @@ import { YouTrackClassifiedError } from './classify-error.js'
 import type { YouTrackConfig } from './client.js'
 import { youtrackFetch } from './client.js'
 import { PROJECT_CUSTOM_FIELD_FIELDS, YOUTRACK_DUE_DATE_FIELD_NAME } from './constants.js'
+import { collectCreateFieldPairs, resolveCreateFieldPair } from './create-field-helpers.js'
 import { DueDateCustomFieldSchema, mapYouTrackDueDateValue, parseDueDateValue } from './due-date.js'
-import { classifyFieldType, formatAllowed } from './field-engine.js'
+import { classifyFieldType, formatAllowed, resolveCustomFieldValue } from './field-engine.js'
+import type { IssueCustomFieldPayload } from './field-engine.js'
 import { paginate } from './helpers.js'
 import { ProjectCustomFieldListSchema, ProjectCustomFieldSchema } from './schemas/bundle.js'
 
@@ -192,7 +194,8 @@ export const validateRequiredCreateFields = async (
     ),
   )
 }
-export const buildCreateCustomFields = (
+export const buildCreateCustomFields = async (
+  config: Readonly<YouTrackConfig>,
   params: Readonly<{
     status?: string
     priority?: string
@@ -201,12 +204,18 @@ export const buildCreateCustomFields = (
     customFields?: Array<{ name: string; value: string }>
   }>,
   projectCustomFields: readonly ProjectCustomField[],
-): Array<StandardCustomFieldPayload | CreateIssueCustomFieldPayload> => {
+): Promise<Array<StandardCustomFieldPayload | IssueCustomFieldPayload>> => {
   const projectFieldsByName = buildProjectFieldsByName(projectCustomFields)
-  return [
-    ...buildCustomFields(params),
-    ...(params.customFields ?? []).map((input) => buildWriteSafeCustomFieldPayload(projectFieldsByName, input)),
-  ]
+  const getBundleElements = makeBundleElementFetcher(config)
+  const resolved = collectCreateFieldPairs(params).map((pair) => resolveCreateFieldPair(pair, projectFieldsByName))
+  const payloads = await Promise.all(
+    resolved.map((r) =>
+      r.kind === 'legacy'
+        ? Promise.resolve(r.payload)
+        : resolveCustomFieldValue(r.field, r.value, { getBundleElements }),
+    ),
+  )
+  return payloads
 }
 const buildWriteSafeCustomFieldPayload = (
   projectFieldsByName: ReadonlyMap<string, ProjectCustomField & { readonly field: { readonly name: string } }>,
