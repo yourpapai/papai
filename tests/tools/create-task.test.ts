@@ -13,6 +13,13 @@ import { makeCreateTaskTool } from '../../src/tools/create-task.js'
 import { mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider, createMockYouTrackProvider } from './mock-provider.js'
 
+describe('create_task tool description', () => {
+  test('tool description references describe_project', () => {
+    const tool = makeCreateTaskTool(createMockProvider())
+    expect(tool.description).toContain('describe_project')
+  })
+})
+
 describe('create_task identity resolution', () => {
   beforeEach(async () => {
     mockLogger()

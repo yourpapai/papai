@@ -116,13 +116,18 @@ const createTaskInputSchema = z.object({
     .describe(
       "Due date input. For most providers, date+time is converted from the user's local time to UTC. For YouTrack, due dates are date-only and time-of-day is ignored.",
     ),
-  status: z.string().optional().describe("Status column slug (e.g. 'to-do', 'in-progress', 'done')"),
+  status: z
+    .string()
+    .optional()
+    .describe(
+      "Status/State value. For YouTrack this must exactly match one of the project's State values — call describe_project to get them (they may be localized). For other providers, a status column slug (e.g. 'to-do', 'in-progress', 'done').",
+    ),
   assignee: z.string().optional().describe("User ID to assign the task to, or 'me' to assign to yourself"),
   customFields: z
     .array(z.object({ name: z.string(), value: z.string() }))
     .optional()
     .describe(
-      'For YouTrack, use this only for simple string/text project fields required by YouTrack workflows, not arbitrary field types. Use dedicated fields for status, priority, assignee, and due date.',
+      'For YouTrack, set required project custom fields by name (any field type — enum, state, version, etc.). Call describe_project to discover field names and allowed values, and use those exact values. Prefer the dedicated status/priority/assignee/dueDate parameters where they apply.',
     ),
 })
 
@@ -132,7 +137,8 @@ export function makeCreateTaskTool(
   storageContextId?: string,
 ): ToolSet[string] {
   return tool({
-    description: 'Create a new task. Call list_projects first to get a valid projectId.',
+    description:
+      'Create a new task. Call list_projects first to get a valid projectId. For YouTrack, if the project has required custom fields call describe_project first to learn the field names and valid values (e.g. State names, which may be localized).',
     inputSchema: createTaskInputSchema,
     execute: async (params) => {
       try {

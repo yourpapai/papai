@@ -7,6 +7,7 @@ export const YOUTRACK_PROMPT_ADDENDUM = [
   'IMPORTANT — YouTrack-specific behaviors:',
   '- Issues use "State" as a custom field (e.g. "Open", "In Progress", "Fixed", "Verified").',
   '- State transitions may be governed by workflows. If a state update fails, try a different valid state.',
+  '- Before creating a task in a project you have not created in this turn, call `describe_project` to learn its required fields and the exact valid values (State/enum values may be localized). Use those exact values; do not invent slugs.',
   '- Issue IDs are human-readable like "PROJ-123". Always use these readable IDs.',
   '- Tags are used as labels. To add/remove tags, use the label tools.',
   '- Work items track time spent on issues with duration (e.g., "2h 30m", "90m").',
