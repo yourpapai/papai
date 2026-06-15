@@ -26,6 +26,7 @@ import { makeCreateStatusTool } from './create-status.js'
 import { makeDeleteProjectTool } from './delete-project.js'
 import { makeDeleteStatusTool } from './delete-status.js'
 import { makeDeleteTaskTool } from './delete-task.js'
+import { makeDescribeProjectTool } from './describe-project.js'
 import { makeGetCommentsTool } from './get-comments.js'
 import { makeGetProjectTool } from './get-project.js'
 import { makeGetTaskHistoryTool } from './get-task-history.js'
@@ -71,6 +72,7 @@ function maybeAddProjectTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('projects.read') && provider.getProject !== undefined)
     tools['get_project'] = makeGetProjectTool(provider)
   if (provider.capabilities.has('projects.list')) tools['list_projects'] = makeListProjectsTool(provider)
+  if (provider.describeProjectFields !== undefined) tools['describe_project'] = makeDescribeProjectTool(provider)
   if (provider.capabilities.has('projects.create')) tools['create_project'] = makeCreateProjectTool(provider)
   if (provider.capabilities.has('projects.update')) tools['update_project'] = makeUpdateProjectTool(provider)
   if (provider.capabilities.has('projects.delete')) tools['delete_project'] = makeDeleteProjectTool(provider)
