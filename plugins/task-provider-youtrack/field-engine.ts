@@ -74,22 +74,16 @@ const parseFieldTypeId = (id: string | undefined): { base: string; multi: boolea
   return { base: raw.toLowerCase(), multi: false }
 }
 
-const bundleSegmentFromType = (bundleType: string | undefined): string | undefined => {
-  switch (bundleType) {
-    case 'EnumBundle':
-      return 'enum'
-    case 'StateBundle':
-      return 'state'
-    case 'VersionBundle':
-      return 'version'
-    case 'OwnedFieldBundle':
-      return 'ownedField'
-    case 'BuildBundle':
-      return 'build'
-    default:
-      return undefined
-  }
+const BUNDLE_SEGMENTS: Record<string, string> = {
+  EnumBundle: 'enum',
+  StateBundle: 'state',
+  VersionBundle: 'version',
+  OwnedFieldBundle: 'ownedField',
+  BuildBundle: 'build',
 }
+
+const bundleSegmentFromType = (bundleType: string | undefined): string | undefined =>
+  bundleType === undefined ? undefined : BUNDLE_SEGMENTS[bundleType]
 
 export const classifyFieldType = (field: Readonly<ProjectCustomField>): FieldClassification => {
   const { base, multi } = parseFieldTypeId(field.field?.fieldType?.id)
@@ -184,10 +178,11 @@ export const resolveCustomFieldValue = async (
       const resolved = splitMulti(rawValue, c.multi).map((v) => ({ name: matchBundleValue(name, v, elements) }))
       return { name, $type: issueType(c, name), value: c.multi ? resolved : resolved[0] }
     }
-    default:
+    case 'unknown':
       throw fieldError(
         name,
         `Field "${name}" has an unsupported type (${field.field?.fieldType?.id ?? 'unknown'}) for create_task`,
       )
   }
+  throw new Error(`Unreachable: unhandled field kind`)
 }
