@@ -23,8 +23,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('056_provisional_memory is the last migration', () => {
+  test('057_attachment_group_context is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('056_provisional_memory')
+    expect(lastMigration.id).toBe('057_attachment_group_context')
   })
 })
