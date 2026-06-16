@@ -25,7 +25,7 @@ export const MemoryKindSchema = z.enum([
 ])
 export type MemoryKind = z.infer<typeof MemoryKindSchema>
 
-export const MemoryStatusSchema = z.enum(['active', 'stale', 'archived', 'contradicted'])
+export const MemoryStatusSchema = z.enum(['active', 'stale', 'archived', 'contradicted', 'provisional'])
 export type MemoryStatus = z.infer<typeof MemoryStatusSchema>
 
 export const MemorySourceSchema = z.enum(['background', 'explicit', 'tool_result', 'admin_edit'])
@@ -44,6 +44,7 @@ export type MemoryEvidence = Readonly<{
   actorIds?: readonly string[]
   timestamps?: readonly string[]
   contextId?: string
+  threads?: readonly string[]
 }>
 
 export type MemoryRecord = MemoryScope &
@@ -57,6 +58,7 @@ export type MemoryRecord = MemoryScope &
     status: MemoryStatus
     source: MemorySource
     evidence: MemoryEvidence
+    threadContextId?: string | null
     createdAt: string
     updatedAt: string
     lastSeenAt: string
