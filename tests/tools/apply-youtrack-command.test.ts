@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import type { TaskCommandResult } from '../../src/providers/types.js'
 import { isToolFailureResult } from '../../src/tool-failure.js'
 import { makeApplyYouTrackCommandTool } from '../../src/tools/apply-youtrack-command.js'
 import { wrapToolExecution } from '../../src/tools/wrap-tool-execution.js'
@@ -448,6 +449,32 @@ describe('apply_youtrack_command', () => {
       comment: 'On it',
       silent: undefined,
     })
+  })
+
+  test('preserves provider binding when applyCommand reads instance state', async () => {
+    // Regression: the real YouTrackProvider.applyCommand is a class method whose body reads
+    // `this.config`. The tool must invoke it on the provider, not detach it into a bare
+    // function — detaching loses `this` and throws "undefined is not an object (this.config)".
+    const provider = Object.assign(createMockProvider({ name: 'youtrack' as const }), {
+      config: { baseUrl: 'https://yt.example' },
+      applyCommand(params: {
+        query: string
+        taskIds: string[]
+        comment?: string
+        silent?: boolean
+      }): Promise<TaskCommandResult> {
+        return Promise.resolve({ query: params.query, taskIds: params.taskIds, comment: this.config.baseUrl })
+      },
+    })
+
+    const tool = makeApplyYouTrackCommandTool(provider)
+    const result = await getToolExecutor(tool)({
+      query: 'for me',
+      taskIds: ['TEST-1'],
+      confidence: 0.6,
+    })
+
+    expect(result).toEqual({ query: 'for me', taskIds: ['TEST-1'], comment: 'https://yt.example' })
   })
 
   test('allows exact single-user for commands without confirmation', async () => {

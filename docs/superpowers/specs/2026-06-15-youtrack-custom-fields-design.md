@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # YouTrack custom-field reliability — design
 
 **Date:** 2026-06-15
-**Status:** Approved (pending implementation plan)
+**Status:** Implemented (2026-06-16) — see [As-built notes](#as-built-notes)
 **Area:** `plugins/task-provider-youtrack/`, `src/tools/`, `src/providers/`
 
 ## Problem
@@ -63,7 +63,9 @@ Four concrete defects:
 
 **Non-goals (v1)**
 
-- `update_task` generalization (the same engine can be applied later).
+- `update_task` generalization (the same engine can be applied later). _Delivered in the
+  2026-06-16 follow-up (`2026-06-16-youtrack-dedicated-fields-and-teaching-errors-design.md`),
+  commit `a68da9a1c` — create and update now share one schema-driven builder._
 - Group fields; fuzzy/synonym user resolution.
 - Two-phase create via the YouTrack `commands` API.
 
@@ -213,3 +215,24 @@ and cached. Existing `resolveStateBundle` usage is preserved.
   type rather than a silent wrong payload.
 - **Multi-value comma ambiguity:** values containing commas are rare for bundle elements;
   documented as a known limitation for v1.
+
+## As-built notes
+
+Implemented across `2026-06-16` (commits `35a933016`, `be3bec635`, `ffc43bce7`,
+`59f56a25a`, `a653a9776`, `74185162a`, `8fa540217`, `2f87c60bd`, `c8ad80309`). The shipped
+shape differs from the design sketch in a few naming/structure details; the behaviour matches.
+
+| Design sketch                                            | As-built                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `field-engine.ts` `resolveCustomFieldValue()`            | Implemented as designed in `field-engine.ts` (`classifyFieldType` + `resolveCustomFieldValue`).                                                                                                                                                                               |
+| `bundle-cache.ts` (EDIT, generalize)                     | Bundle-element resolution split into `bundle-values.ts` (`makeBundleElementFetcher`, the per-`bundleId` cache) consumed by the field engine; `bundle-cache.ts` retains the legacy state cache.                                                                                |
+| `operations/describe.ts` (NEW)                           | Shipped as `operations/project-fields.ts` → `describeYouTrackProjectFields`.                                                                                                                                                                                                  |
+| provider `describeProjectFields(): ProjectFieldSchema[]` | `src/providers/types.ts` exposes `describeProjectFields?(projectId): Promise<ProjectFieldDescriptor[]>`; tool is `src/tools/describe-project.ts` (`makeDescribeProjectTool`, gated on the optional method).                                                                   |
+| `task-helpers.ts` builders                               | Required-detection (`validateRequiredCreateFields`) and the shared builder (`buildIssueCustomFields`) live in `task-helpers.ts`; the empty-admin-endpoint fallback derives the schema from a sample issue via `issue-derived-fields.ts` (`fetchProjectCustomFieldsViaIssue`). |
+
+**Subsequent work (2026-06-16 follow-up):** dedicated-param localization, name-level teaching
+errors, and `update_task` parity — see the follow-up design. After that follow-up, `create`
+and `update` share a single path: `buildIssueCustomFields(config, params, projectCustomFields,
+op)` over `collectFieldPairs` / `resolveFieldPair` (`create-field-helpers.ts`). The
+"Unsupported custom field for create/update: …" allowlist rejection described in the Problem
+section no longer exists in the code.
