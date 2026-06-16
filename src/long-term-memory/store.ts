@@ -261,6 +261,7 @@ export function clearMemoryScope(scope: MemoryScope): { profileDeleted: number; 
 export type ListProvisionalFilter = MemoryScope &
   Readonly<{ threadContextId?: string; excludeThreadContextId?: string; limit?: number }>
 
+/** @public -- consumed by the Plan 2 recall cascade + promotion engine (cross-thread memory bridge). */
 export function listProvisionalRecords(filter: ListProvisionalFilter): readonly MemoryRecord[] {
   const conditions: SQL[] = [
     eq(memoryRecords.scopeId, filter.scopeId),
