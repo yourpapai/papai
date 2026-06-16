@@ -229,6 +229,25 @@ const mockCreateWithAssigneeField = (): void => {
   })
 }
 
+/** create with a localized project whose only enum is "Срочность" (no Priority-named field). */
+const mockCreateWithLocalizedEnumOnly = (): void => {
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/admin/projects/0-1' && method === 'GET') return jsonOk({ id: '0-1', shortName: 'AUDIT' })
+    if (p === '/api/admin/projects/0-1/customFields')
+      return jsonOk([
+        {
+          $type: 'EnumProjectCustomField',
+          field: { name: 'Срочность', fieldType: { id: 'enum[1]' } },
+          bundle: { id: 'eb-x', $type: 'EnumBundle' },
+          canBeEmpty: true,
+        },
+      ])
+    return jsonOk([])
+  })
+}
+
 /** create dueDate: project=1, schema (Due Date field)=2, POST=3, enrichment=4+ */
 const mockCreateWithDueDateField = (): void => {
   installRoutedFetchMock((url, init) => {
@@ -1221,6 +1240,23 @@ describe('createYouTrackTask', () => {
     // project lookup + admin customFields ([]) + issue-derived schema probe (also empty here),
     // after which the named field is confirmed unknown.
     expect(fetchMock.mock.calls).toHaveLength(3)
+  })
+
+  test('rejects a dedicated priority when the project has no Priority-named enum', async () => {
+    // The motivating AUDIT scenario: a localized project whose only enum is "Срочность" — there is
+    // no field named Priority/Приоритет, so priority must not silently pick an arbitrary enum.
+    mockCreateWithLocalizedEnumOnly()
+
+    try {
+      await createYouTrackTask(config, { projectId: '0-1', title: 'Test task', priority: 'Срочно' })
+      throw new Error('Expected createYouTrackTask to reject')
+    } catch (error) {
+      assert(error instanceof YouTrackClassifiedError)
+      expect(error.appError.code).toBe('validation-failed')
+      assert(error.appError.code === 'validation-failed')
+      expect(error.appError.field).toBe('customFields')
+      expect(error.appError.reason).toMatch(/priority/iu)
+    }
   })
 
   test('rejects a required enum custom field that has no resolvable bundle', async () => {

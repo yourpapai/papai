@@ -114,7 +114,8 @@ const markDedicatedParamFields = (
   for (const pair of collectFieldPairs(params)) {
     if (pair.source !== 'dedicated') continue
     try {
-      handledFields.add(resolveDedicatedField(pair.kind, fields).field?.name ?? '')
+      const name = resolveDedicatedField(pair.kind, fields).field?.name
+      if (name !== undefined) handledFields.add(name)
     } catch {
       // Unresolvable dedicated param surfaces as a teaching error when payloads are built.
     }

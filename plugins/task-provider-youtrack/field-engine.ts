@@ -185,7 +185,7 @@ export const resolveCustomFieldValue = async (
     case 'unknown':
       throw fieldError(
         name,
-        `Field "${name}" has an unsupported type (${field.field?.fieldType?.id ?? 'unknown'}) for create_task`,
+        `Field "${name}" has an unsupported type (${field.field?.fieldType?.id ?? 'unknown'}). Use describe_project to choose a settable field.`,
       )
   }
   throw new Error(`Unreachable: unhandled field kind`)
