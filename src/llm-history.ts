@@ -8,6 +8,7 @@ import type { ModelMessage } from 'ai'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { appendHistory } from './history.js'
 import { logger } from './logger.js'
+import { armMemoryCapture } from './long-term-memory/capture-debounce.js'
 import { runMemoryExtractionInBackground } from './long-term-memory/runner.js'
 
 const log = logger.child({ scope: 'llm-history' })
@@ -38,6 +39,7 @@ export const appendAssistantHistory = (
       history: combined,
     })
   }
+  armMemoryCapture({ storageContextId: contextId, configContextId: configId, contextType, history: combined })
 }
 
 export const appendAssistantTurnHistory = (

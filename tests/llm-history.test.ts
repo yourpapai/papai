@@ -10,6 +10,7 @@ import type { ModelMessage } from 'ai'
 import * as conversationModule from '../src/conversation.js'
 import * as historyModule from '../src/history.js'
 import { appendAssistantHistory } from '../src/llm-history.js'
+import * as captureDebouncModule from '../src/long-term-memory/capture-debounce.js'
 import * as memoryRunnerModule from '../src/long-term-memory/runner.js'
 import { mockLogger } from './utils/test-helpers.js'
 
@@ -28,11 +29,17 @@ describe('appendAssistantHistory', () => {
     return spy
   }
 
-  const setup = (): { appendCalls: ModelMessage[][]; trimCalls: unknown[][]; extractionCalls: unknown[][] } => {
+  const setup = (): {
+    appendCalls: ModelMessage[][]
+    trimCalls: unknown[][]
+    extractionCalls: unknown[][]
+    armCalls: unknown[][]
+  } => {
     mockLogger()
     const appendCalls: ModelMessage[][] = []
     const trimCalls: unknown[][] = []
     const extractionCalls: unknown[][] = []
+    const armCalls: unknown[][] = []
     track(
       spyOn(historyModule, 'appendHistory').mockImplementation((_id: string, msgs: readonly ModelMessage[]) => {
         appendCalls.push([...msgs])
@@ -50,7 +57,12 @@ describe('appendAssistantHistory', () => {
         return Promise.resolve()
       }),
     )
-    return { appendCalls, trimCalls, extractionCalls }
+    track(
+      spyOn(captureDebouncModule, 'armMemoryCapture').mockImplementation((...args: unknown[]) => {
+        armCalls.push(args)
+      }),
+    )
+    return { appendCalls, trimCalls, extractionCalls, armCalls }
   }
 
   test('appends assistant messages and does not trim a short history', () => {
@@ -98,5 +110,22 @@ describe('appendAssistantHistory', () => {
 
     expect(shouldTrim).toHaveBeenCalled()
     expect(shouldTrim.mock.calls[0]![1]).toBe('claude-opus-4-8')
+  })
+
+  test('arms debounced memory capture unconditionally on each group turn', () => {
+    const { armCalls } = setup()
+    track(spyOn(conversationModule, 'shouldTriggerTrim').mockReturnValue(false))
+    const history: ModelMessage[] = [{ role: 'user', content: 'hi' }]
+    const assistantMessages: ModelMessage[] = [{ role: 'assistant', content: 'hello' }]
+
+    appendAssistantHistory('ctx', 'cfg', 'gpt-4o', history, assistantMessages, 'group')
+
+    expect(armCalls).toHaveLength(1)
+    expect(armCalls[0]![0]).toEqual({
+      storageContextId: 'ctx',
+      configContextId: 'cfg',
+      contextType: 'group',
+      history: [...history, ...assistantMessages],
+    })
   })
 })
