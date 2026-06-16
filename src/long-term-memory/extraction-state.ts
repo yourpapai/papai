@@ -49,7 +49,10 @@ export function markExtracted(contextId: string, historyLen: number, now: string
     .run()
 }
 
-/** Contexts with unextracted activity that have been idle for at least `idleMs`. */
+/**
+ * Contexts with unextracted activity that have been idle for at least `idleMs`.
+ * @public -- consumed by the capture sweep backstop (Plan 1 T9).
+ */
 export function listDirtyContexts(now: string, idleMs: number = DEFAULT_IDLE_MS): readonly MemoryExtractionStateRow[] {
   const cutoff = new Date(new Date(now).getTime() - idleMs).toISOString()
   return getDrizzleDb()
