@@ -6,15 +6,17 @@
 import { and, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { memoryProfiles, memoryRecords, type MemoryProfileRow, type MemoryRecordRow } from '../db/schema.js'
-import {
-  deserializeEmbedding,
-  parseEvidence,
-  parseTags,
-  sanitizeFtsQuery,
-  serializeEmbedding,
-} from './serialization.js'
-import type { MemoryKind, MemoryProfile, MemoryRecord, MemoryRecordInput, MemoryScope, MemoryStatus } from './types.js'
+import { memoryProfiles, memoryRecords } from '../db/schema.js'
+import { parseEvidence, rowToProfile, rowToRecord, sanitizeFtsQuery, serializeEmbedding } from './serialization.js'
+import type {
+  MemoryEvidence,
+  MemoryKind,
+  MemoryProfile,
+  MemoryRecord,
+  MemoryRecordInput,
+  MemoryScope,
+  MemoryStatus,
+} from './types.js'
 
 export type ListMemoryRecordsFilter = Readonly<{
   status?: MemoryStatus
@@ -36,36 +38,7 @@ const DEFAULT_SEARCH_LIMIT = 10
 
 type MemoryRecordValues = typeof memoryRecords.$inferInsert
 
-const rowToProfile = (row: MemoryProfileRow): MemoryProfile => ({
-  scopeId: row.scopeId,
-  scopeType: row.scopeType,
-  profile: row.profile,
-  enabled: row.enabled,
-  version: row.version,
-  updatedAt: row.updatedAt,
-})
-
-export const rowToRecord = (row: MemoryRecordRow): MemoryRecord => ({
-  id: row.id,
-  scopeId: row.scopeId,
-  scopeType: row.scopeType,
-  kind: row.kind,
-  content: row.content,
-  summary: row.summary,
-  tags: parseTags(row.tags),
-  confidence: row.confidence,
-  status: row.status,
-  source: row.source,
-  evidence: parseEvidence(row.evidence),
-  threadContextId: row.threadContextId ?? null,
-  createdAt: row.createdAt,
-  updatedAt: row.updatedAt,
-  lastSeenAt: row.lastSeenAt,
-  validFrom: row.validFrom,
-  validUntil: row.validUntil,
-  expiresAt: row.expiresAt,
-  embedding: deserializeEmbedding(row.embedding),
-})
+export { rowToProfile, rowToRecord } from './serialization.js'
 
 const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   id: input.id,
@@ -282,4 +255,42 @@ export function listProvisionalRecords(filter: ListProvisionalFilter): readonly 
     .limit(filter.limit ?? DEFAULT_LIST_LIMIT)
     .all()
     .map(rowToRecord)
+}
+
+/** @public -- consumed by the promotion engine (Plan 2 T3/T7). */
+export function promoteProvisionalToActive(
+  scope: MemoryScope,
+  recordId: string,
+  threads: readonly string[],
+  now: string,
+): MemoryRecord | null {
+  const existing = getDrizzleDb().select().from(memoryRecords).where(recordScopeCondition(scope, recordId)).get()
+  if (existing === undefined) return null
+  const prev = parseEvidence(existing.evidence)
+  const evidence: MemoryEvidence = { ...prev, threads: [...new Set(threads)], promotionRejectedAt: undefined }
+  const rows = getDrizzleDb()
+    .update(memoryRecords)
+    .set({
+      status: 'active',
+      threadContextId: null,
+      evidence: JSON.stringify(evidence),
+      updatedAt: now,
+      lastSeenAt: now,
+    })
+    .where(recordScopeCondition(scope, recordId))
+    .returning()
+    .all()
+  return rows[0] === undefined ? null : rowToRecord(rows[0])
+}
+
+/** @public -- consumed by the promotion engine (Plan 2 T3/T7). */
+export function markPromotionRejected(scope: MemoryScope, recordId: string, now: string): void {
+  const existing = getDrizzleDb().select().from(memoryRecords).where(recordScopeCondition(scope, recordId)).get()
+  if (existing === undefined) return
+  const evidence: MemoryEvidence = { ...parseEvidence(existing.evidence), promotionRejectedAt: now }
+  getDrizzleDb()
+    .update(memoryRecords)
+    .set({ evidence: JSON.stringify(evidence), updatedAt: now })
+    .where(recordScopeCondition(scope, recordId))
+    .run()
 }

@@ -45,6 +45,7 @@ export type MemoryEvidence = Readonly<{
   timestamps?: readonly string[]
   contextId?: string
   threads?: readonly string[]
+  promotionRejectedAt?: string
 }>
 
 export type MemoryRecord = MemoryScope &
