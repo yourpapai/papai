@@ -144,6 +144,8 @@ export const migration056ProvisionalMemory: Migration = {
 export default migration056ProvisionalMemory
 ```
 
+> **⚠️ Correction (applied during implementation):** the simple `ALTER TABLE … ADD COLUMN` above is **not sufficient** for the `provisional` status. Migration 053 created `memory_records.status` with a real `CHECK (status IN ('active','stale','archived','contradicted'))` constraint, so inserting a `provisional` row would fail at runtime. SQLite cannot alter a CHECK constraint in place, so the **shipped** migration uses the table-recreation pattern (RENAME → CREATE new table with the widened CHECK + `thread_context_id` → `INSERT…SELECT` → DROP old), then recreates indexes and the FTS5 triggers, **and rebuilds the external-content FTS index** (`INSERT INTO memory_records_fts(memory_records_fts) VALUES('rebuild')`) because recreation reassigns rowids and would otherwise desync `memory_records_fts`. See the actual `src/db/migrations/056_provisional_memory.ts` and the regression test `tests/db/migration-056-fts-rebuild.test.ts`.
+
 - [ ] **Step 4: Register the migration**
 
 In `src/db/index.ts`, add the import next to the other migration imports:
