@@ -84,8 +84,9 @@ describe('makeWebFetchTool', () => {
     ).rejects.toBe(expectedError)
   })
 
-  test('uses scoped storage context as actor id when assembled with storage context', async () => {
+  test('uses chatUserId as the web-fetch actor id when assembled', async () => {
     await setupTestDb()
+    const chatUserId = 'user-456'
     const storageContextId = 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw'
     putCachedWebFetch(
       'https://example.com/article',
@@ -101,7 +102,7 @@ describe('makeWebFetchTool', () => {
       },
       Date.now() + 60_000,
     )
-    const tools = buildTools(createMockProvider(), 'user-456', storageContextId, 'normal', 'group')
+    const tools = buildTools(createMockProvider(), chatUserId, storageContextId, 'normal', 'group')
 
     await getToolExecutor(tools['web_fetch']!)(
       { url: 'https://example.com/article' },
@@ -109,6 +110,56 @@ describe('makeWebFetchTool', () => {
     )
 
     const actors = getTestDb().select({ actorId: webRateLimit.actorId }).from(webRateLimit).all()
-    expect(actors).toEqual([{ actorId: storageContextId }])
+    expect(actors).toEqual([{ actorId: chatUserId }])
+  })
+
+  test('two threads of the same user share one web-fetch quota bucket', async () => {
+    await setupTestDb()
+    const chatUserId = 'user-789'
+    const threadContextId1 = 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:dGhyZWFkLTEyMw'
+    const threadContextId2 = 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:dGhyZWFkLTQ1Ng'
+    const cachedResult = {
+      url: 'https://example.com/article',
+      title: 'Example',
+      summary: 'Summary',
+      excerpt: 'Excerpt',
+      truncated: false,
+      contentType: 'text/html' as const,
+      source: 'fetch' as const,
+      fetchedAt: 1,
+    }
+    putCachedWebFetch('https://example.com/article', cachedResult, Date.now() + 60_000)
+
+    const tools1 = buildTools(createMockProvider(), chatUserId, threadContextId1, 'normal', 'group')
+    const tools2 = buildTools(createMockProvider(), chatUserId, threadContextId2, 'normal', 'group')
+
+    await getToolExecutor(tools1['web_fetch']!)(
+      { url: 'https://example.com/article' },
+      { toolCallId: '1', messages: [] },
+    )
+    await getToolExecutor(tools2['web_fetch']!)(
+      { url: 'https://example.com/article' },
+      { toolCallId: '2', messages: [] },
+    )
+
+    const actors = getTestDb().select({ actorId: webRateLimit.actorId }).from(webRateLimit).all()
+    // Both threads of the same user share exactly one quota row
+    expect(actors).toEqual([{ actorId: chatUserId }])
+
+    // Control: a different chatUserId produces a separate row
+    const otherUserId = 'user-999'
+    const otherContextId = 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:b3RoZXItdXNlcg'
+    const tools3 = buildTools(createMockProvider(), otherUserId, otherContextId, 'normal', 'group')
+    await getToolExecutor(tools3['web_fetch']!)(
+      { url: 'https://example.com/article' },
+      { toolCallId: '3', messages: [] },
+    )
+
+    const allActors = getTestDb()
+      .select({ actorId: webRateLimit.actorId })
+      .from(webRateLimit)
+      .orderBy(webRateLimit.actorId)
+      .all()
+    expect(allActors).toEqual([{ actorId: chatUserId }, { actorId: otherUserId }])
   })
 })

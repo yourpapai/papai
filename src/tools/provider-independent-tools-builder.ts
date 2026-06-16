@@ -119,7 +119,7 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
   }
   addInstructionTools(tools, storageOwnerId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
-  if (contextId !== undefined) tools['web_fetch'] = makeWebFetchTool(contextId, storageOwnerId, contextType)
+  if (contextId !== undefined) tools['web_fetch'] = makeWebFetchTool(contextId, chatUserId, contextType)
   if (mode === 'normal' && storageOwnerId !== undefined) {
     addDeferredPromptTools(
       tools,
