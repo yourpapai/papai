@@ -90,6 +90,8 @@
     // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
     "src/byok-llm/store.ts": ["files", "exports"],
     "src/byok-llm/types.ts": ["files", "types"],
+    // semantic-search is created ahead of the Plan 2 recall cascade + promotion engine integration.
+    "src/long-term-memory/semantic-search.ts": ["files"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
