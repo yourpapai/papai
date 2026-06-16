@@ -114,7 +114,7 @@ export const capAllowedValues = (values: readonly string[]): string[] => {
 const fieldError = (fieldName: string, message: string): YouTrackClassifiedError =>
   new YouTrackClassifiedError(message, providerError.validationFailed(fieldName, message))
 
-const normalize = (value: string): string => value.trim().toLocaleLowerCase()
+export const normalize = (value: string): string => value.trim().toLocaleLowerCase()
 
 const splitMulti = (raw: string, multi: boolean): string[] =>
   multi
