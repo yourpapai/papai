@@ -3,19 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryProfiles, memoryRecords, type MemoryProfileRow, type MemoryRecordRow } from '../db/schema.js'
-import type {
-  MemoryEvidence,
-  MemoryKind,
-  MemoryProfile,
-  MemoryRecord,
-  MemoryRecordInput,
-  MemoryScope,
-  MemoryStatus,
-} from './types.js'
+import {
+  deserializeEmbedding,
+  parseEvidence,
+  parseTags,
+  sanitizeFtsQuery,
+  serializeEmbedding,
+} from './serialization.js'
+import type { MemoryKind, MemoryProfile, MemoryRecord, MemoryRecordInput, MemoryScope, MemoryStatus } from './types.js'
 
 export type ListMemoryRecordsFilter = Readonly<{
   status?: MemoryStatus
@@ -36,45 +35,6 @@ const DEFAULT_LIST_LIMIT = 50
 const DEFAULT_SEARCH_LIMIT = 10
 
 type MemoryRecordValues = typeof memoryRecords.$inferInsert
-
-const parseTags = (json: string): readonly string[] => {
-  try {
-    const parsed: unknown = JSON.parse(json)
-    return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === 'string') : []
-  } catch {
-    return []
-  }
-}
-
-const parseEvidence = (json: string): MemoryEvidence => {
-  try {
-    const parsed: unknown = JSON.parse(json)
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return parsed as MemoryEvidence
-  } catch {
-    return {}
-  }
-}
-
-const sanitizeFtsQuery = (query: string): string => `"${query.replace(/"/gu, '""')}"`
-
-const serializeEmbedding = (embedding: Float32Array | null | undefined): Buffer | null =>
-  embedding === null || embedding === undefined
-    ? null
-    : Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength)
-
-const copyViewBuffer = (view: ArrayBufferView): ArrayBuffer => {
-  const copy = new Uint8Array(view.byteLength)
-  copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength))
-  return copy.buffer
-}
-
-const deserializeEmbedding = (embedding: MemoryRecordRow['embedding']): Float32Array | null => {
-  if (embedding === null) return null
-  if (embedding instanceof ArrayBuffer) return new Float32Array(embedding.slice(0))
-  if (ArrayBuffer.isView(embedding)) return new Float32Array(copyViewBuffer(embedding))
-  return null
-}
 
 const rowToProfile = (row: MemoryProfileRow): MemoryProfile => ({
   scopeId: row.scopeId,
@@ -97,6 +57,7 @@ const rowToRecord = (row: MemoryRecordRow): MemoryRecord => ({
   status: row.status,
   source: row.source,
   evidence: parseEvidence(row.evidence),
+  threadContextId: row.threadContextId ?? null,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
   lastSeenAt: row.lastSeenAt,
@@ -118,6 +79,7 @@ const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   status: input.status,
   source: input.source,
   evidence: JSON.stringify(input.evidence),
+  threadContextId: input.threadContextId ?? null,
   createdAt: input.createdAt,
   updatedAt: input.updatedAt,
   lastSeenAt: input.lastSeenAt,
@@ -294,4 +256,29 @@ export function clearMemoryScope(scope: MemoryScope): { profileDeleted: number; 
     .returning({ scopeId: memoryProfiles.scopeId })
     .all()
   return { profileDeleted: deletedProfiles.length, recordsDeleted: deletedRecords.length }
+}
+
+export type ListProvisionalFilter = MemoryScope &
+  Readonly<{ threadContextId?: string; excludeThreadContextId?: string; limit?: number }>
+
+export function listProvisionalRecords(filter: ListProvisionalFilter): readonly MemoryRecord[] {
+  const conditions: SQL[] = [
+    eq(memoryRecords.scopeId, filter.scopeId),
+    eq(memoryRecords.scopeType, filter.scopeType),
+    eq(memoryRecords.status, 'provisional'),
+  ]
+  if (filter.threadContextId !== undefined) {
+    conditions.push(eq(memoryRecords.threadContextId, filter.threadContextId))
+  }
+  if (filter.excludeThreadContextId !== undefined) {
+    conditions.push(ne(memoryRecords.threadContextId, filter.excludeThreadContextId))
+  }
+  return getDrizzleDb()
+    .select()
+    .from(memoryRecords)
+    .where(and(...conditions))
+    .orderBy(desc(memoryRecords.lastSeenAt))
+    .limit(filter.limit ?? DEFAULT_LIST_LIMIT)
+    .all()
+    .map(rowToRecord)
 }
