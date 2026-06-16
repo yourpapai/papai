@@ -7,7 +7,8 @@ import type { ToolSet } from 'ai'
 
 import { isS3Configured } from '../attachments/index.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
-import { getConfigContextIdFromStorageContextId, hasThreadContextId } from '../chat/scoped-context.js'
+import { getScopeKey } from '../chat/context-scope.js'
+import { hasThreadContextId } from '../chat/scoped-context.js'
 import type { ContextType } from '../chat/types.js'
 import { makeArchiveMemosTool } from './archive-memos.js'
 import { makeExpandResultTool } from './compaction/expand-result.js'
@@ -35,7 +36,11 @@ import { makeDeleteFileTool, makeListFilesTool } from './workspace-files.js'
 
 export function getStorageOwnerId(chatUserId: string | undefined, contextId: string | undefined): string | undefined {
   if (contextId === undefined) return chatUserId
-  return getConfigContextIdFromStorageContextId(contextId)
+  return getScopeKey('group', {
+    storageContextId: contextId,
+    chatUserId: chatUserId ?? contextId,
+    contextType: 'group',
+  })
 }
 
 function addMemoTools(tools: ToolSet, userId: string | undefined): void {
@@ -98,7 +103,10 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
     tools['expand_result'] = makeExpandResultTool(contextId)
   }
   if (contextId !== undefined && isS3Configured()) {
-    const groupReadContextId = contextType === 'group' ? getConfigContextIdFromStorageContextId(contextId) : undefined
+    const groupReadContextId =
+      contextType === 'group'
+        ? getScopeKey('group', { storageContextId: contextId, chatUserId: chatUserId ?? contextId, contextType })
+        : undefined
     tools['list_files'] = makeListFilesTool(contextId, groupReadContextId)
     tools['delete_file'] = makeDeleteFileTool(contextId)
     tools['search_staged_files'] = makeSearchStagedFilesTool(contextId, groupReadContextId)
