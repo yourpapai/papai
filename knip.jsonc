@@ -94,6 +94,8 @@
     "src/long-term-memory/semantic-search.ts": ["files"],
     // embedding-writer is consumed by the memory capture executor (wired in a later task on this branch).
     "src/long-term-memory/embedding-writer.ts": ["files"],
+    // extraction-state is consumed by the capture executor + sweep (wired in later tasks on this branch).
+    "src/long-term-memory/extraction-state.ts": ["files"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
