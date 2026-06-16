@@ -96,6 +96,8 @@
     "src/long-term-memory/embedding-writer.ts": ["files"],
     // extraction-state is consumed by the capture executor + sweep (wired in later tasks on this branch).
     "src/long-term-memory/extraction-state.ts": ["files"],
+    // capture is consumed by the debounce manager + sweep (wired in later tasks on this branch).
+    "src/long-term-memory/capture.ts": ["files"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
