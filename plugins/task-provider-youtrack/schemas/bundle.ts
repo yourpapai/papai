@@ -30,7 +30,7 @@ export const ProjectCustomFieldSchema = z.object({
     .object({
       id: z.string().optional(),
       name: z.string(),
-      localizedName: z.string().optional(),
+      localizedName: z.string().nullish(),
       $type: z.string().optional(),
       fieldType: z
         .object({

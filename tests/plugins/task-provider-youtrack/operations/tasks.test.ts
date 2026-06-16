@@ -154,13 +154,171 @@ const jsonOk = (data: unknown): Promise<Response> =>
 const jsonError = (status: number, data: unknown): Promise<Response> =>
   Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }))
 
-/** project=1, customFields=2, issue=3, followup=4 */
+const ASSIGNEE_FIELD_SCHEMA = {
+  $type: 'UserProjectCustomField',
+  field: { name: 'Assignee', fieldType: { id: 'user[1]' } },
+  canBeEmpty: true,
+}
+const DUE_DATE_FIELD_SCHEMA = {
+  $type: 'DateProjectCustomField',
+  field: { name: 'Due Date', fieldType: { id: 'date' } },
+  canBeEmpty: true,
+}
+
+const findPostCallIndex = (calls: unknown[]): number =>
+  calls.findIndex((call) => {
+    const parsed = FetchCallSchema.safeParse(call)
+    if (!parsed.success) return false
+    const [url, init] = parsed.data
+    return new URL(url).pathname === '/api/issues' && (init.method ?? 'GET') === 'POST'
+  })
+
+const findUpdatePostCallIndex = (calls: unknown[]): number =>
+  calls.findIndex((call) => {
+    const parsed = FetchCallSchema.safeParse(call)
+    if (!parsed.success) return false
+    const [url, init] = parsed.data
+    return new URL(url).pathname === '/api/issues/TEST-1' && (init.method ?? 'GET') === 'POST'
+  })
+
+type RoutedFetchHandler = (url: string, init: RequestInit) => Promise<Response>
+
+const installRoutedFetchMock = (handler: RoutedFetchHandler): void => {
+  const m = mock<RoutedFetchHandler>(handler)
+  fetchMock = m
+  setMockFetch((url, init) => m(url, init))
+}
+
+/** create priority+status: project=1, schema=2, state-bundle=3, enum-bundle=4, POST=5, enrichment=6+ */
+const mockCreateWithPriorityAndStatus = (): void => {
+  const stateSchema = {
+    $type: 'StateProjectCustomField',
+    field: { name: 'State', fieldType: { id: 'state[1]' } },
+    bundle: { id: 'sb-cr1', $type: 'StateBundle' },
+    canBeEmpty: false,
+  }
+  const prioritySchema = {
+    $type: 'EnumProjectCustomField',
+    field: { name: 'Priority', fieldType: { id: 'enum[1]' } },
+    bundle: { id: 'eb-cr1', $type: 'EnumBundle' },
+    canBeEmpty: false,
+  }
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/admin/projects/0-1' && method === 'GET') return jsonOk({ id: '0-1', shortName: 'TEST' })
+    if (p === '/api/admin/projects/0-1/customFields') return jsonOk([stateSchema, prioritySchema])
+    if (p === '/api/admin/customFieldSettings/bundles/state/sb-cr1/values')
+      return jsonOk([{ name: 'Open' }, { name: 'In Progress' }])
+    if (p === '/api/admin/customFieldSettings/bundles/enum/eb-cr1/values')
+      return jsonOk([{ name: 'Critical' }, { name: 'Normal' }])
+    if (p === '/api/issues' && method === 'POST') return jsonOk(makeIssueResponse())
+    return jsonOk([])
+  })
+}
+
+/** create assignee: project=1, schema (Assignee field)=2, POST=3, enrichment=4+ */
+const mockCreateWithAssigneeField = (): void => {
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/admin/projects/0-1' && method === 'GET') return jsonOk({ id: '0-1', shortName: 'TEST' })
+    if (p === '/api/admin/projects/0-1/customFields') return jsonOk([ASSIGNEE_FIELD_SCHEMA])
+    if (p === '/api/issues' && method === 'POST') return jsonOk(makeIssueResponse())
+    return jsonOk([])
+  })
+}
+
+/** create with a localized project whose only enum is "Срочность" (no Priority-named field). */
+const mockCreateWithLocalizedEnumOnly = (): void => {
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/admin/projects/0-1' && method === 'GET') return jsonOk({ id: '0-1', shortName: 'AUDIT' })
+    if (p === '/api/admin/projects/0-1/customFields')
+      return jsonOk([
+        {
+          $type: 'EnumProjectCustomField',
+          field: { name: 'Срочность', fieldType: { id: 'enum[1]' } },
+          bundle: { id: 'eb-x', $type: 'EnumBundle' },
+          canBeEmpty: true,
+        },
+      ])
+    return jsonOk([])
+  })
+}
+
+/** create dueDate: project=1, schema (Due Date field)=2, POST=3, enrichment=4+ */
+const mockCreateWithDueDateField = (): void => {
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/admin/projects/0-1' && method === 'GET') return jsonOk({ id: '0-1', shortName: 'TEST' })
+    if (p === '/api/admin/projects/0-1/customFields') return jsonOk([DUE_DATE_FIELD_SCHEMA])
+    if (p === '/api/issues' && method === 'POST') return jsonOk(makeIssueResponse())
+    return jsonOk([])
+  })
+}
+
+/** update status+priority+assignee: project(id)=1, schema=2, bundles=3-4, POST=5 */
+const mockUpdateWithStatusPriorityAssignee = (): void => {
+  const stateSchema = {
+    $type: 'StateProjectCustomField',
+    field: { name: 'State', fieldType: { id: 'state[1]' } },
+    bundle: { id: 'sb-upd1', $type: 'StateBundle' },
+    canBeEmpty: false,
+  }
+  const prioritySchema = {
+    $type: 'EnumProjectCustomField',
+    field: { name: 'Priority', fieldType: { id: 'enum[1]' } },
+    bundle: { id: 'eb-upd1', $type: 'EnumBundle' },
+    canBeEmpty: false,
+  }
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/issues/TEST-1' && method === 'GET') return jsonOk({ project: { id: '0-1' } })
+    if (p === '/api/admin/projects/0-1/customFields')
+      return jsonOk([stateSchema, prioritySchema, ASSIGNEE_FIELD_SCHEMA])
+    if (p === '/api/admin/customFieldSettings/bundles/state/sb-upd1/values')
+      return jsonOk([{ name: 'Open' }, { name: 'Done' }])
+    if (p === '/api/admin/customFieldSettings/bundles/enum/eb-upd1/values')
+      return jsonOk([{ name: 'Normal' }, { name: 'Major' }])
+    if (p === '/api/issues/TEST-1' && method === 'POST') return jsonOk(makeIssueResponse())
+    return jsonOk([])
+  })
+}
+
+/** update dueDate: project(id)=1, schema (Due Date field)=2, POST=3, enrichment=4+ */
+const mockUpdateWithDueDateField = (): void => {
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/issues/TEST-1' && method === 'GET') return jsonOk({ project: { id: '0-1' } })
+    if (p === '/api/admin/projects/0-1/customFields') return jsonOk([DUE_DATE_FIELD_SCHEMA])
+    if (p === '/api/issues/TEST-1' && method === 'POST') return jsonOk(makeIssueResponse())
+    return jsonOk([])
+  })
+}
+
+/** update malformed dueDate: project(id)=1, schema (Due Date field)=2, then throws before POST */
+const mockUpdateWithMalformedDueDateField = (): void => {
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/issues/TEST-1' && method === 'GET') return jsonOk({ project: { id: '0-1' } })
+    if (p === '/api/admin/projects/0-1/customFields') return jsonOk([DUE_DATE_FIELD_SCHEMA])
+    return jsonOk([])
+  })
+}
+
+/** project=1, customFields (Due Date schema)=2, issue=3, followup=4 */
 const mockCreateWithFollowup = (issueResponse: unknown, followupResponse: Response): void => {
   let callCount = 0
   installFetchMock(() => {
     callCount++
     if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
-    if (callCount === 2) return jsonOk([])
+    if (callCount === 2) return jsonOk([DUE_DATE_FIELD_SCHEMA])
     if (callCount === 3) return jsonOk(issueResponse)
     return Promise.resolve(followupResponse)
   })
@@ -221,13 +379,13 @@ const mockCreateWithRequiredDateField = (): void => {
   })
 }
 
-/** project=1, customFields (malformed dueDate)=rest */
+/** project=1, customFields (Due Date schema)=rest */
 const mockCreateWithMalformedDueDate = (): void => {
   let callCount = 0
   installFetchMock(() => {
     callCount++
     if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
-    return jsonOk([])
+    return jsonOk([DUE_DATE_FIELD_SCHEMA])
   })
 }
 
@@ -457,88 +615,42 @@ const mockUpdateWithCustomFields = (): void => {
   })
 }
 
-/** updateYouTrackTask: current issue lookup (unknown field)=1, custom fields=2 */
+/** updateYouTrackTask: current issue lookup (unknown field)=1, custom fields (known env field)=2 */
 const mockUpdateWithUnknownField = (): void => {
   let callCount = 0
   installFetchMock(() => {
     callCount++
     if (callCount === 1) return jsonOk({ project: { id: '0-1' } })
-    return jsonOk([])
-  })
-}
-
-/** updateYouTrackTask: current issue lookup (unsupported field)=1, custom fields=2 */
-const mockUpdateWithUnsupportedField = (): void => {
-  let callCount = 0
-  installFetchMock(() => {
-    callCount++
-    if (callCount === 1) return jsonOk({ project: { id: '0-1' } })
     return jsonOk([
       {
-        id: 'pcf-3',
-        $type: 'EnumProjectCustomField',
-        field: { name: 'Type', fieldType: { id: 'enum[1]', presentation: 'enum[1]' } },
+        $type: 'SimpleProjectCustomField',
+        field: { name: 'Environment', fieldType: { id: 'string' } },
         canBeEmpty: true,
       },
     ])
   })
 }
 
-/** updateYouTrackTask dedicated field rejection: current issue lookup=1, custom fields=2 */
-const mockUpdateDedicatedFieldLookup = (fieldName: string): void => {
-  const fieldTypeMap: Record<string, { $type: string; fieldType: { id: string; presentation: string } }> = {
-    Assignee: {
-      $type: 'UserProjectCustomField',
-      fieldType: { id: 'user[1]', presentation: 'user[1]' },
-    },
-    'Due Date': {
-      $type: 'DateProjectCustomField',
-      fieldType: { id: 'date', presentation: 'date' },
-    },
-    State: {
-      $type: 'SimpleProjectCustomField',
-      fieldType: { id: 'string', presentation: 'string' },
-    },
-    Priority: {
-      $type: 'SimpleProjectCustomField',
-      fieldType: { id: 'string', presentation: 'string' },
-    },
-  }
-  const fieldMeta = fieldTypeMap[fieldName] ?? {
-    $type: 'SimpleProjectCustomField',
-    fieldType: { id: 'string', presentation: 'string' },
-  }
-  let callCount = 0
-  installFetchMock(() => {
-    callCount++
-    if (callCount === 1) return jsonOk({ project: { id: '0-1' } })
-    return jsonOk([
-      {
-        id: `pcf-${fieldName}`,
-        $type: fieldMeta.$type,
-        field: { name: fieldName, fieldType: fieldMeta.fieldType },
-        canBeEmpty: true,
-      },
-    ])
-  })
-}
-
-/** updateYouTrackTask: update with dueDate=1 (returns issue), enrichment=2 */
+/** updateYouTrackTask: project(id)=1, customFields (Due Date schema)=2, update=3, enrichment=4 */
 const mockUpdateWithDueDateEnrichment = (dueDateEnrichmentResponse: Response): void => {
   let callCount = 0
   installFetchMock(() => {
     callCount++
-    if (callCount === 1) return jsonOk(makeIssueResponse())
+    if (callCount === 1) return jsonOk({ project: { id: '0-1' } })
+    if (callCount === 2) return jsonOk([DUE_DATE_FIELD_SCHEMA])
+    if (callCount === 3) return jsonOk(makeIssueResponse())
     return Promise.resolve(dueDateEnrichmentResponse)
   })
 }
 
-/** updateYouTrackTask: update with dueDate=1 (returns issue), enrichment fails=2 */
+/** updateYouTrackTask: project(id)=1, customFields (Due Date schema)=2, update=3, enrichment fails=4 */
 const mockUpdateWithFailedEnrichment = (): void => {
   let callCount = 0
   installFetchMock(() => {
     callCount++
-    if (callCount === 1) return jsonOk(makeIssueResponse())
+    if (callCount === 1) return jsonOk({ project: { id: '0-1' } })
+    if (callCount === 2) return jsonOk([DUE_DATE_FIELD_SCHEMA])
+    if (callCount === 3) return jsonOk(makeIssueResponse())
     return jsonError(500, { error: 'custom field lookup failed' })
   })
 }
@@ -746,7 +858,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('sends custom fields for priority and status', async () => {
-    mockCreateTaskResponse(makeIssueResponse())
+    mockCreateWithPriorityAndStatus()
 
     await createYouTrackTask(config, {
       projectId: '0-1',
@@ -755,7 +867,8 @@ describe('createYouTrackTask', () => {
       status: 'In Progress',
     })
 
-    const body = getFetchBodyAt(2)
+    const postIdx = findPostCallIndex(fetchMock.mock.calls)
+    const body = getFetchBodyAt(postIdx)
     expect(body['customFields']).toContainEqual({
       name: 'Priority',
       $type: 'SingleEnumIssueCustomField',
@@ -769,7 +882,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('sends assignee custom field when provided', async () => {
-    mockCreateTaskResponse(makeIssueResponse())
+    mockCreateWithAssigneeField()
 
     await createYouTrackTask(config, {
       projectId: '0-1',
@@ -777,7 +890,8 @@ describe('createYouTrackTask', () => {
       assignee: 'john.doe',
     })
 
-    const body = getFetchBodyAt(2)
+    const postIdx = findPostCallIndex(fetchMock.mock.calls)
+    const body = getFetchBodyAt(postIdx)
     expect(body['customFields']).toContainEqual({
       name: 'Assignee',
       $type: 'SingleUserIssueCustomField',
@@ -786,7 +900,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('sends due date custom field when provided', async () => {
-    mockCreateTaskResponse(makeIssueResponse())
+    mockCreateWithDueDateField()
 
     await createYouTrackTask(config, {
       projectId: '0-1',
@@ -794,7 +908,8 @@ describe('createYouTrackTask', () => {
       dueDate: '2026-03-25',
     })
 
-    const body = getFetchBodyAt(2)
+    const postIdx = findPostCallIndex(fetchMock.mock.calls)
+    const body = getFetchBodyAt(postIdx)
     expect(body['customFields']).toContainEqual({
       name: 'Due Date',
       $type: 'DateIssueCustomField',
@@ -831,7 +946,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('canonicalizes datetime input to date-only value when creating', async () => {
-    mockCreateTaskResponse(makeIssueResponse())
+    mockCreateWithDueDateField()
 
     await createYouTrackTask(config, {
       projectId: '0-1',
@@ -839,7 +954,8 @@ describe('createYouTrackTask', () => {
       dueDate: '2026-03-25T23:45:00.000Z',
     })
 
-    const body = getFetchBodyAt(2)
+    const postIdx = findPostCallIndex(fetchMock.mock.calls)
+    const body = getFetchBodyAt(postIdx)
     expect(body['customFields']).toContainEqual({
       name: 'Due Date',
       $type: 'DateIssueCustomField',
@@ -1121,7 +1237,26 @@ describe('createYouTrackTask', () => {
       expect(error.appError.reason).toContain('Unknown field')
     }
 
-    expect(fetchMock.mock.calls).toHaveLength(2)
+    // project lookup + admin customFields ([]) + issue-derived schema probe (also empty here),
+    // after which the named field is confirmed unknown.
+    expect(fetchMock.mock.calls).toHaveLength(3)
+  })
+
+  test('rejects a dedicated priority when the project has no Priority-named enum', async () => {
+    // The motivating AUDIT scenario: a localized project whose only enum is "Срочность" — there is
+    // no field named Priority/Приоритет, so priority must not silently pick an arbitrary enum.
+    mockCreateWithLocalizedEnumOnly()
+
+    try {
+      await createYouTrackTask(config, { projectId: '0-1', title: 'Test task', priority: 'Срочно' })
+      throw new Error('Expected createYouTrackTask to reject')
+    } catch (error) {
+      assert(error instanceof YouTrackClassifiedError)
+      expect(error.appError.code).toBe('validation-failed')
+      assert(error.appError.code === 'validation-failed')
+      expect(error.appError.field).toBe('customFields')
+      expect(error.appError.reason).toMatch(/priority/iu)
+    }
   })
 
   test('rejects a required enum custom field that has no resolvable bundle', async () => {
@@ -1416,7 +1551,7 @@ describe('updateYouTrackTask', () => {
   })
 
   test('sends custom fields for status, priority, and assignee', async () => {
-    mockFetchResponse(makeIssueResponse())
+    mockUpdateWithStatusPriorityAssignee()
 
     await updateYouTrackTask(config, 'TEST-1', {
       status: 'Done',
@@ -1424,20 +1559,22 @@ describe('updateYouTrackTask', () => {
       assignee: 'john',
     })
 
-    const body = getFetchBodyAt(0)
+    const postIdx = findUpdatePostCallIndex(fetchMock.mock.calls)
+    const body = getFetchBodyAt(postIdx)
     expect(body['customFields']).toContainEqual(expect.objectContaining({ name: 'Priority', value: { name: 'Major' } }))
     expect(body['customFields']).toContainEqual(expect.objectContaining({ name: 'State', value: { name: 'Done' } }))
     expect(body['customFields']).toContainEqual(expect.objectContaining({ name: 'Assignee', value: { login: 'john' } }))
   })
 
   test('sends due date custom field when provided', async () => {
-    mockFetchResponse(makeIssueResponse())
+    mockUpdateWithDueDateField()
 
     await updateYouTrackTask(config, 'TEST-1', {
       dueDate: '2026-03-25',
     })
 
-    const body = getFetchBodyAt(0)
+    const postIdx = findUpdatePostCallIndex(fetchMock.mock.calls)
+    const body = getFetchBodyAt(postIdx)
     expect(body['customFields']).toContainEqual({
       name: 'Due Date',
       $type: 'DateIssueCustomField',
@@ -1470,56 +1607,19 @@ describe('updateYouTrackTask', () => {
   test('rejects unknown custom field names on update before sending the write request', async () => {
     mockUpdateWithUnknownField()
 
-    await expect(
-      updateYouTrackTask(config, 'TEST-1', {
+    try {
+      await updateYouTrackTask(config, 'TEST-1', {
         customFields: [{ name: 'Unknown field', value: 'value' }],
-      }),
-    ).rejects.toMatchObject({
-      appError: {
-        code: 'validation-failed',
-        field: 'customFields',
-      },
-    })
-
-    expect(fetchMock.mock.calls).toHaveLength(2)
-  })
-
-  test('rejects unsupported project custom field types on update before sending the write request', async () => {
-    mockUpdateWithUnsupportedField()
-
-    await expect(
-      updateYouTrackTask(config, 'TEST-1', {
-        customFields: [{ name: 'Type', value: 'Bug' }],
-      }),
-    ).rejects.toMatchObject({
-      appError: {
-        code: 'validation-failed',
-        field: 'customFields',
-      },
-    })
-
-    expect(fetchMock.mock.calls).toHaveLength(2)
-  })
-
-  test('rejects writes to dedicated fields through customFields on update', async () => {
-    const dedicatedFields = ['State', 'Priority', 'Assignee', 'Due Date'] as const
-
-    for (const fieldName of dedicatedFields) {
-      mockUpdateDedicatedFieldLookup(fieldName)
-
-      await expect(
-        updateYouTrackTask(config, 'TEST-1', {
-          customFields: [{ name: fieldName, value: 'value' }],
-        }),
-      ).rejects.toMatchObject({
-        appError: {
-          code: 'validation-failed',
-          field: 'customFields',
-        },
       })
-
-      expect(fetchMock.mock.calls).toHaveLength(2)
+      expect.unreachable('Should have thrown')
+    } catch (error) {
+      expect(error).toMatchObject({ appError: { code: 'validation-failed', field: 'customFields' } })
+      assert(error instanceof YouTrackClassifiedError)
+      expect(error.appError).toHaveProperty('field', 'customFields')
+      expect(error.appError).toHaveProperty('reason', expect.stringContaining('Unknown field'))
     }
+
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('validates custom fields against the destination project when moving an issue', async () => {
@@ -1564,13 +1664,14 @@ describe('updateYouTrackTask', () => {
   })
 
   test('canonicalizes datetime input to date-only value when updating', async () => {
-    mockFetchResponse(makeIssueResponse())
+    mockUpdateWithDueDateField()
 
     await updateYouTrackTask(config, 'TEST-1', {
       dueDate: '2026-03-25T23:45:00.000Z',
     })
 
-    const body = getFetchBodyAt(0)
+    const postIdx = findUpdatePostCallIndex(fetchMock.mock.calls)
+    const body = getFetchBodyAt(postIdx)
     expect(body['customFields']).toContainEqual({
       name: 'Due Date',
       $type: 'DateIssueCustomField',
@@ -1579,13 +1680,13 @@ describe('updateYouTrackTask', () => {
   })
 
   test('rejects malformed due date before sending update request', async () => {
-    mockFetchResponse(makeIssueResponse())
+    mockUpdateWithMalformedDueDateField()
 
     await expect(updateYouTrackTask(config, 'TEST-1', { dueDate: 'not-a-date' })).rejects.toMatchObject({
       appError: { code: 'validation-failed', field: 'dueDate' },
     })
 
-    expect(fetchMock.mock.calls).toHaveLength(0)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('does not send fields when they are not provided', async () => {

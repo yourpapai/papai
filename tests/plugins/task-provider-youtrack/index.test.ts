@@ -58,6 +58,56 @@ const mockFetchSequence = (responses: Array<{ data: unknown; status?: number }>)
   })
 }
 
+type RoutedFetchHandler = (url: string, init: RequestInit) => Promise<Response>
+
+const installRoutedFetchMock = (handler: RoutedFetchHandler): void => {
+  const m = mock<RoutedFetchHandler>(handler)
+  fetchMock = m
+  setMockFetch((url, init) => m(url, init))
+}
+
+const jsonOk = (data: unknown): Promise<Response> =>
+  Promise.resolve(new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+const createTaskWithPriorityAndStatusIssueData = {
+  id: '2-2',
+  idReadable: 'TEST-2',
+  summary: 'Task with fields',
+  project: { id: '0-1', shortName: 'TEST' },
+  created: 1700000000000,
+  updated: 1700000000000,
+  customFields: [],
+  tags: [],
+  links: [],
+}
+
+const mockCreateTaskWithPriorityAndStatus = (): void => {
+  const stateFieldSchema = {
+    $type: 'StateProjectCustomField',
+    field: { name: 'State', fieldType: { id: 'state[1]' } },
+    bundle: { id: 'idx-sb1', $type: 'StateBundle' },
+    canBeEmpty: false,
+  }
+  const priorityFieldSchema = {
+    $type: 'EnumProjectCustomField',
+    field: { name: 'Priority', fieldType: { id: 'enum[1]' } },
+    bundle: { id: 'idx-eb1', $type: 'EnumBundle' },
+    canBeEmpty: false,
+  }
+  installRoutedFetchMock((url, init) => {
+    const p = new URL(url).pathname
+    const method = init.method ?? 'GET'
+    if (p === '/api/admin/projects/0-1' && method === 'GET') return jsonOk({ id: '0-1', shortName: 'TEST' })
+    if (p === '/api/admin/projects/0-1/customFields') return jsonOk([stateFieldSchema, priorityFieldSchema])
+    if (p === '/api/admin/customFieldSettings/bundles/state/idx-sb1/values')
+      return jsonOk([{ name: 'Open' }, { name: 'In Progress' }])
+    if (p === '/api/admin/customFieldSettings/bundles/enum/idx-eb1/values')
+      return jsonOk([{ name: 'Critical' }, { name: 'Normal' }])
+    if (p === '/api/issues' && method === 'POST') return jsonOk(createTaskWithPriorityAndStatusIssueData)
+    return jsonOk([])
+  })
+}
+
 /** Schema for a mock fetch call tuple: [url, init] */
 const FetchCallSchema = z.tuple([
   z.string(),
@@ -319,28 +369,7 @@ describe('YouTrackProvider', () => {
     })
 
     test('sends custom fields for priority and status', async () => {
-      mockFetchSequence([
-        // First: project lookup
-        { data: { id: '0-1', shortName: 'TEST' } },
-        // Second: project custom fields lookup
-        { data: [] },
-        // Third: issue creation response
-        {
-          data: {
-            id: '2-2',
-            idReadable: 'TEST-2',
-            summary: 'Task with fields',
-            project: { id: '0-1', shortName: 'TEST' },
-            created: 1700000000000,
-            updated: 1700000000000,
-            customFields: [],
-            tags: [],
-            links: [],
-          },
-        },
-        // Fourth: enrichTaskWithDueDate fetches issue custom fields
-        { data: [] },
-      ])
+      mockCreateTaskWithPriorityAndStatus()
 
       await provider.createTask({
         projectId: '0-1',
@@ -349,15 +378,10 @@ describe('YouTrackProvider', () => {
         status: 'In Progress',
       })
 
-      // Get the third call (issue creation - first two are GET project and GET custom fields)
       assert(fetchMock !== undefined)
       const calls = fetchMock.mock.calls
       const createCallIndex = findIssuesCreateCallIndex(calls)
       expect(createCallIndex).toBeGreaterThanOrEqual(0)
-      const createCall = calls[createCallIndex]
-      const parsed = FetchCallSchema.safeParse(createCall)
-      expect(parsed.success).toBe(true)
-      assert(parsed.success)
 
       const rawBody: unknown = getFetchBodyAt(createCallIndex)
       const customFields = parseCustomFields(rawBody)

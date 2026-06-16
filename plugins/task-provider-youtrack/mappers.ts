@@ -249,5 +249,4 @@ export const mapComment = (c: z.infer<typeof CommentSchema>): Comment => ({
   reactions: c.reactions?.map(mapCommentReaction),
 })
 
-export { buildCreateIssueCustomField, buildCustomFields } from './task-helpers.js'
 export { mapActivity, mapAgile, mapSavedQuery, mapSprint } from './phase-five-mappers.js'

@@ -114,7 +114,7 @@ export const capAllowedValues = (values: readonly string[]): string[] => {
 const fieldError = (fieldName: string, message: string): YouTrackClassifiedError =>
   new YouTrackClassifiedError(message, providerError.validationFailed(fieldName, message))
 
-const normalize = (value: string): string => value.trim().toLocaleLowerCase()
+export const normalize = (value: string): string => value.trim().toLocaleLowerCase()
 
 const splitMulti = (raw: string, multi: boolean): string[] =>
   multi
@@ -185,7 +185,7 @@ export const resolveCustomFieldValue = async (
     case 'unknown':
       throw fieldError(
         name,
-        `Field "${name}" has an unsupported type (${field.field?.fieldType?.id ?? 'unknown'}) for create_task`,
+        `Field "${name}" has an unsupported type (${field.field?.fieldType?.id ?? 'unknown'}). Use describe_project to choose a settable field.`,
       )
   }
   throw new Error(`Unreachable: unhandled field kind`)
