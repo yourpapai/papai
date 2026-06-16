@@ -13,10 +13,12 @@ import { YouTrackClassifiedError } from './classify-error.js'
 import type { YouTrackConfig } from './client.js'
 import { youtrackFetch } from './client.js'
 import { PROJECT_CUSTOM_FIELD_FIELDS, YOUTRACK_DUE_DATE_FIELD_NAME } from './constants.js'
-import { collectCreateFieldPairs, resolveCreateFieldPair } from './create-field-helpers.js'
-import { DueDateCustomFieldSchema, mapYouTrackDueDateValue, parseDueDateValue } from './due-date.js'
+import { collectFieldPairs, resolveFieldPair } from './create-field-helpers.js'
+import { resolveDedicatedField } from './dedicated-fields.js'
+import { DueDateCustomFieldSchema, mapYouTrackDueDateValue } from './due-date.js'
 import { classifyFieldType, formatAllowed, resolveCustomFieldValue } from './field-engine.js'
 import type { IssueCustomFieldPayload } from './field-engine.js'
+import { unknownFieldError } from './field-name-error.js'
 import { paginate } from './helpers.js'
 import { fetchProjectCustomFieldsViaIssue } from './issue-derived-fields.js'
 import { ProjectCustomFieldListSchema, ProjectCustomFieldSchema } from './schemas/bundle.js'
@@ -24,28 +26,16 @@ import { ProjectCustomFieldListSchema, ProjectCustomFieldSchema } from './schema
 const log = logger.child({ scope: 'provider:youtrack:custom-fields' })
 
 type ProjectCustomField = z.infer<typeof ProjectCustomFieldSchema>
+type NamedProjectCustomField = ProjectCustomField & { readonly field: { readonly name: string } }
 
-type CreateIssueCustomFieldPayload = {
-  name: string
-  $type: 'SimpleIssueCustomField' | 'TextIssueCustomField'
-  value: string | { text: string }
-}
+type CustomFieldParams = Readonly<{
+  status?: string
+  priority?: string
+  dueDate?: string
+  assignee?: string
+  customFields?: Array<{ name: string; value: string }>
+}>
 
-type StandardCustomFieldPayload = {
-  name: string
-  $type: string
-  value: Record<string, string> | number
-}
-const NON_GENERIC_FIELD_NAMES = new Set(['State', 'Priority', 'Assignee', YOUTRACK_DUE_DATE_FIELD_NAME])
-const normalizeCustomFieldType = (value: string | undefined): string | undefined => value?.trim().toLowerCase()
-
-const isStringSimpleProjectField = (field: ProjectCustomField): boolean => {
-  if (field.$type !== 'SimpleProjectCustomField') return false
-  const fieldTypeId = normalizeCustomFieldType(field.field?.fieldType?.id)
-  const presentation = normalizeCustomFieldType(field.field?.fieldType?.presentation)
-  return fieldTypeId === 'string' || presentation === 'string'
-}
-const isTextProjectField = (field: ProjectCustomField): boolean => field.$type === 'TextProjectCustomField'
 export const fetchProjectCustomFields = async (
   config: Readonly<YouTrackConfig>,
   projectId: string,
@@ -70,86 +60,30 @@ export const fetchProjectCustomFields = async (
   )
   return fetchProjectCustomFieldsViaIssue(config, projectId, opts.shortName)
 }
+
 const buildProjectFieldsByName = (
   projectCustomFields: readonly ProjectCustomField[],
-): Map<string, ProjectCustomField & { readonly field: { readonly name: string } }> =>
+): Map<string, NamedProjectCustomField> =>
   new Map(
     projectCustomFields
-      .filter(
-        (field): field is ProjectCustomField & { readonly field: { readonly name: string } } =>
-          field.field?.name !== undefined,
-      )
+      .filter((field): field is NamedProjectCustomField => field.field?.name !== undefined)
       .map((field) => [field.field.name, field] as const),
   )
+
 const buildHandledFieldSet = (
-  projectFieldsByName: ReadonlyMap<string, ProjectCustomField & { readonly field: { readonly name: string } }>,
+  projectFieldsByName: ReadonlyMap<string, NamedProjectCustomField>,
   customFields: ReadonlyArray<{ name: string; value: string }> | undefined,
 ): Set<string> => {
   const handledFields = new Set<string>()
   for (const fieldName of new Set((customFields ?? []).map((field) => field.name))) {
     if (!projectFieldsByName.has(fieldName)) {
-      throw new YouTrackClassifiedError(
-        `Unknown custom field for create: ${fieldName}`,
-        providerError.validationFailed(
-          'customFields',
-          `${fieldName} is not a known project field for this YouTrack project`,
-        ),
-      )
+      throw unknownFieldError(fieldName, [...projectFieldsByName.keys()], 'create')
     }
     handledFields.add(fieldName)
   }
   return handledFields
 }
-export const buildCustomFields = (
-  params: Readonly<{
-    status?: string
-    priority?: string
-    dueDate?: string
-    assignee?: string
-    customFields?: Array<{ name: string; value: string }>
-  }>,
-): StandardCustomFieldPayload[] => {
-  const fields: StandardCustomFieldPayload[] = []
-  if (params.priority !== undefined) {
-    fields.push({
-      name: 'Priority',
-      $type: 'SingleEnumIssueCustomField',
-      value: { name: params.priority },
-    })
-  }
-  if (params.status !== undefined) {
-    fields.push({ name: 'State', $type: 'StateIssueCustomField', value: { name: params.status } })
-  }
-  if (params.dueDate !== undefined) {
-    fields.push({
-      name: YOUTRACK_DUE_DATE_FIELD_NAME,
-      $type: 'DateIssueCustomField',
-      value: parseDueDateValue(params.dueDate),
-    })
-  }
-  if (params.assignee !== undefined) {
-    fields.push({
-      name: 'Assignee',
-      $type: 'SingleUserIssueCustomField',
-      value: { login: params.assignee },
-    })
-  }
-  return fields
-}
-export const buildCreateIssueCustomField = (
-  field: ProjectCustomField,
-  value: string,
-): CreateIssueCustomFieldPayload | undefined => {
-  const name = field.field?.name
-  if (name === undefined) return undefined
-  if (isTextProjectField(field)) {
-    return { name, $type: 'TextIssueCustomField', value: { text: value } }
-  }
-  if (isStringSimpleProjectField(field)) {
-    return { name, $type: 'SimpleIssueCustomField', value }
-  }
-  return undefined
-}
+
 type RequiredFieldDescriptor = { name: string; label: string }
 
 const describeRequiredField = async (
@@ -169,37 +103,47 @@ const describeRequiredField = async (
   }
 }
 
+// Marks the project fields satisfied by dedicated params, resolving each to its real (possibly
+// localized) field name so required-detection does not re-flag a field the caller already set.
 const markDedicatedParamFields = (
   handledFields: Set<string>,
-  params: Readonly<{ status?: string; priority?: string; dueDate?: string; assignee?: string }>,
+  params: CustomFieldParams,
+  projectFieldsByName: ReadonlyMap<string, NamedProjectCustomField>,
 ): void => {
-  if (params.status !== undefined) handledFields.add('State')
-  if (params.priority !== undefined) handledFields.add('Priority')
-  if (params.assignee !== undefined) handledFields.add('Assignee')
-  if (params.dueDate !== undefined) handledFields.add(YOUTRACK_DUE_DATE_FIELD_NAME)
+  const fields = [...projectFieldsByName.values()]
+  for (const pair of collectFieldPairs(params)) {
+    if (pair.source !== 'dedicated') continue
+    try {
+      handledFields.add(resolveDedicatedField(pair.kind, fields).field?.name ?? '')
+    } catch {
+      // Unresolvable dedicated param surfaces as a teaching error when payloads are built.
+    }
+  }
 }
+
+const dedicatedParamPresent = (params: CustomFieldParams): boolean =>
+  params.status !== undefined ||
+  params.priority !== undefined ||
+  params.assignee !== undefined ||
+  params.dueDate !== undefined
 
 export const validateRequiredCreateFields = async (
   config: Readonly<YouTrackConfig>,
   projectId: string,
   projectShortName: string,
-  params: Readonly<{
-    status?: string
-    priority?: string
-    dueDate?: string
-    assignee?: string
-    customFields?: Array<{ name: string; value: string }>
-  }>,
+  params: CustomFieldParams,
 ): Promise<ProjectCustomField[]> => {
-  // Named generic custom fields can only be resolved against the project schema. When the token
-  // cannot read field-settings (admin endpoint empty), derive the schema from a sample issue so
-  // those fields are recognized instead of rejected as "unknown".
+  // Named generic fields and dedicated params both need the project schema to resolve. When the
+  // token cannot read field-settings (admin endpoint empty), derive the schema from a sample issue
+  // so fields are recognized instead of rejected as "unknown".
+  const needsSchema = (params.customFields?.length ?? 0) > 0 || dedicatedParamPresent(params)
   const projectCustomFields = await fetchProjectCustomFields(config, projectId, {
-    deriveFromIssueWhenEmpty: (params.customFields?.length ?? 0) > 0,
+    deriveFromIssueWhenEmpty: needsSchema,
     shortName: projectShortName,
   })
-  const handledFields = buildHandledFieldSet(buildProjectFieldsByName(projectCustomFields), params.customFields)
-  markDedicatedParamFields(handledFields, params)
+  const projectFieldsByName = buildProjectFieldsByName(projectCustomFields)
+  const handledFields = buildHandledFieldSet(projectFieldsByName, params.customFields)
+  markDedicatedParamFields(handledFields, params, projectFieldsByName)
   const requiredFields = projectCustomFields.filter(
     (field) =>
       field.canBeEmpty === false &&
@@ -219,67 +163,26 @@ export const validateRequiredCreateFields = async (
     ),
   )
 }
-export const buildCreateCustomFields = async (
+
+// Shared custom-field builder for create and update: every field — dedicated (resolved by type)
+// or generic (resolved by name) — flows through the field engine.
+export const buildIssueCustomFields = async (
   config: Readonly<YouTrackConfig>,
-  params: Readonly<{
-    status?: string
-    priority?: string
-    dueDate?: string
-    assignee?: string
-    customFields?: Array<{ name: string; value: string }>
-  }>,
+  params: CustomFieldParams,
   projectCustomFields: readonly ProjectCustomField[],
-): Promise<Array<StandardCustomFieldPayload | IssueCustomFieldPayload>> => {
+  op: 'create' | 'update',
+): Promise<IssueCustomFieldPayload[]> => {
   const projectFieldsByName = buildProjectFieldsByName(projectCustomFields)
   const getBundleElements = makeBundleElementFetcher(config)
-  const resolved = collectCreateFieldPairs(params).map((pair) => resolveCreateFieldPair(pair, projectFieldsByName))
+  const resolved = collectFieldPairs(params).map((pair) => resolveFieldPair(pair, projectFieldsByName, op))
   const payloads = await Promise.all(
-    resolved.map((r) =>
-      r.kind === 'legacy'
-        ? Promise.resolve(r.payload)
-        : resolveCustomFieldValue(r.field, r.value, { getBundleElements }),
-    ),
+    resolved.map((r) => resolveCustomFieldValue(r.field, r.value, { getBundleElements })),
   )
   return payloads
 }
-const buildWriteSafeCustomFieldPayload = (
-  projectFieldsByName: ReadonlyMap<string, ProjectCustomField & { readonly field: { readonly name: string } }>,
-  input: Readonly<{ name: string; value: string }>,
-): CreateIssueCustomFieldPayload => {
-  const projectField = projectFieldsByName.get(input.name)
-  if (projectField === undefined) {
-    throw customFieldValidationError(
-      `Unknown custom field for update: ${input.name}`,
-      `${input.name} is not a known project field for this YouTrack project`,
-    )
-  }
-  if (NON_GENERIC_FIELD_NAMES.has(input.name)) {
-    throw customFieldValidationError(
-      `Use the dedicated field for ${input.name}`,
-      `Use the dedicated tool field for ${input.name}`,
-    )
-  }
-  const payload = buildCreateIssueCustomField(projectField, input.value)
-  if (payload === undefined) {
-    throw customFieldValidationError(
-      `Unsupported custom field for update: ${input.name}`,
-      `${input.name} only supports simple string/text writes in update_task`,
-    )
-  }
-  return payload
-}
-const customFieldValidationError = (reason: string, message: string): YouTrackClassifiedError =>
-  new YouTrackClassifiedError(reason, providerError.validationFailed('customFields', message))
-export const buildWriteSafeCustomFields = async (
-  config: Readonly<YouTrackConfig>,
-  projectId: string,
-  customFields: ReadonlyArray<{ name: string; value: string }> | undefined,
-): Promise<CreateIssueCustomFieldPayload[]> => {
-  if (customFields === undefined || customFields.length === 0) return []
-  const projectFieldsByName = buildProjectFieldsByName(await fetchProjectCustomFields(config, projectId))
-  return customFields.map((input) => buildWriteSafeCustomFieldPayload(projectFieldsByName, input))
-}
+
 export { buildYouTrackQuery } from './query-builder.js'
+
 export const enrichTaskWithDueDate = async (config: Readonly<YouTrackConfig>, task: Readonly<Task>): Promise<Task> => {
   try {
     const customFields = await paginate(
@@ -295,5 +198,6 @@ export const enrichTaskWithDueDate = async (config: Readonly<YouTrackConfig>, ta
     return { ...task }
   }
 }
+
 export { mapYouTrackDueDateValue } from './due-date.js'
 export { mapReadOnlyCustomFields } from './custom-field-values.js'

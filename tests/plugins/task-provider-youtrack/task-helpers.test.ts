@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
-  buildCreateCustomFields,
+  buildIssueCustomFields,
   buildYouTrackQuery,
   mapYouTrackDueDateValue,
   validateRequiredCreateFields,
@@ -90,7 +90,7 @@ describe('task-helpers', () => {
     )
   })
 
-  test('adds supported create-time custom fields alongside standard fields', async () => {
+  test('builds a generic text custom field through the field engine', async () => {
     const config = createUniqueYouTrackConfig()
     const projectCustomFields = [
       {
@@ -107,25 +107,37 @@ describe('task-helpers', () => {
       },
     ] as const
 
-    // Priority not in project schema → legacy fallback; Environment details is TextProjectCustomField → engine
-    const result = await buildCreateCustomFields(
+    const result = await buildIssueCustomFields(
       config,
-      {
-        priority: 'High',
-        customFields: [{ name: 'Environment details', value: 'Needs staging parity' }],
-      },
+      { customFields: [{ name: 'Environment details', value: 'Needs staging parity' }] },
       projectCustomFields,
+      'create',
     )
 
-    expect(result).toContainEqual({
-      name: 'Priority',
-      $type: 'SingleEnumIssueCustomField',
-      value: { name: 'High' },
-    })
     expect(result).toContainEqual({
       name: 'Environment details',
       $type: 'TextIssueCustomField',
       value: { text: 'Needs staging parity' },
     })
+  })
+})
+
+describe('buildIssueCustomFields', () => {
+  test('resolves a dedicated status to the localized state field via the engine', async () => {
+    const config = createUniqueYouTrackConfig()
+    const projectCustomFields = [
+      {
+        $type: 'StateProjectCustomField',
+        field: { name: 'Cтaтус', fieldType: { id: 'state[1]' } },
+        canBeEmpty: false,
+        bundle: { id: 'sb-1', $type: 'StateBundle' },
+      },
+    ] as const
+    // resolveCustomFieldValue fetches the state bundle values once.
+    queueResponses([[{ name: 'Не разобрана' }, { name: 'Open' }]])
+
+    const result = await buildIssueCustomFields(config, { status: 'Open' }, projectCustomFields, 'create')
+
+    expect(result).toContainEqual({ name: 'Cтaтус', $type: 'StateIssueCustomField', value: { name: 'Open' } })
   })
 })

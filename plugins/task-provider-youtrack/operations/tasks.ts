@@ -11,14 +11,14 @@ import { classifyYouTrackError } from '../classify-error.js'
 import type { YouTrackConfig } from '../client.js'
 import { youtrackFetch } from '../client.js'
 import { ISSUE_FIELDS, ISSUE_LIST_FIELDS, YOUTRACK_INLINE_LIST_CUSTOM_FIELDS } from '../constants.js'
+import type { IssueCustomFieldPayload } from '../field-engine.js'
 import { mapIssueToListItem, mapIssueToSearchResult, mapIssueToTask } from '../mappers.js'
 import { IssueListSchema, IssueSchema } from '../schemas/issue.js'
 import {
-  buildCreateCustomFields,
-  buildCustomFields,
+  buildIssueCustomFields,
   buildYouTrackQuery,
-  buildWriteSafeCustomFields,
   enrichTaskWithDueDate,
+  fetchProjectCustomFields,
   validateRequiredCreateFields,
 } from '../task-helpers.js'
 import { fetchTasksWithPagination } from './task-list-fetch.js'
@@ -47,7 +47,7 @@ const buildCreateIssueBody = async (
 ): Promise<Record<string, unknown>> => {
   const body: Record<string, unknown> = { project: { id: project.id }, summary: params.title }
   if (params.description !== undefined) body['description'] = params.description
-  const customFields = await buildCreateCustomFields(config, params, projectCustomFields)
+  const customFields = await buildIssueCustomFields(config, params, projectCustomFields, 'create')
   if (customFields.length > 0) body['customFields'] = customFields
   log.debug(
     {
@@ -79,12 +79,17 @@ const buildUpdateCustomFields = async (
     projectId?: string
     customFields?: Array<{ name: string; value: string }>
   }>,
-): Promise<
-  Array<ReturnType<typeof buildCustomFields>[number] | Awaited<ReturnType<typeof buildWriteSafeCustomFields>>[number]>
-> => {
+): Promise<IssueCustomFieldPayload[]> => {
+  const needsSchema =
+    (params.customFields?.length ?? 0) > 0 ||
+    params.status !== undefined ||
+    params.priority !== undefined ||
+    params.assignee !== undefined ||
+    params.dueDate !== undefined
+  if (!needsSchema) return []
   const projectId = params.projectId ?? (await fetchIssueProjectId(config, taskId))
-  const projectCustomFields = await buildWriteSafeCustomFields(config, projectId, params.customFields)
-  return [...buildCustomFields(params), ...projectCustomFields]
+  const projectCustomFields = await fetchProjectCustomFields(config, projectId, { deriveFromIssueWhenEmpty: true })
+  return buildIssueCustomFields(config, params, projectCustomFields, 'update')
 }
 
 export async function createYouTrackTask(config: YouTrackConfig, params: CreateTaskParams): Promise<Task> {
@@ -161,13 +166,8 @@ export async function updateYouTrackTask(
     if (params.description !== undefined) body['description'] = params.description
     if (params.projectId !== undefined) body['project'] = { id: params.projectId }
 
-    if (params.customFields !== undefined && params.customFields.length > 0) {
-      const customFields = await buildUpdateCustomFields(config, taskId, params)
-      if (customFields.length > 0) body['customFields'] = customFields
-    } else {
-      const customFields = buildCustomFields(params)
-      if (customFields.length > 0) body['customFields'] = customFields
-    }
+    const customFields = await buildUpdateCustomFields(config, taskId, params)
+    if (customFields.length > 0) body['customFields'] = customFields
 
     const raw = await youtrackFetch(config, 'POST', `/api/issues/${taskId}`, {
       body,
