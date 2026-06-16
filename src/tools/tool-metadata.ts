@@ -141,6 +141,7 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   promote_memo: write('memo', 'create'),
 
   search_memory: read('memory'),
+  recall: read('memory'),
   list_memory: read('memory'),
   remember_memory: write('memory', 'create'),
   forget_memory: destructive('memory'),
