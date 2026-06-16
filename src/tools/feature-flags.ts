@@ -59,7 +59,10 @@ export function resolveReductionFlags(storageContextId: string): ReductionFlags 
   return parseReductionFlagsJson(getCachedConfig(configContextId, REDUCTION_FLAGS_CONFIG_KEY))
 }
 
-/** True when the cross-thread memory bridge is enabled for this storage context. */
+/**
+ * True when the cross-thread memory bridge is enabled for this storage context.
+ * @public -- consumed by the memory capture executor + debounce manager (Plan 1 T7/T8).
+ */
 export function resolveCrossThreadMemoryFlag(storageContextId: string): boolean {
   return resolveReductionFlags(storageContextId).crossThreadMemory
 }
