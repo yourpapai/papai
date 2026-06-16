@@ -100,6 +100,9 @@ const widenMemoryRecordsStatus = (db: Database): void => {
   }
   recreateIndexes(db)
   recreateFtsTriggers(db)
+  // Re-sync the external-content FTS index: table recreation reassigned rowids,
+  // so the FTS index (keyed by old rowids) must be rebuilt from the new base table.
+  db.run(`INSERT INTO memory_records_fts(memory_records_fts) VALUES('rebuild')`)
 }
 
 const up = (db: Database): void => {
