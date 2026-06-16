@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { and, eq, or, sql } from 'drizzle-orm'
+import { and, eq, or, sql, type SQL } from 'drizzle-orm'
 
 import { getConfigContextIdFromStorageContextId, parseScopedContextId } from '../chat/scoped-context.js'
 import { getDrizzleDb } from '../db/drizzle.js'
@@ -22,8 +22,11 @@ import type {
 import { toAttachmentOrigin, toSourceProvider, toStagedStatus, toUndefinedIfNull } from './types.js'
 
 const log = logger.child({ scope: 'attachments:staged' })
-
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000
+const buildStagedScopeCondition = (contextId: string, gid: string | undefined): SQL =>
+  gid === undefined
+    ? eq(stagedFiles.contextId, contextId)
+    : or(eq(stagedFiles.contextId, contextId), eq(stagedFiles.groupContextId, gid))!
 
 type StagedRow = typeof stagedFiles.$inferSelect
 type StagedInsert = typeof stagedFiles.$inferInsert
@@ -45,7 +48,6 @@ const toRef = (row: StagedRow): StagedFileRef => ({
   createdAt: row.createdAt,
   expiresAt: row.expiresAt,
   origin: toAttachmentOrigin(row.origin) ?? null,
-  // nullable on StagedFileRef; downloadAndPersist maps it to undefined for SaveAttachmentInput
   forwardedFrom: row.forwardedFrom,
 })
 
@@ -130,11 +132,7 @@ export function searchStagedFiles(
   const escaped = query.replaceAll('\\', '\\\\').replaceAll(/[%_]/gu, '\\$&')
   const pattern = `%${escaped}%`
   const queryLimit = options?.limit ?? 10
-  const scopeCondition =
-    options?.groupContextId === undefined
-      ? eq(stagedFiles.contextId, contextId)
-      : or(eq(stagedFiles.contextId, contextId), eq(stagedFiles.groupContextId, options.groupContextId))
-
+  const scopeCondition = buildStagedScopeCondition(contextId, options?.groupContextId)
   return db
     .select()
     .from(stagedFiles)
@@ -278,12 +276,14 @@ export function resolveStagedFile(
   stagedId: string,
   contextId: string,
   downloadFn: StagedFileDownloadFn,
+  options?: Readonly<{ groupContextId?: string }>,
 ): Promise<AttachmentRef | StagedResolutionError> {
   const db = getDrizzleDb()
+  const scopeCondition = buildStagedScopeCondition(contextId, options?.groupContextId)
   const row = db
     .select()
     .from(stagedFiles)
-    .where(and(eq(stagedFiles.stagedId, stagedId), eq(stagedFiles.contextId, contextId)))
+    .where(and(eq(stagedFiles.stagedId, stagedId), scopeCondition))
     .get()
 
   if (row === undefined) {

@@ -5,7 +5,7 @@
 
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, or } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { getBlobStore } from '../attachments/blob-store.js'
@@ -36,7 +36,7 @@ export function makeListFilesTool(contextId: string, groupContextId?: string): T
   })
 }
 
-export function makeDeleteFileTool(contextId: string): ToolSet[string] {
+export function makeDeleteFileTool(contextId: string, groupContextId?: string): ToolSet[string] {
   return tool({
     description:
       'Permanently delete a file from the conversation workspace. This is a destructive action that requires confirmation.',
@@ -52,12 +52,15 @@ export function makeDeleteFileTool(contextId: string): ToolSet[string] {
         return gate
       }
 
+      const scopeCondition =
+        groupContextId === undefined
+          ? eq(attachments.contextId, contextId)
+          : or(eq(attachments.contextId, contextId), eq(attachments.groupContextId, groupContextId))
+
       const row = getDrizzleDb()
         .select({ blobKey: attachments.blobKey })
         .from(attachments)
-        .where(
-          and(eq(attachments.contextId, contextId), eq(attachments.attachmentId, fileId), eq(attachments.isActive, 1)),
-        )
+        .where(and(scopeCondition, eq(attachments.attachmentId, fileId), eq(attachments.isActive, 1)))
         .get()
 
       if (row === undefined) {

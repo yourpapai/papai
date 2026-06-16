@@ -135,6 +135,71 @@ describe('staged file tools', () => {
       expect(result).toMatchObject({ status: 'not_found' })
     })
 
+    test('resolves a staged file from a sibling thread when groupContextId is provided', async () => {
+      const SIBLING_CTX = 'ctx-sibling-staged'
+      const GROUP_CTX = 'ctx-group-staged'
+      const siblingStaged = await stageFileMetadata({
+        contextId: SIBLING_CTX,
+        messageId: 'msg-sibling',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'sibling-staged.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_sibling_ok',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'telegram-a',
+        origin: null,
+        forwardedFrom: null,
+      })
+      // Manually set group_context_id to simulate group membership
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { stagedFiles } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+      getDrizzleDb()
+        .update(stagedFiles)
+        .set({ groupContextId: GROUP_CTX })
+        .where(eq(stagedFiles.stagedId, siblingStaged.stagedId))
+        .run()
+
+      // Resolve from a different thread, widened by groupContextId
+      const execute = getToolExecutor(makeResolveStagedFileTool('ctx-other-thread', mockDownloadFn, GROUP_CTX))
+      const result = await execute({ stagedId: siblingStaged.stagedId })
+      expect(result).toMatchObject({ status: 'resolved', filename: 'sibling-staged.pdf' })
+    })
+
+    test('returns not_found for sibling staged file without groupContextId', async () => {
+      const SIBLING_CTX = 'ctx-sibling-staged-b'
+      const GROUP_CTX = 'ctx-group-staged-b'
+      const siblingStaged = await stageFileMetadata({
+        contextId: SIBLING_CTX,
+        messageId: 'msg-sibling-b',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'sibling-staged-b.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_sibling_b',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'telegram-a',
+        origin: null,
+        forwardedFrom: null,
+      })
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { stagedFiles } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+      getDrizzleDb()
+        .update(stagedFiles)
+        .set({ groupContextId: GROUP_CTX })
+        .where(eq(stagedFiles.stagedId, siblingStaged.stagedId))
+        .run()
+
+      // Without groupContextId, should not find the sibling staged file
+      const execute = getToolExecutor(makeResolveStagedFileTool('ctx-other-thread-b', mockDownloadFn))
+      const result = await execute({ stagedId: siblingStaged.stagedId })
+      expect(result).toMatchObject({ status: 'not_found' })
+    })
+
     test('returns already_resolved with attachmentId when called twice', async () => {
       const staged = await stageFileMetadata({
         contextId: CTX,

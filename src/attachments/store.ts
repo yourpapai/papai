@@ -5,7 +5,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 
-import { eq, and } from 'drizzle-orm'
+import { eq, and, or } from 'drizzle-orm'
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getDrizzleDb } from '../db/drizzle.js'
@@ -84,11 +84,19 @@ export async function saveAttachment(input: SaveAttachmentInput): Promise<Attach
   return ref
 }
 
-export async function loadAttachmentRecord(contextId: string, attachmentId: string): Promise<StoredAttachment | null> {
+export async function loadAttachmentRecord(
+  contextId: string,
+  attachmentId: string,
+  options?: Readonly<{ groupContextId?: string }>,
+): Promise<StoredAttachment | null> {
+  const scopeCondition =
+    options?.groupContextId === undefined
+      ? eq(attachments.contextId, contextId)
+      : or(eq(attachments.contextId, contextId), eq(attachments.groupContextId, options.groupContextId))
   const row = getDrizzleDb()
     .select()
     .from(attachments)
-    .where(and(eq(attachments.contextId, contextId), eq(attachments.attachmentId, attachmentId)))
+    .where(and(scopeCondition, eq(attachments.attachmentId, attachmentId)))
     .get()
 
   if (row === undefined || row.clearedAt !== null) return null

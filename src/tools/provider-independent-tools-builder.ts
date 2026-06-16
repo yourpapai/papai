@@ -108,10 +108,10 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
         ? getScopeKey('group', { storageContextId: contextId, chatUserId: chatUserId ?? contextId, contextType })
         : undefined
     tools['list_files'] = makeListFilesTool(contextId, groupReadContextId)
-    tools['delete_file'] = makeDeleteFileTool(contextId)
+    tools['delete_file'] = makeDeleteFileTool(contextId, groupReadContextId)
     tools['search_staged_files'] = makeSearchStagedFilesTool(contextId, groupReadContextId)
     if (stagedDownloadFn !== undefined) {
-      tools['resolve_staged_file'] = makeResolveStagedFileTool(contextId, stagedDownloadFn)
+      tools['resolve_staged_file'] = makeResolveStagedFileTool(contextId, stagedDownloadFn, groupReadContextId)
     }
   }
   addRecurringTools(tools, storageOwnerId)

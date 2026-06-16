@@ -48,7 +48,7 @@ export const ENTITY_SCOPES: readonly EntityScope[] = [
   { table: 'scheduled_prompts', column: 'delivery_context_id', scope: 'thread', rawThreadScoped: true },
   { table: 'alert_prompts', column: 'delivery_context_id', scope: 'thread', rawThreadScoped: true },
   { table: 'user_identity_mappings', column: 'context_id', scope: 'user', rawThreadScoped: true },
-  { table: 'web_rate_limit', column: 'actor_id', scope: 'user', rawThreadScoped: true },
+  { table: 'web_rate_limit', column: 'actor_id', scope: 'user', rawThreadScoped: false },
   { table: 'memos', column: 'user_id', scope: 'group', rawThreadScoped: true },
   { table: 'recurring_tasks', column: 'user_id', scope: 'group', rawThreadScoped: true },
   { table: 'user_instructions', column: 'context_id', scope: 'group+threadOverride', rawThreadScoped: true },

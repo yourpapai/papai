@@ -36,7 +36,11 @@ export function makeSearchStagedFilesTool(contextId: string, groupContextId?: st
   })
 }
 
-export function makeResolveStagedFileTool(contextId: string, downloadFn: StagedFileDownloadFn): ToolSet[string] {
+export function makeResolveStagedFileTool(
+  contextId: string,
+  downloadFn: StagedFileDownloadFn,
+  groupContextId?: string,
+): ToolSet[string] {
   return tool({
     description:
       'Resolve a staged file by downloading it from the chat platform and adding it to the conversation workspace. After resolution, the file can be uploaded to tasks or referenced by its attachment ID.',
@@ -45,7 +49,12 @@ export function makeResolveStagedFileTool(contextId: string, downloadFn: StagedF
     }),
     execute: async ({ stagedId }) => {
       log.debug({ contextId, stagedId }, 'resolve_staged_file called')
-      const result = await resolveStagedFile(stagedId, contextId, downloadFn)
+      const result = await resolveStagedFile(
+        stagedId,
+        contextId,
+        downloadFn,
+        groupContextId === undefined ? undefined : { groupContextId },
+      )
       if ('contextId' in result) {
         return {
           status: 'resolved' as const,

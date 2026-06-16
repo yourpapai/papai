@@ -126,5 +126,68 @@ describe('workspace file tools', () => {
       const result = await execute({ fileId: 'att_does_not_exist', confidence: 0.9 })
       expect(result).toMatchObject({ status: 'not_found' })
     })
+
+    test('deletes a cross-thread file when groupContextId matches', async () => {
+      const SIBLING_CTX = 'ctx-sibling-thread'
+      const GROUP_CTX = 'ctx-group-parent'
+      const sibling = await persistIncomingAttachments({
+        contextId: SIBLING_CTX,
+        sourceProvider: 'telegram',
+        files: [
+          {
+            fileId: 'sibling-f1',
+            filename: 'sibling.txt',
+            mimeType: 'text/plain',
+            size: 4,
+            content: Buffer.from('data'),
+          },
+        ],
+      })
+      // Manually set group_context_id to simulate group membership
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { attachments } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+      getDrizzleDb()
+        .update(attachments)
+        .set({ groupContextId: GROUP_CTX })
+        .where(eq(attachments.attachmentId, sibling[0]!.attachmentId))
+        .run()
+
+      // delete_file from a different thread context, widened by groupContextId
+      const execute = getToolExecutor(makeDeleteFileTool('ctx-other-thread', GROUP_CTX))
+      const result = await execute({ fileId: sibling[0]!.attachmentId, confidence: 1 })
+      expect(result).toMatchObject({ status: 'deleted', fileId: sibling[0]!.attachmentId })
+    })
+
+    test('returns not_found for cross-thread file without groupContextId', async () => {
+      const SIBLING_CTX = 'ctx-sibling-thread-b'
+      const GROUP_CTX = 'ctx-group-parent-b'
+      const sibling = await persistIncomingAttachments({
+        contextId: SIBLING_CTX,
+        sourceProvider: 'telegram',
+        files: [
+          {
+            fileId: 'sibling-f2',
+            filename: 'sibling-b.txt',
+            mimeType: 'text/plain',
+            size: 4,
+            content: Buffer.from('data'),
+          },
+        ],
+      })
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { attachments } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+      getDrizzleDb()
+        .update(attachments)
+        .set({ groupContextId: GROUP_CTX })
+        .where(eq(attachments.attachmentId, sibling[0]!.attachmentId))
+        .run()
+
+      // Without groupContextId, should not find the sibling file
+      const execute = getToolExecutor(makeDeleteFileTool('ctx-other-thread-b'))
+      const result = await execute({ fileId: sibling[0]!.attachmentId, confidence: 1 })
+      expect(result).toMatchObject({ status: 'not_found' })
+    })
   })
 })

@@ -270,6 +270,60 @@ describe('buildTools', () => {
     )
   })
 
+  it('group-context action tools (resolve/delete) can act on cross-thread discovered files', async () => {
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-actions',
+      threadId: 'thread-act',
+    })
+    const parentContextId = getConfigContextIdFromStorageContextId(threadContextId)
+    const parentFile: IncomingFile = {
+      fileId: 'platform-parent-action-file',
+      filename: 'parent-action.txt',
+      mimeType: 'text/plain',
+      size: 7,
+      content: Buffer.from('parent!'),
+    }
+
+    const [parentAttachmentRef] = await persistIncomingAttachments({
+      contextId: parentContextId,
+      sourceProvider: 'telegram',
+      files: [parentFile],
+    })
+    const stagedParentFile = stageFileMetadata({
+      contextId: parentContextId,
+      messageId: null,
+      senderId: 'user-123',
+      senderUsername: 'alice',
+      filename: 'parent-staged-action.txt',
+      mimeType: null,
+      size: null,
+      platformFileId: 'staged-parent-action-file',
+      sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-default',
+      origin: null,
+      forwardedFrom: null,
+    })
+    const stagedDownloadFn = mock(() => Promise.resolve(Buffer.from('resolved parent file')))
+
+    const provider = createMockProvider({ capabilities: new Set(['attachments.list']) })
+    const tools = buildTools(provider, 'user-123', threadContextId, 'normal', 'group', undefined, stagedDownloadFn)
+
+    // resolve_staged_file on parent-thread staged file should succeed from thread context
+    const resolveResult = await getToolExecutor(tools['resolve_staged_file'])({
+      stagedId: stagedParentFile.stagedId,
+    })
+    expect(resolveResult).toMatchObject({ status: 'resolved', filename: 'parent-staged-action.txt' })
+    expect(stagedDownloadFn).toHaveBeenCalledWith('staged-parent-action-file', 'telegram', 'telegram-default')
+
+    // delete_file on parent attachment id should succeed from thread context
+    const deleteResult = await getToolExecutor(tools['delete_file'])({
+      fileId: parentAttachmentRef!.attachmentId,
+      confidence: 1,
+    })
+    expect(deleteResult).toMatchObject({ status: 'deleted', fileId: parentAttachmentRef!.attachmentId })
+  })
+
   it('should conditionally add project tools', () => {
     const provider = createMockProvider({
       capabilities: new Set([
