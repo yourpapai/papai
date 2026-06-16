@@ -9,7 +9,7 @@ import { evaluatePromotion } from './promotion.js'
 import { rankCandidatesByQuery } from './recall-ranking.js'
 import { resolveMemoryScope } from './scope.js'
 import { rankRecordsBySimilarity } from './semantic-search.js'
-import { listProvisionalRecords, searchMemoryRecords } from './store.js'
+import { listMemoryRecords, listProvisionalRecords } from './store.js'
 import type { MemoryRecord, MemoryScope } from './types.js'
 
 export const RECALL_DEFAULT_LIMIT = 8
@@ -63,13 +63,19 @@ const searchActiveHybrid = (
   queryEmbedding: readonly number[] | null,
   limit: number,
 ): readonly MemoryRecord[] => {
-  const semantic =
-    queryEmbedding === null ? [] : rankRecordsBySimilarity(scope, queryEmbedding, { statuses: ['active'], limit })
-  const keyword = searchMemoryRecords({ ...scope, query, limit })
-  const merged: MemoryRecord[] = [...semantic]
-  const seen = new Set(semantic.map((r) => r.id))
-  for (const record of keyword) if (!seen.has(record.id)) merged.push(record)
-  return merged.slice(0, limit)
+  if (queryEmbedding === null) {
+    const active = listMemoryRecords({
+      scopeId: scope.scopeId,
+      scopeType: scope.scopeType,
+      status: 'active',
+      limit: 500,
+    })
+    return rankCandidatesByQuery(active, query, null, { limit })
+  }
+  const semantic = rankRecordsBySimilarity(scope, queryEmbedding, { statuses: ['active'], limit })
+  if (semantic.length > 0) return semantic
+  const active = listMemoryRecords({ scopeId: scope.scopeId, scopeType: scope.scopeType, status: 'active', limit: 500 })
+  return rankCandidatesByQuery(active, query, null, { limit })
 }
 
 const scheduleLayerThree = (
