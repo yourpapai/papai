@@ -10,6 +10,7 @@ export const stagedFiles = sqliteTable(
   {
     stagedId: text('staged_id').primaryKey(),
     contextId: text('context_id').notNull(),
+    groupContextId: text('group_context_id'),
     messageId: text('message_id'),
     senderId: text('sender_id').notNull(),
     senderUsername: text('sender_username'),

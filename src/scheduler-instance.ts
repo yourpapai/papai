@@ -11,7 +11,9 @@
 import { purgeExpiredStagedFiles } from './attachments/staged.js'
 import { cleanupExpiredCaches } from './cache.js'
 import { logger } from './logger.js'
+import { sweepDirtyContexts } from './long-term-memory/capture-sweep.js'
 import { runMemoryMaintenance } from './long-term-memory/maintenance.js'
+import { sweepPromotions } from './long-term-memory/promotion-sweep.js'
 import { sweepExpiredMessages } from './message-cache/cache.js'
 import { cleanupExpiredMessages } from './message-cache/persistence.js'
 import { cleanupExpiredQueues } from './message-queue/index.js'
@@ -68,6 +70,22 @@ scheduler.register('long-term-memory-maintenance', {
     runMemoryMaintenance()
   },
   options: { immediate: true },
+})
+
+scheduler.register('memory-capture-sweep', {
+  interval: 5 * 60 * 1000,
+  handler: () => {
+    void sweepDirtyContexts(new Date().toISOString())
+  },
+  options: { immediate: false },
+})
+
+scheduler.register('memory-promotion-sweep', {
+  interval: 30 * 60 * 1000,
+  handler: () => {
+    void sweepPromotions()
+  },
+  options: { immediate: false },
 })
 
 // Event hooks

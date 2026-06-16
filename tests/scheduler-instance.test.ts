@@ -11,4 +11,12 @@ describe('scheduler-instance', () => {
   test('registers staged-files-purge task', () => {
     expect(scheduler.hasTask('staged-files-purge')).toBe(true)
   })
+
+  test('registers memory-capture-sweep task', () => {
+    expect(scheduler.hasTask('memory-capture-sweep')).toBe(true)
+  })
+
+  test('registers memory-promotion-sweep task', () => {
+    expect(scheduler.hasTask('memory-promotion-sweep')).toBe(true)
+  })
 })

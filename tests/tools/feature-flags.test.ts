@@ -18,6 +18,7 @@ const ALL_OFF = {
   progressiveDisclosure: false,
   resultCompaction: false,
   semanticToolRetrieval: false,
+  crossThreadMemory: false,
 }
 
 // Unique context per test: the in-memory config cache outlives individual tests.
@@ -136,11 +137,21 @@ describe('parseReductionFlagsJson', () => {
     const flags = parseReductionFlagsJson(
       '{"result_compaction":true,"progressive_disclosure":"true","semantic_tool_retrieval":1}',
     )
-    expect(flags).toEqual({ resultCompaction: true, progressiveDisclosure: false, semanticToolRetrieval: false })
+    expect(flags).toEqual({
+      resultCompaction: true,
+      progressiveDisclosure: false,
+      semanticToolRetrieval: false,
+      crossThreadMemory: false,
+    })
   })
 
   it('returns all OFF for null, empty, and corrupt input', () => {
-    const allOff = { resultCompaction: false, progressiveDisclosure: false, semanticToolRetrieval: false }
+    const allOff = {
+      resultCompaction: false,
+      progressiveDisclosure: false,
+      semanticToolRetrieval: false,
+      crossThreadMemory: false,
+    }
     expect(parseReductionFlagsJson(null)).toEqual(allOff)
     expect(parseReductionFlagsJson('')).toEqual(allOff)
     expect(parseReductionFlagsJson('{not json')).toEqual(allOff)

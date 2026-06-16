@@ -20,8 +20,13 @@ async function executeUpload(
   contextId: string,
   taskId: string,
   attachmentId: string,
+  groupContextId?: string,
 ): Promise<unknown> {
-  const record = await loadAttachmentRecord(contextId, attachmentId)
+  const record = await loadAttachmentRecord(
+    contextId,
+    attachmentId,
+    groupContextId === undefined ? undefined : { groupContextId },
+  )
 
   if (record === null) {
     log.warn({ taskId, attachmentId }, 'upload_attachment: attachmentId not found in workspace')
@@ -40,7 +45,11 @@ async function executeUpload(
   return result
 }
 
-export function makeUploadAttachmentTool(provider: TaskProvider, contextId: string): ToolSet[string] {
+export function makeUploadAttachmentTool(
+  provider: TaskProvider,
+  contextId: string,
+  groupContextId?: string,
+): ToolSet[string] {
   return tool({
     description:
       'Upload a file attachment to a task. The file must already be in the current conversation attachment workspace (sent by the user during this conversation).',
@@ -53,7 +62,7 @@ export function makeUploadAttachmentTool(provider: TaskProvider, contextId: stri
     execute: async ({ taskId, attachmentId }) => {
       log.debug({ taskId, attachmentId, contextId }, 'upload_attachment called')
       try {
-        return await executeUpload(provider, contextId, taskId, attachmentId)
+        return await executeUpload(provider, contextId, taskId, attachmentId, groupContextId)
       } catch (error) {
         log.error(
           {

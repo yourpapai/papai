@@ -44,7 +44,8 @@ export const memoryRecords = sqliteTable(
     summary: text('summary'),
     tags: text('tags').notNull().default('[]'),
     confidence: real('confidence').notNull(),
-    status: text('status', { enum: ['active', 'stale', 'archived', 'contradicted'] }).notNull(),
+    status: text('status', { enum: ['active', 'stale', 'archived', 'contradicted', 'provisional'] }).notNull(),
+    threadContextId: text('thread_context_id'),
     source: text('source', { enum: ['background', 'explicit', 'tool_result', 'admin_edit'] }).notNull(),
     evidence: text('evidence').notNull().default('{}'),
     createdAt: text('created_at').notNull(),
@@ -63,3 +64,14 @@ export const memoryRecords = sqliteTable(
 
 export type MemoryProfileRow = typeof memoryProfiles.$inferSelect
 export type MemoryRecordRow = typeof memoryRecords.$inferSelect
+
+export const memoryExtractionState = sqliteTable('memory_extraction_state', {
+  contextId: text('context_id').primaryKey(),
+  contextType: text('context_type', { enum: ['dm', 'group'] }).notNull(),
+  configContextId: text('config_context_id').notNull(),
+  lastActivityAt: text('last_activity_at').notNull(),
+  lastExtractedAt: text('last_extracted_at'),
+  lastHistoryLen: integer('last_history_len').notNull().default(0),
+})
+
+export type MemoryExtractionStateRow = typeof memoryExtractionState.$inferSelect

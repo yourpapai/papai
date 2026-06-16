@@ -6,6 +6,7 @@
 import type { ToolSet } from 'ai'
 
 import type { StagedFileDownloadFn } from '../attachments/types.js'
+import { getScopeKey } from '../chat/context-scope.js'
 import type { ContextType } from '../chat/types.js'
 import type { TaskProvider } from '../providers/types.js'
 import { makeAddCommentReactionTool } from './add-comment-reaction.js'
@@ -127,11 +128,16 @@ function maybeAddStatusTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('statuses.delete')) tools['delete_status'] = makeDeleteStatusTool(provider)
   if (provider.capabilities.has('statuses.reorder')) tools['reorder_statuses'] = makeReorderStatusesTool(provider)
 }
-function addAttachmentTools(tools: ToolSet, provider: TaskProvider, contextId: string | undefined): void {
+function addAttachmentTools(
+  tools: ToolSet,
+  provider: TaskProvider,
+  contextId: string | undefined,
+  groupContextId: string | undefined,
+): void {
   if (contextId === undefined) return
   if (provider.capabilities.has('attachments.list')) tools['list_attachments'] = makeListAttachmentsTool(provider)
   if (provider.capabilities.has('attachments.upload'))
-    tools['upload_attachment'] = makeUploadAttachmentTool(provider, contextId)
+    tools['upload_attachment'] = makeUploadAttachmentTool(provider, contextId, groupContextId)
   if (provider.capabilities.has('attachments.delete')) tools['remove_attachment'] = makeRemoveAttachmentTool(provider)
 }
 function maybeAddWorkItemTools(tools: ToolSet, provider: TaskProvider): void {
@@ -193,6 +199,10 @@ export function buildTools(
   const contextType = args[0]
   const username = args[1]
   const stagedDownloadFn = args[2]
+  const groupReadContextId =
+    contextType === 'group' && contextId !== undefined
+      ? getScopeKey('group', { storageContextId: contextId, chatUserId: chatUserId ?? contextId, contextType })
+      : undefined
   const tools = makeCoreTools(provider, chatUserId, contextId)
   maybeAddProjectTools(tools, provider)
   maybeAddCommentTools(tools, provider)
@@ -201,7 +211,7 @@ export function buildTools(
   maybeAddStatusTools(tools, provider)
   if (provider.capabilities.has('tasks.delete')) tools['delete_task'] = makeDeleteTaskTool(provider)
   maybeAddCollaborationTaskTools(tools, provider, chatUserId)
-  addAttachmentTools(tools, provider, contextId)
+  addAttachmentTools(tools, provider, contextId, groupReadContextId)
   maybeAddWorkItemTools(tools, provider)
   maybeAddPhaseFiveSprintTools(tools, provider)
   maybeAddPhaseFiveQueryTools(tools, provider, mode)

@@ -5,7 +5,7 @@
 
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, or } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { getBlobStore } from '../attachments/blob-store.js'
@@ -17,14 +17,14 @@ import { checkConfidence, confidenceField } from './confirmation-gate.js'
 
 const log = logger.child({ scope: 'tool:workspace-files' })
 
-export function makeListFilesTool(contextId: string): ToolSet[string] {
+export function makeListFilesTool(contextId: string, groupContextId?: string): ToolSet[string] {
   return tool({
     description:
       'List all files currently available in the conversation workspace. These are files the user has sent during this conversation and which can be referenced or uploaded to tasks.',
     inputSchema: z.object({}),
     execute: () => {
       log.debug({ contextId }, 'list_files called')
-      const active = listActiveAttachments(contextId)
+      const active = listActiveAttachments(contextId, groupContextId === undefined ? undefined : { groupContextId })
       return active.map((ref) => ({
         fileId: ref.attachmentId,
         filename: ref.filename,
@@ -36,7 +36,7 @@ export function makeListFilesTool(contextId: string): ToolSet[string] {
   })
 }
 
-export function makeDeleteFileTool(contextId: string): ToolSet[string] {
+export function makeDeleteFileTool(contextId: string, groupContextId?: string): ToolSet[string] {
   return tool({
     description:
       'Permanently delete a file from the conversation workspace. This is a destructive action that requires confirmation.',
@@ -52,12 +52,15 @@ export function makeDeleteFileTool(contextId: string): ToolSet[string] {
         return gate
       }
 
+      const scopeCondition =
+        groupContextId === undefined
+          ? eq(attachments.contextId, contextId)
+          : or(eq(attachments.contextId, contextId), eq(attachments.groupContextId, groupContextId))
+
       const row = getDrizzleDb()
         .select({ blobKey: attachments.blobKey })
         .from(attachments)
-        .where(
-          and(eq(attachments.contextId, contextId), eq(attachments.attachmentId, fileId), eq(attachments.isActive, 1)),
-        )
+        .where(and(scopeCondition, eq(attachments.attachmentId, fileId), eq(attachments.isActive, 1)))
         .get()
 
       if (row === undefined) {

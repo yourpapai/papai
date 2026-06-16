@@ -47,5 +47,5 @@ export const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
   { table: 'tool_call_events', column: 'storage_context_id', conflictColumns: null, threadScoped: true },
   { table: 'plugin_context_state', column: 'context_id', conflictColumns: ['plugin_id'], threadScoped: true },
   { table: 'plugin_kv', column: 'context_id', conflictColumns: ['plugin_id', 'key'], threadScoped: true },
-  { table: 'web_rate_limit', column: 'actor_id', conflictColumns: ['window_start'], threadScoped: true },
+  { table: 'web_rate_limit', column: 'actor_id', conflictColumns: ['window_start'], threadScoped: false },
 ]

@@ -5,9 +5,9 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { and, eq, or, sql } from 'drizzle-orm'
+import { and, eq, or, sql, type SQL } from 'drizzle-orm'
 
-import { parseScopedContextId } from '../chat/scoped-context.js'
+import { getConfigContextIdFromStorageContextId, parseScopedContextId } from '../chat/scoped-context.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { stagedFiles } from '../db/schema.js'
 import { logger } from '../logger.js'
@@ -22,8 +22,11 @@ import type {
 import { toAttachmentOrigin, toSourceProvider, toStagedStatus, toUndefinedIfNull } from './types.js'
 
 const log = logger.child({ scope: 'attachments:staged' })
-
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000
+const buildStagedScopeCondition = (contextId: string, gid: string | undefined): SQL =>
+  gid === undefined
+    ? eq(stagedFiles.contextId, contextId)
+    : or(eq(stagedFiles.contextId, contextId), eq(stagedFiles.groupContextId, gid))!
 
 type StagedRow = typeof stagedFiles.$inferSelect
 type StagedInsert = typeof stagedFiles.$inferInsert
@@ -45,7 +48,6 @@ const toRef = (row: StagedRow): StagedFileRef => ({
   createdAt: row.createdAt,
   expiresAt: row.expiresAt,
   origin: toAttachmentOrigin(row.origin) ?? null,
-  // nullable on StagedFileRef; downloadAndPersist maps it to undefined for SaveAttachmentInput
   forwardedFrom: row.forwardedFrom,
 })
 
@@ -57,6 +59,7 @@ const buildStagedValues = (
 ): StagedInsert => ({
   stagedId,
   contextId: params.contextId,
+  groupContextId: getConfigContextIdFromStorageContextId(params.contextId),
   messageId: params.messageId === undefined ? null : params.messageId,
   senderId: params.senderId,
   senderUsername: params.senderUsername === undefined ? null : params.senderUsername,
@@ -123,19 +126,19 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
 export function searchStagedFiles(
   contextId: string,
   query: string,
-  ...limitArg: [] | [number | undefined]
+  options?: Readonly<{ groupContextId?: string; limit?: number }>,
 ): StagedFileRef[] {
   const db = getDrizzleDb()
   const escaped = query.replaceAll('\\', '\\\\').replaceAll(/[%_]/gu, '\\$&')
   const pattern = `%${escaped}%`
-  const queryLimit = limitArg.length === 0 || limitArg[0] === undefined ? 10 : limitArg[0]
-
+  const queryLimit = options?.limit ?? 10
+  const scopeCondition = buildStagedScopeCondition(contextId, options?.groupContextId)
   return db
     .select()
     .from(stagedFiles)
     .where(
       and(
-        eq(stagedFiles.contextId, contextId),
+        scopeCondition,
         eq(stagedFiles.status, 'staged'),
         or(
           sql`${stagedFiles.senderUsername} LIKE ${pattern} ESCAPE '\\'`,
@@ -273,12 +276,14 @@ export function resolveStagedFile(
   stagedId: string,
   contextId: string,
   downloadFn: StagedFileDownloadFn,
+  options?: Readonly<{ groupContextId?: string }>,
 ): Promise<AttachmentRef | StagedResolutionError> {
   const db = getDrizzleDb()
+  const scopeCondition = buildStagedScopeCondition(contextId, options?.groupContextId)
   const row = db
     .select()
     .from(stagedFiles)
-    .where(and(eq(stagedFiles.stagedId, stagedId), eq(stagedFiles.contextId, contextId)))
+    .where(and(eq(stagedFiles.stagedId, stagedId), scopeCondition))
     .get()
 
   if (row === undefined) {

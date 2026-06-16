@@ -66,6 +66,8 @@ import { migration052ByokLlmCredentials } from './migrations/052_byok_llm_creden
 import { migration053LongTermMemory } from './migrations/053_long_term_memory.js'
 import { migration054AttachmentOrigin } from './migrations/054_attachment_origin.js'
 import { migration055UserConfigKeyIndex } from './migrations/055_user_config_key_index.js'
+import { migration056ProvisionalMemory } from './migrations/056_provisional_memory.js'
+import { migration057AttachmentGroupContext } from './migrations/057_attachment_group_context.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -156,6 +158,8 @@ export const MIGRATIONS: readonly Migration[] = [
   migration053LongTermMemory,
   migration054AttachmentOrigin,
   migration055UserConfigKeyIndex,
+  migration056ProvisionalMemory,
+  migration057AttachmentGroupContext,
 ]
 
 export const initDb = (): void => {

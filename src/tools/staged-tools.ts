@@ -13,7 +13,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:staged-files' })
 
-export function makeSearchStagedFilesTool(contextId: string): ToolSet[string] {
+export function makeSearchStagedFilesTool(contextId: string, groupContextId?: string): ToolSet[string] {
   return tool({
     description:
       'Search staged files in the current conversation that have not yet been resolved. Staged files are files sent by any group member that are available to be brought into the workspace. Search by sender username or filename.',
@@ -23,7 +23,7 @@ export function makeSearchStagedFilesTool(contextId: string): ToolSet[string] {
     }),
     execute: ({ query, limit }) => {
       log.debug({ contextId, query, limit }, 'search_staged_files called')
-      const results = searchStagedFiles(contextId, query, limit)
+      const results = searchStagedFiles(contextId, query, { groupContextId, limit })
       return results.map((ref) => ({
         stagedId: ref.stagedId,
         filename: ref.filename,
@@ -36,7 +36,11 @@ export function makeSearchStagedFilesTool(contextId: string): ToolSet[string] {
   })
 }
 
-export function makeResolveStagedFileTool(contextId: string, downloadFn: StagedFileDownloadFn): ToolSet[string] {
+export function makeResolveStagedFileTool(
+  contextId: string,
+  downloadFn: StagedFileDownloadFn,
+  groupContextId?: string,
+): ToolSet[string] {
   return tool({
     description:
       'Resolve a staged file by downloading it from the chat platform and adding it to the conversation workspace. After resolution, the file can be uploaded to tasks or referenced by its attachment ID.',
@@ -45,7 +49,12 @@ export function makeResolveStagedFileTool(contextId: string, downloadFn: StagedF
     }),
     execute: async ({ stagedId }) => {
       log.debug({ contextId, stagedId }, 'resolve_staged_file called')
-      const result = await resolveStagedFile(stagedId, contextId, downloadFn)
+      const result = await resolveStagedFile(
+        stagedId,
+        contextId,
+        downloadFn,
+        groupContextId === undefined ? undefined : { groupContextId },
+      )
       if ('contextId' in result) {
         return {
           status: 'resolved' as const,

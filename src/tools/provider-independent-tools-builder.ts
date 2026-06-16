@@ -7,14 +7,15 @@ import type { ToolSet } from 'ai'
 
 import { isS3Configured } from '../attachments/index.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
-import { getConfigContextIdFromStorageContextId, hasThreadContextId } from '../chat/scoped-context.js'
+import { getScopeKey } from '../chat/context-scope.js'
+import { hasThreadContextId } from '../chat/scoped-context.js'
 import type { ContextType } from '../chat/types.js'
 import { makeArchiveMemosTool } from './archive-memos.js'
 import { makeExpandResultTool } from './compaction/expand-result.js'
 import { makeCreateRecurringTaskTool } from './create-recurring-task.js'
 import { addDeferredPromptTools } from './deferred-tools-builder.js'
 import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
-import { resolveReductionFlags } from './feature-flags.js'
+import { resolveReductionFlags, resolveCrossThreadMemoryFlag } from './feature-flags.js'
 import { makeGetCurrentTimeTool } from './get-current-time.js'
 import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructionTool } from './instructions.js'
 import { makeListMemosTool } from './list-memos.js'
@@ -22,6 +23,7 @@ import { makeListRecurringTasksTool } from './list-recurring-tasks.js'
 import { makeLookupGroupHistoryTool } from './lookup-group-history.js'
 import { makeForgetMemoryTool, makeListMemoryTool, makeRememberMemoryTool, makeSearchMemoryTool } from './memory.js'
 import { makePauseRecurringTaskTool } from './pause-recurring-task.js'
+import { makeRecallMemoryTool } from './recall.js'
 import { makeUpdateRecurringTaskTool } from './recurring-tools.js'
 import { makeResumeRecurringTaskTool } from './resume-recurring-task.js'
 import { makeSaveMemoTool } from './save-memo.js'
@@ -34,7 +36,11 @@ import { makeDeleteFileTool, makeListFilesTool } from './workspace-files.js'
 
 export function getStorageOwnerId(chatUserId: string | undefined, contextId: string | undefined): string | undefined {
   if (contextId === undefined) return chatUserId
-  return getConfigContextIdFromStorageContextId(contextId)
+  return getScopeKey('group', {
+    storageContextId: contextId,
+    chatUserId: chatUserId ?? contextId,
+    contextType: 'group',
+  })
 }
 
 function addMemoTools(tools: ToolSet, userId: string | undefined): void {
@@ -97,19 +103,31 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
     tools['expand_result'] = makeExpandResultTool(contextId)
   }
   if (contextId !== undefined && isS3Configured()) {
-    tools['list_files'] = makeListFilesTool(contextId)
-    tools['delete_file'] = makeDeleteFileTool(contextId)
-    tools['search_staged_files'] = makeSearchStagedFilesTool(contextId)
+    const groupReadContextId =
+      contextType === 'group'
+        ? getScopeKey('group', { storageContextId: contextId, chatUserId: chatUserId ?? contextId, contextType })
+        : undefined
+    tools['list_files'] = makeListFilesTool(contextId, groupReadContextId)
+    tools['delete_file'] = makeDeleteFileTool(contextId, groupReadContextId)
+    tools['search_staged_files'] = makeSearchStagedFilesTool(contextId, groupReadContextId)
     if (stagedDownloadFn !== undefined) {
-      tools['resolve_staged_file'] = makeResolveStagedFileTool(contextId, stagedDownloadFn)
+      tools['resolve_staged_file'] = makeResolveStagedFileTool(contextId, stagedDownloadFn, groupReadContextId)
     }
   }
   addRecurringTools(tools, storageOwnerId)
   addMemoTools(tools, storageOwnerId)
   addMemoryTools(tools, contextId, contextType)
+  if (
+    contextId !== undefined &&
+    contextType !== undefined &&
+    mode === 'normal' &&
+    resolveCrossThreadMemoryFlag(contextId)
+  ) {
+    tools['recall'] = makeRecallMemoryTool({ storageContextId: contextId, contextType })
+  }
   addInstructionTools(tools, storageOwnerId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
-  if (contextId !== undefined) tools['web_fetch'] = makeWebFetchTool(contextId, storageOwnerId, contextType)
+  if (contextId !== undefined) tools['web_fetch'] = makeWebFetchTool(contextId, chatUserId, contextType)
   if (mode === 'normal' && storageOwnerId !== undefined) {
     addDeferredPromptTools(
       tools,

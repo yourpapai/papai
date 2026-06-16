@@ -10,6 +10,7 @@ export const attachments = sqliteTable(
   {
     attachmentId: text('attachment_id').primaryKey(),
     contextId: text('context_id').notNull(),
+    groupContextId: text('group_context_id'),
     sourceProvider: text('source_provider').notNull(),
     sourceMessageId: text('source_message_id'),
     sourceFileId: text('source_file_id'),

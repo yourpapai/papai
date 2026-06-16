@@ -175,7 +175,7 @@ describe('buildTools', () => {
     expect(parentAlertPrompts[0]!.deliveryTarget.storageContextId).toBe(threadContextId)
   })
 
-  it('keeps workspace and staged-file tools scoped to the current thread context', async () => {
+  it('makes workspace and staged-file tools group-discoverable in a group context', async () => {
     const threadContextId = toScopedThreadContextId({
       platformInstanceId: 'telegram-default',
       nativeContextId: 'group-1',
@@ -240,8 +240,21 @@ describe('buildTools', () => {
       (attachment) => attachment.filename === 'thread-staged.txt',
     )
 
-    expect(files).toEqual([expect.objectContaining({ filename: 'thread-note.txt' })])
-    expect(staged).toEqual([expect.objectContaining({ filename: 'thread-staged.txt' })])
+    // Group context: file tools discover attachments across the whole group (current thread + siblings/parent).
+    expect(files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ filename: 'thread-note.txt' }),
+        expect.objectContaining({ filename: 'parent-note.txt' }),
+      ]),
+    )
+    expect(files).toHaveLength(2)
+    expect(staged).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ filename: 'thread-staged.txt' }),
+        expect.objectContaining({ filename: 'parent-staged.txt' }),
+      ]),
+    )
+    expect(staged).toHaveLength(2)
     expect(resolved).toEqual({
       status: 'resolved',
       attachmentId: resolvedThreadAttachment!.attachmentId,
@@ -255,6 +268,60 @@ describe('buildTools', () => {
     expect(listActiveAttachments(threadContextId).map((attachment) => attachment.filename)).not.toContain(
       stagedParentFile.filename,
     )
+  })
+
+  it('group-context action tools (resolve/delete) can act on cross-thread discovered files', async () => {
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-actions',
+      threadId: 'thread-act',
+    })
+    const parentContextId = getConfigContextIdFromStorageContextId(threadContextId)
+    const parentFile: IncomingFile = {
+      fileId: 'platform-parent-action-file',
+      filename: 'parent-action.txt',
+      mimeType: 'text/plain',
+      size: 7,
+      content: Buffer.from('parent!'),
+    }
+
+    const [parentAttachmentRef] = await persistIncomingAttachments({
+      contextId: parentContextId,
+      sourceProvider: 'telegram',
+      files: [parentFile],
+    })
+    const stagedParentFile = stageFileMetadata({
+      contextId: parentContextId,
+      messageId: null,
+      senderId: 'user-123',
+      senderUsername: 'alice',
+      filename: 'parent-staged-action.txt',
+      mimeType: null,
+      size: null,
+      platformFileId: 'staged-parent-action-file',
+      sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-default',
+      origin: null,
+      forwardedFrom: null,
+    })
+    const stagedDownloadFn = mock(() => Promise.resolve(Buffer.from('resolved parent file')))
+
+    const provider = createMockProvider({ capabilities: new Set(['attachments.list']) })
+    const tools = buildTools(provider, 'user-123', threadContextId, 'normal', 'group', undefined, stagedDownloadFn)
+
+    // resolve_staged_file on parent-thread staged file should succeed from thread context
+    const resolveResult = await getToolExecutor(tools['resolve_staged_file'])({
+      stagedId: stagedParentFile.stagedId,
+    })
+    expect(resolveResult).toMatchObject({ status: 'resolved', filename: 'parent-staged-action.txt' })
+    expect(stagedDownloadFn).toHaveBeenCalledWith('staged-parent-action-file', 'telegram', 'telegram-default')
+
+    // delete_file on parent attachment id should succeed from thread context
+    const deleteResult = await getToolExecutor(tools['delete_file'])({
+      fileId: parentAttachmentRef!.attachmentId,
+      confidence: 1,
+    })
+    expect(deleteResult).toMatchObject({ status: 'deleted', fileId: parentAttachmentRef!.attachmentId })
   })
 
   it('should conditionally add project tools', () => {

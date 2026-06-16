@@ -17,6 +17,7 @@ describe('AdminFeatureFlagStateSchema', () => {
       result_compaction: true,
       progressive_disclosure: false,
       semantic_tool_retrieval: false,
+      cross_thread_memory: false,
     })
     expect(result.success).toBe(true)
   })
@@ -43,7 +44,12 @@ describe('AdminFeatureFlagRowSchema', () => {
       kind: 'user',
       label: 'alice',
       platformInstanceLabel: 'pi-1',
-      flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+      flags: {
+        result_compaction: true,
+        progressive_disclosure: false,
+        semantic_tool_retrieval: false,
+        cross_thread_memory: false,
+      },
     })
     expect(result.success).toBe(true)
   })
@@ -54,7 +60,12 @@ describe('AdminFeatureFlagRowSchema', () => {
       kind: 'group',
       label: 'Dev Team',
       platformInstanceLabel: 'pi-1',
-      flags: { result_compaction: false, progressive_disclosure: false, semantic_tool_retrieval: false },
+      flags: {
+        result_compaction: false,
+        progressive_disclosure: false,
+        semantic_tool_retrieval: false,
+        cross_thread_memory: false,
+      },
     })
     expect(result.success).toBe(true)
     expect(result.data?.kind).toBe('group')
@@ -66,7 +77,12 @@ describe('AdminFeatureFlagRowSchema', () => {
       kind: 'admin',
       label: 'x',
       platformInstanceLabel: 'p',
-      flags: { result_compaction: false, progressive_disclosure: false, semantic_tool_retrieval: false },
+      flags: {
+        result_compaction: false,
+        progressive_disclosure: false,
+        semantic_tool_retrieval: false,
+        cross_thread_memory: false,
+      },
     })
     expect(result.success).toBe(false)
   })
@@ -87,7 +103,12 @@ describe('AdminFeatureFlagsSnapshotSchema', () => {
           kind: 'user',
           label: 'alice',
           platformInstanceLabel: 'pi-1',
-          flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+          flags: {
+            result_compaction: true,
+            progressive_disclosure: false,
+            semantic_tool_retrieval: false,
+            cross_thread_memory: false,
+          },
         },
       ],
     })
