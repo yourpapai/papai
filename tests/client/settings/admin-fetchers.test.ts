@@ -75,7 +75,12 @@ describe('admin-fetchers', () => {
         kind: 'user',
         label: 'alice',
         platformInstanceLabel: 'pi-1',
-        flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+        flags: {
+          result_compaction: true,
+          progressive_disclosure: false,
+          semantic_tool_retrieval: false,
+          cross_thread_memory: false,
+        },
       },
     ],
   }
@@ -111,14 +116,24 @@ describe('admin-fetchers', () => {
     })
     await saveAdminFeatureFlags({
       contextId: 'pi:cGktMQ:ctx:dS0x',
-      flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+      flags: {
+        result_compaction: true,
+        progressive_disclosure: false,
+        semantic_tool_retrieval: false,
+        cross_thread_memory: false,
+      },
     })
     expect(seenUrl).toBe('/settings/api/admin/feature-flags')
     expect(seenCsrf).toBe('csrf-ff')
     expect(seenMethod).toBe('PATCH')
     expect(seenBody).toEqual({
       contextId: 'pi:cGktMQ:ctx:dS0x',
-      flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+      flags: {
+        result_compaction: true,
+        progressive_disclosure: false,
+        semantic_tool_retrieval: false,
+        cross_thread_memory: false,
+      },
     })
   })
 })

@@ -12,11 +12,12 @@
   import { fetchAdminFeatureFlags, saveAdminFeatureFlags } from '../../admin-fetchers.js'
 
   type FlagKey = keyof AdminFeatureFlagState
-  const FLAG_KEYS: FlagKey[] = ['result_compaction', 'progressive_disclosure', 'semantic_tool_retrieval']
+  const FLAG_KEYS: FlagKey[] = ['result_compaction', 'progressive_disclosure', 'semantic_tool_retrieval', 'cross_thread_memory']
   const FLAG_LABELS: Record<FlagKey, string> = {
     result_compaction: 'Compaction',
     progressive_disclosure: 'Disclosure',
     semantic_tool_retrieval: 'Semantic retrieval',
+    cross_thread_memory: 'Cross-thread memory',
   }
 
   let killSwitchEngaged = $state(false)

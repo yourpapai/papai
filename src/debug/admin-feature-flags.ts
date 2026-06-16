@@ -15,6 +15,7 @@ export interface AdminFlagState {
   result_compaction: boolean
   progressive_disclosure: boolean
   semantic_tool_retrieval: boolean
+  cross_thread_memory: boolean
 }
 
 export interface AdminFlagContextRow {
@@ -36,6 +37,7 @@ const toWire = (flags: ReductionFlags): AdminFlagState => ({
   result_compaction: flags.resultCompaction,
   progressive_disclosure: flags.progressiveDisclosure,
   semantic_tool_retrieval: flags.semanticToolRetrieval,
+  cross_thread_memory: flags.crossThreadMemory,
 })
 
 const readFlags = (contextId: string): AdminFlagState =>

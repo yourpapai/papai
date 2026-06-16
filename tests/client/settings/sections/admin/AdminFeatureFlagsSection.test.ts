@@ -19,6 +19,13 @@ const drain = async (): Promise<void> => {
   flushSync()
 }
 
+const ALL_FLAGS_OFF = {
+  result_compaction: false,
+  progressive_disclosure: false,
+  semantic_tool_retrieval: false,
+  cross_thread_memory: false,
+}
+
 const oneRowSnapshot = {
   killSwitchEngaged: false,
   contexts: [
@@ -27,7 +34,7 @@ const oneRowSnapshot = {
       kind: 'user',
       label: 'Alice',
       platformInstanceLabel: 'Telegram',
-      flags: { result_compaction: false, progressive_disclosure: false, semantic_tool_retrieval: false },
+      flags: ALL_FLAGS_OFF,
     },
   ],
 }
@@ -40,7 +47,7 @@ const killSwitchSnapshot = {
       kind: 'user',
       label: 'Alice',
       platformInstanceLabel: 'Telegram',
-      flags: { result_compaction: false, progressive_disclosure: false, semantic_tool_retrieval: false },
+      flags: ALL_FLAGS_OFF,
     },
   ],
 }
@@ -61,7 +68,12 @@ const capturePatchMock = (url: string, init: RequestInit): Promise<Response> => 
         kind: 'user',
         label: 'Alice',
         platformInstanceLabel: 'Telegram',
-        flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+        flags: {
+          result_compaction: true,
+          progressive_disclosure: false,
+          semantic_tool_retrieval: false,
+          cross_thread_memory: false,
+        },
       }),
     )
   }
@@ -75,7 +87,7 @@ afterEach(() => {
 })
 
 describe('AdminFeatureFlagsSection', () => {
-  test('renders row label and three checkboxes; Save disabled when not dirty', async () => {
+  test('renders row label and four checkboxes; Save disabled when not dirty', async () => {
     setMockFetch(() => Promise.resolve(json(oneRowSnapshot)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -88,9 +100,9 @@ describe('AdminFeatureFlagsSection', () => {
     const checkboxes = target.querySelectorAll<HTMLInputElement>(
       '[data-testid^="feature-flags-ctx-1-"] input[type="checkbox"], [data-testid^="feature-flags-ctx-1-"]',
     )
-    // three flag keys: result_compaction, progressive_disclosure, semantic_tool_retrieval
+    // four flag keys: result_compaction, progressive_disclosure, semantic_tool_retrieval, cross_thread_memory
     const allCheckboxes = target.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    expect(allCheckboxes.length).toBe(3)
+    expect(allCheckboxes.length).toBe(4)
 
     const saveBtn = target.querySelector<HTMLButtonElement>('[data-testid="feature-flags-save-ctx-1"]')!
     expect(saveBtn).not.toBeNull()
@@ -150,7 +162,50 @@ describe('AdminFeatureFlagsSection', () => {
     expect(capturedPatchBody).toBe(
       JSON.stringify({
         contextId: 'ctx-1',
-        flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: false },
+        flags: {
+          result_compaction: true,
+          progressive_disclosure: false,
+          semantic_tool_retrieval: false,
+          cross_thread_memory: false,
+        },
+      }),
+    )
+
+    void unmount(component)
+  })
+
+  test('toggling cross_thread_memory checkbox issues PATCH with the key', async () => {
+    setCsrfToken('c')
+    setMockFetch(capturePatchMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminFeatureFlagsSection, { target })
+    await drain()
+
+    const crossThreadCheckbox = target.querySelector<HTMLInputElement>(
+      '[data-testid="feature-flags-ctx-1-cross_thread_memory"]',
+    )!
+    expect(crossThreadCheckbox).not.toBeNull()
+    expect(target.textContent).toContain('Cross-thread memory')
+    crossThreadCheckbox.checked = true
+    crossThreadCheckbox.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+
+    const saveBtn = target.querySelector<HTMLButtonElement>('[data-testid="feature-flags-save-ctx-1"]')!
+    expect(saveBtn.disabled).toBe(false)
+
+    saveBtn.click()
+    await drain()
+
+    expect(capturedPatchBody).toBe(
+      JSON.stringify({
+        contextId: 'ctx-1',
+        flags: {
+          result_compaction: false,
+          progressive_disclosure: false,
+          semantic_tool_retrieval: false,
+          cross_thread_memory: true,
+        },
       }),
     )
 
