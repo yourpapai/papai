@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import { eq, and } from 'drizzle-orm'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { attachments } from '../db/schema.js'
 import { logger } from '../logger.js'
@@ -51,6 +52,7 @@ export async function saveAttachment(input: SaveAttachmentInput): Promise<Attach
     .values({
       attachmentId,
       contextId: input.contextId,
+      groupContextId: getConfigContextIdFromStorageContextId(input.contextId),
       sourceProvider: input.sourceProvider,
       sourceMessageId: input.sourceMessageId,
       sourceFileId: input.sourceFileId,

@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto'
 
 import { and, eq, or, sql } from 'drizzle-orm'
 
-import { parseScopedContextId } from '../chat/scoped-context.js'
+import { getConfigContextIdFromStorageContextId, parseScopedContextId } from '../chat/scoped-context.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { stagedFiles } from '../db/schema.js'
 import { logger } from '../logger.js'
@@ -57,6 +57,7 @@ const buildStagedValues = (
 ): StagedInsert => ({
   stagedId,
   contextId: params.contextId,
+  groupContextId: getConfigContextIdFromStorageContextId(params.contextId),
   messageId: params.messageId === undefined ? null : params.messageId,
   senderId: params.senderId,
   senderUsername: params.senderUsername === undefined ? null : params.senderUsername,
