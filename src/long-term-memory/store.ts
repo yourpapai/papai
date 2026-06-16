@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryProfiles, memoryRecords } from '../db/schema.js'
@@ -245,7 +245,11 @@ export function listProvisionalRecords(filter: ListProvisionalFilter): readonly 
     conditions.push(eq(memoryRecords.threadContextId, filter.threadContextId))
   }
   if (filter.excludeThreadContextId !== undefined) {
-    conditions.push(ne(memoryRecords.threadContextId, filter.excludeThreadContextId))
+    const cond: SQL | undefined = or(
+      ne(memoryRecords.threadContextId, filter.excludeThreadContextId),
+      isNull(memoryRecords.threadContextId),
+    )
+    if (cond !== undefined) conditions.push(cond)
   }
   return getDrizzleDb()
     .select()

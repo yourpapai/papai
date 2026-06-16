@@ -53,4 +53,22 @@ describe('provisional record store', () => {
     ).toHaveLength(1)
     expect(listProvisionalRecords({ scopeId: 'group-1', scopeType: 'group' })).toHaveLength(2)
   })
+
+  test('excludeThreadContextId keeps NULL-thread provisional rows (sibling recall)', () => {
+    // A null-thread provisional row is NOT in the excluded thread, so it must be returned.
+    saveMemoryRecord(provisional({ id: 'mem-null', threadContextId: null, evidence: {} }))
+    saveMemoryRecord(provisional({ id: 'mem-a', threadContextId: 'thread-a' }))
+    saveMemoryRecord(provisional({ id: 'mem-b', threadContextId: 'thread-b' }))
+
+    const rows = listProvisionalRecords({
+      scopeId: 'group-1',
+      scopeType: 'group',
+      excludeThreadContextId: 'thread-a',
+    })
+
+    const ids = rows.map((r) => r.id)
+    expect(ids).toContain('mem-null')
+    expect(ids).toContain('mem-b')
+    expect(ids).not.toContain('mem-a')
+  })
 })
