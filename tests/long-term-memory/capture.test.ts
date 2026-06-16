@@ -91,4 +91,23 @@ describe('runMemoryCapture', () => {
     )
     expect(listProvisionalRecords({ scopeId: 'user-1', scopeType: 'group' })).toHaveLength(0)
   })
+
+  test('no-op for group context without thread segment', async () => {
+    await runMemoryCapture(
+      {
+        storageContextId: 'group-1',
+        configContextId: 'group-1',
+        contextType: 'group',
+        history: [{ role: 'user', content: 'hi' }],
+      },
+      {
+        flagEnabled: () => true,
+        extractMemoryPatch: () => Promise.resolve(patch),
+        getEmbedding: () => Promise.resolve(null),
+        now: () => 'x',
+        randomUUID: () => 'y',
+      },
+    )
+    expect(listProvisionalRecords({ scopeId: 'group-1', scopeType: 'group' })).toHaveLength(0)
+  })
 })

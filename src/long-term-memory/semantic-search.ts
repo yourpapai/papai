@@ -8,7 +8,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { memoryRecords } from '../db/schema.js'
 import { deserializeEmbedding } from './serialization.js'
-import { listMemoryRecords } from './store.js'
+import { rowToRecord } from './store.js'
 import type { MemoryRecord, MemoryScope, MemoryStatus } from './types.js'
 
 export type SimilarityOptions = Readonly<{
@@ -62,15 +62,10 @@ export function rankRecordsBySimilarity(
   const scored = rows
     .map((row) => ({ row, vec: deserializeEmbedding(row.embedding) }))
     .filter((entry): entry is { row: (typeof rows)[number]; vec: Float32Array } => entry.vec !== null)
-    .map((entry) => ({ id: entry.row.id, score: cosineSimilarity(queryEmbedding, entry.vec) }))
+    .map((entry) => ({ row: entry.row, score: cosineSimilarity(queryEmbedding, entry.vec) }))
     .filter((entry) => entry.score >= threshold)
     .sort((left, right) => right.score - left.score)
     .slice(0, limit)
 
-  if (scored.length === 0) return []
-
-  const byId = new Map(
-    listMemoryRecords({ scopeId: scope.scopeId, scopeType: scope.scopeType, limit: 1000 }).map((r) => [r.id, r]),
-  )
-  return scored.map((entry) => byId.get(entry.id)).filter((r): r is MemoryRecord => r !== undefined)
+  return scored.map((s) => rowToRecord(s.row))
 }

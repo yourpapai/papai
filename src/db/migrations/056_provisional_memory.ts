@@ -91,13 +91,8 @@ const recreateFtsTriggers = (db: Database): void => {
 const widenMemoryRecordsStatus = (db: Database): void => {
   // SQLite does not support ALTER TABLE to modify CHECK constraints.
   // Use the table-recreation pattern to widen the status enum and add thread_context_id.
-  db.run(`PRAGMA foreign_keys=OFF`)
-  try {
-    db.run(`ALTER TABLE memory_records RENAME TO memory_records_old`)
-    createNewMemoryRecords(db)
-  } finally {
-    db.run(`PRAGMA foreign_keys=ON`)
-  }
+  db.run(`ALTER TABLE memory_records RENAME TO memory_records_old`)
+  createNewMemoryRecords(db)
   recreateIndexes(db)
   recreateFtsTriggers(db)
   // Re-sync the external-content FTS index: table recreation reassigned rowids,

@@ -45,7 +45,7 @@ const rowToProfile = (row: MemoryProfileRow): MemoryProfile => ({
   updatedAt: row.updatedAt,
 })
 
-const rowToRecord = (row: MemoryRecordRow): MemoryRecord => ({
+export const rowToRecord = (row: MemoryRecordRow): MemoryRecord => ({
   id: row.id,
   scopeId: row.scopeId,
   scopeType: row.scopeType,
