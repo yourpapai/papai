@@ -175,7 +175,7 @@ describe('buildTools', () => {
     expect(parentAlertPrompts[0]!.deliveryTarget.storageContextId).toBe(threadContextId)
   })
 
-  it('keeps workspace and staged-file tools scoped to the current thread context', async () => {
+  it('makes workspace and staged-file tools group-discoverable in a group context', async () => {
     const threadContextId = toScopedThreadContextId({
       platformInstanceId: 'telegram-default',
       nativeContextId: 'group-1',
@@ -240,8 +240,21 @@ describe('buildTools', () => {
       (attachment) => attachment.filename === 'thread-staged.txt',
     )
 
-    expect(files).toEqual([expect.objectContaining({ filename: 'thread-note.txt' })])
-    expect(staged).toEqual([expect.objectContaining({ filename: 'thread-staged.txt' })])
+    // Group context: file tools discover attachments across the whole group (current thread + siblings/parent).
+    expect(files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ filename: 'thread-note.txt' }),
+        expect.objectContaining({ filename: 'parent-note.txt' }),
+      ]),
+    )
+    expect(files).toHaveLength(2)
+    expect(staged).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ filename: 'thread-staged.txt' }),
+        expect.objectContaining({ filename: 'parent-staged.txt' }),
+      ]),
+    )
+    expect(staged).toHaveLength(2)
     expect(resolved).toEqual({
       status: 'resolved',
       attachmentId: resolvedThreadAttachment!.attachmentId,
