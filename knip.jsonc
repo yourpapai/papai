@@ -94,6 +94,8 @@
     "src/long-term-memory/semantic-search.ts": ["files"],
     // recall-ranking is consumed by the recall cascade (Plan 2 T4).
     "src/long-term-memory/recall-ranking.ts": ["files"],
+    // promotion is consumed by the recall cascade (T4) + promotion sweep (T7).
+    "src/long-term-memory/promotion.ts": ["files"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
