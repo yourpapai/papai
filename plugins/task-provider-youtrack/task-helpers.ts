@@ -3,10 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ListTasksParams, Task } from 'papai/plugin-types'
+import type { Task } from 'papai/plugin-types'
 import { providerError } from 'papai/plugin-types'
 import type { z } from 'zod'
 
+import { logger } from '../../src/logger.js'
 import { makeBundleElementFetcher } from './bundle-values.js'
 import { YouTrackClassifiedError } from './classify-error.js'
 import type { YouTrackConfig } from './client.js'
@@ -17,7 +18,10 @@ import { DueDateCustomFieldSchema, mapYouTrackDueDateValue, parseDueDateValue } 
 import { classifyFieldType, formatAllowed, resolveCustomFieldValue } from './field-engine.js'
 import type { IssueCustomFieldPayload } from './field-engine.js'
 import { paginate } from './helpers.js'
+import { fetchProjectCustomFieldsViaIssue } from './issue-derived-fields.js'
 import { ProjectCustomFieldListSchema, ProjectCustomFieldSchema } from './schemas/bundle.js'
+
+const log = logger.child({ scope: 'provider:youtrack:custom-fields' })
 
 type ProjectCustomField = z.infer<typeof ProjectCustomFieldSchema>
 
@@ -45,11 +49,26 @@ const isTextProjectField = (field: ProjectCustomField): boolean => field.$type =
 export const fetchProjectCustomFields = async (
   config: Readonly<YouTrackConfig>,
   projectId: string,
+  opts?: Readonly<{ deriveFromIssueWhenEmpty?: boolean; shortName?: string }>,
 ): Promise<ProjectCustomField[]> => {
   const raw = await youtrackFetch(config, 'GET', `/api/admin/projects/${projectId}/customFields`, {
     query: { fields: PROJECT_CUSTOM_FIELD_FIELDS },
   })
-  return ProjectCustomFieldListSchema.parse(raw)
+  const fields = ProjectCustomFieldListSchema.parse(raw)
+  if (fields.length > 0 || opts?.deriveFromIssueWhenEmpty !== true) {
+    log.debug(
+      { projectId, count: fields.length, fieldNames: fields.map((f) => f.field?.name ?? '(unnamed)'), source: 'admin' },
+      'Fetched project custom fields',
+    )
+    return fields
+  }
+  // The admin endpoint answers 200 with [] when the token cannot read project field-settings.
+  // Derive the schema from a sample issue, which exposes the same settings to any issue reader.
+  log.warn(
+    { projectId },
+    'Admin customFields endpoint returned empty; deriving schema from a sample issue (token likely lacks field-settings read permission)',
+  )
+  return fetchProjectCustomFieldsViaIssue(config, projectId, opts.shortName)
 }
 const buildProjectFieldsByName = (
   projectCustomFields: readonly ProjectCustomField[],
@@ -172,7 +191,13 @@ export const validateRequiredCreateFields = async (
     customFields?: Array<{ name: string; value: string }>
   }>,
 ): Promise<ProjectCustomField[]> => {
-  const projectCustomFields = await fetchProjectCustomFields(config, projectId)
+  // Named generic custom fields can only be resolved against the project schema. When the token
+  // cannot read field-settings (admin endpoint empty), derive the schema from a sample issue so
+  // those fields are recognized instead of rejected as "unknown".
+  const projectCustomFields = await fetchProjectCustomFields(config, projectId, {
+    deriveFromIssueWhenEmpty: (params.customFields?.length ?? 0) > 0,
+    shortName: projectShortName,
+  })
   const handledFields = buildHandledFieldSet(buildProjectFieldsByName(projectCustomFields), params.customFields)
   markDedicatedParamFields(handledFields, params)
   const requiredFields = projectCustomFields.filter(
@@ -254,25 +279,7 @@ export const buildWriteSafeCustomFields = async (
   const projectFieldsByName = buildProjectFieldsByName(await fetchProjectCustomFields(config, projectId))
   return customFields.map((input) => buildWriteSafeCustomFieldPayload(projectFieldsByName, input))
 }
-export const buildYouTrackQuery = (params: Readonly<ListTasksParams> | undefined, projectShortName: string): string => {
-  const queryParts: string[] = [`project: {${projectShortName}}`]
-  if (params?.status !== undefined) queryParts.push(`State: {${params.status}}`)
-  if (params?.priority !== undefined) queryParts.push(`Priority: {${params.priority}}`)
-  if (params?.assigneeId !== undefined) queryParts.push(`Assignee: {${params.assigneeId}}`)
-  if (params?.dueAfter !== undefined && params.dueBefore !== undefined) {
-    queryParts.push(`Due date: >${params.dueAfter}`)
-    queryParts.push(`Due date: <${params.dueBefore}`)
-  } else if (params?.dueAfter !== undefined) {
-    queryParts.push(`Due date: >${params.dueAfter}`)
-  } else if (params?.dueBefore !== undefined) {
-    queryParts.push(`Due date: <${params.dueBefore}`)
-  }
-  if (params?.sortBy !== undefined) {
-    const sortField = params.sortBy === 'createdAt' ? 'created' : params.sortBy
-    queryParts.push(`sort by: ${sortField} ${params.sortOrder ?? 'asc'}`)
-  }
-  return queryParts.join(' ')
-}
+export { buildYouTrackQuery } from './query-builder.js'
 export const enrichTaskWithDueDate = async (config: Readonly<YouTrackConfig>, task: Readonly<Task>): Promise<Task> => {
   try {
     const customFields = await paginate(

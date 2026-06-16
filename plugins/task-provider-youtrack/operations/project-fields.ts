@@ -43,7 +43,7 @@ export const describeYouTrackProjectFields = async (
 ): Promise<ProjectFieldDescriptor[]> => {
   log.debug({ projectId }, 'describeProjectFields')
   try {
-    const fields = await fetchProjectCustomFields(config, projectId)
+    const fields = await fetchProjectCustomFields(config, projectId, { deriveFromIssueWhenEmpty: true })
     const getBundleElements = makeBundleElementFetcher(config)
     const descriptors = await Promise.all(fields.map((field) => describeField(field, getBundleElements)))
     log.info({ projectId, count: descriptors.length }, 'Project fields described')

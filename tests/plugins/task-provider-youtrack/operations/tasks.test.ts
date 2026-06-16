@@ -1121,7 +1121,9 @@ describe('createYouTrackTask', () => {
       expect(error.appError.reason).toContain('Unknown field')
     }
 
-    expect(fetchMock.mock.calls).toHaveLength(2)
+    // project lookup + admin customFields ([]) + issue-derived schema probe (also empty here),
+    // after which the named field is confirmed unknown.
+    expect(fetchMock.mock.calls).toHaveLength(3)
   })
 
   test('rejects a required enum custom field that has no resolvable bundle', async () => {

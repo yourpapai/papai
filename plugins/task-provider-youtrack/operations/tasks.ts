@@ -39,6 +39,27 @@ type CreateTaskParams = {
 const fallbackDueDate = (dueDate: string | undefined): string | undefined =>
   dueDate === undefined ? undefined : dueDate.slice(0, 10)
 
+const buildCreateIssueBody = async (
+  config: Readonly<YouTrackConfig>,
+  project: Readonly<{ id: string }>,
+  params: Readonly<CreateTaskParams>,
+  projectCustomFields: Awaited<ReturnType<typeof validateRequiredCreateFields>>,
+): Promise<Record<string, unknown>> => {
+  const body: Record<string, unknown> = { project: { id: project.id }, summary: params.title }
+  if (params.description !== undefined) body['description'] = params.description
+  const customFields = await buildCreateCustomFields(config, params, projectCustomFields)
+  if (customFields.length > 0) body['customFields'] = customFields
+  log.debug(
+    {
+      projectId: project.id,
+      projectFieldCount: projectCustomFields.length,
+      sentCustomFields: customFields.map((f) => ({ name: f.name, $type: f.$type })),
+    },
+    'Submitting createTask POST /api/issues',
+  )
+  return body
+}
+
 const fetchIssueProjectId = async (config: Readonly<YouTrackConfig>, taskId: string): Promise<string> => {
   const issueRaw = await youtrackFetch(config, 'GET', `/api/issues/${taskId}`, {
     query: { fields: 'project(id)' },
@@ -81,15 +102,7 @@ export async function createYouTrackTask(config: YouTrackConfig, params: CreateT
     })
     const project = z.object({ id: z.string(), shortName: z.string() }).parse(projectRaw)
     const projectCustomFields = await validateRequiredCreateFields(config, project.id, project.shortName, params)
-
-    const body: Record<string, unknown> = {
-      project: { id: project.id },
-      summary: params.title,
-    }
-    if (params.description !== undefined) body['description'] = params.description
-
-    const customFields = await buildCreateCustomFields(config, params, projectCustomFields)
-    if (customFields.length > 0) body['customFields'] = customFields
+    const body = await buildCreateIssueBody(config, project, params, projectCustomFields)
 
     const raw = await youtrackFetch(config, 'POST', '/api/issues', {
       body,
