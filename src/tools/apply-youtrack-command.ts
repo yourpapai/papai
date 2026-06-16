@@ -74,8 +74,7 @@ async function executeApplyYouTrackCommand(
   provider: Readonly<TaskProvider>,
   { query, taskIds, comment, silent, confidence }: z.infer<typeof applyYouTrackCommandInputSchema>,
 ): Promise<unknown> {
-  const applyCommand = provider.applyCommand
-  if (applyCommand === undefined) {
+  if (provider.applyCommand === undefined) {
     throw new Error('YouTrack command support is unavailable')
   }
 
@@ -95,7 +94,8 @@ async function executeApplyYouTrackCommand(
   }
 
   try {
-    const result: TaskCommandResult = await applyCommand({ query, taskIds, comment, silent })
+    // Call through the provider so class-method implementations keep their `this` binding.
+    const result: TaskCommandResult = await provider.applyCommand({ query, taskIds, comment, silent })
     log.info({ query, taskCount: taskIds.length }, 'YouTrack command applied via tool')
     return result
   } catch (error) {

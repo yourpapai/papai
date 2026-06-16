@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # YouTrack dedicated-field localization & teaching errors — design
 
 **Date:** 2026-06-16
-**Status:** Approved (pending implementation plan)
+**Status:** Implemented (2026-06-16) — see [As-built notes](#as-built-notes)
 **Area:** `plugins/task-provider-youtrack/`
 **Follows:** `2026-06-15-youtrack-custom-fields-design.md` and the issue-derived schema fallback
 (`fix(youtrack): derive field schema from a sample issue when admin endpoint is empty`).
@@ -186,3 +186,26 @@ restriction so enum/state/user fields become settable on update.
   not repopulate `dueDate` (best-effort, already swallowed) — documented limitation.
 - **Homoglyph names** only matter on the name-tiebreak path; the common unique-type case never
   compares names.
+
+## As-built notes
+
+Implemented as designed (commits `e0036ba5c` dedicated-by-type resolution, `e73279f70`
+name-level teaching errors, `6d631c11a` shared `normalize` export, `a68da9a1c` create/update
+unification, `6b2394b31` lint, `522186624` final-review cleanup; merged in PR #158).
+
+- `dedicated-fields.ts` (`resolveDedicatedField`) and `field-name-error.ts`
+  (`unknownFieldError`) shipped as specified.
+- `create-field-helpers.ts` carries `collectFieldPairs` / `resolveFieldPair` (dedicated→by-type,
+  generic→by-name); `legacyDedicatedPayload` was deleted as planned.
+- `task-helpers.ts` exposes the shared `buildIssueCustomFields(config, params,
+projectCustomFields, op)`, called by both `createYouTrackTask` and `updateYouTrackTask`
+  (`operations/tasks.ts`, via `buildUpdateCustomFields`). Update routes generic and dedicated
+  fields through the field engine — the prior string/text-only restriction is gone, so
+  localized enum/state/user fields are settable on update.
+- The empty-admin-schema fallback derives fields from a sample issue
+  (`fetchProjectCustomFields(…, { deriveFromIssueWhenEmpty })`).
+
+**Deployment note:** This fix removes the `Unsupported custom field for update: …` rejection.
+Production logs emitting that string after the merge indicate a **stale build** — the running
+binary predates `a68da9a1c` and must be rebuilt/redeployed from current `master`. The string
+exists nowhere in the post-merge codebase.
