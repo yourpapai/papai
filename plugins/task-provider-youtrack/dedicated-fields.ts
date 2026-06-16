@@ -23,16 +23,10 @@ const CANONICAL_NAMES: Record<DedicatedKind, readonly string[]> = {
 
 const matchesType = (field: Readonly<ProjectCustomField>, kind: DedicatedKind): boolean => {
   const c = classifyFieldType(field)
-  switch (kind) {
-    case 'state':
-      return c.label === 'state'
-    case 'priority':
-      return c.label === 'enum'
-    case 'user':
-      return c.kind === 'user'
-    case 'date':
-      return c.kind === 'date'
-  }
+  if (kind === 'state') return c.label === 'state'
+  if (kind === 'priority') return c.label === 'enum'
+  if (kind === 'user') return c.kind === 'user'
+  return c.kind === 'date'
 }
 
 const matchesCanonicalName = (field: Readonly<ProjectCustomField>, names: readonly string[]): boolean => {
