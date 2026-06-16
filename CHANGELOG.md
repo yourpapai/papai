@@ -5,6 +5,110 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.3] - 2026-06-16
+
+### Added
+
+- **debug:** Add allowlist log redactor for /debug egress (C)
+- **debug:** SSE heartbeat + retry hint to survive idle proxies (#6)
+- **debug:** Stamp server startedAt on turn:start (#11 server)
+- **youtrack:** Fetch project field defaultValues + bundle-element schema
+- **youtrack:** Cached bundle-element fetcher
+- **youtrack:** Schema-driven custom-field engine with safe-exact value resolution
+- **youtrack:** Required-field detection honors defaultValues + teaching errors
+- **youtrack:** Route create_task fields through the resolution engine
+- **youtrack:** DescribeProjectFields operation + provider delegate
+- **tools:** Describe_project tool for YouTrack field discovery
+- **tools:** Steer create_task toward describe_project for YouTrack field values
+- **youtrack:** Teaching error listing available field names
+- **youtrack:** Resolve dedicated params to real fields by type
+- **youtrack:** Unify create/update on schema-driven field engine
+- **memory:** Provisional record tier + extraction-state schema (056)
+- **memory:** Persist thread_context_id + listProvisionalRecords
+- **memory:** Cross_thread_memory feature flag
+- **memory:** Cosine semantic ranking over record embeddings
+- **memory:** Save records with populated embeddings
+- **memory:** Extraction-state watermark store
+- **memory:** Provisional capture executor
+- **memory:** Idle-debounce capture armed from the turn path
+- **memory:** Scheduler backstop sweep for dirty contexts
+- **memory:** Promotion store mutations (promote/reject)
+- **memory:** In-memory record ranking for recall layers
+- **memory:** Hybrid promotion engine (threshold + LLM confirm)
+- **memory:** 3-layer recall cascade with provenance
+- **memory:** Recall tool wired into the cascade (normal mode, flag-gated)
+- **memory:** Recall priority preamble in the system prompt
+- **memory:** Promotion sweep + stop-rediscovering acceptance + flag-off parity
+- **attachments:** Group_context_id columns (057)
+- **attachments:** GroupContextId in drizzle schema
+- **attachments:** Populate group_context_id at ingest
+- **attachments:** Group-discoverable reads for group contexts
+- **scope:** Declarative ENTITY_SCOPES registry + consistency test
+- **settings:** Expose cross_thread_memory in the super-admin Feature flags UI
+
+### Changed
+
+- **youtrack:** Export normalize from field-engine for reuse
+- **youtrack:** Address final-review findings
+
+### Documentation
+
+- **debug:** Design spec for /debug observability + privacy fixes
+- **debug:** Implementation plan for /debug observability + privacy fixes
+- **debug:** Clarify DEBUG_SERVER gate covers only live-observability paths (#10)
+- **youtrack:** Design for custom-field reliability (discovery + field engine)
+- **youtrack:** Implementation plan for custom-field reliability
+- **youtrack:** Spec for dedicated-field localization & teaching errors
+- **youtrack:** Implementation plan for dedicated-field localization & teaching errors
+- **acp:** Add ACP agent sessions design spec
+- **spec:** Cross-thread memory bridge & context-scope corrections design
+- **plan:** Memory foundation implementation plan (1 of 3)
+- **plan:** Recall cascade & promotion implementation plan (2 of 3)
+- **plan:** Scope corrections & declarative registry plan (3 of 3)
+- **plan:** Correct migration 056 note — CHECK constraint requires table recreation
+- Document cross-thread memory bridge + scope corrections in CLAUDE.md
+
+### Fixed
+
+- **debug:** Emit llm:tool_result user-scoped to stop cross-context leak (A)
+- **debug:** Key LLM traces on scope.userId so tool calls + userId populate (#2, B)
+- **debug:** Redact log buffer at /logs and log:entry egress (C)
+- **debug:** Unsubscribe onEvent when last SSE client dies on enqueue (#3)
+- **test:** Update /logs text-search assertion after Task 4 redaction
+- **debug:** Resolve in-flight turns in findTurnById (#5)
+- **debug:** Newest-first init ordering + server turn startedAt (#4, #11 client)
+- **debug:** Land dashboard sign-in on /debug, not /admin (#9)
+- **youtrack:** Satisfy switch-exhaustiveness lint in field-engine
+- **tools:** Address review findings on describe_project tool
+- **youtrack:** Reject non-numeric values for integer/float custom fields
+- **youtrack:** Derive field schema from a sample issue when admin endpoint is empty
+- **youtrack:** Satisfy consistent-return in matchesType
+- **youtrack:** Preserve provider binding in apply_youtrack_command
+- **memory:** Rebuild FTS index after memory_records recreation (056)
+- **memory:** Address Plan 1 review — semantic-search hydration, dead PRAGMAs, group no-op test
+- **memory:** Term-based keyword recall for active records (layer 2)
+- **memory:** Keep NULL-thread rows in sibling recall + recall tool registration parity tests
+- **web:** Rate-limit web_fetch per user, not per group
+- **attachments:** Make group-discovered files actionable (resolve/upload/delete) + correct web_rate_limit scope flag
+
+### Miscellaneous
+
+- **knip:** Register subscribeCountForTest test-only seam (Task 5)
+- **memory:** Tag listProvisionalRecords @public (consumed by Plan 2)
+- **memory:** Tag resolveCrossThreadMemoryFlag @public (consumed by T7/T8)
+- **memory:** Tag listDirtyContexts @public (consumed by T9 sweep)
+- **memory:** Drop stale knip file-ignores now that capture chain is wired
+- **memory:** Drop stale knip file-ignores now that recall/promotion chain is wired
+
+### Testing
+
+- **debug:** Cover heartbeat dead-client drop path (#6)
+- **debug:** Reset pendingTraces between trace-collector tests
+- **debug:** Make SSE-lifecycle tests isolation-clean for serial CI
+- **youtrack:** Isolate bundle-values cache test with unique config
+- **youtrack:** Rename create tests to reflect bundle-less enum rejection
+- **youtrack:** Update create/update mocks for schema-driven dedicated fields
+- **attachments:** Update buildTools expectation for group-discoverable file tools
 ## [6.3.2] - 2026-06-13
 
 ### Fixed
