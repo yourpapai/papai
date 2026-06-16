@@ -13,7 +13,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:staged-files' })
 
-export function makeSearchStagedFilesTool(contextId: string): ToolSet[string] {
+export function makeSearchStagedFilesTool(contextId: string, groupContextId?: string): ToolSet[string] {
   return tool({
     description:
       'Search staged files in the current conversation that have not yet been resolved. Staged files are files sent by any group member that are available to be brought into the workspace. Search by sender username or filename.',
@@ -23,7 +23,7 @@ export function makeSearchStagedFilesTool(contextId: string): ToolSet[string] {
     }),
     execute: ({ query, limit }) => {
       log.debug({ contextId, query, limit }, 'search_staged_files called')
-      const results = searchStagedFiles(contextId, query, limit)
+      const results = searchStagedFiles(contextId, query, { groupContextId, limit })
       return results.map((ref) => ({
         stagedId: ref.stagedId,
         filename: ref.filename,

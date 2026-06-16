@@ -98,9 +98,10 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
     tools['expand_result'] = makeExpandResultTool(contextId)
   }
   if (contextId !== undefined && isS3Configured()) {
-    tools['list_files'] = makeListFilesTool(contextId)
+    const groupReadContextId = contextType === 'group' ? getConfigContextIdFromStorageContextId(contextId) : undefined
+    tools['list_files'] = makeListFilesTool(contextId, groupReadContextId)
     tools['delete_file'] = makeDeleteFileTool(contextId)
-    tools['search_staged_files'] = makeSearchStagedFilesTool(contextId)
+    tools['search_staged_files'] = makeSearchStagedFilesTool(contextId, groupReadContextId)
     if (stagedDownloadFn !== undefined) {
       tools['resolve_staged_file'] = makeResolveStagedFileTool(contextId, stagedDownloadFn)
     }

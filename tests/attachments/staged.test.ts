@@ -192,7 +192,7 @@ describe('staged file cache', () => {
         })
       }
 
-      const results = searchStagedFiles('ctx-1', 'alice', 2)
+      const results = searchStagedFiles('ctx-1', 'alice', { limit: 2 })
       expect(results).toHaveLength(2)
     })
 

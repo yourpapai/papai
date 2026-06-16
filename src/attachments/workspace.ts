@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { attachments } from '../db/schema.js'
@@ -21,11 +21,18 @@ const STATUS_BY_VALUE: Readonly<Record<string, AttachmentStatus>> = {
 }
 const toStatus = (value: string): AttachmentStatus => STATUS_BY_VALUE[value] ?? 'unavailable'
 
-export function listActiveAttachments(contextId: string): AttachmentRef[] {
+export function listActiveAttachments(
+  contextId: string,
+  options?: Readonly<{ groupContextId?: string }>,
+): AttachmentRef[] {
+  const scopeCondition =
+    options?.groupContextId === undefined
+      ? eq(attachments.contextId, contextId)
+      : or(eq(attachments.contextId, contextId), eq(attachments.groupContextId, options.groupContextId))
   return getDrizzleDb()
     .select()
     .from(attachments)
-    .where(and(eq(attachments.contextId, contextId), eq(attachments.isActive, 1)))
+    .where(and(scopeCondition, eq(attachments.isActive, 1)))
     .all()
     .filter((row) => row.clearedAt === null)
     .map((row) => {

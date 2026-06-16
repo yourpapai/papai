@@ -17,14 +17,14 @@ import { checkConfidence, confidenceField } from './confirmation-gate.js'
 
 const log = logger.child({ scope: 'tool:workspace-files' })
 
-export function makeListFilesTool(contextId: string): ToolSet[string] {
+export function makeListFilesTool(contextId: string, groupContextId?: string): ToolSet[string] {
   return tool({
     description:
       'List all files currently available in the conversation workspace. These are files the user has sent during this conversation and which can be referenced or uploaded to tasks.',
     inputSchema: z.object({}),
     execute: () => {
       log.debug({ contextId }, 'list_files called')
-      const active = listActiveAttachments(contextId)
+      const active = listActiveAttachments(contextId, groupContextId === undefined ? undefined : { groupContextId })
       return active.map((ref) => ({
         fileId: ref.attachmentId,
         filename: ref.filename,

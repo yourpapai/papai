@@ -124,19 +124,23 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
 export function searchStagedFiles(
   contextId: string,
   query: string,
-  ...limitArg: [] | [number | undefined]
+  options?: Readonly<{ groupContextId?: string; limit?: number }>,
 ): StagedFileRef[] {
   const db = getDrizzleDb()
   const escaped = query.replaceAll('\\', '\\\\').replaceAll(/[%_]/gu, '\\$&')
   const pattern = `%${escaped}%`
-  const queryLimit = limitArg.length === 0 || limitArg[0] === undefined ? 10 : limitArg[0]
+  const queryLimit = options?.limit ?? 10
+  const scopeCondition =
+    options?.groupContextId === undefined
+      ? eq(stagedFiles.contextId, contextId)
+      : or(eq(stagedFiles.contextId, contextId), eq(stagedFiles.groupContextId, options.groupContextId))
 
   return db
     .select()
     .from(stagedFiles)
     .where(
       and(
-        eq(stagedFiles.contextId, contextId),
+        scopeCondition,
         eq(stagedFiles.status, 'staged'),
         or(
           sql`${stagedFiles.senderUsername} LIKE ${pattern} ESCAPE '\\'`,
