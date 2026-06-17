@@ -34,6 +34,12 @@ const DomainsResponseSchema = z.object({
   domains: z.array(ToolDomainThreeStateSchema),
 })
 
+const PresetSchema = z.enum(['allow-all', 'non-destructive', 'read-only'])
+
+const DomainsResponseWithPresetSchema = DomainsResponseSchema.extend({
+  activePreset: PresetSchema.nullable(),
+})
+
 const PLATFORM_INSTANCE_ID = 'pi-1'
 const USER_ID = 'u-1'
 
@@ -193,5 +199,84 @@ describe('settings tools routes', () => {
       '/settings/api/tools/toggle',
     )
     expect(res.status).toBe(401)
+  })
+
+  test('GET includes activePreset (allow-all for an untouched context)', async () => {
+    const url = new URL('https://x/settings/api/tools')
+    const res = await handleToolsRoutes(new Request(url, { headers: authHeaders(session) }), url, '/settings/api/tools')
+    expect(res.status).toBe(200)
+    const body = DomainsResponseWithPresetSchema.parse(await res.json())
+    expect(body.activePreset).toBe('allow-all')
+  })
+
+  test('preset apply persists riskDefaults and returns the active preset', async () => {
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'preset', preset: 'read-only' }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
+    expect(res.status).toBe(200)
+    const body = DomainsResponseWithPresetSchema.parse(await res.json())
+    expect(body.activePreset).toBe('read-only')
+    const prefs = getToolPrefs(personalContextId)
+    expect(prefs.riskDefaults).toEqual({ write: 'ask', destructive: 'ask', 'open-world': 'ask' })
+    expect(prefs.domainDefaults).toEqual({})
+    expect(prefs.toolOverrides).toEqual({})
+  })
+
+  test('preset apply resets prior customization', async () => {
+    setToolPrefs(personalContextId, {
+      riskDefaults: {},
+      domainDefaults: { task: 'deny' },
+      toolOverrides: { delete_task: 'deny' },
+    })
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'preset', preset: 'allow-all' }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
+    expect(res.status).toBe(200)
+    const prefs = getToolPrefs(personalContextId)
+    expect(prefs.domainDefaults).toEqual({})
+    expect(prefs.toolOverrides).toEqual({})
+    expect(prefs.riskDefaults).toEqual({})
+  })
+
+  test('preset apply with unknown preset is 422', async () => {
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'preset', preset: 'nonsense' }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
+    expect(res.status).toBe(422)
+  })
+
+  test('preset apply without CSRF is 403', async () => {
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'preset', preset: 'read-only' }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
+    expect(res.status).toBe(403)
   })
 })
