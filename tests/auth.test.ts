@@ -11,6 +11,7 @@ import {
 } from '../src/auth.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
 import type { AuthorizationResult } from '../src/chat/types.js'
+import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../src/group-settings/registry.js'
 import { addGroupMember } from '../src/groups.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../src/instances/admin-store.js'
 import { addUser as addScopedUser } from '../src/users.js'
@@ -272,6 +273,48 @@ describe('auth', () => {
 
         expect(auth.allowed).toBe(false)
         expect(auth.reason).toBe('dm_not_allowed')
+      })
+
+      test('group admin of an authorized group may launch /config in DM without general access', () => {
+        // Observed as a group admin of an authorized group => has a manageable group.
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
+        upsertKnownGroupContext({
+          contextId: SCOPED_GROUP1,
+          provider: 'telegram',
+          displayName: 'Group One',
+          parentName: null,
+        })
+        upsertGroupAdminObservation({
+          provider: 'telegram',
+          contextId: SCOPED_GROUP1,
+          userId: 'user1',
+          username: null,
+          isAdmin: true,
+        })
+
+        const auth = checkAuthorizationExtended('user1', null, 'user1', 'dm', undefined, false)
+
+        expect(auth.allowed).toBe(false)
+        expect(auth.reason).toBe('dm_not_allowed')
+        expect(auth.configCommandAllowed).toBe(true)
+      })
+
+      test('plain group member without admin rights gets no config-command allowance', () => {
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
+        addGroupMember(SCOPED_GROUP1, 'user1', 'admin1')
+
+        const auth = checkAuthorizationExtended('user1', null, 'user1', 'dm', undefined, false)
+
+        expect(auth.allowed).toBe(false)
+        expect(auth.configCommandAllowed).toBeUndefined()
+      })
+
+      test('unknown DM user gets no config-command allowance', () => {
+        const auth = checkAuthorizationExtended('stranger1', null, 'stranger1', 'dm', undefined, false)
+
+        expect(auth.allowed).toBe(false)
+        expect(auth.reason).toBe('dm_not_allowed')
+        expect(auth.configCommandAllowed).toBeUndefined()
       })
 
       test('authorized DM gets scoped storage context', () => {

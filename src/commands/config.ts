@@ -18,7 +18,9 @@ const NOT_CONFIGURED =
 
 export function registerConfigCommand(chat: ChatProvider): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
-    if (!auth.allowed) return
+    // A user who can manage a group is otherwise denied in DM but may still
+    // launch /config to reach the settings UI (auth.configCommandAllowed).
+    if (!auth.allowed && auth.configCommandAllowed !== true) return
 
     if (msg.contextType === 'group') {
       await reply.text(auth.isGroupAdmin ? GROUP_CONFIG_REDIRECT : GROUP_CONFIG_ADMIN_ONLY)

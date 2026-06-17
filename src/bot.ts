@@ -67,15 +67,21 @@ function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
     msg.platformInstanceId,
   )
 }
+// A denied DM user who can manage a group (auth.configCommandAllowed) is still
+// allowed to launch the settings UI via /config, but nothing else.
+function isConfigLaunchBypass(commandName: string, auth: AuthorizationResult): boolean {
+  return commandName === 'config' && auth.configCommandAllowed === true
+}
 function createObservedCommandHandler(
   chat: ChatProvider,
+  commandName: string,
   handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>,
 ): (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void> {
   return async (msg, reply, _auth): Promise<void> => {
     const start = Date.now()
     const tracked = trackReplyUsage(reply, supportsFileReplies(chat))
     const auth = resolveMessageAuth(msg)
-    if (!auth.allowed) {
+    if (!auth.allowed && !isConfigLaunchBypass(commandName, auth)) {
       await replyToUnauthorized(tracked.reply, auth, msg.contextId)
       emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
       return
@@ -91,7 +97,7 @@ function createObservedChatProvider(chat: ChatProvider): ChatProvider {
     get(target, prop: keyof ChatProvider) {
       if (prop === 'registerCommand') {
         return (name: string, handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>) => {
-          registerCommand(name, createObservedCommandHandler(chat, handler))
+          registerCommand(name, createObservedCommandHandler(chat, name, handler))
         }
       }
       return target[prop]

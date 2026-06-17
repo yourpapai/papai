@@ -194,7 +194,10 @@ export type AuthorizationResult = {
   isBotAdmin: boolean
   isGroupAdmin: boolean
   storageContextId: string
-} & Partial<{ configContextId: string; reason: AuthorizationDenyReason }>
+  // `configCommandAllowed`: set on an otherwise-denied DM result when the user can
+  // manage a group; lets the launcher-only `/config` command through without
+  // granting general DM access.
+} & Partial<{ configContextId: string; reason: AuthorizationDenyReason; configCommandAllowed: boolean }>
 
 /** Command handler signature. */
 export type CommandHandler = (msg: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void>

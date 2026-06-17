@@ -33,6 +33,7 @@ import { getDrizzleDb } from '../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
 import { listManageableGroups } from '../src/group-settings/access.js'
+import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../src/group-settings/registry.js'
 import { addGroupMember } from '../src/groups.js'
 import { addAdmin } from '../src/instances/admin-store.js'
 import { setContextSettings } from '../src/instances/context-store.js'
@@ -582,6 +583,63 @@ describe('Bot Authorization Gate (setupBot)', () => {
       const { reply, textCalls } = createMockReply()
       await messageHandler!({ ...createDmMessage('unknown-user'), text: 'hello' }, reply)
       expect(textCalls).toHaveLength(0)
+    })
+  })
+
+  describe('config-eligible group member — /config in DM', () => {
+    const originalBaseUrl = process.env['SETTINGS_PUBLIC_BASE_URL']
+    afterEach(() => {
+      if (originalBaseUrl === undefined) delete process.env['SETTINGS_PUBLIC_BASE_URL']
+      else process.env['SETTINGS_PUBLIC_BASE_URL'] = originalBaseUrl
+    })
+
+    test('issues a settings link instead of the unauthorized message', async () => {
+      process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+      // member-cfg is a group admin of an authorized group => has a manageable group.
+      addAuthorizedGroupForPlatform('group-cfg', ADMIN_ID)
+      const scopedCfgGroup = scopedGroup('group-cfg')
+      upsertKnownGroupContext({
+        contextId: scopedCfgGroup,
+        provider: 'telegram',
+        displayName: 'Cfg Group',
+        parentName: null,
+      })
+      upsertGroupAdminObservation({
+        provider: 'telegram',
+        contextId: scopedCfgGroup,
+        userId: 'member-cfg',
+        username: null,
+        isAdmin: true,
+      })
+
+      const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+      setupBot(provider, ADMIN_ID, withSynchronousQueue({ processMessage: (): Promise<void> => Promise.resolve() }))
+      const configHandler = commandHandlers.get('config')
+      assert.ok(configHandler !== undefined, 'expected config handler to be registered')
+
+      const { reply, textCalls } = createMockReply()
+      await configHandler(createDmMessage('member-cfg', 'config'), reply, createAuth('member-cfg', { allowed: false }))
+
+      const allText = textCalls.join('\n')
+      expect(allText).toContain('https://bot.example.com/settings?code=')
+      expect(allText).not.toContain('not authorized')
+    })
+
+    test('non-member unauthorized DM user still gets the unauthorized message', async () => {
+      process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+      const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+      setupBot(provider, ADMIN_ID, withSynchronousQueue({ processMessage: (): Promise<void> => Promise.resolve() }))
+      const configHandler = commandHandlers.get('config')
+      assert.ok(configHandler !== undefined, 'expected config handler to be registered')
+
+      const { reply, textCalls } = createMockReply()
+      await configHandler(
+        createDmMessage('stranger-cfg', 'config'),
+        reply,
+        createAuth('stranger-cfg', { allowed: false }),
+      )
+
+      expect(textCalls.join('\n')).toContain('not authorized')
     })
   })
 
