@@ -279,4 +279,37 @@ describe('settings tools routes', () => {
     )
     expect(res.status).toBe(403)
   })
+
+  test('a domain toggle after a preset preserves riskDefaults', async () => {
+    const toggleUrl = new URL('https://x/settings/api/tools/toggle')
+
+    // Step 1: apply the read-only preset
+    const presetRes = await handleToolsRoutes(
+      new Request(toggleUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'preset', preset: 'read-only' }),
+      }),
+      toggleUrl,
+      '/settings/api/tools/toggle',
+    )
+    expect(presetRes.status).toBe(200)
+
+    // Step 2: apply a domain default on top of the preset
+    const domainRes = await handleToolsRoutes(
+      new Request(toggleUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'domain', domain: 'time', permission: 'deny' }),
+      }),
+      toggleUrl,
+      '/settings/api/tools/toggle',
+    )
+    expect(domainRes.status).toBe(200)
+
+    // Both the preset's risk layer and the new domain default must coexist
+    const prefs = getToolPrefs(personalContextId)
+    expect(prefs.riskDefaults).toEqual({ write: 'ask', destructive: 'ask', 'open-world': 'ask' })
+    expect(prefs.domainDefaults).toEqual({ time: 'deny' })
+  })
 })
