@@ -292,6 +292,7 @@ export type ChatProvider = {
   resolveUserId: (username: string, context: ResolveUserContext) => Promise<string | null>
   resolveUserLabel: (userId: string, context: ResolveUserContext | undefined) => Promise<string | null>
   resolveGroupLabel: (groupId: string) => Promise<string | null>
+  isGroupAdmin: (platformInstanceId: string, groupId: string, userId: string) => Promise<boolean | null>
   renderContextForInstance: (platformInstanceId: string, snapshot: ContextSnapshot) => ContextRendered
   isInstanceActive: (platformInstanceId: string) => boolean
   /** Register the bot's command list with the platform (for command menus). */

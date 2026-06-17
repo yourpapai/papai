@@ -26,6 +26,7 @@ interface ChatProvider {
   resolveUserId?(username: string, context: ResolveUserContext): Promise<string | null>
   resolveUserLabel?(userId: string, context: ResolveUserContext | undefined): Promise<string | null>
   resolveGroupLabel?(groupId: string): Promise<string | null>
+  isGroupAdmin?(platformInstanceId: string, groupId: string, userId: string): Promise<boolean | null>
   renderContextForInstance?(platformInstanceId: string, snapshot: ContextSnapshot): ContextRendered
   isInstanceActive?(platformInstanceId: string): boolean
   setCommands?(adminUserId: string): Promise<void>
@@ -52,3 +53,4 @@ Adapters register in `src/chat/registry.ts` via `createChatProviderFromConfig(id
 - Context rendering is adapter-owned. `/context` builds a `ContextSnapshot`, then each adapter decides whether to return plain text, formatted markdown, or an embed through `renderContext()`.
 - Button callbacks are part of the chat layer. Route interactive callbacks through `src/chat/interaction-router.ts` before normal message handling. Note: all config-flow callback routes (`gsel:`, `cfg:`, `wizard_`, `plg:`, `tgl:`) were retired with the move to the settings web UI. The router now only authorizes the actor and otherwise matches nothing — it is retained as a safe sink for adapters that still emit interaction events.
 - Keep formatting and chunking helpers next to the adapter that needs them, such as Telegram markdown/entity conversion or Discord chunk splitting.
+- `isGroupAdmin?` is an optional live platform lookup (Telegram `getChatMember`, Discord member permissions, Mattermost channel roles) returning `true`/`false`, or `null` when the platform can't determine it (unsupported, e.g. Kontur Talk, or the call failed). It backs the cold-DM `/config` fallback (`src/chat/group-admin-live.ts`): a DM user with no local group-admin observation is still allowed to launch settings if the platform confirms they administer an authorized group. Verdicts are cached per (instance, user) for a short window.

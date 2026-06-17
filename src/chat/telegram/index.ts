@@ -20,6 +20,7 @@ import type {
   ReplyOptions,
   ResolveUserContext,
 } from '../types.js'
+import { isTelegramGroupAdmin } from './admin-helpers.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
 import { createTelegramFileFetcher } from './file-fetcher.js'
@@ -182,6 +183,9 @@ export class TelegramChatProvider implements ChatProvider {
   }
   resolveUserLabel(userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
     return resolveTelegramUserLabel((chatId, uid) => this.bot.api.getChatMember(chatId, uid), userId, context)
+  }
+  isGroupAdmin(_platformInstanceId: string, groupId: string, userId: string): Promise<boolean | null> {
+    return isTelegramGroupAdmin((chatId, uid) => this.bot.api.getChatMember(chatId, uid), groupId, userId)
   }
   async setCommands(adminUserId: string): Promise<void> {
     await registerTelegramCommands(this.bot, adminUserId)

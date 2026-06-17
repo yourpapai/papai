@@ -111,6 +111,7 @@ type FakeProviderOptions = Partial<{
   setCommands: (adminUserId: string, calls: string[]) => Promise<void>
   threadCapabilities: ThreadCapabilities
   downloadFile: (fileId: string) => Promise<Buffer | null>
+  isGroupAdmin: (platformInstanceId: string, groupId: string, userId: string) => Promise<boolean | null>
 }>
 
 const threadCapabilitiesForOptions = (options: FakeProviderOptions): ThreadCapabilities => {
@@ -172,6 +173,7 @@ const makeProvider = (name: string, options: FakeProviderOptions): FakeProvider 
     resolveUserId: (username): Promise<string | null> => Promise.resolve(`${name}:${username}`),
     resolveUserLabel: (userId): Promise<string | null> => Promise.resolve(`${name}:${userId}`),
     resolveGroupLabel: (groupId): Promise<string | null> => Promise.resolve(`${name}:${groupId}`),
+    ...(options.isGroupAdmin === undefined ? {} : { isGroupAdmin: options.isGroupAdmin }),
     downloadFile: (fileId: string): Promise<Buffer | null> => {
       downloadFileCalls.push(fileId)
       if (options.downloadFile === undefined) return Promise.resolve(null)
@@ -661,6 +663,28 @@ describe('ChatRouter', () => {
     expect(await router.downloadFileFromInstance('inactive', 'telegram', 'file-1')).toBeNull()
     expect(await router.downloadFileFromInstance('wrong-provider', 'telegram', 'file-1')).toBeNull()
     expect(await router.downloadFileFromInstance('active-no-downloader', 'discord', 'file-1')).toBeNull()
+  })
+
+  test('isGroupAdmin dispatches to the addressed instance and forwards the verdict', async () => {
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, {
+        isGroupAdmin: (_pi, groupId, _userId) => Promise.resolve(groupId === 'admin-group'),
+      })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-a', 'telegram', {})
+
+    expect(await router.isGroupAdmin('telegram-a', 'admin-group', 'u1')).toBe(true)
+    expect(await router.isGroupAdmin('telegram-a', 'other-group', 'u1')).toBe(false)
+  })
+
+  test('isGroupAdmin returns null for unknown instances or providers that lack support', async () => {
+    router.addInstance('no-support', 'telegram', {})
+
+    expect(await router.isGroupAdmin('missing', 'group-1', 'u1')).toBeNull()
+    expect(await router.isGroupAdmin('no-support', 'group-1', 'u1')).toBeNull()
   })
 
   test('uses context settings to resolve users and groups when platform instance context is absent', async () => {

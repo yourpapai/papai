@@ -225,6 +225,22 @@ describe('MattermostChatProvider', () => {
     expect(constructedProvider.name).toBe('mattermost')
   })
 
+  describe('isGroupAdmin', () => {
+    test('reports a channel admin via the channel-member API', async () => {
+      provider = createMattermostProvider()
+      Reflect.set(provider, 'apiFetch', () => Promise.resolve({ roles: 'channel_admin system_user' }))
+
+      expect(await provider.isGroupAdmin('mattermost-default', 'chan-1', 'admin-user')).toBe(true)
+    })
+
+    test('reports a non-admin channel member as not admin', async () => {
+      provider = createMattermostProvider()
+      Reflect.set(provider, 'apiFetch', () => Promise.resolve({ roles: 'system_user' }))
+
+      expect(await provider.isGroupAdmin('mattermost-default', 'chan-1', 'plain-user')).toBe(false)
+    })
+  })
+
   describe('resolveUserId', () => {
     test('resolves username to user ID', async () => {
       setMockFetch(makeFetchWithUsernameTestuser())

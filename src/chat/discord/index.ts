@@ -18,6 +18,7 @@ import type {
   ResolveUserContext,
   ThreadCapabilities,
 } from '../types.js'
+import { isDiscordGuildAdmin } from './admin-helpers.js'
 import {
   buildInteraction,
   routeButtonFallback as routeButtonFallbackExternal,
@@ -153,8 +154,11 @@ export class DiscordChatProvider implements ChatProvider {
   }
 
   resolveGroupLabel(groupId: string): Promise<string | null> {
-    if (this.client === null) return Promise.resolve(null)
-    return resolveDiscordGroupLabel(this.client, groupId)
+    return this.client === null ? Promise.resolve(null) : resolveDiscordGroupLabel(this.client, groupId)
+  }
+
+  isGroupAdmin(_platformInstanceId: string, groupId: string, userId: string): Promise<boolean | null> {
+    return this.client === null ? Promise.resolve(null) : isDiscordGuildAdmin(this.client, groupId, userId)
   }
 
   resolveUserLabel(userId: string, context: ResolveUserContext | undefined): Promise<string | null> {

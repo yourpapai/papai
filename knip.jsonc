@@ -81,6 +81,8 @@
     "src/tools/compaction/result-store.ts": ["exports"],
     // clearModelBuilderCacheForTesting is a test-only seam.
     "src/llm-model-builder.ts": ["exports"],
+    // clearGroupAdminLiveCache is a test-only seam.
+    "src/chat/group-admin-live.ts": ["exports"],
     // clearBriefEmbeddingCachesForTesting is a test-only seam.
     "src/tools/disclosure/embedding-tool-retriever.ts": ["exports"],
     // Mattermost action context signing is created ahead of the action adapter integration.

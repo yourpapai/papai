@@ -14,6 +14,7 @@ import {
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { supportsFileReplies } from './chat/capabilities.js'
+import { userManagesAuthorizedGroupLive } from './chat/group-admin-live.js'
 import { routeInteraction } from './chat/interaction-router.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
@@ -72,6 +73,19 @@ function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
 function isConfigLaunchBypass(commandName: string, auth: AuthorizationResult): boolean {
   return commandName === 'config' && auth.configCommandAllowed === true
 }
+// Cold-DM fallback: the local observation check found nothing, so ask the platform
+// whether this DM user administers any authorized group before denying /config.
+async function resolveCommandAuth(
+  chat: ChatProvider,
+  commandName: string,
+  msg: IncomingMessage,
+): Promise<AuthorizationResult> {
+  const auth = resolveMessageAuth(msg)
+  if (auth.allowed || isConfigLaunchBypass(commandName, auth)) return auth
+  if (commandName !== 'config' || msg.contextType !== 'dm') return auth
+  const canManage = await userManagesAuthorizedGroupLive(chat, msg.user.id, msg.platformInstanceId)
+  return canManage ? { ...auth, configCommandAllowed: true } : auth
+}
 function createObservedCommandHandler(
   chat: ChatProvider,
   commandName: string,
@@ -80,7 +94,7 @@ function createObservedCommandHandler(
   return async (msg, reply, _auth): Promise<void> => {
     const start = Date.now()
     const tracked = trackReplyUsage(reply, supportsFileReplies(chat))
-    const auth = resolveMessageAuth(msg)
+    const auth = await resolveCommandAuth(chat, commandName, msg)
     if (!auth.allowed && !isConfigLaunchBypass(commandName, auth)) {
       await replyToUnauthorized(tracked.reply, auth, msg.contextId)
       emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
