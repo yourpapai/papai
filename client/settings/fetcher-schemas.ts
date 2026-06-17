@@ -5,6 +5,8 @@
 
 import { z } from 'zod'
 
+import { StoredConfigValueSchema } from './fetcher-schemas-base.js'
+
 // --- Bootstrap / session ---
 
 export const AvailableContextSchema = z.object({
@@ -24,14 +26,6 @@ export type BootstrapData = z.infer<typeof BootstrapSchema>
 
 // --- Config ---
 
-const StoredConfigValueSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  required: z.boolean(),
-  sensitive: z.boolean(),
-  hasValue: z.boolean(),
-  value: z.string(),
-})
 export const ConfigFieldSchema = StoredConfigValueSchema.extend({
   storageKey: z.string(),
   kind: z.string(),

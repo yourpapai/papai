@@ -5,15 +5,7 @@
 
 import { z } from 'zod'
 
-// Inline base schema to avoid circular import with fetcher-schemas.ts
-const StoredConfigValueSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  required: z.boolean(),
-  sensitive: z.boolean(),
-  hasValue: z.boolean(),
-  value: z.string(),
-})
+import { StoredConfigValueSchema } from './fetcher-schemas-base.js'
 
 // --- Admin (lenient: store-shaped rows rendered generically) ---
 
