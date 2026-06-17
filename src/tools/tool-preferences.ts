@@ -5,7 +5,7 @@
 
 import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from '../cache.js'
 import { logger } from '../logger.js'
-import { getToolMetadata, TOOL_DOMAINS, type ToolDomain } from './tool-metadata.js'
+import { getToolMetadata, TOOL_DOMAINS, type ToolDomain, type ToolRisk } from './tool-metadata.js'
 
 const log = logger.child({ scope: 'tools:preferences' })
 
@@ -15,6 +15,8 @@ export const TOOL_PREFS_CONFIG_KEY = 'tool_prefs'
 export type Permission = 'allow' | 'ask' | 'deny'
 
 export interface ToolPrefs {
+  /** Per-risk default permission applied by presets. Resolved below domainDefaults. Missing entry = 'allow'. */
+  riskDefaults?: Partial<Record<ToolRisk, Permission>>
   /** Per-domain default permission. Missing entry = 'allow'. */
   domainDefaults: Partial<Record<ToolDomain, Permission>>
   /** Per-tool override that wins over the domain default. */
@@ -22,7 +24,7 @@ export interface ToolPrefs {
 }
 
 function emptyPrefs(): ToolPrefs {
-  return { domainDefaults: {}, toolOverrides: {} }
+  return { riskDefaults: {}, domainDefaults: {}, toolOverrides: {} }
 }
 
 const PERMISSIONS: ReadonlySet<Permission> = new Set(['allow', 'ask', 'deny'])
@@ -38,12 +40,18 @@ function isToolDomain(value: string): value is ToolDomain {
   return TOOL_DOMAIN_SET.has(value)
 }
 
+const TOOL_RISK_SET: ReadonlySet<string> = new Set<ToolRisk>(['read', 'write', 'destructive', 'open-world'])
+
+function isToolRisk(value: string): value is ToolRisk {
+  return TOOL_RISK_SET.has(value)
+}
+
 export function resolveToolPermission(prefs: ToolPrefs, toolName: string): Permission {
   const override = prefs.toolOverrides[toolName]
   if (override !== undefined) return override
   const meta = getToolMetadata(toolName)
   if (meta === undefined) return 'allow'
-  return prefs.domainDefaults[meta.domain] ?? 'allow'
+  return prefs.domainDefaults[meta.domain] ?? (prefs.riskDefaults ?? {})[meta.risk] ?? 'allow'
 }
 
 function isStringRecord(value: unknown): value is Record<string, unknown> {
@@ -85,12 +93,24 @@ function parseToolOverrides(parsed: Record<string, unknown>): Record<string, Per
   return out
 }
 
+function parseRiskDefaults(parsed: Record<string, unknown>): Partial<Record<ToolRisk, Permission>> {
+  const out: Partial<Record<ToolRisk, Permission>> = {}
+  const raw = parsed['riskDefaults']
+  if (isStringRecord(raw)) {
+    for (const [key, value] of Object.entries(raw)) {
+      if (isToolRisk(key) && isPermission(value)) out[key] = value
+    }
+  }
+  return out
+}
+
 export function parseToolPrefs(raw: string | null): ToolPrefs {
   if (raw === null || raw.trim() === '') return emptyPrefs()
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!isStringRecord(parsed)) return emptyPrefs()
     return {
+      riskDefaults: parseRiskDefaults(parsed),
       domainDefaults: parseDomainDefaults(parsed),
       toolOverrides: parseToolOverrides(parsed),
     }
@@ -101,7 +121,11 @@ export function parseToolPrefs(raw: string | null): ToolPrefs {
 }
 
 export function serializeToolPrefs(prefs: ToolPrefs): string {
-  return JSON.stringify({ domainDefaults: prefs.domainDefaults, toolOverrides: prefs.toolOverrides })
+  return JSON.stringify({
+    riskDefaults: prefs.riskDefaults ?? {},
+    domainDefaults: prefs.domainDefaults,
+    toolOverrides: prefs.toolOverrides,
+  })
 }
 
 export function getToolPrefs(contextId: string): ToolPrefs {
@@ -143,10 +167,13 @@ function pruneRedundantOverrides(prefs: ToolPrefs): ToolPrefs {
   const toolOverrides: Record<string, Permission> = {}
   for (const [name, value] of Object.entries(prefs.toolOverrides)) {
     const meta = getToolMetadata(name)
-    const def: Permission = meta === undefined ? 'allow' : domainDefault(prefs, meta.domain)
+    const def: Permission =
+      meta === undefined
+        ? 'allow'
+        : (prefs.domainDefaults[meta.domain] ?? (prefs.riskDefaults ?? {})[meta.risk] ?? 'allow')
     if (value !== def) toolOverrides[name] = value
   }
-  return { domainDefaults: { ...prefs.domainDefaults }, toolOverrides }
+  return { riskDefaults: prefs.riskDefaults ?? {}, domainDefaults: { ...prefs.domainDefaults }, toolOverrides }
 }
 
 function pruneRedundantDomainDefaults(prefs: ToolPrefs): ToolPrefs {
@@ -154,7 +181,7 @@ function pruneRedundantDomainDefaults(prefs: ToolPrefs): ToolPrefs {
   for (const [domain, value] of Object.entries(prefs.domainDefaults)) {
     if (value !== 'allow' && isToolDomain(domain)) domainDefaults[domain] = value
   }
-  return { domainDefaults, toolOverrides: prefs.toolOverrides }
+  return { riskDefaults: prefs.riskDefaults ?? {}, domainDefaults, toolOverrides: prefs.toolOverrides }
 }
 
 export type DomainSummary = 'allow' | 'ask' | 'deny' | 'partial'
@@ -185,12 +212,18 @@ export function cycleDomain(prefs: ToolPrefs, domain: ToolDomain, domainToolName
     if (meta !== undefined && meta.domain === domain) continue
     toolOverrides[name] = value
   }
-  return pruneRedundantDomainDefaults(pruneRedundantOverrides({ domainDefaults, toolOverrides }))
+  return pruneRedundantDomainDefaults(
+    pruneRedundantOverrides({ riskDefaults: prefs.riskDefaults ?? {}, domainDefaults, toolOverrides }),
+  )
 }
 
 export function cycleTool(prefs: ToolPrefs, toolName: string): ToolPrefs {
   const current = resolveToolPermission(prefs, toolName)
   const next = nextPermission(current)
   const toolOverrides = { ...prefs.toolOverrides, [toolName]: next }
-  return pruneRedundantOverrides({ domainDefaults: { ...prefs.domainDefaults }, toolOverrides })
+  return pruneRedundantOverrides({
+    riskDefaults: prefs.riskDefaults ?? {},
+    domainDefaults: { ...prefs.domainDefaults },
+    toolOverrides,
+  })
 }

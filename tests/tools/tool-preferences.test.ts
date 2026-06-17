@@ -17,7 +17,7 @@ import {
   type ToolPrefs,
 } from '../../src/tools/tool-preferences.js'
 
-const empty: ToolPrefs = { domainDefaults: {}, toolOverrides: {} }
+const empty: ToolPrefs = { riskDefaults: {}, domainDefaults: {}, toolOverrides: {} }
 
 describe('parseToolPrefs', () => {
   it('returns empty prefs for null', () => {
@@ -33,7 +33,11 @@ describe('parseToolPrefs', () => {
   })
 
   it('round-trips a valid blob', () => {
-    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: { delete_task: 'deny' } }
+    const prefs: ToolPrefs = {
+      riskDefaults: {},
+      domainDefaults: { web: 'deny' },
+      toolOverrides: { delete_task: 'deny' },
+    }
     expect(parseToolPrefs(serializeToolPrefs(prefs))).toEqual(prefs)
   })
 })
@@ -102,6 +106,7 @@ describe('partitionToolNames (legacy)', () => {
 describe('serializeToolPrefs new shape', () => {
   test('round-trips through parse/serialize', () => {
     const prefs: ToolPrefs = {
+      riskDefaults: {},
       domainDefaults: { task: 'ask', project: 'deny' },
       toolOverrides: { delete_task: 'allow' },
     }
@@ -173,12 +178,12 @@ describe('parseToolPrefs legacy migration', () => {
   test('unknown permission string → dropped', () => {
     const garbage = JSON.stringify({ domainDefaults: { task: 'maybe' }, toolOverrides: { x: 'sometimes' } })
     const prefs = parseToolPrefs(garbage)
-    expect(prefs).toEqual({ domainDefaults: {}, toolOverrides: {} })
+    expect(prefs).toEqual({ riskDefaults: {}, domainDefaults: {}, toolOverrides: {} })
   })
 
   test('null or empty input → empty prefs', () => {
-    expect(parseToolPrefs(null)).toEqual({ domainDefaults: {}, toolOverrides: {} })
-    expect(parseToolPrefs('')).toEqual({ domainDefaults: {}, toolOverrides: {} })
+    expect(parseToolPrefs(null)).toEqual({ riskDefaults: {}, domainDefaults: {}, toolOverrides: {} })
+    expect(parseToolPrefs('')).toEqual({ riskDefaults: {}, domainDefaults: {}, toolOverrides: {} })
   })
 
   test('new-shape wins over legacy disabledDomains on conflict', () => {
@@ -261,5 +266,68 @@ describe('getDomainSummary', () => {
   test('falls back to the domain default when name list is empty', () => {
     const prefs: ToolPrefs = { domainDefaults: { task: 'deny' }, toolOverrides: {} }
     expect(getDomainSummary(prefs, 'task', [])).toBe('deny')
+  })
+})
+
+describe('riskDefaults tier', () => {
+  test('resolveToolPermission falls back to riskDefaults by tool risk', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: { write: 'ask', destructive: 'ask', 'open-world': 'ask' },
+      domainDefaults: {},
+      toolOverrides: {},
+    }
+    // read risk → allow (no riskDefault for read)
+    expect(resolveToolPermission(prefs, 'list_tasks')).toBe('allow')
+    // write risk → ask
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('ask')
+    // destructive risk → ask
+    expect(resolveToolPermission(prefs, 'delete_task')).toBe('ask')
+    // open-world risk → ask
+    expect(resolveToolPermission(prefs, 'web_fetch')).toBe('ask')
+  })
+
+  test('domainDefaults wins over riskDefaults', () => {
+    const prefs: ToolPrefs = { riskDefaults: { write: 'ask' }, domainDefaults: { task: 'allow' }, toolOverrides: {} }
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('allow')
+  })
+
+  test('toolOverrides wins over both domain and risk defaults', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: { write: 'ask' },
+      domainDefaults: { task: 'deny' },
+      toolOverrides: { create_task: 'allow' },
+    }
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('allow')
+  })
+
+  test('a new open-world tool (mcp_*) inherits the risk default', () => {
+    const prefs: ToolPrefs = { riskDefaults: { 'open-world': 'ask' }, domainDefaults: {}, toolOverrides: {} }
+    expect(resolveToolPermission(prefs, 'mcp_server__search')).toBe('ask')
+  })
+
+  test('round-trips riskDefaults through parse/serialize', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: { write: 'ask', destructive: 'ask' },
+      domainDefaults: {},
+      toolOverrides: {},
+    }
+    expect(parseToolPrefs(serializeToolPrefs(prefs))).toEqual(prefs)
+  })
+
+  test('legacy prefs without riskDefaults parse to riskDefaults: {}', () => {
+    const legacy = JSON.stringify({ domainDefaults: { task: 'ask' }, toolOverrides: {} })
+    expect(parseToolPrefs(legacy).riskDefaults).toEqual({})
+  })
+
+  test('cycleTool preserves an existing riskDefaults layer', () => {
+    let prefs: ToolPrefs = { riskDefaults: { destructive: 'ask' }, domainDefaults: {}, toolOverrides: {} }
+    prefs = cycleTool(prefs, 'create_task')
+    expect(prefs.riskDefaults).toEqual({ destructive: 'ask' })
+  })
+
+  test('cycleDomain preserves an existing riskDefaults layer', () => {
+    let prefs: ToolPrefs = { riskDefaults: { destructive: 'ask' }, domainDefaults: {}, toolOverrides: {} }
+    prefs = cycleDomain(prefs, 'task', ['create_task', 'delete_task'])
+    expect(prefs.riskDefaults).toEqual({ destructive: 'ask' })
   })
 })
