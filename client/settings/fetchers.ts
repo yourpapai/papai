@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
 import {
   ByokResponseSchema,
   BootstrapSchema,
@@ -15,7 +16,6 @@ import {
   McpResponseSchema,
   PluginsResponseSchema,
   ProvisionResultSchema,
-  ToolsResponseSchema,
   type ByokResponse,
   type BootstrapData,
   type ConfigResponse,
@@ -28,8 +28,6 @@ import {
   type McpResponse,
   type PluginsResponse,
   type ProvisionResult,
-  type ToolPreset,
-  type ToolsResponse,
 } from './fetcher-schemas.js'
 
 const CSRF_HEADER = 'X-Settings-CSRF'

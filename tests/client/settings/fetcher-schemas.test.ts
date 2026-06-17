@@ -16,8 +16,6 @@ import {
   ProviderTypesResponseSchema,
   McpResponseSchema,
   PluginsResponseSchema,
-  ToolPresetSchema,
-  ToolsResponseSchema,
 } from '../../../client/settings/fetcher-schemas.js'
 
 describe('fetcher-schemas', () => {
@@ -74,18 +72,6 @@ describe('fetcher-schemas', () => {
     })
     expect(parsed.fields[0]!.control).toBe('select')
     expect(parsed.fields[0]!.options).toHaveLength(2)
-  })
-
-  test('ToolsResponseSchema parses domains and tool risk (three-state model)', () => {
-    const parsed = ToolsResponseSchema.parse({
-      contextId: 'user:1',
-      domains: [
-        { domain: 'task', summary: 'partial', tools: [{ name: 'create_task', permission: 'allow', risk: 'write' }] },
-      ],
-    })
-    expect(parsed.domains[0]!.summary).toBe('partial')
-    expect(parsed.domains[0]!.tools[0]!.permission).toBe('allow')
-    expect(parsed.domains[0]!.tools[0]!.risk).toBe('write')
   })
 
   test('McpResponseSchema parses endpoints with optional headers', () => {
@@ -204,35 +190,5 @@ describe('AdminGroupsResponseSchema', () => {
   test('defaults observed to an empty array when absent', () => {
     const parsed = AdminGroupsResponseSchema.parse({ groups: [] })
     expect(parsed.observed).toEqual([])
-  })
-})
-
-describe('ToolPresetSchema', () => {
-  test('accepts valid preset values', () => {
-    expect(ToolPresetSchema.parse('allow-all')).toBe('allow-all')
-    expect(ToolPresetSchema.parse('non-destructive')).toBe('non-destructive')
-    expect(ToolPresetSchema.parse('read-only')).toBe('read-only')
-  })
-
-  test('rejects unknown preset values', () => {
-    expect(ToolPresetSchema.safeParse('bogus').success).toBe(false)
-    expect(ToolPresetSchema.safeParse('').success).toBe(false)
-  })
-})
-
-describe('ToolsResponseSchema activePreset', () => {
-  test('defaults activePreset to null when omitted', () => {
-    const parsed = ToolsResponseSchema.parse({ contextId: 'x', domains: [] })
-    expect(parsed.activePreset).toBeNull()
-  })
-
-  test('accepts a valid activePreset value', () => {
-    const parsed = ToolsResponseSchema.parse({ contextId: 'x', domains: [], activePreset: 'read-only' })
-    expect(parsed.activePreset).toBe('read-only')
-  })
-
-  test('accepts null activePreset explicitly', () => {
-    const parsed = ToolsResponseSchema.parse({ contextId: 'x', domains: [], activePreset: null })
-    expect(parsed.activePreset).toBeNull()
   })
 })

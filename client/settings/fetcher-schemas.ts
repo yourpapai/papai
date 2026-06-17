@@ -71,31 +71,6 @@ export const AdminByokResponseSchema = z.object({ contexts: z.array(AdminByokCon
 export type AdminByokContext = z.infer<typeof AdminByokContextSchema>
 export type AdminByokResponse = z.infer<typeof AdminByokResponseSchema>
 
-// --- Tools ---
-
-export const ToolRiskSchema = z.enum(['read', 'write', 'destructive', 'open-world'])
-export type ToolRisk = z.infer<typeof ToolRiskSchema>
-export const ToolPermissionSchema = z.enum(['allow', 'ask', 'deny'])
-export type ToolPermission = z.infer<typeof ToolPermissionSchema>
-export const ToolPresetSchema = z.enum(['allow-all', 'non-destructive', 'read-only'])
-export type ToolPreset = z.infer<typeof ToolPresetSchema>
-export const ToolDomainSummarySchema = z.enum(['allow', 'ask', 'deny', 'partial'])
-export type ToolDomainSummary = z.infer<typeof ToolDomainSummarySchema>
-export const ToolEntrySchema = z.object({ name: z.string(), permission: ToolPermissionSchema, risk: ToolRiskSchema })
-export const ToolDomainSchema = z.object({
-  domain: z.string(),
-  summary: ToolDomainSummarySchema,
-  tools: z.array(ToolEntrySchema),
-})
-export const ToolsResponseSchema = z.object({
-  contextId: z.string(),
-  domains: z.array(ToolDomainSchema),
-  activePreset: ToolPresetSchema.nullable().default(null),
-})
-export type ToolsResponse = z.infer<typeof ToolsResponseSchema>
-export type ToolDomainView = z.infer<typeof ToolDomainSchema>
-export type ToolEntry = z.infer<typeof ToolEntrySchema>
-
 export const MemoryRecordSchema = z.object({
   id: z.string(),
   kind: z.string(),

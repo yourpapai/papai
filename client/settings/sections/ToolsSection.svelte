@@ -11,7 +11,7 @@
   import Pill from '../../shared/ui/Pill.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
 
-  import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolPreset, ToolRisk } from '../fetcher-schemas.js'
+  import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolPreset, ToolRisk } from '../fetcher-schemas-tools.js'
   import { applyToolPreset, fetchTools, setToolPermission } from '../fetchers.js'
 
   const PERM_OPTIONS = [
