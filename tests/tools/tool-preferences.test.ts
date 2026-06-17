@@ -7,11 +7,15 @@ import { describe, expect, it, test } from 'bun:test'
 
 import { getToolMetadata } from '../../src/tools/tool-metadata.js'
 import {
+  applyPreset,
   cycleDomain,
   cycleTool,
+  detectActivePreset,
   getDomainSummary,
   parseToolPrefs,
   partitionToolNames,
+  PRESET_KEYS,
+  PRESET_RISK_DEFAULTS,
   resolveToolPermission,
   serializeToolPrefs,
   type ToolPrefs,
@@ -329,5 +333,72 @@ describe('riskDefaults tier', () => {
     let prefs: ToolPrefs = { riskDefaults: { destructive: 'ask' }, domainDefaults: {}, toolOverrides: {} }
     prefs = cycleDomain(prefs, 'task', ['create_task', 'delete_task'])
     expect(prefs.riskDefaults).toEqual({ destructive: 'ask' })
+  })
+})
+
+describe('applyPreset', () => {
+  test('allow-all yields empty prefs', () => {
+    expect(applyPreset('allow-all')).toEqual({ riskDefaults: {}, domainDefaults: {}, toolOverrides: {} })
+  })
+
+  test('non-destructive asks on destructive + open-world only', () => {
+    expect(applyPreset('non-destructive')).toEqual({
+      riskDefaults: { destructive: 'ask', 'open-world': 'ask' },
+      domainDefaults: {},
+      toolOverrides: {},
+    })
+  })
+
+  test('read-only asks on write + destructive + open-world', () => {
+    expect(applyPreset('read-only')).toEqual({
+      riskDefaults: { write: 'ask', destructive: 'ask', 'open-world': 'ask' },
+      domainDefaults: {},
+      toolOverrides: {},
+    })
+  })
+
+  test('clears any prior domain/tool customization (reset-to-baseline)', () => {
+    const result = applyPreset('read-only')
+    expect(result.domainDefaults).toEqual({})
+    expect(result.toolOverrides).toEqual({})
+  })
+})
+
+describe('detectActivePreset', () => {
+  test('empty prefs report allow-all', () => {
+    expect(detectActivePreset({ riskDefaults: {}, domainDefaults: {}, toolOverrides: {} })).toBe('allow-all')
+  })
+
+  test('PRESET_KEYS covers every key in PRESET_RISK_DEFAULTS', () => {
+    expect(Object.keys(PRESET_RISK_DEFAULTS)).toEqual([...PRESET_KEYS])
+  })
+
+  test('matches each preset exactly', () => {
+    for (const preset of PRESET_KEYS) {
+      expect(detectActivePreset(applyPreset(preset))).toBe(preset)
+    }
+  })
+
+  test('any domain override → Custom (null)', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: { write: 'ask', destructive: 'ask', 'open-world': 'ask' },
+      domainDefaults: { task: 'deny' },
+      toolOverrides: {},
+    }
+    expect(detectActivePreset(prefs)).toBeNull()
+  })
+
+  test('any tool override → Custom (null)', () => {
+    const prefs: ToolPrefs = {
+      riskDefaults: { destructive: 'ask', 'open-world': 'ask' },
+      domainDefaults: {},
+      toolOverrides: { delete_task: 'deny' },
+    }
+    expect(detectActivePreset(prefs)).toBeNull()
+  })
+
+  test('riskDefaults matching no preset → Custom (null)', () => {
+    const prefs: ToolPrefs = { riskDefaults: { read: 'ask' }, domainDefaults: {}, toolOverrides: {} }
+    expect(detectActivePreset(prefs)).toBeNull()
   })
 })

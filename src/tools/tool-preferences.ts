@@ -14,6 +14,15 @@ export const TOOL_PREFS_CONFIG_KEY = 'tool_prefs'
 
 export type Permission = 'allow' | 'ask' | 'deny'
 
+export type ToolPreset = 'allow-all' | 'non-destructive' | 'read-only'
+
+/** Per-preset risk-default maps in pruned form ('allow' entries omitted). */
+export const PRESET_RISK_DEFAULTS: Readonly<Record<ToolPreset, Partial<Record<ToolRisk, Permission>>>> = {
+  'allow-all': {},
+  'non-destructive': { destructive: 'ask', 'open-world': 'ask' },
+  'read-only': { write: 'ask', destructive: 'ask', 'open-world': 'ask' },
+}
+
 export interface ToolPrefs {
   /** Per-risk default permission applied by presets. Resolved below domainDefaults. Missing entry = 'allow'. */
   riskDefaults?: Partial<Record<ToolRisk, Permission>>
@@ -226,4 +235,41 @@ export function cycleTool(prefs: ToolPrefs, toolName: string): ToolPrefs {
     domainDefaults: { ...prefs.domainDefaults },
     toolOverrides,
   })
+}
+
+function pruneRiskDefaults(rd: Partial<Record<ToolRisk, Permission>>): Partial<Record<ToolRisk, Permission>> {
+  const out: Partial<Record<ToolRisk, Permission>> = {}
+  for (const [key, value] of Object.entries(rd)) {
+    if (value !== undefined && value !== 'allow' && isToolRisk(key)) out[key] = value
+  }
+  return out
+}
+
+export const PRESET_KEYS: readonly ToolPreset[] = ['allow-all', 'non-destructive', 'read-only']
+
+function riskDefaultsEqual(
+  a: Partial<Record<ToolRisk, Permission>>,
+  b: Partial<Record<ToolRisk, Permission>>,
+): boolean {
+  const pa = pruneRiskDefaults(a)
+  const pb = pruneRiskDefaults(b)
+  const entriesA = Object.entries(pa)
+  if (entriesA.length !== Object.keys(pb).length) return false
+  return entriesA.every(([key, val]) => (isToolRisk(key) ? pb[key] === val : false))
+}
+
+/** Build prefs for a preset: writes the risk-default layer and clears domain/tool customization. */
+export function applyPreset(preset: ToolPreset): ToolPrefs {
+  return { riskDefaults: { ...PRESET_RISK_DEFAULTS[preset] }, domainDefaults: {}, toolOverrides: {} }
+}
+
+/** The preset whose state matches prefs exactly, or null ("Custom") if customized / unmatched. */
+export function detectActivePreset(prefs: ToolPrefs): ToolPreset | null {
+  if (Object.keys(prefs.domainDefaults).length > 0) return null
+  if (Object.keys(prefs.toolOverrides).length > 0) return null
+  const riskDefaults = prefs.riskDefaults ?? {}
+  for (const preset of PRESET_KEYS) {
+    if (riskDefaultsEqual(riskDefaults, PRESET_RISK_DEFAULTS[preset])) return preset
+  }
+  return null
 }
