@@ -23,6 +23,8 @@ export const PRESET_RISK_DEFAULTS: Readonly<Record<ToolPreset, Partial<Record<To
   'read-only': { write: 'ask', destructive: 'ask', 'open-world': 'ask' },
 }
 
+export const PRESET_KEYS: readonly ToolPreset[] = ['allow-all', 'non-destructive', 'read-only']
+
 export interface ToolPrefs {
   /** Per-risk default permission applied by presets. Resolved below domainDefaults. Missing entry = 'allow'. */
   riskDefaults?: Partial<Record<ToolRisk, Permission>>
@@ -245,17 +247,18 @@ function pruneRiskDefaults(rd: Partial<Record<ToolRisk, Permission>>): Partial<R
   return out
 }
 
-export const PRESET_KEYS: readonly ToolPreset[] = ['allow-all', 'non-destructive', 'read-only']
-
 function riskDefaultsEqual(
   a: Partial<Record<ToolRisk, Permission>>,
   b: Partial<Record<ToolRisk, Permission>>,
 ): boolean {
   const pa = pruneRiskDefaults(a)
   const pb = pruneRiskDefaults(b)
-  const entriesA = Object.entries(pa)
-  if (entriesA.length !== Object.keys(pb).length) return false
-  return entriesA.every(([key, val]) => (isToolRisk(key) ? pb[key] === val : false))
+  const keysA = Object.keys(pa)
+  if (keysA.length !== Object.keys(pb).length) return false
+  return keysA.every((key) => {
+    if (!isToolRisk(key)) return false
+    return pb[key] === pa[key]
+  })
 }
 
 /** Build prefs for a preset: writes the risk-default layer and clears domain/tool customization. */
