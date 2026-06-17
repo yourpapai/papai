@@ -28,6 +28,7 @@ import {
   type McpResponse,
   type PluginsResponse,
   type ProvisionResult,
+  type ToolPreset,
   type ToolsResponse,
 } from './fetcher-schemas.js'
 
@@ -130,6 +131,9 @@ export const setToolPermission = (
     | { kind: 'domain'; domain: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
     | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
 ): Promise<ToolsResponse> => writeJson('/settings/api/tools/toggle', 'POST', input, (b) => ToolsResponseSchema.parse(b))
+
+export const applyToolPreset = (input: { preset: ToolPreset; contextId: string }): Promise<ToolsResponse> =>
+  writeJson('/settings/api/tools/toggle', 'POST', { kind: 'preset', ...input }, (b) => ToolsResponseSchema.parse(b))
 
 // --- Memory ---
 
