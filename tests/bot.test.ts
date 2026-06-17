@@ -15,6 +15,7 @@ import {
 } from '../src/auth.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
+import { clearGroupAdminLiveCache } from '../src/chat/group-admin-live.js'
 import type {
   AuthorizationResult,
   ChatProvider,
@@ -33,6 +34,7 @@ import { getDrizzleDb } from '../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
 import { listManageableGroups } from '../src/group-settings/access.js'
+import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../src/group-settings/registry.js'
 import { addGroupMember } from '../src/groups.js'
 import { addAdmin } from '../src/instances/admin-store.js'
 import { setContextSettings } from '../src/instances/context-store.js'
@@ -582,6 +584,106 @@ describe('Bot Authorization Gate (setupBot)', () => {
       const { reply, textCalls } = createMockReply()
       await messageHandler!({ ...createDmMessage('unknown-user'), text: 'hello' }, reply)
       expect(textCalls).toHaveLength(0)
+    })
+  })
+
+  describe('config-eligible group member — /config in DM', () => {
+    const originalBaseUrl = process.env['SETTINGS_PUBLIC_BASE_URL']
+    afterEach(() => {
+      if (originalBaseUrl === undefined) delete process.env['SETTINGS_PUBLIC_BASE_URL']
+      else process.env['SETTINGS_PUBLIC_BASE_URL'] = originalBaseUrl
+    })
+
+    test('issues a settings link instead of the unauthorized message', async () => {
+      process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+      // member-cfg is a group admin of an authorized group => has a manageable group.
+      addAuthorizedGroupForPlatform('group-cfg', ADMIN_ID)
+      const scopedCfgGroup = scopedGroup('group-cfg')
+      upsertKnownGroupContext({
+        contextId: scopedCfgGroup,
+        provider: 'telegram',
+        displayName: 'Cfg Group',
+        parentName: null,
+      })
+      upsertGroupAdminObservation({
+        provider: 'telegram',
+        contextId: scopedCfgGroup,
+        userId: 'member-cfg',
+        username: null,
+        isAdmin: true,
+      })
+
+      const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+      setupBot(provider, ADMIN_ID, withSynchronousQueue({ processMessage: (): Promise<void> => Promise.resolve() }))
+      const configHandler = commandHandlers.get('config')
+      assert.ok(configHandler !== undefined, 'expected config handler to be registered')
+
+      const { reply, textCalls } = createMockReply()
+      await configHandler(createDmMessage('member-cfg', 'config'), reply, createAuth('member-cfg', { allowed: false }))
+
+      const allText = textCalls.join('\n')
+      expect(allText).toContain('https://bot.example.com/settings?code=')
+      expect(allText).not.toContain('not authorized')
+    })
+
+    test('non-member unauthorized DM user still gets the unauthorized message', async () => {
+      process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+      const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+      setupBot(provider, ADMIN_ID, withSynchronousQueue({ processMessage: (): Promise<void> => Promise.resolve() }))
+      const configHandler = commandHandlers.get('config')
+      assert.ok(configHandler !== undefined, 'expected config handler to be registered')
+
+      const { reply, textCalls } = createMockReply()
+      await configHandler(
+        createDmMessage('stranger-cfg', 'config'),
+        reply,
+        createAuth('stranger-cfg', { allowed: false }),
+      )
+
+      expect(textCalls.join('\n')).toContain('not authorized')
+    })
+
+    test('cold DM: live platform admin check grants /config when no observation exists', async () => {
+      process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+      clearGroupAdminLiveCache()
+      // Authorized group exists, but the admin has never interacted => no observation,
+      // so the local manageableGroups check is empty and the live API check is consulted.
+      addAuthorizedGroupForPlatform('group-live', ADMIN_ID)
+
+      const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+      provider.isGroupAdmin = mock((_pi: string, groupId: string, _userId: string) =>
+        Promise.resolve(groupId === 'group-live'),
+      )
+      setupBot(provider, ADMIN_ID, withSynchronousQueue({ processMessage: (): Promise<void> => Promise.resolve() }))
+      const configHandler = commandHandlers.get('config')
+      assert.ok(configHandler !== undefined, 'expected config handler to be registered')
+
+      const { reply, textCalls } = createMockReply()
+      await configHandler(createDmMessage('cold-admin', 'config'), reply, createAuth('cold-admin', { allowed: false }))
+
+      expect(textCalls.join('\n')).toContain('https://bot.example.com/settings?code=')
+      expect(provider.isGroupAdmin).toHaveBeenCalledWith('test-instance', 'group-live', 'cold-admin')
+    })
+
+    test('cold DM: live platform admin check denies /config when user is not a group admin', async () => {
+      process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+      clearGroupAdminLiveCache()
+      addAuthorizedGroupForPlatform('group-live', ADMIN_ID)
+
+      const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+      provider.isGroupAdmin = mock(() => Promise.resolve(false))
+      setupBot(provider, ADMIN_ID, withSynchronousQueue({ processMessage: (): Promise<void> => Promise.resolve() }))
+      const configHandler = commandHandlers.get('config')
+      assert.ok(configHandler !== undefined, 'expected config handler to be registered')
+
+      const { reply, textCalls } = createMockReply()
+      await configHandler(
+        createDmMessage('cold-stranger', 'config'),
+        reply,
+        createAuth('cold-stranger', { allowed: false }),
+      )
+
+      expect(textCalls.join('\n')).toContain('not authorized')
     })
   })
 

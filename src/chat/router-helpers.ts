@@ -6,6 +6,7 @@
 import { createHmac, randomBytes } from 'node:crypto'
 
 import type { AttachmentSourceProvider } from '../attachments/types.js'
+import { getContextSettings } from '../instances/context-store.js'
 import type { InstanceConfig, InstanceStatus, PlatformInstanceType } from '../instances/types.js'
 import type { ManagedChatInstance, ManagedChatInstanceSnapshot } from './router-types.js'
 import type {
@@ -80,6 +81,27 @@ export const providerForManagedInstance = (
 ): ManagedChatInstance['provider'] | null => {
   if (instance === undefined) return null
   return instance.provider
+}
+
+export const resolveGroupLabelForManagedInstance = (
+  instances: Map<string, ManagedChatInstance>,
+  groupId: string,
+): Promise<string | null> => {
+  const settings = getContextSettings(groupId)
+  if (settings === null) return Promise.resolve(null)
+  const instance = instances.get(settings.platformInstanceId)
+  if (instance === undefined || instance.provider.resolveGroupLabel === undefined) return Promise.resolve(null)
+  return instance.provider.resolveGroupLabel(groupId)
+}
+
+export const isGroupAdminForManagedInstance = (
+  instance: ManagedChatInstance | undefined,
+  platformInstanceId: string,
+  groupId: string,
+  userId: string,
+): Promise<boolean | null> => {
+  if (instance === undefined || instance.provider.isGroupAdmin === undefined) return Promise.resolve(null)
+  return instance.provider.isGroupAdmin(platformInstanceId, groupId, userId)
 }
 
 export const managedInstanceSnapshots = (

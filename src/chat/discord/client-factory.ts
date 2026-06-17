@@ -57,6 +57,7 @@ export type GuildLike = {
             globalName: string | null | undefined
           }
         | undefined
+      permissions?: { has: (flag: bigint) => boolean }
     }>
   }>
 }

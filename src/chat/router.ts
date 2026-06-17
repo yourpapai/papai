@@ -15,12 +15,14 @@ import {
   configFingerprint,
   downloadFileFromManagedInstance,
   errorMessage,
+  isGroupAdminForManagedInstance,
   managedInstanceOrNull,
   managedInstanceSnapshots,
   providerForManagedInstance,
   registerInteractionHandlerForManagedInstance,
   renderContextForManagedInstance,
   renderContextFromManagedInstances,
+  resolveGroupLabelForManagedInstance,
   routedMessageHandler,
   threadCapabilitiesForManagedInstances,
   traitsForManagedInstance,
@@ -241,12 +243,11 @@ export class ChatRouter implements ChatProvider {
   }
 
   resolveGroupLabel(groupId: string): Promise<string | null> {
-    const settings = getContextSettings(groupId)
-    if (settings === null) return Promise.resolve(null)
-    const instance = this.instances.get(settings.platformInstanceId)
-    if (instance === undefined) return Promise.resolve(null)
-    if (instance.provider.resolveGroupLabel === undefined) return Promise.resolve(null)
-    return instance.provider.resolveGroupLabel(groupId)
+    return resolveGroupLabelForManagedInstance(this.instances, groupId)
+  }
+
+  isGroupAdmin(platformInstanceId: string, groupId: string, userId: string): Promise<boolean | null> {
+    return isGroupAdminForManagedInstance(this.instances.get(platformInstanceId), platformInstanceId, groupId, userId)
   }
 
   private activeInstances(): ManagedChatInstance[] {

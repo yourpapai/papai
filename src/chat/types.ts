@@ -194,7 +194,10 @@ export type AuthorizationResult = {
   isBotAdmin: boolean
   isGroupAdmin: boolean
   storageContextId: string
-} & Partial<{ configContextId: string; reason: AuthorizationDenyReason }>
+  // `configCommandAllowed`: set on an otherwise-denied DM result when the user can
+  // manage a group; lets the launcher-only `/config` command through without
+  // granting general DM access.
+} & Partial<{ configContextId: string; reason: AuthorizationDenyReason; configCommandAllowed: boolean }>
 
 /** Command handler signature. */
 export type CommandHandler = (msg: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void>
@@ -289,6 +292,7 @@ export type ChatProvider = {
   resolveUserId: (username: string, context: ResolveUserContext) => Promise<string | null>
   resolveUserLabel: (userId: string, context: ResolveUserContext | undefined) => Promise<string | null>
   resolveGroupLabel: (groupId: string) => Promise<string | null>
+  isGroupAdmin: (platformInstanceId: string, groupId: string, userId: string) => Promise<boolean | null>
   renderContextForInstance: (platformInstanceId: string, snapshot: ContextSnapshot) => ContextRendered
   isInstanceActive: (platformInstanceId: string) => boolean
   /** Register the bot's command list with the platform (for command menus). */

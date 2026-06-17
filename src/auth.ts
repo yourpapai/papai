@@ -6,6 +6,7 @@
 import { isAuthorizedGroup } from './authorized-groups.js'
 import { toScopedContextId, toScopedThreadContextId } from './chat/scoped-context.js'
 import type { AuthorizationResult, ContextType } from './chat/types.js'
+import { listManageableGroups } from './group-settings/access.js'
 import { isGroupMember } from './groups.js'
 import { isAdmin } from './instances/admin-store.js'
 import { logger } from './logger.js'
@@ -96,13 +97,18 @@ const getDmUserAuth = (userId: string, platformInstanceId: string): Authorizatio
   configContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
 })
 
-const getUnauthorizedDmAuth = (userId: string, platformInstanceId: string): AuthorizationResult => ({
+const getUnauthorizedDmAuth = (
+  userId: string,
+  platformInstanceId: string,
+  configCommandAllowed: boolean,
+): AuthorizationResult => ({
   allowed: false,
   isBotAdmin: false,
   isGroupAdmin: false,
   storageContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
   configContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
   reason: 'dm_not_allowed',
+  ...(configCommandAllowed ? { configCommandAllowed: true } : {}),
 })
 
 const getGroupConfigContextId = (contextId: string, platformInstanceId: string): string =>
@@ -227,5 +233,9 @@ export const checkAuthorizationExtended = (
     return getDmUserAuth(userId, platformInstanceId)
   }
 
-  return getUnauthorizedDmAuth(userId, platformInstanceId)
+  // A DM user who is not otherwise authorized may still launch /config when they
+  // can manage at least one group in the settings UI (i.e. they are a group admin
+  // of an authorized group). The settings UI already scopes them to those groups.
+  const canManageGroup = listManageableGroups(userId, platformInstanceId).length > 0
+  return getUnauthorizedDmAuth(userId, platformInstanceId, canManageGroup)
 }

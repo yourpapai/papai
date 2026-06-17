@@ -110,6 +110,22 @@ describe('/config settings link issuance', () => {
     expect(textCalls.join('\n')).toContain('Only group admins')
   })
 
+  test('issues a settings link for a denied DM user flagged configCommandAllowed', async () => {
+    process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+    const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
+    registerConfigCommand(mockChat)
+    const handler = commandHandlers.get('config')
+    assert.ok(handler !== undefined, 'expected config handler to be registered')
+
+    const { reply, textCalls } = createMockReply()
+    await handler(createDmMessage(USER_ID), reply, {
+      ...createAuth(USER_ID, { allowed: false, reason: 'dm_not_allowed' }),
+      configCommandAllowed: true,
+    })
+
+    expect(textCalls.join('\n')).toContain('https://bot.example.com/settings?code=')
+  })
+
   test('rejects unauthorized user silently', async () => {
     const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
     registerConfigCommand(mockChat)
