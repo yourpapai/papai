@@ -11,14 +11,23 @@
   import Pill from '../../shared/ui/Pill.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
 
-  import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolRisk } from '../fetcher-schemas.js'
-  import { fetchTools, setToolPermission } from '../fetchers.js'
+  import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolPreset, ToolRisk } from '../fetcher-schemas.js'
+  import { applyToolPreset, fetchTools, setToolPermission } from '../fetchers.js'
 
   const PERM_OPTIONS = [
     { value: 'allow', label: 'Allow' },
     { value: 'ask', label: 'Ask' },
     { value: 'deny', label: 'Deny' },
   ] as const
+
+  const PRESET_OPTIONS = [
+    { value: 'read-only', label: 'Read-only' },
+    { value: 'non-destructive', label: 'Non-destructive' },
+    { value: 'allow-all', label: 'Allow all' },
+  ] as const
+
+  const presetLabel = (preset: ToolPreset): string =>
+    PRESET_OPTIONS.find((p) => p.value === preset)?.label ?? preset
 
   interface Props {
     contextId: string
@@ -30,6 +39,8 @@
   let expanded: Record<string, boolean> = $state({})
   let error: string | null = $state(null)
   let loading = $state(false)
+  let activePreset: ToolPreset | null = $state(null)
+  let pendingPreset: ToolPreset | null = $state(null)
 
   const riskTone = (risk: ToolRisk): 'mute' | 'info' | 'warn' | 'danger' => {
     if (risk === 'read') return 'mute'
@@ -57,7 +68,9 @@
     loading = true
     expanded = {}
     try {
-      domains = (await fetchTools(id)).domains
+      const res = await fetchTools(id)
+      domains = res.domains
+      activePreset = res.activePreset
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -84,6 +97,25 @@
     }
   }
 
+  function requestPreset(preset: ToolPreset): void {
+    error = null
+    pendingPreset = preset
+  }
+
+  async function confirmPreset(): Promise<void> {
+    const preset = pendingPreset
+    if (preset === null) return
+    pendingPreset = null
+    error = null
+    try {
+      const res = await applyToolPreset({ preset, contextId })
+      domains = res.domains
+      activePreset = res.activePreset
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    }
+  }
+
   $effect(() => {
     void load(contextId)
   })
@@ -98,6 +130,35 @@
 
   {#if error !== null}
     <p class="status-error">{error}</p>
+  {/if}
+
+  <div class="settings-tools__presets" data-testid="tools-presets">
+    <span class="settings-tools__presets-label">Preset</span>
+    {#each PRESET_OPTIONS as preset (preset.value)}
+      <Btn
+        variant={activePreset === preset.value ? 'primary' : 'ghost'}
+        size="sm"
+        testid={`preset-${preset.value}`}
+        onClick={() => requestPreset(preset.value)}>
+        {#snippet children()}{preset.label}{/snippet}
+      </Btn>
+    {/each}
+    <span class="settings-tools__presets-active" data-testid="preset-active">
+      <Pill tone="mute">{#snippet children()}{activePreset === null ? 'Custom' : presetLabel(activePreset)}{/snippet}</Pill>
+    </span>
+  </div>
+  <p class="settings-tools__presets-hint">New tools follow the selected preset by their risk level.</p>
+
+  {#if pendingPreset !== null}
+    <div class="settings-tools__confirm" data-testid="preset-confirm">
+      <span>Apply "{presetLabel(pendingPreset)}"? This replaces your per-tool and per-domain settings.</span>
+      <Btn variant="primary" size="sm" testid="preset-confirm-apply" onClick={() => void confirmPreset()}>
+        {#snippet children()}Apply{/snippet}
+      </Btn>
+      <Btn variant="ghost" size="sm" testid="preset-confirm-cancel" onClick={() => (pendingPreset = null)}>
+        {#snippet children()}Cancel{/snippet}
+      </Btn>
+    </div>
   {/if}
 
   {#if domains.length > 0}
@@ -193,4 +254,35 @@
     margin-left: auto;
   }
   .settings-tools__perm { margin-left: auto; }
+  .settings-tools__presets {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .settings-tools__presets-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg2);
+  }
+  .settings-tools__presets-active {
+    margin-left: auto;
+  }
+  .settings-tools__presets-hint {
+    margin: 0 0 12px;
+    font-size: 11px;
+    color: var(--fg3);
+  }
+  .settings-tools__confirm {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 12px;
+  }
 </style>
