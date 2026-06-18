@@ -34,6 +34,7 @@
   import AdminPluginsConfigSection from './sections/admin/AdminPluginsConfigSection.svelte'
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
   import AdminFeatureFlagsSection from './sections/admin/AdminFeatureFlagsSection.svelte'
+  import AdminToolDefaultsSection from './sections/admin/AdminToolDefaultsSection.svelte'
 
   type SidebarItem = SidebarGroup['items'][number]
 
@@ -46,6 +47,7 @@
         { id: 'byok-admin', label: 'BYOK LLM' },
         { id: 'plugin-config', label: 'Plugin config' },
         { id: 'users', label: 'Users' },
+        { id: 'tool-defaults', label: 'Tool defaults' },
         { id: 'groups', label: 'Groups' },
         { id: 'announce', label: 'Announce' },
       )
@@ -161,6 +163,7 @@
                 <AdminByokSection />
                 <AdminPluginsConfigSection />
                 <AdminUsersSection />
+                <AdminToolDefaultsSection />
                 <AdminGroupsSection />
                 <AdminAnnounceSection />
               {/if}

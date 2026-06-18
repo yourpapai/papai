@@ -16,6 +16,7 @@ import {
 } from '../admin/plugin-config-fetcher-schemas.js'
 import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
 import {
   AddAdminUserResponseSchema,
   AdminByokResponseSchema,
@@ -179,3 +180,20 @@ export const saveAdminFeatureFlags = (input: {
   flags: AdminFeatureFlagState
 }): Promise<AdminFeatureFlagRow> =>
   writeJson('/settings/api/admin/feature-flags', 'PATCH', input, (b) => AdminFeatureFlagRowSchema.parse(b))
+
+// --- Admin: tool defaults ---
+
+export const fetchToolDefaults = (): Promise<ToolsResponse> =>
+  getJson('/settings/api/admin/tool-defaults', (b) => ToolsResponseSchema.parse(b))
+
+export const setToolDefault = (
+  input:
+    | { kind: 'domain'; domain: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
+    | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
+): Promise<ToolsResponse> =>
+  writeJson('/settings/api/admin/tool-defaults', 'POST', input, (b) => ToolsResponseSchema.parse(b))
+
+export const applyToolDefaultPreset = (input: { preset: ToolPreset; contextId: string }): Promise<ToolsResponse> =>
+  writeJson('/settings/api/admin/tool-defaults', 'POST', { kind: 'preset', preset: input.preset }, (b) =>
+    ToolsResponseSchema.parse(b),
+  )
