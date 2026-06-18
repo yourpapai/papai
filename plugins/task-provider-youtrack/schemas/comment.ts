@@ -15,7 +15,7 @@ export const CommentSchema = BaseEntitySchema.extend({
   textPreview: z.string().optional(),
   author: z.lazy(() => UserReferenceSchema),
   created: TimestampSchema,
-  updated: TimestampSchema.optional(),
+  updated: TimestampSchema.nullable().optional(),
   deleted: z.boolean().optional(),
   pinned: z.boolean().optional(),
   reactions: z.array(ReactionSchema).optional(),

@@ -23,7 +23,7 @@ const mapWorkItem = (wi: YouTrackWorkItem, taskId: string): WorkItem => ({
   author: wi.author?.login ?? wi.author?.name ?? 'unknown',
   date: new Date(wi.date).toISOString().slice(0, 10),
   duration: minutesToIso(wi.duration.minutes),
-  description: wi.text,
+  description: wi.text ?? undefined,
   type: wi.type?.name,
 })
 

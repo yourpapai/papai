@@ -12,13 +12,13 @@ import { BaseEntitySchema } from './common.js'
 // IssueLinkType.name is free-form: YouTrack allows custom link type names beyond the built-in set.
 const IssueLinkTypeSchema = BaseEntitySchema.extend({
   name: z.string(),
-  directed: z.boolean().optional(),
-  aggregation: z.boolean().optional(),
-  sourceToTarget: z.string().optional(),
-  targetToSource: z.string().optional(),
-  localizedName: z.string().optional(),
-  localizedSourceToTarget: z.string().optional(),
-  localizedTargetToSource: z.string().optional(),
+  directed: z.boolean().nullable().optional(),
+  aggregation: z.boolean().nullable().optional(),
+  sourceToTarget: z.string().nullable().optional(),
+  targetToSource: z.string().nullable().optional(),
+  localizedName: z.string().nullable().optional(),
+  localizedSourceToTarget: z.string().nullable().optional(),
+  localizedTargetToSource: z.string().nullable().optional(),
 })
 
 /**

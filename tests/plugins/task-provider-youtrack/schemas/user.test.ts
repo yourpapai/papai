@@ -49,8 +49,15 @@ describe('User schemas', () => {
       expect(() => UserSchema.parse({ ...validUser, fullName: 42 })).toThrow()
     })
 
-    test('email as null rejects (optional but not nullable)', () => {
-      expect(() => UserSchema.parse({ ...validUser, email: null })).toThrow()
+    // YouTrack returns `email: null` for a requested-but-unset/inaccessible email.
+    test('email as null accepts (YouTrack returns null for unset email)', () => {
+      const result = UserSchema.parse({ ...validUser, email: null })
+      expect(result.email).toBeNull()
+    })
+
+    test('fullName as null accepts (YouTrack returns null for unset full name)', () => {
+      const result = UserSchema.parse({ ...validUser, fullName: null })
+      expect(result.fullName).toBeNull()
     })
 
     test('email omitted accepts', () => {
@@ -97,8 +104,9 @@ describe('User schemas', () => {
       expect(result.name).toBeUndefined()
     })
 
-    test('name as null rejects', () => {
-      expect(() => UserReferenceSchema.parse({ id: '1', login: 'x', name: null })).toThrow()
+    test('name as null accepts (YouTrack returns null for unset name)', () => {
+      const result = UserReferenceSchema.parse({ id: '1', login: 'x', name: null })
+      expect(result.name).toBeNull()
     })
   })
 })

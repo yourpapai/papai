@@ -38,6 +38,15 @@ describe('Issue link schemas', () => {
     expect(result).toEqual({})
   })
 
+  test('linkType direction strings as null accept (YouTrack returns null per direction)', () => {
+    const result = IssueLinkSchema.parse({
+      id: '0-0',
+      linkType: { id: '0-0', name: 'Depend', sourceToTarget: null, targetToSource: null, directed: null },
+    })
+    expect(result.linkType?.sourceToTarget).toBeNull()
+    expect(result.linkType?.targetToSource).toBeNull()
+  })
+
   test('linkType missing name rejects', () => {
     expect(() => IssueLinkSchema.parse({ linkType: { id: '1' } })).toThrow()
   })

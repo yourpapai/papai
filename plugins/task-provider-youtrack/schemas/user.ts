@@ -8,16 +8,18 @@ import { z } from 'zod'
 
 import { BaseEntitySchema, TimestampSchema } from './common.js'
 
+// YouTrack returns requested-but-empty scalar attributes as `null` (not omitted), so
+// optional string attributes must also be nullable. See schemas/comment.ts `updated`.
 export const UserSchema = BaseEntitySchema.extend({
   login: z.string(),
-  fullName: z.string().optional(),
-  email: z.string().optional(),
-  avatarUrl: z.string().optional(),
-  created: TimestampSchema.optional(),
-  lastAccess: TimestampSchema.optional(),
+  fullName: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
+  created: TimestampSchema.nullable().optional(),
+  lastAccess: TimestampSchema.nullable().optional(),
 })
 
 export const UserReferenceSchema = BaseEntitySchema.extend({
   login: z.string(),
-  name: z.string().optional(),
+  name: z.string().nullable().optional(),
 })

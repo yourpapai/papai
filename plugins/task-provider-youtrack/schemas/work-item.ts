@@ -11,12 +11,12 @@ export const YouTrackWorkItemSchema = BaseEntitySchema.extend({
   date: TimestampSchema,
   duration: z.object({
     minutes: z.number().int().nonnegative(),
-    presentation: z.string().optional(),
+    presentation: z.string().nullable().optional(),
   }),
-  text: z.string().optional(),
+  text: z.string().nullable().optional(),
   author: BaseEntitySchema.extend({
-    login: z.string().optional(),
-    name: z.string().optional(),
+    login: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
   }).optional(),
   type: z
     .object({

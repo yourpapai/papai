@@ -22,8 +22,14 @@ export const IssueSchema = BaseEntitySchema.extend({
     name: z.string().optional(),
     shortName: z.string().optional(),
   }),
-  reporter: z.lazy(() => UserSchema).optional(),
-  updater: z.lazy(() => UserSchema).optional(),
+  reporter: z
+    .lazy(() => UserSchema)
+    .nullable()
+    .optional(),
+  updater: z
+    .lazy(() => UserSchema)
+    .nullable()
+    .optional(),
   created: TimestampSchema,
   updated: TimestampSchema,
   resolved: TimestampSchema.nullable().optional(),
