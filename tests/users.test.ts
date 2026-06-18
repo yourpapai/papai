@@ -644,6 +644,10 @@ describe('user blocking', () => {
     expect(blockUser('ghost', 'telegram-default')).toBe(false)
   })
 
+  test('unblockUser returns false when no row exists', () => {
+    expect(unblockUser('ghost', 'telegram-default')).toBe(false)
+  })
+
   test('listUsers includes added_by and blocked_at', () => {
     addUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'open-access' })
     blockUser('u1', 'telegram-default')

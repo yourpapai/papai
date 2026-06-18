@@ -238,6 +238,7 @@ export function unblockUser(userId: string, platformInstanceId: string): boolean
 }
 
 export function isBlocked(userId: string, platformInstanceId: string): boolean {
+  log.debug({ platformInstanceId }, 'isBlocked called')
   const db = getDrizzleDb()
   const row = db
     .select({ blockedAt: users.blockedAt })
