@@ -907,20 +907,32 @@ describe('YouTrackProvider', () => {
 
   describe('updateRelation', () => {
     test('calls remove then add commands in sequence', async () => {
-      // First fetch: get task with links to find relation
-      mockFetchResponse({
-        id: '2-5',
-        idReadable: 'TEST-5',
-        summary: 'Task with links',
-        links: [
-          {
-            id: 'link-1',
-            direction: 'OUTWARD',
-            linkType: { id: 'lt-1', name: 'Depend', sourceToTarget: 'is required for' },
-            issues: [{ id: '2-6', idReadable: 'TEST-6', summary: 'Related task' }],
+      mockFetchSequence([
+        {
+          data: {
+            id: '2-5',
+            idReadable: 'TEST-5',
+            summary: 'Task with links',
+            links: [
+              {
+                id: 'link-1',
+                direction: 'OUTWARD',
+                linkType: { id: 'lt-1', name: 'Depend', sourceToTarget: 'is required for' },
+                issues: [{ id: '2-6', idReadable: 'TEST-6', summary: 'Related task' }],
+              },
+            ],
           },
-        ],
-      })
+        },
+        { data: {} },
+        {
+          data: {
+            id: '2-5',
+            links: [{ id: 'lt-rel', direction: 'BOTH', linkType: { id: 'lt-rel', name: 'Relates' } }],
+          },
+        },
+        { data: { id: '2-6' } },
+        { data: {} },
+      ])
 
       const testProvider = new YouTrackProvider(createConfig())
       const result = await testProvider.updateRelation('TEST-5', 'TEST-6', 'related')
