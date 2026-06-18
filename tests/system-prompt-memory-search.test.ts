@@ -8,14 +8,14 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { buildProviderlessSystemPrompt } from '../src/system-prompt.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
-describe('recall preamble', () => {
+describe('memory search preamble', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
   })
 
-  test('present only when the recall tool is enabled', () => {
-    const withRecall = buildProviderlessSystemPrompt('g:thread:a', new Set(['recall']), {
+  test('present only when the search_memory tool is enabled', () => {
+    const withSearch = buildProviderlessSystemPrompt('g:thread:a', new Set(['search_memory']), {
       askPermissionAvailable: true,
       contextType: 'group',
     })
@@ -23,7 +23,7 @@ describe('recall preamble', () => {
       askPermissionAvailable: true,
       contextType: 'group',
     })
-    expect(withRecall.toLowerCase()).toContain('priority order')
+    expect(withSearch.toLowerCase()).toContain('priority order')
     expect(without.toLowerCase()).not.toContain('priority order')
   })
 })

@@ -129,8 +129,8 @@ const MEMOS = `MEMOS — Personal notes and observations:
 - When searching memos, explain why each result matched (e.g. "This note matched because it mentions…").
 - To promote a memo to a task, call search_memos or list_memos first to get the memo_id, then call promote_memo.`
 
-const MEMORY_RECALL = `MEMORY RECALL
-You can recall prior knowledge with the recall tool, which searches in priority order: this conversation, then shared group memory, then other conversations. Use it before re-asking the user or assuming nothing is known.`
+const MEMORY_SEARCH = `MEMORY SEARCH
+You can look up what is already known with the search_memory tool, which searches in priority order: this conversation, then shared group memory, then other conversations. Use it before re-asking the user or assuming nothing is known.`
 
 const OUTPUT_CORE = `OUTPUT RULES:
 - When referencing tasks or projects, format them as Markdown links: [Task title](url). Never output raw IDs.
@@ -158,7 +158,7 @@ const FRAGMENTS: readonly PromptFragment[] = [
   },
   { text: RELATIONS, requiredTools: ['add_task_relation', 'update_task_relation'] },
   { text: MEMOS, requiredTools: ['save_memo', 'search_memos', 'list_memos'] },
-  { text: MEMORY_RECALL, requiredTools: ['recall'] },
+  { text: MEMORY_SEARCH, requiredTools: ['search_memory'] },
 ]
 
 function fragmentIncluded(fragment: PromptFragment, enabled: ReadonlySet<string> | undefined): boolean {
