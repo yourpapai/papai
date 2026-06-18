@@ -155,10 +155,39 @@ const blockUserMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(usersPayload))
 }
 
+// Stateful mock: first GET /admin/open-access returns off, reload after toggle returns on.
+let enableToggleGetCount = 0
+const enableToggleMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/open-access') && init.method === 'POST') {
+    capturedPostBody = typeof init.body === 'string' ? init.body : undefined
+    return Promise.resolve(json({ ok: true }))
+  }
+  if (url.includes('/admin/open-access')) {
+    enableToggleGetCount++
+    return Promise.resolve(json(enableToggleGetCount === 1 ? openAccessOff : openAccessOn))
+  }
+  return Promise.resolve(json(usersPayload))
+}
+
+// Stateful mock: first GET /admin/open-access returns on, reload after toggle returns off.
+let disableToggleGetCount = 0
+const disableToggleMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/open-access') && init.method === 'POST') {
+    return Promise.resolve(json({ ok: true }))
+  }
+  if (url.includes('/admin/open-access')) {
+    disableToggleGetCount++
+    return Promise.resolve(json(disableToggleGetCount === 1 ? openAccessOn : openAccessOff))
+  }
+  return Promise.resolve(json(usersPayload))
+}
+
 afterEach(() => {
   capturedPostBody = undefined
   capturedDeleteBody = undefined
   capturedBlockBody = undefined
+  enableToggleGetCount = 0
+  disableToggleGetCount = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -375,6 +404,40 @@ describe('AdminUsersSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!.click()
     await drain()
     expect(capturedPostBody).toBe(JSON.stringify({ enabled: true }))
+    void unmount(component)
+  })
+
+  test('enabling open access shows "enabled" in the toast (not "disabled")', async () => {
+    setCsrfToken('c')
+    setMockFetch(enableToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    // Initial state: button reads "Enable" (access is off)
+    expect(target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!.textContent?.trim()).toBe(
+      'Enable',
+    )
+    target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-success')!.textContent).toContain('enabled')
+    void unmount(component)
+  })
+
+  test('disabling open access shows "disabled" in the toast (not "enabled")', async () => {
+    setCsrfToken('c')
+    setMockFetch(disableToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    // Initial state: button reads "Disable" (access is on)
+    expect(target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!.textContent?.trim()).toBe(
+      'Disable',
+    )
+    target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-success')!.textContent).toContain('disabled')
     void unmount(component)
   })
 

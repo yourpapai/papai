@@ -39,8 +39,9 @@
     status = null
     loading = true
     try {
-      users = (await fetchAdminUsers()).users
-      openDmAccess = (await fetchOpenAccess()).openDmAccess
+      const [usersResult, accessResult] = await Promise.all([fetchAdminUsers(), fetchOpenAccess()])
+      users = usersResult.users
+      openDmAccess = accessResult.openDmAccess
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -52,10 +53,11 @@
     error = null
     status = null
     togglingAccess = true
+    const enabling = !openDmAccess
     try {
-      await patchOpenAccess({ enabled: !openDmAccess })
+      await patchOpenAccess({ enabled: enabling })
       await load()
-      status = openDmAccess ? 'Open DM access disabled.' : 'Open DM access enabled.'
+      status = enabling ? 'Open DM access enabled.' : 'Open DM access disabled.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -201,6 +203,7 @@
           variant="danger"
           size="sm"
           testid={`user-remove-${row.platform_user_id}`}
+          disabled={blocking === row.platform_user_id}
           onClick={() => (pendingRemoval = row.platform_user_id)}>
           {#snippet children()}Remove{/snippet}
         </Btn>
