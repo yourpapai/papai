@@ -11,7 +11,14 @@
   import Pill from '../../shared/ui/Pill.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
 
-  import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolPreset, ToolRisk } from '../fetcher-schemas-tools.js'
+  import type {
+    ToolDomainSummary,
+    ToolDomainView,
+    ToolPermission,
+    ToolPreset,
+    ToolRisk,
+    ToolsResponse,
+  } from '../fetcher-schemas-tools.js'
   import { applyToolPreset, fetchTools, setToolPermission } from '../fetchers.js'
 
   const PERM_OPTIONS = [
@@ -29,11 +36,29 @@
   const presetLabel = (preset: ToolPreset): string =>
     PRESET_OPTIONS.find((p) => p.value === preset)?.label ?? preset
 
+  type SetToolPermissionInput =
+    | { kind: 'domain'; domain: string; permission: ToolPermission; contextId: string }
+    | { kind: 'tool'; tool: string; permission: ToolPermission; contextId: string }
+
   interface Props {
     contextId: string
+    sectionId?: string
+    eyebrow?: string
+    title?: string
+    fetchToolsFn?: (contextId: string) => Promise<ToolsResponse>
+    setToolPermissionFn?: (input: SetToolPermissionInput) => Promise<ToolsResponse>
+    applyToolPresetFn?: (input: { preset: ToolPreset; contextId: string }) => Promise<ToolsResponse>
   }
 
-  let { contextId }: Props = $props()
+  let {
+    contextId,
+    sectionId = 'tools',
+    eyebrow = 'Personal',
+    title = 'Tools',
+    fetchToolsFn = fetchTools,
+    setToolPermissionFn = setToolPermission,
+    applyToolPresetFn = applyToolPreset,
+  }: Props = $props()
 
   let domains: ToolDomainView[] = $state([])
   let expanded: Record<string, boolean> = $state({})
@@ -68,7 +93,7 @@
     loading = true
     expanded = {}
     try {
-      const res = await fetchTools(id)
+      const res = await fetchToolsFn(id)
       domains = res.domains
       activePreset = res.activePreset
     } catch (err) {
@@ -82,7 +107,7 @@
     error = null
     const permission = nextDomainPermission(summary)
     try {
-      domains = (await setToolPermission({ kind: 'domain', domain, permission, contextId })).domains
+      domains = (await setToolPermissionFn({ kind: 'domain', domain, permission, contextId })).domains
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -91,7 +116,7 @@
   async function onSetToolPermission(tool: string, permission: ToolPermission): Promise<void> {
     error = null
     try {
-      domains = (await setToolPermission({ kind: 'tool', tool, permission, contextId })).domains
+      domains = (await setToolPermissionFn({ kind: 'tool', tool, permission, contextId })).domains
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -108,7 +133,7 @@
     pendingPreset = null
     error = null
     try {
-      const res = await applyToolPreset({ preset, contextId })
+      const res = await applyToolPresetFn({ preset, contextId })
       domains = res.domains
       activePreset = res.activePreset
     } catch (err) {
@@ -121,8 +146,8 @@
   })
 </script>
 
-<section id="tools" class="settings-section">
-  <PageHeader eyebrow="Personal" title="Tools">
+<section id={sectionId} class="settings-section">
+  <PageHeader eyebrow={eyebrow} title={title}>
     {#snippet action()}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="tools-refresh" />
     {/snippet}
