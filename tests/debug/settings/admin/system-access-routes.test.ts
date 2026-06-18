@@ -527,6 +527,51 @@ describe('settings admin system/access routes', () => {
     expect(res.status).toBe(403)
   })
 
+  test('POST open-access { enabled: false } after enable returns openDmAccess false and disables the flag', async () => {
+    const url = new URL('https://x/settings/api/admin/open-access')
+    // Enable first
+    await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(isOpenDmAccessEnabled('pi-1')).toBe(true)
+    // Now disable
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), openDmAccess: z.literal(false) }).parse(await res.json())
+    expect(body.openDmAccess).toBe(false)
+    expect(isOpenDmAccessEnabled('pi-1')).toBe(false)
+  })
+
+  test('POST users/block { blocked: true } for unknown user returns 200 with ok: false and does not throw', async () => {
+    const url = new URL('https://x/settings/api/admin/users/block')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'does-not-exist', blocked: true }),
+      }),
+      url,
+      '/settings/api/admin/users/block',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(false) }).parse(await res.json())
+    expect(body.ok).toBe(false)
+  })
+
   test('GET groups returns observed unauthorized same-instance groups only', async () => {
     const observedId = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'obs-1' })
     const authorizedId = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'auth-1' })

@@ -126,7 +126,7 @@ async function handleOpenAccess(req: Request, authed: AuthenticatedSettingsReque
     setOpenDmAccess(authed.principal.platformInstanceId, body.data.enabled)
     log.info(
       { platformInstanceId: authed.principal.platformInstanceId, enabled: body.data.enabled },
-      'open DM access set',
+      'Settings admin set open DM access',
     )
     return settingsJson(200, { ok: true, openDmAccess: body.data.enabled })
   }
@@ -146,6 +146,10 @@ async function handleUserBlock(req: Request, authed: AuthenticatedSettingsReques
   const changed = body.data.blocked
     ? blockUser(body.data.userId, authed.principal.platformInstanceId)
     : unblockUser(body.data.userId, authed.principal.platformInstanceId)
+  log.info(
+    { platformInstanceId: authed.principal.platformInstanceId, blocked: body.data.blocked, changed },
+    'Settings admin set user block state',
+  )
   return settingsJson(200, { ok: changed })
 }
 
