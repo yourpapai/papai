@@ -181,7 +181,7 @@ export const saveAdminFeatureFlags = (input: {
 }): Promise<AdminFeatureFlagRow> =>
   writeJson('/settings/api/admin/feature-flags', 'PATCH', input, (b) => AdminFeatureFlagRowSchema.parse(b))
 
-// --- Admin: tool defaults ---
+// Admin tool defaults: POST for all toggle kinds (domain/tool/preset), mirroring the user-facing /tools route.
 
 export const fetchToolDefaults = (): Promise<ToolsResponse> =>
   getJson('/settings/api/admin/tool-defaults', (b) => ToolsResponseSchema.parse(b))
@@ -193,7 +193,7 @@ export const setToolDefault = (
 ): Promise<ToolsResponse> =>
   writeJson('/settings/api/admin/tool-defaults', 'POST', input, (b) => ToolsResponseSchema.parse(b))
 
-export const applyToolDefaultPreset = (input: { preset: ToolPreset; contextId: string }): Promise<ToolsResponse> =>
+export const applyToolDefaultPreset = (input: { preset: ToolPreset }): Promise<ToolsResponse> =>
   writeJson('/settings/api/admin/tool-defaults', 'POST', { kind: 'preset', preset: input.preset }, (b) =>
     ToolsResponseSchema.parse(b),
   )

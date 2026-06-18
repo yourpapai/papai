@@ -8,6 +8,7 @@
   import ToolsSection from '../ToolsSection.svelte'
 </script>
 
+<!-- contextId is unused by the admin fetchers; dummy value to satisfy ToolsSection's required prop -->
 <ToolsSection
   contextId="admin-default"
   sectionId="tool-defaults"
