@@ -17,7 +17,6 @@ describe('AdminFeatureFlagStateSchema', () => {
       result_compaction: true,
       progressive_disclosure: false,
       semantic_tool_retrieval: false,
-      cross_thread_memory: false,
     })
     expect(result.success).toBe(true)
   })
@@ -48,7 +47,6 @@ describe('AdminFeatureFlagRowSchema', () => {
         result_compaction: true,
         progressive_disclosure: false,
         semantic_tool_retrieval: false,
-        cross_thread_memory: false,
       },
     })
     expect(result.success).toBe(true)
@@ -64,7 +62,6 @@ describe('AdminFeatureFlagRowSchema', () => {
         result_compaction: false,
         progressive_disclosure: false,
         semantic_tool_retrieval: false,
-        cross_thread_memory: false,
       },
     })
     expect(result.success).toBe(true)
@@ -81,7 +78,6 @@ describe('AdminFeatureFlagRowSchema', () => {
         result_compaction: false,
         progressive_disclosure: false,
         semantic_tool_retrieval: false,
-        cross_thread_memory: false,
       },
     })
     expect(result.success).toBe(false)
@@ -107,7 +103,6 @@ describe('AdminFeatureFlagsSnapshotSchema', () => {
             result_compaction: true,
             progressive_disclosure: false,
             semantic_tool_retrieval: false,
-            cross_thread_memory: false,
           },
         },
       ],

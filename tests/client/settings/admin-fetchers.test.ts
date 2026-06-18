@@ -79,7 +79,6 @@ describe('admin-fetchers', () => {
           result_compaction: true,
           progressive_disclosure: false,
           semantic_tool_retrieval: false,
-          cross_thread_memory: false,
         },
       },
     ],
@@ -120,7 +119,6 @@ describe('admin-fetchers', () => {
         result_compaction: true,
         progressive_disclosure: false,
         semantic_tool_retrieval: false,
-        cross_thread_memory: false,
       },
     })
     expect(seenUrl).toBe('/settings/api/admin/feature-flags')
@@ -132,7 +130,6 @@ describe('admin-fetchers', () => {
         result_compaction: true,
         progressive_disclosure: false,
         semantic_tool_retrieval: false,
-        cross_thread_memory: false,
       },
     })
   })

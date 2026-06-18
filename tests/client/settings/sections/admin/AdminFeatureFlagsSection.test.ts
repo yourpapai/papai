@@ -23,7 +23,6 @@ const ALL_FLAGS_OFF = {
   result_compaction: false,
   progressive_disclosure: false,
   semantic_tool_retrieval: false,
-  cross_thread_memory: false,
 }
 
 const oneRowSnapshot = {
@@ -72,7 +71,6 @@ const capturePatchMock = (url: string, init: RequestInit): Promise<Response> => 
           result_compaction: true,
           progressive_disclosure: false,
           semantic_tool_retrieval: false,
-          cross_thread_memory: false,
         },
       }),
     )
@@ -100,9 +98,9 @@ describe('AdminFeatureFlagsSection', () => {
     const checkboxes = target.querySelectorAll<HTMLInputElement>(
       '[data-testid^="feature-flags-ctx-1-"] input[type="checkbox"], [data-testid^="feature-flags-ctx-1-"]',
     )
-    // four flag keys: result_compaction, progressive_disclosure, semantic_tool_retrieval, cross_thread_memory
+    // three flag keys: result_compaction, progressive_disclosure, semantic_tool_retrieval
     const allCheckboxes = target.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    expect(allCheckboxes.length).toBe(4)
+    expect(allCheckboxes.length).toBe(3)
 
     const saveBtn = target.querySelector<HTMLButtonElement>('[data-testid="feature-flags-save-ctx-1"]')!
     expect(saveBtn).not.toBeNull()
@@ -166,45 +164,6 @@ describe('AdminFeatureFlagsSection', () => {
           result_compaction: true,
           progressive_disclosure: false,
           semantic_tool_retrieval: false,
-          cross_thread_memory: false,
-        },
-      }),
-    )
-
-    void unmount(component)
-  })
-
-  test('toggling cross_thread_memory checkbox issues PATCH with the key', async () => {
-    setCsrfToken('c')
-    setMockFetch(capturePatchMock)
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(AdminFeatureFlagsSection, { target })
-    await drain()
-
-    const crossThreadCheckbox = target.querySelector<HTMLInputElement>(
-      '[data-testid="feature-flags-ctx-1-cross_thread_memory"]',
-    )!
-    expect(crossThreadCheckbox).not.toBeNull()
-    expect(target.textContent).toContain('Cross-thread memory')
-    crossThreadCheckbox.checked = true
-    crossThreadCheckbox.dispatchEvent(new Event('change', { bubbles: true }))
-    flushSync()
-
-    const saveBtn = target.querySelector<HTMLButtonElement>('[data-testid="feature-flags-save-ctx-1"]')!
-    expect(saveBtn.disabled).toBe(false)
-
-    saveBtn.click()
-    await drain()
-
-    expect(capturedPatchBody).toBe(
-      JSON.stringify({
-        contextId: 'ctx-1',
-        flags: {
-          result_compaction: false,
-          progressive_disclosure: false,
-          semantic_tool_retrieval: false,
-          cross_thread_memory: true,
         },
       }),
     )
