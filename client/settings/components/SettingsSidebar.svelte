@@ -12,33 +12,50 @@
     kicker: string
     items: readonly SidebarItem[]
     danger?: boolean
+    collapsible?: boolean
+    collapsed?: boolean
   }
 
   interface Props {
     groups: readonly SidebarGroup[]
     activeId: string
+    onToggle?: (kicker: string) => void
   }
 
-  let { groups, activeId }: Props = $props()
+  let { groups, activeId, onToggle }: Props = $props()
 </script>
 
 <aside class="settings-sidebar">
   {#each groups as group (group.kicker)}
     <div class="settings-sidebar__group" class:settings-sidebar__group--danger={group.danger === true}>
-      <div class="t-kicker settings-sidebar__kicker">
-        {group.kicker}{#if group.danger}<span class="settings-sidebar__badge">admin</span>{/if}
-      </div>
-      <nav class="settings-sidebar__nav">
-        {#each group.items as item (item.id)}
-          <a
-            class="settings-sidebar__link"
-            class:settings-sidebar__link--active={activeId === item.id}
-            aria-current={activeId === item.id ? 'page' : undefined}
-            href={`#${item.id}`}>
-            {item.label}
-          </a>
-        {/each}
-      </nav>
+      {#if group.collapsible === true}
+        <button
+          type="button"
+          class="t-kicker settings-sidebar__kicker settings-sidebar__kicker--toggle"
+          aria-expanded={group.collapsed !== true}
+          data-testid={`sidebar-toggle-${group.kicker}`}
+          onclick={() => onToggle?.(group.kicker)}>
+          <span class="settings-sidebar__chevron">{group.collapsed === true ? '▸' : '▾'}</span>
+          {group.kicker}
+        </button>
+      {:else}
+        <div class="t-kicker settings-sidebar__kicker">
+          {group.kicker}{#if group.danger}<span class="settings-sidebar__badge">admin</span>{/if}
+        </div>
+      {/if}
+      {#if group.collapsed !== true}
+        <nav class="settings-sidebar__nav">
+          {#each group.items as item (item.id)}
+            <a
+              class="settings-sidebar__link"
+              class:settings-sidebar__link--active={activeId === item.id}
+              aria-current={activeId === item.id ? 'page' : undefined}
+              href={`#${item.id}`}>
+              {item.label}
+            </a>
+          {/each}
+        </nav>
+      {/if}
     </div>
   {/each}
 </aside>
@@ -67,6 +84,18 @@
     align-items: center;
     gap: 6px;
     margin-bottom: 6px;
+  }
+  .settings-sidebar__kicker--toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    text-align: left;
+    width: 100%;
+    font: inherit;
+  }
+  .settings-sidebar__chevron {
+    margin-right: 2px;
   }
   .settings-sidebar__badge {
     color: var(--danger);
@@ -99,6 +128,8 @@
     background: var(--surface-2);
   }
   @media (max-width: 720px) {
-    .settings-sidebar { display: none; }
+    .settings-sidebar {
+      display: none;
+    }
   }
 </style>

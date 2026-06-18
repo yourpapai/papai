@@ -13,6 +13,8 @@ interface SidebarGroup {
   kicker: string
   items: readonly { id: string; label: string }[]
   danger?: boolean
+  collapsible?: boolean
+  collapsed?: boolean
 }
 
 const groups: SidebarGroup[] = [
@@ -57,6 +59,72 @@ describe('SettingsSidebar', () => {
     const c = mount(SettingsSidebar, { target, props: { groups, activeId: 'profile' } })
     flushSync()
     expect(target.querySelector('.settings-sidebar__group--danger')).not.toBeNull()
+    void unmount(c)
+  })
+})
+
+describe('SettingsSidebar collapsible group', () => {
+  const collapsibleGroups: SidebarGroup[] = [
+    { kicker: 'Personal', items: [{ id: 'profile', label: 'Profile' }] },
+    {
+      kicker: 'Advanced',
+      collapsible: true,
+      collapsed: true,
+      items: [
+        { id: 'memory', label: 'Memory' },
+        { id: 'mcp', label: 'MCP' },
+      ],
+    },
+  ]
+
+  test('collapsed group renders a toggle and hides its links', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const c = mount(SettingsSidebar, { target, props: { groups: collapsibleGroups, activeId: 'profile' } })
+    flushSync()
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="sidebar-toggle-Advanced"]')!
+    expect(toggle).not.toBeNull()
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(target.querySelector('a[href="#memory"]')).toBeNull()
+    expect(target.querySelector('a[href="#profile"]')).not.toBeNull()
+    void unmount(c)
+  })
+
+  test('expanded group shows its links with aria-expanded true', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const expandedGroups: SidebarGroup[] = [
+      { kicker: 'Personal', items: [{ id: 'profile', label: 'Profile' }] },
+      {
+        kicker: 'Advanced',
+        collapsible: true,
+        collapsed: false,
+        items: [
+          { id: 'memory', label: 'Memory' },
+          { id: 'mcp', label: 'MCP' },
+        ],
+      },
+    ]
+    const c = mount(SettingsSidebar, { target, props: { groups: expandedGroups, activeId: 'profile' } })
+    flushSync()
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="sidebar-toggle-Advanced"]')!
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(target.querySelector('a[href="#memory"]')).not.toBeNull()
+    void unmount(c)
+  })
+
+  test('clicking the toggle calls onToggle with the kicker', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const calls: string[] = []
+    const c = mount(SettingsSidebar, {
+      target,
+      props: { groups: collapsibleGroups, activeId: 'profile', onToggle: (k: string) => calls.push(k) },
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="sidebar-toggle-Advanced"]')!.click()
+    flushSync()
+    expect(calls).toEqual(['Advanced'])
     void unmount(c)
   })
 })
