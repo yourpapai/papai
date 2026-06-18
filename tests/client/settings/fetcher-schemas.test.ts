@@ -220,13 +220,13 @@ describe('AdminUserRowSchema', () => {
     expect(parsed.blocked_at).toBe('2026-06-18T10:00:00')
   })
 
-  test('accepts a row without added_by and with null blocked_at', () => {
+  test('accepts a row without blocked_at (always-present added_by, absent optional blocked_at)', () => {
     const parsed = AdminUserRowSchema.parse({
       platform_user_id: 'u2',
       platform_instance_id: 'pi:tg',
-      blocked_at: null,
+      added_by: 'admin',
     })
-    expect(parsed.added_by).toBeUndefined()
-    expect(parsed.blocked_at).toBeNull()
+    expect(parsed.added_by).toBe('admin')
+    expect(parsed.blocked_at).toBeUndefined()
   })
 })

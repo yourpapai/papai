@@ -228,7 +228,7 @@ export const AdminUserRowSchema = z
     platform_user_id: z.string(),
     platform_instance_id: z.string(),
     username: z.string().nullable().optional(),
-    added_by: z.string().optional(),
+    added_by: z.string(),
     blocked_at: z.string().nullable().optional(),
   })
   .loose()
