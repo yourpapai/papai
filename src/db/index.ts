@@ -68,6 +68,7 @@ import { migration054AttachmentOrigin } from './migrations/054_attachment_origin
 import { migration055UserConfigKeyIndex } from './migrations/055_user_config_key_index.js'
 import { migration056ProvisionalMemory } from './migrations/056_provisional_memory.js'
 import { migration057AttachmentGroupContext } from './migrations/057_attachment_group_context.js'
+import { migration058OpenDmAccess } from './migrations/058_open_dm_access.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -160,6 +161,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration055UserConfigKeyIndex,
   migration056ProvisionalMemory,
   migration057AttachmentGroupContext,
+  migration058OpenDmAccess,
 ]
 
 export const initDb = (): void => {

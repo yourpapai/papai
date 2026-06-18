@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { getTableName } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/sqlite-core'
 
+import { platformInstances as platformInstancesDirect } from '../../src/db/instance-schema.js'
 import { contextSettings, platformAdmins, platformInstances, superAdmins, taskInstances } from '../../src/db/schema.js'
 
 describe('instance-schema re-exports', () => {
@@ -41,5 +42,13 @@ describe('instance-schema re-exports', () => {
 
   test('superAdmins has no platform foreign key', () => {
     expect(getTableConfig(superAdmins).foreignKeys).toHaveLength(0)
+  })
+
+  test('platformInstances has openDmAccess column', () => {
+    const config = getTableConfig(platformInstancesDirect)
+    const col = config.columns.find((c) => c.name === 'open_dm_access')
+    expect(col).toBeDefined()
+    expect(col?.notNull).toBe(true)
+    expect(col?.default).toBe(false)
   })
 })

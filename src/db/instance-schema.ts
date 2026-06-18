@@ -4,13 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { sql } from 'drizzle-orm'
-import { index, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const platformInstances = sqliteTable('platform_instances', {
   id: text('id').primaryKey(),
   type: text('type').notNull(),
   config: text('config').notNull(),
   status: text('status').notNull().default('pending'),
+  openDmAccess: integer('open_dm_access', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at')
     .notNull()
     .default(sql`(datetime('now'))`),
