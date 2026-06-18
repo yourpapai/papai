@@ -51,8 +51,10 @@ const MemoryPatchUpdateSchema = z.object({
   confidence: z.number().min(0).max(1).optional(),
 })
 
+const MemoryProfileSchema = z.string().min(1).max(MAX_PROFILE_LENGTH)
+
 export const MemoryPatchSchema = z.object({
-  profile: z.string().min(1).max(MAX_PROFILE_LENGTH).nullable(),
+  profile: MemoryProfileSchema.nullable(),
   records: z.array(MemoryPatchRecordSchema).max(MAX_RECORDS_PER_PATCH),
   updates: z.array(MemoryPatchUpdateSchema).max(MAX_UPDATES_PER_PATCH),
 })
@@ -100,14 +102,42 @@ const jsonObjectFromText = (text: string): string => {
   return text.slice(start, result.end)
 }
 
+const asArray = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : [])
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+// Tolerant parse: a single non-conforming record (e.g. a hallucinated `kind`)
+// must not discard the entire patch, which previously silently dropped every
+// captured fact for that turn. Malformed top-level JSON still hard-fails.
 export function parseMemoryPatch(text: string): MemoryPatch {
+  let raw: unknown
   try {
-    const raw = JSON.parse(jsonObjectFromText(text)) as unknown
-    return MemoryPatchSchema.parse(raw)
+    raw = JSON.parse(jsonObjectFromText(text))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`invalid memory patch: ${message}`, { cause: error })
   }
+
+  const root: Record<string, unknown> = isRecord(raw) ? raw : {}
+
+  const profileResult = MemoryProfileSchema.safeParse(root['profile'])
+  const profile = profileResult.success ? profileResult.data : null
+
+  const records = asArray(root['records'])
+    .flatMap((record) => {
+      const parsed = MemoryPatchRecordSchema.safeParse(record)
+      return parsed.success ? [parsed.data] : []
+    })
+    .slice(0, MAX_RECORDS_PER_PATCH)
+
+  const updates = asArray(root['updates'])
+    .flatMap((update) => {
+      const parsed = MemoryPatchUpdateSchema.safeParse(update)
+      return parsed.success ? [parsed.data] : []
+    })
+    .slice(0, MAX_UPDATES_PER_PATCH)
+
+  return { profile, records, updates }
 }
 
 const recordsForPrompt = (records: readonly MemoryRecord[]): string =>
@@ -123,12 +153,15 @@ const recordsForPrompt = (records: readonly MemoryRecord[]): string =>
     })),
   )
 
+const KIND_VALUES = MemoryKindSchema.options.join(' | ')
+
 const EXTRACTION_PROMPT = `You are papai's long-term memory extractor.
 
 Return ONLY a raw JSON object with this exact shape:
-{"profile": string|null, "records": [{"kind": "...", "content": "...", "summary": string|null, "tags": string[], "confidence": 0.0, "source": "background", "evidence": {}}], "updates": [{"id": "...", "status": "active|stale|archived|contradicted", "content": "...", "confidence": 0.0}]}
+{"profile": string|null, "records": [{"kind": "<one of: ${KIND_VALUES}>", "content": "...", "summary": string|null, "tags": string[], "confidence": 0.0, "source": "background", "evidence": {}}], "updates": [{"id": "...", "status": "active|stale|archived|contradicted", "content": "...", "confidence": 0.0}]}
 
 Rules:
+- "kind" MUST be exactly one of these literal tokens: ${KIND_VALUES}. Use the snake_case form verbatim (e.g. "project_context", not "project context"); never invent other values or synonyms.
 - Capture only durable user or group preferences, stable facts, decisions, procedures, project context, person context, episodes, and references.
 - Avoid over-capturing routine chat, transient requests, guesses, secrets, credentials, tokens, private sensitive data, or anything the user would not reasonably expect to be remembered.
 - Preserve timestamps, message ids, actors, and context ids in evidence when present in the conversation.
@@ -145,13 +178,18 @@ Existing active records:
 Conversation:
 {HISTORY}`
 
+export const buildExtractionPrompt = (
+  input: Pick<ExtractMemoryPatchInput, 'profile' | 'records' | 'history'>,
+): string =>
+  EXTRACTION_PROMPT.replace('{PROFILE}', input.profile ?? '(none)')
+    .replace('{RECORDS}', recordsForPrompt(input.records))
+    .replace('{HISTORY}', serializeHistoryForTrimPrompt(input.history))
+
 export async function extractMemoryPatch(
   input: ExtractMemoryPatchInput,
   deps: ExtractMemoryPatchDeps = defaultDeps,
 ): Promise<MemoryPatch> {
-  const prompt = EXTRACTION_PROMPT.replace('{PROFILE}', input.profile ?? '(none)')
-    .replace('{RECORDS}', recordsForPrompt(input.records))
-    .replace('{HISTORY}', serializeHistoryForTrimPrompt(input.history))
+  const prompt = buildExtractionPrompt(input)
   const result = await deps.generateText({
     model: input.model,
     prompt,
