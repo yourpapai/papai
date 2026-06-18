@@ -75,4 +75,42 @@ describe('runRecallCascade (keyword mode, no embeddings)', () => {
     expect(out.records.map((r) => ({ id: r.id, p: r.provenance }))).toContainEqual({ id: 'b', p: 'other-thread' })
     expect(scheduled).toContain('b')
   })
+
+  // DM contexts have no current-thread or sibling-thread layers: the cascade returns
+  // only active records from the personal scope (tagged 'group'), never reads
+  // provisional records, and never schedules promotion. `recall` is now always
+  // registered in normal mode, so this DM path is reachable through the tool.
+  test('dm context returns active personal records, ignores provisional, schedules no promotion', async () => {
+    saveMemoryRecord(
+      base({ id: 'dm-active', scopeId: 'dm-user-1', scopeType: 'personal', status: 'active', threadContextId: null }),
+    )
+    saveMemoryRecord(
+      base({
+        id: 'dm-prov',
+        scopeId: 'dm-user-1',
+        scopeType: 'personal',
+        status: 'provisional',
+        threadContextId: null,
+      }),
+    )
+    const scheduled: string[] = []
+    const out = await runRecallCascade(
+      {
+        storageContextId: 'dm-user-1',
+        configContextId: 'dm-user-1',
+        contextType: 'dm',
+        query: 'friday deploy schedule',
+        limit: 8,
+      },
+      {
+        getEmbedding: () => Promise.resolve(null),
+        schedulePromotion: (r) => {
+          scheduled.push(r.id)
+        },
+      },
+    )
+    expect(out.records.map((r) => ({ id: r.id, p: r.provenance }))).toContainEqual({ id: 'dm-active', p: 'group' })
+    expect(out.records.map((r) => r.id)).not.toContain('dm-prov')
+    expect(scheduled).toEqual([])
+  })
 })
