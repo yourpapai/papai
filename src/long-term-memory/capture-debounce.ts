@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import { resolveCrossThreadMemoryFlag } from '../tools/feature-flags.js'
 import { runMemoryCapture, type RunMemoryCaptureInput } from './capture.js'
 import { markActivity } from './extraction-state.js'
 
@@ -13,7 +12,6 @@ const log = logger.child({ scope: 'memory:capture-debounce' })
 export const MEMORY_CAPTURE_DEBOUNCE_MS = 600_000
 
 export type ArmCaptureDeps = Readonly<{
-  flagEnabled: (storageContextId: string) => boolean
   markActivity: (input: RunMemoryCaptureInput, historyLen: number, now: string) => void
   runCapture: (input: RunMemoryCaptureInput) => Promise<void>
   schedule: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>
@@ -25,7 +23,6 @@ export type ArmCaptureDeps = Readonly<{
 const pending = new Map<string, ReturnType<typeof setTimeout>>()
 
 const defaultDeps: ArmCaptureDeps = {
-  flagEnabled: resolveCrossThreadMemoryFlag,
   markActivity: (input, historyLen, now) => {
     markActivity(
       {
@@ -48,7 +45,6 @@ const defaultDeps: ArmCaptureDeps = {
 
 /** Record activity and (re)arm a debounced capture for this context. Safe to call every turn. */
 export function armMemoryCapture(input: RunMemoryCaptureInput, deps: ArmCaptureDeps = defaultDeps): void {
-  if (!deps.flagEnabled(input.storageContextId)) return
   if (input.contextType !== 'group') return
 
   deps.markActivity(input, input.history.length, deps.now())
