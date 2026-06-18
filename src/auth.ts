@@ -208,7 +208,9 @@ export const checkAuthorizationExtended = (
     return getBlockedAuth(userId, contextId, contextType, threadId, platformInstanceId)
   }
 
-  if (contextType === 'dm' && !isAuthorized(userId, platformInstanceId) && isOpenDmAccessEnabled(platformInstanceId)) {
+  const authorized = isAuthorized(userId, platformInstanceId)
+
+  if (contextType === 'dm' && !authorized && isOpenDmAccessEnabled(platformInstanceId)) {
     log.info({ userId, platformInstanceId }, 'Open DM access: auto-adding user')
     if (username === null) {
       addUser({ userId, platformInstanceId, addedBy: 'open-access' })
@@ -218,7 +220,7 @@ export const checkAuthorizationExtended = (
     return getDmUserAuth(userId, platformInstanceId)
   }
 
-  if (isAuthorized(userId, platformInstanceId)) {
+  if (authorized) {
     return getAuthorizedUserAuth(userId, contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
 

@@ -1870,6 +1870,7 @@ describe('Open DM Access — wizard bypass (setupBot)', () => {
   })
 
   test('open-access user message reaches processMessage instead of wizard', async () => {
+    // realistic setup; auth here comes from the pre-inserted users row, not open access
     setOpenDmAccess(TEST_PLATFORM_ID, true)
     // Add as open-access user (no config — normally triggers wizard)
     addUser('demo-bypass-1', 'open-access', 'demouser')
