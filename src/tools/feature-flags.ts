@@ -49,7 +49,7 @@ export function parseReductionFlagsJson(raw: string | null): ReductionFlags {
   }
 }
 
-/** Resolve the four reduction flags for a storage context id. Kill switch wins. */
+/** Resolve the three reduction flags for a storage context id. Kill switch wins. */
 export function resolveReductionFlags(storageContextId: string): ReductionFlags {
   if (killSwitchEngaged()) return { ...ALL_OFF }
   const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
