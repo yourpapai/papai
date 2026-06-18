@@ -8,8 +8,10 @@ import { randomUUID } from 'node:crypto'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { ContextType } from '../chat/types.js'
 import { logger } from '../logger.js'
+import { runRecallCascade, type RecallHit } from '../long-term-memory/recall-cascade.js'
 import { resolveMemoryScope } from '../long-term-memory/scope.js'
 import {
   archiveMemoryRecord,
@@ -66,6 +68,10 @@ const toPublicRecord = (record: MemoryRecord): PublicMemoryRecord => ({
   expiresAt: record.expiresAt,
 })
 
+type PublicHit = PublicMemoryRecord & Readonly<{ provenance: RecallHit['provenance'] }>
+
+const toPublicHit = (hit: RecallHit): PublicHit => ({ ...toPublicRecord(hit), provenance: hit.provenance })
+
 const memoryScope = (context: MemoryToolContext): MemoryScope =>
   resolveMemoryScope({ storageContextId: context.storageContextId, contextType: context.contextType })
 
@@ -114,23 +120,30 @@ export function makeRememberMemoryTool(input: MemoryToolContext): ToolSet[string
 
 export function makeSearchMemoryTool(input: MemoryToolContext): ToolSet[string] {
   return tool({
-    description: 'Search long-term memory in the current user or group scope by keyword.',
+    description:
+      'Search everything known in this conversation, the shared group memory, and other conversations (priority-ordered), by keyword or meaning. Optionally filter by kind or include stale memories.',
     inputSchema: z.object({
-      query: z.string().min(1).max(500).describe('Keyword query to search for in memory records'),
+      query: z.string().min(1).max(500).describe('What to search for in memory'),
       include_stale: z.boolean().optional().describe('Include stale memories in addition to active memories'),
       kind: optionalKindSchema,
       limit: limitSchema,
     }),
-    execute: ({ query, include_stale: includeStale, kind, limit }) => {
-      const scope = memoryScope(input)
-      const records = searchMemoryRecords({ ...scope, query, includeStale: includeStale ?? false, kind, limit }).map(
-        toPublicRecord,
-      )
+    execute: async ({ query, include_stale: includeStale, kind, limit }) => {
+      const configContextId = getConfigContextIdFromStorageContextId(input.storageContextId)
+      const { records } = await runRecallCascade({
+        storageContextId: input.storageContextId,
+        configContextId,
+        contextType: input.contextType,
+        query,
+        limit,
+        kind,
+        includeStale: includeStale ?? false,
+      })
       log.debug(
-        { scopeId: scope.scopeId, scopeType: scope.scopeType, includeStale, kind, limit, count: records.length },
+        { storageContextId: input.storageContextId, kind, limit, count: records.length },
         'Memory searched via tool',
       )
-      return { mode: 'keyword', records }
+      return { records: records.map(toPublicHit) }
     },
   })
 }

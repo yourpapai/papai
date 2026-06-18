@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { listMemoryRecords, saveMemoryRecord } from '../../src/long-term-memory/store.js'
@@ -116,7 +117,6 @@ describe('memory tools', () => {
 
     const result = await getToolExecutor(tool)({ query: 'concise' })
 
-    expect(result).toMatchObject({ mode: 'keyword' })
     assertMemoryRecordsResult(result)
     expect(result.records.map((record) => record.id)).toEqual(['mem-user-match'])
   })
@@ -190,5 +190,50 @@ describe('memory tools', () => {
       listMemoryRecords({ scopeId: parentContextId, scopeType: 'group', status: 'active' }).map((r) => r.content),
     ).toEqual(['The group release captain is Dana.'])
     expect(listMemoryRecords({ scopeId: threadContextId, scopeType: 'group', status: 'active' })).toEqual([])
+  })
+
+  test('search_memory tags results with provenance', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'mem-prov', scopeId: 'user-1', content: 'Use concise release notes.' }))
+    const tool = makeSearchMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+    const result = await getToolExecutor(tool)({ query: 'concise' })
+    assertMemoryRecordsResult(result)
+    const hit: unknown = result.records.find((r) => r.id === 'mem-prov')
+    assert(typeof hit === 'object')
+    assert(hit !== null)
+    assert('provenance' in hit)
+    expect((hit as Record<string, unknown>)['provenance']).toBe('group')
+  })
+
+  test('search_memory filters by kind', async () => {
+    saveMemoryRecord(
+      memoryRecordInput({ id: 'mem-fact', scopeId: 'user-1', content: 'release notes are concise', kind: 'fact' }),
+    )
+    saveMemoryRecord(
+      memoryRecordInput({
+        id: 'mem-pref',
+        scopeId: 'user-1',
+        content: 'release notes are concise',
+        kind: 'preference',
+      }),
+    )
+    const tool = makeSearchMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+    const result = await getToolExecutor(tool)({ query: 'concise', kind: 'preference' })
+    assertMemoryRecordsResult(result)
+    const ids = result.records.map((r) => r.id)
+    expect(ids).toContain('mem-pref')
+    expect(ids).not.toContain('mem-fact')
+  })
+
+  test('search_memory includes stale only when asked', async () => {
+    saveMemoryRecord(
+      memoryRecordInput({ id: 'mem-old', scopeId: 'user-1', content: 'concise legacy note', status: 'stale' }),
+    )
+    const tool = makeSearchMemoryTool({ storageContextId: 'user-1', contextType: 'dm' })
+    const base = await getToolExecutor(tool)({ query: 'concise' })
+    assertMemoryRecordsResult(base)
+    expect(base.records.map((r) => r.id)).not.toContain('mem-old')
+    const withStale = await getToolExecutor(tool)({ query: 'concise', include_stale: true })
+    assertMemoryRecordsResult(withStale)
+    expect(withStale.records.map((r) => r.id)).toContain('mem-old')
   })
 })
