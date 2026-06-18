@@ -89,7 +89,7 @@ describe('settings admin tool-defaults routes', () => {
     expect(webDomain?.summary).toBe('deny')
   })
 
-  test('POST tool ask → 200', async () => {
+  test('POST tool ask → 200, web_fetch permission is ask', async () => {
     const url = new URL('https://x/settings/api/admin/tool-defaults')
     const res = await handleAdminToolDefaultsRoutes(
       new Request(url, {
@@ -101,7 +101,15 @@ describe('settings admin tool-defaults routes', () => {
       '/settings/api/admin/tool-defaults',
     )
     expect(res.status).toBe(200)
-    ToolsResponseSchema.parse(await res.json())
+    const body = ToolsResponseSchema.parse(await res.json())
+    const DomainToolSchema = z.object({
+      domain: z.string(),
+      tools: z.array(z.object({ name: z.string(), permission: z.string() })),
+    })
+    const domains = z.array(DomainToolSchema).parse(body.domains)
+    const webDomain = domains.find((d) => d.domain === 'web')
+    const webFetch = webDomain?.tools.find((t) => t.name === 'web_fetch')
+    expect(webFetch?.permission).toBe('ask')
   })
 
   test('POST unknown domain → 422', async () => {

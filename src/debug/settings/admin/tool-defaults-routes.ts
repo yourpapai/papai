@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { adminToolDefaultsContextId } from '../../../tools/admin-tool-defaults.js'
-import { getToolMetadata, TOOL_METADATA, type ToolDomain } from '../../../tools/tool-metadata.js'
+import { getToolMetadata, isToolDomain, TOOL_METADATA } from '../../../tools/tool-metadata.js'
 import {
   applyPreset,
   detectActivePreset,
@@ -23,11 +23,6 @@ import { requireAdmin } from './admin-guard.js'
 const log = logger.child({ scope: 'debug-server:settings-admin-tool-defaults' })
 
 const CATALOG_NAMES: readonly string[] = Object.keys(TOOL_METADATA)
-const DOMAIN_SET = new Set<string>(Object.values(TOOL_METADATA).map((m) => m.domain))
-
-function isToolDomain(value: string): value is ToolDomain {
-  return DOMAIN_SET.has(value)
-}
 
 const ToggleBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('domain'), permission: z.enum(['allow', 'ask', 'deny']), domain: z.string() }),
@@ -69,6 +64,7 @@ async function handlePost(req: Request, authed: AuthenticatedSettingsRequest): P
     if (!isToolDomain(body.data.domain)) return settingsJson(422, { error: 'unknown tool domain' })
     setToolPrefs(ctx, setDomainPermission(prefs, body.data.domain, body.data.permission))
   } else if (body.data.kind === 'tool') {
+    // catalog membership only — admin defaults are provider-agnostic (no live context to gate against)
     if (getToolMetadata(body.data.tool) === undefined) return settingsJson(422, { error: 'unknown tool' })
     setToolPrefs(ctx, setToolPermission(prefs, body.data.tool, body.data.permission))
   } else {

@@ -29,6 +29,11 @@ export const TOOL_DOMAINS = [
 
 export type ToolDomain = (typeof TOOL_DOMAINS)[number]
 
+const TOOL_DOMAIN_SET: ReadonlySet<string> = new Set(TOOL_DOMAINS)
+export function isToolDomain(value: string): value is ToolDomain {
+  return TOOL_DOMAIN_SET.has(value)
+}
+
 export type ToolOperation = 'read' | 'create' | 'update' | 'delete' | 'manage'
 
 export type ToolRisk = 'read' | 'write' | 'destructive' | 'open-world'

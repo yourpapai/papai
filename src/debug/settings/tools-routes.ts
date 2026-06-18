@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 import { safeBuildProvider } from '../../commands/context-tool-resolution.js'
 import { logger } from '../../logger.js'
-import { getToolMetadata, TOOL_METADATA, type ToolDomain } from '../../tools/tool-metadata.js'
+import { getToolMetadata, isToolDomain, type ToolDomain } from '../../tools/tool-metadata.js'
 import {
   applyPreset,
   detectActivePreset,
@@ -22,11 +22,6 @@ import { buildTools } from '../../tools/tools-builder.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-tools' })
-const DOMAIN_SET = new Set<string>(Object.values(TOOL_METADATA).map((m) => m.domain))
-
-function isToolDomain(value: string): value is ToolDomain {
-  return DOMAIN_SET.has(value)
-}
 
 /** Computed, capability+context-gated tool names for a context. */
 async function availableToolNames(
