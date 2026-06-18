@@ -105,7 +105,7 @@ describe('addYouTrackRelation (structured /links/{linkID}/issues)', () => {
 
     await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'blocks')
 
-    expect(getFetchUrl(0).pathname).toBe('/api/issues/PROJ-123/links')
+    expect(getFetchUrl(0).pathname).toBe('/api/issues/PROJ-123')
     expect(getFetchMethod(0)).toBe('GET')
 
     expect(getFetchUrl(1).pathname).toBe('/api/issues/PROJ-456')
@@ -170,7 +170,7 @@ describe('addYouTrackRelation (structured /links/{linkID}/issues)', () => {
     expect(getFetchBody(3)).toEqual({ id: '2-456' })
   })
 
-  test('fallback uses suffix s for an undirected link type', async () => {
+  test('fallback uses no suffix for an undirected link type', async () => {
     mockFetchSequence([
       { data: { id: 'issue-123', links: [] } },
       { data: [{ id: 'lt-rel', name: 'Relates', directed: false }] },
@@ -180,7 +180,7 @@ describe('addYouTrackRelation (structured /links/{linkID}/issues)', () => {
 
     await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'related')
 
-    expect(getFetchUrl(3).pathname).toBe('/api/issues/PROJ-123/links/lt-rels/issues')
+    expect(getFetchUrl(3).pathname).toBe('/api/issues/PROJ-123/links/lt-rel/issues')
   })
 
   test('throws linkTypeNotFound listing available types when resolution fails', async () => {
@@ -191,9 +191,9 @@ describe('addYouTrackRelation (structured /links/{linkID}/issues)', () => {
       { data: [{ id: 'lt-rel', name: 'Relates', directed: false }] },
     ])
 
-    await expect(addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'blocks')).rejects.toBeInstanceOf(
-      YouTrackClassifiedError,
-    )
+    await expect(addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'blocks')).rejects.toMatchObject({
+      appError: { code: 'link-type-not-found', available: ['Relates'] },
+    })
   })
 })
 

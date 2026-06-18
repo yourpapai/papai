@@ -82,8 +82,8 @@ async function resolveYouTrackLinkId(
 ): Promise<string> {
   const wanted = linkTypeName.toLowerCase()
 
-  const rawLinks = await youtrackFetch(config, 'GET', `/api/issues/${taskId}/links`, {
-    query: { fields: 'id,direction,linkType(id,name)' },
+  const rawLinks = await youtrackFetch(config, 'GET', `/api/issues/${taskId}`, {
+    query: { fields: 'id,links(id,direction,linkType(id,name))' },
   })
   const issue = IssueLinksSchema.parse(rawLinks)
   const discovered = (issue.links ?? []).find(
@@ -111,7 +111,7 @@ async function resolveYouTrackLinkId(
     )
   }
 
-  const suffix = match.directed === false ? 's' : direction === 'OUTWARD' ? 's' : 't'
+  const suffix = match.directed === false ? '' : direction === 'OUTWARD' ? 's' : 't'
   return `${match.id}${suffix}`
 }
 
