@@ -122,8 +122,9 @@
   }
 
   $effect(() => {
+    const ids = sectionIds
     untrack(() => {
-      if (sectionIds.length > 0 && !sectionIds.includes(activeId)) activeId = sectionIds[0]
+      if (ids.length > 0 && !ids.includes(activeId)) activeId = ids[0]
     })
   })
 
