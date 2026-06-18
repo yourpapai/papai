@@ -52,7 +52,7 @@ function groupByDomain(names: readonly string[]): Map<ToolDomain, string[]> {
   return map
 }
 
-function buildDomainView(names: readonly string[], prefs: ToolPrefs): unknown[] {
+export function buildDomainView(names: readonly string[], prefs: ToolPrefs): unknown[] {
   const grouped = groupByDomain(names)
   return [...grouped.entries()]
     .toSorted(([a], [b]) => a.localeCompare(b))
@@ -83,7 +83,7 @@ async function handleGet(req: Request, url: URL): Promise<Response> {
 }
 
 /** Set a specific permission for a domain; clears per-tool overrides in that domain. */
-function setDomainPermission(prefs: ToolPrefs, domain: ToolDomain, permission: Permission): ToolPrefs {
+export function setDomainPermission(prefs: ToolPrefs, domain: ToolDomain, permission: Permission): ToolPrefs {
   const domainDefaults = { ...prefs.domainDefaults, [domain]: permission }
   // Clear per-tool overrides inside the domain so the bulk action wins cleanly.
   const toolOverrides: Record<string, Permission> = {}
@@ -101,7 +101,7 @@ function setDomainPermission(prefs: ToolPrefs, domain: ToolDomain, permission: P
 }
 
 /** Set a specific permission for a single tool; prunes redundant override if it matches domain/risk default. */
-function setToolPermission(prefs: ToolPrefs, toolName: string, permission: Permission): ToolPrefs {
+export function setToolPermission(prefs: ToolPrefs, toolName: string, permission: Permission): ToolPrefs {
   const meta = getToolMetadata(toolName)
   const baseline: Permission =
     meta === undefined
