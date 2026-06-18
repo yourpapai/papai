@@ -5,7 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { saveMemoryRecord, listProvisionalRecords } from '../../src/long-term-memory/store.js'
+import { listProvisionalRecords } from '../../src/long-term-memory/provisional-store.js'
+import { saveMemoryRecord } from '../../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../../src/long-term-memory/types.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
