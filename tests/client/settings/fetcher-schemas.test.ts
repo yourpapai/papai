@@ -9,10 +9,12 @@ import {
   AddAdminUserResponseSchema,
   AdminGroupsResponseSchema,
   AdminInstancesResponseSchema,
+  AdminUserRowSchema,
   BootstrapSchema,
   ConfigResponseSchema,
   GroupTaskInstanceResponseSchema,
   IdentityResponseSchema,
+  OpenAccessResponseSchema,
   ProviderTypesResponseSchema,
   McpResponseSchema,
   PluginsResponseSchema,
@@ -190,5 +192,41 @@ describe('AdminGroupsResponseSchema', () => {
   test('defaults observed to an empty array when absent', () => {
     const parsed = AdminGroupsResponseSchema.parse({ groups: [] })
     expect(parsed.observed).toEqual([])
+  })
+})
+
+describe('OpenAccessResponseSchema', () => {
+  test('parses { openDmAccess: true }', () => {
+    const parsed = OpenAccessResponseSchema.parse({ openDmAccess: true })
+    expect(parsed.openDmAccess).toBe(true)
+  })
+
+  test('parses { openDmAccess: false }', () => {
+    const parsed = OpenAccessResponseSchema.parse({ openDmAccess: false })
+    expect(parsed.openDmAccess).toBe(false)
+  })
+})
+
+describe('AdminUserRowSchema', () => {
+  test('accepts a row with added_by and blocked_at', () => {
+    const parsed = AdminUserRowSchema.parse({
+      platform_user_id: 'u1',
+      platform_instance_id: 'pi:tg',
+      username: 'alice',
+      added_by: 'open-access',
+      blocked_at: '2026-06-18T10:00:00',
+    })
+    expect(parsed.added_by).toBe('open-access')
+    expect(parsed.blocked_at).toBe('2026-06-18T10:00:00')
+  })
+
+  test('accepts a row without added_by and with null blocked_at', () => {
+    const parsed = AdminUserRowSchema.parse({
+      platform_user_id: 'u2',
+      platform_instance_id: 'pi:tg',
+      blocked_at: null,
+    })
+    expect(parsed.added_by).toBeUndefined()
+    expect(parsed.blocked_at).toBeNull()
   })
 })

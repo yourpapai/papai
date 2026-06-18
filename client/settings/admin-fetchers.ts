@@ -25,6 +25,7 @@ import {
   AdminSystemResponseSchema,
   AdminUsersResponseSchema,
   AnnounceResultSchema,
+  OpenAccessResponseSchema,
   PluginApprovalResultSchema,
   ProviderTypesResponseSchema,
   type AddAdminUserResponse,
@@ -35,6 +36,7 @@ import {
   type AdminSystemResponse,
   type AdminUsersResponse,
   type AnnounceResult,
+  type OpenAccessResponse,
   type PluginApprovalResult,
   type ProviderTypesResponse,
 } from './fetcher-schemas.js'
@@ -120,6 +122,15 @@ export const addAdminUser = (input: { userId: string; username?: string }): Prom
 
 export const removeAdminUser = (input: { userId: string }): Promise<unknown> =>
   writeJson('/settings/api/admin/users', 'DELETE', input, (b) => b)
+
+export const fetchOpenAccess = (): Promise<OpenAccessResponse> =>
+  getJson('/settings/api/admin/open-access', (b) => OpenAccessResponseSchema.parse(b))
+
+export const patchOpenAccess = (input: { enabled: boolean }): Promise<unknown> =>
+  writeJson('/settings/api/admin/open-access', 'POST', input, (b) => b)
+
+export const setUserBlocked = (input: { userId: string; blocked: boolean }): Promise<unknown> =>
+  writeJson('/settings/api/admin/users/block', 'POST', input, (b) => b)
 
 export const fetchAdminGroups = (): Promise<AdminGroupsResponse> =>
   getJson('/settings/api/admin/groups', (b) => AdminGroupsResponseSchema.parse(b))

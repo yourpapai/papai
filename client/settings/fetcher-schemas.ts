@@ -228,11 +228,16 @@ export const AdminUserRowSchema = z
     platform_user_id: z.string(),
     platform_instance_id: z.string(),
     username: z.string().nullable().optional(),
+    added_by: z.string().optional(),
+    blocked_at: z.string().nullable().optional(),
   })
   .loose()
 export const AdminUsersResponseSchema = z.object({ users: z.array(AdminUserRowSchema) })
 export type AdminUserRow = z.infer<typeof AdminUserRowSchema>
 export type AdminUsersResponse = z.infer<typeof AdminUsersResponseSchema>
+
+export const OpenAccessResponseSchema = z.object({ openDmAccess: z.boolean() }).loose()
+export type OpenAccessResponse = z.infer<typeof OpenAccessResponseSchema>
 
 export const AddAdminUserResponseSchema = z.object({ ok: z.boolean(), pending: z.boolean().optional() }).loose()
 export type AddAdminUserResponse = z.infer<typeof AddAdminUserResponseSchema>
