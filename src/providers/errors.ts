@@ -34,6 +34,7 @@ export type ProviderError =
     }
   | { type: 'provider'; code: 'unsupported-operation'; operation: string }
   | { type: 'provider'; code: 'status-not-found'; statusName: string; available: string[] }
+  | { type: 'provider'; code: 'link-type-not-found'; linkTypeName: string; available: string[] }
   | { type: 'provider'; code: 'invalid-response' }
   | { type: 'provider'; code: 'unknown'; originalError: Error }
 
@@ -106,6 +107,12 @@ export const providerError = {
     statusName,
     available,
   }),
+  linkTypeNotFound: (linkTypeName: string, available: string[]): ProviderError => ({
+    type: 'provider',
+    code: 'link-type-not-found',
+    linkTypeName,
+    available,
+  }),
   invalidResponse: (): ProviderError => ({ type: 'provider', code: 'invalid-response' }),
   unknown: (originalError: Error): ProviderError => ({
     type: 'provider',
@@ -152,6 +159,8 @@ export const getProviderMessage = (error: ProviderError): string => {
       return `Operation "${error.operation}" is not supported by this provider.`
     case 'status-not-found':
       return `Status "${error.statusName}" is not recognised. Available statuses: ${error.available.join(', ')}.`
+    case 'link-type-not-found':
+      return `Link type "${error.linkTypeName}" was not found on this YouTrack instance. Available link types: ${error.available.join(', ')}.`
     case 'invalid-response':
       return `The task tracker returned an unexpected response. Please try again.`
     case 'unknown':
