@@ -15,7 +15,7 @@ import { makeExpandResultTool } from './compaction/expand-result.js'
 import { makeCreateRecurringTaskTool } from './create-recurring-task.js'
 import { addDeferredPromptTools } from './deferred-tools-builder.js'
 import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
-import { resolveReductionFlags, resolveCrossThreadMemoryFlag } from './feature-flags.js'
+import { resolveReductionFlags } from './feature-flags.js'
 import { makeGetCurrentTimeTool } from './get-current-time.js'
 import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructionTool } from './instructions.js'
 import { makeListMemosTool } from './list-memos.js'
@@ -117,12 +117,7 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
   addRecurringTools(tools, storageOwnerId)
   addMemoTools(tools, storageOwnerId)
   addMemoryTools(tools, contextId, contextType)
-  if (
-    contextId !== undefined &&
-    contextType !== undefined &&
-    mode === 'normal' &&
-    resolveCrossThreadMemoryFlag(contextId)
-  ) {
+  if (contextId !== undefined && contextType !== undefined && mode === 'normal') {
     tools['recall'] = makeRecallMemoryTool({ storageContextId: contextId, contextType })
   }
   addInstructionTools(tools, storageOwnerId)

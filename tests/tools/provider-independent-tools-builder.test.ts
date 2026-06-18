@@ -13,7 +13,6 @@ import { addProviderIndependentTools } from '../../src/tools/provider-independen
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const COMPACTION_ON = JSON.stringify({ result_compaction: true })
-const CROSS_THREAD_ON = JSON.stringify({ cross_thread_memory: true })
 
 // Unique context per test: the in-memory config cache outlives individual tests.
 const optsFor = (
@@ -64,21 +63,19 @@ describe('recall registration', () => {
     delete process.env['TOOL_CONTEXT_REDUCTION_DISABLED']
   })
 
-  it('omits recall when cross_thread_memory flag is OFF (default)', () => {
+  it('registers recall in normal mode for a group context', () => {
     const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-recall-off', 'normal', 'group'))
-    expect(tools['recall']).toBeUndefined()
-  })
-
-  it('registers recall when flag is ON, mode is normal, and contextType is group', () => {
-    setCachedConfig('pitb-recall-on', REDUCTION_FLAGS_CONFIG_KEY, CROSS_THREAD_ON)
-    const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-recall-on', 'normal', 'group'))
+    addProviderIndependentTools(tools, optsFor('pitb-recall-group', 'normal', 'group'))
     expect(tools['recall']).toBeDefined()
   })
 
-  it('omits recall in proactive mode even when flag is ON', () => {
-    setCachedConfig('pitb-recall-proactive', REDUCTION_FLAGS_CONFIG_KEY, CROSS_THREAD_ON)
+  it('registers recall in normal mode for a dm context', () => {
+    const tools: ToolSet = {}
+    addProviderIndependentTools(tools, optsFor('pitb-recall-dm', 'normal', 'dm'))
+    expect(tools['recall']).toBeDefined()
+  })
+
+  it('omits recall in proactive mode', () => {
     const tools: ToolSet = {}
     addProviderIndependentTools(tools, optsFor('pitb-recall-proactive', 'proactive', 'group'))
     expect(tools['recall']).toBeUndefined()
