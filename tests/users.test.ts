@@ -14,11 +14,14 @@ import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../src/instances/admin-store.
 import {
   addUser,
   addPendingUser,
-  removeUser,
-  isAuthorized,
+  blockUser,
+  isBlocked,
   isDemoUser,
+  isAuthorized,
+  removeUser,
   resolveUserByUsername,
   listUsers,
+  unblockUser,
 } from '../src/users.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
@@ -613,5 +616,39 @@ describe('addPendingUser', () => {
     ).toBe('created')
     expect(resolveUserByUsername('424242', 'f4dev', TEST_PLATFORM_ID)).toBe(true)
     expect(isAuthorized('424242', TEST_PLATFORM_ID)).toBe(true)
+  })
+})
+
+describe('user blocking', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+  })
+
+  test('isBlocked is false for unknown and unblocked users', () => {
+    expect(isBlocked('nobody', 'telegram-default')).toBe(false)
+    addUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'manual' })
+    expect(isBlocked('u1', 'telegram-default')).toBe(false)
+  })
+
+  test('blockUser blocks an existing user and unblockUser reverses it', () => {
+    addUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'manual' })
+    expect(blockUser('u1', 'telegram-default')).toBe(true)
+    expect(isBlocked('u1', 'telegram-default')).toBe(true)
+    expect(unblockUser('u1', 'telegram-default')).toBe(true)
+    expect(isBlocked('u1', 'telegram-default')).toBe(false)
+  })
+
+  test('blockUser returns false when no row exists', () => {
+    expect(blockUser('ghost', 'telegram-default')).toBe(false)
+  })
+
+  test('listUsers includes added_by and blocked_at', () => {
+    addUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'open-access' })
+    blockUser('u1', 'telegram-default')
+    const row = listUsers('telegram-default').find((u) => u.platform_user_id === 'u1')
+    expect(row?.added_by).toBe('open-access')
+    expect(row?.blocked_at).not.toBeNull()
   })
 })

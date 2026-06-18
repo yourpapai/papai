@@ -25,6 +25,7 @@ export interface UserRecord {
   username: string | null
   added_at: string
   added_by: string
+  blocked_at: string | null
 }
 
 type AddUserInputWithoutUsername = Readonly<Record<never, never>>
@@ -202,11 +203,48 @@ export function listUsers(...args: [] | [platformInstanceId: string]): UserRecor
       username: users.username,
       added_at: users.addedAt,
       added_by: users.addedBy,
+      blocked_at: users.blockedAt,
     })
     .from(users)
 
   if (platformInstanceId === undefined) return query.all()
   return query.where(eq(users.platformInstanceId, platformInstanceId)).all()
+}
+
+export function blockUser(userId: string, platformInstanceId: string): boolean {
+  log.debug({ platformInstanceId }, 'blockUser called')
+  const db = getDrizzleDb()
+  const updated = db
+    .update(users)
+    .set({ blockedAt: sql`(datetime('now'))` })
+    .where(and(eq(users.platformUserId, userId), eq(users.platformInstanceId, platformInstanceId)))
+    .returning({ platformUserId: users.platformUserId })
+    .all()
+  if (updated.length > 0) evictUser(userId)
+  return updated.length > 0
+}
+
+export function unblockUser(userId: string, platformInstanceId: string): boolean {
+  log.debug({ platformInstanceId }, 'unblockUser called')
+  const db = getDrizzleDb()
+  const updated = db
+    .update(users)
+    .set({ blockedAt: null })
+    .where(and(eq(users.platformUserId, userId), eq(users.platformInstanceId, platformInstanceId)))
+    .returning({ platformUserId: users.platformUserId })
+    .all()
+  if (updated.length > 0) evictUser(userId)
+  return updated.length > 0
+}
+
+export function isBlocked(userId: string, platformInstanceId: string): boolean {
+  const db = getDrizzleDb()
+  const row = db
+    .select({ blockedAt: users.blockedAt })
+    .from(users)
+    .where(and(eq(users.platformUserId, userId), eq(users.platformInstanceId, platformInstanceId)))
+    .get()
+  return row !== undefined && row.blockedAt !== null
 }
 
 export function isDemoUser(userId: string, platformInstanceId: string): boolean {
