@@ -4,7 +4,14 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { addAdminUser, fetchAdminUsers, removeAdminUser } from '../../admin-fetchers.js'
+  import {
+    addAdminUser,
+    fetchAdminUsers,
+    fetchOpenAccess,
+    patchOpenAccess,
+    removeAdminUser,
+    setUserBlocked,
+  } from '../../admin-fetchers.js'
   import type { AdminUserRow } from '../../fetcher-schemas.js'
   import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
@@ -16,12 +23,15 @@
   import IdCell from '../../components/IdCell.svelte'
 
   let users: AdminUserRow[] = $state([])
+  let openDmAccess = $state(false)
+  let togglingAccess = $state(false)
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
   let newUserId = $state('')
   let newUsername = $state('')
   let pendingRemoval: string | null = $state(null)
+  let blocking: string | null = $state(null)
   const pendingRemovalLabel = $derived(pendingRemoval ?? '')
 
   async function load(): Promise<void> {
@@ -30,10 +40,26 @@
     loading = true
     try {
       users = (await fetchAdminUsers()).users
+      openDmAccess = (await fetchOpenAccess()).openDmAccess
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
       loading = false
+    }
+  }
+
+  async function toggleAccess(): Promise<void> {
+    error = null
+    status = null
+    togglingAccess = true
+    try {
+      await patchOpenAccess({ enabled: !openDmAccess })
+      await load()
+      status = openDmAccess ? 'Open DM access disabled.' : 'Open DM access enabled.'
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      togglingAccess = false
     }
   }
 
@@ -67,6 +93,21 @@
     }
   }
 
+  async function toggleBlock(userId: string, blocked: boolean): Promise<void> {
+    error = null
+    status = null
+    blocking = userId
+    try {
+      await setUserBlocked({ userId, blocked })
+      await load()
+      status = blocked ? 'User blocked.' : 'User unblocked.'
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      blocking = null
+    }
+  }
+
   $effect(() => {
     void load()
   })
@@ -74,15 +115,23 @@
   interface UserRow {
     platform_user_id: string
     username: string
+    source: string
+    blocked: boolean
   }
 
   const userRows = $derived<UserRow[]>(
-    users.map((u) => ({ platform_user_id: u.platform_user_id, username: u.username ?? '—' })),
+    users.map((u) => ({
+      platform_user_id: u.platform_user_id,
+      username: u.username ?? '—',
+      source: u.added_by ?? '—',
+      blocked: u.blocked_at != null,
+    })),
   )
 
   const userColumns = [
     { key: 'platform_user_id' as const, label: 'User ID' },
     { key: 'username' as const, label: 'Username' },
+    { key: 'source' as const, label: 'Source' },
     { key: 'actions' as const, label: '', align: 'right' as const },
   ]
 </script>
@@ -97,8 +146,32 @@
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
 
-  <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void add() }}>
-    <Field label="User ID or @username" hint="For Telegram, @username adds a pending entry that activates when the user first messages the bot">
+  <div class="open-access-card" data-testid="open-access-card">
+    <div>
+      <strong>Open DM access</strong>
+      <p class="open-access-hint">
+        Anyone can DM this bot. New users are added automatically and listed below; block individuals to revoke.
+      </p>
+    </div>
+    <Btn
+      variant={openDmAccess ? 'danger' : 'primary'}
+      size="sm"
+      testid="open-access-toggle"
+      disabled={togglingAccess}
+      onClick={() => void toggleAccess()}>
+      {#snippet children()}{togglingAccess ? 'Saving…' : openDmAccess ? 'Disable' : 'Enable'}{/snippet}
+    </Btn>
+  </div>
+
+  <form
+    class="settings-form"
+    onsubmit={(event) => {
+      event.preventDefault()
+      void add()
+    }}>
+    <Field
+      label="User ID or @username"
+      hint="For Telegram, @username adds a pending entry that activates when the user first messages the bot">
       {#snippet children()}
         <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="user-add-input" placeholder="123456789 or @username" />
       {/snippet}
@@ -116,7 +189,19 @@
   <div class="settings-table-wrap">
     {#snippet cell(row: UserRow, col: { key: string; label: string })}
       {#if col.key === 'actions'}
-        <Btn variant="danger" size="sm" testid={`user-remove-${row.platform_user_id}`} onClick={() => (pendingRemoval = row.platform_user_id)}>
+        <Btn
+          variant={row.blocked ? 'secondary' : 'danger'}
+          size="sm"
+          testid={`user-block-${row.platform_user_id}`}
+          disabled={blocking === row.platform_user_id}
+          onClick={() => void toggleBlock(row.platform_user_id, !row.blocked)}>
+          {#snippet children()}{row.blocked ? 'Unblock' : 'Block'}{/snippet}
+        </Btn>
+        <Btn
+          variant="danger"
+          size="sm"
+          testid={`user-remove-${row.platform_user_id}`}
+          onClick={() => (pendingRemoval = row.platform_user_id)}>
           {#snippet children()}Remove{/snippet}
         </Btn>
       {:else if col.key === 'platform_user_id'}
@@ -125,6 +210,8 @@
         {:else}
           <IdCell value={row.platform_user_id} />
         {/if}
+      {:else if col.key === 'source'}
+        <span class="source-badge" data-testid={`user-source-${row.platform_user_id}`}>{row.source}</span>
       {:else}
         {String(row[col.key as keyof UserRow] ?? '')}
       {/if}
@@ -146,17 +233,37 @@
     danger
     confirmLabel="Remove"
     onCancel={() => (pendingRemoval = null)}
-    onConfirm={() => { const id = pendingRemoval; pendingRemoval = null; if (id !== null) void remove(id) }}>
+    onConfirm={() => {
+      const id = pendingRemoval
+      pendingRemoval = null
+      if (id !== null) void remove(id)
+    }}>
     {#snippet body()}<p>Remove user {pendingRemovalLabel}? This cannot be undone.</p>{/snippet}
   </Confirm>
 </section>
 
 <style>
-  .pending-badge {
+  .pending-badge,
+  .source-badge {
     font-size: 10px;
     color: var(--fg2);
     border: 1px solid var(--border);
     padding: 1px 4px;
     border-radius: 2px;
+  }
+  .open-access-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+  .open-access-hint {
+    font-size: 12px;
+    color: var(--fg2);
+    margin: 2px 0 0;
   }
 </style>
