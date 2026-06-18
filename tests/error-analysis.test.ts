@@ -41,7 +41,7 @@ describe('error-analysis', () => {
   test('returns guidance for link-type-not-found', () => {
     const error = providerError.linkTypeNotFound('Depend', ['Relates', 'Subtask'])
 
-    expect(getAgentGuidance(error)).toContain('link')
+    expect(getAgentGuidance(error)).toContain('link type')
   })
 
   test('returns structured details for link-type-not-found', () => {

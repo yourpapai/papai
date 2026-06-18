@@ -160,7 +160,7 @@ export const getProviderMessage = (error: ProviderError): string => {
     case 'status-not-found':
       return `Status "${error.statusName}" is not recognised. Available statuses: ${error.available.join(', ')}.`
     case 'link-type-not-found':
-      return `Link type "${error.linkTypeName}" was not found on this YouTrack instance. Available link types: ${error.available.join(', ')}.`
+      return `Link type "${error.linkTypeName}" was not recognised. Available link types: ${error.available.join(', ')}.`
     case 'invalid-response':
       return `The task tracker returned an unexpected response. Please try again.`
     case 'unknown':
