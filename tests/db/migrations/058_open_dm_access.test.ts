@@ -28,6 +28,14 @@ describe('migration 058', () => {
     expect(cols(db, 'users')).toContain('blocked_at')
   })
 
+  test('up is idempotent (safe to re-run)', () => {
+    const db = new Database(':memory:')
+    runMigrations(db, MIGRATIONS)
+    expect(() => migration058OpenDmAccess.up(db)).not.toThrow()
+    expect(cols(db, 'platform_instances')).toContain('open_dm_access')
+    expect(cols(db, 'users')).toContain('blocked_at')
+  })
+
   test('open_dm_access defaults to 0', () => {
     const db = new Database(':memory:')
     runMigrations(db, MIGRATIONS)
