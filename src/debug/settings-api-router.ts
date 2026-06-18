@@ -37,6 +37,8 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   if (
     url.pathname === '/settings/api/admin/system' ||
     url.pathname === '/settings/api/admin/users' ||
+    url.pathname === '/settings/api/admin/users/block' ||
+    url.pathname === '/settings/api/admin/open-access' ||
     url.pathname === '/settings/api/admin/groups'
   ) {
     return handleAdminSystemAccessRoutes(req, url, url.pathname)

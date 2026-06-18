@@ -12,9 +12,10 @@ import {
   toScopedContextId,
 } from '../../../chat/scoped-context.js'
 import { listKnownGroupContextsForPlatform } from '../../../group-settings/admin-group-list.js'
+import { isOpenDmAccessEnabled, setOpenDmAccess } from '../../../instances/platform-store.js'
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
-import { addPendingUser, addUser, listUsers, removeUser } from '../../../users.js'
+import { addPendingUser, addUser, blockUser, listUsers, removeUser, unblockUser } from '../../../users.js'
 import { applyAdminLlmUpdate, getAdminLlmSnapshot } from '../../admin-llm.js'
 import { resolveSettingsUserId } from '../resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
@@ -24,6 +25,8 @@ const log = logger.child({ scope: 'debug-server:settings-admin-system' })
 
 const UserBodySchema = z.object({ userId: z.string().min(1), username: z.string().optional() })
 const GroupBodySchema = z.object({ groupId: z.string().min(1) })
+const OpenAccessBodySchema = z.object({ enabled: z.boolean() })
+const UserBlockBodySchema = z.object({ userId: z.string().min(1), blocked: z.boolean() })
 const LlmBodySchema = z.object({
   key: z.enum(['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model']),
   value: z.string(),
@@ -105,6 +108,47 @@ async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): 
   return settingsJson(200, { ok: removed })
 }
 
+async function handleOpenAccess(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
+  if (req.method === 'GET') {
+    const guard = requireAdmin(authed, 'read')
+    if (guard !== null) return guard
+    return settingsJson(200, { openDmAccess: isOpenDmAccessEnabled(authed.principal.platformInstanceId) })
+  }
+  if (req.method === 'POST') {
+    const guard = requireAdmin(authed, 'write')
+    if (guard !== null) return guard
+    const csrf = requireCsrf(req, authed)
+    if (csrf !== null) return csrf
+    const parsed = await parseJsonBody(req)
+    if (!parsed.ok) return parsed.response
+    const body = OpenAccessBodySchema.safeParse(parsed.value)
+    if (!body.success) return settingsJson(422, { error: 'invalid request' })
+    setOpenDmAccess(authed.principal.platformInstanceId, body.data.enabled)
+    log.info(
+      { platformInstanceId: authed.principal.platformInstanceId, enabled: body.data.enabled },
+      'open DM access set',
+    )
+    return settingsJson(200, { ok: true, openDmAccess: body.data.enabled })
+  }
+  return settingsJson(405, { error: 'method not allowed' })
+}
+
+async function handleUserBlock(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
+  if (req.method !== 'POST') return settingsJson(405, { error: 'method not allowed' })
+  const guard = requireAdmin(authed, 'write')
+  if (guard !== null) return guard
+  const csrf = requireCsrf(req, authed)
+  if (csrf !== null) return csrf
+  const parsed = await parseJsonBody(req)
+  if (!parsed.ok) return parsed.response
+  const body = UserBlockBodySchema.safeParse(parsed.value)
+  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const changed = body.data.blocked
+    ? blockUser(body.data.userId, authed.principal.platformInstanceId)
+    : unblockUser(body.data.userId, authed.principal.platformInstanceId)
+  return settingsJson(200, { ok: changed })
+}
+
 async function handleGroups(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   if (req.method === 'GET') {
     const guard = requireAdmin(authed, 'read')
@@ -145,6 +189,8 @@ export function handleAdminSystemAccessRoutes(req: Request, _url: URL, pathname:
   if (!auth.ok) return Promise.resolve(auth.response)
   if (pathname === '/settings/api/admin/system') return handleSystem(req, auth.authed)
   if (pathname === '/settings/api/admin/users') return handleUsers(req, auth.authed)
+  if (pathname === '/settings/api/admin/users/block') return handleUserBlock(req, auth.authed)
+  if (pathname === '/settings/api/admin/open-access') return handleOpenAccess(req, auth.authed)
   if (pathname === '/settings/api/admin/groups') return handleGroups(req, auth.authed)
   return Promise.resolve(settingsJson(404, { error: 'not found' }))
 }
