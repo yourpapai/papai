@@ -21,7 +21,6 @@ const FlagsSchema = z
     result_compaction: z.boolean(),
     progressive_disclosure: z.boolean(),
     semantic_tool_retrieval: z.boolean(),
-    cross_thread_memory: z.boolean(),
   })
   .strict()
 

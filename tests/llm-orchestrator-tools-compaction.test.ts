@@ -19,7 +19,6 @@ const flags = (resultCompaction: boolean): ReductionFlags => ({
   progressiveDisclosure: false,
   resultCompaction,
   semanticToolRetrieval: false,
-  crossThreadMemory: false,
 })
 
 const applyResultCompactionSpy = mock((tools: ToolSet, _ctx: CompactionContext): ToolSet => tools)

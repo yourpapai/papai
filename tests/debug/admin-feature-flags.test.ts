@@ -20,7 +20,6 @@ const ALL_OFF = {
   result_compaction: false,
   progressive_disclosure: false,
   semantic_tool_retrieval: false,
-  cross_thread_memory: false,
 }
 const userCtx = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'u-1' })
 const groupCtx = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'g-1' })
