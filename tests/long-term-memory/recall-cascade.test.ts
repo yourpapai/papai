@@ -113,4 +113,50 @@ describe('runRecallCascade (keyword mode, no embeddings)', () => {
     expect(out.records.map((r) => r.id)).not.toContain('dm-prov')
     expect(scheduled).toEqual([])
   })
+
+  test('kind filter restricts results across layers', async () => {
+    saveMemoryRecord(base({ id: 'k-fact', status: 'active', threadContextId: null, kind: 'fact' }))
+    saveMemoryRecord(base({ id: 'k-pref', status: 'active', threadContextId: null, kind: 'preference' }))
+    const out = await runRecallCascade(
+      {
+        storageContextId: 'g:thread:z',
+        configContextId: 'g',
+        contextType: 'group',
+        query: 'friday deploy schedule',
+        limit: 8,
+        kind: 'preference',
+      },
+      { getEmbedding: () => Promise.resolve(null), schedulePromotion: () => undefined },
+    )
+    const ids = out.records.map((r) => r.id)
+    expect(ids).toContain('k-pref')
+    expect(ids).not.toContain('k-fact')
+  })
+
+  test('include_stale extends the active layer to stale records', async () => {
+    saveMemoryRecord(base({ id: 's-stale', status: 'stale', threadContextId: null }))
+    const without = await runRecallCascade(
+      {
+        storageContextId: 'g:thread:z',
+        configContextId: 'g',
+        contextType: 'group',
+        query: 'friday deploy schedule',
+        limit: 8,
+      },
+      { getEmbedding: () => Promise.resolve(null), schedulePromotion: () => undefined },
+    )
+    expect(without.records.map((r) => r.id)).not.toContain('s-stale')
+    const withStale = await runRecallCascade(
+      {
+        storageContextId: 'g:thread:z',
+        configContextId: 'g',
+        contextType: 'group',
+        query: 'friday deploy schedule',
+        limit: 8,
+        includeStale: true,
+      },
+      { getEmbedding: () => Promise.resolve(null), schedulePromotion: () => undefined },
+    )
+    expect(withStale.records.map((r) => r.id)).toContain('s-stale')
+  })
 })
