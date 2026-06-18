@@ -36,9 +36,7 @@
   const presetLabel = (preset: ToolPreset): string =>
     PRESET_OPTIONS.find((p) => p.value === preset)?.label ?? preset
 
-  type SetToolPermissionInput =
-    | { kind: 'domain'; domain: string; permission: ToolPermission; contextId: string }
-    | { kind: 'tool'; tool: string; permission: ToolPermission; contextId: string }
+  type SetToolPermissionInput = Parameters<typeof setToolPermission>[0]
 
   interface Props {
     contextId: string
@@ -92,6 +90,7 @@
     error = null
     loading = true
     expanded = {}
+    pendingPreset = null
     try {
       const res = await fetchToolsFn(id)
       domains = res.domains
@@ -107,7 +106,9 @@
     error = null
     const permission = nextDomainPermission(summary)
     try {
-      domains = (await setToolPermissionFn({ kind: 'domain', domain, permission, contextId })).domains
+      const res = await setToolPermissionFn({ kind: 'domain', domain, permission, contextId })
+      domains = res.domains
+      activePreset = res.activePreset
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -116,7 +117,9 @@
   async function onSetToolPermission(tool: string, permission: ToolPermission): Promise<void> {
     error = null
     try {
-      domains = (await setToolPermissionFn({ kind: 'tool', tool, permission, contextId })).domains
+      const res = await setToolPermissionFn({ kind: 'tool', tool, permission, contextId })
+      domains = res.domains
+      activePreset = res.activePreset
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }

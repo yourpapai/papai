@@ -51,6 +51,8 @@ const DomainBodySchema = z.object({
 const PresetBodySchema = z.object({ kind: z.literal('preset'), preset: z.string(), contextId: z.string() })
 
 let capturedBody: unknown = null
+let toggleCallCount = 0
+
 const captureToggleMock = (url: string, init: RequestInit): Promise<Response> => {
   if (url.includes('/tools/toggle')) {
     capturedBody = typeof init.body === 'string' ? JSON.parse(init.body) : init.body
@@ -63,8 +65,23 @@ const errorToggleMock = (url: string, _init: RequestInit): Promise<Response> => 
   return Promise.resolve(json(toolsPayload))
 }
 
+// Returns activePreset: null from toggle (non-empty domains so summary changes to 'allow')
+const nullPresetToggleResponse = {
+  ...toolsPayload,
+  activePreset: null,
+  domains: [{ ...toolsPayload.domains[0], summary: 'allow' as const }],
+}
+const nullPresetToggleMock = (url: string, _init: RequestInit): Promise<Response> => {
+  if (url.includes('/tools/toggle')) {
+    toggleCallCount++
+    return Promise.resolve(json(nullPresetToggleResponse))
+  }
+  return Promise.resolve(json(toolsPayload))
+}
+
 afterEach(() => {
   capturedBody = null
+  toggleCallCount = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -249,6 +266,24 @@ describe('ToolsSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
     await drain()
+    expect(target.querySelector('[data-testid="preset-active"]')!.textContent).toContain('Custom')
+    void unmount(component)
+  })
+
+  test('preset pill goes to Custom after domain toggle returns activePreset: null', async () => {
+    setCsrfToken('c')
+    setMockFetch(nullPresetToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    // Confirm initial preset is shown (load returns activePreset: 'allow-all')
+    expect(target.querySelector('[data-testid="preset-active"]')!.textContent).toContain('Allow all')
+    // Trigger a domain toggle (response returns activePreset: null)
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-task"]')!.click()
+    await drain()
+    expect(toggleCallCount).toBe(1)
+    // After toggle, activePreset from response (null) must be reflected as 'Custom'
     expect(target.querySelector('[data-testid="preset-active"]')!.textContent).toContain('Custom')
     void unmount(component)
   })
