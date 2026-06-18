@@ -164,13 +164,17 @@ across all three platforms — Discord's policy forces the in-platform
 price to be no higher than off-platform. Easiest defensible policy:
 **identical headline price everywhere**, even if the rails differ.
 
-## 7. Demo mode
+## 7. Open DM access (was Demo mode)
 
-`DEMO_MODE` exists (referenced in `CLAUDE.md` env vars and
-`src/auth.ts`). This is exactly the affordance you want for a
-"sales demo" tier: provisioned account with synthetic data, no payment
-required, sandboxed COGS. Plan to extend it (or build a parallel "sales
-account" mode) rather than overload billing logic.
+`DEMO_MODE` was removed. It is replaced by a per-platform-instance
+**open DM access** toggle (`platform_instances.open_dm_access`, managed
+in the admin "Users" settings section). When enabled, any unknown user's
+first DM auto-provisions a real `users` row (`added_by = 'open-access'`);
+admins can block individuals via `users.blocked_at`. This is the
+affordance to build a "sales demo" or free-tier experience on top of —
+provisioned account with synthetic data, no payment required, sandboxed
+COGS. Extend this toggle (or add a parallel "sales account" flag) rather
+than overloading billing logic.
 
 ## 8. Debug server / debug dashboard
 
