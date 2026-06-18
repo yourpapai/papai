@@ -23,7 +23,6 @@ import { makeListRecurringTasksTool } from './list-recurring-tasks.js'
 import { makeLookupGroupHistoryTool } from './lookup-group-history.js'
 import { makeForgetMemoryTool, makeListMemoryTool, makeRememberMemoryTool, makeSearchMemoryTool } from './memory.js'
 import { makePauseRecurringTaskTool } from './pause-recurring-task.js'
-import { makeRecallMemoryTool } from './recall.js'
 import { makeUpdateRecurringTaskTool } from './recurring-tools.js'
 import { makeResumeRecurringTaskTool } from './resume-recurring-task.js'
 import { makeSaveMemoTool } from './save-memo.js'
@@ -117,9 +116,6 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
   addRecurringTools(tools, storageOwnerId)
   addMemoTools(tools, storageOwnerId)
   addMemoryTools(tools, contextId, contextType)
-  if (contextId !== undefined && contextType !== undefined && mode === 'normal') {
-    tools['recall'] = makeRecallMemoryTool({ storageContextId: contextId, contextType })
-  }
   addInstructionTools(tools, storageOwnerId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
   if (contextId !== undefined) tools['web_fetch'] = makeWebFetchTool(contextId, chatUserId, contextType)

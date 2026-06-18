@@ -56,28 +56,28 @@ describe('expand_result registration', () => {
   })
 })
 
-describe('recall registration', () => {
+describe('search_memory registration', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
     delete process.env['TOOL_CONTEXT_REDUCTION_DISABLED']
   })
 
-  it('registers recall in normal mode for a group context', () => {
+  it('registers search_memory in normal mode for a group context', () => {
     const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-recall-group', 'normal', 'group'))
-    expect(tools['recall']).toBeDefined()
+    addProviderIndependentTools(tools, optsFor('pitb-mem-group', 'normal', 'group'))
+    expect(tools['search_memory']).toBeDefined()
   })
 
-  it('registers recall in normal mode for a dm context', () => {
+  it('registers search_memory in normal mode for a dm context', () => {
     const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-recall-dm', 'normal', 'dm'))
-    expect(tools['recall']).toBeDefined()
+    addProviderIndependentTools(tools, optsFor('pitb-mem-dm', 'normal', 'dm'))
+    expect(tools['search_memory']).toBeDefined()
   })
 
-  it('omits recall in proactive mode', () => {
+  it('registers search_memory in proactive mode (mode-independent)', () => {
     const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-recall-proactive', 'proactive', 'group'))
-    expect(tools['recall']).toBeUndefined()
+    addProviderIndependentTools(tools, optsFor('pitb-mem-proactive', 'proactive', 'group'))
+    expect(tools['search_memory']).toBeDefined()
   })
 })
