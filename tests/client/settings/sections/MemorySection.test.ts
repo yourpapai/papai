@@ -375,7 +375,7 @@ describe('MemorySection', () => {
     setMockFetch(routeSettingsWithMemory(pendingUserAMemory(pending)))
     seedTwoContextSession()
     document.body.innerHTML = '<div id="root"></div>'
-    history.replaceState(null, '', '/settings')
+    history.replaceState(null, '', '/settings#memory')
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(SettingsApp, { target })
 

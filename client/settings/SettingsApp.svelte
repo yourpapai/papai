@@ -38,6 +38,9 @@
 
   type SidebarItem = SidebarGroup['items'][number]
 
+  /** Section ids that live under the collapsible Advanced group. */
+  const ADVANCED_IDS: readonly string[] = ['memory', 'ai-output', 'identity', 'byok', 'mcp', 'plugins']
+
   function buildAdminSidebarItems(session: typeof settingsSession): SidebarItem[] {
     const items: SidebarItem[] = []
     if (session.isBotAdmin) {
@@ -63,7 +66,10 @@
     return items
   }
 
-  let activeId = $state(window.location.hash.slice(1) || 'profile')
+  const initialHash = window.location.hash.slice(1)
+  let activeId = $state(initialHash || 'profile')
+  // Collapsed by default, except when a deep link targets an Advanced section.
+  let advancedCollapsed = $state(!ADVANCED_IDS.includes(initialHash))
 
   const isGroup = $derived(activeContext()?.kind === 'group')
 
@@ -73,12 +79,8 @@
         kicker: 'Personal',
         items: [
           { id: 'profile', label: 'Profile' },
-          { id: 'memory', label: 'Memory' },
           { id: 'task-provider', label: 'Task provider' },
           { id: 'tools', label: 'Tools' },
-          { id: 'ai-output', label: 'AI output' },
-          { id: 'byok', label: 'BYOK LLM' },
-          { id: 'identity', label: 'Identity' },
           ...(isGroup
             ? [
                 { id: 'members', label: 'Members' },
@@ -88,8 +90,14 @@
         ],
       },
       {
-        kicker: 'Integrations',
+        kicker: 'Advanced',
+        collapsible: true,
+        collapsed: advancedCollapsed,
         items: [
+          { id: 'memory', label: 'Memory' },
+          { id: 'ai-output', label: 'AI output' },
+          { id: 'identity', label: 'Identity' },
+          { id: 'byok', label: 'BYOK LLM' },
           { id: 'mcp', label: 'MCP' },
           { id: 'plugins', label: 'Plugins' },
         ],
@@ -102,7 +110,16 @@
 
   const sectionIds = $derived(groups.flatMap((g) => g.items.map((i) => i.id)))
 
+  /** Only the sections currently mounted (Advanced sections unmount when collapsed). */
+  const observableSectionIds = $derived(
+    advancedCollapsed ? sectionIds.filter((id) => !ADVANCED_IDS.includes(id)) : sectionIds,
+  )
+
   const ctx = $derived(settingsSession.activeContextId)
+
+  function toggleAdvanced(): void {
+    advancedCollapsed = !advancedCollapsed
+  }
 
   $effect(() => {
     untrack(() => {
@@ -110,9 +127,30 @@
     })
   })
 
+  // Auto-expand + scroll when a hash targets an Advanced section (sidebar link, jump menu, deep link).
+  $effect(() => {
+    const onHash = (): void => {
+      const id = window.location.hash.slice(1)
+      if (!ADVANCED_IDS.includes(id)) return
+      advancedCollapsed = false
+      void tick().then(() => document.getElementById(id)?.scrollIntoView())
+    }
+    window.addEventListener('hashchange', onHash)
+    return (): void => window.removeEventListener('hashchange', onHash)
+  })
+
+  // First ready render: scroll to an Advanced deep-link target (already expanded via init state).
   $effect(() => {
     if (settingsSession.status !== 'ready') return
-    const spy = useScrollSpy(sectionIds, (id) => {
+    const id = untrack(() => window.location.hash.slice(1))
+    if (id !== '' && ADVANCED_IDS.includes(id)) {
+      void tick().then(() => document.getElementById(id)?.scrollIntoView())
+    }
+  })
+
+  $effect(() => {
+    if (settingsSession.status !== 'ready') return
+    const spy = useScrollSpy(observableSectionIds, (id) => {
       activeId = id
       if (window.location.hash !== `#${id}`) window.history.replaceState(null, '', `#${id}`)
     })
@@ -136,24 +174,39 @@
     {#snippet children()}
       <SettingsJumpMenu {groups} {activeId} />
       <div class="settings-grid">
-        <SettingsSidebar {groups} {activeId} />
+        <SettingsSidebar {groups} {activeId} onToggle={toggleAdvanced} />
         <main class="settings-grid__main">
           <div class="settings-group">
             <ProfileSection contextId={ctx} />
-            <MemorySection contextId={ctx} />
             <TaskProviderSection contextId={ctx} />
             <ToolsSection contextId={ctx} />
-            <AiOutputSection contextId={ctx} />
-            <ByokSection contextId={ctx} />
-            <IdentitySection contextId={ctx} />
             {#if isGroup}
               <MembersSection contextId={ctx} />
               <GroupProviderSection contextId={ctx} />
             {/if}
           </div>
-          <div class="settings-group">
-            <McpSection contextId={ctx} />
-            <PluginsSection contextId={ctx} />
+          <div class="settings-group settings-advanced">
+            <button
+              type="button"
+              class="settings-advanced__toggle"
+              aria-expanded={!advancedCollapsed}
+              aria-controls="settings-advanced-content"
+              data-testid="advanced-toggle"
+              onclick={toggleAdvanced}>
+              <span class="settings-advanced__chevron">{advancedCollapsed ? '▸' : '▾'}</span>
+              Advanced
+              <span class="settings-advanced__hint">Memory, AI output, identity, BYOK, integrations</span>
+            </button>
+            {#if !advancedCollapsed}
+              <div id="settings-advanced-content">
+                <MemorySection contextId={ctx} />
+                <AiOutputSection contextId={ctx} />
+                <IdentitySection contextId={ctx} />
+                <ByokSection contextId={ctx} />
+                <McpSection contextId={ctx} />
+                <PluginsSection contextId={ctx} />
+              </div>
+            {/if}
           </div>
           {#if settingsSession.isBotAdmin || settingsSession.isSuperAdmin}
             <div class="settings-group settings-group--wide settings-admin-zone">
@@ -179,3 +232,25 @@
     {/snippet}
   </Shell>
 {/if}
+
+<style>
+  .settings-advanced__toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    text-align: left;
+    padding: 10px 4px;
+    cursor: pointer;
+  }
+  .settings-advanced__hint {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+</style>

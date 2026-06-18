@@ -63,14 +63,19 @@ describe('SettingsApp', () => {
     void unmount(component)
   })
 
-  test('renders the always-on user sections for a personal context', async () => {
+  test('renders top-level sections and hides Advanced sections by default', async () => {
     setMockFetch(() => Promise.resolve(new Response('{}')))
     seed({})
     const component = mountApp()
     await drain()
-    for (const id of ['profile', 'task-provider', 'tools', 'ai-output', 'byok', 'mcp', 'plugins', 'identity']) {
+    for (const id of ['profile', 'task-provider', 'tools']) {
       expect(document.querySelector(`#${id}`)).not.toBeNull()
     }
+    // Advanced is collapsed by default → its sections are not mounted.
+    for (const id of ['memory', 'ai-output', 'byok', 'mcp', 'plugins', 'identity']) {
+      expect(document.querySelector(`#${id}`)).toBeNull()
+    }
+    expect(document.querySelector('[data-testid="advanced-toggle"]')).not.toBeNull()
     expect(document.querySelector('#members')).toBeNull()
     expect(document.querySelector('#instances')).toBeNull()
     void unmount(component)
@@ -135,7 +140,7 @@ describe('SettingsApp', () => {
     const kickers = Array.from(sidebar.querySelectorAll<HTMLElement>('.settings-sidebar__kicker'))
     expect(kickers).toHaveLength(3)
     expect(kickers[0]!.textContent).toContain('Personal')
-    expect(kickers[1]!.textContent).toContain('Integrations')
+    expect(kickers[1]!.textContent).toContain('Advanced')
     expect(kickers[2]!.textContent).toContain('Admin')
     void unmount(component)
   })
@@ -149,11 +154,11 @@ describe('SettingsApp', () => {
     const kickers = Array.from(sidebar.querySelectorAll<HTMLElement>('.settings-sidebar__kicker'))
     expect(kickers).toHaveLength(2)
     expect(kickers[0]!.textContent).toContain('Personal')
-    expect(kickers[1]!.textContent).toContain('Integrations')
+    expect(kickers[1]!.textContent).toContain('Advanced')
     void unmount(component)
   })
 
-  test('personal and integrations sections carry group eyebrows in their headers', async () => {
+  test('top-level sections carry the Personal eyebrow in their headers', async () => {
     setMockFetch(() => Promise.resolve(new Response('{}')))
     seed({ isBotAdmin: false, isSuperAdmin: false })
     const component = mountApp()
@@ -163,7 +168,50 @@ describe('SettingsApp', () => {
       .map((e) => e.textContent)
       .join(' ')
     expect(eyebrowText).toContain('Personal')
-    expect(eyebrowText).toContain('Integrations')
+    void unmount(component)
+  })
+
+  test('expanding Advanced renders its sections', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({})
+    const component = mountApp()
+    await drain()
+    expect(document.querySelector('#memory')).toBeNull()
+    document.querySelector<HTMLButtonElement>('[data-testid="advanced-toggle"]')!.click()
+    await drain()
+    for (const id of ['memory', 'ai-output', 'identity', 'byok', 'mcp', 'plugins']) {
+      expect(document.querySelector(`#${id}`)).not.toBeNull()
+    }
+    void unmount(component)
+  })
+
+  test('a deep link to an Advanced section auto-expands the group', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({})
+    document.body.innerHTML = '<div id="root"></div>'
+    history.replaceState(null, '', '/settings#identity')
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(SettingsApp, { target })
+    await drain()
+    expect(document.querySelector('#identity')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('group-only sections stay top-level while Advanced is collapsed', async () => {
+    setMockFetch(() => Promise.resolve(new Response('{}')))
+    seed({
+      contexts: [
+        { kind: 'personal', contextId: 'user:1', label: 'Personal' },
+        { kind: 'group', contextId: 'group:7', label: 'Team' },
+      ],
+      activeContextId: 'group:7',
+    })
+    const component = mountApp()
+    await drain()
+    expect(document.querySelector('#members')).not.toBeNull()
+    expect(document.querySelector('#group-provider')).not.toBeNull()
+    // still in collapsed Advanced
+    expect(document.querySelector('#memory')).toBeNull()
     void unmount(component)
   })
 })
