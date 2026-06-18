@@ -247,14 +247,3 @@ export function isBlocked(userId: string, platformInstanceId: string): boolean {
     .get()
   return row !== undefined && row.blockedAt !== null
 }
-
-export function isDemoUser(userId: string, platformInstanceId: string): boolean {
-  log.debug({ platformInstanceId }, 'isDemoUser called')
-  const db = getDrizzleDb()
-  const row = db
-    .select({ addedBy: users.addedBy })
-    .from(users)
-    .where(and(eq(users.platformUserId, userId), eq(users.platformInstanceId, platformInstanceId)))
-    .get()
-  return row === undefined ? false : row.addedBy === 'demo-auto'
-}

@@ -14,7 +14,8 @@ import type { AuthorizationResult } from '../src/chat/types.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../src/group-settings/registry.js'
 import { addGroupMember } from '../src/groups.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../src/instances/admin-store.js'
-import { addUser as addScopedUser } from '../src/users.js'
+import { isOpenDmAccessEnabled, setOpenDmAccess } from '../src/instances/platform-store.js'
+import { blockUser, isAuthorized, addUser as addScopedUser } from '../src/users.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'legacy-single'
@@ -360,5 +361,53 @@ describe('auth', () => {
         expect(resolvedAuth.configContextId).toBe(SCOPED_STRANGER1)
       })
     })
+  })
+})
+
+const PI = 'telegram-default'
+
+describe('checkAuthorizationExtended — open DM access', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+  })
+
+  test('open access off: unknown DM user is denied with dm_not_allowed', () => {
+    const auth = checkAuthorizationExtendedScoped('u-new', null, 'u-new', 'dm', undefined, false, PI)
+    expect(auth.allowed).toBe(false)
+    expect(auth.reason).toBe('dm_not_allowed')
+    expect(isAuthorized('u-new', PI)).toBe(false)
+  })
+
+  test('open access on: unknown DM user is auto-added and allowed', () => {
+    setOpenDmAccess(PI, true)
+    const auth = checkAuthorizationExtendedScoped('u-open', 'opener', 'u-open', 'dm', undefined, false, PI)
+    expect(auth.allowed).toBe(true)
+    expect(auth.isBotAdmin).toBe(false)
+    expect(isAuthorized('u-open', PI)).toBe(true)
+  })
+
+  test('open access on: blocked user is denied and not re-added', () => {
+    setOpenDmAccess(PI, true)
+    // first DM adds the user
+    checkAuthorizationExtendedScoped('u-blk', null, 'u-blk', 'dm', undefined, false, PI)
+    expect(blockUser('u-blk', PI)).toBe(true)
+    const auth = checkAuthorizationExtendedScoped('u-blk', null, 'u-blk', 'dm', undefined, false, PI)
+    expect(auth.allowed).toBe(false)
+    expect(auth.reason).toBe('user_blocked')
+  })
+
+  test('open access on does not affect group contexts', () => {
+    setOpenDmAccess(PI, true)
+    const auth = checkAuthorizationExtendedScoped('u-grp', null, 'group-xyz', 'group', undefined, false, PI)
+    expect(auth.allowed).toBe(false)
+    expect(auth.reason).toBe('group_not_allowed')
+  })
+
+  test('isOpenDmAccessEnabled reflects the toggle', () => {
+    expect(isOpenDmAccessEnabled(PI)).toBe(false)
+    setOpenDmAccess(PI, true)
+    expect(isOpenDmAccessEnabled(PI)).toBe(true)
   })
 })
