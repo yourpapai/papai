@@ -33,7 +33,6 @@ const patch: MemoryPatch = {
 let uid = 0
 
 const captureDeps: RunMemoryCaptureDeps = {
-  flagEnabled: (): boolean => true,
   extractMemoryPatch: (): Promise<MemoryPatch> => Promise.resolve(patch),
   getEmbedding: (): Promise<number[] | null> => Promise.resolve(null),
   now: (): string => '2026-06-16T00:00:00.000Z',

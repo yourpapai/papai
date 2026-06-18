@@ -40,7 +40,6 @@ describe('runMemoryCapture', () => {
         history: [{ role: 'user', content: 'hi' }],
       },
       {
-        flagEnabled: () => true,
         extractMemoryPatch: () => Promise.resolve(patch),
         getEmbedding: () => Promise.resolve(null),
         now: () => '2026-06-16T00:00:00.000Z',
@@ -54,25 +53,6 @@ describe('runMemoryCapture', () => {
     expect(rows[0]?.scopeType).toBe('group')
   })
 
-  test('no-op when the flag is off', async () => {
-    await runMemoryCapture(
-      {
-        storageContextId: 'group-1:thread:abc',
-        configContextId: 'group-1',
-        contextType: 'group',
-        history: [{ role: 'user', content: 'hi' }],
-      },
-      {
-        flagEnabled: () => false,
-        extractMemoryPatch: () => Promise.resolve(patch),
-        getEmbedding: () => Promise.resolve(null),
-        now: () => 'x',
-        randomUUID: () => 'y',
-      },
-    )
-    expect(listProvisionalRecords({ scopeId: 'group-1', scopeType: 'group' })).toHaveLength(0)
-  })
-
   test('no-op for DM contexts', async () => {
     await runMemoryCapture(
       {
@@ -82,7 +62,6 @@ describe('runMemoryCapture', () => {
         history: [{ role: 'user', content: 'hi' }],
       },
       {
-        flagEnabled: () => true,
         extractMemoryPatch: () => Promise.resolve(patch),
         getEmbedding: () => Promise.resolve(null),
         now: () => 'x',
@@ -101,7 +80,6 @@ describe('runMemoryCapture', () => {
         history: [{ role: 'user', content: 'hi' }],
       },
       {
-        flagEnabled: () => true,
         extractMemoryPatch: () => Promise.resolve(patch),
         getEmbedding: () => Promise.resolve(null),
         now: () => 'x',
