@@ -3,54 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ChatProvider, CommandHandler, IncomingMessage, ReplyFn } from '../chat/types.js'
+import type { ChatProvider, CommandHandler } from '../chat/types.js'
 import { logger } from '../logger.js'
-import { maybeAutoProvisionProvider } from '../providers/auto-provision.js'
-import { addUser, isAuthorized } from '../users.js'
 
 const log = logger.child({ scope: 'commands:start' })
 
-export type StartCommandDeps = {
-  maybeAutoProvision: (
-    reply: ReplyFn,
-    contextId: string,
-    chatUserId: string,
-    username: string | null,
-  ) => Promise<boolean>
-}
-
-const defaultDeps: StartCommandDeps = {
-  maybeAutoProvision: maybeAutoProvisionProvider,
-}
-
-const maybeAddDemoUser = async (msg: IncomingMessage, reply: ReplyFn, deps: StartCommandDeps): Promise<void> => {
-  if (process.env['DEMO_MODE'] !== 'true') return
-  if (msg.contextType !== 'dm') return
-  if (isAuthorized(msg.user.id, msg.platformInstanceId)) return
-
-  if (msg.user.username === undefined || msg.user.username === null) {
-    addUser({ userId: msg.user.id, platformInstanceId: msg.platformInstanceId, addedBy: 'demo-auto' })
-  } else {
-    addUser({
-      userId: msg.user.id,
-      platformInstanceId: msg.platformInstanceId,
-      addedBy: 'demo-auto',
-      username: msg.user.username,
-    })
-  }
-  log.info({ userId: msg.user.id }, 'Demo mode: auto-added user via /start')
-  try {
-    await deps.maybeAutoProvision(reply, msg.user.id, msg.user.id, msg.user.username)
-  } catch {
-    // Auto-provision is opportunistic; demo users should still reach the welcome flow.
-  }
-}
-
-export function registerStartCommand(chat: ChatProvider, ...rest: [] | [StartCommandDeps]): void {
-  const deps = rest.length === 0 ? defaultDeps : rest[0]
+export function registerStartCommand(chat: ChatProvider): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
-    await maybeAddDemoUser(msg, reply, deps)
-
     if (!auth.allowed) {
       await reply.text('You are not authorized to use this bot.')
       return
