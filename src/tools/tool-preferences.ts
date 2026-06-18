@@ -143,6 +143,11 @@ export function getToolPrefs(contextId: string): ToolPrefs {
   return parseToolPrefs(getCachedConfig(contextId, TOOL_PREFS_CONFIG_KEY))
 }
 
+/** True when a tool_prefs row exists for the context (distinct from an empty/allow-all prefs object). */
+export function hasStoredToolPrefs(contextId: string): boolean {
+  return getCachedConfig(contextId, TOOL_PREFS_CONFIG_KEY) !== null
+}
+
 /** Persist prefs for a context and invalidate the context's cached tool sets. */
 export function setToolPrefs(contextId: string, prefs: ToolPrefs): void {
   setCachedConfig(contextId, TOOL_PREFS_CONFIG_KEY, serializeToolPrefs(prefs))

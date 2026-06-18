@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it, test } from 'bun:test'
+import { beforeEach, describe, expect, it, test } from 'bun:test'
 
 import { getToolMetadata } from '../../src/tools/tool-metadata.js'
 import {
@@ -12,14 +12,17 @@ import {
   cycleTool,
   detectActivePreset,
   getDomainSummary,
+  hasStoredToolPrefs,
   parseToolPrefs,
   partitionToolNames,
   PRESET_KEYS,
   PRESET_RISK_DEFAULTS,
   resolveToolPermission,
   serializeToolPrefs,
+  setToolPrefs,
   type ToolPrefs,
 } from '../../src/tools/tool-preferences.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const empty: ToolPrefs = { riskDefaults: {}, domainDefaults: {}, toolOverrides: {} }
 
@@ -400,5 +403,18 @@ describe('detectActivePreset', () => {
   test('riskDefaults matching no preset → Custom (null)', () => {
     const prefs: ToolPrefs = { riskDefaults: { read: 'ask' }, domainDefaults: {}, toolOverrides: {} }
     expect(detectActivePreset(prefs)).toBeNull()
+  })
+})
+
+describe('hasStoredToolPrefs', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('false when no row, true after a write', () => {
+    expect(hasStoredToolPrefs('ctx-none')).toBe(false)
+    setToolPrefs('ctx-none', { riskDefaults: {}, domainDefaults: { web: 'deny' }, toolOverrides: {} })
+    expect(hasStoredToolPrefs('ctx-none')).toBe(true)
   })
 })
