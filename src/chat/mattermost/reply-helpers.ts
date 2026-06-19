@@ -132,7 +132,7 @@ const buildMattermostStatusHandle = async (
   apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
   initialText: string,
 ): Promise<StatusHandle | undefined> => {
-  const createdId = await post(initialText)
+  const createdId = await post(initialText).catch(() => undefined)
   if (createdId === undefined) return undefined
   return {
     update: async (text: string): Promise<void> => {

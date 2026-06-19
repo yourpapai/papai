@@ -255,5 +255,22 @@ describe('createMattermostReplyFn', () => {
       expect(delCall).toBeDefined()
       expect(delCall?.path).toBe('/api/v4/posts/post-1')
     })
+
+    test('returns undefined (never rejects) when the post fails', async () => {
+      const reply = createMattermostReplyFn({
+        channelId: 'chan-1',
+        getWsSeq: () => 1,
+        apiFetch: (): Promise<unknown> => Promise.reject(new Error('mattermost down')),
+        wsSend: () => {},
+        uploadFile: () => Promise.resolve('file-1'),
+        platformInstanceId: 'mattermost-main',
+        callbackBaseUrl: 'https://bot.example',
+        createActionContext: () => {
+          throw new Error('not used in this test')
+        },
+      })
+      assert(reply.createStatus !== undefined, 'expected createStatus')
+      expect(await reply.createStatus('💭 Thinking…')).toBeUndefined()
+    })
   })
 })
