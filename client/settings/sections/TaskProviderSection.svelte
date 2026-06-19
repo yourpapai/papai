@@ -146,31 +146,33 @@
     {/if}
   {/if}
 
-  <div class="settings-provision">
-    <h3>Kaneo auto-provision</h3>
-    <p class="placeholder">Creates a Kaneo account and stores its API key for this context. Credentials are shown once.</p>
-    <div class="provision-actions">
-      <Btn variant="primary" testid="provision-kaneo" disabled={provisioning} onClick={() => void provision()}>
-        {#snippet children()}{provisioning ? 'Provisioning…' : 'Provision Kaneo'}{/snippet}
-      </Btn>
-    </div>
-    {#if provisionError !== null}
-      <p class="status-error">{provisionError}</p>
-    {/if}
-    {#if provisioned !== null}
-      <div class="settings-provision__reveal" data-testid="provision-result">
-        <p class="status-success">Provisioned — copy these now, they will not be shown again:</p>
-        <SummaryList items={[
-          { k: 'Email', v: provisioned.email },
-          { k: 'Kaneo URL', v: provisioned.kaneoUrl },
-        ]} />
-        <div class="settings-provision__secret">
-          <span class="settings-provision__secret-label">Password</span>
-          <Secret value={provisioned.password} hint="shown once — copy now" />
-        </div>
+  {#if instanceData?.canProvision === true}
+    <div class="settings-provision">
+      <h3>Kaneo auto-provision</h3>
+      <p class="placeholder">Creates a Kaneo account and stores its API key for this context. Credentials are shown once.</p>
+      <div class="provision-actions">
+        <Btn variant="primary" testid="provision-kaneo" disabled={provisioning} onClick={() => void provision()}>
+          {#snippet children()}{provisioning ? 'Provisioning…' : 'Provision Kaneo'}{/snippet}
+        </Btn>
       </div>
-    {/if}
-  </div>
+      {#if provisionError !== null}
+        <p class="status-error">{provisionError}</p>
+      {/if}
+      {#if provisioned !== null}
+        <div class="settings-provision__reveal" data-testid="provision-result">
+          <p class="status-success">Provisioned — copy these now, they will not be shown again:</p>
+          <SummaryList items={[
+            { k: 'Email', v: provisioned.email },
+            { k: 'Kaneo URL', v: provisioned.kaneoUrl },
+          ]} />
+          <div class="settings-provision__secret">
+            <span class="settings-provision__secret-label">Password</span>
+            <Secret value={provisioned.password} hint="shown once — copy now" />
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
 </section>
 
 <style>

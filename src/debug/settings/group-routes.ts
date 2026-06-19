@@ -14,6 +14,7 @@ import { listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { requireScope } from '../../settings/scope-guard.js'
+import { isBoundInstanceProvisionable } from './context-task-instance-routes.js'
 import { resolveSettingsUserId } from './resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
 
@@ -91,6 +92,7 @@ function handleTaskInstanceGet(authed: AuthenticatedSettingsRequest, url: URL): 
     contextId: outcome.group.contextId,
     taskInstanceId: settings?.taskInstanceId ?? null,
     available,
+    canProvision: isBoundInstanceProvisionable(settings?.taskInstanceId),
   })
 }
 

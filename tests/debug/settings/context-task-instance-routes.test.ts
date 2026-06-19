@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
@@ -13,7 +13,12 @@ import { handleContextTaskInstanceRoutes } from '../../../src/debug/settings/con
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
 import { getContextSettings, setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../../src/providers/registry.js'
 import { addUser } from '../../../src/users.js'
+import { createMockProvider } from '../../tools/mock-provider.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
 
@@ -23,7 +28,21 @@ const TaskInstanceGetSchema = z.object({
   contextId: z.string(),
   taskInstanceId: z.string().nullable(),
   available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
+  canProvision: z.boolean(),
 })
+
+/** A provisionable provider type scoped to this suite, cleaned up in afterEach. */
+const PROVISIONABLE_PLUGIN_ID = 'test-ctxti-provisionable'
+const PROVISIONABLE_TYPE = 'ctxti-kaneo'
+function registerProvisionableType(): void {
+  registerContributedTaskProviderType(PROVISIONABLE_TYPE, {
+    pluginId: PROVISIONABLE_PLUGIN_ID,
+    factory: () => createMockProvider({ name: PROVISIONABLE_TYPE }),
+    provision: () => Promise.resolve({ status: 'failed', error: 'test' }),
+    capabilities: new Set(),
+    displayName: 'Provisionable',
+  })
+}
 
 /** The personal config context id for the test principal (u-1 on pi-1). */
 const personalContextId = (): string => toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'u-1' })
@@ -73,6 +92,10 @@ describe('settings context task-instance routes', () => {
     session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-1' })
   })
 
+  afterEach(() => {
+    unregisterContributedTaskProviderType(PROVISIONABLE_PLUGIN_ID)
+  })
+
   test('GET without a session is 401', async () => {
     const res = await handleContextTaskInstanceRoutes(new Request(ENDPOINT), new URL(ENDPOINT))
     expect(res.status).toBe(401)
@@ -104,6 +127,32 @@ describe('settings context task-instance routes', () => {
     const res = await handleContextTaskInstanceRoutes(url, new URL(url.url))
     const body = TaskInstanceGetSchema.parse(await res.json())
     expect(body.taskInstanceId).toBe('yt-default')
+  })
+
+  test('GET canProvision is false when no instance is bound', async () => {
+    const url = getReq(session)
+    const res = await handleContextTaskInstanceRoutes(url, new URL(url.url))
+    const body = TaskInstanceGetSchema.parse(await res.json())
+    expect(body.canProvision).toBe(false)
+  })
+
+  test('GET canProvision is false when bound to a non-provisionable instance', async () => {
+    insertTaskInstance({ id: 'yt-default', type: 'youtrack', config: {}, status: 'active' })
+    setContextSettings({ contextId: personalContextId(), taskInstanceId: 'yt-default', platformInstanceId: 'pi-1' })
+    const url = getReq(session)
+    const res = await handleContextTaskInstanceRoutes(url, new URL(url.url))
+    const body = TaskInstanceGetSchema.parse(await res.json())
+    expect(body.canProvision).toBe(false)
+  })
+
+  test('GET canProvision is true when bound to an active provisionable instance', async () => {
+    registerProvisionableType()
+    insertTaskInstance({ id: 'kaneo-1', type: PROVISIONABLE_TYPE, config: {}, status: 'active' })
+    setContextSettings({ contextId: personalContextId(), taskInstanceId: 'kaneo-1', platformInstanceId: 'pi-1' })
+    const url = getReq(session)
+    const res = await handleContextTaskInstanceRoutes(url, new URL(url.url))
+    const body = TaskInstanceGetSchema.parse(await res.json())
+    expect(body.canProvision).toBe(true)
   })
 
   test('PATCH binds an active instance to the personal context, then GET reflects it', async () => {

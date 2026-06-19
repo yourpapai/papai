@@ -56,17 +56,26 @@ const provisionPayload = {
 
 const boundInstancePayload = {
   contextId: 'user:1',
+  taskInstanceId: 'kaneo-1',
+  available: [{ id: 'kaneo-1', type: 'kaneo', status: 'active' }],
+  canProvision: true,
+}
+
+const boundNonProvisionablePayload = {
+  contextId: 'user:1',
   taskInstanceId: 'yt-default',
   available: [{ id: 'yt-default', type: 'youtrack', status: 'active' }],
+  canProvision: false,
 }
 
 const unboundInstancePayload = {
   contextId: 'user:1',
   taskInstanceId: null,
   available: [{ id: 'yt-default', type: 'youtrack', status: 'active' }],
+  canProvision: false,
 }
 
-const noInstancesPayload = { contextId: 'user:1', taskInstanceId: null, available: [] }
+const noInstancesPayload = { contextId: 'user:1', taskInstanceId: null, available: [], canProvision: false }
 
 /** Route both the config and the context task-instance endpoints from a single mock. */
 const routeMock =
@@ -131,13 +140,46 @@ describe('TaskProviderSection', () => {
     void unmount(component)
   })
 
-  test('renders refresh icon button and provision Btn', () => {
+  test('renders refresh icon button and provision Btn', async () => {
     setMockFetch(routeMock(boundInstancePayload))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(TaskProviderSection, { target, props: { contextId: 'ctx' } })
+    await drain()
     expect(target.querySelector('[data-testid="task-provider-refresh"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="provision-kaneo"]')?.classList.contains('ui-btn')).toBe(true)
+    void unmount(component)
+  })
+
+  test('shows the auto-provision section when the bound instance is provisionable', async () => {
+    setMockFetch(routeMock(boundInstancePayload))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="provision-kaneo"]')).not.toBeNull()
+    expect(target.textContent).toContain('Kaneo auto-provision')
+    void unmount(component)
+  })
+
+  test('hides the auto-provision section when the bound instance is not provisionable', async () => {
+    setMockFetch(routeMock(boundNonProvisionablePayload, { contextId: 'user:1', fields: [] }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="provision-kaneo"]')).toBeNull()
+    expect(target.textContent).not.toContain('Kaneo auto-provision')
+    void unmount(component)
+  })
+
+  test('hides the auto-provision section when no instance is bound', async () => {
+    setMockFetch(routeMock(unboundInstancePayload, { contextId: 'user:1', fields: [] }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="provision-kaneo"]')).toBeNull()
     void unmount(component)
   })
 

@@ -6,8 +6,9 @@
 import { z } from 'zod'
 
 import { getContextSettings, setContextSettings } from '../../instances/context-store.js'
-import { listTaskInstancesSafe } from '../../instances/task-store.js'
+import { getTaskInstance, listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
+import { getTaskProviderProvision } from '../../providers/registry.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
@@ -17,6 +18,19 @@ const TaskInstanceBodySchema = z.object({
   taskInstanceId: z.string().min(1),
   contextId: z.string().optional(),
 })
+
+/**
+ * True when the bound task instance is active and its provider type has a
+ * provision hook (e.g. Kaneo). Mirrors the precondition enforced by
+ * `handleProvisionKaneo`, so the settings UI only offers auto-provision when it
+ * would actually succeed.
+ */
+export function isBoundInstanceProvisionable(taskInstanceId: string | null | undefined): boolean {
+  if (taskInstanceId === null || taskInstanceId === undefined || taskInstanceId === '') return false
+  const taskInstance = getTaskInstance(taskInstanceId)
+  if (taskInstance === null || taskInstance.status !== 'active') return false
+  return getTaskProviderProvision(taskInstance.type) !== undefined
+}
 
 /** Active task instances offered as binding targets; unreadable rows are excluded. */
 function listActiveTaskInstanceOptions(): { id: string; type: string; status: string }[] {
@@ -36,6 +50,7 @@ function handleGet(req: Request, url: URL): Response {
     contextId: scope.scope.contextId,
     taskInstanceId: settings?.taskInstanceId ?? null,
     available: listActiveTaskInstanceOptions(),
+    canProvision: isBoundInstanceProvisionable(settings?.taskInstanceId),
   })
 }
 

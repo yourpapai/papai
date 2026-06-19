@@ -29,6 +29,7 @@ const TaskInstanceGetSchema = z.object({
   contextId: z.string(),
   taskInstanceId: z.string().nullable(),
   available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
+  canProvision: z.boolean(),
 })
 
 const mockResolveUserId = mock((username: string, _context?: unknown) => {
@@ -282,6 +283,8 @@ describe('settings group routes', () => {
     expect(getRes.status).toBe(200)
     const body = TaskInstanceGetSchema.parse(await getRes.json())
     expect(body.taskInstanceId).toBe('ti-grp')
+    // 'kaneo' is not registered as a provider type in unit tests, so no provision hook.
+    expect(body.canProvision).toBe(false)
   })
 
   test('task-instance GET only lists active task instances', async () => {

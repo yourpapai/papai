@@ -26,6 +26,7 @@ const payload = {
     { id: 'kaneo-a', type: 'kaneo', status: 'active' },
     { id: 'kaneo-b', type: 'kaneo', status: 'active' },
   ],
+  canProvision: false,
 }
 
 let capturedPatchBody: string | undefined
@@ -79,6 +80,7 @@ describe('GroupProviderSection', () => {
         { id: 'kaneo-a', type: 'kaneo', status: 'active' },
         { id: 'kaneo-b', type: 'kaneo', status: 'active' },
       ],
+      canProvision: false,
     }
     setMockFetch(() => Promise.resolve(json(noInstancePayload)))
     document.body.innerHTML = '<div id="root"></div>'
@@ -98,6 +100,7 @@ describe('GroupProviderSection', () => {
         { id: 'kaneo-a', type: 'kaneo', status: 'active' },
         { id: 'kaneo-b', type: 'kaneo', status: 'active' },
       ],
+      canProvision: false,
     }
     setMockFetch(() => Promise.resolve(json(stalePayload)))
     document.body.innerHTML = '<div id="root"></div>'
@@ -110,7 +113,9 @@ describe('GroupProviderSection', () => {
   })
 
   test('shows an empty state when no active task instances are available', async () => {
-    setMockFetch(() => Promise.resolve(json({ contextId: 'group:7', taskInstanceId: null, available: [] })))
+    setMockFetch(() =>
+      Promise.resolve(json({ contextId: 'group:7', taskInstanceId: null, available: [], canProvision: false })),
+    )
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })

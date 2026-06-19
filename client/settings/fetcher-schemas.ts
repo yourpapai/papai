@@ -175,6 +175,8 @@ export const GroupTaskInstanceResponseSchema = z.object({
   contextId: z.string(),
   taskInstanceId: z.string().nullable(),
   available: z.array(TaskInstanceOptionSchema),
+  /** True when the bound instance supports auto-provision (e.g. Kaneo). */
+  canProvision: z.boolean(),
 })
 export type GroupTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponseSchema>
 

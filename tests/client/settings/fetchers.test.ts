@@ -68,7 +68,7 @@ describe('fetchers', () => {
     let seenUrl = ''
     setMockFetch((url) => {
       seenUrl = url
-      return Promise.resolve(json({ contextId: 'user:1', taskInstanceId: null, available: [] }))
+      return Promise.resolve(json({ contextId: 'user:1', taskInstanceId: null, available: [], canProvision: false }))
     })
     const data = await fetchContextTaskInstance('user:1')
     expect(seenUrl).toContain('/settings/api/context/task-instance')

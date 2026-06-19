@@ -139,9 +139,11 @@ describe('fetcher-schemas', () => {
       contextId: 'user:1',
       taskInstanceId: 'yt-default',
       available: [{ id: 'yt-default', type: 'youtrack', status: 'active' }],
+      canProvision: true,
     })
     expect(parsed.taskInstanceId).toBe('yt-default')
     expect(parsed.available[0]?.type).toBe('youtrack')
+    expect(parsed.canProvision).toBe(true)
   })
 
   test('GroupTaskInstanceResponseSchema accepts a null taskInstanceId', () => {
@@ -149,8 +151,20 @@ describe('fetcher-schemas', () => {
       contextId: 'user:1',
       taskInstanceId: null,
       available: [],
+      canProvision: false,
     })
     expect(parsed.taskInstanceId).toBeNull()
+    expect(parsed.canProvision).toBe(false)
+  })
+
+  test('GroupTaskInstanceResponseSchema requires canProvision', () => {
+    expect(() =>
+      GroupTaskInstanceResponseSchema.parse({
+        contextId: 'user:1',
+        taskInstanceId: null,
+        available: [],
+      }),
+    ).toThrow()
   })
 
   test('ProviderTypesResponseSchema preserves storageKey on instance config fields', () => {
