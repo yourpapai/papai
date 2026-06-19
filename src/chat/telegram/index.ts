@@ -269,7 +269,7 @@ export class TelegramChatProvider implements ChatProvider {
           })
         }
       },
-      buttons: (content: string, options) => sendButtonReply(ctx, content, buildReplyParams, options),
+      buttons: (content, opts) => sendButtonReply(ctx, content, buildReplyParams, opts).then(() => undefined),
     }
     if (allowReplacement) {
       replyFn.replaceText = (content: string, ..._rest: [] | [ReplyOptions]): Promise<void> =>

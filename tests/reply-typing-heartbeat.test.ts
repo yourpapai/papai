@@ -57,7 +57,7 @@ function createReply(typingCalls: number[], textCalls: string[]): ReplyFn {
     typing: (): void => {
       typingCalls.push(Date.now())
     },
-    buttons: (): Promise<void> => Promise.resolve(),
+    buttons: (): Promise<undefined> => Promise.resolve(undefined),
   }
 }
 
@@ -122,7 +122,7 @@ describe('reply typing heartbeat', () => {
       },
       // Cast to handle both sync and async typing signatures
       typing: makeTypingWithOneInitialError(typingCalls) as () => void,
-      buttons: (): Promise<void> => Promise.resolve(),
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     await withReplyTypingHeartbeat(
@@ -152,7 +152,7 @@ describe('reply typing heartbeat', () => {
       },
       // Cast to handle both sync and async typing signatures
       typing: makeTypingWithTwoInitialErrors(typingCalls) as () => void,
-      buttons: (): Promise<void> => Promise.resolve(),
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     await withReplyTypingHeartbeat(
@@ -183,7 +183,7 @@ describe('reply typing heartbeat', () => {
         // Synchronous throw (not a Promise)
         throw new Error('Sync typing error')
       },
-      buttons: (): Promise<void> => Promise.resolve(),
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     // Should not throw despite sync error from typing
@@ -215,7 +215,7 @@ describe('reply typing heartbeat', () => {
         typingCalls.push(Date.now())
         return Promise.resolve()
       }) as () => void,
-      buttons: (): Promise<void> => Promise.resolve(),
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     await withReplyTypingHeartbeat(

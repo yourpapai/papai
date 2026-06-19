@@ -67,7 +67,7 @@ describe('MessageQueue Integration', () => {
       formatted: async (): Promise<void> => {},
       file: async (): Promise<void> => {},
       typing: (): void => {},
-      buttons: async (): Promise<void> => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     const handler = async (coalesced: CoalescedItem): Promise<void> => {
@@ -118,7 +118,7 @@ describe('MessageQueue Integration', () => {
       formatted: async (): Promise<void> => {},
       file: async (): Promise<void> => {},
       typing: (): void => {},
-      buttons: async (): Promise<void> => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     const handler = async (coalesced: CoalescedItem): Promise<void> => {
@@ -168,7 +168,7 @@ describe('MessageQueue Integration', () => {
       formatted: async (): Promise<void> => {},
       file: async (): Promise<void> => {},
       typing: (): void => {},
-      buttons: async (): Promise<void> => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     const handler = async (coalesced: CoalescedItem): Promise<void> => {
@@ -208,7 +208,7 @@ describe('MessageQueue Integration', () => {
       formatted: async (): Promise<void> => {},
       file: async (): Promise<void> => {},
       typing: typingSpy,
-      buttons: async (): Promise<void> => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     const mockReply2: ReplyFn = {
@@ -216,7 +216,7 @@ describe('MessageQueue Integration', () => {
       formatted: async (): Promise<void> => {},
       file: async (): Promise<void> => {},
       typing: typingSpy,
-      buttons: async (): Promise<void> => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
 
     const handler1 = async (coalesced: CoalescedItem): Promise<void> => {
@@ -277,7 +277,7 @@ describe('MessageQueue Integration', () => {
       formatted: async (): Promise<void> => {},
       file: async (): Promise<void> => {},
       typing: typingSpy,
-      buttons: async (): Promise<void> => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     })
 
     const handler1 = async (coalesced: CoalescedItem): Promise<void> => {
@@ -367,7 +367,7 @@ describe('MessageQueue Integration', () => {
       formatted: async (): Promise<void> => {},
       file: async (): Promise<void> => {},
       typing: typingSpy,
-      buttons: async (): Promise<void> => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     })
 
     const handler = async (coalesced: CoalescedItem): Promise<void> => {

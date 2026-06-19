@@ -49,6 +49,7 @@ export type ChatCapability =
   | 'interactions.callbacks'
   | 'messages.buttons'
   | 'messages.delete'
+  | 'messages.ephemeral'
   | 'messages.files'
   | 'messages.redact'
   | 'messages.reply-context'
@@ -97,17 +98,8 @@ export type IncomingFile = {
   forwardedFrom: string
 }>
 
-export type IncomingFileCandidate = {
-  fileId: string
-  filename: string
-} & Partial<{
-  mimeType: string
-  size: number
-  /** How the file arrived. 'voice' for recorded voice notes; absent for ordinary files. */
-  origin: 'voice' | 'file'
-  /** Display name of the original sender when the message was forwarded. */
-  forwardedFrom: string
-}>
+/** Like {@link IncomingFile} but without the downloaded `content` bytes (used before full fetch). */
+export type IncomingFileCandidate = Omit<IncomingFile, 'content'>
 
 /** Context about a message reply or quote. */
 export type ReplyContext = {
@@ -212,13 +204,15 @@ export type ChatButton = {
 export interface ButtonReplyOptions extends ReplyOptions, Partial<{ buttons: ChatButton[] }> {}
 import type { ContextSnapshot, EmbedOptions } from './context-types.js'
 export type { ContextSection, ContextSnapshot, EmbedField, EmbedOptions } from './context-types.js'
+import type { PromptHandle } from './prompt-handle.js'
+export type { PromptHandle } from './prompt-handle.js'
 
 /** Reply function injected into handlers — the only way to send messages back to the user. */
 export type ReplyFn = {
   text: { (content: string): Promise<void>; (content: string, options: ReplyOptions): Promise<void> }
   formatted: { (markdown: string): Promise<void>; (markdown: string, options: ReplyOptions): Promise<void> }
   typing: () => void
-  buttons: (content: string, options: ButtonReplyOptions) => Promise<void>
+  buttons: (content: string, options: ButtonReplyOptions) => Promise<PromptHandle | undefined>
 } & Partial<{
   /** Replaces the current interactive message in place. Prefer only for button interaction flows; fall back to `text` when unavailable. */
   replaceText: { (content: string): Promise<void>; (content: string, options: ReplyOptions): Promise<void> }
@@ -227,6 +221,8 @@ export type ReplyFn = {
   deleteMessage: (messageId: string) => Promise<void>
   /** Replaces the current interactive message in place. Prefer only for button interaction flows; fall back to `buttons` when unavailable. */
   replaceButtons: (content: string, options: ButtonReplyOptions) => Promise<void>
+  /** Present only on interaction replies of `messages.ephemeral` platforms. Shows a non-persistent confirmation. */
+  ephemeralConfirm: (text: string) => Promise<void>
   /** Optional: send a structured embed. Only Discord implements this today. */
   embed: (options: EmbedOptions) => Promise<void>
 }>

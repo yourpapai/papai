@@ -46,7 +46,10 @@ function wrapReplyWithHeartbeatStop(reply: ReplyFn, stop: () => void): ReplyFn {
     ...reply,
     text: wrapTextReply(reply.text),
     formatted: wrapTextReply(reply.formatted),
-    buttons: withStop(reply.buttons),
+    buttons: (content, options) => {
+      stop()
+      return reply.buttons(content, options)
+    },
     ...(reply.replaceText === undefined ? {} : { replaceText: wrapTextReply(reply.replaceText) }),
     ...(reply.file === undefined ? {} : { file: wrapFileReply(reply.file) }),
     ...(reply.redactMessage === undefined ? {} : { redactMessage: withStop(reply.redactMessage) }),

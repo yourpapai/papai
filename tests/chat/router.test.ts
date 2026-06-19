@@ -49,7 +49,7 @@ const fakeReply: ReplyFn = {
   text: () => Promise.resolve(),
   formatted: () => Promise.resolve(),
   typing: () => {},
-  buttons: () => Promise.resolve(),
+  buttons: (): Promise<undefined> => Promise.resolve(undefined),
 }
 
 const fakeAuth: AuthorizationResult = {

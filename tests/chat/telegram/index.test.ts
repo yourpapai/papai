@@ -456,7 +456,7 @@ describe('TelegramChatProvider', () => {
         (): ReplyFn => ({
           text: async (): Promise<void> => {},
           formatted: async (): Promise<void> => {},
-          buttons: async (): Promise<void> => {},
+          buttons: (): Promise<undefined> => Promise.resolve(undefined),
           typing: (): void => {},
         }),
       )
@@ -537,7 +537,7 @@ describe('TelegramChatProvider', () => {
           file: (): Promise<void> => Promise.resolve(),
           typing: (): void => {},
           redactMessage: (): Promise<void> => Promise.resolve(),
-          buttons: (): Promise<void> => Promise.resolve(),
+          buttons: (): Promise<undefined> => Promise.resolve(undefined),
         }
       })
       Reflect.set(provider, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(false))

@@ -44,11 +44,17 @@ generalized multi-platform reader is cheap.
 - **Access model:** verify the **requesting user's** channel membership before returning any
   content (prevents leaking content from channels the bot — but not the user — can see).
 - **Return shape:** structured ordered messages `{ author display name, timestamp, text }`
-  with the root post flagged; author IDs resolved to display names (deduped/cached).
+  with the root post flagged **and the linked post flagged**; author IDs resolved to display
+  names (deduped/cached).
+- **Linked-post handling:** a permalink can point at a thread root _or_ a reply within a thread.
+  With `scope: 'thread'` the resolver always returns the **whole** thread (root + all replies),
+  and marks which message the link pointed at via a top-level `linkedPostId` + an `isLinked` flag
+  — so the model has full context yet still knows the user's specific target. With `scope: 'post'`
+  it returns only the linked post, whether that is a root or a reply.
 - **Integration approach (B):** a dedicated resolver module + a gated tool, reading instance
   config from the instances store. No `ChatProvider` interface change.
 - **Default `scope`:** `'thread'`.
-- **Safety cap:** ~200 posts per response, with a `truncated` flag when exceeded.
+- **Safety cap:** ~100 posts per response, with a `truncated` flag when exceeded.
 - **Tool classification:** `domain: 'history'`, `risk: 'open-world'`.
 
 ## Flow
@@ -60,10 +66,10 @@ user pastes permalink + asks → LLM calls fetch_chat_link(url, scope)
   → GET /posts/<postId>                  (→ channel_id, root_id)
   → GET /channels/<channel_id>/members/<requesterUserId>   ← membership gate
         not a member → access-denied failure (no content leaked)
-  → scope='post'  : return that post
-    scope='thread': GET /posts/<rootId>/thread → ordered posts
+  → scope='post'  : return that post (root or reply, as linked)
+    scope='thread': GET /posts/<root_id || postId>/thread → whole thread, ordered
   → resolve author ids → display names (deduped/cached)
-  → return structured messages
+  → return structured messages (root + linked post flagged)
 ```
 
 **Key safety property:** the user-supplied URL is **parsed for identifiers only**. All HTTP
@@ -118,8 +124,10 @@ the link. This sidesteps SSRF entirely and is the core reason `web_fetch` cannot
 - **Membership gate:** `GET /api/v4/channels/<channel_id>/members/<chatUserId>`. Any non-2xx ⇒
   **access-denied** failure with an identical message whether the channel is missing or the user
   is simply not a member (so existence is never leaked).
-- **Fetch:** `scope='post'` → the single post; `scope='thread'` →
-  `GET /api/v4/posts/<root_id || postId>/thread` → `PostList { order, posts }`, ordered by `order`.
+- **Fetch:** `scope='post'` → the single linked post (root or reply). `scope='thread'` →
+  `GET /api/v4/posts/<root_id || postId>/thread` → `PostList { order, posts }`, the whole thread
+  ordered by `order`. The originally linked `postId` is always retained so the matching message
+  can be flagged.
 - **Identity:** resolve each distinct `user_id` → display name via the existing id→label path
   (reused from `label-helpers` / reply-context), deduped and cached within the call.
 - **Output:**
@@ -128,15 +136,17 @@ the link. This sidesteps SSRF entirely and is the core reason `web_fetch` cannot
     source: 'mattermost',
     channelId: string,
     rootPostId: string,
+    linkedPostId: string,   // the post the permalink pointed at (root or a reply)
     scope: 'post' | 'thread',
     messages: Array<{
       authorId: string,
       author: string,      // display name
       timestamp: string,   // ISO 8601
       text: string,
-      isRoot: boolean,
+      isRoot: boolean,     // the thread's root post
+      isLinked: boolean,   // the post the permalink pointed at
     }>,
-    truncated?: boolean,    // true when the ~200-post cap is hit
+    truncated?: boolean,    // true when the ~100-post cap is hit
   }
   ```
   Oversize results are further handled by the existing result-compaction path.
@@ -161,7 +171,9 @@ The standard tool wrapper records `tool_call_events`. Logs carry `contextId`, `p
 
 - **Resolver unit tests** (`setMockFetch`/`restoreFetch`): permalink parse + host validation;
   single post fetch; membership allow vs. deny (assert deny returns no content); single-post
-  vs. thread ordering; identity dedupe/caching; each failure mapping; the truncation cap.
+  vs. thread ordering; **link to a reply with `scope: 'thread'` returns the whole thread with
+  `isLinked` set on the reply and `linkedPostId` populated**; `isRoot`/`isLinked` coincide when
+  the link points at the root; identity dedupe/caching; each failure mapping; the truncation cap.
 - **Tool tests:** `schemaValidates()` for the input schema (accept/reject); `getToolExecutor()`
   for execute happy-path + failure shapes.
 - **Gating tests:** present for a Mattermost instance with `chatUserId`; absent for non-Mattermost

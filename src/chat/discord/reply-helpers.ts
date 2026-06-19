@@ -184,8 +184,10 @@ export function createDiscordReplyFn(params: CreateDiscordReplyFnParams): ReplyF
     },
     redactMessage: (replacementText: string): Promise<void> =>
       redactMessages(channel.id, sentMessages, replacementText),
-    buttons: (content: string, options: ButtonReplyOptions): Promise<void> =>
-      sendButtonsReply(channel, sentMessages, replyToMessageId, content, options),
+    buttons: async (content: string, options: ButtonReplyOptions): Promise<undefined> => {
+      await sendButtonsReply(channel, sentMessages, replyToMessageId, content, options)
+      return undefined
+    },
     replaceButtons: (content: string, options: ButtonReplyOptions): Promise<void> =>
       replaceOrSend(
         replaceMessage,

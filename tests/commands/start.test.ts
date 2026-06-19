@@ -30,7 +30,7 @@ describe('start command', () => {
       },
       file: (): Promise<void> => Promise.resolve(),
       typing: (): void => {},
-      buttons: (): Promise<void> => Promise.resolve(),
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
     const msg = {
       user: { id: 'u1', username: 'user', isAdmin: false },
@@ -57,7 +57,7 @@ describe('start command', () => {
       formatted: (): Promise<void> => Promise.resolve(),
       file: (): Promise<void> => Promise.resolve(),
       typing: (): void => {},
-      buttons: (): Promise<void> => Promise.resolve(),
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
     const msg = {
       user: { id: 'u2', username: 'user', isAdmin: false },

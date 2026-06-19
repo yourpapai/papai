@@ -31,7 +31,7 @@ describe('CoalescedItem interface', () => {
       formatted: async (): Promise<void> => {},
       file: async (): Promise<void> => {},
       typing: (): void => {},
-      buttons: async (): Promise<void> => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
     }
     const item: CoalescedItem = {
       text: 'Hello',

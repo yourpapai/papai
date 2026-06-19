@@ -84,9 +84,9 @@ describe('Mattermost action callbacks', () => {
         text: (): Promise<void> => Promise.resolve(),
         formatted: (): Promise<void> => Promise.resolve(),
         typing: (): void => {},
-        buttons: (content: string, options: { buttons?: Array<{ callbackData: string }> }): Promise<void> => {
+        buttons: (content: string, options: { buttons?: Array<{ callbackData: string }> }): Promise<undefined> => {
           calls.push({ content, options })
-          return Promise.resolve()
+          return Promise.resolve(undefined)
         },
       }
       void askPermissionViaChat(promptReply, expectedStorageContextId, {

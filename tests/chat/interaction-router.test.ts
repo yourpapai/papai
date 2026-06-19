@@ -35,7 +35,7 @@ async function createPendingPermission(contextId = 'tg:u1'): Promise<{ id: strin
     typing: () => {},
     buttons: (_content: string, options: { buttons?: Array<{ callbackData: string }> }) => {
       calls.push({ options })
-      return Promise.resolve()
+      return Promise.resolve(undefined)
     },
   }
   const decision = askPermissionViaChat(reply, contextId, {

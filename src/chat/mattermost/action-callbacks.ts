@@ -133,7 +133,10 @@ const buildActionReply = (): { reply: ReplyFn; getResponse: () => MattermostActi
       text: setEphemeral,
       formatted: setEphemeral,
       typing: noop,
-      buttons: setUpdate,
+      buttons: async (content: string): Promise<undefined> => {
+        await setUpdate(content)
+        return undefined
+      },
       replaceText: setUpdate,
       replaceButtons: setUpdate,
     },

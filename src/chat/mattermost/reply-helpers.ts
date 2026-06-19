@@ -81,10 +81,10 @@ const createButtonsReply = (
   callbackBaseUrl: string | null,
   createActionContext: (input: MattermostActionContextInput) => MattermostSignedActionContext,
   threadId: string | undefined,
-): ((content: string, options: ButtonReplyOptions) => Promise<void>) => {
-  return (content, options) => {
+): ((content: string, options: ButtonReplyOptions) => Promise<undefined>) => {
+  return async (content, options) => {
     if (callbackBaseUrl === null) {
-      return Promise.reject(new Error('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL'))
+      throw new Error('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL')
     }
     const actions = buildActions(
       content,
@@ -95,7 +95,8 @@ const createButtonsReply = (
       createActionContext,
       options.threadId ?? threadId,
     )
-    return post(content, options, { props: { attachments: [{ actions }] } })
+    await post(content, options, { props: { attachments: [{ actions }] } })
+    return undefined
   }
 }
 

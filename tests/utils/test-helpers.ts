@@ -310,9 +310,9 @@ export function createMockReply(): MockReplyResult {
       redactCalls.push(replacementText)
       return Promise.resolve()
     },
-    buttons: (content: string): Promise<void> => {
+    buttons: (content: string): Promise<undefined> => {
       buttonCalls.push(content)
-      return Promise.resolve()
+      return Promise.resolve(undefined)
     },
     embed: (options: EmbedOptions): Promise<void> => {
       embedCalls.push(options)

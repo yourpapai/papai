@@ -819,7 +819,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
         typing: (): void => {
           typingCalls.push(Date.now())
         },
-        buttons: async (): Promise<void> => {},
+        buttons: (): Promise<undefined> => Promise.resolve(undefined),
       }
 
       const { provider: slowChat, getMessageHandler: getSlowHandler } = createMockChatForBot()
@@ -907,7 +907,9 @@ describe('Bot Authorization Gate (setupBot)', () => {
         const { reply } = createMockReply()
         const replyWithReplaceButtons: ReplyFn = {
           ...reply,
-          replaceButtons: (content: string, options): Promise<void> => reply.buttons(content, options),
+          replaceButtons: async (content: string, options): Promise<void> => {
+            await reply.buttons(content, options)
+          },
         }
         await messageHandler!({ ...createDmMessage('auth-user'), text: 'hello' }, replyWithReplaceButtons)
         await waitForNextTick()

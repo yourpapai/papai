@@ -406,7 +406,7 @@ describe('PluginContributionRegistry', () => {
         text: () => Promise.resolve(),
         formatted: () => Promise.resolve(),
         typing: () => {},
-        buttons: () => Promise.resolve(),
+        buttons: (): Promise<undefined> => Promise.resolve(undefined),
       },
       createAuth('user-1'),
     )
@@ -460,7 +460,7 @@ describe('PluginContributionRegistry', () => {
         },
         formatted: () => Promise.resolve(),
         typing: () => {},
-        buttons: () => Promise.resolve(),
+        buttons: (): Promise<undefined> => Promise.resolve(undefined),
       },
       createAuth('user-1'),
     )

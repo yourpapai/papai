@@ -29,7 +29,7 @@ function makeReply(): {
     typing: mock(() => {}),
     buttons: (body: string, options: ButtonReplyOptions) => {
       buttonCalls.push({ body, options })
-      return Promise.resolve()
+      return Promise.resolve(undefined)
     },
   }
   return {

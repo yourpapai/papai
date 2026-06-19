@@ -79,7 +79,7 @@ function createReplyFn(typingSpy: ReturnType<typeof mock>): ReplyFn {
     typing: (): void => {
       typingSpy()
     },
-    buttons: (): Promise<void> => Promise.resolve(),
+    buttons: (): Promise<undefined> => Promise.resolve(undefined),
   }
 }
 

@@ -52,13 +52,10 @@ function createTrackedFileReply(
   return tracked
 }
 
-function createTrackedButtonsReply(
-  markReplied: () => void,
-  fn: (content: string, options: ButtonReplyOptions) => Promise<void>,
-): (content: string, options: ButtonReplyOptions) => Promise<void> {
-  return async (content: string, options: ButtonReplyOptions): Promise<void> => {
+function createTrackedButtonsReply(markReplied: () => void, fn: ReplyFn['buttons']): ReplyFn['buttons'] {
+  return (content: string, options: ButtonReplyOptions) => {
     markReplied()
-    await fn(content, options)
+    return fn(content, options)
   }
 }
 
@@ -78,7 +75,12 @@ function withOptionalReplies(reply: ReplyFn, markReplied: () => void, supportsFi
       await redactMessage(replacementText)
     }
   }
-  if (replaceButtons !== undefined) tracked.replaceButtons = createTrackedButtonsReply(markReplied, replaceButtons)
+  if (replaceButtons !== undefined) {
+    tracked.replaceButtons = async (content: string, options: ButtonReplyOptions): Promise<void> => {
+      markReplied()
+      await replaceButtons(content, options)
+    }
+  }
   if (embed !== undefined) {
     tracked.embed = async (options: EmbedOptions): Promise<void> => {
       markReplied()

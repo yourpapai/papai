@@ -30,7 +30,7 @@ export function createKonturTalkReplyFn(params: KonturTalkReplyHelpersParams): R
     typing: () => {
       // no-op: Kontur Talk has no typing indicator API
     },
-    buttons: (_content: string, _options: ButtonReplyOptions): Promise<void> => {
+    buttons: (_content: string, _options: ButtonReplyOptions) => {
       return Promise.reject(new Error('This platform does not support interactive buttons.'))
     },
   }
