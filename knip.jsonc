@@ -176,6 +176,7 @@
     // final cleanup task once everything is wired.
     "src/chat/mattermost/link-resolver.ts": ["files"],
     "src/chat/mattermost/schema.ts": ["types"],
+    "src/tools/fetch-chat-link.ts": ["files"],
   },
 
   // Report unused exports even in entry files
