@@ -107,6 +107,8 @@ const STEERING_FRAGMENT =
 
 const WEB_FETCH = `WEB FETCH — When the user shares or refers back to a public URL and you need the page contents, call web_fetch. Use its returned summary/excerpt as source material for your answer. Only save the result via memo/task tools if the user explicitly asks you to persist it.`
 
+const CHAT_LINK = `CHAT LINKS — When the user shares a Mattermost message permalink and asks you to act on it (e.g. create a task or summarize), call fetch_chat_link with that URL. Use scope 'thread' for the whole discussion or 'post' for only the linked message. It works only for links in this workspace that the requesting user can access.`
+
 const WORKFLOW = `WORKFLOW:
 1. Understand the user's intent from natural language.
 2. Gather context if needed (e.g. call list_projects to resolve a project name, call list_columns before setting a task status).
@@ -157,6 +159,7 @@ const FRAGMENTS: readonly PromptFragment[] = [
   { text: DEFERRED, requiredTools: ['create_deferred_prompt', 'list_deferred_prompts'] },
   { text: PROACTIVE, requiredTools: [] },
   { text: WEB_FETCH, requiredTools: ['web_fetch'] },
+  { text: CHAT_LINK, requiredTools: ['fetch_chat_link'] },
   { text: WORKFLOW, requiredTools: [] },
   {
     text: DESTRUCTIVE,
