@@ -584,9 +584,15 @@ describe('MessageQueue', () => {
   })
 
   describe('different user in main group chat', () => {
-    it('should flush immediately when different user sends message in group main', () => {
+    it('should serialize the previous user flush via the handler chain when a different user sends in group main', async () => {
       const groupQueue = new MessageQueue('group123')
       queue = groupQueue
+
+      const handledTexts: string[] = []
+      queue.setHandler(async (coalesced) => {
+        handledTexts.push(coalesced.text)
+        await Promise.resolve()
+      })
 
       queue.enqueue(
         {
@@ -603,7 +609,9 @@ describe('MessageQueue', () => {
 
       expect(queue.getBufferedCount()).toBe(1)
 
-      const flushed = queue.enqueue(
+      // Different user arrives: enqueue now returns null (no fire-and-forget),
+      // and alice's turn is serialized onto the handler chain.
+      const result = queue.enqueue(
         {
           text: 'Hello from bob',
           userId: 'user2',
@@ -616,10 +624,14 @@ describe('MessageQueue', () => {
         mockReply,
       )
 
-      expect(flushed).not.toBeNull()
-      assert(flushed !== null)
-      expect(flushed.text).toBe('Hello from alice')
+      expect(result).toBeNull()
       expect(queue.getBufferedCount()).toBe(1)
+
+      // Alice's handler runs via the chain without needing the debounce.
+      await new Promise<void>((r) => {
+        setTimeout(r, 50)
+      })
+      expect(handledTexts).toContain('Hello from alice')
     })
 
     it('should not flush when same user sends multiple messages', () => {
@@ -657,9 +669,15 @@ describe('MessageQueue', () => {
       expect(queue.getBufferedCount()).toBe(2)
     })
 
-    it('should flush in thread when different user sends message', () => {
+    it('should serialize the previous user flush via the handler chain when a different user sends in thread', async () => {
       const threadQueue = new MessageQueue('group123:thread456')
       queue = threadQueue
+
+      const handledItems: Array<{ text: string; userId: string; username: string | null }> = []
+      queue.setHandler(async (coalesced) => {
+        handledItems.push({ text: coalesced.text, userId: coalesced.userId, username: coalesced.username })
+        await Promise.resolve()
+      })
 
       queue.enqueue(
         {
@@ -674,7 +692,8 @@ describe('MessageQueue', () => {
         mockReply,
       )
 
-      const flushed = queue.enqueue(
+      // Different user arrives: enqueue returns null (serialized via chain, not fire-and-forget).
+      const result = queue.enqueue(
         {
           text: 'Second',
           userId: 'user2',
@@ -687,13 +706,19 @@ describe('MessageQueue', () => {
         mockReply,
       )
 
-      // Different user in thread triggers flush (same as main group chat)
-      expect(flushed).not.toBeNull()
-      assert(flushed !== null)
-      expect(flushed.text).toBe('[@alice]: First')
-      expect(flushed.userId).toBe('user1')
-      expect(flushed.username).toBe('alice')
+      expect(result).toBeNull()
       expect(queue.getBufferedCount()).toBe(1)
+
+      // Alice's turn runs via the handler chain with thread attribution.
+      await new Promise<void>((r) => {
+        setTimeout(r, 50)
+      })
+      const aliceItem = handledItems.find((item) => item.userId === 'user1')
+      expect(aliceItem).toBeDefined()
+      assert(aliceItem !== undefined)
+      expect(aliceItem.text).toBe('[@alice]: First')
+      expect(aliceItem.userId).toBe('user1')
+      expect(aliceItem.username).toBe('alice')
     })
 
     it('should use last message userId and username for coalesced item in thread', () => {

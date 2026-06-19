@@ -56,6 +56,11 @@ export class MessageQueue {
 
     if (isGroup && hasBufferedItems && isDifferentUser) {
       const flushed = this.forceFlush()
+      if (flushed !== null) {
+        // Serialize: run the previous user's turn on the handler chain rather than
+        // concurrently, so a thread runs one turn at a time (one-run-per-thread).
+        this.handlerChain = this.handlerChain.then(() => this.runCoalesced(flushed))
+      }
       this.messages.push({ item, reply })
       this.lastUserId = item.userId
       this.emitScoped('queue:enqueue', item.userId, {
@@ -64,7 +69,7 @@ export class MessageQueue {
         bufferedCount: this.messages.length,
       })
       this.resetTimer()
-      return flushed
+      return null
     }
 
     this.messages.push({ item, reply })
@@ -106,41 +111,44 @@ export class MessageQueue {
 
   private async flushAndHandle(): Promise<void> {
     const result = this.flush()
-    if (result !== null && this.handler !== null) {
-      const startTime = Date.now()
-      try {
-        await this.handler(result)
-        this.emitScoped(
-          'turn:end',
-          result.userId,
-          {
-            turnId: result.turnId,
-            status: 'ok',
-            duration: Date.now() - startTime,
-          },
-          result.turnId,
-          result.contextType,
-        )
-      } catch (error) {
-        log.error(
-          {
-            storageContextId: this.storageContextId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'Handler error during flush',
-        )
-        this.emitScoped(
-          'turn:end',
-          result.userId,
-          {
-            turnId: result.turnId,
-            status: 'error',
-            error: error instanceof Error ? error.message : String(error),
-          },
-          result.turnId,
-          result.contextType,
-        )
-      }
+    if (result !== null) await this.runCoalesced(result)
+  }
+
+  private async runCoalesced(result: CoalescedItem): Promise<void> {
+    if (this.handler === null) return
+    const startTime = Date.now()
+    try {
+      await this.handler(result)
+      this.emitScoped(
+        'turn:end',
+        result.userId,
+        {
+          turnId: result.turnId,
+          status: 'ok',
+          duration: Date.now() - startTime,
+        },
+        result.turnId,
+        result.contextType,
+      )
+    } catch (error) {
+      log.error(
+        {
+          storageContextId: this.storageContextId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Handler error during flush',
+      )
+      this.emitScoped(
+        'turn:end',
+        result.userId,
+        {
+          turnId: result.turnId,
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        result.turnId,
+        result.contextType,
+      )
     }
   }
 
