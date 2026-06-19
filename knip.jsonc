@@ -175,6 +175,7 @@
     // seam (instantiated directly only by tests for isolation).
     "src/run-control/registry.ts": ["files"],
     "src/run-control/types.ts": ["files"],
+    "src/run-control/summary.ts": ["files"],
   },
 
   // Report unused exports even in entry files
