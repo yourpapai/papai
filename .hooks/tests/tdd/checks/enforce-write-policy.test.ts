@@ -8,6 +8,7 @@ import { enforceWritePolicy } from '../../../tdd/checks/enforce-write-policy.mjs
 const eslintDirective = ['eslint', 'disable'].join('-')
 const oxlintDirective = ['oxlint', 'disable'].join('-')
 const tsIgnoreDirective = ['@ts', 'ignore'].join('-')
+const tsExpectErrorDirective = ['@ts', 'expect', 'error'].join('-')
 
 const lineComment = (directive: string, suffix = ''): string => `// ${directive}${suffix}`
 const blockComment = (directive: string, suffix = ''): string => `/* ${directive}${suffix} */`
@@ -97,6 +98,25 @@ describe('enforceWritePolicy', () => {
 
     expect(result?.decision).toBe('block')
     expect(result?.reason).toContain(tsIgnoreDirective)
+  })
+
+  test('blocks edit payloads that add a @ts-expect-error suppression comment', () => {
+    fs.mkdirSync(path.join(tempDir, 'src'), { recursive: true })
+    fs.writeFileSync(path.join(tempDir, 'src', 'example.ts'), 'callThing()\n')
+
+    const result = enforceWritePolicy(
+      createCtx({
+        tool_name: 'edit',
+        tool_input: {
+          file_path: 'src/example.ts',
+          oldString: 'callThing()',
+          newString: `${lineComment(tsExpectErrorDirective)}\ncallThing()`,
+        },
+      }),
+    )
+
+    expect(result?.decision).toBe('block')
+    expect(result?.reason).toContain(tsExpectErrorDirective)
   })
 
   test('supports snake_case edit fields from Claude-style payloads', () => {

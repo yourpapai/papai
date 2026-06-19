@@ -13,6 +13,7 @@ const eslintDirective = ['eslint', 'disable'].join('-')
 const oxlintDirective = ['oxlint', 'disable'].join('-')
 const tsIgnoreDirective = ['@ts', 'ignore'].join('-')
 const tsNoCheckDirective = ['@ts', 'nocheck'].join('-')
+const tsExpectErrorDirective = ['@ts', 'expect', 'error'].join('-')
 
 const suppressionMatchers = [
   {
@@ -30,6 +31,10 @@ const suppressionMatchers = [
   {
     label: tsNoCheckDirective,
     pattern: new RegExp(`${tsNoCheckDirective}\\b`, 'u'),
+  },
+  {
+    label: tsExpectErrorDirective,
+    pattern: new RegExp(`${tsExpectErrorDirective}\\b`, 'u'),
   },
 ]
 
