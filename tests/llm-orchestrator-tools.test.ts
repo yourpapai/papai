@@ -18,13 +18,14 @@ import type { ToolSet } from 'ai'
 
 import type { StagedFileDownloadFn } from '../src/attachments/types.js'
 import { userCachesForTesting } from '../src/cache.js'
-import type { LlmInvocationOptions } from '../src/llm-orchestrator-tools.js'
+import type { LlmInvocationOptions, InvocationSource } from '../src/llm-orchestrator-tools.js'
+import { buildLlmInvocationOpts } from '../src/llm-orchestrator-tools.js'
 import { saveMemoryProfile } from '../src/long-term-memory/store.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import { makeGetCurrentTimeTool } from '../src/tools/get-current-time.js'
 import type { MakeToolsOptions } from '../src/tools/types.js'
 import { createMockProvider } from './tools/mock-provider.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const NO_STAGED_DOWNLOAD: StagedFileDownloadFn | undefined = undefined as StagedFileDownloadFn | undefined
 
@@ -277,5 +278,36 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
     expect(systemMessage?.role).toBe('system')
     expect(systemMessage?.content).toContain('The group ships release notes on Fridays')
     expect(systemMessage?.content).not.toContain('This should not be injected for group turns')
+  })
+})
+
+describe('buildLlmInvocationOpts / actorRole threading', () => {
+  const makeSource = (overrides: Partial<InvocationSource> = {}): InvocationSource => ({
+    reply: createMockReply().reply,
+    contextId: 'ctx-actor-test',
+    chatUserId: 'user-1',
+    username: null,
+    contextType: 'dm',
+    history: [],
+    userText: 'hello',
+    ...overrides,
+  })
+
+  test('copies actorRole guest from InvocationSource into LlmInvocationOptions', () => {
+    const src = makeSource({ actorRole: 'guest' })
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined)
+    expect(opts.actorRole).toBe('guest')
+  })
+
+  test('copies actorRole member from InvocationSource into LlmInvocationOptions', () => {
+    const src = makeSource({ actorRole: 'member' })
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined)
+    expect(opts.actorRole).toBe('member')
+  })
+
+  test('actorRole is undefined in LlmInvocationOptions when not set on InvocationSource', () => {
+    const src = makeSource()
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined)
+    expect(opts.actorRole).toBeUndefined()
   })
 })

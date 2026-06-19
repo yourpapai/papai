@@ -9,7 +9,7 @@ import type { StagedFileDownloadFn } from './attachments/types.js'
 import { getCachedTools, setCachedTools } from './cache.js'
 import { askPermissionViaChat } from './chat/permission-prompt.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
-import type { ReplyFn } from './chat/types.js'
+import type { ActorRole, ReplyFn } from './chat/types.js'
 import { buildMessagesWithMemory } from './conversation.js'
 import { resolveTimezone } from './llm-orchestrator-config.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
@@ -90,6 +90,7 @@ export type LlmInvocationOptions = {
   userText: string
   stagedDownloadFn: StagedFileDownloadFn | undefined
   askPermission: AskPermissionFn | undefined
+  actorRole?: ActorRole
 }
 
 /** Minimal shape of args required to build LlmInvocationOptions from a callLlm context. */
@@ -101,6 +102,7 @@ export type InvocationSource = {
   contextType: 'dm' | 'group'
   history: readonly ModelMessage[]
   userText: string
+  actorRole?: ActorRole
 }
 
 /** Constructs LlmInvocationOptions by binding askPermissionViaChat to the reply surface. */
@@ -122,6 +124,7 @@ export function buildLlmInvocationOpts(
     userText: src.userText,
     stagedDownloadFn,
     askPermission,
+    actorRole: src.actorRole,
   }
 }
 

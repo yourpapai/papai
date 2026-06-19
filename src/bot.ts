@@ -13,6 +13,7 @@ import {
 } from './bot-attachments.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
+import { replyToUnauthorized } from './bot-unauthorized-reply.js'
 import { supportsFileReplies } from './chat/capabilities.js'
 import { userManagesAuthorizedGroupLive } from './chat/group-admin-live.js'
 import { routeInteraction } from './chat/interaction-router.js'
@@ -45,19 +46,6 @@ const defaultBotDeps: BotDeps = {
 }
 const log = logger.child({ scope: 'bot' })
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
-function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string | null {
-  if (auth.reason === 'group_not_allowed')
-    return `This group (${groupId}) is not authorized to use this bot. Ask the bot admin to authorize it in the settings web UI — they can open it with \`/config\` in a DM.`
-  if (auth.reason === 'group_member_not_allowed')
-    return "You're not authorized to use this bot in this group. Ask a group admin to add you in the settings web UI — they can open it with `/config` in a DM."
-  if (auth.reason === 'dm_not_allowed') return 'You are not authorized to use this bot.'
-  if (auth.reason === 'user_blocked') return 'You are not authorized to use this bot.'
-  return null
-}
-async function replyToUnauthorized(reply: ReplyFn, auth: AuthorizationResult, groupId: string): Promise<void> {
-  const message = getUnauthorizedReplyText(auth, groupId)
-  if (message !== null) await reply.text(message)
-}
 function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
   return checkAuthorizationExtended(
     msg.user.id,
@@ -150,6 +138,7 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       { ...defaultDeps, stagedDownloadFn: deps.stagedDownloadFn },
       [...voiceAttachmentIds, ...coalescedItem.newAttachmentIds],
       coalescedItem.turnId,
+      coalescedItem.actorRole,
     )
   } finally {
     emitReplyCompletedIfNeeded(tracked, coalescedItem.userId, coalescedItem.storageContextId, start)

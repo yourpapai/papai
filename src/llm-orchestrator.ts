@@ -261,7 +261,7 @@ export const processMessage = async (
   contextType: 'dm' | 'group',
   ...rest: ProcessMessageRest
 ): Promise<void> => {
-  const [configContextId, depsInput, newAttachmentIdsInput, turnId] = rest
+  const [configContextId, depsInput, newAttachmentIdsInput, turnId, actorRole = 'member'] = rest
   const deps = resolveDeps(depsInput, defaultDeps)
   const newAttachmentIds = resolveAttachmentIds(newAttachmentIdsInput)
   const resolvedTurnId = resolveTurnId(turnId)
@@ -270,7 +270,7 @@ export const processMessage = async (
   const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId)
   if (resolvedLlm === null) return
   const turn = await buildHistory(contextId, chatUserId, resolvedLlm.mainModel, userText, newAttachmentIds)
-  const invocationSource = { reply, contextId, chatUserId, username, userText, contextType }
+  const invocationSource = { reply, contextId, chatUserId, username, userText, contextType, actorRole }
   appendHistory(contextId, [turn.historyMessage])
   const leftover = await runTurn({
     invocationSource,

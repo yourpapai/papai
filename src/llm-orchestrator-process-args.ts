@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ReplyFn } from './chat/types.js'
+import type { ActorRole, ReplyFn } from './chat/types.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 
 export type ProcessMessageRest = readonly [
@@ -11,6 +11,7 @@ export type ProcessMessageRest = readonly [
   deps?: LlmOrchestratorDeps,
   newAttachmentIds?: readonly string[],
   turnId?: string,
+  actorRole?: ActorRole,
 ]
 
 export type ProcessMessageFn = (
