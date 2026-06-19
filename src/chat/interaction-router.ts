@@ -50,10 +50,11 @@ async function finalizePermissionDecision(
 }
 
 /**
- * Interactive chat callbacks were retired with the move to the settings web UI.
- * No callback prefixes are produced anymore; this router authorizes the actor and
- * otherwise matches nothing. Kept as the single interaction entry point so adapters
- * that still emit interaction events have a safe sink.
+ * The config-flow callbacks were retired with the move to the settings web UI.
+ * This router authorizes the actor and handles exactly one prefix — `perm:a:`/`perm:d:`,
+ * the allow/deny decision for an `ask`-gated tool prompt (see `finalizePermissionDecision`).
+ * Any other callback is a safe-sink no-op, so adapters that still emit interaction
+ * events have a single, harmless entry point.
  */
 export async function routeInteraction(
   interaction: IncomingInteraction,
