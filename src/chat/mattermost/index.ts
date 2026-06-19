@@ -27,6 +27,7 @@ import {
 } from './action-callbacks.js'
 import { getMattermostActionSigningSecret } from './action-secret.js'
 import { createMattermostActionContext } from './action-signing.js'
+import { makeMattermostApiFetch } from './api-fetch.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
@@ -68,6 +69,7 @@ export class MattermostChatProvider implements ChatProvider {
   private readonly baseUrl: string
   private readonly token: string
   private readonly platformInstanceId: string
+  private readonly mmFetch: import('./file-helpers.js').MattermostApiFetch
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
@@ -81,6 +83,7 @@ export class MattermostChatProvider implements ChatProvider {
     this.baseUrl = resolved.baseUrl
     this.token = resolved.token
     this.platformInstanceId = resolved.platformInstanceId
+    this.mmFetch = makeMattermostApiFetch(this.baseUrl, this.token)
     log.debug({ platformInstanceId: this.platformInstanceId }, 'MattermostChatProvider constructed')
   }
   registerCommand(name: string, handler: CommandHandler): void {
@@ -284,14 +287,8 @@ export class MattermostChatProvider implements ChatProvider {
   private wsSend(data: unknown): void {
     if (this.ws !== null && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(data))
   }
-  private async apiFetch(method: string, path: string, body: unknown): Promise<unknown> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    })
-    if (!res.ok) throw new Error(`Mattermost API ${method} ${path} failed: ${res.status}`)
-    return res.json() as Promise<unknown>
+  private apiFetch(method: string, path: string, body: unknown): Promise<unknown> {
+    return this.mmFetch(method, path, body)
   }
   renderContext(snapshot: ContextSnapshot): ContextRendered {
     return renderMattermostContext(snapshot)
