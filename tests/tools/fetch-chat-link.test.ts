@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import type { ChatLinkResult } from '../../src/chat/mattermost/link-resolver.js'
 import { makeFetchChatLinkTool } from '../../src/tools/fetch-chat-link.js'
+import { TOOL_METADATA } from '../../src/tools/tool-metadata.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
 
 const sampleResult: ChatLinkResult = {
@@ -66,5 +67,9 @@ describe('fetch_chat_link tool', () => {
     await expect(
       execute({ url: 'https://mm.example.com/eng/pl/p1', scope: 'post' }, { toolCallId: 'c' }),
     ).rejects.toThrow('boom')
+  })
+
+  test('fetch_chat_link is classified as open-world history-read', () => {
+    expect(TOOL_METADATA['fetch_chat_link']).toEqual({ domain: 'history', operation: 'read', risk: 'open-world' })
   })
 })

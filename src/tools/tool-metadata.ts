@@ -169,6 +169,7 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   delete_instruction: destructive('instruction'),
 
   lookup_group_history: read('history'),
+  fetch_chat_link: { domain: 'history', operation: 'read', risk: 'open-world' },
   web_fetch: { domain: 'web', operation: 'read', risk: 'open-world' },
 }
 
