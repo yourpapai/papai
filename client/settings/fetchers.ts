@@ -9,6 +9,7 @@ import {
   ByokResponseSchema,
   BootstrapSchema,
   ConfigResponseSchema,
+  GroupGuestModeResponseSchema,
   GroupMembersResponseSchema,
   GroupTaskInstanceResponseSchema,
   IdentityResponseSchema,
@@ -20,6 +21,7 @@ import {
   type BootstrapData,
   type ConfigResponse,
   type ContextTaskInstanceResponse,
+  type GroupGuestModeResponse,
   type GroupMembersResponse,
   type GroupTaskInstanceResponse,
   type IdentityResponse,
@@ -220,6 +222,12 @@ export const fetchGroupTaskInstance = (contextId: string): Promise<GroupTaskInst
 
 export const patchGroupTaskInstance = (input: { taskInstanceId: string; contextId: string }): Promise<unknown> =>
   writeJson('/settings/api/group/task-instance', 'PATCH', input, (b) => b)
+
+export const fetchGroupGuestMode = (contextId: string): Promise<GroupGuestModeResponse> =>
+  getJson(`/settings/api/group/guest-mode?${ctxQuery(contextId)}`, (b) => GroupGuestModeResponseSchema.parse(b))
+
+export const patchGroupGuestMode = (input: { enabled: boolean; contextId: string }): Promise<unknown> =>
+  writeJson('/settings/api/group/guest-mode', 'PATCH', input, (b) => b)
 
 export const fetchContextTaskInstance = (contextId: string): Promise<ContextTaskInstanceResponse> =>
   getJson(`/settings/api/context/task-instance?${ctxQuery(contextId)}`, (b) => GroupTaskInstanceResponseSchema.parse(b))

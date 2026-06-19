@@ -183,6 +183,9 @@ export type GroupTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponse
 // The per-context route returns the same shape as the group route; only the type name is distinct.
 export type ContextTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponseSchema>
 
+export const GroupGuestModeResponseSchema = z.object({ contextId: z.string(), enabled: z.boolean() })
+export type GroupGuestModeResponse = z.infer<typeof GroupGuestModeResponseSchema>
+
 // --- Admin (lenient: store-shaped rows rendered generically) ---
 
 export const AdminInstanceRowSchema = z
