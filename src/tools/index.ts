@@ -13,6 +13,7 @@ import { buildPluginToolSet, contributionRegistry } from '../plugins/contributio
 import { filterProviderlessPluginIds } from '../plugins/providerless.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
+import { maybeSeedAdminToolDefaults } from './admin-tool-defaults.js'
 import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
 import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
 import { buildProviderlessTools, buildTools } from './tools-builder.js'
@@ -28,6 +29,7 @@ export function applyToolPreferences(
 ): ToolSet {
   if (contextId === undefined) return tools
   const prefsContextId = getConfigContextIdFromStorageContextId(contextId)
+  maybeSeedAdminToolDefaults(prefsContextId)
   const prefs = getToolPrefs(prefsContextId)
   const out: ToolSet = {}
   for (const [name, t] of Object.entries(tools)) {

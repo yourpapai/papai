@@ -5,7 +5,19 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { parseMemoryPatch } from '../../src/long-term-memory/extractor.js'
+import { buildExtractionPrompt, parseMemoryPatch } from '../../src/long-term-memory/extractor.js'
+import { MemoryKindSchema } from '../../src/long-term-memory/types.js'
+
+const validRecord = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  kind: 'fact',
+  content: 'A remembered fact.',
+  summary: null,
+  tags: [],
+  confidence: 0.8,
+  source: 'background',
+  evidence: {},
+  ...overrides,
+})
 
 describe('parseMemoryPatch', () => {
   test('parses a valid JSON patch', () => {
@@ -48,100 +60,111 @@ describe('parseMemoryPatch', () => {
     expect(() => parseMemoryPatch('not json')).toThrow(/^invalid memory patch:/u)
   })
 
-  test('rejects confidence outside the valid range', () => {
-    expect(() =>
-      parseMemoryPatch(
-        JSON.stringify({
-          profile: null,
-          records: [
-            {
-              kind: 'fact',
-              content: 'A remembered fact.',
-              summary: null,
-              tags: [],
-              confidence: 1.2,
-              source: 'background',
-              evidence: {},
-            },
-          ],
-          updates: [],
-        }),
-      ),
-    ).toThrow(/^invalid memory patch:/u)
+  test('drops records with an invalid kind but keeps valid ones', () => {
+    const patch = parseMemoryPatch(
+      JSON.stringify({
+        profile: null,
+        records: [
+          validRecord({ kind: 'project context', content: 'Spaced kind from the model.' }),
+          validRecord({ kind: 'goal', content: 'Synonym kind from the model.' }),
+          validRecord({ kind: 'fact', content: 'A valid fact.' }),
+        ],
+        updates: [],
+      }),
+    )
+
+    expect(patch.records).toHaveLength(1)
+    expect(patch.records[0]?.kind).toBe('fact')
+    expect(patch.records[0]?.content).toBe('A valid fact.')
   })
 
-  test('rejects privileged sources from model output', () => {
-    expect(() =>
-      parseMemoryPatch(
-        JSON.stringify({
-          profile: null,
-          records: [
-            {
-              kind: 'fact',
-              content: 'A remembered fact.',
-              summary: null,
-              tags: [],
-              confidence: 0.8,
-              source: 'explicit',
-              evidence: {},
-            },
-          ],
-          updates: [],
-        }),
-      ),
-    ).toThrow(/^invalid memory patch:/u)
+  test('drops records with confidence outside the valid range but keeps valid ones', () => {
+    const patch = parseMemoryPatch(
+      JSON.stringify({
+        profile: null,
+        records: [validRecord({ confidence: 1.2 }), validRecord({ content: 'A valid fact.' })],
+        updates: [],
+      }),
+    )
+
+    expect(patch.records).toHaveLength(1)
+    expect(patch.records[0]?.content).toBe('A valid fact.')
   })
 
-  test('rejects oversized model output before persistence', () => {
-    expect(() =>
-      parseMemoryPatch(
-        JSON.stringify({
-          profile: 'x'.repeat(4_001),
-          records: [],
-          updates: [],
-        }),
-      ),
-    ).toThrow(/^invalid memory patch:/u)
+  test('drops records with a privileged source', () => {
+    const patch = parseMemoryPatch(
+      JSON.stringify({
+        profile: null,
+        records: [validRecord({ source: 'explicit' }), validRecord({ content: 'A valid fact.' })],
+        updates: [],
+      }),
+    )
 
-    expect(() =>
-      parseMemoryPatch(
-        JSON.stringify({
-          profile: null,
-          records: Array.from({ length: 21 }, () => ({
-            kind: 'fact',
-            content: 'A remembered fact.',
-            summary: null,
-            tags: [],
-            confidence: 0.8,
-            source: 'background',
-            evidence: {},
-          })),
-          updates: [],
-        }),
-      ),
-    ).toThrow(/^invalid memory patch:/u)
+    expect(patch.records).toHaveLength(1)
+    expect(patch.records[0]?.content).toBe('A valid fact.')
   })
 
-  test('rejects non-ISO expiration timestamps', () => {
-    expect(() =>
-      parseMemoryPatch(
-        JSON.stringify({
-          profile: null,
-          records: [
-            {
-              kind: 'fact',
-              content: 'A remembered fact.',
-              summary: null,
-              tags: [],
-              confidence: 0.8,
-              source: 'background',
-              evidence: {},
-              expiresAt: 'tomorrow',
-            },
-          ],
-          updates: [],
-        }),
-      ),
-    ).toThrow(/^invalid memory patch:/u)
+  test('drops records with non-ISO timestamps', () => {
+    const patch = parseMemoryPatch(
+      JSON.stringify({
+        profile: null,
+        records: [validRecord({ expiresAt: 'tomorrow' }), validRecord({ content: 'A valid fact.' })],
+        updates: [],
+      }),
+    )
+
+    expect(patch.records).toHaveLength(1)
+    expect(patch.records[0]?.content).toBe('A valid fact.')
+  })
+
+  test('drops an oversized profile but keeps records', () => {
+    const patch = parseMemoryPatch(
+      JSON.stringify({
+        profile: 'x'.repeat(4_001),
+        records: [validRecord({ content: 'A valid fact.' })],
+        updates: [],
+      }),
+    )
+
+    expect(patch.profile).toBeNull()
+    expect(patch.records).toHaveLength(1)
+  })
+
+  test('caps records at the maximum instead of rejecting the patch', () => {
+    const patch = parseMemoryPatch(
+      JSON.stringify({
+        profile: null,
+        records: Array.from({ length: 21 }, () => validRecord()),
+        updates: [],
+      }),
+    )
+
+    expect(patch.records).toHaveLength(20)
+  })
+
+  test('drops invalid updates but keeps valid ones', () => {
+    const patch = parseMemoryPatch(
+      JSON.stringify({
+        profile: null,
+        records: [],
+        updates: [
+          { id: '', status: 'stale' },
+          { id: 'mem-1', status: 'archived' },
+        ],
+      }),
+    )
+
+    expect(patch.updates).toEqual([{ id: 'mem-1', status: 'archived' }])
+  })
+})
+
+describe('buildExtractionPrompt', () => {
+  test('instructs the model with the exact memory kind enum values', () => {
+    const prompt = buildExtractionPrompt({ history: [], profile: null, records: [] })
+
+    for (const kind of MemoryKindSchema.options) {
+      expect(prompt).toContain(kind)
+    }
+    expect(prompt).toContain('snake_case')
   })
 })

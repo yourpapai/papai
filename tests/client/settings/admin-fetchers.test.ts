@@ -79,7 +79,6 @@ describe('admin-fetchers', () => {
           result_compaction: true,
           progressive_disclosure: false,
           semantic_tool_retrieval: false,
-          cross_thread_memory: false,
         },
       },
     ],
@@ -120,7 +119,6 @@ describe('admin-fetchers', () => {
         result_compaction: true,
         progressive_disclosure: false,
         semantic_tool_retrieval: false,
-        cross_thread_memory: false,
       },
     })
     expect(seenUrl).toBe('/settings/api/admin/feature-flags')
@@ -132,8 +130,64 @@ describe('admin-fetchers', () => {
         result_compaction: true,
         progressive_disclosure: false,
         semantic_tool_retrieval: false,
-        cross_thread_memory: false,
       },
     })
+  })
+
+  test('fetchOpenAccess GETs open-access and returns parsed response', async () => {
+    const { fetchOpenAccess } = await import('../../../client/settings/admin-fetchers.js')
+    let seenUrl = ''
+    let seenMethod = ''
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenMethod = methodOf(init)
+      return Promise.resolve(json({ openDmAccess: false }))
+    })
+    const result = await fetchOpenAccess()
+    expect(seenUrl).toBe('/settings/api/admin/open-access')
+    expect(seenMethod).toBe('GET')
+    expect(result.openDmAccess).toBe(false)
+  })
+
+  test('patchOpenAccess POSTs to open-access with CSRF header', async () => {
+    const { patchOpenAccess } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-oa')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json({ ok: true, openDmAccess: true }))
+    })
+    await patchOpenAccess({ enabled: true })
+    expect(seenUrl).toBe('/settings/api/admin/open-access')
+    expect(seenCsrf).toBe('csrf-oa')
+    expect(seenMethod).toBe('POST')
+    expect(seenBody).toEqual({ enabled: true })
+  })
+
+  test('setUserBlocked POSTs to users/block with CSRF header', async () => {
+    const { setUserBlocked } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-blk')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json({ ok: true }))
+    })
+    await setUserBlocked({ userId: 'u1', blocked: true })
+    expect(seenUrl).toBe('/settings/api/admin/users/block')
+    expect(seenCsrf).toBe('csrf-blk')
+    expect(seenMethod).toBe('POST')
+    expect(seenBody).toEqual({ userId: 'u1', blocked: true })
   })
 })

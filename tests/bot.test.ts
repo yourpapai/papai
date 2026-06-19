@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, expect, test, beforeEach, mock } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { and, eq } from 'drizzle-orm'
@@ -38,6 +38,7 @@ import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../src/gro
 import { addGroupMember } from '../src/groups.js'
 import { addAdmin } from '../src/instances/admin-store.js'
 import { setContextSettings } from '../src/instances/context-store.js'
+import { setOpenDmAccess } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
@@ -339,9 +340,9 @@ describe('Authorization Logic', () => {
   })
 })
 
-describe('Demo Mode Auto-Provision', () => {
-  const DEMO_USER_ID = 'demo-user-1'
-  const DEMO_USERNAME = 'demouser'
+describe('Open DM Access Auto-Provision', () => {
+  const OPEN_USER_ID = 'demo-user-1'
+  const OPEN_USERNAME = 'demouser'
 
   beforeEach(async () => {
     mockLogger()
@@ -349,60 +350,56 @@ describe('Demo Mode Auto-Provision', () => {
     seedCommonTestPlatformInstances()
   })
 
-  afterEach(() => {
-    delete process.env['DEMO_MODE']
-  })
-
-  test('demo mode: unknown DM user is auto-added with non-admin auth', () => {
-    process.env['DEMO_MODE'] = 'true'
-    const result = checkAuthorizationExtended(DEMO_USER_ID, DEMO_USERNAME, DEMO_USER_ID, 'dm', undefined, false)
+  test('open access on: unknown DM user is auto-added with non-admin auth', () => {
+    setOpenDmAccess(TEST_PLATFORM_ID, true)
+    const result = checkAuthorizationExtended(OPEN_USER_ID, OPEN_USERNAME, OPEN_USER_ID, 'dm', undefined, false)
     expect(result).toEqual({
       allowed: true,
       isBotAdmin: false,
       isGroupAdmin: false,
-      storageContextId: scopedDm(DEMO_USER_ID),
-      configContextId: scopedDm(DEMO_USER_ID),
+      storageContextId: scopedDm(OPEN_USER_ID),
+      configContextId: scopedDm(OPEN_USER_ID),
     })
-    expect(isAuthorized(DEMO_USER_ID)).toBe(true)
+    expect(isAuthorized(OPEN_USER_ID)).toBe(true)
   })
 
-  test('demo mode: demo user stays non-admin on subsequent messages', () => {
-    process.env['DEMO_MODE'] = 'true'
+  test('open access on: open-access user stays non-admin on subsequent messages', () => {
+    setOpenDmAccess(TEST_PLATFORM_ID, true)
     // First message — auto-add
-    checkAuthorizationExtended(DEMO_USER_ID, DEMO_USERNAME, DEMO_USER_ID, 'dm', undefined, false)
+    checkAuthorizationExtended(OPEN_USER_ID, OPEN_USERNAME, OPEN_USER_ID, 'dm', undefined, false)
     // Second message — user already authorized
-    const result = checkAuthorizationExtended(DEMO_USER_ID, DEMO_USERNAME, DEMO_USER_ID, 'dm', undefined, false)
+    const result = checkAuthorizationExtended(OPEN_USER_ID, OPEN_USERNAME, OPEN_USER_ID, 'dm', undefined, false)
     expect(result).toEqual({
       allowed: true,
       isBotAdmin: false,
       isGroupAdmin: false,
-      storageContextId: scopedDm(DEMO_USER_ID),
-      configContextId: scopedDm(DEMO_USER_ID),
+      storageContextId: scopedDm(OPEN_USER_ID),
+      configContextId: scopedDm(OPEN_USER_ID),
     })
   })
 
-  test('demo mode: unknown DM user without username is auto-added', () => {
-    process.env['DEMO_MODE'] = 'true'
-    const result = checkAuthorizationExtended(DEMO_USER_ID, null, DEMO_USER_ID, 'dm', undefined, false)
+  test('open access on: unknown DM user without username is auto-added', () => {
+    setOpenDmAccess(TEST_PLATFORM_ID, true)
+    const result = checkAuthorizationExtended(OPEN_USER_ID, null, OPEN_USER_ID, 'dm', undefined, false)
     expect(result.allowed).toBe(true)
     expect(result.isBotAdmin).toBe(false)
-    expect(isAuthorized(DEMO_USER_ID)).toBe(true)
+    expect(isAuthorized(OPEN_USER_ID)).toBe(true)
   })
 
-  test('demo mode: manually-added non-admin user stays non-admin', () => {
-    process.env['DEMO_MODE'] = 'true'
+  test('open access on: manually-added non-admin user stays non-admin', () => {
+    setOpenDmAccess(TEST_PLATFORM_ID, true)
     addUser('manual-user', 'admin', 'manualuser')
     const result = checkAuthorizationExtended('manual-user', 'manualuser', 'manual-user', 'dm', undefined, false)
     expect(result.isBotAdmin).toBe(false)
   })
 
-  test('demo mode: group messages from unknown users are NOT auto-added', () => {
-    process.env['DEMO_MODE'] = 'true'
+  test('open access on: group messages from unknown users are NOT auto-added', () => {
+    setOpenDmAccess(TEST_PLATFORM_ID, true)
     const result = checkAuthorizationExtended('stranger-1', null, 'group-1', 'group', undefined, false)
     expect(result.allowed).toBe(false)
   })
 
-  test('demo mode off: unknown DM user is NOT auto-added', () => {
+  test('open access off: unknown DM user is NOT auto-added', () => {
     const result = checkAuthorizationExtended('stranger-1', 'stranger', 'stranger-1', 'dm', undefined, false)
     expect(result.allowed).toBe(false)
   })
@@ -1841,7 +1838,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
   })
 })
 
-describe('Demo Mode — wizard bypass (setupBot)', () => {
+describe('Open DM Access — wizard bypass (setupBot)', () => {
   let processMessageCallCount = 0
   let lastProcessedStorageId: string | null = null
 
@@ -1872,14 +1869,11 @@ describe('Demo Mode — wizard bypass (setupBot)', () => {
     setupBot(mockChat, ADMIN_ID, botDeps)
   })
 
-  afterEach(() => {
-    delete process.env['DEMO_MODE']
-  })
-
-  test('demo user message reaches processMessage instead of wizard', async () => {
-    process.env['DEMO_MODE'] = 'true'
-    // Add as demo user (no config — normally triggers wizard)
-    addUser('demo-bypass-1', 'demo-auto', 'demouser')
+  test('open-access user message reaches processMessage instead of wizard', async () => {
+    // realistic setup; auth here comes from the pre-inserted users row, not open access
+    setOpenDmAccess(TEST_PLATFORM_ID, true)
+    // Add as open-access user (no config — normally triggers wizard)
+    addUser('demo-bypass-1', 'open-access', 'demouser')
 
     const messageHandler = getMessageHandler()
     const { reply } = createMockReply()

@@ -20,6 +20,7 @@ export const users = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
     addedBy: text('added_by').notNull(),
+    blockedAt: text('blocked_at'),
     kaneoWorkspaceId: text('kaneo_workspace_id'),
   },
   (table) => [

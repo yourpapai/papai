@@ -89,7 +89,11 @@ function handleGet(req: Request, url: URL): Response {
 
   const memoryScope = toMemoryScope(scope.scope)
   const profile = getMemoryProfile(memoryScope)
-  const records = listMemoryRecords({ ...memoryScope, status: 'active', limit: RECORD_LIST_LIMIT }).map(recordView)
+  const records = listMemoryRecords({
+    ...memoryScope,
+    statuses: ['active', 'provisional'],
+    limit: RECORD_LIST_LIMIT,
+  }).map(recordView)
 
   return settingsJson(200, {
     contextId: memoryScope.scopeId,

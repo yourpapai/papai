@@ -13,7 +13,6 @@ import { addProviderIndependentTools } from '../../src/tools/provider-independen
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const COMPACTION_ON = JSON.stringify({ result_compaction: true })
-const CROSS_THREAD_ON = JSON.stringify({ cross_thread_memory: true })
 
 // Unique context per test: the in-memory config cache outlives individual tests.
 const optsFor = (
@@ -57,30 +56,28 @@ describe('expand_result registration', () => {
   })
 })
 
-describe('recall registration', () => {
+describe('search_memory registration', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
     delete process.env['TOOL_CONTEXT_REDUCTION_DISABLED']
   })
 
-  it('omits recall when cross_thread_memory flag is OFF (default)', () => {
+  it('registers search_memory in normal mode for a group context', () => {
     const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-recall-off', 'normal', 'group'))
-    expect(tools['recall']).toBeUndefined()
+    addProviderIndependentTools(tools, optsFor('pitb-mem-group', 'normal', 'group'))
+    expect(tools['search_memory']).toBeDefined()
   })
 
-  it('registers recall when flag is ON, mode is normal, and contextType is group', () => {
-    setCachedConfig('pitb-recall-on', REDUCTION_FLAGS_CONFIG_KEY, CROSS_THREAD_ON)
+  it('registers search_memory in normal mode for a dm context', () => {
     const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-recall-on', 'normal', 'group'))
-    expect(tools['recall']).toBeDefined()
+    addProviderIndependentTools(tools, optsFor('pitb-mem-dm', 'normal', 'dm'))
+    expect(tools['search_memory']).toBeDefined()
   })
 
-  it('omits recall in proactive mode even when flag is ON', () => {
-    setCachedConfig('pitb-recall-proactive', REDUCTION_FLAGS_CONFIG_KEY, CROSS_THREAD_ON)
+  it('registers search_memory in proactive mode (mode-independent)', () => {
     const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-recall-proactive', 'proactive', 'group'))
-    expect(tools['recall']).toBeUndefined()
+    addProviderIndependentTools(tools, optsFor('pitb-mem-proactive', 'proactive', 'group'))
+    expect(tools['search_memory']).toBeDefined()
   })
 })

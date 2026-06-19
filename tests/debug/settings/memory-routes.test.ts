@@ -133,6 +133,21 @@ describe('settings memory routes', () => {
     expect(body.records.map((record) => record.id)).toEqual(['active-1'])
   })
 
+  test('GET returns active and provisional records but excludes archived and stale', async () => {
+    saveMemoryRecord(memoryRecordInput({ id: 'active-1', scopeId: personalContextId, status: 'active' }))
+    saveMemoryRecord(memoryRecordInput({ id: 'provisional-1', scopeId: personalContextId, status: 'provisional' }))
+    saveMemoryRecord(memoryRecordInput({ id: 'archived-1', scopeId: personalContextId, status: 'archived' }))
+    saveMemoryRecord(memoryRecordInput({ id: 'stale-1', scopeId: personalContextId, status: 'stale' }))
+
+    const url = new URL('https://x/settings/api/memory')
+    const res = await handleMemoryRoutes(request('/settings/api/memory', session), url)
+
+    expect(res.status).toBe(200)
+    const body = GetMemoryResponseSchema.parse(await res.json())
+    expect(body.records.map((record) => record.id).sort()).toEqual(['active-1', 'provisional-1'])
+    expect(body.records.find((record) => record.id === 'provisional-1')?.status).toBe('provisional')
+  })
+
   test('GET defaults profile to empty and capture enabled when no profile row exists', async () => {
     const routed = await routeSettingsApi(
       request('/settings/api/memory', session),

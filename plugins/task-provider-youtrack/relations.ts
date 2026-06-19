@@ -8,7 +8,7 @@ import { providerError } from 'papai/plugin-types'
 import { z } from 'zod'
 
 import { logger } from '../../src/logger.js'
-import { YouTrackClassifiedError } from './classify-error.js'
+import { YouTrackClassifiedError, classifyYouTrackError } from './classify-error.js'
 import type { YouTrackConfig } from './client.js'
 import { youtrackFetch } from './client.js'
 import { IssueLinkSchema } from './schemas/issue-link.js'
@@ -18,23 +18,36 @@ const IssueLinksSchema = z.object({
   links: z.array(IssueLinkSchema).optional(),
 })
 
+/** Minimal shape of an item from GET /api/issueLinkTypes. */
+const IssueLinkTypeListSchema = z.array(
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    directed: z.boolean().optional(),
+  }),
+)
+
+/** Minimal shape for resolving an issue's database id. */
+const IssueIdSchema = z.object({ id: z.string() })
+
 const log = logger.child({ scope: 'provider:youtrack:relations' })
 
+// YouTrack's built-in link-type names are singular ("Depend", not "Depends"); matched case-insensitively.
 function mapRelationTypeToLinkType(type: RelationType): string {
   switch (type) {
     case 'blocks':
     case 'blocked_by':
-      return 'depends'
+      return 'Depend'
     case 'duplicate':
     case 'duplicate_of':
-      return 'duplicate'
+      return 'Duplicate'
     case 'parent':
     case 'child':
-      return 'subtask'
+      return 'Subtask'
     case 'related':
-      return 'relates'
+      return 'Relates'
     default:
-      return 'relates'
+      return 'Relates'
   }
 }
 
@@ -52,6 +65,54 @@ function mapRelationTypeToDirection(type: RelationType): 'OUTWARD' | 'INWARD' {
     default:
       return 'INWARD'
   }
+}
+
+/**
+ * Resolve the directed link id used by POST /api/issues/{id}/links/{linkID}/issues.
+ *
+ * Primary path discovers the id from the issue's own link collection (no suffix guessing,
+ * undirected types report direction BOTH). Fallback resolves the link type from
+ * /api/issueLinkTypes and constructs the id from the type id plus a direction suffix.
+ */
+async function resolveYouTrackLinkId(
+  config: YouTrackConfig,
+  taskId: string,
+  linkTypeName: string,
+  direction: 'OUTWARD' | 'INWARD',
+): Promise<string> {
+  const wanted = linkTypeName.toLowerCase()
+
+  const rawLinks = await youtrackFetch(config, 'GET', `/api/issues/${taskId}`, {
+    query: { fields: 'id,links(id,direction,linkType(id,name))' },
+  })
+  const issue = IssueLinksSchema.parse(rawLinks)
+  const discovered = (issue.links ?? []).find(
+    (link) =>
+      link.id !== undefined &&
+      (link.linkType?.name ?? '').toLowerCase() === wanted &&
+      (link.direction === direction || link.direction === 'BOTH'),
+  )
+  if (discovered?.id !== undefined) {
+    return discovered.id
+  }
+
+  const rawTypes = await youtrackFetch(config, 'GET', '/api/issueLinkTypes', {
+    query: { fields: 'id,name,directed' },
+  })
+  const types = IssueLinkTypeListSchema.parse(rawTypes)
+  const match = types.find((t) => t.name.toLowerCase() === wanted)
+  if (match === undefined) {
+    throw new YouTrackClassifiedError(
+      `Link type "${linkTypeName}" not found on this YouTrack instance`,
+      providerError.linkTypeNotFound(
+        linkTypeName,
+        types.map((t) => t.name),
+      ),
+    )
+  }
+
+  const suffix = match.directed === false ? '' : direction === 'OUTWARD' ? 's' : 't'
+  return `${match.id}${suffix}`
 }
 
 export async function updateYouTrackRelation(
@@ -78,20 +139,32 @@ export async function addYouTrackRelation(
 ): Promise<{ taskId: string; relatedTaskId: string; type: string }> {
   log.debug({ taskId, relatedTaskId, type }, 'addRelation')
 
-  const linkTypeName = mapRelationTypeToLinkType(type)
-  const direction = mapRelationTypeToDirection(type)
+  try {
+    const linkTypeName = mapRelationTypeToLinkType(type)
+    const direction = mapRelationTypeToDirection(type)
 
-  await youtrackFetch(config, 'POST', `/api/issues/${taskId}/links`, {
-    body: {
-      linkType: { name: linkTypeName },
-      direction,
-      issues: [{ id: relatedTaskId }],
-    },
-    query: { fields: 'id' },
-  })
+    const linkId = await resolveYouTrackLinkId(config, taskId, linkTypeName, direction)
 
-  log.info({ taskId, relatedTaskId, type }, 'Relation added')
-  return { taskId, relatedTaskId, type }
+    // The POST body is an Issue; YouTrack expects the database id, not the readable id.
+    const rawRelated = await youtrackFetch(config, 'GET', `/api/issues/${relatedTaskId}`, {
+      query: { fields: 'id' },
+    })
+    const relatedDbId = IssueIdSchema.parse(rawRelated).id
+
+    await youtrackFetch(config, 'POST', `/api/issues/${taskId}/links/${linkId}/issues`, {
+      body: { id: relatedDbId },
+      query: { fields: 'id' },
+    })
+
+    log.info({ taskId, relatedTaskId, type }, 'Relation added')
+    return { taskId, relatedTaskId, type }
+  } catch (error) {
+    log.error(
+      { error: error instanceof Error ? error.message : String(error), taskId, relatedTaskId, type },
+      'Failed to add relation',
+    )
+    throw classifyYouTrackError(error, { taskId })
+  }
 }
 
 export async function removeYouTrackRelation(

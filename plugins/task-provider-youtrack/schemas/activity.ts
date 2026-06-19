@@ -11,14 +11,14 @@ export const ActivitySchema = z.object({
   author: z
     .object({
       id: z.string(),
-      login: z.string().optional(),
-      name: z.string().optional(),
-      fullName: z.string().optional(),
+      login: z.string().nullable().optional(),
+      name: z.string().nullable().optional(),
+      fullName: z.string().nullable().optional(),
     })
     .optional(),
   category: z.object({ id: z.string() }).optional(),
-  field: z.object({ name: z.string() }).optional(),
-  targetMember: z.string().optional(),
+  field: z.object({ name: z.string() }).nullable().optional(),
+  targetMember: z.string().nullable().optional(),
   added: z.unknown().optional(),
   removed: z.unknown().optional(),
 })

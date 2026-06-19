@@ -45,6 +45,8 @@ const getProviderGuidance = (error: ProviderError): string => {
       return `This provider does not support "${error.operation}". Pick a different tool or explain the limitation.`
     case 'status-not-found':
       return `The requested status is invalid. Call list_statuses and retry with one of the available names.`
+    case 'link-type-not-found':
+      return `The requested link type is not available on this instance. Check available link types and retry with a valid name.`
     case 'invalid-response':
       return `The provider returned unexpected data. Do not retry blindly; inspect logs or the debug trace first.`
     case 'unknown':
@@ -139,6 +141,8 @@ const getProviderErrorDetails = (error: ProviderError): AppErrorDetails => {
       return { operation: error.operation }
     case 'status-not-found':
       return { statusName: error.statusName, available: error.available }
+    case 'link-type-not-found':
+      return { linkTypeName: error.linkTypeName, available: error.available }
     case 'unknown':
       return { originalMessage: error.originalError.message }
     case 'auth-failed':

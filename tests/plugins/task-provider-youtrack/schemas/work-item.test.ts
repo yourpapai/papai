@@ -14,6 +14,11 @@ describe('YouTrackWorkItemSchema', () => {
     duration: { minutes: 90, presentation: '1h 30m' },
   }
 
+  test('text as null accepts (YouTrack returns null for empty work-item text)', () => {
+    const result = YouTrackWorkItemSchema.parse({ ...validWorkItem, text: null })
+    expect(result.text).toBeNull()
+  })
+
   test('validates work item with all fields', () => {
     const full = {
       ...validWorkItem,

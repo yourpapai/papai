@@ -186,7 +186,11 @@ export type IncomingInteraction = {
   threadId: string
 }>
 
-export type AuthorizationDenyReason = 'group_not_allowed' | 'group_member_not_allowed' | 'dm_not_allowed'
+export type AuthorizationDenyReason =
+  | 'group_not_allowed'
+  | 'group_member_not_allowed'
+  | 'dm_not_allowed'
+  | 'user_blocked'
 
 /** Authorization result for message processing. */
 export type AuthorizationResult = {

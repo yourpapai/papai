@@ -14,6 +14,12 @@ describe('YouTrackAttachmentSchema', () => {
     url: 'https://example.com/file.pdf',
   }
 
+  test('thumbnailURL/mimeType as null accept (YouTrack returns null for non-image/empty)', () => {
+    const result = YouTrackAttachmentSchema.parse({ ...validAttachment, thumbnailURL: null, mimeType: null })
+    expect(result.thumbnailURL).toBeNull()
+    expect(result.mimeType).toBeNull()
+  })
+
   test('validates attachment with all fields', () => {
     const full = {
       ...validAttachment,

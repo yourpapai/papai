@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
 import {
   ByokResponseSchema,
   BootstrapSchema,
@@ -15,7 +16,6 @@ import {
   McpResponseSchema,
   PluginsResponseSchema,
   ProvisionResultSchema,
-  ToolsResponseSchema,
   type ByokResponse,
   type BootstrapData,
   type ConfigResponse,
@@ -28,7 +28,6 @@ import {
   type McpResponse,
   type PluginsResponse,
   type ProvisionResult,
-  type ToolsResponse,
 } from './fetcher-schemas.js'
 
 const CSRF_HEADER = 'X-Settings-CSRF'
@@ -130,6 +129,9 @@ export const setToolPermission = (
     | { kind: 'domain'; domain: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
     | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
 ): Promise<ToolsResponse> => writeJson('/settings/api/tools/toggle', 'POST', input, (b) => ToolsResponseSchema.parse(b))
+
+export const applyToolPreset = (input: { preset: ToolPreset; contextId: string }): Promise<ToolsResponse> =>
+  writeJson('/settings/api/tools/toggle', 'POST', { kind: 'preset', ...input }, (b) => ToolsResponseSchema.parse(b))
 
 // --- Memory ---
 

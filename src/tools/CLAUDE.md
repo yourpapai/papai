@@ -34,10 +34,15 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
 - After capability + context gating and the plugin/MCP merge, `makeTools()` applies the
   per-context tool permissions from `src/tools/tool-preferences.ts` as the final step. Each
   tool resolves to a three-state `Permission` (`allow` | `ask` | `deny`, default `allow`)
-  via `resolveToolPermission`: `deny` removes the tool from the returned `ToolSet` (cannot be
-  invoked); `allow` exposes it unchanged; `ask` exposes it wrapped so each call requires user
-  permission (the input schema gains `_permission_reason` and execution is gated). Preferences
-  are keyed by the same `storageContextId` used elsewhere.
+  via `resolveToolPermission`, most-specific-wins: `toolOverrides[name]` →
+  `domainDefaults[meta.domain]` → `riskDefaults[meta.risk]` → implicit `allow`. `deny` removes
+  the tool from the returned `ToolSet` (cannot be invoked); `allow` exposes it unchanged; `ask`
+  exposes it wrapped so each call requires user permission (the input schema gains
+  `_permission_reason` and execution is gated). Preferences are keyed by the same
+  `storageContextId` used elsewhere. The `riskDefaults` tier is the sticky layer set by the
+  settings-UI presets (`applyPreset`/`detectActivePreset`, keyed by `ToolRisk` from
+  `tool-metadata.ts`); pruning of redundant overrides is computed against the same
+  override→domain→risk→allow baseline so it stays symmetric with resolution.
 - **Result compaction is not part of `makeTools()`.** It is a per-turn wrap applied in
   `prepareLlmInvocation` (`src/llm-orchestrator-tools.ts`) after `applyToolPreferences`,
   gated by `resolveReductionFlags(contextId).resultCompaction` (`src/tools/feature-flags.ts`,

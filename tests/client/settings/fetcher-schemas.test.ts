@@ -9,14 +9,15 @@ import {
   AddAdminUserResponseSchema,
   AdminGroupsResponseSchema,
   AdminInstancesResponseSchema,
+  AdminUserRowSchema,
   BootstrapSchema,
   ConfigResponseSchema,
   GroupTaskInstanceResponseSchema,
   IdentityResponseSchema,
+  OpenAccessResponseSchema,
   ProviderTypesResponseSchema,
   McpResponseSchema,
   PluginsResponseSchema,
-  ToolsResponseSchema,
 } from '../../../client/settings/fetcher-schemas.js'
 
 describe('fetcher-schemas', () => {
@@ -73,18 +74,6 @@ describe('fetcher-schemas', () => {
     })
     expect(parsed.fields[0]!.control).toBe('select')
     expect(parsed.fields[0]!.options).toHaveLength(2)
-  })
-
-  test('ToolsResponseSchema parses domains and tool risk (three-state model)', () => {
-    const parsed = ToolsResponseSchema.parse({
-      contextId: 'user:1',
-      domains: [
-        { domain: 'task', summary: 'partial', tools: [{ name: 'create_task', permission: 'allow', risk: 'write' }] },
-      ],
-    })
-    expect(parsed.domains[0]!.summary).toBe('partial')
-    expect(parsed.domains[0]!.tools[0]!.permission).toBe('allow')
-    expect(parsed.domains[0]!.tools[0]!.risk).toBe('write')
   })
 
   test('McpResponseSchema parses endpoints with optional headers', () => {
@@ -203,5 +192,41 @@ describe('AdminGroupsResponseSchema', () => {
   test('defaults observed to an empty array when absent', () => {
     const parsed = AdminGroupsResponseSchema.parse({ groups: [] })
     expect(parsed.observed).toEqual([])
+  })
+})
+
+describe('OpenAccessResponseSchema', () => {
+  test('parses { openDmAccess: true }', () => {
+    const parsed = OpenAccessResponseSchema.parse({ openDmAccess: true })
+    expect(parsed.openDmAccess).toBe(true)
+  })
+
+  test('parses { openDmAccess: false }', () => {
+    const parsed = OpenAccessResponseSchema.parse({ openDmAccess: false })
+    expect(parsed.openDmAccess).toBe(false)
+  })
+})
+
+describe('AdminUserRowSchema', () => {
+  test('accepts a row with added_by and blocked_at', () => {
+    const parsed = AdminUserRowSchema.parse({
+      platform_user_id: 'u1',
+      platform_instance_id: 'pi:tg',
+      username: 'alice',
+      added_by: 'open-access',
+      blocked_at: '2026-06-18T10:00:00',
+    })
+    expect(parsed.added_by).toBe('open-access')
+    expect(parsed.blocked_at).toBe('2026-06-18T10:00:00')
+  })
+
+  test('accepts a row without blocked_at (always-present added_by, absent optional blocked_at)', () => {
+    const parsed = AdminUserRowSchema.parse({
+      platform_user_id: 'u2',
+      platform_instance_id: 'pi:tg',
+      added_by: 'admin',
+    })
+    expect(parsed.added_by).toBe('admin')
+    expect(parsed.blocked_at).toBeUndefined()
   })
 })

@@ -23,23 +23,6 @@ const config: YouTrackConfig = {
   token: 'test-token',
 }
 
-const installFetchMock = (handler: () => Promise<Response>): void => {
-  const m = mock<(url: string, init: RequestInit) => Promise<Response>>(handler)
-  fetchMock = m
-  setMockFetch((url: string, init: RequestInit) => m(url, init))
-}
-
-const mockFetchResponse = (data: unknown, status = 200): void => {
-  installFetchMock(() =>
-    Promise.resolve(
-      new Response(JSON.stringify(data), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    ),
-  )
-}
-
 const mockFetchSequence = (responses: Array<{ data: unknown; status?: number }>): void => {
   let callIndex = 0
   const m = mock<(url: string, init: RequestInit) => Promise<Response>>(() => {
@@ -61,16 +44,16 @@ const FetchCallSchema = z.tuple([
   z.looseObject({ method: z.string().optional(), body: z.string().optional() }),
 ])
 
-const getLastFetchUrl = (): URL => {
-  const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls.at(-1))
-  if (!parsed.success) return new URL('https://empty')
-  return new URL(parsed.data[0])
-}
-
 const getFetchUrl = (index: number): URL => {
   const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[index])
   if (!parsed.success) return new URL('https://empty')
   return new URL(parsed.data[0])
+}
+
+const getFetchMethod = (index: number): string => {
+  const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[index])
+  if (!parsed.success) return ''
+  return parsed.data[1].method ?? ''
 }
 
 const BodySchema = z.looseObject({})
@@ -83,17 +66,25 @@ const getFetchBody = (index: number): Record<string, unknown> => {
   return BodySchema.parse(JSON.parse(body))
 }
 
-const getFetchMethod = (index: number): string => {
-  const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[index])
-  if (!parsed.success) return ''
-  return parsed.data[1].method ?? ''
+// A YouTrack issue-links GET response that exposes the directed link entries for PROJ-123.
+const issueLinksResponse = {
+  id: 'issue-123',
+  links: [
+    { id: 'lt-depend-s', direction: 'OUTWARD', linkType: { id: 'lt-depend', name: 'Depend' } },
+    { id: 'lt-depend-t', direction: 'INWARD', linkType: { id: 'lt-depend', name: 'Depend' } },
+    { id: 'lt-dup-s', direction: 'OUTWARD', linkType: { id: 'lt-dup', name: 'Duplicate' } },
+    { id: 'lt-dup-t', direction: 'INWARD', linkType: { id: 'lt-dup', name: 'Duplicate' } },
+    { id: 'lt-sub-s', direction: 'OUTWARD', linkType: { id: 'lt-sub', name: 'Subtask' } },
+    { id: 'lt-sub-t', direction: 'INWARD', linkType: { id: 'lt-sub', name: 'Subtask' } },
+    { id: 'lt-rel', direction: 'BOTH', linkType: { id: 'lt-rel', name: 'Relates' } },
+  ],
 }
 
 beforeEach(() => {
   mockLogger()
 })
 
-describe('addYouTrackRelation', () => {
+describe('addYouTrackRelation (structured /links/{linkID}/issues)', () => {
   beforeEach(() => {
     fetchMock = undefined!
   })
@@ -102,78 +93,107 @@ describe('addYouTrackRelation', () => {
     restoreFetch()
   })
 
-  test('uses REST API instead of command', async () => {
-    mockFetchResponse({ id: 'link-1' })
+  test('discovers linkID from issue links, resolves db id, then POSTs the link', async () => {
+    mockFetchSequence([
+      // GET /api/issues/PROJ-123/links
+      { data: issueLinksResponse },
+      // GET /api/issues/PROJ-456 (db id)
+      { data: { id: '2-456' } },
+      // POST links/{linkID}/issues
+      { data: { id: 'created-link' } },
+    ])
 
     await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'blocks')
 
-    const url = getLastFetchUrl()
-    expect(url.pathname).toBe('/api/issues/PROJ-123/links')
-    expect(getFetchMethod(0)).toBe('POST')
-    const body = getFetchBody(0)
-    expect(body).toEqual({
-      linkType: { name: 'depends' },
-      direction: 'OUTWARD',
-      issues: [{ id: 'PROJ-456' }],
-    })
+    expect(getFetchUrl(0).pathname).toBe('/api/issues/PROJ-123')
+    expect(getFetchMethod(0)).toBe('GET')
+
+    expect(getFetchUrl(1).pathname).toBe('/api/issues/PROJ-456')
+    expect(getFetchMethod(1)).toBe('GET')
+
+    // blocks -> Depend / OUTWARD -> discovered link id 'lt-depend-s'
+    expect(getFetchUrl(2).pathname).toBe('/api/issues/PROJ-123/links/lt-depend-s/issues')
+    expect(getFetchMethod(2)).toBe('POST')
+    expect(getFetchBody(2)).toEqual({ id: '2-456' })
   })
 
-  test('uses correct direction for blocked_by', async () => {
-    mockFetchResponse({ id: 'link-1' })
+  test('uses the INWARD entry for blocked_by', async () => {
+    mockFetchSequence([{ data: issueLinksResponse }, { data: { id: '2-456' } }, { data: {} }])
 
     await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'blocked_by')
 
-    const body = getFetchBody(0)
-    expect(body['direction']).toBe('INWARD')
+    expect(getFetchUrl(2).pathname).toBe('/api/issues/PROJ-123/links/lt-depend-t/issues')
   })
 
-  test('uses correct linkType for duplicate', async () => {
-    mockFetchResponse({ id: 'link-1' })
+  test('maps duplicate to the Duplicate OUTWARD entry', async () => {
+    mockFetchSequence([{ data: issueLinksResponse }, { data: { id: '2-456' } }, { data: {} }])
 
     await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'duplicate')
 
-    const body = getFetchBody(0)
-    expect(body['linkType']).toEqual({ name: 'duplicate' })
-    expect(body['direction']).toBe('OUTWARD')
+    expect(getFetchUrl(2).pathname).toBe('/api/issues/PROJ-123/links/lt-dup-s/issues')
   })
 
-  test('uses correct direction for duplicate_of', async () => {
-    mockFetchResponse({ id: 'link-1' })
-
-    await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'duplicate_of')
-
-    const body = getFetchBody(0)
-    expect(body['linkType']).toEqual({ name: 'duplicate' })
-    expect(body['direction']).toBe('INWARD')
-  })
-
-  test('uses correct linkType for parent', async () => {
-    mockFetchResponse({ id: 'link-1' })
+  test('maps parent to the Subtask OUTWARD entry', async () => {
+    mockFetchSequence([{ data: issueLinksResponse }, { data: { id: '2-456' } }, { data: {} }])
 
     await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'parent')
 
-    const body = getFetchBody(0)
-    expect(body['linkType']).toEqual({ name: 'subtask' })
-    expect(body['direction']).toBe('OUTWARD')
+    expect(getFetchUrl(2).pathname).toBe('/api/issues/PROJ-123/links/lt-sub-s/issues')
   })
 
-  test('uses correct linkType for related', async () => {
-    mockFetchResponse({ id: 'link-1' })
+  test('maps related to the undirected Relates entry (direction BOTH)', async () => {
+    mockFetchSequence([{ data: issueLinksResponse }, { data: { id: '2-456' } }, { data: {} }])
 
     await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'related')
 
-    const body = getFetchBody(0)
-    expect(body['linkType']).toEqual({ name: 'relates' })
+    expect(getFetchUrl(2).pathname).toBe('/api/issues/PROJ-123/links/lt-rel/issues')
   })
 
-  test('uses correct linkType and direction for child', async () => {
-    mockFetchResponse({ id: 'link-1' })
+  test('falls back to issueLinkTypes + constructed id when issue links lack the entry', async () => {
+    mockFetchSequence([
+      // GET links: no entries surfaced
+      { data: { id: 'issue-123', links: [] } },
+      // GET /api/issueLinkTypes
+      { data: [{ id: 'lt-depend', name: 'Depend', directed: true }] },
+      // GET db id
+      { data: { id: '2-456' } },
+      // POST
+      { data: {} },
+    ])
 
-    await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'child')
+    await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'blocks')
 
-    const body = getFetchBody(0)
-    expect(body['linkType']).toEqual({ name: 'subtask' })
-    expect(body['direction']).toBe('INWARD')
+    expect(getFetchUrl(1).pathname).toBe('/api/issueLinkTypes')
+    expect(getFetchMethod(1)).toBe('GET')
+    // Depend is directed, OUTWARD -> suffix 's'
+    expect(getFetchUrl(3).pathname).toBe('/api/issues/PROJ-123/links/lt-depends/issues')
+    expect(getFetchBody(3)).toEqual({ id: '2-456' })
+  })
+
+  test('fallback uses no suffix for an undirected link type', async () => {
+    mockFetchSequence([
+      { data: { id: 'issue-123', links: [] } },
+      { data: [{ id: 'lt-rel', name: 'Relates', directed: false }] },
+      { data: { id: '2-456' } },
+      { data: {} },
+    ])
+
+    await addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'related')
+
+    expect(getFetchUrl(3).pathname).toBe('/api/issues/PROJ-123/links/lt-rel/issues')
+  })
+
+  test('throws linkTypeNotFound listing available types when resolution fails', async () => {
+    mockFetchSequence([
+      // no matching entry
+      { data: { id: 'issue-123', links: [] } },
+      // Depend absent
+      { data: [{ id: 'lt-rel', name: 'Relates', directed: false }] },
+    ])
+
+    await expect(addYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'blocks')).rejects.toMatchObject({
+      appError: { code: 'link-type-not-found', available: ['Relates'] },
+    })
   })
 })
 
@@ -195,7 +215,7 @@ describe('removeYouTrackRelation', () => {
             {
               id: 'link-1',
               direction: 'OUTWARD',
-              linkType: { id: 'lt-1', name: 'depends' },
+              linkType: { id: 'lt-1', name: 'Depend' },
               issues: [{ id: 'PROJ-456', idReadable: 'PROJ-456' }],
             },
           ],
@@ -206,17 +226,14 @@ describe('removeYouTrackRelation', () => {
 
     await removeYouTrackRelation(config, 'PROJ-123', 'PROJ-456')
 
-    const firstUrl = getFetchUrl(0)
-    expect(firstUrl.pathname).toBe('/api/issues/PROJ-123')
+    expect(getFetchUrl(0).pathname).toBe('/api/issues/PROJ-123')
     expect(getFetchMethod(0)).toBe('GET')
-
-    const secondUrl = getFetchUrl(1)
-    expect(secondUrl.pathname).toBe('/api/issues/PROJ-123/links/link-1')
+    expect(getFetchUrl(1).pathname).toBe('/api/issues/PROJ-123/links/link-1')
     expect(getFetchMethod(1)).toBe('DELETE')
   })
 
   test('throws when relation not found', async () => {
-    mockFetchResponse({ id: 'issue-1', links: [] })
+    mockFetchSequence([{ data: { id: 'issue-1', links: [] } }])
 
     await expect(removeYouTrackRelation(config, 'PROJ-123', 'PROJ-456')).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
@@ -231,8 +248,9 @@ describe('updateYouTrackRelation', () => {
     restoreFetch()
   })
 
-  test('removes old relation and adds new one', async () => {
+  test('removes the old relation then adds the new one via the structured endpoint', async () => {
     mockFetchSequence([
+      // removeYouTrackRelation: GET issue, then DELETE
       {
         data: {
           id: 'issue-1',
@@ -240,22 +258,25 @@ describe('updateYouTrackRelation', () => {
             {
               id: 'link-1',
               direction: 'OUTWARD',
-              linkType: { id: 'lt-1', name: 'depends' },
+              linkType: { id: 'lt-1', name: 'Depend' },
               issues: [{ id: 'PROJ-456', idReadable: 'PROJ-456' }],
             },
           ],
         },
       },
+      // DELETE
       { data: {} },
-      { data: { id: 'link-2' } },
+      // addYouTrackRelation: GET links, GET db id, POST
+      { data: issueLinksResponse },
+      { data: { id: '2-456' } },
+      { data: {} },
     ])
 
     await updateYouTrackRelation(config, 'PROJ-123', 'PROJ-456', 'duplicate')
 
-    expect(fetchMock.mock.calls).toHaveLength(3)
     expect(getFetchUrl(1).pathname).toBe('/api/issues/PROJ-123/links/link-1')
     expect(getFetchMethod(1)).toBe('DELETE')
-    expect(getFetchUrl(2).pathname).toBe('/api/issues/PROJ-123/links')
-    expect(getFetchMethod(2)).toBe('POST')
+    expect(getFetchUrl(4).pathname).toBe('/api/issues/PROJ-123/links/lt-dup-s/issues')
+    expect(getFetchMethod(4)).toBe('POST')
   })
 })

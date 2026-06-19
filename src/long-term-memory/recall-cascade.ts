@@ -10,7 +10,7 @@ import { rankCandidatesByQuery } from './recall-ranking.js'
 import { resolveMemoryScope } from './scope.js'
 import { rankRecordsBySimilarity } from './semantic-search.js'
 import { listMemoryRecords, listProvisionalRecords } from './store.js'
-import type { MemoryRecord, MemoryScope } from './types.js'
+import type { MemoryKind, MemoryRecord, MemoryScope, MemoryStatus } from './types.js'
 
 export const RECALL_DEFAULT_LIMIT = 8
 
@@ -23,6 +23,8 @@ export type RunRecallCascadeInput = Readonly<{
   contextType: ContextType
   query: string
   limit?: number
+  kind?: MemoryKind
+  includeStale?: boolean
 }>
 
 export type RunRecallCascadeDeps = Readonly<{
@@ -57,25 +59,25 @@ const dedupe = (hits: readonly RecallHit[], limit: number): readonly RecallHit[]
 const tag = (records: readonly MemoryRecord[], provenance: RecallProvenance): RecallHit[] =>
   records.map((record) => ({ ...record, provenance }))
 
+const byKind = (records: readonly MemoryRecord[], kind: MemoryKind | undefined): readonly MemoryRecord[] =>
+  kind === undefined ? records : records.filter((record) => record.kind === kind)
+
 const searchActiveHybrid = (
   scope: MemoryScope,
   query: string,
   queryEmbedding: readonly number[] | null,
   limit: number,
+  statuses: readonly MemoryStatus[],
+  kind: MemoryKind | undefined,
 ): readonly MemoryRecord[] => {
-  if (queryEmbedding === null) {
-    const active = listMemoryRecords({
-      scopeId: scope.scopeId,
-      scopeType: scope.scopeType,
-      status: 'active',
-      limit: 500,
-    })
-    return rankCandidatesByQuery(active, query, null, { limit })
+  const keyword = (): readonly MemoryRecord[] => {
+    const active = listMemoryRecords({ scopeId: scope.scopeId, scopeType: scope.scopeType, statuses, limit: 500 })
+    return rankCandidatesByQuery(byKind(active, kind), query, null, { limit })
   }
-  const semantic = rankRecordsBySimilarity(scope, queryEmbedding, { statuses: ['active'], limit })
+  if (queryEmbedding === null) return keyword()
+  const semantic = byKind(rankRecordsBySimilarity(scope, queryEmbedding, { statuses, limit }), kind)
   if (semantic.length > 0) return semantic
-  const active = listMemoryRecords({ scopeId: scope.scopeId, scopeType: scope.scopeType, status: 'active', limit: 500 })
-  return rankCandidatesByQuery(active, query, null, { limit })
+  return keyword()
 }
 
 const scheduleLayerThree = (
@@ -84,10 +86,11 @@ const scheduleLayerThree = (
   queryEmbedding: readonly number[] | null,
   storageContextId: string,
   limit: number,
+  kind: MemoryKind | undefined,
   deps: RunRecallCascadeDeps,
 ): readonly RecallHit[] => {
   const siblings = rankCandidatesByQuery(
-    listProvisionalRecords({ ...scope, excludeThreadContextId: storageContextId, limit: 200 }),
+    byKind(listProvisionalRecords({ ...scope, excludeThreadContextId: storageContextId, limit: 200 }), kind),
     query,
     queryEmbedding,
     { limit },
@@ -104,22 +107,26 @@ export async function runRecallCascade(
   const limit = input.limit ?? RECALL_DEFAULT_LIMIT
   const scope = resolveMemoryScope({ storageContextId: input.storageContextId, contextType: input.contextType })
   const queryEmbedding = await deps.getEmbedding(input.query, input.configContextId)
+  const statuses: readonly MemoryStatus[] = input.includeStale === true ? ['active', 'stale'] : ['active']
 
   if (input.contextType === 'dm') {
-    return { records: dedupe(tag(searchActiveHybrid(scope, input.query, queryEmbedding, limit), 'group'), limit) }
+    const active = searchActiveHybrid(scope, input.query, queryEmbedding, limit, statuses, input.kind)
+    return { records: dedupe(tag(active, 'group'), limit) }
   }
 
   const layer1 = rankCandidatesByQuery(
-    listProvisionalRecords({ ...scope, threadContextId: input.storageContextId, limit: 100 }),
+    byKind(listProvisionalRecords({ ...scope, threadContextId: input.storageContextId, limit: 100 }), input.kind),
     input.query,
     queryEmbedding,
     { limit },
   )
-  const layer2 = searchActiveHybrid(scope, input.query, queryEmbedding, limit)
+  const layer2 = searchActiveHybrid(scope, input.query, queryEmbedding, limit, statuses, input.kind)
   const combined: RecallHit[] = [...tag(layer1, 'current'), ...tag(layer2, 'group')]
 
   if (dedupe(combined, limit).length < limit) {
-    combined.push(...scheduleLayerThree(scope, input.query, queryEmbedding, input.storageContextId, limit, deps))
+    combined.push(
+      ...scheduleLayerThree(scope, input.query, queryEmbedding, input.storageContextId, limit, input.kind, deps),
+    )
   }
 
   return { records: dedupe(combined, limit) }

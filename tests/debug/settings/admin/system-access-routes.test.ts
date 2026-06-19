@@ -15,7 +15,8 @@ import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../../../src/de
 import { handleAdminSystemAccessRoutes } from '../../../../src/debug/settings/admin/system-access-routes.js'
 import { upsertKnownGroupContext } from '../../../../src/group-settings/registry.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
-import { addUser, listUsers } from '../../../../src/users.js'
+import { isOpenDmAccessEnabled } from '../../../../src/instances/platform-store.js'
+import { addUser, isBlocked, listUsers } from '../../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from '../helpers.js'
 
@@ -382,6 +383,193 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/groups',
     )
     expect(res.status).toBe(422)
+  })
+
+  test('GET open-access returns { openDmAccess: false } by default', async () => {
+    const url = new URL('https://x/settings/api/admin/open-access')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, { headers: authHeaders(adminSession) }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ openDmAccess: z.boolean() }).parse(await res.json())
+    expect(body.openDmAccess).toBe(false)
+  })
+
+  test('POST open-access { enabled: true } returns ok and enables the flag', async () => {
+    const url = new URL('https://x/settings/api/admin/open-access')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), openDmAccess: z.literal(true) }).parse(await res.json())
+    expect(body.openDmAccess).toBe(true)
+    expect(isOpenDmAccessEnabled('pi-1')).toBe(true)
+  })
+
+  test('POST open-access without CSRF returns 403', async () => {
+    const url = new URL('https://x/settings/api/admin/open-access')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, false), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(res.status).toBe(403)
+  })
+
+  test('non-admin GET open-access returns 403', async () => {
+    const url = new URL('https://x/settings/api/admin/open-access')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, { headers: authHeaders(userSession) }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(res.status).toBe(403)
+  })
+
+  test('non-admin POST open-access returns 403', async () => {
+    const url = new URL('https://x/settings/api/admin/open-access')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(userSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(res.status).toBe(403)
+  })
+
+  test('POST users/block { blocked: true } sets blocked_at on user', async () => {
+    const url = new URL('https://x/settings/api/admin/users/block')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'user-1', blocked: true }),
+      }),
+      url,
+      '/settings/api/admin/users/block',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.boolean() }).parse(await res.json())
+    expect(body.ok).toBe(true)
+    expect(isBlocked('user-1', 'pi-1')).toBe(true)
+  })
+
+  test('POST users/block { blocked: false } clears blocked_at on user', async () => {
+    // First block the user
+    const blockUrl = new URL('https://x/settings/api/admin/users/block')
+    await handleAdminSystemAccessRoutes(
+      new Request(blockUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'user-1', blocked: true }),
+      }),
+      blockUrl,
+      '/settings/api/admin/users/block',
+    )
+    expect(isBlocked('user-1', 'pi-1')).toBe(true)
+    // Now unblock
+    const unblockUrl = new URL('https://x/settings/api/admin/users/block')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(unblockUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'user-1', blocked: false }),
+      }),
+      unblockUrl,
+      '/settings/api/admin/users/block',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.boolean() }).parse(await res.json())
+    expect(body.ok).toBe(true)
+    expect(isBlocked('user-1', 'pi-1')).toBe(false)
+  })
+
+  test('POST users/block without CSRF returns 403', async () => {
+    const url = new URL('https://x/settings/api/admin/users/block')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, false), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'user-1', blocked: true }),
+      }),
+      url,
+      '/settings/api/admin/users/block',
+    )
+    expect(res.status).toBe(403)
+  })
+
+  test('non-admin POST users/block returns 403', async () => {
+    const url = new URL('https://x/settings/api/admin/users/block')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(userSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'user-1', blocked: true }),
+      }),
+      url,
+      '/settings/api/admin/users/block',
+    )
+    expect(res.status).toBe(403)
+  })
+
+  test('POST open-access { enabled: false } after enable returns openDmAccess false and disables the flag', async () => {
+    const url = new URL('https://x/settings/api/admin/open-access')
+    // Enable first
+    await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(isOpenDmAccessEnabled('pi-1')).toBe(true)
+    // Now disable
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      }),
+      url,
+      '/settings/api/admin/open-access',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), openDmAccess: z.literal(false) }).parse(await res.json())
+    expect(body.openDmAccess).toBe(false)
+    expect(isOpenDmAccessEnabled('pi-1')).toBe(false)
+  })
+
+  test('POST users/block { blocked: true } for unknown user returns 200 with ok: false and does not throw', async () => {
+    const url = new URL('https://x/settings/api/admin/users/block')
+    const res = await handleAdminSystemAccessRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'does-not-exist', blocked: true }),
+      }),
+      url,
+      '/settings/api/admin/users/block',
+    )
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(false) }).parse(await res.json())
+    expect(body.ok).toBe(false)
   })
 
   test('GET groups returns observed unauthorized same-instance groups only', async () => {

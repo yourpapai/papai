@@ -13,7 +13,6 @@ import { getEmbeddingForContext } from '../embeddings.js'
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
 import { logger } from '../logger.js'
-import { resolveCrossThreadMemoryFlag } from '../tools/feature-flags.js'
 import { saveMemoryRecordWithEmbedding } from './embedding-writer.js'
 import { markExtracted } from './extraction-state.js'
 import { extractMemoryPatch, type MemoryPatch } from './extractor.js'
@@ -39,7 +38,6 @@ export type CaptureExtractInput = Readonly<{
 }>
 
 export type RunMemoryCaptureDeps = Readonly<{
-  flagEnabled: (storageContextId: string) => boolean
   extractMemoryPatch: (input: CaptureExtractInput) => Promise<MemoryPatch>
   getEmbedding: (text: string, configContextId: string) => Promise<number[] | null>
   now: () => string
@@ -60,7 +58,6 @@ const defaultExtract = (input: CaptureExtractInput): Promise<MemoryPatch> => {
 }
 
 const defaultDeps: RunMemoryCaptureDeps = {
-  flagEnabled: resolveCrossThreadMemoryFlag,
   extractMemoryPatch: defaultExtract,
   getEmbedding: (text, configContextId) =>
     getEmbeddingForContext(text, configContextId, {
@@ -102,7 +99,6 @@ export async function runMemoryCapture(
   input: RunMemoryCaptureInput,
   deps: RunMemoryCaptureDeps = defaultDeps,
 ): Promise<void> {
-  if (!deps.flagEnabled(input.storageContextId)) return
   if (input.contextType !== 'group' || !hasThreadContextId(input.storageContextId)) return
 
   const scope = resolveMemoryScope({ storageContextId: input.storageContextId, contextType: input.contextType })

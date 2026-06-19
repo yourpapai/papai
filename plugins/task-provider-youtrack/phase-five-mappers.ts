@@ -60,9 +60,9 @@ export const mapSprint = (sprint: YouTrackSprint, agileId: string): Sprint => ({
 export const mapActivity = (activity: YouTrackActivity): Activity => ({
   id: activity.id,
   timestamp: new Date(activity.timestamp).toISOString(),
-  author: activity.author?.fullName ?? activity.author?.name ?? activity.author?.login,
+  author: activity.author?.fullName ?? activity.author?.name ?? activity.author?.login ?? undefined,
   category: activity.category?.id ?? 'Unknown',
-  field: activity.field?.name ?? activity.targetMember,
+  field: activity.field?.name ?? activity.targetMember ?? undefined,
   added: activityValueToString(activity.added),
   removed: activityValueToString(activity.removed),
 })

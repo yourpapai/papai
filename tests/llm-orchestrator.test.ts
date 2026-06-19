@@ -253,7 +253,6 @@ const createReplyWithTypingSpy = (): { reply: ReplyFn; textCalls: string[]; typi
   }
 }
 
-const originalDemoMode = process.env['DEMO_MODE']
 const originalAdminUserId = process.env['ADMIN_USER_ID']
 
 describe('processMessage', () => {
@@ -347,8 +346,6 @@ describe('processMessage', () => {
     seedSystemLlmConfig()
     seedConfig()
 
-    // Reset demo mode env vars
-    delete process.env['DEMO_MODE']
     delete process.env['ADMIN_USER_ID']
   })
 
@@ -360,8 +357,6 @@ describe('processMessage', () => {
 
   afterAll(() => {
     // Restore original env vars
-    if (originalDemoMode === undefined) delete process.env['DEMO_MODE']
-    else process.env['DEMO_MODE'] = originalDemoMode
     if (originalAdminUserId === undefined) delete process.env['ADMIN_USER_ID']
     else process.env['ADMIN_USER_ID'] = originalAdminUserId
   })
@@ -1423,9 +1418,9 @@ describe('processMessage', () => {
 
   // Phase 1 (central LLM): per-user LLM config copy is gone. LLM credentials
   // live in system_config and are seeded once at startup, so no copy ever
-  // happens regardless of DEMO_MODE. The behavioral coverage that used to
-  // live here is implicit: the seeded system_config in beforeEach is enough
-  // for any user to reach the LLM call without per-user provisioning.
+  // happens. The behavioral coverage that used to live here is implicit: the
+  // seeded system_config in beforeEach is enough for any user to reach the
+  // LLM call without per-user provisioning.
 
   describe('auto-link flow', () => {
     const GROUP_CTX = 'group-123'

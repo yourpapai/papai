@@ -20,7 +20,6 @@ describe('armMemoryCapture', () => {
     let captures = 0
     let capturedFn: (() => void) | undefined
     const deps: ArmCaptureDeps = {
-      flagEnabled: (): boolean => true,
       markActivity: (): void => undefined,
       runCapture: (): Promise<void> => {
         captures += 1
@@ -44,24 +43,5 @@ describe('armMemoryCapture', () => {
     capturedFn!()
     await Promise.resolve()
     expect(captures).toBe(1)
-  })
-
-  test('no-op when flag disabled', () => {
-    let activity = 0
-    const deps: ArmCaptureDeps = {
-      flagEnabled: (): boolean => false,
-      markActivity: (): void => {
-        activity += 1
-      },
-      runCapture: (): Promise<void> => Promise.resolve(),
-      schedule: (): ReturnType<typeof setTimeout> => setTimeout(() => undefined, 9_999_999),
-      clear: (timer: ReturnType<typeof setTimeout>): void => {
-        clearTimeout(timer)
-      },
-      debounceMs: 1,
-      now: (): string => 'x',
-    }
-    armMemoryCapture(makeInput(), deps)
-    expect(activity).toBe(0)
   })
 })

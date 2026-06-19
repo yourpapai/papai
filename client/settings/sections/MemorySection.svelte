@@ -43,6 +43,7 @@
 
   const currentMemory = $derived(loadedContextId === contextId ? memory : null)
   const activeRecords = $derived(currentMemory?.records.filter((record) => record.status === 'active') ?? [])
+  const pendingRecords = $derived(currentMemory?.records.filter((record) => record.status === 'provisional') ?? [])
 
   function messageFrom(err: unknown): string {
     return err instanceof Error ? err.message : String(err)
@@ -203,6 +204,35 @@
         </div>
       </div>
 
+      {#snippet recordItem(record: MemoryRecordView)}
+        <li class="settings-memory__record">
+          <div class="settings-memory__record-main">
+            <div class="settings-memory__record-head">
+              <Pill tone="info">{#snippet children()}{record.kind}{/snippet}</Pill>
+              <Pill tone={statusTone(record.status)}>{#snippet children()}{record.status}{/snippet}</Pill>
+              <span class="settings-memory__source">{record.source}</span>
+              <span class="settings-memory__seen">last {shortDate(record.lastSeenAt)}</span>
+            </div>
+            <p class="settings-memory__text">{recordText(record)}</p>
+            {#if record.tags.length > 0}
+              <div class="settings-memory__tags">
+                {#each record.tags as tag (tag)}
+                  <span class="settings-memory__tag">{tag}</span>
+                {/each}
+              </div>
+            {/if}
+          </div>
+          <Btn
+            variant="ghost"
+            size="sm"
+            disabled={mutating}
+            testid={`memory-archive-${record.id}`}
+            onClick={() => void archiveRecord(record.id)}>
+            {#snippet children()}Archive{/snippet}
+          </Btn>
+        </li>
+      {/snippet}
+
       {#if activeRecords.length === 0}
         <div data-testid="memory-empty">
           <EmptyState title="No active memory records" hint="Captured memory records for this context will appear here." />
@@ -210,34 +240,23 @@
       {:else}
         <ul class="settings-memory__records">
           {#each activeRecords as record (record.id)}
-            <li class="settings-memory__record">
-              <div class="settings-memory__record-main">
-                <div class="settings-memory__record-head">
-                  <Pill tone="info">{#snippet children()}{record.kind}{/snippet}</Pill>
-                  <Pill tone={statusTone(record.status)}>{#snippet children()}{record.status}{/snippet}</Pill>
-                  <span class="settings-memory__source">{record.source}</span>
-                  <span class="settings-memory__seen">last {shortDate(record.lastSeenAt)}</span>
-                </div>
-                <p class="settings-memory__text">{recordText(record)}</p>
-                {#if record.tags.length > 0}
-                  <div class="settings-memory__tags">
-                    {#each record.tags as tag (tag)}
-                      <span class="settings-memory__tag">{tag}</span>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-              <Btn
-                variant="ghost"
-                size="sm"
-                disabled={mutating}
-                testid={`memory-archive-${record.id}`}
-                onClick={() => void archiveRecord(record.id)}>
-                {#snippet children()}Archive{/snippet}
-              </Btn>
-            </li>
+            {@render recordItem(record)}
           {/each}
         </ul>
+      {/if}
+
+      {#if pendingRecords.length > 0}
+        <div class="settings-memory__pending" data-testid="memory-pending">
+          <h3 class="settings-memory__pending-title">Pending (provisional)</h3>
+          <p class="settings-memory__pending-hint">
+            Captured from conversation threads and awaiting promotion to shared memory.
+          </p>
+          <ul class="settings-memory__records">
+            {#each pendingRecords as record (record.id)}
+              {@render recordItem(record)}
+            {/each}
+          </ul>
+        </div>
       {/if}
     </div>
   {/if}
@@ -279,6 +298,25 @@
     padding: 0;
     display: grid;
     gap: 8px;
+  }
+
+  .settings-memory__pending {
+    display: grid;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+  }
+
+  .settings-memory__pending-title {
+    margin: 0;
+    font-size: 13px;
+    color: var(--fg);
+  }
+
+  .settings-memory__pending-hint {
+    margin: 0;
+    font-size: 11px;
+    color: var(--fg3);
   }
 
   .settings-memory__record {

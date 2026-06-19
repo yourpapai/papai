@@ -194,7 +194,7 @@ describe('ByokSection', () => {
     seedTwoContextSession()
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    history.replaceState(null, '', '/settings')
+    history.replaceState(null, '', '/settings#byok')
     const component = mount(SettingsApp, { target })
 
     await drain()
@@ -225,7 +225,7 @@ describe('ByokSection', () => {
     seedTwoContextSession()
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    history.replaceState(null, '', '/settings')
+    history.replaceState(null, '', '/settings#byok')
     const component = mount(SettingsApp, { target })
 
     await drain()

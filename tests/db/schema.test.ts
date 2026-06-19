@@ -14,6 +14,7 @@ import {
   groupAdminObservations,
   knownGroupContexts,
   userIdentityMappings,
+  users,
   webCache,
   webRateLimit,
 } from '../../src/db/schema.js'
@@ -194,5 +195,11 @@ describe('attachments schema', () => {
     expect(row).toBeDefined()
     expect(row!.blobKey).toBe('ctx-test/att_test')
     expect(row!.status).toBe('available')
+  })
+})
+
+describe('users schema', () => {
+  it('exposes blockedAt column on the users table', () => {
+    expect(users.blockedAt).toBeDefined()
   })
 })

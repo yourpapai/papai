@@ -16,6 +16,7 @@ import {
 } from '../admin/plugin-config-fetcher-schemas.js'
 import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
 import {
   AddAdminUserResponseSchema,
   AdminByokResponseSchema,
@@ -25,6 +26,7 @@ import {
   AdminSystemResponseSchema,
   AdminUsersResponseSchema,
   AnnounceResultSchema,
+  OpenAccessResponseSchema,
   PluginApprovalResultSchema,
   ProviderTypesResponseSchema,
   type AddAdminUserResponse,
@@ -35,6 +37,7 @@ import {
   type AdminSystemResponse,
   type AdminUsersResponse,
   type AnnounceResult,
+  type OpenAccessResponse,
   type PluginApprovalResult,
   type ProviderTypesResponse,
 } from './fetcher-schemas.js'
@@ -121,6 +124,15 @@ export const addAdminUser = (input: { userId: string; username?: string }): Prom
 export const removeAdminUser = (input: { userId: string }): Promise<unknown> =>
   writeJson('/settings/api/admin/users', 'DELETE', input, (b) => b)
 
+export const fetchOpenAccess = (): Promise<OpenAccessResponse> =>
+  getJson('/settings/api/admin/open-access', (b) => OpenAccessResponseSchema.parse(b))
+
+export const patchOpenAccess = (input: { enabled: boolean }): Promise<unknown> =>
+  writeJson('/settings/api/admin/open-access', 'POST', input, (b) => b)
+
+export const setUserBlocked = (input: { userId: string; blocked: boolean }): Promise<unknown> =>
+  writeJson('/settings/api/admin/users/block', 'POST', input, (b) => b)
+
 export const fetchAdminGroups = (): Promise<AdminGroupsResponse> =>
   getJson('/settings/api/admin/groups', (b) => AdminGroupsResponseSchema.parse(b))
 
@@ -168,3 +180,20 @@ export const saveAdminFeatureFlags = (input: {
   flags: AdminFeatureFlagState
 }): Promise<AdminFeatureFlagRow> =>
   writeJson('/settings/api/admin/feature-flags', 'PATCH', input, (b) => AdminFeatureFlagRowSchema.parse(b))
+
+// Admin tool defaults: POST for all toggle kinds (domain/tool/preset), mirroring the user-facing /tools route.
+
+export const fetchToolDefaults = (): Promise<ToolsResponse> =>
+  getJson('/settings/api/admin/tool-defaults', (b) => ToolsResponseSchema.parse(b))
+
+export const setToolDefault = (
+  input:
+    | { kind: 'domain'; domain: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
+    | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
+): Promise<ToolsResponse> =>
+  writeJson('/settings/api/admin/tool-defaults', 'POST', input, (b) => ToolsResponseSchema.parse(b))
+
+export const applyToolDefaultPreset = (input: { preset: ToolPreset }): Promise<ToolsResponse> =>
+  writeJson('/settings/api/admin/tool-defaults', 'POST', { kind: 'preset', preset: input.preset }, (b) =>
+    ToolsResponseSchema.parse(b),
+  )

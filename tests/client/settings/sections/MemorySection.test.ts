@@ -192,6 +192,63 @@ describe('MemorySection', () => {
     void unmount(component)
   })
 
+  test('renders provisional records in a separate pending subsection', async () => {
+    const payloadWithPending = {
+      ...memoryPayload,
+      records: [
+        memoryPayload.records[0],
+        {
+          ...memoryPayload.records[1],
+          id: 'rec-pending',
+          status: 'provisional',
+          summary: 'Pending provisional fact awaiting promotion.',
+        },
+      ],
+    }
+    setMockFetch(() => Promise.resolve(json(payloadWithPending)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+
+    await drain()
+
+    const pending = target.querySelector('[data-testid="memory-pending"]')
+    expect(pending).not.toBeNull()
+    expect(pending?.textContent).toContain('Pending (provisional)')
+    expect(pending?.textContent).toContain('Pending provisional fact awaiting promotion.')
+    // The active record must not be inside the pending subsection.
+    expect(pending?.textContent).not.toContain('Prefers compact status updates.')
+    // Provisional records are excluded from the active list / not treated as empty.
+    expect(target.querySelector('[data-testid="memory-empty"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('shows pending subsection even when there are no active records', async () => {
+    const onlyPending = {
+      ...emptyMemoryPayload,
+      records: [
+        {
+          ...memoryPayload.records[0],
+          id: 'rec-only-pending',
+          status: 'provisional',
+          summary: 'Only provisional records exist for this group.',
+        },
+      ],
+    }
+    setMockFetch(() => Promise.resolve(json(onlyPending)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+
+    await drain()
+
+    expect(target.querySelector('[data-testid="memory-empty"]')).not.toBeNull()
+    const pending = target.querySelector('[data-testid="memory-pending"]')
+    expect(pending).not.toBeNull()
+    expect(pending?.textContent).toContain('Only provisional records exist for this group.')
+    void unmount(component)
+  })
+
   test('capture toggle sends the next enabled state and reloads', async () => {
     setCsrfToken('c')
     const calls: CapturedCall[] = []
@@ -318,7 +375,7 @@ describe('MemorySection', () => {
     setMockFetch(routeSettingsWithMemory(pendingUserAMemory(pending)))
     seedTwoContextSession()
     document.body.innerHTML = '<div id="root"></div>'
-    history.replaceState(null, '', '/settings')
+    history.replaceState(null, '', '/settings#memory')
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(SettingsApp, { target })
 

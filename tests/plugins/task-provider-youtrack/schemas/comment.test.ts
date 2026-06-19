@@ -58,6 +58,11 @@ describe('Comment schemas', () => {
     expect(result.updated).toBeUndefined()
   })
 
+  test('updated null accepts (freshly created comment)', () => {
+    const result = CommentSchema.parse({ ...validComment, updated: null })
+    expect(result.updated).toBeNull()
+  })
+
   test('deleted as string rejects', () => {
     expect(() => CommentSchema.parse({ ...validComment, deleted: 'true' })).toThrow()
   })

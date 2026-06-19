@@ -10,7 +10,7 @@ import type { MemoryPatch } from '../../src/long-term-memory/extractor.js'
 import { sweepPromotions } from '../../src/long-term-memory/promotion-sweep.js'
 import { evaluatePromotion } from '../../src/long-term-memory/promotion.js'
 import { listMemoryRecords } from '../../src/long-term-memory/store.js'
-import { makeRecallMemoryTool } from '../../src/tools/recall.js'
+import { makeSearchMemoryTool } from '../../src/tools/memory.js'
 import { getToolExecutor, setupTestDb } from '../utils/test-helpers.js'
 
 const fact = 'we deploy every friday'
@@ -33,7 +33,6 @@ const patch: MemoryPatch = {
 let uid = 0
 
 const captureDeps: RunMemoryCaptureDeps = {
-  flagEnabled: (): boolean => true,
   extractMemoryPatch: (): Promise<MemoryPatch> => Promise.resolve(patch),
   getEmbedding: (): Promise<number[] | null> => Promise.resolve(null),
   now: (): string => '2026-06-16T00:00:00.000Z',
@@ -86,7 +85,7 @@ describe('acceptance: stop rediscovering across threads', () => {
     const promotedFact = activeRecords.find((r) => r.content === fact)
     expect(promotedFact).toBeDefined()
 
-    const tool = makeRecallMemoryTool({ storageContextId: 'g:thread:z', contextType: 'group' })
+    const tool = makeSearchMemoryTool({ storageContextId: 'g:thread:z', contextType: 'group' })
     const rawResult = await getToolExecutor(tool)({ query: 'friday deploy' })
     assertRecallResult(rawResult)
     const groupRecord = rawResult.records.find((r) => r.content === fact)

@@ -88,6 +88,14 @@ describe('getProviderMessage', () => {
     expect(getProviderMessage(error)).toContain('done')
   })
 
+  test('returns message for link-type-not-found', () => {
+    const error = providerError.linkTypeNotFound('Depend', ['Relates', 'Duplicate', 'Subtask'])
+    expect(getProviderMessage(error)).toContain('Depend')
+    expect(getProviderMessage(error)).toContain('Relates')
+    expect(getProviderMessage(error)).toContain('Duplicate')
+    expect(getProviderMessage(error)).toContain('Subtask')
+  })
+
   test('returns message for invalid-response', () => {
     const error = providerError.invalidResponse()
     expect(getProviderMessage(error)).toContain('unexpected response')

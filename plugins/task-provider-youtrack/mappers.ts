@@ -69,14 +69,14 @@ const getCustomFieldTimestamp = (customFields: AnyCustomField[] | undefined, fie
 }
 
 export const mapUserRef = (
-  user: { id: string; login?: string; fullName?: string; name?: string } | undefined,
+  user: { id: string; login?: string | null; fullName?: string | null; name?: string | null } | null | undefined,
 ): UserRef | undefined =>
-  user === undefined
+  user === null || user === undefined
     ? undefined
     : {
         id: user.id,
-        login: user.login,
-        name: user.fullName ?? user.name,
+        login: user.login ?? undefined,
+        name: user.fullName ?? user.name ?? undefined,
       }
 
 const mapParent = (
@@ -151,20 +151,20 @@ export const mapYouTrackWatchers = (
 export const mapAttachment = (a: {
   id: string
   name: string
-  url?: string
-  mimeType?: string
-  size?: number
-  thumbnailURL?: string
-  author?: { login?: string }
-  created?: number
+  url?: string | null
+  mimeType?: string | null
+  size?: number | null
+  thumbnailURL?: string | null
+  author?: { login?: string | null } | null
+  created?: number | null
 }): Attachment => ({
   id: a.id,
   name: a.name,
   url: a.url ?? '',
-  mimeType: a.mimeType,
-  size: a.size,
-  thumbnailUrl: a.thumbnailURL,
-  author: a.author?.login,
+  mimeType: a.mimeType ?? undefined,
+  size: a.size ?? undefined,
+  thumbnailUrl: a.thumbnailURL ?? undefined,
+  author: a.author?.login ?? undefined,
   createdAt: toIsoOrUndefined(a.created),
 })
 
@@ -173,12 +173,12 @@ const mapAttachments = (
     | Array<{
         id: string
         name: string
-        url?: string
-        mimeType?: string
-        size?: number
-        thumbnailURL?: string
-        author?: { login?: string }
-        created?: number
+        url?: string | null
+        mimeType?: string | null
+        size?: number | null
+        thumbnailURL?: string | null
+        author?: { login?: string | null } | null
+        created?: number | null
       }>
     | undefined,
 ): Attachment[] | undefined =>

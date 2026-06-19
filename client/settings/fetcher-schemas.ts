@@ -71,28 +71,6 @@ export const AdminByokResponseSchema = z.object({ contexts: z.array(AdminByokCon
 export type AdminByokContext = z.infer<typeof AdminByokContextSchema>
 export type AdminByokResponse = z.infer<typeof AdminByokResponseSchema>
 
-// --- Tools ---
-
-export const ToolRiskSchema = z.enum(['read', 'write', 'destructive', 'open-world'])
-export type ToolRisk = z.infer<typeof ToolRiskSchema>
-
-export const ToolPermissionSchema = z.enum(['allow', 'ask', 'deny'])
-export type ToolPermission = z.infer<typeof ToolPermissionSchema>
-
-export const ToolDomainSummarySchema = z.enum(['allow', 'ask', 'deny', 'partial'])
-export type ToolDomainSummary = z.infer<typeof ToolDomainSummarySchema>
-
-export const ToolEntrySchema = z.object({ name: z.string(), permission: ToolPermissionSchema, risk: ToolRiskSchema })
-export const ToolDomainSchema = z.object({
-  domain: z.string(),
-  summary: ToolDomainSummarySchema,
-  tools: z.array(ToolEntrySchema),
-})
-export const ToolsResponseSchema = z.object({ contextId: z.string(), domains: z.array(ToolDomainSchema) })
-export type ToolsResponse = z.infer<typeof ToolsResponseSchema>
-export type ToolDomainView = z.infer<typeof ToolDomainSchema>
-export type ToolEntry = z.infer<typeof ToolEntrySchema>
-
 export const MemoryRecordSchema = z.object({
   id: z.string(),
   kind: z.string(),
@@ -250,11 +228,16 @@ export const AdminUserRowSchema = z
     platform_user_id: z.string(),
     platform_instance_id: z.string(),
     username: z.string().nullable().optional(),
+    added_by: z.string(),
+    blocked_at: z.string().nullable().optional(),
   })
   .loose()
 export const AdminUsersResponseSchema = z.object({ users: z.array(AdminUserRowSchema) })
 export type AdminUserRow = z.infer<typeof AdminUserRowSchema>
 export type AdminUsersResponse = z.infer<typeof AdminUsersResponseSchema>
+
+export const OpenAccessResponseSchema = z.object({ openDmAccess: z.boolean() }).loose()
+export type OpenAccessResponse = z.infer<typeof OpenAccessResponseSchema>
 
 export const AddAdminUserResponseSchema = z.object({ ok: z.boolean(), pending: z.boolean().optional() }).loose()
 export type AddAdminUserResponse = z.infer<typeof AddAdminUserResponseSchema>

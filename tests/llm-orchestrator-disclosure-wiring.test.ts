@@ -23,7 +23,6 @@ const makeDeps = (progressiveDisclosure: boolean): PrepareLlmInvocationDeps => (
     progressiveDisclosure,
     resultCompaction: false,
     semanticToolRetrieval: false,
-    crossThreadMemory: false,
   }),
   applyResultCompaction,
 })

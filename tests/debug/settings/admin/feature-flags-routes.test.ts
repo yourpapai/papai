@@ -21,7 +21,6 @@ const FLAGS_ON = {
   result_compaction: true,
   progressive_disclosure: true,
   semantic_tool_retrieval: false,
-  cross_thread_memory: false,
 }
 
 const call = (req: Request): Promise<Response> => handleAdminFeatureFlagsRoutes(req, new URL(req.url), PATHNAME)
@@ -97,7 +96,6 @@ describe('settings admin feature-flags routes', () => {
       result_compaction: z.boolean(),
       progressive_disclosure: z.boolean(),
       semantic_tool_retrieval: z.boolean(),
-      cross_thread_memory: z.boolean(),
     })
     const res = await call(
       new Request(URL_PATH, {

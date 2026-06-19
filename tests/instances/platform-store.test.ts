@@ -11,8 +11,10 @@ import {
   deletePlatformInstance,
   getPlatformInstance,
   insertPlatformInstance,
+  isOpenDmAccessEnabled,
   listActivePlatformInstancesSafe,
   listPlatformInstances,
+  setOpenDmAccess,
   updatePlatformInstance,
 } from '../../src/instances/platform-store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -98,5 +100,18 @@ describe('platform-store', () => {
         status: 'active',
       })
     }).toThrow()
+  })
+
+  test('open DM access defaults to false and toggles', () => {
+    insertPlatformInstance({ id: 'oa', type: 'telegram', config: { token: 't' }, status: 'active' })
+    expect(isOpenDmAccessEnabled('oa')).toBe(false)
+    setOpenDmAccess('oa', true)
+    expect(isOpenDmAccessEnabled('oa')).toBe(true)
+    setOpenDmAccess('oa', false)
+    expect(isOpenDmAccessEnabled('oa')).toBe(false)
+  })
+
+  test('isOpenDmAccessEnabled is false for missing instance', () => {
+    expect(isOpenDmAccessEnabled('nope')).toBe(false)
   })
 })

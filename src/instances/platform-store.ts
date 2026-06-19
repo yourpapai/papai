@@ -112,3 +112,17 @@ export const deletePlatformInstance = (id: string): void => {
   getDrizzleDb().delete(platformInstances).where(eq(platformInstances.id, id)).run()
   log.info({ id }, 'platform instance deleted')
 }
+
+export const isOpenDmAccessEnabled = (id: string): boolean => {
+  const row = getDrizzleDb()
+    .select({ openDmAccess: platformInstances.openDmAccess })
+    .from(platformInstances)
+    .where(eq(platformInstances.id, id))
+    .get()
+  return row?.openDmAccess === true
+}
+
+export const setOpenDmAccess = (id: string, enabled: boolean): void => {
+  getDrizzleDb().update(platformInstances).set({ openDmAccess: enabled }).where(eq(platformInstances.id, id)).run()
+  log.info({ id, enabled }, 'open DM access updated')
+}

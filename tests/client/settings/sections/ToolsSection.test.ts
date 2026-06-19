@@ -23,6 +23,7 @@ const drain = async (): Promise<void> => {
 // Three-state payload using new schema
 const toolsPayload = {
   contextId: 'user:1',
+  activePreset: 'allow-all',
   domains: [
     {
       domain: 'task',
@@ -35,12 +36,23 @@ const toolsPayload = {
   ],
 }
 
-const ToggleBodySchema = z.union([
-  z.object({ kind: z.literal('tool'), tool: z.string(), permission: z.string(), contextId: z.string() }),
-  z.object({ kind: z.literal('domain'), domain: z.string(), permission: z.string(), contextId: z.string() }),
-])
+const ToolBodySchema = z.object({
+  kind: z.literal('tool'),
+  tool: z.string(),
+  permission: z.string(),
+  contextId: z.string(),
+})
+const DomainBodySchema = z.object({
+  kind: z.literal('domain'),
+  domain: z.string(),
+  permission: z.string(),
+  contextId: z.string(),
+})
+const PresetBodySchema = z.object({ kind: z.literal('preset'), preset: z.string(), contextId: z.string() })
 
 let capturedBody: unknown = null
+let toggleCallCount = 0
+
 const captureToggleMock = (url: string, init: RequestInit): Promise<Response> => {
   if (url.includes('/tools/toggle')) {
     capturedBody = typeof init.body === 'string' ? JSON.parse(init.body) : init.body
@@ -53,8 +65,23 @@ const errorToggleMock = (url: string, _init: RequestInit): Promise<Response> => 
   return Promise.resolve(json(toolsPayload))
 }
 
+// Returns activePreset: null from toggle (non-empty domains so summary changes to 'allow')
+const nullPresetToggleResponse = {
+  ...toolsPayload,
+  activePreset: null,
+  domains: [{ ...toolsPayload.domains[0], summary: 'allow' as const }],
+}
+const nullPresetToggleMock = (url: string, _init: RequestInit): Promise<Response> => {
+  if (url.includes('/tools/toggle')) {
+    toggleCallCount++
+    return Promise.resolve(json(nullPresetToggleResponse))
+  }
+  return Promise.resolve(json(toolsPayload))
+}
+
 afterEach(() => {
   capturedBody = null
+  toggleCallCount = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -102,7 +129,7 @@ describe('ToolsSection', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="tool-perm-create_task-deny"]')!.click()
     await drain()
-    const parsed = ToggleBodySchema.parse(capturedBody)
+    const parsed = ToolBodySchema.parse(capturedBody)
     expect(parsed.kind).toBe('tool')
     expect(parsed.permission).toBe('deny')
     expect(parsed.contextId).toBe('user:1')
@@ -118,7 +145,7 @@ describe('ToolsSection', () => {
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-task"]')!.click()
     await drain()
-    const parsed = ToggleBodySchema.parse(capturedBody)
+    const parsed = DomainBodySchema.parse(capturedBody)
     expect(parsed.kind).toBe('domain')
     expect(['allow', 'ask', 'deny']).toContain(parsed.permission)
     expect(parsed.contextId).toBe('user:1')
@@ -182,6 +209,82 @@ describe('ToolsSection', () => {
     const allowBtn = target.querySelector('[data-testid="tool-perm-create_task-allow"]')
     expect(allowBtn).not.toBeNull()
     expect(allowBtn!.getAttribute('role')).toBe('radio')
+    void unmount(component)
+  })
+
+  test('renders the preset bar with the active preset highlighted', async () => {
+    setMockFetch(() => Promise.resolve(json(toolsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="tools-presets"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="preset-read-only"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="preset-active"]')!.textContent).toContain('Allow all')
+    void unmount(component)
+  })
+
+  test('applying a preset requires confirmation then posts kind=preset', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')!.click()
+    flushSync()
+    expect(capturedBody).toBeNull()
+    expect(target.querySelector('[data-testid="preset-confirm"]')).not.toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-apply"]')!.click()
+    await drain()
+    const parsed = PresetBodySchema.parse(capturedBody)
+    expect(parsed.kind).toBe('preset')
+    expect(parsed.preset).toBe('read-only')
+    expect(parsed.contextId).toBe('user:1')
+    void unmount(component)
+  })
+
+  test('cancelling the confirm does not post', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-read-only"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="preset-confirm-cancel"]')!.click()
+    flushSync()
+    expect(capturedBody).toBeNull()
+    expect(target.querySelector('[data-testid="preset-confirm"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('shows Custom when activePreset is null', async () => {
+    setMockFetch(() => Promise.resolve(json({ ...toolsPayload, activePreset: null })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="preset-active"]')!.textContent).toContain('Custom')
+    void unmount(component)
+  })
+
+  test('preset pill goes to Custom after domain toggle returns activePreset: null', async () => {
+    setCsrfToken('c')
+    setMockFetch(nullPresetToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    // Confirm initial preset is shown (load returns activePreset: 'allow-all')
+    expect(target.querySelector('[data-testid="preset-active"]')!.textContent).toContain('Allow all')
+    // Trigger a domain toggle (response returns activePreset: null)
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-task"]')!.click()
+    await drain()
+    expect(toggleCallCount).toBe(1)
+    // After toggle, activePreset from response (null) must be reflected as 'Custom'
+    expect(target.querySelector('[data-testid="preset-active"]')!.textContent).toContain('Custom')
     void unmount(component)
   })
 })

@@ -9,8 +9,9 @@ import type { AuthorizationResult, ContextType } from './chat/types.js'
 import { listManageableGroups } from './group-settings/access.js'
 import { isGroupMember } from './groups.js'
 import { isAdmin } from './instances/admin-store.js'
+import { isOpenDmAccessEnabled } from './instances/platform-store.js'
 import { logger } from './logger.js'
-import { addUser, isAuthorized, isDemoUser, resolveUserByUsername } from './users.js'
+import { addUser, isAuthorized, isBlocked, resolveUserByUsername } from './users.js'
 
 const log = logger.child({ scope: 'auth' })
 
@@ -114,27 +115,6 @@ const getUnauthorizedDmAuth = (
 const getGroupConfigContextId = (contextId: string, platformInstanceId: string): string =>
   getThreadScopedStorageContextId(contextId, 'group', undefined, platformInstanceId)
 
-const maybeAuthorizeDemoModeUser = (
-  userId: string,
-  username: string | null,
-  contextId: string,
-  contextType: ContextType,
-  threadId: string | undefined,
-  platformInstanceId: string,
-): AuthorizationResult | null => {
-  if (process.env['DEMO_MODE'] !== 'true' || isAuthorized(userId, platformInstanceId) || contextType !== 'dm') {
-    return null
-  }
-
-  log.info({ userId, username }, 'Demo mode: auto-adding user')
-  if (username === null) {
-    addUser({ userId, platformInstanceId, addedBy: 'demo-auto' })
-  } else {
-    addUser({ userId, platformInstanceId, addedBy: 'demo-auto', username })
-  }
-  return getGroupMemberAuth(contextId, contextType, threadId, false, platformInstanceId)
-}
-
 const getAuthorizedUserAuth = (
   userId: string,
   contextId: string,
@@ -143,13 +123,28 @@ const getAuthorizedUserAuth = (
   isPlatformAdmin: boolean,
   platformInstanceId: string,
 ): AuthorizationResult => {
-  if (contextType === 'dm' && isDemoUser(userId, platformInstanceId)) {
-    return getGroupMemberAuth(contextId, contextType, threadId, false, platformInstanceId)
-  }
   if (contextType === 'dm') {
     return getDmUserAuth(userId, platformInstanceId)
   }
   return getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
+}
+
+const getBlockedAuth = (
+  userId: string,
+  contextId: string,
+  contextType: ContextType,
+  threadId: string | undefined,
+  platformInstanceId: string,
+): AuthorizationResult => {
+  const base = contextType === 'dm' ? userId : contextId
+  return {
+    allowed: false,
+    isBotAdmin: false,
+    isGroupAdmin: false,
+    storageContextId: getThreadScopedStorageContextId(base, contextType, threadId, platformInstanceId),
+    configContextId: getThreadScopedStorageContextId(base, contextType, undefined, platformInstanceId),
+    reason: 'user_blocked',
+  }
 }
 
 const getUnauthenticatedGroupAuth = (
@@ -205,23 +200,27 @@ export const checkAuthorizationExtended = (
     return getUnauthorizedGroupAuth(contextId, threadId, platformInstanceId, 'group_not_allowed')
   }
 
-  const demoModeAuth = maybeAuthorizeDemoModeUser(
-    userId,
-    username,
-    contextId,
-    contextType,
-    threadId,
-    platformInstanceId,
-  )
-  if (demoModeAuth !== null) {
-    return demoModeAuth
-  }
-
   if (isAdmin(userId, platformInstanceId)) {
     return getAdminAuth(userId, contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
 
-  if (isAuthorized(userId, platformInstanceId)) {
+  if (isBlocked(userId, platformInstanceId)) {
+    return getBlockedAuth(userId, contextId, contextType, threadId, platformInstanceId)
+  }
+
+  const authorized = isAuthorized(userId, platformInstanceId)
+
+  if (contextType === 'dm' && !authorized && isOpenDmAccessEnabled(platformInstanceId)) {
+    log.info({ userId, platformInstanceId }, 'Open DM access: auto-adding user')
+    if (username === null) {
+      addUser({ userId, platformInstanceId, addedBy: 'open-access' })
+    } else {
+      addUser({ userId, platformInstanceId, addedBy: 'open-access', username })
+    }
+    return getDmUserAuth(userId, platformInstanceId)
+  }
+
+  if (authorized) {
     return getAuthorizedUserAuth(userId, contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
 

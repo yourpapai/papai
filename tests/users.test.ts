@@ -14,11 +14,13 @@ import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../src/instances/admin-store.
 import {
   addUser,
   addPendingUser,
-  removeUser,
+  blockUser,
+  isBlocked,
   isAuthorized,
-  isDemoUser,
+  removeUser,
   resolveUserByUsername,
   listUsers,
+  unblockUser,
 } from '../src/users.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
@@ -340,29 +342,6 @@ describe('isAuthorized', () => {
   })
 })
 
-describe('isDemoUser', () => {
-  beforeEach(async () => {
-    await setupTestDb()
-    seedCommonTestPlatformInstances()
-  })
-
-  test('classifies demo users within the platform instance only', () => {
-    addUser({
-      userId: 'shared-user',
-      platformInstanceId: 'telegram-default',
-      addedBy: 'demo-auto',
-    })
-    addUser({
-      userId: 'shared-user',
-      platformInstanceId: 'discord-default',
-      addedBy: 'admin',
-    })
-
-    expect(isDemoUser('shared-user', 'telegram-default')).toBe(true)
-    expect(isDemoUser('shared-user', 'discord-default')).toBe(false)
-  })
-})
-
 describe('resolveUserByUsername', () => {
   let testDb: Awaited<ReturnType<typeof setupTestDb>>
 
@@ -613,5 +592,43 @@ describe('addPendingUser', () => {
     ).toBe('created')
     expect(resolveUserByUsername('424242', 'f4dev', TEST_PLATFORM_ID)).toBe(true)
     expect(isAuthorized('424242', TEST_PLATFORM_ID)).toBe(true)
+  })
+})
+
+describe('user blocking', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+  })
+
+  test('isBlocked is false for unknown and unblocked users', () => {
+    expect(isBlocked('nobody', 'telegram-default')).toBe(false)
+    addUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'manual' })
+    expect(isBlocked('u1', 'telegram-default')).toBe(false)
+  })
+
+  test('blockUser blocks an existing user and unblockUser reverses it', () => {
+    addUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'manual' })
+    expect(blockUser('u1', 'telegram-default')).toBe(true)
+    expect(isBlocked('u1', 'telegram-default')).toBe(true)
+    expect(unblockUser('u1', 'telegram-default')).toBe(true)
+    expect(isBlocked('u1', 'telegram-default')).toBe(false)
+  })
+
+  test('blockUser returns false when no row exists', () => {
+    expect(blockUser('ghost', 'telegram-default')).toBe(false)
+  })
+
+  test('unblockUser returns false when no row exists', () => {
+    expect(unblockUser('ghost', 'telegram-default')).toBe(false)
+  })
+
+  test('listUsers includes added_by and blocked_at', () => {
+    addUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'open-access' })
+    blockUser('u1', 'telegram-default')
+    const row = listUsers('telegram-default').find((u) => u.platform_user_id === 'u1')
+    expect(row?.added_by).toBe('open-access')
+    expect(row?.blocked_at).not.toBeNull()
   })
 })

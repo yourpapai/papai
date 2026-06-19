@@ -22,6 +22,7 @@ import { migration006VersionAnnouncements } from '../src/db/migrations/006_versi
 import { migration007PlatformUserId } from '../src/db/migrations/007_platform_user_id.js'
 import { migration040PlatformInstances } from '../src/db/migrations/040_platform_instances.js'
 import { migration041UsersPlatformInstanceIndex } from '../src/db/migrations/041_users_platform_instance_index.js'
+import { migration058OpenDmAccess } from '../src/db/migrations/058_open_dm_access.js'
 import * as schema from '../src/db/schema.js'
 import { extractChangelogSection } from './helpers/extract-changelog-section.js'
 import { createMockChat, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
@@ -41,6 +42,7 @@ const MIGRATIONS = [
   migration007PlatformUserId,
   migration040PlatformInstances,
   migration041UsersPlatformInstanceIndex,
+  migration058OpenDmAccess,
 ] as const
 
 const VERSION: string = packageJson.version

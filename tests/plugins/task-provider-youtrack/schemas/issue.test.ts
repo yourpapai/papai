@@ -23,6 +23,23 @@ describe('Issue schemas', () => {
   }
 
   describe('IssueSchema', () => {
+    test('reporter/updater as null accept (YouTrack returns null for unset/deleted users)', () => {
+      const result = IssueSchema.parse({ ...validIssue, reporter: null, updater: null })
+      expect(result.reporter).toBeNull()
+      expect(result.updater).toBeNull()
+    })
+
+    test('watcher user with null email/fullName accepts', () => {
+      const result = IssueSchema.parse({
+        ...validIssue,
+        watchers: {
+          hasStar: false,
+          issueWatchers: [{ isStarred: false, user: { id: 'u', login: 'svc', email: null, fullName: null } }],
+        },
+      })
+      expect(result.watchers?.issueWatchers?.[0]?.user.email).toBeNull()
+    })
+
     test('validates full issue', () => {
       const result = IssueSchema.parse({
         ...validIssue,

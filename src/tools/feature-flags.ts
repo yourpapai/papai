@@ -16,14 +16,12 @@ export interface ReductionFlags {
   progressiveDisclosure: boolean
   resultCompaction: boolean
   semanticToolRetrieval: boolean
-  crossThreadMemory: boolean
 }
 
 const ALL_OFF: ReductionFlags = {
   progressiveDisclosure: false,
   resultCompaction: false,
   semanticToolRetrieval: false,
-  crossThreadMemory: false,
 }
 
 function killSwitchEngaged(): boolean {
@@ -44,7 +42,6 @@ export function parseReductionFlagsJson(raw: string | null): ReductionFlags {
       progressiveDisclosure: parsed['progressive_disclosure'] === true,
       resultCompaction: parsed['result_compaction'] === true,
       semanticToolRetrieval: parsed['semantic_tool_retrieval'] === true,
-      crossThreadMemory: parsed['cross_thread_memory'] === true,
     }
   } catch (error) {
     log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Corrupt reduction flags; all OFF')
@@ -52,17 +49,9 @@ export function parseReductionFlagsJson(raw: string | null): ReductionFlags {
   }
 }
 
-/** Resolve the four reduction flags for a storage context id. Kill switch wins. */
+/** Resolve the three reduction flags for a storage context id. Kill switch wins. */
 export function resolveReductionFlags(storageContextId: string): ReductionFlags {
   if (killSwitchEngaged()) return { ...ALL_OFF }
   const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
   return parseReductionFlagsJson(getCachedConfig(configContextId, REDUCTION_FLAGS_CONFIG_KEY))
-}
-
-/**
- * True when the cross-thread memory bridge is enabled for this storage context.
- * @public -- consumed by the memory capture executor + debounce manager (Plan 1 T7/T8).
- */
-export function resolveCrossThreadMemoryFlag(storageContextId: string): boolean {
-  return resolveReductionFlags(storageContextId).crossThreadMemory
 }
