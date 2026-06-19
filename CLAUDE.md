@@ -15,6 +15,7 @@ Notable non-obvious behaviors:
 - **Telegram and Discord** treat a user's reply to the **bot's own message** in a group as equivalent to an `@mention` — the bot processes it without an explicit mention. Mattermost and Kontur Talk are not affected by this path.
 - Settings-UI admin "Users" adds accept `@username`. Live resolution is tried first (`resolveSettingsUserId`); when the platform cannot resolve it (Telegram's Bot API never can for user accounts), a **pending entry** is stored (`users.platform_user_id = 'placeholder-<uuid>'`) and rebound case-insensitively to the real ID on the user's first DM (`src/auth.ts` → `resolveUserByUsername`). Group-member adds stay strict and 422 on unresolvable usernames. Open DM access is a per-platform-instance toggle (admin "Users" section → `open_dm_access` column). When on, an unknown user's first DM auto-provisions a `users` row (`added_by = 'open-access'`) and is granted normal DM auth; admins can durably block individuals (`users.blocked_at`). It replaces the removed `DEMO_MODE` env flag.
 - Supports incoming files, file-to-task relay, identity mapping, memo search, recurring tasks, deferred prompts, public web fetch.
+- **Mid-run steering & interruption (always on):** while an agent turn runs, a non-command message (DM, or group `@mention`/reply-to-bot) is **injected at the next tool-step boundary** to steer the live run — never restarting it, with an instant code-generated `✋` ack. State lives in `src/run-control/` (a `RunRegistry` keyed by `storageContextId`; one active run per context). The `/stop` command is the deterministic stop ladder: a typed "stop" lets the model wind down; first `/stop` flips a `stopWhen` flag (graceful halt after the current tool step); a second `/stop` while stopping force-aborts via `AbortSignal`. Partial side-effects are reported honestly (`buildStopSummary`), not rolled back. **One run per thread** — the message-queue different-user fire-and-forget gap was closed — so a steer has one unambiguous target. `/stop`-command only (no buttons); commands bypass the queue, so it reaches a running turn on every platform incl. Kontur Talk.
 
 ## Commands
 
@@ -90,7 +91,7 @@ User (Telegram/Mattermost/Discord/Kontur Talk)
 Optional: debug server + debug/admin/settings clients
 ```
 
-Non-command text goes straight to the LLM queue with no interception (`src/bot.ts`).
+Non-command text goes straight to the LLM queue with no interception (`src/bot.ts`) — **unless a run is already active for that context**, in which case the message is injected into the live run's steer queue (mid-run steering) instead of starting a new turn.
 
 ### Module map (one line each)
 
@@ -101,7 +102,8 @@ Non-command text goes straight to the LLM queue with no interception (`src/bot.t
 - `src/long-term-memory/` — durable group-scoped memory store (`memory_records`/`memory_profiles`); background LLM extraction, semantic + FTS search, hourly maintenance. Hosts the flag-gated cross-thread memory bridge (provisional tier, capture, recall cascade, promotion — see Tools below).
 - `src/chat/context-scope.ts` — declarative `ENTITY_SCOPES` registry (single source of truth for each context-owned entity's effective scope `thread`/`group`/`user`) + `getScopeKey`; reconciled against `CONTEXT_OWNED_COLUMNS` by a consistency test so scope can't be silently mislabeled.
 - `src/attachments/` — durable attachment workspace (ingest, S3 blob store, metadata, manifest, resolver). Within a group, reads (`list_files`/`search_staged_files`) **and** actions (`resolve`/`upload`/`delete`) are group-discoverable across sibling threads via the denormalized `group_context_id` (writes stay thread-scoped; DMs unaffected).
-- `src/message-queue/` — message coalescing + orderly orchestrator dispatch.
+- `src/message-queue/` — message coalescing + orderly orchestrator dispatch; same-thread turns are serialized (one run per thread — the former different-user fire-and-forget path now runs through `handlerChain`).
+- `src/run-control/` — per-turn run registry for mid-run steering/interruption (`RunControl`/`RunRegistry`, keyed by `storageContextId`): steer-message injection via a composed AI SDK `prepareStep`, deterministic graceful stop via a `stopWhen` condition, force-abort via `AbortSignal`, completed-effect recording, and the code-generated stop summary. Lifecycle is begun/ended (in `finally`) in `processMessage`; consumed by `invokeModel`, `bot.ts` mid-run routing, and the `/stop` command. In-memory only; `normal` mode only (proactive runs get no run-control).
 - `src/group-settings/` — admin group-context support for the settings UI (`admin-group-list.ts`, `admin-scope.ts`, `registry.ts` observation store, `access.ts`).
 - `src/identity/` — chat→provider identity mapping and "me" resolution.
 - `src/tools/` — context-aware, capability-gated tool assembly + wrappers. See `src/tools/CLAUDE.md`.

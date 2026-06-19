@@ -27,16 +27,17 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 ## Current Command Behavior
 
 - Commands are registered in `src/bot.ts` via `setupBot(chat, adminUserId)`.
-- Current core command surface: `/help`, `/start`, `/config`, `/context`, `/clear`, `/dashboard`. Active plugins also register `plugin_<sanitized-plugin-id>_<command-name>` commands at startup via `registerPluginCommands`.
+- Current core command surface: `/help`, `/start`, `/config`, `/context`, `/clear`, `/dashboard`, `/stop`. Active plugins also register `plugin_<sanitized-plugin-id>_<command-name>` commands at startup via `registerPluginCommands`.
 - `/config` is launcher-only. In DM it issues a single-use settings link (outcome: `ok` / `rate_limited` / `not_configured`). In group contexts it sends one of two messages: a DM redirect for group admins, or an access-denied explanation for non-admins. `SETTINGS_PUBLIC_BASE_URL` must be set; when it is not, `/config` replies asking the admin to configure that variable. All configuration (personal, group, admin, plugins, identity, instances, system LLM, announce) happens in the settings web UI.
 - `/context` builds a tokenized `ContextSnapshot` and sends a platform-native view through `chat.renderContext()`.
 - `/clear` clears conversation history, summary, and facts for the current storage context. The bot admin can also clear another user or all users; non-bot group admins are limited to clearing the current group context.
 - `/dashboard` is DM-only and bot-admin-only; it issues a sign-in link to the operator debug/admin UI when `DEBUG_SERVER=true`. The link origin prefers `DASHBOARD_BASE_URL`, then `SETTINGS_PUBLIC_BASE_URL`, then the internal `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}` default.
+- `/stop` halts or steers the running agent turn (the deterministic rungs of the mid-run stop ladder). It looks up the active run via `runRegistry.get(auth.storageContextId)`: no active run → "Nothing is running right now."; first `/stop` → sets `stopRequested` (graceful halt after the current tool step) and acks "winding down…"; a second `/stop` while still stopping → `abortController.abort()` (force-abort) and acks "Stopping immediately…". Any authorized member may `/stop` a group thread's run. Because commands bypass the queue, `/stop` reaches a running turn on every platform (no buttons involved). See the run-control entry in the top-level `CLAUDE.md`.
 - The retired commands `/setup`, `/group`, `/groups`, `/user`, `/users`, `/announce`, and `/plugin` no longer exist. Their functionality (group management, plugin approval/enable/disable, identity, instance management, announcements) is now handled in the settings web UI.
 
 ## No Interception Flow
 
-There is no message interception. Non-command text goes straight to the LLM orchestrator queue. Interactive chat callbacks (`gsel:`, `cfg:`, `wizard_`, `plg:`, `tgl:`) are retired; `src/chat/interaction-router.ts` only authorizes the actor and otherwise matches nothing.
+There is no message interception for **new** turns. Non-command text goes straight to the LLM orchestrator queue — **except** that, when a run is already active for the context, a qualifying message (DM, or group `@mention`/reply-to-bot) is routed into that run's steer queue (mid-run steering, handled in `handleMessage` via `runRegistry.get`) instead of starting a new turn. Interactive chat callbacks (`gsel:`, `cfg:`, `wizard_`, `plg:`, `tgl:`) are retired; `src/chat/interaction-router.ts` only authorizes the actor and otherwise matches nothing.
 
 ## Types
 
