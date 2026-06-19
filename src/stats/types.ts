@@ -195,6 +195,14 @@ export interface LlmUsageGlobal {
   outputTokensTotal: number
 }
 
+/** One UTC-day bucket of token usage. Aggregate-shaped + anonymous: safe for /stats/* egress. */
+export interface TokenUsagePoint {
+  date: string
+  inputTokens: number
+  outputTokens: number
+  calls: number
+}
+
 export interface GlobalSubjects {
   dmTotal: number
   groupTotal: number
@@ -213,4 +221,5 @@ export interface GlobalStats {
   webFetches: WebFetchHostsGlobal
   toolMix: ToolMixGlobal
   llmUsage: LlmUsageGlobal
+  tokenUsageByDay: TokenUsagePoint[]
 }

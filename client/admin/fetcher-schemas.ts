@@ -67,6 +67,14 @@ export const GlobalStatsSchema = z.object({
     inputTokensTotal: z.number(),
     outputTokensTotal: z.number(),
   }),
+  tokenUsageByDay: z.array(
+    z.object({
+      date: z.string(),
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      calls: z.number(),
+    }),
+  ),
 })
 
 export const BillingSubjectSchema = z.object({

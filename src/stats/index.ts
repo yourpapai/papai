@@ -23,6 +23,7 @@ import {
   recurringForSubject,
   scheduledForSubject,
 } from './per-table.js'
+import { tokenUsageByDayGlobal } from './token-usage-series.js'
 import type { GlobalStats, GlobalStatsOptions, StatsContextType, StatsWindow, SubjectStats } from './types.js'
 
 const CACHE_TTL_MS = 60_000
@@ -125,6 +126,7 @@ function computeGlobalStats(window: StatsWindow): GlobalStats {
     webFetches: webFetchesGlobal(),
     toolMix: toolMixGlobal(),
     llmUsage: llmUsageGlobal(window),
+    tokenUsageByDay: tokenUsageByDayGlobal(window),
   }
 }
 

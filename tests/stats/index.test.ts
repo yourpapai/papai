@@ -143,6 +143,8 @@ describe('getGlobalStats', () => {
     expect(result.surfaceMix).toBeDefined()
     expect(result.webFetches).toBeDefined()
     expect(result.toolMix).toBeDefined()
+    expect(result.tokenUsageByDay).toBeDefined()
+    expect(Array.isArray(result.tokenUsageByDay)).toBe(true)
     expect(typeof result.generatedAt).toBe('number')
   })
 

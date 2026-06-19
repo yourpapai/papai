@@ -121,6 +121,7 @@ describe('stats types', () => {
         inputTokensTotal: 0,
         outputTokensTotal: 0,
       },
+      tokenUsageByDay: [],
     }
 
     const expectedKeys = [
@@ -135,6 +136,7 @@ describe('stats types', () => {
       'webFetches',
       'toolMix',
       'llmUsage',
+      'tokenUsageByDay',
     ]
     expect(Object.keys(sample).sort()).toEqual(expectedKeys.sort())
   })

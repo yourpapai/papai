@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Admin & Debug Dashboard Fixes — Verification + Spec
 
 Status: proposed
@@ -75,7 +82,7 @@ stubbed and never finished.
     no per-day series.
   - Billing per-subject totals (`src/debug/billing.ts`, `src/usage/query.ts:58-76`)
     are likewise window-summed, not bucketed.
-- The **only** time-bucketed series that exists is *tool calls per day*
+- The **only** time-bucketed series that exists is _tool calls per day_
   (`src/stats/global-web-tools.ts:88-102`, `toolCallGrowth30d`). There is no
   equivalent for tokens.
 - Consequence: a `BillingSubject` shows lifetime "input / output" counts
@@ -210,14 +217,14 @@ accurate. The real gaps are:
   - `src/debug/state-collector.ts:141-142` drops every event where
     `isVisibleToAdmin(event.scope, adminVisibility)` is false. The admin sees
     `global` scope + only the DMs/groups they own or belong to — which is correct
-    for multi-tenant privacy, but means the operator cannot inspect *other*
+    for multi-tenant privacy, but means the operator cannot inspect _other_
     contexts even when that is the explicit purpose of the debug surface.
   - Even for visible scopes, **message/conversation text never reaches the
     client**: `redactLogEntry` (`src/debug/log-redaction.ts:38-49`) default-denies
     every field and replaces every `msg` not in a 2-item allowlist with
     `[redacted]`. So logs about the admin's own chat show no content.
 - **No "current session" pivot.** There is no view that says "this is the
-  session/turn happening *right now* for me, the signed-in operator" — turns and
+  session/turn happening _right now_ for me, the signed-in operator" — turns and
   sessions are listed globally and must be hunted for.
 
 ### Root cause
@@ -234,13 +241,13 @@ more. The debug client also lacks a "me / current" affordance.
 1. **Operator-owned content tier.** Introduce an explicit visibility tier so that
    for contexts the signed-in operator **owns** (their own DMs, groups they
    admin), `redactLogEntry` may pass through already-allowed structured fields
-   *plus* the message content for those scopes, while everything else stays
+   _plus_ the message content for those scopes, while everything else stays
    default-denied. Gate this on the authenticated dashboard principal, not on a
    global flag. Keep the current behavior as the default for non-owned scopes.
    - Add tests: owned-scope log retains content; non-owned-scope log still
      `[redacted]`; global scope unchanged.
 2. **"Current session" panel.** Add a pinned card (top of the left rail or in
-   `LiveContextCard`) showing the operator's *own* most recent/active
+   `LiveContextCard`) showing the operator's _own_ most recent/active
    session + in-flight turn, derived from the authenticated principal's
    `chatUserId`, so "what's happening with me right now" is one click, not a
    scan.
@@ -282,7 +289,7 @@ So the literal complaint is out of date. The **real** log problems are:
 
 ### Root cause
 
-The viewer was built correctly; the *data* behind it is privacy-redacted and
+The viewer was built correctly; the _data_ behind it is privacy-redacted and
 non-durable, which is what the user is actually experiencing.
 
 ### Spec
@@ -329,7 +336,7 @@ non-durable, which is what the user is actually experiencing.
 ## Open questions for the user
 
 1. **Operator content visibility (issue 5/6):** confine de-redaction to scopes
-   the operator *owns*, or add a separate audited "super-admin sees all" mode?
+   the operator _owns_, or add a separate audited "super-admin sees all" mode?
 2. **Durable logs (issue 6):** add an opt-in on-disk/DB log sink for
    across-restart history, or keep logs in-memory only and just add
    backward-paging within the buffer?

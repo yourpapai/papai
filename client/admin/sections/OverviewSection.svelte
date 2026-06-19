@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fmtBytes } from '../../shared/helpers.js'
+  import { fmtBytes, fmtNum, formatTokens } from '../../shared/helpers.js'
   import Bars from '../../shared/ui/Bars.svelte'
   import Meter from '../../shared/ui/Meter.svelte'
   import MetricCard from '../../shared/ui/MetricCard.svelte'
@@ -62,9 +62,17 @@
       : `${fmtBytes(adminGlobals.data.storage.sqliteBytes)} sqlite · ${fmtBytes(adminGlobals.data.storage.s3AttachmentBytes)} s3`,
   )
 
-  // Tokens are not always present; show placeholder if unavailable.
-  const tokenTotal = $derived('—')
-  const tokenSub = $derived<string | undefined>(undefined)
+  // Total tokens (input + output) over the loaded stats window.
+  const tokenTotal = $derived(
+    adminGlobals.data?.llmUsage === undefined
+      ? '—'
+      : formatTokens(adminGlobals.data.llmUsage.inputTokensTotal + adminGlobals.data.llmUsage.outputTokensTotal),
+  )
+  const tokenSub = $derived<string | undefined>(
+    adminGlobals.data?.llmUsage === undefined
+      ? undefined
+      : `${fmtNum(adminGlobals.data.llmUsage.inputTokensTotal, 0)} in · ${fmtNum(adminGlobals.data.llmUsage.outputTokensTotal, 0)} out`,
+  )
 
   const sparkData = $derived(
     adminGlobals.data?.subjects?.growthLast30d?.map((p) => p.dmAdded + p.groupAdded) ?? [],
@@ -107,11 +115,17 @@
         <MetricCard label="storage" value={storageTotal} sub={storageSub} />
       </div>
       <div class="overview__charts">
-        <Panel title="subject growth · 30d">
+        <Panel title="activity · 30d">
           {#snippet body()}
             <div class="overview__chart-body">
-              <div class="admin-overview__spark"><Spark data={sparkData} /></div>
-              <div class="overview__bars-wrap"><Bars data={barsData} height={56} /></div>
+              <figure class="admin-overview__spark">
+                <Spark data={sparkData} />
+                <figcaption class="overview__caption">new subjects per day (dm + group) · last 30d</figcaption>
+              </figure>
+              <figure class="overview__bars-wrap">
+                <Bars data={barsData} height={56} />
+                <figcaption class="overview__caption">top tools by successful calls · all time</figcaption>
+              </figure>
             </div>
           {/snippet}
         </Panel>
@@ -153,9 +167,17 @@
   }
   .admin-overview__spark {
     width: 100%;
+    margin: 0;
   }
   .overview__bars-wrap {
     width: 100%;
+    margin: 0;
+  }
+  .overview__caption {
+    margin-top: 4px;
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
   .overview__mix {
     padding: 12px;

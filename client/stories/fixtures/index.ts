@@ -117,6 +117,12 @@ export function makeGlobalStats(overrides: Partial<GlobalStats> = {}): GlobalSta
       inputTokensTotal: 18_400,
       outputTokensTotal: 9_200,
     },
+    tokenUsageByDay: [
+      { date: '2026-05-28', inputTokens: 4_200, outputTokens: 2_100, calls: 9 },
+      { date: '2026-05-29', inputTokens: 6_800, outputTokens: 3_400, calls: 14 },
+      { date: '2026-05-30', inputTokens: 3_100, outputTokens: 1_500, calls: 7 },
+      { date: '2026-05-31', inputTokens: 4_300, outputTokens: 2_200, calls: 12 },
+    ],
     ...overrides,
   }
 }
