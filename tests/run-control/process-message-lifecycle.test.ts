@@ -82,4 +82,24 @@ describe('processMessage run lifecycle', () => {
     expect(sawRunDuringTurn).toBe(true)
     expect(runRegistry.get('dm-user-1')).toBeUndefined()
   })
+
+  test('run is cleaned up when generateText throws (error-path cleanup)', async () => {
+    const { reply } = createMockReply()
+
+    const deps: LlmOrchestratorDeps = {
+      generateText: () => {
+        return Promise.reject(new Error('boom'))
+      },
+      stepCountIs: (...args) => stepCountIs(...args),
+      buildOpenAI: buildMockOpenAI,
+      resolve: () => null,
+      maybeAutoProvision: () => Promise.resolve(false),
+    }
+
+    // handleLlmTurnError swallows the error and replies with a user-facing message;
+    // processMessage itself does not rethrow.
+    await processMessage(reply, 'dm-user-1', 'user-1', null, 'hello', 'dm', undefined, deps, [], 't2')
+
+    expect(runRegistry.get('dm-user-1')).toBeUndefined()
+  })
 })

@@ -39,7 +39,7 @@ import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { runRegistry } from './run-control/registry.js'
 import { buildStopSummary } from './run-control/summary.js'
-import { RunAbortedError } from './run-control/types.js'
+import { RunAbortedError, type InjectedMessage } from './run-control/types.js'
 import { missingSystemConfigKeys } from './system-config.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
@@ -47,7 +47,7 @@ const log = logger.child({ scope: 'llm-orchestrator' })
 export const resolveAiOutputSettingsContextId = (contextId: string): string =>
   getConfigContextIdFromStorageContextId(contextId)
 
-const defaultDeps: LlmOrchestratorDeps = {
+export const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => stepCountIs(...args),
   buildOpenAI: (apiKey: string, baseURL: string) => getOpenAICompatibleProvider(apiKey, baseURL),
@@ -55,7 +55,6 @@ const defaultDeps: LlmOrchestratorDeps = {
   maybeAutoProvision: (reply, contextId, chatUserId, username) =>
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
 }
-export { defaultDeps }
 
 const maybeAutoLinkIdentity = async (
   chatUserId: string,
@@ -81,7 +80,6 @@ const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId:
   await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /config to finish setup in the settings web UI.`)
   throw new Error('Missing configuration')
 }
-
 let botMisconfiguredNotified = false
 
 const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise<void> => {
@@ -211,10 +209,11 @@ type RunTurnArgs = {
   startedAt: number
 }
 
-const runTurn = async (args: RunTurnArgs): Promise<{ text: string }[]> => {
+const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
   const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, startedAt } = args
   const { reply, contextId, contextType } = invocationSource
   const run = runRegistry.begin(contextId, { turnId: resolvedTurnId, reply })
+  let leftover: InjectedMessage[] = []
   try {
     const result = await callLlm({
       ...invocationSource,
@@ -247,8 +246,10 @@ const runTurn = async (args: RunTurnArgs): Promise<{ text: string }[]> => {
         turnId: resolvedTurnId,
       })
     }
+  } finally {
+    leftover = runRegistry.end(contextId)
   }
-  return runRegistry.end(contextId)
+  return leftover
 }
 
 export const processMessage = async (
