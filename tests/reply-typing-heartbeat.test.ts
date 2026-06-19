@@ -198,6 +198,35 @@ describe('reply typing heartbeat', () => {
     expect(textCalls).toEqual(['done'])
   })
 
+  test('createStatus is passed through un-wrapped (does not stop typing)', async () => {
+    let typingCalls = 0
+    let createStatusCalls = 0
+    const reply: ReplyFn = {
+      text: (): Promise<void> => Promise.resolve(),
+      formatted: (): Promise<void> => Promise.resolve(),
+      typing: (): void => {
+        typingCalls += 1
+      },
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
+      createStatus: (): Promise<undefined> => {
+        createStatusCalls += 1
+        return Promise.resolve(undefined)
+      },
+    }
+
+    await withReplyTypingHeartbeat(
+      reply,
+      async (wrapped) => {
+        expect(wrapped.createStatus).toBe(reply.createStatus)
+        await wrapped.createStatus?.('💭 Thinking…')
+      },
+      { intervalMs: 20 },
+    )
+
+    expect(typingCalls).toBeGreaterThanOrEqual(1)
+    expect(createStatusCalls).toBe(1)
+  })
+
   test('handles async typing that resolves successfully', async () => {
     const typingCalls: number[] = []
     const textCalls: string[] = []

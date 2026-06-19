@@ -78,4 +78,9 @@ describe('createKonturTalkReplyFn', () => {
     const { reply } = makeReplyFn()
     await expect(reply.buttons('content', { buttons: [] })).rejects.toThrow(/does not support/iu)
   })
+
+  test('does not provide createStatus (no edit/delete API)', () => {
+    const { reply } = makeReplyFn()
+    expect(reply.createStatus).toBeUndefined()
+  })
 })
