@@ -104,6 +104,7 @@ function handleLogs(url: URL): Response {
     turnId: searchParam(url.searchParams.get('turnId')),
     q: searchParam(url.searchParams.get('q')),
     limit: parseIntParam(url.searchParams.get('limit')),
+    before: searchParam(url.searchParams.get('before')),
   })
 
   return jsonResponse(results.map(redactLogEntry))

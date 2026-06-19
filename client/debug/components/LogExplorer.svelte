@@ -1,12 +1,13 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { tick, untrack } from 'svelte'
 
-  import { formatTime, levelClass, levelName } from '../../shared/helpers.js'
+  import { formatDateTime, formatTime, levelClass, levelName } from '../../shared/helpers.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import Select from '../../shared/ui/Select.svelte'
   import Toolbar from '../../shared/ui/Toolbar.svelte'
+  import { collectScopes, fetchLogStats, fetchOlderLogs, parseLogsArray, type LogBufferStats } from '../log-bootstrap.js'
   import { filterLogsWithIndex, updateFuseIndex } from '../log-filter.js'
   import type { LogEntry, DashboardState } from '../dashboard-types.js'
 
@@ -23,6 +24,47 @@
 
   let autoScroll = $state(true)
   let entriesEl: HTMLDivElement | null = $state(null)
+
+  let loadingOlder = $state(false)
+  let reachedStart = $state(false)
+  let bufferStats = $state<LogBufferStats | null>(null)
+
+  // Surface how bounded the in-memory buffer is, and whether older records exist.
+  $effect(() => {
+    void untrack(async () => {
+      bufferStats = await fetchLogStats()
+    })
+  })
+
+  const moreOlderAvailable = $derived(
+    !reachedStart && bufferStats !== null && dashboard.logs.length < bufferStats.count,
+  )
+
+  // Page backward through the in-memory buffer: the browser only bootstraps the
+  // newest page, so older records must be fetched explicitly via the `before` cursor.
+  async function loadOlder(): Promise<void> {
+    if (loadingOlder || reachedStart) return
+    const before = dashboard.logs[0]?.time
+    if (before === undefined) return
+    loadingOlder = true
+    autoScroll = false
+    const prevHeight = entriesEl?.scrollHeight ?? 0
+    try {
+      const parsed = parseLogsArray(await fetchOlderLogs(before))
+      if (parsed.length === 0) {
+        reachedStart = true
+        return
+      }
+      dashboard.logs.unshift(...parsed)
+      for (const scope of collectScopes(parsed)) dashboard.logScopes.add(scope)
+      bufferStats = await fetchLogStats()
+      await tick()
+      // Keep the viewport anchored on the same entry after prepending older rows.
+      if (entriesEl !== null) entriesEl.scrollTop += entriesEl.scrollHeight - prevHeight
+    } finally {
+      loadingOlder = false
+    }
+  }
 
   const sortedScopes = $derived([...dashboard.logScopes].sort())
 
@@ -92,6 +134,15 @@
     {/snippet}
     {#snippet body()}
       <div id="log-entries" bind:this={entriesEl} onscroll={onScroll}>
+        <div class="log-history">
+          {#if reachedStart}
+            <span class="log-history__note">— oldest buffered record —</span>
+          {:else if moreOlderAvailable}
+            <Btn variant="secondary" size="sm" onClick={() => { void loadOlder() }} disabled={loadingOlder}>
+              {#snippet children()}{loadingOlder ? 'loading…' : '↑ load older'}{/snippet}
+            </Btn>
+          {/if}
+        </div>
         {#each filtered as fl, i (i)}
           <div
             class="log-entry {levelClass(fl.entry.level)}"
@@ -104,11 +155,16 @@
                 onSelectLog(fl.entry, fl.originalIndex)
               }
             }}>
-            <span class="log-meta">{formatTime(fl.entry.time)} {levelName(fl.entry.level)}{fl.entry.scope === undefined ? '' : ` ${fl.entry.scope}`}</span>
+            <span class="log-meta" title={formatDateTime(fl.entry.time)}>{formatTime(fl.entry.time)} {levelName(fl.entry.level)}{fl.entry.scope === undefined ? '' : ` ${fl.entry.scope}`}</span>
             <span class="log-msg">{fl.entry.msg}</span>
           </div>
         {/each}
       </div>
+      {#if bufferStats !== null}
+        <span class="log-bufferstat">
+          showing {filtered.length} · {dashboard.logs.length} loaded of {bufferStats.count} buffered (cap {bufferStats.capacity})
+        </span>
+      {/if}
       {#if !autoScroll}
         <Btn variant="secondary" size="sm" onClick={jumpToBottom}>{#snippet children()}▼ auto-scroll{/snippet}</Btn>
       {/if}
@@ -147,6 +203,27 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .log-history {
+    display: flex;
+    justify-content: center;
+    padding: 4px;
+  }
+
+  .log-history__note {
+    color: var(--fg4);
+    font-size: 11px;
+    padding: 4px;
+  }
+
+  .log-bufferstat {
+    display: block;
+    padding: 4px 8px;
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border-top: 1px solid var(--border);
   }
 
   .log-turnid-badge {

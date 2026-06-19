@@ -21,6 +21,8 @@ type SearchParams = {
   turnId?: string
   q?: string
   limit?: number
+  /** Cursor for backward paging: return only entries with `time` strictly less than this ISO timestamp. */
+  before?: string
 }
 
 type BufferStats = {
@@ -80,6 +82,9 @@ export class LogRingBuffer {
     if (params.q !== undefined) {
       const lower = params.q.toLowerCase()
       results = results.filter((e) => e.msg.toLowerCase().includes(lower))
+    }
+    if (params.before !== undefined) {
+      results = results.filter((e) => e.time < params.before!)
     }
     const limit = params.limit ?? 100
     return results.slice(-limit)
