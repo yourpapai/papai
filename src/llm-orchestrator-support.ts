@@ -6,11 +6,14 @@
 import { APICallError } from '@ai-sdk/provider'
 import type { ModelMessage } from 'ai'
 
+import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
 import { logger } from './logger.js'
+import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
+import { extractFactsFromSdkResults, upsertFact } from './memory.js'
 import { buildToolFailureResult, isToolFailureResult, type ToolFailureResult } from './tool-failure.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:support' })
@@ -214,4 +217,41 @@ export const handleLlmTurnError = async (args: HandleLlmTurnErrorArgs): Promise<
   emitLlmError(contextId, chatUserId, contextType, mainModel, startedAt, baseHistory.length + 1, error, turnId)
   saveHistory(contextId, baseHistory)
   await handleOrchestratorMessageError(reply, contextId, error)
+}
+
+export const persistFactsFromResults = (contextId: string, result: unknown): void => {
+  const toolCalls = extractFactToolCalls(result)
+  const toolResults = extractFactToolResults(result)
+  const newFacts = extractFactsFromSdkResults(toolCalls, toolResults)
+  if (newFacts.length === 0) return
+  for (const fact of newFacts) upsertFact(contextId, fact)
+  log.info(
+    { contextId, factsExtracted: newFacts.length, factsUpserted: newFacts.length },
+    'Facts extracted and persisted',
+  )
+}
+
+export const sendLlmResponse = async (
+  reply: ReplyFn,
+  contextId: string,
+  result: { text: string | undefined; toolCalls: unknown[] | undefined; response: { messages: ModelMessage[] } },
+  progressReporter: AiProgressReporter | undefined,
+): Promise<void> => {
+  const textToFormat = result.text !== undefined && result.text !== '' ? result.text : 'Done.'
+  const responseLength = result.text === undefined ? 0 : result.text.length
+  const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length
+  await reply.formatted(textToFormat)
+  if (progressReporter === undefined) {
+    log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
+    return
+  }
+  try {
+    await progressReporter.flush()
+  } catch (error) {
+    log.warn(
+      { contextId, error: error instanceof Error ? error.message : String(error) },
+      'AI progress details flush failed after final response',
+    )
+  }
+  log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
 }

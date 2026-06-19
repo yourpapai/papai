@@ -25,15 +25,21 @@ import {
   resolveTurnId,
   type ProcessMessageRest,
 } from './llm-orchestrator-process-args.js'
-import { handleLlmTurnError, logProcessMessage } from './llm-orchestrator-support.js'
+import {
+  handleLlmTurnError,
+  logProcessMessage,
+  persistFactsFromResults,
+  sendLlmResponse,
+} from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
-import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
-import { extractFactsFromSdkResults, upsertFact } from './memory.js'
 import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
+import { runRegistry } from './run-control/registry.js'
+import { buildStopSummary } from './run-control/summary.js'
+import { RunAbortedError } from './run-control/types.js'
 import { missingSystemConfigKeys } from './system-config.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
@@ -50,43 +56,6 @@ const defaultDeps: LlmOrchestratorDeps = {
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
 }
 export { defaultDeps }
-
-const persistFactsFromResults = (contextId: string, result: unknown): void => {
-  const toolCalls = extractFactToolCalls(result)
-  const toolResults = extractFactToolResults(result)
-  const newFacts = extractFactsFromSdkResults(toolCalls, toolResults)
-  if (newFacts.length === 0) return
-  for (const fact of newFacts) upsertFact(contextId, fact)
-  log.info(
-    { contextId, factsExtracted: newFacts.length, factsUpserted: newFacts.length },
-    'Facts extracted and persisted',
-  )
-}
-
-const sendLlmResponse = async (
-  reply: ReplyFn,
-  contextId: string,
-  result: { text: string | undefined; toolCalls: unknown[] | undefined; response: { messages: ModelMessage[] } },
-  progressReporter: AiProgressReporter | undefined,
-): Promise<void> => {
-  const textToFormat = result.text !== undefined && result.text !== '' ? result.text : 'Done.'
-  const responseLength = result.text === undefined ? 0 : result.text.length
-  const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length
-  await reply.formatted(textToFormat)
-  if (progressReporter === undefined) {
-    log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
-    return
-  }
-  try {
-    await progressReporter.flush()
-  } catch (error) {
-    log.warn(
-      { contextId, error: error instanceof Error ? error.message : String(error) },
-      'AI progress details flush failed after final response',
-    )
-  }
-  log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
-}
 
 const maybeAutoLinkIdentity = async (
   chatUserId: string,
@@ -232,6 +201,56 @@ const buildHistory = async (
   return { baseHistory, modelMessage, historyMessage }
 }
 
+type RunTurnArgs = {
+  invocationSource: Omit<InvocationSource, 'history'>
+  turn: Awaited<ReturnType<typeof buildHistory>>
+  deps: LlmOrchestratorDeps
+  configId: string
+  resolvedLlm: EffectiveLlmConfig
+  resolvedTurnId: string
+  startedAt: number
+}
+
+const runTurn = async (args: RunTurnArgs): Promise<{ text: string }[]> => {
+  const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, startedAt } = args
+  const { reply, contextId, contextType } = invocationSource
+  const run = runRegistry.begin(contextId, { turnId: resolvedTurnId, reply })
+  try {
+    const result = await callLlm({
+      ...invocationSource,
+      history: [...turn.baseHistory, turn.modelMessage],
+      deps,
+      configId,
+      resolvedLlm,
+      turnId: resolvedTurnId,
+    })
+    appendAssistantTurnHistory(
+      contextId,
+      configId,
+      resolvedLlm.mainModel,
+      turn.baseHistory,
+      turn.historyMessage,
+      result.response.messages,
+      contextType,
+    )
+    if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false }))
+  } catch (error) {
+    if (error instanceof RunAbortedError) {
+      await reply.formatted(buildStopSummary(error.effects, { forced: true }))
+    } else {
+      await handleLlmTurnError({
+        ...invocationSource,
+        mainModel: resolvedLlm.mainModel,
+        startedAt,
+        baseHistory: turn.baseHistory,
+        error,
+        turnId: resolvedTurnId,
+      })
+    }
+  }
+  return runRegistry.end(contextId)
+}
+
 export const processMessage = async (
   reply: ReplyFn,
   contextId: string,
@@ -252,33 +271,29 @@ export const processMessage = async (
   const turn = await buildHistory(contextId, chatUserId, resolvedLlm.mainModel, userText, newAttachmentIds)
   const invocationSource = { reply, contextId, chatUserId, username, userText, contextType }
   appendHistory(contextId, [turn.historyMessage])
-  const startedAt = Date.now()
-  try {
-    const result = await callLlm({
-      ...invocationSource,
-      history: [...turn.baseHistory, turn.modelMessage],
-      deps,
-      configId,
-      resolvedLlm,
-      turnId: resolvedTurnId,
-    })
-    appendAssistantTurnHistory(
+  const leftover = await runTurn({
+    invocationSource,
+    turn,
+    deps,
+    configId,
+    resolvedLlm,
+    resolvedTurnId,
+    startedAt: Date.now(),
+  })
+  // Any steer message that never reached a step boundary becomes a fresh turn (never dropped).
+  if (leftover.length > 0) {
+    const text = leftover.map((m) => m.text).join('\n\n')
+    await processMessage(
+      reply,
       contextId,
-      configId,
-      resolvedLlm.mainModel,
-      turn.baseHistory,
-      turn.historyMessage,
-      result.response.messages,
+      chatUserId,
+      username,
+      text,
       contextType,
+      configContextId,
+      deps,
+      [],
+      undefined,
     )
-  } catch (error) {
-    await handleLlmTurnError({
-      ...invocationSource,
-      mainModel: resolvedLlm.mainModel,
-      startedAt,
-      baseHistory: turn.baseHistory,
-      error,
-      turnId: resolvedTurnId,
-    })
   }
 }
