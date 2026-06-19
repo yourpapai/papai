@@ -202,6 +202,17 @@ describe('getBillingDetail', () => {
     expect(detail?.truncated).toBe(false)
   })
 
+  test('includes a day-bucketed tokenUsageByDay series for the subject', () => {
+    seed({ storageContextId: 'ctx-A', occurredAt: NOW, inputTokens: 10, outputTokens: 20 })
+    seed({ storageContextId: 'ctx-A', occurredAt: NOW - 500, inputTokens: 5, outputTokens: 7 })
+    // Other subject must not leak into the series
+    seed({ storageContextId: 'ctx-B', occurredAt: NOW, inputTokens: 999, outputTokens: 999 })
+
+    const detail = getBillingDetail('ctx-A', 'all')
+    const day = new Date(NOW).toISOString().slice(0, 10)
+    expect(detail?.tokenUsageByDay).toEqual([{ date: day, inputTokens: 15, outputTokens: 27, calls: 2 }])
+  })
+
   test('orders requests by occurredAt descending', () => {
     seed({ storageContextId: 'ctx-A', occurredAt: 100 })
     seed({ storageContextId: 'ctx-A', occurredAt: 300 })

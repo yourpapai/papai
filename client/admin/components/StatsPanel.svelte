@@ -7,7 +7,7 @@
   import { untrack } from 'svelte'
 
   import type { GlobalStats, StatsWindow } from '../../shared/api-types.js'
-  import { fmtBytes } from '../../shared/helpers.js'
+  import { fmtBytes, fmtNum, formatTokens } from '../../shared/helpers.js'
   import Bars from '../../shared/ui/Bars.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
@@ -162,6 +162,17 @@
     if (g === null) return 0
     return g.subjects.dmTotal + g.subjects.groupTotal
   })
+
+  // Tokens per UTC day (input + output combined) over the selected window.
+  const tokenDaily = $derived.by(() => {
+    const g = dashboard.globalStats
+    if (g === null) return []
+    return g.tokenUsageByDay.map((p) => ({ date: p.date, total: p.inputTokens + p.outputTokens }))
+  })
+  const tokenDailyBars = $derived(tokenDaily.map((p) => p.total))
+  const tokenPeak = $derived(tokenDaily.reduce((m, p) => (p.total > m ? p.total : m), 0))
+  const tokenLast = $derived(tokenDaily.length > 0 ? tokenDaily[tokenDaily.length - 1] : null)
+  const windowLabel = $derived(dashboard.statsWindow === 'all' ? 'all time' : `last ${dashboard.statsWindow}`)
 </script>
 
 <div class="stats-panel" data-testid="stats-panel">
@@ -203,6 +214,33 @@
       </Panel>
     </div>
 
+    <Panel title="token usage">
+      {#snippet body()}
+        <div class="stats-panel__metrics">
+          <MetricCard
+            label="input tokens"
+            value={formatTokens(g.llmUsage.inputTokensTotal)}
+            sub={`${fmtNum(g.llmUsage.inputTokensTotal, 0)} · ${windowLabel}`} />
+          <MetricCard
+            label="output tokens"
+            value={formatTokens(g.llmUsage.outputTokensTotal)}
+            sub={`${fmtNum(g.llmUsage.outputTokensTotal, 0)} · ${windowLabel}`} />
+          <MetricCard label="llm calls" value={fmtNum(g.llmUsage.totalCalls, 0)} sub={windowLabel} />
+        </div>
+        {#if tokenDailyBars.length > 0}
+          <figure class="stats-panel__chart">
+            <Bars data={tokenDailyBars} color="var(--accent)" />
+            <figcaption class="stats-panel__caption">
+              input + output tokens per UTC day · {windowLabel} · peak {formatTokens(tokenPeak)}{#if tokenLast !== null}
+                · {tokenLast.date}: {formatTokens(tokenLast.total)}{/if}
+            </figcaption>
+          </figure>
+        {:else}
+          <span class="placeholder">No token usage in this window</span>
+        {/if}
+      {/snippet}
+    </Panel>
+
     <Panel title="distributions">
       {#snippet body()}
         <DataTable columns={distColumns} rows={distRows} rowKey="metric" />
@@ -218,9 +256,10 @@
             value={g.toolMix.totalCalls > 0 ? `${Math.round(g.toolMix.totalSuccessRate * 100)}%` : '—'} />
         </div>
         {#if growthData.length > 0}
-          <div class="stats-panel__sparkline">
+          <figure class="stats-panel__chart">
             <Bars data={growthData} />
-          </div>
+            <figcaption class="stats-panel__caption">tool calls per UTC day · last 30d</figcaption>
+          </figure>
         {/if}
         {#if topToolRows.length > 0}
           <DataTable columns={topToolColumns} rows={topToolRows} rowKey="tool" />
@@ -251,8 +290,15 @@
     gap: 8px;
     padding: 12px;
   }
-  .stats-panel__sparkline {
+  .stats-panel__chart {
+    margin: 0;
     padding: 8px 12px 4px;
+  }
+  .stats-panel__caption {
+    margin-top: 4px;
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
   .placeholder {
     padding: 24px;

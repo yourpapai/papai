@@ -185,6 +185,17 @@ const getAdminAuth = (
   return getBotAdminAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
 }
 
+/** Open-DM-access auto-add: register a previously-unauthorized DM user and grant DM auth. */
+const openDmAutoAdd = (userId: string, username: string | null, platformInstanceId: string): AuthorizationResult => {
+  log.info({ userId, platformInstanceId }, 'Open DM access: auto-adding user')
+  if (username === null) {
+    addUser({ userId, platformInstanceId, addedBy: 'open-access' })
+  } else {
+    addUser({ userId, platformInstanceId, addedBy: 'open-access', username })
+  }
+  return getDmUserAuth(userId, platformInstanceId)
+}
+
 export const checkAuthorizationExtended = (
   userId: string,
   username: string | null,
@@ -211,13 +222,7 @@ export const checkAuthorizationExtended = (
   const authorized = isAuthorized(userId, platformInstanceId)
 
   if (contextType === 'dm' && !authorized && isOpenDmAccessEnabled(platformInstanceId)) {
-    log.info({ userId, platformInstanceId }, 'Open DM access: auto-adding user')
-    if (username === null) {
-      addUser({ userId, platformInstanceId, addedBy: 'open-access' })
-    } else {
-      addUser({ userId, platformInstanceId, addedBy: 'open-access', username })
-    }
-    return getDmUserAuth(userId, platformInstanceId)
+    return openDmAutoAdd(userId, username, platformInstanceId)
   }
 
   if (authorized) {

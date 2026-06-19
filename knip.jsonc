@@ -114,6 +114,8 @@
     "client/debug/handlers.ts": ["exports"],
     "client/debug/log-bootstrap.ts": ["exports"],
     "client/debug/log-filter.ts": ["exports"],
+    // pinOperatorFirst is consumed only by SessionsList.svelte, which knip can't parse.
+    "client/debug/session-order.ts": ["exports"],
     "client/debug/sse.ts": ["exports"],
     "client/debug/types.ts": ["types"],
     "client/admin/admin.svelte.ts": ["exports", "types"],

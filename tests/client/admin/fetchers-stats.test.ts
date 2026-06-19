@@ -68,6 +68,7 @@ const fullGlobalPayload = (overrides: Record<string, unknown>): Record<string, u
     inputTokensTotal: 0,
     outputTokensTotal: 0,
   },
+  tokenUsageByDay: [],
   ...overrides,
 })
 
@@ -102,6 +103,7 @@ describe('fetchStatsGlobal', () => {
         inputTokensTotal: 0,
         outputTokensTotal: 0,
       },
+      tokenUsageByDay: [],
     })
 
     const result = await fetchStatsGlobal('7d')

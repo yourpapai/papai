@@ -64,6 +64,7 @@ const globalPayload = (overrides: Partial<GlobalStats> | null): GlobalStats => {
       inputTokensTotal: 0,
       outputTokensTotal: 0,
     },
+    tokenUsageByDay: [],
   }
   if (overrides === null) return payload
   return { ...payload, ...overrides }
@@ -255,7 +256,7 @@ describe('admin StatsPanel', () => {
     expect(toolCallsTitle).not.toBeUndefined()
     const toolCallsPanel = toolCallsTitle!.closest('.ui-panel')
     expect(toolCallsPanel).not.toBeNull()
-    const spark = toolCallsPanel!.querySelector('.stats-panel__sparkline')
+    const spark = toolCallsPanel!.querySelector('.stats-panel__chart')
     const table = toolCallsPanel!.querySelector('.ui-datatable')
     expect(spark).not.toBeNull()
     expect(table).not.toBeNull()

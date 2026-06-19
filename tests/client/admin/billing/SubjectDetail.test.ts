@@ -67,7 +67,7 @@ const render = (detail: BillingDetail): { target: HTMLElement; component: Return
 
 describe('admin SubjectDetail', () => {
   test('shows placeholder when there are no requests', () => {
-    const { target, component } = render({ subject, requests: [], truncated: false })
+    const { target, component } = render({ subject, requests: [], truncated: false, tokenUsageByDay: [] })
     expect(target.textContent).toContain('No requests')
     void unmount(component)
   })
@@ -77,6 +77,7 @@ describe('admin SubjectDetail', () => {
       subject,
       requests: [makeRequest({}), makeRequest({ eventId: 'evt-2', modelRole: 'small' })],
       truncated: false,
+      tokenUsageByDay: [],
     }
     const { target, component } = render(detail)
     const rows = target.querySelectorAll('[data-testid="request-row"]')
@@ -85,7 +86,7 @@ describe('admin SubjectDetail', () => {
   })
 
   test('clicking a row toggles a JSON detail block', () => {
-    const detail: BillingDetail = { subject, requests: [makeRequest({})], truncated: false }
+    const detail: BillingDetail = { subject, requests: [makeRequest({})], truncated: false, tokenUsageByDay: [] }
     const { target, component } = render(detail)
     const row = target.querySelector<HTMLElement>('[data-testid="request-row"]')
     expect(row).not.toBeNull()

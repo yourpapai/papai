@@ -73,6 +73,7 @@ describe('dashboard-types', () => {
       },
       requests: [],
       truncated: false,
+      tokenUsageByDay: [],
     }
     expect(detail.truncated).toBe(false)
   })

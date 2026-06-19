@@ -5,7 +5,18 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { collectScopes, parseLogsArray } from '../../../client/debug/log-bootstrap.js'
+import { buildLogsUrl, collectScopes, parseLogsArray } from '../../../client/debug/log-bootstrap.js'
+
+describe('buildLogsUrl', () => {
+  test('defaults to a bounded initial page', () => {
+    expect(buildLogsUrl({})).toBe('/logs?limit=500')
+  })
+  test('encodes a before cursor for backward paging', () => {
+    expect(buildLogsUrl({ before: '2026-03-28T10:00:00.000Z', limit: 200 })).toBe(
+      '/logs?limit=200&before=2026-03-28T10%3A00%3A00.000Z',
+    )
+  })
+})
 
 describe('parseLogsArray', () => {
   test('returns parsed log entries and skips invalid ones', () => {

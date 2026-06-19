@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { fmtBytes, fmtNum } from '../../../client/shared/helpers'
+import { fmtBytes, fmtNum, formatDateTime } from '../../../client/shared/helpers'
 
 describe('fmtNum', () => {
   test('rounds to <=2dp by default and adds thousands separators', () => {
@@ -21,6 +21,21 @@ describe('fmtNum', () => {
   })
   test('passes through non-empty strings unchanged', () => {
     expect(fmtNum('n/a')).toBe('n/a')
+  })
+})
+
+describe('formatDateTime', () => {
+  test('renders unambiguous UTC date + time (YYYY-MM-DD HH:MM)', () => {
+    const ts = Date.UTC(2026, 4, 30, 14, 5)
+    expect(formatDateTime(ts)).toBe('2026-05-30 14:05')
+    expect(formatDateTime(0)).toBe('1970-01-01 00:00')
+  })
+  test('accepts ISO string input', () => {
+    expect(formatDateTime('2026-05-30T14:05:00.000Z')).toBe('2026-05-30 14:05')
+  })
+  test('returns em dash for invalid input', () => {
+    expect(formatDateTime(Number.NaN)).toBe('—')
+    expect(formatDateTime('not-a-date')).toBe('—')
   })
 })
 

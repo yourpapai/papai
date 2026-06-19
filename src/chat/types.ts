@@ -17,6 +17,7 @@ export type ChatUser = {
 /** Context type for messages - DM or group chat. */
 export type ContextType = 'dm' | 'group'
 
+import type { AuthorizationResult } from './authorization-types.js'
 import type { DeferredDeliveryTarget } from './deferred-target.js'
 import type { ChatProviderConfigRequirement } from './provider-descriptor.js'
 export type { DeferredAudience, DeferredDeliveryTarget } from './deferred-target.js'
@@ -186,22 +187,7 @@ export type IncomingInteraction = {
   threadId: string
 }>
 
-export type AuthorizationDenyReason =
-  | 'group_not_allowed'
-  | 'group_member_not_allowed'
-  | 'dm_not_allowed'
-  | 'user_blocked'
-
-/** Authorization result for message processing. */
-export type AuthorizationResult = {
-  allowed: boolean
-  isBotAdmin: boolean
-  isGroupAdmin: boolean
-  storageContextId: string
-  // `configCommandAllowed`: set on an otherwise-denied DM result when the user can
-  // manage a group; lets the launcher-only `/config` command through without
-  // granting general DM access.
-} & Partial<{ configContextId: string; reason: AuthorizationDenyReason; configCommandAllowed: boolean }>
+export type { AuthorizationDenyReason, AuthorizationResult } from './authorization-types.js'
 
 /** Command handler signature. */
 export type CommandHandler = (msg: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void>

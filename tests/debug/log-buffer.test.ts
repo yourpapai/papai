@@ -168,6 +168,27 @@ describe('search', () => {
     const buf = new LogRingBuffer(10)
     expect(buf.search({})).toEqual([])
   })
+
+  test('before cursor returns the newest entries strictly older than the cursor', () => {
+    const buf = new LogRingBuffer(10)
+    buf.push(makeEntry({ time: '2026-03-28T10:00:00.000Z', msg: 'a' }))
+    buf.push(makeEntry({ time: '2026-03-28T10:00:01.000Z', msg: 'b' }))
+    buf.push(makeEntry({ time: '2026-03-28T10:00:02.000Z', msg: 'c' }))
+    buf.push(makeEntry({ time: '2026-03-28T10:00:03.000Z', msg: 'd' }))
+
+    const results = buf.search({ before: '2026-03-28T10:00:02.000Z' })
+    expect(results.map((e) => e.msg)).toEqual(['a', 'b'])
+  })
+
+  test('before cursor pages backward in combination with limit', () => {
+    const buf = new LogRingBuffer(10)
+    for (let i = 0; i < 6; i++) {
+      buf.push(makeEntry({ time: `2026-03-28T10:00:0${i}.000Z`, msg: `m${i}` }))
+    }
+    // newest 2 strictly older than m5's time → m3, m4
+    const page = buf.search({ before: '2026-03-28T10:00:05.000Z', limit: 2 })
+    expect(page.map((e) => e.msg)).toEqual(['m3', 'm4'])
+  })
 })
 
 describe('stats', () => {

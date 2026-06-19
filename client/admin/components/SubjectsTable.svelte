@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fmtNum, formatTime } from '../../shared/helpers.js'
+  import { fmtNum, formatDateTime } from '../../shared/helpers.js'
   import type { BillingSubject } from '../../shared/api-types.js'
   import DataTable from '../../shared/ui/DataTable.svelte'
   import StatusPill from '../../shared/ui/StatusPill.svelte'
@@ -16,9 +16,11 @@
 
   let { subjects, onSelect }: Props = $props()
 
+  // Avoid rendering opaque UUIDs: show a typed short label when no display name resolved.
   function displayLabel(subject: BillingSubject): string {
     if (subject.displayName !== null && subject.displayName !== '') return subject.displayName
-    return subject.storageContextId
+    const kind = subject.contextType === 'group' ? 'Group' : 'DM'
+    return `${kind} · ${subject.storageContextId.slice(0, 8)}`
   }
 
   interface Row {
@@ -43,18 +45,52 @@
       small: `${fmtNum(s.totals.small.inputTokens, 0)} / ${fmtNum(s.totals.small.outputTokens, 0)}`,
       embedding: fmtNum(s.totals.embedding.inputTokens, 0),
       tools: fmtNum(s.toolCalls, 0),
-      last: formatTime(s.lastActiveAt),
+      last: formatDateTime(s.lastActiveAt),
     })),
   )
 
+  const tokenTotal = (t: BillingSubject['totals']['main']): number => t.inputTokens + t.outputTokens
+
   const columns = [
-    { key: 'subject' as const, label: 'Subject', width: '1.4fr' },
-    { key: 'type' as const, label: 'Type', width: '80px' },
-    { key: 'main' as const, label: 'Main in/out', align: 'right' as const },
-    { key: 'small' as const, label: 'Small in/out', align: 'right' as const },
-    { key: 'embedding' as const, label: 'Embedding in', align: 'right' as const },
-    { key: 'tools' as const, label: 'Tools', width: '70px', align: 'right' as const },
-    { key: 'last' as const, label: 'Last active', width: '96px', align: 'right' as const },
+    { key: 'subject' as const, label: 'Subject', width: '1.4fr', sortable: true },
+    { key: 'type' as const, label: 'Type', width: '80px', sortable: true },
+    {
+      key: 'main' as const,
+      label: 'Main in/out',
+      align: 'right' as const,
+      sortable: true,
+      sortAccessor: (r: Row) => tokenTotal(r.subjectRef.totals.main),
+    },
+    {
+      key: 'small' as const,
+      label: 'Small in/out',
+      align: 'right' as const,
+      sortable: true,
+      sortAccessor: (r: Row) => tokenTotal(r.subjectRef.totals.small),
+    },
+    {
+      key: 'embedding' as const,
+      label: 'Embedding in',
+      align: 'right' as const,
+      sortable: true,
+      sortAccessor: (r: Row) => r.subjectRef.totals.embedding.inputTokens,
+    },
+    {
+      key: 'tools' as const,
+      label: 'Tools',
+      width: '70px',
+      align: 'right' as const,
+      sortable: true,
+      sortAccessor: (r: Row) => r.subjectRef.toolCalls,
+    },
+    {
+      key: 'last' as const,
+      label: 'Last active',
+      width: '150px',
+      align: 'right' as const,
+      sortable: true,
+      sortAccessor: (r: Row) => r.subjectRef.lastActiveAt,
+    },
   ]
 
   function handleRowClick(row: Row): void {
@@ -64,10 +100,17 @@
 
 <section class="subjects-table">
   <h3>Subjects <span class="count-badge">{subjects.length}</span></h3>
-  <DataTable {columns} {rows} rowKey="storageContextId" onRowClick={handleRowClick}>
+  <DataTable
+    {columns}
+    {rows}
+    rowKey="storageContextId"
+    onRowClick={handleRowClick}
+    defaultSort={{ key: 'last', dir: 'desc' }}>
     {#snippet cell(row, col)}
       {#if col.key === 'type'}
         <StatusPill status={row.type} dot={false} />
+      {:else if col.key === 'subject'}
+        <span title={row.storageContextId}>{row.subject}</span>
       {:else}
         {String(row[col.key] ?? '')}
       {/if}

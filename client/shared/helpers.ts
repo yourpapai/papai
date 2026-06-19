@@ -33,6 +33,17 @@ export function formatTime(ts: number | string): string {
   })
 }
 
+/**
+ * Unambiguous UTC timestamp `YYYY-MM-DD HH:MM` for admin/ops surfaces, where a
+ * bare time-of-day is ambiguous across a multi-day window. Returns `—` for
+ * invalid input. Use `formatTime` only where the date is shown in an adjacent column.
+ */
+export function formatDateTime(ts: number | string): string {
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toISOString().slice(0, 16).replace('T', ' ')
+}
+
 export function formatUptime(startedAt: number): string {
   const ms = Date.now() - startedAt
   const s = Math.floor(ms / 1000)

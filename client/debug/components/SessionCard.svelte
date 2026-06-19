@@ -12,10 +12,11 @@ See LICENSE in the project root for details.
     userId: string
     session: Session
     wizard?: DashboardWizard
+    isOperator?: boolean
     onSelect: () => void
   }
 
-  let { userId, session, wizard, onSelect }: Props = $props()
+  let { userId, session, wizard, isOperator = false, onSelect }: Props = $props()
 
   const isActive = $derived(Date.now() - session.lastAccessed < 300000)
 </script>
@@ -23,6 +24,7 @@ See LICENSE in the project root for details.
 <div
   class="session-card"
   class:active={isActive}
+  class:operator={isOperator}
   role="button"
   tabindex="0"
   onclick={onSelect}
@@ -32,7 +34,11 @@ See LICENSE in the project root for details.
       onSelect()
     }
   }}>
-  <div class="user-id">{userId} <StatusPill status={isActive ? 'active' : 'idle'} /></div>
+  <div class="user-id">
+    {userId}
+    <StatusPill status={isActive ? 'active' : 'idle'} />
+    {#if isOperator}<span class="operator-badge">you</span>{/if}
+  </div>
   <div class="session-detail">
     history: {session.historyLength} · facts: {session.factsCount} · summary: {session.summary === null ? 'no' : 'yes'}
   </div>
@@ -57,5 +63,21 @@ See LICENSE in the project root for details.
   .wizard-badge {
     display: block;
     margin-top: 2px;
+  }
+
+  .session-card.operator {
+    border-left: 2px solid var(--accent);
+    background: rgba(93, 217, 122, 0.05);
+  }
+
+  .operator-badge {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 0 5px;
+    margin-left: 4px;
   }
 </style>

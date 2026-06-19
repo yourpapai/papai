@@ -138,7 +138,10 @@ describe('discoverPlugins', () => {
     expect(result.errors[0]?.reason).toContain('Invalid JSON')
   })
 
-  test('reports plugin.json read failures distinctly from JSON parse failures', () => {
+  // chmod(0) does not block reads for the root user, so this assertion is only
+  // meaningful for unprivileged users (skipped when the suite runs as root, e.g. in CI containers).
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
+  test.skipIf(isRoot)('reports plugin.json read failures distinctly from JSON parse failures', () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'unreadable')
     mkdirSync(pluginDir)
