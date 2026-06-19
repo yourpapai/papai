@@ -15,6 +15,7 @@ import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
 import { maybeSeedAdminToolDefaults } from './admin-tool-defaults.js'
 import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
+import { getToolMetadata } from './tool-metadata.js'
 import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
 import { buildProviderlessTools, buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
@@ -47,6 +48,20 @@ export function applyToolPreferences(
         ? undefined
         : gatedExecute((input, opts) => Promise.resolve(t.execute!(input, opts)), name, askPermission)
     out[name] = { ...t, inputSchema: extendedSchema, execute: wrappedExecute }
+  }
+  return out
+}
+
+/**
+ * Guest enforcement: keep only read-risk tools, dropping all write/destructive/open-world
+ * (and unknown) tools. Bypasses per-context tool_prefs entirely — guests get a fixed,
+ * non-overridable read-only toolset. Tools with unknown metadata are dropped (fail-closed).
+ */
+export function applyGuestReadOnlyFilter(tools: ToolSet): ToolSet {
+  const out: ToolSet = {}
+  for (const [name, t] of Object.entries(tools)) {
+    if (t === undefined) continue
+    if (getToolMetadata(name)?.risk === 'read') out[name] = t
   }
   return out
 }

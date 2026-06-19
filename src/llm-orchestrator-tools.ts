@@ -21,7 +21,12 @@ import type { DisclosureSession } from './tools/disclosure/registry.js'
 import { LexicalToolRetriever } from './tools/disclosure/tool-retriever.js'
 import { maybeApplyDisclosure } from './tools/disclosure/wire.js'
 import { resolveReductionFlags } from './tools/feature-flags.js'
-import { applyToolPreferences, buildProviderlessToolDescriptors, buildToolDescriptors } from './tools/index.js'
+import {
+  applyGuestReadOnlyFilter,
+  applyToolPreferences,
+  buildProviderlessToolDescriptors,
+  buildToolDescriptors,
+} from './tools/index.js'
 import type { AskPermissionFn } from './tools/permission-gate.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:tools' })
@@ -132,7 +137,17 @@ const buildFullToolSet = async (
   opts: LlmInvocationOptions,
   deps: PrepareLlmInvocationDeps,
 ): Promise<{ tools: ToolSet; enabledToolNames: Set<string>; disclosure: DisclosureSession | undefined }> => {
-  const { contextId, chatUserId, username, contextType, provider, userText, stagedDownloadFn, askPermission } = opts
+  const {
+    contextId,
+    chatUserId,
+    username,
+    contextType,
+    provider,
+    userText,
+    stagedDownloadFn,
+    askPermission,
+    actorRole,
+  } = opts
   const descriptors = await getOrCreateDescriptors(
     contextId,
     chatUserId,
@@ -142,7 +157,10 @@ const buildFullToolSet = async (
     stagedDownloadFn,
     deps,
   )
-  const prefTools = applyToolPreferences(descriptors, contextId, askPermission)
+  const prefTools =
+    actorRole === 'guest'
+      ? applyGuestReadOnlyFilter(descriptors)
+      : applyToolPreferences(descriptors, contextId, askPermission)
   const flags = deps.resolveReductionFlags(contextId)
   const compacted = deps.applyResultCompaction(prefTools, {
     storageContextId: contextId,
