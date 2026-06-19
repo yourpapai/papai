@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import type { AuthorizedGroupEntry } from '../../shared/api-types.js'
+  import { formatDateTime } from '../../shared/helpers.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
@@ -69,20 +70,27 @@
     group_id: string
     added_by: string
     added_at: string
+    added_at_raw: string
   }
 
   const groupRows = $derived<GroupRow[]>(
     groups.map((g) => ({
       group_id: g.group_id,
       added_by: g.added_by,
-      added_at: g.added_at,
+      added_at: formatDateTime(g.added_at),
+      added_at_raw: g.added_at,
     })),
   )
 
   const columns = [
-    { key: 'group_id' as const, label: 'Group' },
-    { key: 'added_by' as const, label: 'Added by' },
-    { key: 'added_at' as const, label: 'Added at' },
+    { key: 'group_id' as const, label: 'Group', sortable: true },
+    { key: 'added_by' as const, label: 'Added by', sortable: true },
+    {
+      key: 'added_at' as const,
+      label: 'Added at (UTC)',
+      sortable: true,
+      sortAccessor: (r: GroupRow) => r.added_at_raw,
+    },
     { key: 'action' as const, label: '', align: 'right' as const },
   ]
 </script>
@@ -110,7 +118,12 @@
               {String(row[col.key as keyof GroupRow] ?? '')}
             {/if}
           {/snippet}
-          <DataTable {columns} rows={groupRows} {cell} rowKey="group_id" />
+          <DataTable
+            {columns}
+            rows={groupRows}
+            {cell}
+            rowKey="group_id"
+            defaultSort={{ key: 'added_at', dir: 'desc' }} />
         {/if}
       </div>
     {/snippet}

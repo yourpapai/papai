@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { mount, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 
 import DataTable from '../../../../client/shared/ui/DataTable.svelte'
 
@@ -68,6 +68,62 @@ describe('DataTable.svelte', () => {
     const tr = target.querySelector<HTMLTableRowElement>('tbody tr')
     tr?.click()
     expect(clicks).toEqual([{ id: 'r1', name: 'one', count: 1 }])
+    void unmount(component)
+  })
+
+  const sortableColumns = [
+    { key: 'id' as const, label: 'ID' },
+    { key: 'name' as const, label: 'Name', sortable: true },
+    { key: 'count' as const, label: 'Count', align: 'right' as const, sortable: true },
+  ]
+
+  function bodyText(target: HTMLElement): string[] {
+    return [...target.querySelectorAll('tbody tr')].map((tr) => tr.querySelector('td')?.textContent?.trim() ?? '')
+  }
+
+  test('clicking a sortable header sorts ascending, clicking again descending', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const rows: Row[] = [
+      { id: 'b', name: 'beta', count: 2 },
+      { id: 'a', name: 'alpha', count: 3 },
+      { id: 'c', name: 'gamma', count: 1 },
+    ]
+    const component = mount(DataTable, { target, props: { columns: sortableColumns, rows, rowKey: 'id' } })
+
+    const countTh = [...target.querySelectorAll('thead th')].find((th) => th.textContent?.includes('Count'))!
+    // ascending by count (1,2,3) → ids c,b,a
+    countTh.querySelector('button')!.click()
+    flushSync()
+    expect(bodyText(target)).toEqual(['c', 'b', 'a'])
+    // descending by count (3,2,1) → ids a,b,c
+    countTh.querySelector('button')!.click()
+    flushSync()
+    expect(bodyText(target)).toEqual(['a', 'b', 'c'])
+    void unmount(component)
+  })
+
+  test('non-sortable header has no sort button', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(DataTable, { target, props: { columns: sortableColumns, rows: [], rowKey: 'id' } })
+    const idTh = [...target.querySelectorAll('thead th')].find((th) => th.textContent?.includes('ID'))!
+    expect(idTh.querySelector('button')).toBeNull()
+    void unmount(component)
+  })
+
+  test('defaultSort orders rows on initial render', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const rows: Row[] = [
+      { id: 'b', name: 'beta', count: 2 },
+      { id: 'a', name: 'alpha', count: 3 },
+    ]
+    const component = mount(DataTable, {
+      target,
+      props: { columns: sortableColumns, rows, rowKey: 'id', defaultSort: { key: 'count', dir: 'desc' } },
+    })
+    expect(bodyText(target)).toEqual(['a', 'b'])
     void unmount(component)
   })
 })

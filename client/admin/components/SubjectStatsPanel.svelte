@@ -7,7 +7,8 @@
   import { untrack } from 'svelte'
 
   import type { SubjectStats } from '../../../src/stats/types.js'
-  import { fmtBytes } from '../../shared/helpers.js'
+  import { fmtBytes, fmtNum } from '../../shared/helpers.js'
+  import MetricCard from '../../shared/ui/MetricCard.svelte'
   import { fetchStatsSubject } from '../fetchers.js'
 
   interface Props {
@@ -37,6 +38,34 @@
       void load()
     })
   })
+
+  interface Cell {
+    label: string
+    value: string
+    sub?: string
+  }
+
+  const cells = $derived.by<Cell[]>(() => {
+    const d = data
+    if (d === null) return []
+    return [
+      { label: 'memos', value: fmtNum(d.memos.total, 0) },
+      { label: 'recurring', value: fmtNum(d.recurringTasks.total, 0) },
+      { label: 'scheduled prompts', value: fmtNum(d.scheduledPrompts.total, 0) },
+      { label: 'alert prompts', value: fmtNum(d.alertPrompts.total, 0) },
+      { label: 'instructions', value: fmtNum(d.userInstructions.total, 0) },
+      { label: 'attachments bytes', value: fmtBytes(d.attachments.storedBytesTotal) },
+      { label: 'messages', value: fmtNum(d.messageMetadata.total, 0) },
+      { label: 'turns', value: fmtNum(d.conversationHistory.turnCount, 0) },
+      { label: 'llm rows', value: fmtNum(d.llmUsage.rowCount, 0) },
+      {
+        label: 'tool calls',
+        value: fmtNum(d.toolCalls.total, 0),
+        sub: `${d.toolCalls.success} ok · ${d.toolCalls.failure} fail`,
+      },
+      { label: 'web fetches', value: fmtNum(d.webFetches.totalRequests, 0) },
+    ]
+  })
 </script>
 
 <section class="subject-stats-panel">
@@ -46,18 +75,42 @@
   {:else if error !== null}
     <span class="status-error">Stats error: {error}</span>
   {:else if data !== null}
-    <dl class="stats-list">
-      <dt>memos</dt><dd>{data.memos.total}</dd>
-      <dt>recurring</dt><dd>{data.recurringTasks.total}</dd>
-      <dt>scheduled prompts</dt><dd>{data.scheduledPrompts.total}</dd>
-      <dt>alert prompts</dt><dd>{data.alertPrompts.total}</dd>
-      <dt>instructions</dt><dd>{data.userInstructions.total}</dd>
-      <dt>attachments bytes</dt><dd>{fmtBytes(data.attachments.storedBytesTotal)}</dd>
-      <dt>messages</dt><dd>{data.messageMetadata.total}</dd>
-      <dt>turns</dt><dd>{data.conversationHistory.turnCount}</dd>
-      <dt>llm rows</dt><dd>{data.llmUsage.rowCount}</dd>
-      <dt>tool calls</dt><dd>{data.toolCalls.total} ({data.toolCalls.success} / {data.toolCalls.failure})</dd>
-      <dt>web fetches</dt><dd>{data.webFetches.totalRequests}</dd>
-    </dl>
+    <div class="stats-grid">
+      {#each cells as cell (cell.label)}
+        <MetricCard label={cell.label} value={cell.value} sub={cell.sub} />
+      {/each}
+    </div>
   {/if}
 </section>
+
+<style>
+  .subject-stats-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .subject-stats-panel h4 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg3);
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+  }
+  .placeholder,
+  .status-error {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .status-error {
+    color: var(--danger);
+  }
+  .placeholder {
+    color: var(--fg3);
+  }
+</style>
