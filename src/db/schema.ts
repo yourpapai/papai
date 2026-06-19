@@ -104,6 +104,7 @@ export const authorizedGroups = sqliteTable(
     addedAt: text('added_at')
       .notNull()
       .default(sql`(datetime('now'))`),
+    guestMode: integer('guest_mode', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => [index('idx_authorized_groups_added_by').on(table.addedBy)],
 )
