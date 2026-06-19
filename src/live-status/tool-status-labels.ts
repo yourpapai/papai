@@ -8,7 +8,7 @@
  * single field it reads is ever surfaced. `quote: false` renders the value bare
  * (used for hosts); otherwise it is wrapped in quotes.
  */
-export type ToolStatusEntry = {
+type ToolStatusEntry = {
   emoji: string
   label: string
   quote?: boolean
@@ -45,7 +45,7 @@ const hostOf = (input: unknown): string | undefined => {
 }
 
 /** Collapse whitespace, trim, and truncate to MAX_ARG_LENGTH with an ellipsis. */
-export const sanitizeArg = (value: string): string => {
+const sanitizeArg = (value: string): string => {
   const collapsed = value.replace(/\s+/gu, ' ').trim()
   return collapsed.length > MAX_ARG_LENGTH ? `${collapsed.slice(0, MAX_ARG_LENGTH)}…` : collapsed
 }
