@@ -161,6 +161,11 @@ export function askPermissionViaChat(
           { contextId, toolName: req.toolName, id, error: error instanceof Error ? error.message : String(error) },
           'Failed to send permission prompt buttons',
         )
+        const entry = pending.get(id)
+        if (entry === undefined) return
+        pending.delete(id)
+        clearTimeout(entry.timer)
+        entry.resolve('deny')
       })
   })
 }

@@ -259,4 +259,16 @@ describe('askPermissionViaChat handle lifecycle', () => {
     expect(result.handle).toBe(handle)
     await expect(decisionPromise).resolves.toBe('allow')
   })
+
+  test('denies immediately when the prompt fails to send', async () => {
+    resetPermissionPromptForTesting()
+    const reply: ReplyFn = {
+      text: mock(() => Promise.resolve()),
+      formatted: mock(() => Promise.resolve()),
+      typing: mock(() => undefined),
+      buttons: mock((): Promise<PromptHandle | undefined> => Promise.reject(new Error('no buttons here'))),
+    }
+    const decision = await askPermissionViaChat(reply, 'ctx-1', { toolName: 'web_fetch', reason: 'r', args: {} })
+    expect(decision).toBe('deny')
+  })
 })
