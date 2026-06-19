@@ -8,14 +8,16 @@ import type { ToolSet } from 'ai'
 import { isS3Configured } from '../attachments/index.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
 import { getScopeKey } from '../chat/context-scope.js'
-import { hasThreadContextId } from '../chat/scoped-context.js'
+import { hasThreadContextId, parseScopedContextId } from '../chat/scoped-context.js'
 import type { ContextType } from '../chat/types.js'
+import { getPlatformInstance } from '../instances/platform-store.js'
 import { makeArchiveMemosTool } from './archive-memos.js'
 import { makeExpandResultTool } from './compaction/expand-result.js'
 import { makeCreateRecurringTaskTool } from './create-recurring-task.js'
 import { addDeferredPromptTools } from './deferred-tools-builder.js'
 import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
 import { resolveReductionFlags } from './feature-flags.js'
+import { makeFetchChatLinkTool } from './fetch-chat-link.js'
 import { makeGetCurrentTimeTool } from './get-current-time.js'
 import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructionTool } from './instructions.js'
 import { makeListMemosTool } from './list-memos.js'
@@ -82,6 +84,15 @@ function addLookupGroupHistoryTool(tools: ToolSet, userId: string | undefined, c
   tools['lookup_group_history'] = makeLookupGroupHistoryTool(userId, contextId)
 }
 
+function addFetchChatLinkTool(tools: ToolSet, chatUserId: string | undefined, contextId: string | undefined): void {
+  if (chatUserId === undefined || contextId === undefined) return
+  const parsed = parseScopedContextId(contextId)
+  if (parsed === null) return
+  const instance = getPlatformInstance(parsed.platformInstanceId)
+  if (instance === null || instance.type !== 'mattermost') return
+  tools['fetch_chat_link'] = makeFetchChatLinkTool(parsed.platformInstanceId, chatUserId)
+}
+
 type AddProviderIndependentToolsOptions = Readonly<{
   chatUserId: string | undefined
   contextId: string | undefined
@@ -119,6 +130,7 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
   addInstructionTools(tools, storageOwnerId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
   if (contextId !== undefined) tools['web_fetch'] = makeWebFetchTool(contextId, chatUserId, contextType)
+  addFetchChatLinkTool(tools, chatUserId, contextId)
   if (mode === 'normal' && storageOwnerId !== undefined) {
     addDeferredPromptTools(
       tools,
