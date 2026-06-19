@@ -187,8 +187,7 @@ async function handleMessage(
     return
   }
 
-  let queueMessage = enqueueMessage
-  if (deps.enqueueMessage !== undefined) queueMessage = deps.enqueueMessage
+  const queueMessage = deps.enqueueMessage ?? enqueueMessage
   queueMessage(
     {
       text: steerText,
@@ -199,6 +198,7 @@ async function handleMessage(
       contextType: msg.contextType,
       newAttachmentIds,
       voiceStagedIds,
+      actorRole: auth.isGuest === true ? 'guest' : 'member',
     },
     reply,
     (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),

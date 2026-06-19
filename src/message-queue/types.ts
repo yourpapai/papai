@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ContextType, ReplyFn } from '../chat/types.js'
+import type { ActorRole, ContextType, ReplyFn } from '../chat/types.js'
 
 type QueueContextInfo = Readonly<{
   contextType: ContextType
@@ -22,6 +22,7 @@ export type QueueItem = Readonly<{
   storageContextId: string
   newAttachmentIds: readonly string[]
   voiceStagedIds: readonly string[]
+  actorRole?: ActorRole
 }> &
   QueueContextInfo &
   QueueConfigContextInfo
@@ -35,6 +36,7 @@ export type CoalescedItem = Readonly<{
   voiceStagedIds: readonly string[]
   reply: ReplyFn
   turnId: string
+  actorRole?: ActorRole
 }> &
   QueueContextInfo &
   QueueConfigContextInfo

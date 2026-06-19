@@ -203,6 +203,7 @@ export class MessageQueue {
       voiceStagedIds,
       reply: lastMessage.reply,
       turnId,
+      actorRole: lastMessage.item.actorRole,
     }
 
     this.messages = []
