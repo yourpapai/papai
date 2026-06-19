@@ -6,6 +6,7 @@
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { isGuestModeEnabled, setGuestMode } from '../../authorized-groups.js'
 import { getDrizzleDb } from '../../db/drizzle.js'
 import { taskInstances } from '../../db/instance-schema.js'
 import { addGroupMember, listGroupMembers, removeGroupMember } from '../../groups.js'
@@ -54,6 +55,7 @@ function handleMembersGet(authed: AuthenticatedSettingsRequest, url: URL): Respo
 }
 
 const MemberBodySchema = z.object({ userId: z.string().min(1), contextId: z.string().min(1) })
+const GuestModeBodySchema = z.object({ enabled: z.boolean(), contextId: z.string().min(1) })
 
 async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   const csrf = requireCsrf(req, authed)
@@ -79,6 +81,26 @@ async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsReq
     log.info({ contextId: outcome.group.contextId }, 'Settings group member removed')
   }
   return settingsJson(200, { ok: true, contextId: outcome.group.contextId })
+}
+
+function handleGuestModeGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
+  const outcome = requireGroup(authed, 'read', url.searchParams.get('contextId'))
+  if (!outcome.ok) return outcome.response
+  return settingsJson(200, { contextId: outcome.group.contextId, enabled: isGuestModeEnabled(outcome.group.contextId) })
+}
+
+async function handleGuestModePatch(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
+  const csrf = requireCsrf(req, authed)
+  if (csrf !== null) return csrf
+  const parsed = await parseJsonBody(req)
+  if (!parsed.ok) return parsed.response
+  const body = GuestModeBodySchema.safeParse(parsed.value)
+  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const outcome = requireGroup(authed, 'write', body.data.contextId)
+  if (!outcome.ok) return outcome.response
+  setGuestMode(outcome.group.contextId, body.data.enabled)
+  log.info({ contextId: outcome.group.contextId, enabled: body.data.enabled }, 'Settings group guest mode updated')
+  return settingsJson(200, { ok: true, contextId: outcome.group.contextId, enabled: body.data.enabled })
 }
 
 function handleTaskInstanceGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
@@ -144,6 +166,11 @@ export function handleGroupRoutes(req: Request, url: URL, pathname: string): Pro
   if (pathname === '/settings/api/group/task-instance') {
     if (req.method === 'GET') return Promise.resolve(handleTaskInstanceGet(auth.authed, url))
     if (req.method === 'PATCH') return handleTaskInstancePatch(req, auth.authed)
+    return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
+  }
+  if (pathname === '/settings/api/group/guest-mode') {
+    if (req.method === 'GET') return Promise.resolve(handleGuestModeGet(auth.authed, url))
+    if (req.method === 'PATCH') return handleGuestModePatch(req, auth.authed)
     return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
   }
   return Promise.resolve(settingsJson(404, { error: 'not found' }))
