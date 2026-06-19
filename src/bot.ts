@@ -34,6 +34,7 @@ import { enqueueMessage } from './message-queue/index.js'
 import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
+import { runRegistry } from './run-control/registry.js'
 
 type EnqueueMessageFn = typeof enqueueMessage
 const initializedChats = new WeakSet<ChatProvider>()
@@ -173,11 +174,24 @@ async function handleMessage(
   if (shouldIgnoreGroupMessage(msg)) return
   const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
+  const steerText = buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId)
+
+  const activeRun = runRegistry.get(auth.storageContextId)
+  if (activeRun !== undefined) {
+    activeRun.steerQueue.push({ text: steerText })
+    log.debug(
+      { storageContextId: auth.storageContextId, turnId: activeRun.turnId },
+      'Mid-run message routed to steer queue',
+    )
+    await reply.text('✋ folding that into the current run…')
+    return
+  }
+
   let queueMessage = enqueueMessage
   if (deps.enqueueMessage !== undefined) queueMessage = deps.enqueueMessage
   queueMessage(
     {
-      text: buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId),
+      text: steerText,
       userId: msg.user.id,
       username: msg.user.username,
       storageContextId: auth.storageContextId,
