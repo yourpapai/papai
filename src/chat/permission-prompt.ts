@@ -6,7 +6,7 @@
 import { randomBytes } from 'node:crypto'
 
 import { logger } from '../logger.js'
-import type { ReplyFn } from './types.js'
+import type { PromptHandle, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:permission-prompt' })
 
@@ -87,6 +87,7 @@ interface PendingRequest {
   toolName: string
   resolve: (decision: PermissionDecision) => void
   timer: ReturnType<typeof setTimeout>
+  handle?: PromptHandle
 }
 
 const pending = new Map<string, PendingRequest>()
@@ -125,38 +126,72 @@ export function formatPermissionDecisionText(sourceMessageText: string, decision
   return `${sourceMessageText.trimEnd()}\n\n${label}`
 }
 
-export async function askPermissionViaChat(
+export function askPermissionViaChat(
   reply: ReplyFn,
   contextId: string,
   req: { toolName: string; reason: string; args: Record<string, unknown> },
 ): Promise<PermissionDecision> {
   const id = generateRequestId()
   const body = formatPrompt(req.toolName, req.reason, req.args)
-  await reply.buttons(body, {
-    buttons: [
-      { text: '✅ Allow', callbackData: `perm:a:${id}`, style: 'primary' },
-      { text: '🚫 Deny', callbackData: `perm:d:${id}`, style: 'secondary' },
-    ],
-  })
   return new Promise<PermissionDecision>((resolve) => {
     const timer = setTimeout(() => {
       const entry = pending.get(id)
       if (entry === undefined) return
       pending.delete(id)
       log.warn({ contextId, toolName: req.toolName, id }, 'Permission prompt timed out; denying')
+      void redactExpiredPrompt(entry, contextId, req.toolName, id)
       entry.resolve('deny')
     }, PERMISSION_TIMEOUT_MS)
     pending.set(id, { contextId, toolName: req.toolName, resolve, timer })
+    void reply
+      .buttons(body, {
+        buttons: [
+          { text: '✅ Allow', callbackData: `perm:a:${id}`, style: 'primary' },
+          { text: '🚫 Deny', callbackData: `perm:d:${id}`, style: 'secondary' },
+        ],
+      })
+      .then((handle) => {
+        const entry = pending.get(id)
+        if (entry !== undefined) {
+          entry.handle = handle
+        }
+      })
+      .catch((error: unknown) => {
+        log.warn(
+          { contextId, toolName: req.toolName, id, error: error instanceof Error ? error.message : String(error) },
+          'Failed to send permission prompt buttons',
+        )
+      })
   })
 }
 
-export function resolvePermissionRequest(id: string, decision: PermissionDecision): boolean {
+async function redactExpiredPrompt(
+  entry: PendingRequest,
+  contextId: string,
+  toolName: string,
+  id: string,
+): Promise<void> {
+  if (entry.handle === undefined) return
+  try {
+    await entry.handle.redact('⌛ Expired — denied.')
+  } catch (error) {
+    log.warn(
+      { contextId, toolName, id, error: error instanceof Error ? error.message : String(error) },
+      'Failed to redact expired permission prompt',
+    )
+  }
+}
+
+export function resolvePermissionRequest(
+  id: string,
+  decision: PermissionDecision,
+): { resolved: boolean; handle?: PromptHandle } {
   const entry = pending.get(id)
-  if (entry === undefined) return false
+  if (entry === undefined) return { resolved: false }
   pending.delete(id)
   clearTimeout(entry.timer)
   entry.resolve(decision)
-  return true
+  return entry.handle === undefined ? { resolved: true } : { resolved: true, handle: entry.handle }
 }
 
 export function peekPermissionRequest(id: string): { contextId: string; toolName: string } | null {

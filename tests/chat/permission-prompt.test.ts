@@ -13,7 +13,7 @@ import {
   resolvePermissionRequest,
   resetPermissionPromptForTesting,
 } from '../../src/chat/permission-prompt.js'
-import type { ButtonReplyOptions, ChatButton, ReplyFn } from '../../src/chat/types.js'
+import type { ButtonReplyOptions, ChatButton, PromptHandle, ReplyFn } from '../../src/chat/types.js'
 
 type CapturedButtonCall = { body: string; options: ButtonReplyOptions }
 
@@ -67,7 +67,7 @@ describe('askPermissionViaChat', () => {
     expect(btns[1]!.callbackData).toBe(`perm:d:${allowId}`)
 
     const resolved = resolvePermissionRequest(allowId, 'allow')
-    expect(resolved).toBe(true)
+    expect(resolved.resolved).toBe(true)
     await expect(promise).resolves.toBe('allow')
   })
 
@@ -77,12 +77,12 @@ describe('askPermissionViaChat', () => {
     await tickAsync()
     const btns = extractButtons(getButtonCall()!)
     const id = btns[0]!.callbackData.replace('perm:a:', '')
-    expect(resolvePermissionRequest(id, 'deny')).toBe(true)
+    expect(resolvePermissionRequest(id, 'deny').resolved).toBe(true)
     await expect(promise).resolves.toBe('deny')
   })
 
   test('resolvePermissionRequest returns false for unknown id', () => {
-    expect(resolvePermissionRequest('nope', 'allow')).toBe(false)
+    expect(resolvePermissionRequest('nope', 'allow').resolved).toBe(false)
   })
 
   test('callback data uses 8-char base64url id', async () => {
@@ -219,5 +219,44 @@ describe('formatPrompt', () => {
   test('escapes markdown in reason', () => {
     const result = formatPrompt('delete_task', 'cleanup *task*', { id: 'task-123' })
     expect(result).toContain('cleanup \\*task\\*')
+  })
+})
+
+describe('askPermissionViaChat handle lifecycle', () => {
+  type SpyHandle = {
+    redact: ReturnType<typeof mock<() => Promise<void>>>
+    remove: ReturnType<typeof mock<() => Promise<void>>>
+  }
+  type MockButtons = ReturnType<typeof mock<(body: string, options: ButtonReplyOptions) => Promise<PromptHandle>>>
+
+  function makeReplyWithHandle(): { reply: ReplyFn; handle: SpyHandle; buttonsMock: MockButtons } {
+    const handle: SpyHandle = {
+      redact: mock(() => Promise.resolve()),
+      remove: mock(() => Promise.resolve()),
+    }
+    const buttonsMock: MockButtons = mock((_body: string, _options: ButtonReplyOptions) =>
+      Promise.resolve<PromptHandle>(handle),
+    )
+    const reply: ReplyFn = {
+      text: mock(() => Promise.resolve()),
+      formatted: mock(() => Promise.resolve()),
+      typing: mock(() => undefined),
+      buttons: buttonsMock,
+    }
+    return { reply, handle, buttonsMock }
+  }
+
+  test('resolvePermissionRequest returns the stored handle', async () => {
+    resetPermissionPromptForTesting()
+    const { reply, handle, buttonsMock } = makeReplyWithHandle()
+    const decisionPromise = askPermissionViaChat(reply, 'ctx-1', { toolName: 'web_fetch', reason: 'r', args: {} })
+    const call = buttonsMock.mock.calls[0]!
+    const callbackData = call[1].buttons![0]!.callbackData
+    const id = callbackData.replace('perm:a:', '')
+    await tickAsync()
+    const result = resolvePermissionRequest(id, 'allow')
+    expect(result.resolved).toBe(true)
+    expect(result.handle).toBe(handle)
+    await expect(decisionPromise).resolves.toBe('allow')
   })
 })

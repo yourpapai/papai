@@ -61,7 +61,7 @@ export async function routeInteraction(
       await reply.text('Action is no longer available.')
       return true
     }
-    if (!resolvePermissionRequest(id, decision)) {
+    if (!resolvePermissionRequest(id, decision).resolved) {
       await reply.text('Action is no longer available.')
       return true
     }
