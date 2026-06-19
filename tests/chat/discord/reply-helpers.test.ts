@@ -367,3 +367,52 @@ describe('createDiscordReplyFn', () => {
     expect(reply.ephemeralConfirm).toBeUndefined()
   })
 })
+
+describe('createDiscordReplyFn createStatus', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('creates, updates, and dismisses a status message', async () => {
+    const edits: Array<{ content?: string }> = []
+    let deleted = 0
+    const sent = {
+      id: 'msg-1',
+      edit: (arg: { content?: string }): Promise<unknown> => {
+        edits.push(arg)
+        return Promise.resolve(undefined)
+      },
+      delete: (): Promise<unknown> => {
+        deleted += 1
+        return Promise.resolve(undefined)
+      },
+    }
+    const channel: SendableChannel = {
+      id: 'chan-1',
+      send: (): Promise<typeof sent> => Promise.resolve(sent),
+      sendTyping: (): Promise<void> => Promise.resolve(),
+    }
+
+    const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
+    assert(reply.createStatus !== undefined, 'expected createStatus')
+
+    const handle = await reply.createStatus('💭 Thinking…')
+    assert(handle !== undefined, 'expected a status handle')
+    await handle.update('📝 Creating task…')
+    await handle.dismiss()
+
+    expect(edits).toEqual([{ content: '📝 Creating task…' }])
+    expect(deleted).toBe(1)
+  })
+
+  test('returns undefined when send fails', async () => {
+    const channel: SendableChannel = {
+      id: 'chan-1',
+      send: (): Promise<never> => Promise.reject(new Error('send failed')),
+      sendTyping: (): Promise<void> => Promise.resolve(),
+    }
+    const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
+    assert(reply.createStatus !== undefined, 'expected createStatus')
+    expect(await reply.createStatus('💭 Thinking…')).toBeUndefined()
+  })
+})

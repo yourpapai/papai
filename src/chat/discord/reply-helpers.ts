@@ -6,7 +6,7 @@
 import pLimit from 'p-limit'
 
 import { logger } from '../../logger.js'
-import type { ButtonReplyOptions, EmbedOptions, PromptHandle, ReplyFn, ReplyOptions } from '../types.js'
+import type { ButtonReplyOptions, EmbedOptions, PromptHandle, ReplyFn, ReplyOptions, StatusHandle } from '../types.js'
 import { toActionRows } from './buttons.js'
 import { chunkForDiscord } from './format-chunking.js'
 import { formatLlmOutput } from './format.js'
@@ -204,6 +204,18 @@ export function createDiscordReplyFn(params: CreateDiscordReplyFnParams): ReplyF
       const embed = createEmbedPayload(options)
       const sent = await channel.send({ embeds: [embed] })
       sentMessages.push(sent)
+    },
+    createStatus: async (initialText: string): Promise<StatusHandle | undefined> => {
+      const sent = await channel.send({ content: initialText }).catch(() => undefined)
+      if (sent === undefined) return undefined
+      return {
+        update: async (text: string): Promise<void> => {
+          await sent.edit({ content: text }).catch(() => undefined)
+        },
+        dismiss: async (): Promise<void> => {
+          await sent.delete().catch(() => undefined)
+        },
+      }
     },
   }
 
