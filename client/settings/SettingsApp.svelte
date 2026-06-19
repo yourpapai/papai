@@ -24,6 +24,7 @@
   import IdentitySection from './sections/IdentitySection.svelte'
   import MembersSection from './sections/MembersSection.svelte'
   import GroupProviderSection from './sections/GroupProviderSection.svelte'
+  import GuestModeSection from './sections/GuestModeSection.svelte'
   import AdminInstancesSection from './sections/admin/AdminInstancesSection.svelte'
   import AdminSystemSection from './sections/admin/AdminSystemSection.svelte'
   import AdminByokSection from './sections/admin/AdminByokSection.svelte'
@@ -85,6 +86,7 @@
             ? [
                 { id: 'members', label: 'Members' },
                 { id: 'group-provider', label: 'Group provider' },
+                { id: 'guest-mode', label: 'Guest mode' },
               ]
             : []),
         ],
@@ -184,6 +186,7 @@
             {#if isGroup}
               <MembersSection contextId={ctx} />
               <GroupProviderSection contextId={ctx} />
+              <GuestModeSection contextId={ctx} />
             {/if}
           </div>
           <div class="settings-group settings-advanced">
