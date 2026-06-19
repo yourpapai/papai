@@ -3,7 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ButtonReplyOptions, DeferredDeliveryTarget, PromptHandle, ReplyFn, ReplyOptions } from '../types.js'
+import type {
+  ButtonReplyOptions,
+  DeferredDeliveryTarget,
+  PromptHandle,
+  ReplyFn,
+  ReplyOptions,
+  StatusHandle,
+} from '../types.js'
 import type { MattermostActionContextInput, MattermostSignedActionContext } from './action-signing.js'
 import { buildMattermostMentionPrefix } from './file-helpers.js'
 import { ChannelSchema } from './schema.js'
@@ -120,6 +127,23 @@ const createButtonsReply = (
   }
 }
 
+const buildMattermostStatusHandle = async (
+  post: MattermostPostReply,
+  apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
+  initialText: string,
+): Promise<StatusHandle | undefined> => {
+  const createdId = await post(initialText)
+  if (createdId === undefined) return undefined
+  return {
+    update: async (text: string): Promise<void> => {
+      await apiFetch('PUT', `/api/v4/posts/${createdId}/patch`, { message: text, props: {} }).catch(() => undefined)
+    },
+    dismiss: async (): Promise<void> => {
+      await apiFetch('DELETE', `/api/v4/posts/${createdId}`, undefined).catch(() => undefined)
+    },
+  }
+}
+
 const makePost =
   (
     channelId: string,
@@ -181,6 +205,8 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
       threadId,
       apiFetch,
     ),
+    createStatus: (initialText: string): Promise<StatusHandle | undefined> =>
+      buildMattermostStatusHandle(post, apiFetch, initialText),
   }
 }
 

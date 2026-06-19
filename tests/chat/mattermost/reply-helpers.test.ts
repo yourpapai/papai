@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { createMattermostReplyFn } from '../../../src/chat/mattermost/reply-helpers.js'
 import type { ReplyFn } from '../../../src/chat/types.js'
@@ -227,6 +228,32 @@ describe('createMattermostReplyFn', () => {
         channel_id: 'chan-1',
         message: '**bold** text',
       })
+    })
+  })
+
+  describe('createStatus', () => {
+    test('posts the status then updates and dismisses it', async () => {
+      const { reply, apiCalls } = makeReplyFn()
+      assert(reply.createStatus !== undefined, 'expected createStatus')
+
+      const handle = await reply.createStatus('💭 Thinking…')
+      assert(handle !== undefined, 'expected a status handle')
+      await handle.update('📝 Creating task…')
+      await handle.dismiss()
+
+      const postCall = apiCalls.find((c) => c.method === 'POST')
+      expect(postCall).toBeDefined()
+      expect(postCall?.path).toBe('/api/v4/posts')
+      expect(postCall?.body).toMatchObject({ message: '💭 Thinking…' })
+
+      const patchCall = apiCalls.find((c) => c.method === 'PUT')
+      expect(patchCall).toBeDefined()
+      expect(patchCall?.path).toBe('/api/v4/posts/post-1/patch')
+      expect(patchCall?.body).toMatchObject({ message: '📝 Creating task…' })
+
+      const delCall = apiCalls.find((c) => c.method === 'DELETE')
+      expect(delCall).toBeDefined()
+      expect(delCall?.path).toBe('/api/v4/posts/post-1')
     })
   })
 })
