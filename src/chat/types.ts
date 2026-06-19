@@ -206,6 +206,8 @@ import type { ContextSnapshot, EmbedOptions } from './context-types.js'
 export type { ContextSection, ContextSnapshot, EmbedField, EmbedOptions } from './context-types.js'
 import type { PromptHandle } from './prompt-handle.js'
 export type { PromptHandle } from './prompt-handle.js'
+import type { StatusHandle } from './status-handle.js'
+export type { StatusHandle } from './status-handle.js'
 
 /** Reply function injected into handlers — the only way to send messages back to the user. */
 export type ReplyFn = {
@@ -225,6 +227,11 @@ export type ReplyFn = {
   ephemeralConfirm: (text: string) => Promise<void>
   /** Optional: send a structured embed. Only Discord implements this today. */
   embed: (options: EmbedOptions) => Promise<void>
+  /**
+   * Optional: post an ephemeral status message and return a handle to update/delete it.
+   * Returns undefined when the platform cannot create one (e.g. Kontur Talk) or the send fails.
+   */
+  createStatus: (initialText: string) => Promise<StatusHandle | undefined>
 }>
 
 /** Result of `ChatProvider.renderContext` — describes how the handler should send the output. */
