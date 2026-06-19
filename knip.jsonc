@@ -168,6 +168,14 @@
     "plugins/audio-transcribe/transcription.ts": ["files"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
+    // fetch_chat_link feature — staged ahead of wiring (see plan
+    // docs/superpowers/plans/2026-06-19-follow-mattermost-chat-links.md).
+    // link-resolver.ts has no production importer until the tool is registered in the
+    // builder (plan Task 8). The schema thread types are consumed by the resolver in
+    // Tasks 4-5. Remove these entries (and the unused MattermostPostList type) in the
+    // final cleanup task once everything is wired.
+    "src/chat/mattermost/link-resolver.ts": ["files"],
+    "src/chat/mattermost/schema.ts": ["types"],
   },
 
   // Report unused exports even in entry files
