@@ -112,6 +112,7 @@ export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEv
     ctx.turnId,
   )
   reportToolStarted(ctx, event)
+  ctx.liveStatus?.onToolStart({ toolName: event.toolCall.toolName, input: event.toolCall.input })
 }
 
 export const buildToolCallStartHandler =
@@ -173,6 +174,7 @@ export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallF
   )
   emitFailureClassified(ctx, event)
   reportToolFinished(ctx, event)
+  ctx.liveStatus?.onToolFinish()
   handleToolCallFinish(ctx.contextId, undefined, event)
 }
 
@@ -254,6 +256,7 @@ export const invokeModel = async (
     modelRole: 'main',
     turnId,
     progressReporter: args.progressReporter,
+    liveStatus: args.liveStatus,
   }
   const result = await callGenerateText({
     contextId,

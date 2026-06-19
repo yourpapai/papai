@@ -43,6 +43,32 @@ function createReporterSpy(): {
   }
 }
 
+function createLiveStatusSpy(): {
+  liveStatus: import('../src/live-status/reporter.js').LiveStatusReporter
+  starts: Array<{ toolName: string; input: unknown }>
+  finishes: number
+} {
+  const starts: Array<{ toolName: string; input: unknown }> = []
+  let finishes = 0
+  const spy = {
+    starts,
+    get finishes(): number {
+      return finishes
+    },
+    liveStatus: {
+      start: (): Promise<void> => Promise.resolve(),
+      onToolStart: (event: { toolName: string; input: unknown }): void => {
+        starts.push(event)
+      },
+      onToolFinish: (): void => {
+        finishes += 1
+      },
+      dismiss: (): Promise<void> => Promise.resolve(),
+    },
+  }
+  return spy
+}
+
 describe('handleToolCallStart', () => {
   const captured: DebugEvent[] = []
   const listener = (event: DebugEvent): void => {
@@ -316,5 +342,32 @@ describe('handleToolCallFinishEvent', () => {
 
     expect(captured.some((e) => e.type === 'tool:failure_classified')).toBe(true)
     expect(captured.some((e) => e.type === 'llm:tool_result')).toBe(true)
+  })
+})
+
+describe('live status wiring', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('handleToolCallStart forwards to liveStatus.onToolStart', () => {
+    const spy = createLiveStatusSpy()
+    const ctx: ToolCallContext = { ...baseContext(), liveStatus: spy.liveStatus }
+    handleToolCallStart(ctx, {
+      toolCall: { toolName: 'create_task', toolCallId: 'c1', input: { title: 'X' } },
+    })
+    expect(spy.starts).toEqual([{ toolName: 'create_task', input: { title: 'X' } }])
+  })
+
+  test('handleToolCallFinishEvent forwards to liveStatus.onToolFinish', () => {
+    const spy = createLiveStatusSpy()
+    const ctx: ToolCallContext = { ...baseContext(), liveStatus: spy.liveStatus }
+    handleToolCallFinishEvent(ctx, {
+      toolCall: { toolName: 'create_task', toolCallId: 'c1', input: { title: 'X' } },
+      durationMs: 1,
+      success: true,
+      output: {},
+    })
+    expect(spy.finishes).toBe(1)
   })
 })

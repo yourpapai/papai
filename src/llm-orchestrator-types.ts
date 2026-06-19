@@ -9,6 +9,7 @@ import type { generateText, stepCountIs, ModelMessage, ToolSet } from 'ai'
 import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ReplyFn } from './chat/types.js'
+import type { LiveStatusReporter } from './live-status/reporter.js'
 import type { TaskProvider } from './providers/types.js'
 import type { DisclosureSession } from './tools/disclosure/registry.js'
 
@@ -64,7 +65,8 @@ export type InvokeModelArgs = {
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
 } & Partial<Record<'progressReporter', AiProgressReporter>> &
-  Partial<Record<'disclosure', DisclosureSession>>
+  Partial<Record<'disclosure', DisclosureSession>> &
+  Partial<Record<'liveStatus', LiveStatusReporter>>
 
 export type StepOutput = {
   stepNumber: number
@@ -82,7 +84,8 @@ export type ToolCallContext = {
   model: string
   modelRole: 'main' | 'small'
   turnId: string
-} & Partial<Record<'progressReporter', AiProgressReporter>>
+} & Partial<Record<'progressReporter', AiProgressReporter>> &
+  Partial<Record<'liveStatus', LiveStatusReporter>>
 
 export type GenerateArgs = {
   contextId: string
