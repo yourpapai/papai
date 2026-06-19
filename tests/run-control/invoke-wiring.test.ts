@@ -176,7 +176,10 @@ describe('invokeModel run-control wiring', () => {
       return Promise.reject(err)
     })
 
-    await expect(invokeModel(args)).rejects.toBeInstanceOf(RunAbortedError)
+    const err: unknown = await invokeModel(args).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(RunAbortedError)
+    assert.ok(err instanceof RunAbortedError)
+    expect(err.effects).toEqual([{ toolName: 'update_task' }])
   })
 
   test('non-abort errors pass through unchanged', async () => {
