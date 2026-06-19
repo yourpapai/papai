@@ -31,6 +31,9 @@ describe('createSteeringPrepareStep', () => {
     const result = step({ stepNumber: 1, steps: [], messages: base })
     expect(result).toEqual({ messages: [...base, { role: 'user', content: 'only project X' }] })
     expect(run.steerQueue).toEqual([])
+
+    // Second call after drain: nothing queued, so no injection.
+    expect(step({ stepNumber: 2, steps: [], messages: base })).toBeUndefined()
   })
 })
 
@@ -45,6 +48,7 @@ describe('composePrepareSteps', () => {
       { role: 'user', content: 'steer' },
     ])
     expect(result?.activeTools).toBeUndefined()
+    expect(run.steerQueue).toEqual([])
   })
 
   test('merges steering messages with disclosure activeTools', () => {
@@ -55,6 +59,7 @@ describe('composePrepareSteps', () => {
     const result = composed({ stepNumber: 1, steps: [], messages: [] })
     expect(result?.messages).toEqual([{ role: 'user', content: 'steer' }])
     expect(result?.activeTools).toEqual(['get_current_time'])
+    expect(run.steerQueue).toEqual([])
   })
 
   test('disclosure open-all ({}) preserves steering messages and sets no activeTools', () => {
