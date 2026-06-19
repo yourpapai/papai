@@ -212,7 +212,7 @@ export type ReplyCapableContext = { reply: (text: string, other?: Record<string,
 
 /** Sent-message fields needed to build a detached prompt handle: chat id and message id. */
 export type SentButtonMessage = { message_id: number; chat: { id: number } }
-/** Minimal context surface {@link sendButtonReply} needs — reply returning a SentButtonMessage. */
+/** Narrowed reply context that preserves the returned message — lets sendButtonReply build a PromptHandle. */
 export type ButtonReplyCapableContext = {
   reply: (text: string, other?: Record<string, unknown>) => Promise<SentButtonMessage>
 }

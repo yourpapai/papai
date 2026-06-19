@@ -615,6 +615,73 @@ describe('TelegramChatProvider', () => {
       expect(firstOptions.reply_markup).toBeDefined()
       expect(secondOptions.reply_markup).toBeDefined()
     })
+
+    test('dispatchCallbackQuery answers callback query exactly once when ephemeralConfirm is called', async () => {
+      const provider = createTelegramProvider()
+      const dispatchCallbackQuery: unknown = Reflect.get(provider, 'dispatchCallbackQuery')
+      expect(dispatchCallbackQuery).toBeInstanceOf(Function)
+      assert(typeof dispatchCallbackQuery === 'function', 'dispatchCallbackQuery not available')
+
+      const answerCalls: Array<{ text?: string } | undefined> = []
+
+      Reflect.set(provider, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(false))
+      provider.onInteraction(async (_interaction, reply) => {
+        assert(reply.ephemeralConfirm !== undefined, 'Expected ephemeralConfirm to be available')
+        await reply.ephemeralConfirm('Allowed web_fetch ✅')
+      })
+
+      await Promise.resolve(
+        dispatchCallbackQuery.call(provider, {
+          from: { id: 42, username: 'alice' },
+          chat: { id: 99, type: 'supergroup' },
+          callbackQuery: {
+            data: 'cfg:edit:timezone',
+            message: { message_id: 321, message_thread_id: 123 },
+          },
+          answerCallbackQuery: (opts?: { text?: string }): Promise<void> => {
+            answerCalls.push(opts)
+            return Promise.resolve()
+          },
+          editMessageText: (): Promise<void> => Promise.resolve(),
+        }),
+      )
+
+      expect(answerCalls).toHaveLength(1)
+      expect(answerCalls[0]).toEqual({ text: 'Allowed web_fetch ✅' })
+    })
+
+    test('dispatchCallbackQuery answers callback query once via safety net when ephemeralConfirm is not called', async () => {
+      const provider = createTelegramProvider()
+      const dispatchCallbackQuery: unknown = Reflect.get(provider, 'dispatchCallbackQuery')
+      expect(dispatchCallbackQuery).toBeInstanceOf(Function)
+      assert(typeof dispatchCallbackQuery === 'function', 'dispatchCallbackQuery not available')
+
+      const answerCalls: Array<{ text?: string } | undefined> = []
+
+      Reflect.set(provider, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(false))
+      provider.onInteraction(async (_interaction, _reply) => {
+        // handler does not call ephemeralConfirm — safety net must fire
+      })
+
+      await Promise.resolve(
+        dispatchCallbackQuery.call(provider, {
+          from: { id: 42, username: 'alice' },
+          chat: { id: 99, type: 'supergroup' },
+          callbackQuery: {
+            data: 'cfg:edit:timezone',
+            message: { message_id: 321, message_thread_id: 123 },
+          },
+          answerCallbackQuery: (opts?: { text?: string }): Promise<void> => {
+            answerCalls.push(opts)
+            return Promise.resolve()
+          },
+          editMessageText: (): Promise<void> => Promise.resolve(),
+        }),
+      )
+
+      expect(answerCalls).toHaveLength(1)
+      expect(answerCalls[0]).toBeUndefined()
+    })
   })
 
   test('provider exposes interactive capabilities and onInteraction hook', () => {

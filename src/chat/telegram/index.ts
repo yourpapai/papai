@@ -17,7 +17,6 @@ import type {
   IncomingInteraction,
   IncomingMessage,
   ReplyFn,
-  ReplyOptions,
   ResolveUserContext,
 } from '../types.js'
 import { isTelegramGroupAdmin } from './admin-helpers.js'
@@ -37,24 +36,16 @@ import {
   resolveThreadId,
 } from './message-extraction.js'
 import { telegramCapabilities, telegramConfigRequirements, telegramTraits } from './metadata.js'
-import { buildTelegramPromptHandle } from './prompt-handle-builder.js'
+import { buildTelegramReplyFn, type CallbackAnswerState } from './reply-fn-builder.js'
 import {
   buildTelegramMentionPrefix,
   checkTelegramAdminStatus,
-  createReplyParamsBuilder,
   getTelegramUsername,
-  sendButtonReply,
-  sendFileReply,
-  sendFormattedReply,
-  sendReplacementButtonReply,
-  sendReplacementTextReply,
-  sendTextReply,
   shiftTelegramEntity,
   telegramIsBotMentioned,
 } from './reply-helpers.js'
 export { extractReplyContext } from './message-extraction.js'
 const log = logger.child({ scope: 'chat:telegram' })
-const ignoreTelegramTypingError = (): null => null
 type TelegramConstructorConfig = {
   readonly token?: string
   readonly platformInstanceId: string
@@ -235,45 +226,13 @@ export class TelegramChatProvider implements ChatProvider {
     return checkTelegramAdminStatus(ctx, (chatId) => this.bot.api.getChatAdministrators(chatId))
   }
 
-  private buildReplyFn(ctx: Context, threadId: string | undefined, allowReplacement: boolean): ReplyFn {
-    const chat = ctx.chat
-    const message = ctx.message
-    const chatId = chat === undefined ? undefined : chat.id
-    const messageId = message === undefined ? undefined : message.message_id
-    const buildReplyParams = createReplyParamsBuilder(ctx, threadId)
-    const replyFn: ReplyFn = {
-      text: (content: string, ...rest: [] | [ReplyOptions]) => sendTextReply(ctx, content, buildReplyParams, rest[0]),
-      formatted: (markdown: string, ...rest: [] | [ReplyOptions]) =>
-        sendFormattedReply(ctx, markdown, buildReplyParams, rest[0]),
-      file: (chatFile, ...rest: [] | [ReplyOptions]) => sendFileReply(ctx, chatFile, buildReplyParams, rest[0]),
-      typing: () => {
-        void ctx.replyWithChatAction('typing').catch(ignoreTelegramTypingError)
-      },
-      redactMessage: async (replacementText: string) => {
-        if (chatId !== undefined && messageId !== undefined) {
-          await this.bot.api.editMessageText(chatId, messageId, replacementText).catch((err: unknown) => {
-            log.warn(
-              { chatId, messageId, error: err instanceof Error ? err.message : String(err) },
-              'Failed to redact message',
-            )
-          })
-        }
-      },
-      buttons: async (content: string, opts) => {
-        const sent = await sendButtonReply(ctx, content, buildReplyParams, opts)
-        return buildTelegramPromptHandle(this.bot.api, sent.chat.id, sent.message_id)
-      },
-    }
-    if (allowReplacement) {
-      replyFn.replaceText = (content): Promise<void> => sendReplacementTextReply(ctx, content)
-      replyFn.replaceButtons = (content, options): Promise<void> => sendReplacementButtonReply(ctx, content, options)
-      replyFn.ephemeralConfirm = async (confirmText: string): Promise<void> => {
-        await ctx.answerCallbackQuery({ text: confirmText }).catch((err: unknown) => {
-          log.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to answer callback query')
-        })
-      }
-    }
-    return replyFn
+  private buildReplyFn(
+    ctx: Context,
+    threadId: string | undefined,
+    allowReplacement: boolean,
+    callbackAnswerState?: CallbackAnswerState,
+  ): ReplyFn {
+    return buildTelegramReplyFn(ctx, threadId, allowReplacement, this.bot.api, callbackAnswerState)
   }
   private async dispatchCallbackQuery(ctx: Context): Promise<void> {
     const interaction = buildTelegramInteraction(ctx, await this.checkAdminStatus(ctx), this.platformInstanceId)
@@ -281,7 +240,6 @@ export class TelegramChatProvider implements ChatProvider {
       await ctx.answerCallbackQuery().catch(() => undefined)
       return
     }
-    const reply = this.buildReplyFn(ctx, interaction.threadId, true)
     if (this.interactionHandler === undefined) {
       const callbackQuery = ctx.callbackQuery
       log.warn(
@@ -291,8 +249,12 @@ export class TelegramChatProvider implements ChatProvider {
       await ctx.answerCallbackQuery().catch(() => undefined)
       return
     }
+    const callbackAnswerState = { answered: false }
+    const reply = this.buildReplyFn(ctx, interaction.threadId, true, callbackAnswerState)
     await this.interactionHandler(interaction, reply)
-    await ctx.answerCallbackQuery().catch(() => undefined)
+    if (!callbackAnswerState.answered) {
+      await ctx.answerCallbackQuery().catch(() => undefined)
+    }
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
     return extractFilesFromContext(ctx, (fileId) => this.downloadFile(fileId))
