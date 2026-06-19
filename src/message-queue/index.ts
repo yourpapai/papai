@@ -126,7 +126,8 @@ export function enqueueMessage(
   queue.setHandler(handler)
   const coalesced = queue.enqueue(item, reply)
 
-  // Handle different-user flush in group main - the returned item needs immediate processing
+  // A non-null return is the shutdown/forced-flush path; the group different-user flush now
+  // serializes via the queue's handler chain (returns null) and is not dispatched here.
   if (coalesced !== null) {
     invokeHandlerWithEvents(handler, coalesced, item)
   }
