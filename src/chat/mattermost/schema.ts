@@ -58,6 +58,17 @@ export const MattermostUserSchema = z.object({
 
 export type MattermostPost = z.infer<typeof MattermostPostSchema>
 
+export const MattermostThreadPostSchema = MattermostPostSchema.extend({
+  create_at: z.number(),
+})
+export type MattermostThreadPost = z.infer<typeof MattermostThreadPostSchema>
+
+export const MattermostPostListSchema = z.object({
+  order: z.array(z.string()),
+  posts: z.record(z.string(), MattermostThreadPostSchema),
+})
+export type MattermostPostList = z.infer<typeof MattermostPostListSchema>
+
 export function extractReplyId(parentId: string | undefined, rootId: string | undefined): string | undefined {
   if (parentId !== undefined && parentId !== '') return parentId
   if (rootId !== undefined && rootId !== '') return rootId
