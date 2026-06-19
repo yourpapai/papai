@@ -176,6 +176,7 @@
     "src/run-control/registry.ts": ["files"],
     "src/run-control/types.ts": ["files"],
     "src/run-control/summary.ts": ["files"],
+    "src/run-control/steering-prepare-step.ts": ["files"],
   },
 
   // Report unused exports even in entry files
