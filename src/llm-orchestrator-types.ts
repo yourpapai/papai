@@ -71,3 +71,24 @@ export type StepOutput = {
   toolCalls: Array<StepOutputToolCall>
   usage: TokenUsage
 }>
+
+export type ToolCallContext = {
+  contextId: string
+  chatUserId: string
+  contextType: 'dm' | 'group'
+  model: string
+  modelRole: 'main' | 'small'
+  turnId: string
+} & Partial<Record<'progressReporter', AiProgressReporter>>
+
+export type GenerateArgs = {
+  contextId: string
+  turnId: string
+  model: InvokeModelArgs['model']
+  systemPrompt: string
+  messages: InvokeModelArgs['messages']
+  tools: InvokeModelArgs['tools']
+  deps: LlmOrchestratorDeps
+  disclosure: InvokeModelArgs['disclosure']
+  ctx: ToolCallContext
+}

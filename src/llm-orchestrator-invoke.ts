@@ -5,46 +5,30 @@
 
 import { generateText } from 'ai'
 
-import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
 import { handleToolCallFinish } from './llm-orchestrator-support.js'
-import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import type { GenerateArgs, InvokeModelArgs, LlmOrchestratorDeps, ToolCallContext } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
+import { runRegistry } from './run-control/registry.js'
+import { composePrepareSteps, createSteeringPrepareStep } from './run-control/steering-prepare-step.js'
+import { createStopRequestedCondition } from './run-control/stop-condition.js'
+import { RunAbortedError } from './run-control/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from './system-prompt.js'
 import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
 import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:invoke' })
 
-export type ToolCallContext = {
-  contextId: string
-  chatUserId: string
-  contextType: 'dm' | 'group'
-  model: string
-  modelRole: 'main' | 'small'
-  turnId: string
-} & Partial<Record<'progressReporter', AiProgressReporter>>
-
 const safeByteLength = (value: unknown): number | null => {
   if (value === undefined || value === null) return null
   try {
-    return Buffer.byteLength(resolveSerializedValue(JSON.stringify(value)), 'utf8')
+    return Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8')
   } catch {
     return null
   }
-}
-
-const resolveSerializedValue = (value: string | undefined): string => {
-  if (value === undefined) return ''
-  return value
-}
-
-const resolveRecoveredFlag = (value: boolean | undefined): boolean => {
-  if (value === undefined) return false
-  return value
 }
 
 const contextEnvelope = (
@@ -148,7 +132,7 @@ const emitFailureClassified = (ctx: ToolCallContext, event: ToolCallFinishEvent)
         errorType: failure.errorType,
         errorCode: failure.errorCode,
         retryable: failure.retryable,
-        recovered: resolveRecoveredFlag(failure.recovered),
+        recovered: failure.recovered ?? false,
         ...contextEnvelope(ctx),
       },
       ctx.turnId,
@@ -164,7 +148,7 @@ const emitFailureClassified = (ctx: ToolCallContext, event: ToolCallFinishEvent)
         errorType: failure.errorType,
         errorCode: failure.errorCode,
         retryable: failure.retryable,
-        recovered: resolveRecoveredFlag(failure.recovered),
+        recovered: failure.recovered ?? false,
         ...contextEnvelope(ctx),
       },
       ctx.turnId,
@@ -208,6 +192,40 @@ export const resolveSystemPrompt = (
     : buildSystemPrompt(provider, contextId, enabledToolNames, opts)
 }
 
+const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
+  const { contextId, turnId, model, systemPrompt, messages, tools, deps, disclosure, ctx } = a
+  const run = runRegistry.get(contextId)
+  const disclosureStep =
+    disclosure === undefined ? undefined : createDisclosurePrepareStep(disclosure, contextId, turnId)
+  const prepareStep =
+    run === undefined ? disclosureStep : composePrepareSteps(createSteeringPrepareStep(run), disclosureStep)
+  const stopWhen = run === undefined ? deps.stepCountIs(25) : [deps.stepCountIs(25), createStopRequestedCondition(run)]
+  const finishHandler = buildToolCallFinishHandler(ctx)
+  try {
+    return await deps.generateText({
+      model,
+      system: systemPrompt,
+      messages,
+      tools,
+      timeout: 1_200_000,
+      stopWhen,
+      ...(run === undefined ? {} : { abortSignal: run.abortController.signal }),
+      experimental_onToolCallStart: buildToolCallStartHandler(ctx),
+      experimental_onToolCallFinish: (event) => {
+        if (run !== undefined) run.completedEffects.push({ toolName: event.toolCall.toolName })
+        finishHandler?.(event)
+      },
+      ...(prepareStep === undefined ? {} : { prepareStep }),
+    })
+  } catch (error) {
+    if (run !== undefined && run.abortController.signal.aborted) {
+      log.info({ contextId, turnId }, 'Run force-aborted by user')
+      throw new RunAbortedError(run.completedEffects)
+    }
+    throw error
+  }
+}
+
 export const invokeModel = async (
   args: InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string },
 ): ReturnType<LlmOrchestratorDeps['generateText']> => {
@@ -237,16 +255,16 @@ export const invokeModel = async (
     turnId,
     progressReporter: args.progressReporter,
   }
-  const result = await deps.generateText({
+  const result = await callGenerateText({
+    contextId,
+    turnId,
     model,
-    system: systemPrompt,
+    systemPrompt,
     messages,
     tools,
-    timeout: 1_200_000,
-    stopWhen: deps.stepCountIs(25),
-    experimental_onToolCallStart: buildToolCallStartHandler(ctx),
-    experimental_onToolCallFinish: buildToolCallFinishHandler(ctx),
-    ...(disclosure === undefined ? {} : { prepareStep: createDisclosurePrepareStep(disclosure, contextId, turnId) }),
+    deps,
+    disclosure,
+    ctx,
   })
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, turnId)
   return result
