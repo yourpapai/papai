@@ -13,7 +13,10 @@ import type { TaskProvider } from './providers/types.js'
 import type { DisclosureSession } from './tools/disclosure/registry.js'
 
 export type LlmOrchestratorDeps = {
-  generateText: typeof generateText
+  // Non-generic DI seam over the AI SDK `generateText`: the real generic export stays
+  // assignable, and the orchestrator only consumes the result loosely (steps/usage/text),
+  // so tests can supply a canned result without type-suppression or assertion escape hatches.
+  generateText: (options: Parameters<typeof generateText>[0]) => ReturnType<typeof generateText>
   stepCountIs: typeof stepCountIs
   buildOpenAI: (apiKey: string, baseURL: string) => ReturnType<typeof createOpenAICompatible>
   resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
