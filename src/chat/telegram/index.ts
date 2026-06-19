@@ -37,6 +37,7 @@ import {
   resolveThreadId,
 } from './message-extraction.js'
 import { telegramCapabilities, telegramConfigRequirements, telegramTraits } from './metadata.js'
+import { buildTelegramPromptHandle } from './prompt-handle-builder.js'
 import {
   buildTelegramMentionPrefix,
   checkTelegramAdminStatus,
@@ -240,22 +241,11 @@ export class TelegramChatProvider implements ChatProvider {
     const chatId = chat === undefined ? undefined : chat.id
     const messageId = message === undefined ? undefined : message.message_id
     const buildReplyParams = createReplyParamsBuilder(ctx, threadId)
-    const text: ReplyFn['text'] = (content: string, ...rest: [] | [ReplyOptions]) => {
-      const options = rest[0]
-      return sendTextReply(ctx, content, buildReplyParams, options)
-    }
-    const formatted: ReplyFn['formatted'] = (markdown: string, ...rest: [] | [ReplyOptions]) => {
-      const options = rest[0]
-      return sendFormattedReply(ctx, markdown, buildReplyParams, options)
-    }
-    const file: NonNullable<ReplyFn['file']> = (chatFile, ...rest: [] | [ReplyOptions]) => {
-      const options = rest[0]
-      return sendFileReply(ctx, chatFile, buildReplyParams, options)
-    }
     const replyFn: ReplyFn = {
-      text,
-      formatted,
-      file,
+      text: (content: string, ...rest: [] | [ReplyOptions]) => sendTextReply(ctx, content, buildReplyParams, rest[0]),
+      formatted: (markdown: string, ...rest: [] | [ReplyOptions]) =>
+        sendFormattedReply(ctx, markdown, buildReplyParams, rest[0]),
+      file: (chatFile, ...rest: [] | [ReplyOptions]) => sendFileReply(ctx, chatFile, buildReplyParams, rest[0]),
       typing: () => {
         void ctx.replyWithChatAction('typing').catch(ignoreTelegramTypingError)
       },
@@ -269,20 +259,28 @@ export class TelegramChatProvider implements ChatProvider {
           })
         }
       },
-      buttons: (content, opts) => sendButtonReply(ctx, content, buildReplyParams, opts).then(() => undefined),
+      buttons: async (content: string, opts) => {
+        const sent = await sendButtonReply(ctx, content, buildReplyParams, opts)
+        return buildTelegramPromptHandle(this.bot.api, sent.chat.id, sent.message_id)
+      },
     }
     if (allowReplacement) {
-      replyFn.replaceText = (content: string, ..._rest: [] | [ReplyOptions]): Promise<void> =>
-        sendReplacementTextReply(ctx, content)
-      replyFn.replaceButtons = (content: string, options): Promise<void> =>
-        sendReplacementButtonReply(ctx, content, options)
+      replyFn.replaceText = (content): Promise<void> => sendReplacementTextReply(ctx, content)
+      replyFn.replaceButtons = (content, options): Promise<void> => sendReplacementButtonReply(ctx, content, options)
+      replyFn.ephemeralConfirm = async (confirmText: string): Promise<void> => {
+        await ctx.answerCallbackQuery({ text: confirmText }).catch((err: unknown) => {
+          log.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to answer callback query')
+        })
+      }
     }
     return replyFn
   }
   private async dispatchCallbackQuery(ctx: Context): Promise<void> {
-    await ctx.answerCallbackQuery()
     const interaction = buildTelegramInteraction(ctx, await this.checkAdminStatus(ctx), this.platformInstanceId)
-    if (interaction === null) return
+    if (interaction === null) {
+      await ctx.answerCallbackQuery().catch(() => undefined)
+      return
+    }
     const reply = this.buildReplyFn(ctx, interaction.threadId, true)
     if (this.interactionHandler === undefined) {
       const callbackQuery = ctx.callbackQuery
@@ -290,9 +288,11 @@ export class TelegramChatProvider implements ChatProvider {
         { callbackData: callbackQuery === undefined ? undefined : callbackQuery.data },
         'No interaction handler registered',
       )
+      await ctx.answerCallbackQuery().catch(() => undefined)
       return
     }
     await this.interactionHandler(interaction, reply)
+    await ctx.answerCallbackQuery().catch(() => undefined)
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
     return extractFilesFromContext(ctx, (fileId) => this.downloadFile(fileId))

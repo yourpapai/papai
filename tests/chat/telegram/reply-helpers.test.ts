@@ -14,11 +14,14 @@ import { InlineKeyboard } from 'grammy'
 
 import { formatLlmOutput } from '../../../src/chat/telegram/format.js'
 import {
+  type ButtonReplyCapableContext,
   createReplyParamsBuilder,
   type ReplacementReplyContext,
   type ReplyCapableContext,
   type ReplyContext,
   type ReplyParamsBuilder,
+  type SentButtonMessage,
+  sendButtonReply,
   sendFormattedReply,
   sendReplacementButtonReply,
   sendReplacementTextReply,
@@ -157,6 +160,24 @@ describe('createReplyParamsBuilder', () => {
     const params = builder()
 
     expect(params).toBeUndefined()
+  })
+})
+
+describe('sendButtonReply returns sent message', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('returns the message object resolved by ctx.reply', async () => {
+    const sentMessage: SentButtonMessage = { message_id: 42, chat: { id: 7 } }
+    const fakeCtx: ButtonReplyCapableContext = {
+      reply: (_text: string, _opts?: Record<string, unknown>): Promise<SentButtonMessage> =>
+        Promise.resolve(sentMessage),
+    }
+
+    const result = await sendButtonReply(fakeCtx, 'hi', () => undefined, { buttons: [] })
+
+    expect(result.message_id).toBe(42)
   })
 })
 

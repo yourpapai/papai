@@ -9,6 +9,7 @@ export const telegramCapabilities: ReadonlySet<ChatCapability> = new Set<ChatCap
   'commands.menu',
   'interactions.callbacks',
   'messages.buttons',
+  'messages.ephemeral',
   'messages.files',
   'messages.redact',
   'messages.reply-context',

@@ -208,8 +208,13 @@ export async function sendTextReply(
 }
 
 /** Minimal context surface {@link sendFormattedReply} needs — just the message reply method. */
-export type ReplyCapableContext = {
-  reply: (text: string, other?: Record<string, unknown>) => Promise<unknown>
+export type ReplyCapableContext = { reply: (text: string, other?: Record<string, unknown>) => Promise<unknown> }
+
+/** Sent-message fields needed to build a detached prompt handle: chat id and message id. */
+export type SentButtonMessage = { message_id: number; chat: { id: number } }
+/** Minimal context surface {@link sendButtonReply} needs — reply returning a SentButtonMessage. */
+export type ButtonReplyCapableContext = {
+  reply: (text: string, other?: Record<string, unknown>) => Promise<SentButtonMessage>
 }
 
 export async function sendFormattedReply(
@@ -241,15 +246,15 @@ export async function sendFileReply(
   })
 }
 
-export async function sendButtonReply(
-  ctx: Context,
+export function sendButtonReply(
+  ctx: ButtonReplyCapableContext,
   content: string,
   buildReplyParams: ReplyParamsBuilder,
   options: ButtonReplyOptions,
-): Promise<void> {
+): Promise<SentButtonMessage> {
   const keyboard = buildInlineKeyboard(options)
   const formatted = formatLlmOutput(content)
-  await ctx.reply(formatted.text, {
+  return ctx.reply(formatted.text, {
     entities: formatted.entities,
     reply_markup: keyboard,
     reply_parameters: buildReplyParams(options),

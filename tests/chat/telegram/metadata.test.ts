@@ -20,6 +20,10 @@ describe('telegram metadata', () => {
     expect(telegramCapabilities.has('files.receive')).toBe(true)
   })
 
+  test('declares messages.ephemeral capability', () => {
+    expect(telegramCapabilities.has('messages.ephemeral')).toBe(true)
+  })
+
   test('traits use all observed group messages (Telegram sees all group messages)', () => {
     expect(telegramTraits.observedGroupMessages).toBe('all')
   })
