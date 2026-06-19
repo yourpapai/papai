@@ -161,6 +161,8 @@ const buildFullToolSet = async (
     actorRole === 'guest'
       ? applyGuestReadOnlyFilter(descriptors)
       : applyToolPreferences(descriptors, contextId, askPermission)
+  // NOTE(forward-safety): meta-tools below (expand_result, search_tools, load_tool) run
+  // POST guest-filter; if compaction/disclosure flags are enabled for guests, re-review.
   const flags = deps.resolveReductionFlags(contextId)
   const compacted = deps.applyResultCompaction(prefTools, {
     storageContextId: contextId,

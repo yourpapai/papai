@@ -14,7 +14,8 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import type { ToolSet } from 'ai'
+import { tool, type ToolSet } from 'ai'
+import { z } from 'zod'
 
 import type { StagedFileDownloadFn } from '../src/attachments/types.js'
 import { userCachesForTesting } from '../src/cache.js'
@@ -23,6 +24,7 @@ import { buildLlmInvocationOpts } from '../src/llm-orchestrator-tools.js'
 import { saveMemoryProfile } from '../src/long-term-memory/store.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import { makeGetCurrentTimeTool } from '../src/tools/get-current-time.js'
+import { applyGuestReadOnlyFilter } from '../src/tools/index.js'
 import type { MakeToolsOptions } from '../src/tools/types.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -44,6 +46,7 @@ void mock.module('../src/tools/index.js', () => ({
   buildToolDescriptors: buildToolDescriptorsSpy,
   buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
   applyToolPreferences: (tools: ToolSet): ToolSet => tools,
+  applyGuestReadOnlyFilter,
 }))
 
 // Import module under test AFTER mock registration so it sees the spy.
@@ -80,6 +83,7 @@ describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () =
       buildToolDescriptors: buildToolDescriptorsSpy,
       buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
       applyToolPreferences: (tools: ToolSet): ToolSet => tools,
+      applyGuestReadOnlyFilter,
     }))
     mockLogger()
     await setupTestDb()
@@ -189,6 +193,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
       buildToolDescriptors: buildToolDescriptorsSpy,
       buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
       applyToolPreferences: (tools: ToolSet): ToolSet => tools,
+      applyGuestReadOnlyFilter,
     }))
     mockLogger()
     await setupTestDb()
@@ -278,6 +283,62 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
     expect(systemMessage?.role).toBe('system')
     expect(systemMessage?.content).toContain('The group ships release notes on Fridays')
     expect(systemMessage?.content).not.toContain('This should not be injected for group turns')
+  })
+})
+
+describe('buildFullToolSet / guest actorRole branch', () => {
+  // Minimal tool stub — only the key (name) drives risk classification.
+  const stub = (): ToolSet[string] =>
+    tool({ description: '', inputSchema: z.object({}), execute: () => Promise.resolve(null) })
+
+  let provider: TaskProvider
+
+  beforeEach(async () => {
+    void mock.module('../src/tools/index.js', () => ({
+      buildToolDescriptors: buildToolDescriptorsSpy,
+      buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
+      // applyToolPreferences is a pass-through — guest path must not reach it
+      applyToolPreferences: (_tools: ToolSet): ToolSet => {
+        throw new Error('applyToolPreferences must not be called for a guest actor')
+      },
+      applyGuestReadOnlyFilter,
+    }))
+    mockLogger()
+    await setupTestDb()
+    userCachesForTesting.clear()
+    buildToolDescriptorsSpy.mockClear()
+    buildProviderlessToolDescriptorsSpy.mockClear()
+
+    provider = createMockProvider()
+  })
+
+  test('guest actorRole yields read-only tool set and bypasses applyToolPreferences', async () => {
+    // Mixed descriptor set: one read, one write, one open-world.
+    buildToolDescriptorsSpy.mockResolvedValueOnce({
+      list_tasks: stub(),
+      create_task: stub(),
+      web_fetch: stub(),
+    })
+
+    const result = await prepareLlmInvocation({
+      contextId: 'ctx-guest-branch',
+      configId: 'ctx-guest-branch',
+      chatUserId: 'guest-user-1',
+      username: null,
+      contextType: 'group',
+      provider,
+      history: [],
+      userText: 'what tasks are there?',
+      stagedDownloadFn: NO_STAGED_DOWNLOAD,
+      askPermission: undefined,
+      actorRole: 'guest',
+    })
+
+    // Only the read-risk tool survives the guest filter.
+    expect(Object.keys(result.tools).sort()).toEqual(['list_tasks'])
+    expect(result.enabledToolNames.has('list_tasks')).toBe(true)
+    expect(result.enabledToolNames.has('create_task')).toBe(false)
+    expect(result.enabledToolNames.has('web_fetch')).toBe(false)
   })
 })
 

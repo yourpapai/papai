@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from '../../src/auth.js'
 import { addAuthorizedGroup, setGuestMode } from '../../src/authorized-groups.js'
-import { setupTestDb } from '../utils/test-helpers.js'
+import { addUser, blockUser } from '../../src/users.js'
+import { seedTestPlatformInstance, setupTestDb } from '../utils/test-helpers.js'
 
 const PI = 'pi-1'
 
@@ -17,6 +18,7 @@ const groupConfigId = (rawGroupId: string): string =>
 describe('guest mode authorization', () => {
   beforeEach(async () => {
     await setupTestDb()
+    seedTestPlatformInstance({ id: PI })
   })
 
   test('unknown user is allowed as guest when guest mode is on', () => {
@@ -34,6 +36,17 @@ describe('guest mode authorization', () => {
     const result = checkAuthorizationExtended('stranger', null, 'g1', 'group', undefined, false, PI)
     expect(result.allowed).toBe(false)
     expect(result.reason).toBe('group_member_not_allowed')
+    expect(result.isGuest).toBeUndefined()
+  })
+
+  test('blocked user is denied (user_blocked) and is not treated as a guest even with guest mode on', () => {
+    addAuthorizedGroup(groupConfigId('g1'), 'admin')
+    setGuestMode(groupConfigId('g1'), true)
+    addUser({ userId: 'blocked-user', platformInstanceId: PI, addedBy: 'admin' })
+    blockUser('blocked-user', PI)
+    const result = checkAuthorizationExtended('blocked-user', null, 'g1', 'group', undefined, false, PI)
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toBe('user_blocked')
     expect(result.isGuest).toBeUndefined()
   })
 

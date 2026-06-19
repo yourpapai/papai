@@ -139,7 +139,7 @@ participate in the live thread.
 - Toggle lives in the **group section** of the settings SPA (`client/settings/`), visible to
   whoever can already administer that group: bot admins (super/platform) and group admins
   (the platform-admin path, resolved via `src/group-settings/admin-scope.ts`).
-- New endpoint `POST /settings/api/group/guest-mode`, mirroring the existing
+- New endpoint `PATCH /settings/api/group/guest-mode`, mirroring the existing
   `group/members` routes: CSRF-verified (`X-Settings-CSRF`), `requireScope`-validated
   against the group `contextId`, writing `setGuestMode`.
 - Read via the existing group settings fetcher; surfaced as a simple toggle with a one-line
