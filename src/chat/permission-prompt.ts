@@ -142,6 +142,11 @@ export function askPermissionViaChat(
       void redactExpiredPrompt(entry, contextId, req.toolName, id)
       entry.resolve('deny')
     }, PERMISSION_TIMEOUT_MS)
+    // Register before sending so a fast click (or a synchronously-resolving send)
+    // can always find the entry in `resolvePermissionRequest`/the timeout handler.
+    // The handle is patched in once the send resolves; a send failure denies
+    // immediately (below) because without a visible prompt the user cannot
+    // respond, so hanging for the full timeout would silently block the tool.
     pending.set(id, { contextId, toolName: req.toolName, resolve, timer })
     void reply
       .buttons(body, {
