@@ -139,6 +139,7 @@ const buildActionReply = (): { reply: ReplyFn; getResponse: () => MattermostActi
       },
       replaceText: setUpdate,
       replaceButtons: setUpdate,
+      ephemeralConfirm: setEphemeral,
     },
     getResponse: () => response,
   }

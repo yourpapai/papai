@@ -24,6 +24,10 @@ describe('mattermost metadata', () => {
     expect(mattermostCapabilities.has('interactions.callbacks')).toBe(true)
   })
 
+  it('declares messages.ephemeral capability', () => {
+    expect(mattermostCapabilities.has('messages.ephemeral')).toBe(true)
+  })
+
   it('should export traits', () => {
     expect(mattermostTraits.observedGroupMessages).toBe('all')
     expect(mattermostTraits.maxMessageLength).toBe(16383)

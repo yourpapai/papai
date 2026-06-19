@@ -15,6 +15,7 @@ import {
 } from '../../../src/chat/mattermost/action-callbacks.js'
 import { createMattermostActionContext } from '../../../src/chat/mattermost/action-signing.js'
 import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
+import type { ReplyFn } from '../../../src/chat/types.js'
 
 const secret = 'test-secret'
 
@@ -150,7 +151,7 @@ describe('Mattermost action callbacks', () => {
       })
 
       expect(await res.json()).toEqual({
-        update: { message: `${capturedContent}\n\nAllowed.`, props: {} },
+        update: { message: `${capturedContent}\n\nAllowed delete_task ✅`, props: {} },
       })
       expect(apiCalls).toEqual(['GET /api/v4/channels/chan-1', 'GET /api/v4/channels/chan-1/members/user-1'])
       expect(routedInteractions).toEqual([
@@ -184,6 +185,42 @@ describe('Mattermost action callbacks', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ error: { message: 'This action is no longer valid.' } })
+  })
+
+  test('ephemeralConfirm on the action reply sets ephemeral_text in the response', async () => {
+    const apiCalls: string[] = []
+    const apiResponses: Record<string, unknown> = {
+      'GET /api/v4/channels/chan-1': { type: 'O' },
+      'GET /api/v4/channels/chan-1/members/user-1': { roles: '' },
+    }
+    const deps = {
+      platformInstanceId: 'mattermost-main',
+      apiFetch: (method: string, path: string): Promise<unknown> => {
+        apiCalls.push(`${method} ${path}`)
+        return Promise.resolve(apiResponses[`${method} ${path}`])
+      },
+      interactionHandler: async (_interaction: unknown, reply: ReplyFn): Promise<void> => {
+        await reply.ephemeralConfirm!('x')
+      },
+    } satisfies MattermostProviderActionDispatchDeps
+
+    const response = await dispatchMattermostProviderAction(
+      {
+        userId: 'user-1',
+        postId: 'post-1',
+        channelId: 'chan-1',
+        action: {
+          platformInstanceId: 'mattermost-main',
+          channelId: 'chan-1',
+          callbackData: 'perm:a:abc12345',
+          sourceMessageText: 'choose',
+          expiresAt: Date.now() + 60_000,
+        },
+      },
+      deps,
+    )
+
+    expect(response).toEqual({ ephemeral_text: 'x' })
   })
 
   test('returns unavailable response when no dispatcher is registered', async () => {

@@ -12,6 +12,7 @@ import { mockLogger } from '../../utils/test-helpers.js'
 interface ReplyFnResult {
   reply: ReplyFn
   posts: unknown[]
+  apiCalls: Array<{ method: string; path: string; body: unknown }>
 }
 
 describe('createMattermostReplyFn', () => {
@@ -21,8 +22,12 @@ describe('createMattermostReplyFn', () => {
 
   function makeReplyFn(callbackBaseUrl: string | null = 'https://bot.example', threadId?: string): ReplyFnResult {
     const posts: unknown[] = []
-    const apiFetch = (_method: string, _path: string, body: unknown): Promise<Record<string, string>> => {
-      posts.push(body)
+    const apiCalls: Array<{ method: string; path: string; body: unknown }> = []
+    const apiFetch = (method: string, path: string, body: unknown): Promise<Record<string, string>> => {
+      apiCalls.push({ method, path, body })
+      if (method === 'POST' && path === '/api/v4/posts') {
+        posts.push(body)
+      }
       return Promise.resolve({ id: 'post-1' })
     }
     const wsSend = (): void => {}
@@ -54,7 +59,7 @@ describe('createMattermostReplyFn', () => {
       },
     })
 
-    return { reply, posts }
+    return { reply, posts, apiCalls }
   }
 
   describe('buttons', () => {
@@ -102,6 +107,37 @@ describe('createMattermostReplyFn', () => {
           ],
         },
       })
+    })
+
+    test('returns a handle whose remove() issues DELETE for the created post id', async () => {
+      const { reply, apiCalls } = makeReplyFn()
+
+      const handle = await reply.buttons('choose', {
+        buttons: [{ text: 'Allow', callbackData: 'perm:a:abc12345', style: 'primary' }],
+      })
+
+      expect(handle).toBeDefined()
+      await handle!.remove()
+
+      const deleteCall = apiCalls.find((c) => c.method === 'DELETE')
+      expect(deleteCall).toBeDefined()
+      expect(deleteCall!.path).toBe('/api/v4/posts/post-1')
+    })
+
+    test('returns a handle whose redact() issues PUT patch with new text and clears props', async () => {
+      const { reply, apiCalls } = makeReplyFn()
+
+      const handle = await reply.buttons('choose', {
+        buttons: [{ text: 'Allow', callbackData: 'perm:a:abc12345', style: 'primary' }],
+      })
+
+      expect(handle).toBeDefined()
+      await handle!.redact('Prompt expired.')
+
+      const putCall = apiCalls.find((c) => c.method === 'PUT')
+      expect(putCall).toBeDefined()
+      expect(putCall!.path).toBe('/api/v4/posts/post-1/patch')
+      expect(putCall!.body).toMatchObject({ message: 'Prompt expired.', props: {} })
     })
 
     test('rejects when callback base URL is missing', async () => {

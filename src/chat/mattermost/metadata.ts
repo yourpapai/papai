@@ -9,6 +9,7 @@ export const mattermostCapabilities: ReadonlySet<ChatCapability> = new Set<ChatC
   'interactions.callbacks',
   'messages.buttons',
   'messages.delete',
+  'messages.ephemeral',
   'messages.files',
   'messages.reply-context',
   'files.receive',

@@ -3,12 +3,19 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ButtonReplyOptions, DeferredDeliveryTarget, ReplyFn, ReplyOptions } from '../types.js'
+import type { ButtonReplyOptions, DeferredDeliveryTarget, PromptHandle, ReplyFn, ReplyOptions } from '../types.js'
 import type { MattermostActionContextInput, MattermostSignedActionContext } from './action-signing.js'
 import { buildMattermostMentionPrefix } from './file-helpers.js'
 import { ChannelSchema } from './schema.js'
 
 const ACTION_TTL_MS = 5 * 60 * 1000
+
+const extractPostId = (created: unknown): string | undefined => {
+  if (typeof created !== 'object' || created === null || !('id' in created)) return undefined
+  const { id } = created as Record<string, unknown>
+  return typeof id === 'string' ? id : undefined
+}
+
 const MATTERMOST_MAX_BUTTONS = 5
 
 type MattermostButtonAction = Readonly<{
@@ -19,7 +26,11 @@ type MattermostButtonAction = Readonly<{
   integration: { url: string; context: MattermostSignedActionContext }
 }>
 
-type MattermostPostReply = (message: string, options?: ReplyOptions, extra?: Record<string, unknown>) => Promise<void>
+type MattermostPostReply = (
+  message: string,
+  options?: ReplyOptions,
+  extra?: Record<string, unknown>,
+) => Promise<string | undefined>
 
 interface MattermostReplyHelpersParams {
   channelId: string
@@ -81,7 +92,8 @@ const createButtonsReply = (
   callbackBaseUrl: string | null,
   createActionContext: (input: MattermostActionContextInput) => MattermostSignedActionContext,
   threadId: string | undefined,
-): ((content: string, options: ButtonReplyOptions) => Promise<undefined>) => {
+  apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
+): ((content: string, options: ButtonReplyOptions) => Promise<PromptHandle | undefined>) => {
   return async (content, options) => {
     if (callbackBaseUrl === null) {
       throw new Error('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL')
@@ -95,10 +107,34 @@ const createButtonsReply = (
       createActionContext,
       options.threadId ?? threadId,
     )
-    await post(content, options, { props: { attachments: [{ actions }] } })
-    return undefined
+    const createdId = await post(content, options, { props: { attachments: [{ actions }] } })
+    if (createdId === undefined) return undefined
+    return {
+      redact: async (text: string): Promise<void> => {
+        await apiFetch('PUT', `/api/v4/posts/${createdId}/patch`, { message: text, props: {} }).catch(() => undefined)
+      },
+      remove: async (): Promise<void> => {
+        await apiFetch('DELETE', `/api/v4/posts/${createdId}`, undefined).catch(() => undefined)
+      },
+    }
   }
 }
+
+const makePost =
+  (
+    channelId: string,
+    threadId: string | undefined,
+    apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
+  ): MattermostPostReply =>
+  async (message, options, extra) => {
+    const created = await apiFetch('POST', '/api/v4/posts', {
+      channel_id: channelId,
+      message,
+      root_id: options?.threadId ?? threadId ?? '',
+      ...extra,
+    })
+    return extractPostId(created)
+  }
 
 export function createMattermostReplyFn(params: MattermostReplyHelpersParams): ReplyFn {
   const {
@@ -113,20 +149,15 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
     callbackBaseUrl,
     createActionContext,
   } = params
-
-  const post = async (message: string, options?: ReplyOptions, extra?: Record<string, unknown>): Promise<void> => {
-    await apiFetch('POST', '/api/v4/posts', {
-      channel_id: channelId,
-      message,
-      root_id: options?.threadId ?? threadId ?? '',
-      ...extra,
-    })
-  }
-
+  const post = makePost(channelId, threadId, apiFetch)
   return {
-    text: (content: string, options?: ReplyOptions) => post(content, options),
-    formatted: (markdown: string, options?: ReplyOptions) => post(markdown, options),
-    file: async (file, options?: ReplyOptions) => {
+    text: async (content: string, options?: ReplyOptions): Promise<void> => {
+      await post(content, options)
+    },
+    formatted: async (markdown: string, options?: ReplyOptions): Promise<void> => {
+      await post(markdown, options)
+    },
+    file: async (file, options?: ReplyOptions): Promise<void> => {
       const fileId = await uploadFile(channelId, file.content, file.filename)
       await post('', options, { file_ids: [fileId] })
     },
@@ -141,7 +172,15 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
     deleteMessage: async (messageId: string) => {
       await apiFetch('DELETE', `/api/v4/posts/${messageId}`, undefined)
     },
-    buttons: createButtonsReply(post, platformInstanceId, channelId, callbackBaseUrl, createActionContext, threadId),
+    buttons: createButtonsReply(
+      post,
+      platformInstanceId,
+      channelId,
+      callbackBaseUrl,
+      createActionContext,
+      threadId,
+      apiFetch,
+    ),
   }
 }
 
