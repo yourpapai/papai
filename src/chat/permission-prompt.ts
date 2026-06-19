@@ -121,9 +121,8 @@ export function formatPrompt(toolName: string, reason: string, args: Record<stri
   return parts.join('\n')
 }
 
-export function formatPermissionDecisionText(sourceMessageText: string, decision: PermissionDecision): string {
-  const label = decision === 'allow' ? 'Allowed.' : 'Denied.'
-  return `${sourceMessageText.trimEnd()}\n\n${label}`
+export function formatDecisionConfirmation(toolName: string, decision: PermissionDecision): string {
+  return decision === 'allow' ? `Allowed ${toolName} ✅` : `Denied ${toolName} 🚫`
 }
 
 export function askPermissionViaChat(

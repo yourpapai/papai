@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import {
   askPermissionViaChat,
   formatArguments,
-  formatPermissionDecisionText,
+  formatDecisionConfirmation,
   formatPrompt,
   resolvePermissionRequest,
   resetPermissionPromptForTesting,
@@ -137,17 +137,12 @@ describe('askPermissionViaChat', () => {
   })
 })
 
-describe('formatPermissionDecisionText', () => {
-  test('keeps prompt text and appends allow decision', () => {
-    expect(formatPermissionDecisionText('Run `delete_task`?\n\nReason', 'allow')).toBe(
-      'Run `delete_task`?\n\nReason\n\nAllowed.',
-    )
+describe('formatDecisionConfirmation', () => {
+  test('includes the tool name for allow', () => {
+    expect(formatDecisionConfirmation('delete_task', 'allow')).toBe('Allowed delete_task ✅')
   })
-
-  test('keeps prompt text and appends deny decision', () => {
-    expect(formatPermissionDecisionText('Run `delete_task`?\n\nReason', 'deny')).toBe(
-      'Run `delete_task`?\n\nReason\n\nDenied.',
-    )
+  test('includes the tool name for deny', () => {
+    expect(formatDecisionConfirmation('delete_task', 'deny')).toBe('Denied delete_task 🚫')
   })
 })
 

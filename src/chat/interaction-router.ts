@@ -5,25 +5,38 @@
 
 import { logger } from '../logger.js'
 import {
-  formatPermissionDecisionText,
+  formatDecisionConfirmation,
   peekPermissionRequest,
   resolvePermissionRequest,
   type PermissionDecision,
 } from './permission-prompt.js'
-import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
+import type { AuthorizationResult, IncomingInteraction, PromptHandle, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:interaction-router' })
 const PERMISSION_CALLBACK_PATTERN = /^perm:(a|d):([A-Za-z0-9_-]+)$/u
 
 const permissionDecisionFromCode = (code: string): PermissionDecision => (code === 'a' ? 'allow' : 'deny')
 
-async function replyToPermissionDecision(
+async function finalizePermissionDecision(
   reply: ReplyFn,
+  toolName: string,
   sourceMessageText: string | undefined,
   decision: PermissionDecision,
+  handle: PromptHandle | undefined,
 ): Promise<void> {
-  const fallback = decision === 'allow' ? 'Allowed.' : 'Denied.'
-  const content = sourceMessageText === undefined ? fallback : formatPermissionDecisionText(sourceMessageText, decision)
+  const confirmation = formatDecisionConfirmation(toolName, decision)
+  // Ephemeral path: delete the prompt, confirm with a non-persistent toast.
+  if (reply.ephemeralConfirm !== undefined && handle !== undefined) {
+    try {
+      await handle.remove()
+    } catch (error) {
+      log.warn({ toolName, error: error instanceof Error ? error.message : String(error) }, 'Failed to remove prompt')
+    }
+    await reply.ephemeralConfirm(confirmation)
+    return
+  }
+  // Fallback: edit the prompt in place (current behavior), now with the tool name.
+  const content = sourceMessageText === undefined ? confirmation : `${sourceMessageText.trimEnd()}\n\n${confirmation}`
   if (reply.replaceText !== undefined) {
     try {
       await reply.replaceText(content)
@@ -61,11 +74,12 @@ export async function routeInteraction(
       await reply.text('Action is no longer available.')
       return true
     }
-    if (!resolvePermissionRequest(id, decision).resolved) {
+    const result = resolvePermissionRequest(id, decision)
+    if (!result.resolved) {
       await reply.text('Action is no longer available.')
       return true
     }
-    await replyToPermissionDecision(reply, interaction.sourceMessageText, decision)
+    await finalizePermissionDecision(reply, pending.toolName, interaction.sourceMessageText, decision, result.handle)
     return true
   }
 
