@@ -220,6 +220,7 @@ describe('api-types', () => {
       subject: billingSubject,
       requests: [billingRow],
       truncated: false,
+      tokenUsageByDay: [],
     }
 
     const keyState: AdminLlmKeyState = {

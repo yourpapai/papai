@@ -8,6 +8,8 @@ import { and, desc, eq, gte } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { llmUsageEvents } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { tokenUsageByDayForSubject } from '../stats/token-usage-series.js'
+import type { StatsWindow, TokenUsagePoint } from '../stats/types.js'
 import { listSubjects } from '../usage/query.js'
 import type { ModelRole, RequestRow, SubjectSummary } from '../usage/types.js'
 import { resolveSubjectDisplayNames } from './subject-display-name.js'
@@ -24,7 +26,11 @@ export type BillingDetail = {
   subject: BillingSubject
   requests: readonly RequestRow[]
   truncated: boolean
+  tokenUsageByDay: readonly TokenUsagePoint[]
 }
+
+// Billing windows mostly mirror stats windows; '24h' maps to the stats '1d' bucket.
+const toStatsWindow = (w: BillingWindow): StatsWindow => (w === '24h' ? '1d' : w)
 
 export const BILLING_DETAIL_LIMIT = 500
 
@@ -113,5 +119,6 @@ export const getBillingDetail = (storageContextId: string, window: BillingWindow
   }
   const [decorated] = decorate([summary])
   if (decorated === undefined) return null
-  return { subject: decorated, requests: rows, truncated }
+  const tokenUsageByDay = tokenUsageByDayForSubject(storageContextId, toStatsWindow(window))
+  return { subject: decorated, requests: rows, truncated, tokenUsageByDay }
 }

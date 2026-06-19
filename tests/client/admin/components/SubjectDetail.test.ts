@@ -31,6 +31,7 @@ const detail: BillingDetail = {
   subject,
   requests: [],
   truncated: false,
+  tokenUsageByDay: [],
 }
 
 const recentRow = {

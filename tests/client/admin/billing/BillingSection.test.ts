@@ -82,7 +82,9 @@ const installFetch = (subjects: readonly BillingSubject[]): string[] => {
       return Promise.resolve(Response.json({ window: '30d', subjects }))
     }
     if (url.startsWith('/billing/subject/')) {
-      return Promise.resolve(Response.json({ window: '30d', subject: subjects[0], requests: [], truncated: false }))
+      return Promise.resolve(
+        Response.json({ window: '30d', subject: subjects[0], requests: [], truncated: false, tokenUsageByDay: [] }),
+      )
     }
     if (url.startsWith('/stats/subject/')) {
       const firstSubject = subjects[0]

@@ -44,6 +44,10 @@ export function makeBillingDetail(overrides: Partial<BillingDetail> = {}): Billi
     subject: overrides.subject ?? makeBillingSubject(),
     requests: overrides.requests ?? [],
     truncated: overrides.truncated ?? false,
+    tokenUsageByDay: overrides.tokenUsageByDay ?? [
+      { date: '2026-05-29', inputTokens: 3200, outputTokens: 1600, calls: 6 },
+      { date: '2026-05-30', inputTokens: 1800, outputTokens: 900, calls: 4 },
+    ],
   }
 }
 

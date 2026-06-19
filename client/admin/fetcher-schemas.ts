@@ -23,6 +23,13 @@ const PercentilesSchema = z.object({
 
 const StatsWindowSchema = z.enum(['1d', '7d', '30d', 'all'])
 
+const TokenUsagePointSchema = z.object({
+  date: z.string(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  calls: z.number(),
+})
+
 export const GlobalStatsSchema = z.object({
   generatedAt: z.number(),
   window: StatsWindowSchema,
@@ -67,14 +74,7 @@ export const GlobalStatsSchema = z.object({
     inputTokensTotal: z.number(),
     outputTokensTotal: z.number(),
   }),
-  tokenUsageByDay: z.array(
-    z.object({
-      date: z.string(),
-      inputTokens: z.number(),
-      outputTokens: z.number(),
-      calls: z.number(),
-    }),
-  ),
+  tokenUsageByDay: z.array(TokenUsagePointSchema),
 })
 
 export const BillingSubjectSchema = z.object({
@@ -119,6 +119,7 @@ export const BillingDetailResponseSchema = z.object({
   subject: BillingSubjectSchema,
   requests: z.array(BillingRequestRowSchema),
   truncated: z.boolean(),
+  tokenUsageByDay: z.array(TokenUsagePointSchema),
 })
 
 const StatsContextTypeSchema = z.enum(['dm', 'group', 'unknown'])

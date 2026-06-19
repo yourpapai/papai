@@ -27,7 +27,7 @@ import type {
   Notification,
   ToolFailure,
 } from '../../src/debug/schemas.js'
-import type { GlobalStats, StatsWindow, SubjectStats } from '../../src/stats/types.js'
+import type { GlobalStats, StatsWindow, SubjectStats, TokenUsagePoint } from '../../src/stats/types.js'
 
 export type {
   Fact,
@@ -54,6 +54,7 @@ export type {
   GlobalStats,
   StatsWindow,
   SubjectStats,
+  TokenUsagePoint,
 }
 
 export type RecurringTask = {
@@ -145,6 +146,7 @@ export type BillingDetail = {
   subject: BillingSubject
   requests: readonly BillingRequestRow[]
   truncated: boolean
+  tokenUsageByDay: readonly TokenUsagePoint[]
 }
 
 export type AdminLlmKeyState = {

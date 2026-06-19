@@ -109,6 +109,7 @@ describe('admin billing fetchers', () => {
       subject: fullSubject({ storageContextId: 'group-9:thread-1', contextType: 'group' }),
       requests: [],
       truncated: false,
+      tokenUsageByDay: [],
     })
 
     const result = await fetchBillingDetail('group-9:thread-1', 'all')

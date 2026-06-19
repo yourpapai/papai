@@ -6,7 +6,8 @@
 <script lang="ts">
   import Panel from '../../shared/ui/Panel.svelte'
   import StatusPill from '../../shared/ui/StatusPill.svelte'
-  import { formatDateTime } from '../../shared/helpers.js'
+  import Bars from '../../shared/ui/Bars.svelte'
+  import { formatDateTime, formatTokens } from '../../shared/helpers.js'
   import type { BillingDetail, BillingRequestRow } from '../../shared/api-types.js'
   import { fetchRecentRequests } from '../fetchers.js'
   import type { RecentRequestRow } from '../fetcher-schemas.js'
@@ -30,6 +31,11 @@
     return JSON.stringify(row, null, 2)
   }
 
+  const tokenSeries = $derived(detail.tokenUsageByDay.map((p) => ({ date: p.date, total: p.inputTokens + p.outputTokens })))
+  const tokenBars = $derived(tokenSeries.map((p) => p.total))
+  const tokenPeak = $derived(tokenSeries.reduce((m, p) => (p.total > m ? p.total : m), 0))
+  const tokenLast = $derived(tokenSeries.length > 0 ? tokenSeries[tokenSeries.length - 1] : null)
+
   $effect(() => {
     const id = detail.subject.storageContextId
     void (async () => {
@@ -47,6 +53,19 @@
     <div class="truncation-banner">
       Result truncated. Showing the most recent {detail.requests.length} requests; narrow the window for more.
     </div>
+  {/if}
+  {#if tokenBars.length > 0}
+    <Panel title="tokens / day">
+      {#snippet body()}
+        <figure class="subject-detail__chart">
+          <Bars data={tokenBars} />
+          <figcaption class="subject-detail__caption">
+            input + output tokens per UTC day · peak {formatTokens(tokenPeak)}{#if tokenLast !== null}
+              · {tokenLast.date}: {formatTokens(tokenLast.total)}{/if}
+          </figcaption>
+        </figure>
+      {/snippet}
+    </Panel>
   {/if}
   {#if detail.requests.length === 0}
     <span class="placeholder">No requests in this window</span>
@@ -161,6 +180,16 @@
     color: var(--fg3);
     background: var(--surface2);
     border-radius: 6px;
+  }
+  .subject-detail__chart {
+    margin: 0;
+    padding: 12px;
+  }
+  .subject-detail__caption {
+    margin-top: 4px;
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
   .admin-subject__requests {
     width: 100%;
