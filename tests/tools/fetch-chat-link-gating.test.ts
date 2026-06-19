@@ -57,4 +57,10 @@ describe('fetch_chat_link gating', () => {
     addProviderIndependentTools(tools, { ...baseOptions, chatUserId: 'user-1', contextId: 'legacy-raw-id' })
     expect(tools['fetch_chat_link']).toBeUndefined()
   })
+
+  test('absent when contextId is undefined', () => {
+    const tools: ToolSet = {}
+    addProviderIndependentTools(tools, { ...baseOptions, chatUserId: 'user-1', contextId: undefined })
+    expect(tools['fetch_chat_link']).toBeUndefined()
+  })
 })

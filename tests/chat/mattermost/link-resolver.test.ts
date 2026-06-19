@@ -27,7 +27,28 @@ function routeFetch(routes: Record<string, { status?: number; body: unknown }>):
 
 const BASE = 'https://mm.example.com'
 function seedMm(): void {
-  seedTestPlatformInstance({ id: 'mm-1', type: 'mattermost', config: { baseUrl: BASE, token: 'tok' } })
+  seedTestPlatformInstance({
+    id: 'mm-1',
+    type: 'mattermost',
+    config: { baseUrl: BASE, token: 'tok' },
+  })
+}
+
+// Like routeFetch but wraps a call-counting layer around one specific path so tests
+// can verify deduplication without writing conditionals inside a test body.
+function routeFetchCounting(
+  routes: Record<string, { status?: number; body: unknown }>,
+  countPath: string,
+): { getCount: () => number } {
+  let count = 0
+  setMockFetch((url) => {
+    const path = new URL(url).pathname
+    if (path === countPath) count += 1
+    const route = routes[path]
+    if (route === undefined) return Promise.resolve(new Response('not mapped', { status: 404 }))
+    return Promise.resolve(new Response(JSON.stringify(route.body), { status: route.status ?? 200 }))
+  })
+  return { getCount: () => count }
 }
 
 describe('parseMattermostPermalink', () => {
@@ -67,10 +88,24 @@ describe('resolveChatLink (single post)', () => {
   test("scope 'post' returns the linked message, flagged root + linked", async () => {
     routeFetch({
       '/api/v4/posts/abc123': {
-        body: { id: 'abc123', user_id: 'u1', channel_id: 'c1', message: 'hello there', create_at: 1700000000000 },
+        body: {
+          id: 'abc123',
+          user_id: 'u1',
+          channel_id: 'c1',
+          message: 'hello there',
+          create_at: 1700000000000,
+        },
       },
       '/api/v4/channels/c1/members/user-1': { body: { roles: 'channel_user' } },
-      '/api/v4/users/u1': { body: { id: 'u1', username: 'alice', first_name: 'Alice', last_name: 'A', nickname: '' } },
+      '/api/v4/users/u1': {
+        body: {
+          id: 'u1',
+          username: 'alice',
+          first_name: 'Alice',
+          last_name: 'A',
+          nickname: '',
+        },
+      },
     })
 
     const result = await resolveChatLink({
@@ -97,9 +132,18 @@ describe('resolveChatLink (single post)', () => {
   test('membership denied (members endpoint 403) → not-accessible AppError, no content', async () => {
     routeFetch({
       '/api/v4/posts/abc123': {
-        body: { id: 'abc123', user_id: 'u1', channel_id: 'c1', message: 'secret', create_at: 1 },
+        body: {
+          id: 'abc123',
+          user_id: 'u1',
+          channel_id: 'c1',
+          message: 'secret',
+          create_at: 1,
+        },
       },
-      '/api/v4/channels/c1/members/user-1': { status: 403, body: { message: 'forbidden' } },
+      '/api/v4/channels/c1/members/user-1': {
+        status: 403,
+        body: { message: 'forbidden' },
+      },
     })
 
     const error = await resolveChatLink({
@@ -157,14 +201,27 @@ describe('resolveChatLink (thread)', () => {
   test('link to a reply with scope thread returns whole thread, ordered, with isLinked on the reply', async () => {
     routeFetch({
       '/api/v4/posts/reply2': {
-        body: { id: 'reply2', user_id: 'u2', channel_id: 'c1', message: 'the reply', create_at: 20, root_id: 'root1' },
+        body: {
+          id: 'reply2',
+          user_id: 'u2',
+          channel_id: 'c1',
+          message: 'the reply',
+          create_at: 20,
+          root_id: 'root1',
+        },
       },
       '/api/v4/channels/c1/members/user-1': { body: { roles: 'channel_user' } },
       '/api/v4/posts/root1/thread': {
         body: {
           order: ['reply2', 'root1'],
           posts: {
-            root1: { id: 'root1', user_id: 'u1', channel_id: 'c1', message: 'the root', create_at: 10 },
+            root1: {
+              id: 'root1',
+              user_id: 'u1',
+              channel_id: 'c1',
+              message: 'the root',
+              create_at: 10,
+            },
             reply2: {
               id: 'reply2',
               user_id: 'u2',
@@ -202,12 +259,26 @@ describe('resolveChatLink (thread)', () => {
   test('threads over the 100-post cap are truncated', async () => {
     const posts: Record<string, unknown> = {}
     const order: string[] = []
-    posts['p0'] = { id: 'p0', user_id: 'u1', channel_id: 'c1', message: 'm0', create_at: 0, root_id: '' }
+    posts['p0'] = {
+      id: 'p0',
+      user_id: 'u1',
+      channel_id: 'c1',
+      message: 'm0',
+      create_at: 0,
+      root_id: '',
+    }
     order.push('p0')
     for (let i = 1; i < 130; i++) {
       const id = `p${i}`
       order.push(id)
-      posts[id] = { id, user_id: 'u1', channel_id: 'c1', message: `m${i}`, create_at: i, root_id: 'p0' }
+      posts[id] = {
+        id,
+        user_id: 'u1',
+        channel_id: 'c1',
+        message: `m${i}`,
+        create_at: i,
+        root_id: 'p0',
+      }
     }
     routeFetch({
       '/api/v4/posts/p0': { body: posts['p0'] },
@@ -225,5 +296,136 @@ describe('resolveChatLink (thread)', () => {
 
     expect(result.messages).toHaveLength(100)
     expect(result.truncated).toBe(true)
+  })
+
+  test("scope 'post' on a reply returns only that reply, not the thread", async () => {
+    routeFetch({
+      '/api/v4/posts/reply2': {
+        body: {
+          id: 'reply2',
+          user_id: 'u2',
+          channel_id: 'c1',
+          message: 'just the reply',
+          create_at: 20,
+          root_id: 'root1',
+        },
+      },
+      '/api/v4/channels/c1/members/user-1': { body: { roles: 'channel_user' } },
+      '/api/v4/users/u2': { body: { id: 'u2', username: 'bob' } },
+    })
+    const result = await resolveChatLink({
+      platformInstanceId: 'mm-1',
+      requesterUserId: 'user-1',
+      url: `${BASE}/eng/pl/reply2`,
+      scope: 'post',
+    })
+    expect(result.messages).toHaveLength(1)
+    expect(result.rootPostId).toBe('root1')
+    expect(result.linkedPostId).toBe('reply2')
+    expect(result.messages[0]?.isRoot).toBe(false)
+    expect(result.messages[0]?.isLinked).toBe(true)
+  })
+
+  test('429 on post fetch → rate-limited AppError', async () => {
+    routeFetch({ '/api/v4/posts/abc123': { status: 429, body: {} } })
+    const error = await resolveChatLink({
+      platformInstanceId: 'mm-1',
+      requesterUserId: 'user-1',
+      url: `${BASE}/eng/pl/abc123`,
+      scope: 'post',
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expectAppError(error, 'API rate limit reached. Please wait a moment and try again.')
+  })
+
+  test('5xx on post fetch → transient network AppError', async () => {
+    routeFetch({ '/api/v4/posts/abc123': { status: 500, body: {} } })
+    const error = await resolveChatLink({
+      platformInstanceId: 'mm-1',
+      requesterUserId: 'user-1',
+      url: `${BASE}/eng/pl/abc123`,
+      scope: 'post',
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expectAppError(error, 'Network error: Mattermost returned 500. Please check your connection and try again.')
+  })
+
+  test('membership 404 (channel not found) → same not-found AppError as a 403', async () => {
+    routeFetch({
+      '/api/v4/posts/abc123': {
+        body: {
+          id: 'abc123',
+          user_id: 'u1',
+          channel_id: 'c1',
+          message: 'x',
+          create_at: 1,
+        },
+      },
+      '/api/v4/channels/c1/members/user-1': { status: 404, body: {} },
+    })
+    const error = await resolveChatLink({
+      platformInstanceId: 'mm-1',
+      requesterUserId: 'user-1',
+      url: `${BASE}/eng/pl/abc123`,
+      scope: 'post',
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expectAppError(error, 'Chat message "abc123" was not found.')
+  })
+
+  test('resolves a repeated author label only once (dedup)', async () => {
+    const { getCount } = routeFetchCounting(
+      {
+        '/api/v4/posts/reply2': {
+          body: {
+            id: 'reply2',
+            user_id: 'u1',
+            channel_id: 'c1',
+            message: 'b',
+            create_at: 20,
+            root_id: 'root1',
+          },
+        },
+        '/api/v4/channels/c1/members/user-1': { body: {} },
+        '/api/v4/posts/root1/thread': {
+          body: {
+            order: ['root1', 'reply2'],
+            posts: {
+              root1: {
+                id: 'root1',
+                user_id: 'u1',
+                channel_id: 'c1',
+                message: 'a',
+                create_at: 10,
+              },
+              reply2: {
+                id: 'reply2',
+                user_id: 'u1',
+                channel_id: 'c1',
+                message: 'b',
+                create_at: 20,
+                root_id: 'root1',
+              },
+            },
+          },
+        },
+        '/api/v4/users/u1': { body: { id: 'u1', username: 'alice' } },
+      },
+      '/api/v4/users/u1',
+    )
+    const result = await resolveChatLink({
+      platformInstanceId: 'mm-1',
+      requesterUserId: 'user-1',
+      url: `${BASE}/eng/pl/reply2`,
+      scope: 'thread',
+    })
+    expect(result.messages).toHaveLength(2)
+    expect(getCount()).toBe(1)
   })
 })
