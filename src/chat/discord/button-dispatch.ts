@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { MessageFlags } from 'discord.js'
+
 import { checkAuthorizationExtended } from '../../auth.js'
 import { logger } from '../../logger.js'
 import type { CommandHandler, IncomingInteraction, IncomingMessage, ReplyFn } from '../types.js'
@@ -73,6 +75,9 @@ export function buildInteraction(
     channel,
     replyToMessageId: undefined,
     replaceMessage: supportsEditableMessage(interaction.message) ? interaction.message : undefined,
+    ephemeralReply: async (text: string): Promise<void> => {
+      await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral })
+    },
   })
   return { incoming: incomingInteraction, channel, reply }
 }

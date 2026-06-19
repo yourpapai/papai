@@ -115,8 +115,12 @@ describe('DiscordChatProvider', () => {
       channel: {
         id: 'c1',
         type: 0,
-        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-          Promise.resolve({ id: 'out1', edit: (): Promise<void> => Promise.resolve() }),
+        send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+          Promise.resolve({
+            id: 'out1',
+            edit: (): Promise<void> => Promise.resolve(),
+            delete: (): Promise<void> => Promise.resolve(),
+          }),
         sendTyping: (): Promise<void> => Promise.resolve(),
       },
       mentions: { has: (id: string): boolean => id === 'bot_id' },
@@ -146,8 +150,12 @@ describe('DiscordChatProvider', () => {
       channel: {
         id: 'c2',
         type: 0,
-        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-          Promise.resolve({ id: 'out2', edit: (): Promise<void> => Promise.resolve() }),
+        send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+          Promise.resolve({
+            id: 'out2',
+            edit: (): Promise<void> => Promise.resolve(),
+            delete: (): Promise<void> => Promise.resolve(),
+          }),
         sendTyping: (): Promise<void> => Promise.resolve(),
       },
       mentions: { has: (id: string): boolean => id === 'bot_id' },
@@ -177,8 +185,12 @@ describe('DiscordChatProvider', () => {
       channel: {
         id: 'c2',
         type: 0,
-        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-          Promise.resolve({ id: 'out2', edit: (): Promise<void> => Promise.resolve() }),
+        send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+          Promise.resolve({
+            id: 'out2',
+            edit: (): Promise<void> => Promise.resolve(),
+            delete: (): Promise<void> => Promise.resolve(),
+          }),
         sendTyping: (): Promise<void> => Promise.resolve(),
       },
       mentions: { has: (id: string): boolean => id === 'bot_id' },
@@ -208,8 +220,12 @@ describe('DiscordChatProvider', () => {
       channel: {
         id: 'c2',
         type: 0,
-        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-          Promise.resolve({ id: 'out2', edit: (): Promise<void> => Promise.resolve() }),
+        send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+          Promise.resolve({
+            id: 'out2',
+            edit: (): Promise<void> => Promise.resolve(),
+            delete: (): Promise<void> => Promise.resolve(),
+          }),
         sendTyping: (): Promise<void> => Promise.resolve(),
       },
       mentions: { has: (id: string): boolean => id === 'bot_id' },
@@ -242,10 +258,11 @@ describe('DiscordChatProvider', () => {
       channel: {
         id: 'c-reply',
         type: 0,
-        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+        send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
           Promise.resolve({
             id: 'out-reply',
             edit: (): Promise<void> => Promise.resolve(),
+            delete: (): Promise<void> => Promise.resolve(),
           }),
         sendTyping: (): Promise<void> => Promise.resolve(),
         messages: {
@@ -295,10 +312,11 @@ describe('DiscordChatProvider', () => {
       channel: {
         id: 'c-reply-nonbot',
         type: 0,
-        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+        send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
           Promise.resolve({
             id: 'out-reply-nonbot',
             edit: (): Promise<void> => Promise.resolve(),
+            delete: (): Promise<void> => Promise.resolve(),
           }),
         sendTyping: (): Promise<void> => Promise.resolve(),
         messages: {
@@ -339,10 +357,11 @@ describe('DiscordChatProvider', () => {
       channel: {
         id: 'c-reply-fetchfail',
         type: 0,
-        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+        send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
           Promise.resolve({
             id: 'out-reply-fetchfail',
             edit: (): Promise<void> => Promise.resolve(),
+            delete: (): Promise<void> => Promise.resolve(),
           }),
         sendTyping: (): Promise<void> => Promise.resolve(),
         messages: {
@@ -374,8 +393,12 @@ describe('DiscordChatProvider', () => {
       channel: {
         id: 'c3',
         type: 0,
-        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-          Promise.resolve({ id: 'out3', edit: (): Promise<void> => Promise.resolve() }),
+        send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+          Promise.resolve({
+            id: 'out3',
+            edit: (): Promise<void> => Promise.resolve(),
+            delete: (): Promise<void> => Promise.resolve(),
+          }),
         sendTyping: (): Promise<void> => Promise.resolve(),
       },
       mentions: { has: (): boolean => true },
@@ -407,9 +430,15 @@ describe('DiscordChatProvider', () => {
     const sends: Array<Partial<{ content: string }>> = []
     const dmChannel = {
       id: 'dm-chan-1',
-      send: (arg: Partial<{ content: string }>): Promise<{ id: string; edit: () => Promise<void> }> => {
+      send: (
+        arg: Partial<{ content: string }>,
+      ): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> => {
         sends.push(arg)
-        return Promise.resolve({ id: 'msg-x', edit: (): Promise<void> => Promise.resolve() })
+        return Promise.resolve({
+          id: 'msg-x',
+          edit: (): Promise<void> => Promise.resolve(),
+          delete: (): Promise<void> => Promise.resolve(),
+        })
       },
       sendTyping: (): Promise<void> => Promise.resolve(),
     }
@@ -733,8 +762,12 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'dm-chan-1',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'out1', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'out1',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         mentions: { has: (_id: string): boolean => false },
@@ -866,12 +899,17 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'u5',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'm-btn', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'm-btn',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'msg-btn-1' },
         deferUpdate: (): Promise<void> => Promise.resolve(),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       interactionListeners[0]!(fakeButtonInteraction)
@@ -904,8 +942,12 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'u1',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'msg-x', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'msg-x',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'original-msg-1' },
@@ -913,6 +955,7 @@ describe('DiscordChatProvider', () => {
           deferred = true
           return Promise.resolve()
         },
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
@@ -949,11 +992,12 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'u-edit',
           type: 1,
-          send: (arg: SendCapture): Promise<{ id: string; edit: () => Promise<void> }> => {
+          send: (arg: SendCapture): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> => {
             sends.push(arg)
             return Promise.resolve({
               id: 'msg-sent',
               edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
             })
           },
           sendTyping: (): Promise<void> => Promise.resolve(),
@@ -967,6 +1011,7 @@ describe('DiscordChatProvider', () => {
           },
         },
         deferUpdate: (): Promise<void> => Promise.resolve(),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
@@ -1008,11 +1053,12 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'u-readonly',
           type: 1,
-          send: (arg: SendCapture): Promise<{ id: string; edit: () => Promise<void> }> => {
+          send: (arg: SendCapture): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> => {
             sends.push(arg)
             return Promise.resolve({
               id: 'msg-sent',
               edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
             })
           },
           sendTyping: (): Promise<void> => Promise.resolve(),
@@ -1026,6 +1072,7 @@ describe('DiscordChatProvider', () => {
           },
         },
         deferUpdate: (): Promise<void> => Promise.resolve(),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
@@ -1060,12 +1107,17 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'u2',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'msg-y', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'msg-y',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'btn-msg-2' },
         deferUpdate: (): Promise<void> => Promise.resolve(),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
@@ -1094,12 +1146,17 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'dm-channel-77',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'm1', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'm1',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'msg-3' },
         deferUpdate: (): Promise<void> => Promise.resolve(),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
@@ -1129,12 +1186,17 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'guild-channel-99',
           type: 0,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'm2', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'm2',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'msg-4' },
         deferUpdate: (): Promise<void> => Promise.resolve(),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
@@ -1160,6 +1222,7 @@ describe('DiscordChatProvider', () => {
         channel: null,
         message: { id: 'msg-5' },
         deferUpdate: (): Promise<void> => Promise.resolve(),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
@@ -1181,8 +1244,12 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'user-cfg',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'msg-cfg', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'msg-cfg',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'msg-cfg-1' },
@@ -1190,6 +1257,7 @@ describe('DiscordChatProvider', () => {
           deferred = true
           return Promise.resolve()
         },
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       // No active editor, should defer and return without error
@@ -1211,8 +1279,12 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'user-wiz',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'msg-wiz', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'msg-wiz',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'msg-wiz-1' },
@@ -1220,6 +1292,7 @@ describe('DiscordChatProvider', () => {
           deferred = true
           return Promise.resolve()
         },
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       // No active wizard, should defer and return without error
@@ -1247,12 +1320,17 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'u-def',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'msg-def', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'msg-def',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'msg-def-1' },
         deferUpdate: (): Promise<void> => Promise.reject(new Error('Defer failed')),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       // Should still route to message handler despite defer failure
@@ -1298,8 +1376,12 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'dm-rej-1',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'out-rej', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'out-rej',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         mentions: { has: (_id: string): boolean => false },
@@ -1445,12 +1527,17 @@ describe('DiscordChatProvider', () => {
         channel: {
           id: 'u-rej',
           type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'm-rej', edit: (): Promise<void> => Promise.resolve() }),
+          send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+            Promise.resolve({
+              id: 'm-rej',
+              edit: (): Promise<void> => Promise.resolve(),
+              delete: (): Promise<void> => Promise.resolve(),
+            }),
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
         message: { id: 'msg-rej-btn' },
         deferUpdate: (): Promise<void> => Promise.resolve(),
+        followUp: (): Promise<void> => Promise.resolve(),
       }
 
       interactionListeners[0]!(fakeInteraction)

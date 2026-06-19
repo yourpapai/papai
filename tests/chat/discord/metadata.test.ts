@@ -15,6 +15,10 @@ describe('discord metadata', () => {
     expect(discordCapabilities.has('messages.redact')).toBe(true)
   })
 
+  test('declares messages.ephemeral capability', () => {
+    expect(discordCapabilities.has('messages.ephemeral')).toBe(true)
+  })
+
   test('capabilities exclude messages.files (not implemented)', () => {
     expect(discordCapabilities.has('messages.files')).toBe(false)
   })

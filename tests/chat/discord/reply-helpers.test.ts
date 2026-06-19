@@ -59,6 +59,7 @@ describe('createDiscordReplyFn', () => {
           return Promise.resolve({
             id: `bot-msg-${String(sends.length)}`,
             edit: () => Promise.resolve(),
+            delete: () => Promise.resolve(),
           })
         },
         sendTyping: () => {
@@ -123,7 +124,9 @@ describe('createDiscordReplyFn', () => {
     const edits: { id: string; content: string }[] = []
 
     // Override channel.send to capture edit calls
-    channel.send = (arg: SendArg): Promise<{ id: string; edit: (editArg: EditArg) => Promise<unknown> }> => {
+    channel.send = (
+      arg: SendArg,
+    ): Promise<{ id: string; edit: (editArg: EditArg) => Promise<unknown>; delete: () => Promise<unknown> }> => {
       sends.push(arg)
       // Get the message ID and override edit method
       const msgId = `bot-msg-${String(sends.length)}`
@@ -133,6 +136,7 @@ describe('createDiscordReplyFn', () => {
           edits.push({ id: msgId, content: getContent(editArg) })
           return Promise.resolve()
         },
+        delete: (): Promise<void> => Promise.resolve(),
       })
     }
 
@@ -283,5 +287,83 @@ describe('createDiscordReplyFn', () => {
     assertEmbeds(payload)
     expect(Array.isArray(payload.embeds)).toBe(true)
     expect(payload.embeds).toHaveLength(1)
+  })
+
+  test('buttons() returns a handle whose redact calls sent.edit with empty components', async () => {
+    const editCalls: EditArg[] = []
+    const channel: SendableChannel = {
+      id: 'chan-1',
+      send: (_arg: SendArg) =>
+        Promise.resolve({
+          id: 'btn-msg-1',
+          edit: (editArg: EditArg) => {
+            editCalls.push(editArg)
+            return Promise.resolve()
+          },
+          delete: () => Promise.resolve(),
+        }),
+      sendTyping: () => Promise.resolve(),
+    }
+
+    const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
+    const handle = await reply.buttons('choose', {
+      buttons: [{ text: 'Yes', callbackData: 'cb:y', style: 'primary' }],
+    })
+
+    expect(handle).toBeDefined()
+    await handle!.redact('timed out')
+
+    expect(editCalls).toHaveLength(1)
+    expect(editCalls[0]).toEqual({ content: 'timed out', components: [] })
+  })
+
+  test('buttons() returns a handle whose remove calls sent.delete', async () => {
+    let deleteCalled = false
+    const channel: SendableChannel = {
+      id: 'chan-1',
+      send: (_arg: SendArg) =>
+        Promise.resolve({
+          id: 'btn-msg-1',
+          edit: () => Promise.resolve(),
+          delete: () => {
+            deleteCalled = true
+            return Promise.resolve()
+          },
+        }),
+      sendTyping: () => Promise.resolve(),
+    }
+
+    const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
+    const handle = await reply.buttons('choose', {
+      buttons: [{ text: 'Yes', callbackData: 'cb:y', style: 'primary' }],
+    })
+
+    expect(handle).toBeDefined()
+    await handle!.remove()
+
+    expect(deleteCalled).toBe(true)
+  })
+
+  test('ephemeralConfirm is set when ephemeralReply is provided', async () => {
+    const { channel } = makeChannel()
+    const confirmCalls: string[] = []
+    const reply = createDiscordReplyFn({
+      channel,
+      replyToMessageId: undefined,
+      ephemeralReply: (text: string) => {
+        confirmCalls.push(text)
+        return Promise.resolve()
+      },
+    })
+
+    expect(reply.ephemeralConfirm).toBeDefined()
+    await reply.ephemeralConfirm!('done!')
+    expect(confirmCalls).toEqual(['done!'])
+  })
+
+  test('ephemeralConfirm is absent when ephemeralReply is not provided', () => {
+    const { channel } = makeChannel()
+    const reply = createDiscordReplyFn({ channel, replyToMessageId: undefined })
+    expect(reply.ephemeralConfirm).toBeUndefined()
   })
 })

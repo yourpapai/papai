@@ -23,7 +23,9 @@ type DiscordSendPayload = Partial<{
 export type ButtonChannelLike = {
   id: string
   type: number
-  send: (arg: DiscordSendPayload) => Promise<{ id: string; edit: (arg: DiscordEditPayload) => Promise<unknown> }>
+  send: (
+    arg: DiscordSendPayload,
+  ) => Promise<{ id: string; edit: (arg: DiscordEditPayload) => Promise<unknown>; delete: () => Promise<unknown> }>
   sendTyping: () => Promise<void>
 }
 
@@ -42,6 +44,7 @@ export type ButtonInteractionLike = {
     edit: (arg: DiscordEditPayload) => Promise<unknown>
   }>
   deferUpdate(): Promise<void>
+  followUp: (arg: { content: string; flags?: number; ephemeral?: boolean }) => Promise<unknown>
 }
 
 // discord.js enum values: InteractionType.MessageComponent = 3, ComponentType.Button = 2

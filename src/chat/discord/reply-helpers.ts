@@ -6,11 +6,12 @@
 import pLimit from 'p-limit'
 
 import { logger } from '../../logger.js'
-import type { ButtonReplyOptions, EmbedOptions, ReplyFn, ReplyOptions } from '../types.js'
+import type { ButtonReplyOptions, EmbedOptions, PromptHandle, ReplyFn, ReplyOptions } from '../types.js'
 import { toActionRows } from './buttons.js'
 import { chunkForDiscord } from './format-chunking.js'
 import { formatLlmOutput } from './format.js'
 import { discordTraits } from './metadata.js'
+import { buildPromptHandle } from './prompt-handle-builder.js'
 
 const log = logger.child({ scope: 'chat:discord:reply' })
 
@@ -25,19 +26,21 @@ type EditPayload = Partial<{ content: string; components: unknown[] }>
 
 export type SendableChannel = {
   id: string
-  send: (arg: SendPayload) => Promise<{ id: string; edit: (arg: EditPayload) => Promise<unknown> }>
+  send: (
+    arg: SendPayload,
+  ) => Promise<{ id: string; edit: (arg: EditPayload) => Promise<unknown>; delete: () => Promise<unknown> }>
   sendTyping: () => Promise<void>
 }
 
 export type CreateDiscordReplyFnParams = {
   channel: SendableChannel
   replyToMessageId: string | undefined
-} & Partial<{ replaceMessage: BotMessage }>
+} & Partial<{ replaceMessage: BotMessage; ephemeralReply: (text: string) => Promise<void> }>
 
 type BotMessage = {
   id: string
   edit: (arg: EditPayload) => Promise<unknown>
-}
+} & Partial<{ delete: () => Promise<unknown> }>
 
 function buildReply(replyToMessageId: string | undefined, options: ReplyOptions | undefined): MessageRef {
   const target =
@@ -118,7 +121,7 @@ async function sendButtonsReply(
   replyToMessageId: string | undefined,
   content: string,
   options: ButtonReplyOptions,
-): Promise<void> {
+): Promise<BotMessage> {
   const rows = options.buttons === undefined ? [] : toActionRows(options.buttons)
   const sent = await channel.send({
     content,
@@ -126,6 +129,7 @@ async function sendButtonsReply(
     reply: buildReply(replyToMessageId, options),
   })
   sentMessages.push(sent)
+  return sent
 }
 
 async function replaceOrSend(
@@ -153,46 +157,48 @@ async function redactMessages(channelId: string, sentMessages: BotMessage[], rep
   }
 }
 
-export function createDiscordReplyFn(params: CreateDiscordReplyFnParams): ReplyFn {
-  const { channel, replyToMessageId, replaceMessage } = params
-  const sentMessages: BotMessage[] = []
-  const text: ReplyFn['text'] = (content: string, ...rest: [] | [ReplyOptions]): Promise<void> => {
-    const options = rest[0]
-    return sendTextReply(channel, sentMessages, replyToMessageId, content, options)
-  }
-  const replaceText: NonNullable<ReplyFn['replaceText']> = (
-    content: string,
-    ...rest: [] | [ReplyOptions]
-  ): Promise<void> => {
-    const options = rest[0]
-    return replaceOrSend(replaceMessage, { content, components: [] }, () =>
-      sendTextReply(channel, sentMessages, replyToMessageId, content, options),
-    )
-  }
-  const formatted: ReplyFn['formatted'] = (markdown: string, ...rest: [] | [ReplyOptions]): Promise<void> => {
-    const options = rest[0]
-    return sendFormattedReply(channel, sentMessages, replyToMessageId, markdown, options)
-  }
+type ReplyContext = {
+  channel: SendableChannel
+  replyToMessageId: string | undefined
+  replaceMessage: BotMessage | undefined
+  sentMessages: BotMessage[]
+}
 
+function buildTextHandlers(ctx: ReplyContext): Pick<ReplyFn, 'text' | 'replaceText' | 'formatted'> {
+  const { channel, replyToMessageId, replaceMessage, sentMessages } = ctx
   return {
-    text,
-    replaceText,
-    formatted,
+    text: (content: string, ...rest: [] | [ReplyOptions]): Promise<void> =>
+      sendTextReply(channel, sentMessages, replyToMessageId, content, rest[0]),
+    replaceText: (content: string, ...rest: [] | [ReplyOptions]): Promise<void> =>
+      replaceOrSend(replaceMessage, { content, components: [] }, () =>
+        sendTextReply(channel, sentMessages, replyToMessageId, content, rest[0]),
+      ),
+    formatted: (markdown: string, ...rest: [] | [ReplyOptions]): Promise<void> =>
+      sendFormattedReply(channel, sentMessages, replyToMessageId, markdown, rest[0]),
+  }
+}
 
+export function createDiscordReplyFn(params: CreateDiscordReplyFnParams): ReplyFn {
+  const { channel, replyToMessageId, replaceMessage, ephemeralReply } = params
+  const sentMessages: BotMessage[] = []
+  const ctx: ReplyContext = { channel, replyToMessageId, replaceMessage, sentMessages }
+
+  const reply: ReplyFn = {
+    ...buildTextHandlers(ctx),
     typing: (): void => {
       void channel.sendTyping().catch(() => null)
     },
     redactMessage: (replacementText: string): Promise<void> =>
       redactMessages(channel.id, sentMessages, replacementText),
-    buttons: async (content: string, options: ButtonReplyOptions): Promise<undefined> => {
-      await sendButtonsReply(channel, sentMessages, replyToMessageId, content, options)
-      return undefined
+    buttons: async (content: string, options: ButtonReplyOptions): Promise<PromptHandle | undefined> => {
+      const sent = await sendButtonsReply(channel, sentMessages, replyToMessageId, content, options)
+      return buildPromptHandle(sent)
     },
     replaceButtons: (content: string, options: ButtonReplyOptions): Promise<void> =>
       replaceOrSend(
         replaceMessage,
         { content, components: options.buttons === undefined ? [] : toActionRows(options.buttons) },
-        () => sendButtonsReply(channel, sentMessages, replyToMessageId, content, options),
+        () => sendButtonsReply(channel, sentMessages, replyToMessageId, content, options).then(() => undefined),
       ),
     embed: async (options: EmbedOptions): Promise<void> => {
       const embed = createEmbedPayload(options)
@@ -200,4 +206,10 @@ export function createDiscordReplyFn(params: CreateDiscordReplyFnParams): ReplyF
       sentMessages.push(sent)
     },
   }
+
+  if (ephemeralReply !== undefined) {
+    reply.ephemeralConfirm = ephemeralReply
+  }
+
+  return reply
 }

@@ -6,8 +6,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { MessageFlags } from 'discord.js'
+
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import type { ButtonInteractionLike } from '../../../src/chat/discord/buttons.js'
+import { askPermissionViaChat, resetPermissionPromptForTesting } from '../../../src/chat/permission-prompt.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import type { CommandHandler } from '../../../src/chat/types.js'
 import { addGroupMember } from '../../../src/groups.js'
@@ -49,7 +52,10 @@ type MockInteractionOverrides = Partial<
   }>
 >
 
-const createMockInteraction = (overrides: MockInteractionOverrides | undefined): ButtonInteractionLike => {
+const createMockInteraction = (
+  overrides: MockInteractionOverrides | undefined,
+  followUpSpy?: (arg: { content: string; flags?: number; ephemeral?: boolean }) => Promise<unknown>,
+): ButtonInteractionLike => {
   let userId = 'unauthorized-user'
   let username = 'unauthorized'
   let channelId = 'channel-123'
@@ -84,8 +90,12 @@ const createMockInteraction = (overrides: MockInteractionOverrides | undefined):
     channel: {
       id: channelId,
       type: channelType,
-      send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-        Promise.resolve({ id: 'msg-1', edit: (): Promise<void> => Promise.resolve() }),
+      send: (): Promise<{ id: string; edit: () => Promise<void>; delete: () => Promise<void> }> =>
+        Promise.resolve({
+          id: 'msg-1',
+          edit: (): Promise<void> => Promise.resolve(),
+          delete: (): Promise<void> => Promise.resolve(),
+        }),
       sendTyping: (): Promise<void> => Promise.resolve(),
     },
     message: {
@@ -94,6 +104,7 @@ const createMockInteraction = (overrides: MockInteractionOverrides | undefined):
       threadId,
     },
     deferUpdate: (): Promise<void> => Promise.resolve(),
+    followUp: followUpSpy ?? ((): Promise<void> => Promise.resolve()),
   }
 }
 
@@ -746,6 +757,92 @@ describe('routeButtonFallback', () => {
       const result = createFallbackMessage(interaction, 'channel-123', 'group', false, 'discord-secondary')
 
       expect(result.platformInstanceId).toBe('discord-secondary')
+    })
+  })
+
+  describe('buildInteraction ephemeral followUp', () => {
+    afterEach(() => {
+      resetPermissionPromptForTesting()
+    })
+
+    test('perm:a:<id> button interaction triggers followUp with Ephemeral flag', async () => {
+      const { buildInteraction, tryDeferUpdate } = await import('../../../src/chat/discord/button-dispatch.js')
+      const { routeInteraction } = await import('../../../src/chat/interaction-router.js')
+
+      const authorizedUserId = 'authorized-user'
+      addUser(authorizedUserId, 'authorized', 'authorizeduser')
+
+      const followUpCalls: { content: string; flags?: number; ephemeral?: boolean }[] = []
+      const followUpSpy = (arg: { content: string; flags?: number; ephemeral?: boolean }): Promise<void> => {
+        followUpCalls.push(arg)
+        return Promise.resolve()
+      }
+
+      // Intercept reply.buttons to capture the allow-button callbackData.
+      // askPermissionViaChat always puts the allow button first with callbackData 'perm:a:<id>'.
+      // We return a real PromptHandle so finalizePermissionDecision takes the ephemeral path.
+      let capturedCallbackData = ''
+      const { reply: baseReply } = createMockReply()
+      const fakeHandle: import('../../../src/chat/types.js').PromptHandle = {
+        redact: (): Promise<void> => Promise.resolve(),
+        remove: (): Promise<void> => Promise.resolve(),
+      }
+      const promptReply: import('../../../src/chat/types.js').ReplyFn = {
+        ...baseReply,
+        buttons: (
+          _content: string,
+          options: import('../../../src/chat/types.js').ButtonReplyOptions,
+        ): Promise<import('../../../src/chat/types.js').PromptHandle | undefined> => {
+          capturedCallbackData = options.buttons![0]!.callbackData
+          return Promise.resolve(fakeHandle)
+        },
+      }
+
+      const permissionDecisionPromise = askPermissionViaChat(promptReply, scopedChannel('channel-123'), {
+        toolName: 'delete_task',
+        reason: 'Requires permission',
+        args: {},
+      })
+
+      // Yield to let the .then on buttons() patch the handle in askPermissionViaChat
+      await Promise.resolve()
+
+      expect(capturedCallbackData).toMatch(/^perm:a:[A-Za-z0-9_-]+$/u)
+
+      // Simulate the button interaction click with ephemeral followUp
+      const clickInteraction = createMockInteraction(
+        {
+          userId: authorizedUserId,
+          username: 'authorizeduser',
+          channelId: 'channel-123',
+          customId: capturedCallbackData,
+        },
+        followUpSpy,
+      )
+
+      const built = buildInteraction(clickInteraction, TEST_PLATFORM_ID)
+      expect(built).not.toBeNull()
+      assert(built !== null)
+
+      await tryDeferUpdate(clickInteraction)
+
+      const auth = {
+        allowed: true,
+        isBotAdmin: false,
+        isGroupAdmin: false,
+        storageContextId: scopedChannel('channel-123'),
+      }
+
+      const incomingInteraction = {
+        ...built.incoming,
+        callbackData: capturedCallbackData,
+      }
+
+      await routeInteraction(incomingInteraction, built.reply, auth)
+      await permissionDecisionPromise
+
+      expect(followUpCalls).toHaveLength(1)
+      expect(followUpCalls[0]!.flags).toBe(MessageFlags.Ephemeral)
     })
   })
 })
