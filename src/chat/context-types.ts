@@ -22,3 +22,19 @@ export type ContextSnapshot = {
   /** True when token counts came from a char/4 fallback because tokenization failed. */
   approximate: boolean
 }
+
+/** One field inside a Discord-style embed. */
+export type EmbedField = {
+  name: string
+  value: string
+} & Partial<{ inline: boolean }>
+
+/** Options for sending a structured embed (Discord-only today). */
+export type EmbedOptions = {
+  title: string
+  description: string
+} & Partial<{
+  fields: EmbedField[]
+  footer: string
+  color: number
+}>

@@ -210,24 +210,8 @@ export type ChatButton = {
 
 /** Extended reply options with buttons */
 export interface ButtonReplyOptions extends ReplyOptions, Partial<{ buttons: ChatButton[] }> {}
-import type { ContextSnapshot } from './context-types.js'
-export type { ContextSection, ContextSnapshot } from './context-types.js'
-
-/** One field inside a Discord-style embed. */
-export type EmbedField = {
-  name: string
-  value: string
-} & Partial<{ inline: boolean }>
-
-/** Options for sending a structured embed (Discord-only today). */
-export type EmbedOptions = {
-  title: string
-  description: string
-} & Partial<{
-  fields: EmbedField[]
-  footer: string
-  color: number
-}>
+import type { ContextSnapshot, EmbedOptions } from './context-types.js'
+export type { ContextSection, ContextSnapshot, EmbedField, EmbedOptions } from './context-types.js'
 
 /** Reply function injected into handlers — the only way to send messages back to the user. */
 export type ReplyFn = {
