@@ -143,3 +143,87 @@ describe('resolveChatLink (single post)', () => {
     expectAppError(error, 'Invalid url: not a Mattermost permalink for this workspace')
   })
 })
+
+describe('resolveChatLink (thread)', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedMm()
+  })
+  afterEach(() => {
+    restoreFetch()
+  })
+
+  test('link to a reply with scope thread returns whole thread, ordered, with isLinked on the reply', async () => {
+    routeFetch({
+      '/api/v4/posts/reply2': {
+        body: { id: 'reply2', user_id: 'u2', channel_id: 'c1', message: 'the reply', create_at: 20, root_id: 'root1' },
+      },
+      '/api/v4/channels/c1/members/user-1': { body: { roles: 'channel_user' } },
+      '/api/v4/posts/root1/thread': {
+        body: {
+          order: ['reply2', 'root1'],
+          posts: {
+            root1: { id: 'root1', user_id: 'u1', channel_id: 'c1', message: 'the root', create_at: 10 },
+            reply2: {
+              id: 'reply2',
+              user_id: 'u2',
+              channel_id: 'c1',
+              message: 'the reply',
+              create_at: 20,
+              root_id: 'root1',
+            },
+          },
+        },
+      },
+      '/api/v4/users/u1': { body: { id: 'u1', username: 'alice' } },
+      '/api/v4/users/u2': { body: { id: 'u2', username: 'bob' } },
+    })
+
+    const result = await resolveChatLink({
+      platformInstanceId: 'mm-1',
+      requesterUserId: 'user-1',
+      url: `${BASE}/eng/pl/reply2`,
+      scope: 'thread',
+    })
+
+    expect(result.rootPostId).toBe('root1')
+    expect(result.linkedPostId).toBe('reply2')
+    // chronological
+    expect(result.messages.map((m) => m.text)).toEqual(['the root', 'the reply'])
+    const root = result.messages[0]
+    const reply = result.messages[1]
+    expect(root?.isRoot).toBe(true)
+    expect(root?.isLinked).toBe(false)
+    expect(reply?.isRoot).toBe(false)
+    expect(reply?.isLinked).toBe(true)
+  })
+
+  test('threads over the 100-post cap are truncated', async () => {
+    const posts: Record<string, unknown> = {}
+    const order: string[] = []
+    posts['p0'] = { id: 'p0', user_id: 'u1', channel_id: 'c1', message: 'm0', create_at: 0, root_id: '' }
+    order.push('p0')
+    for (let i = 1; i < 130; i++) {
+      const id = `p${i}`
+      order.push(id)
+      posts[id] = { id, user_id: 'u1', channel_id: 'c1', message: `m${i}`, create_at: i, root_id: 'p0' }
+    }
+    routeFetch({
+      '/api/v4/posts/p0': { body: posts['p0'] },
+      '/api/v4/channels/c1/members/user-1': { body: { roles: 'channel_user' } },
+      '/api/v4/posts/p0/thread': { body: { order, posts } },
+      '/api/v4/users/u1': { body: { id: 'u1', username: 'alice' } },
+    })
+
+    const result = await resolveChatLink({
+      platformInstanceId: 'mm-1',
+      requesterUserId: 'user-1',
+      url: `${BASE}/eng/pl/p0`,
+      scope: 'thread',
+    })
+
+    expect(result.messages).toHaveLength(100)
+    expect(result.truncated).toBe(true)
+  })
+})

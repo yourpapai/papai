@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import pLimit from 'p-limit'
+
 import type { AppError } from '../../errors.js'
 import { providerError, systemError } from '../../errors.js'
 import { getPlatformInstance } from '../../instances/platform-store.js'
@@ -10,9 +12,10 @@ import { logger } from '../../logger.js'
 import { makeMattermostApiFetch, MattermostApiError } from './api-fetch.js'
 import type { MattermostApiFetch } from './file-helpers.js'
 import { resolveMattermostUserLabel } from './label-helpers.js'
-import { MattermostThreadPostSchema, type MattermostThreadPost } from './schema.js'
+import { MattermostPostListSchema, MattermostThreadPostSchema, type MattermostThreadPost } from './schema.js'
 
 const PERMALINK_PATTERN = /\/pl\/([a-z0-9]+)\/?$/iu
+const MAX_THREAD_POSTS = 100
 
 /**
  * Return the Mattermost post id from a permalink, but only when the link's host
@@ -139,6 +142,79 @@ function toMessage(post: MattermostThreadPost, rootId: string, linkedId: string,
   }
 }
 
+async function fetchThreadPosts(
+  apiFetch: MattermostApiFetch,
+  rootId: string,
+  postId: string,
+): Promise<{ posts: MattermostThreadPost[]; truncated: boolean }> {
+  let list
+  try {
+    const raw = await apiFetch('GET', `/api/v4/posts/${encodeURIComponent(rootId)}/thread`, undefined)
+    list = MattermostPostListSchema.parse(raw)
+  } catch (e) {
+    throw toChatLinkError(e, postId)
+  }
+  const ordered = list.order
+    .map((id) => list.posts[id])
+    .filter((p): p is MattermostThreadPost => p !== undefined)
+    .sort((a, b) => a.create_at - b.create_at)
+  if (ordered.length > MAX_THREAD_POSTS) {
+    return { posts: ordered.slice(0, MAX_THREAD_POSTS), truncated: true }
+  }
+  return { posts: ordered, truncated: false }
+}
+
+async function resolveAuthorLabels(
+  apiFetch: MattermostApiFetch,
+  posts: readonly MattermostThreadPost[],
+): Promise<Map<string, string>> {
+  const distinct = [...new Set(posts.map((p) => p.user_id))]
+  const limit = pLimit(5)
+  const cache = new Map<string, string>()
+  await Promise.all(
+    distinct.map((userId) =>
+      limit(async () => {
+        const label = await resolveMattermostUserLabel(apiFetch, userId)
+        cache.set(userId, label ?? userId)
+      }),
+    ),
+  )
+  return cache
+}
+
+async function buildResult(
+  apiFetch: MattermostApiFetch,
+  linked: MattermostThreadPost,
+  postId: string,
+  scope: ChatLinkScope,
+  platformInstanceId: string,
+): Promise<ChatLinkResult> {
+  const channelId = linked.channel_id
+  const rootId = linked.root_id !== undefined && linked.root_id !== '' ? linked.root_id : linked.id
+  const selection =
+    scope === 'thread' ? await fetchThreadPosts(apiFetch, rootId, postId) : { posts: [linked], truncated: false }
+
+  const labels = await resolveAuthorLabels(apiFetch, selection.posts)
+  const messages = selection.posts.map((post) =>
+    toMessage(post, rootId, postId, labels.get(post.user_id) ?? post.user_id),
+  )
+
+  log.info(
+    { platformInstanceId, channelId, postId, scope, count: messages.length, truncated: selection.truncated },
+    'fetch_chat_link resolved',
+  )
+  const result: ChatLinkResult = {
+    source: 'mattermost',
+    channelId,
+    rootPostId: rootId,
+    linkedPostId: postId,
+    scope,
+    messages,
+  }
+  if (selection.truncated) result.truncated = true
+  return result
+}
+
 export async function resolveChatLink(args: ResolveChatLinkArgs): Promise<ChatLinkResult> {
   const { platformInstanceId, requesterUserId, url, scope } = args
   const factory = args.apiFetchFactory ?? makeMattermostApiFetch
@@ -163,13 +239,6 @@ export async function resolveChatLink(args: ResolveChatLinkArgs): Promise<ChatLi
     throw toChatLinkError(e, postId)
   }
 
-  const channelId = linked.channel_id
-  const rootId = linked.root_id !== undefined && linked.root_id !== '' ? linked.root_id : linked.id
-  await assertRequesterMember(apiFetch, channelId, requesterUserId, postId)
-
-  const author = (await resolveMattermostUserLabel(apiFetch, linked.user_id)) ?? linked.user_id
-  const messages: ChatLinkMessage[] = [toMessage(linked, rootId, postId, author)]
-
-  log.info({ platformInstanceId, channelId, postId, scope, count: messages.length }, 'fetch_chat_link resolved')
-  return { source: 'mattermost', channelId, rootPostId: rootId, linkedPostId: postId, scope, messages }
+  await assertRequesterMember(apiFetch, linked.channel_id, requesterUserId, postId)
+  return buildResult(apiFetch, linked, postId, scope, platformInstanceId)
 }
