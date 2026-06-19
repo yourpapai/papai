@@ -19,6 +19,7 @@ const appTarget = typeof document === 'undefined' ? null : document.querySelecto
 if (appTarget !== null) {
   void ensureAuthenticated().then((state) => {
     if (state.authenticated) {
+      dashboard.operatorUserId = state.adminUserId
       mountApp(appTarget)
     } else {
       document.body.innerHTML = `

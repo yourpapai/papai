@@ -126,4 +126,6 @@ export interface DashboardState {
   scopeFilter: ScopeFilter
   selectedDetail: SelectedDetail
   activeLogFilter: { turnId?: string }
+  /** Platform user id of the signed-in operator, used to pin their own session. */
+  operatorUserId?: string
 }

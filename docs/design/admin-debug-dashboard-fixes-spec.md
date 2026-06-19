@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Admin & Debug Dashboard Fixes — Verification + Spec
 
-Status: in progress (issues 1–4, 6 implemented; see Implementation status)
+Status: implemented (issues 1–4 and 6; issue 5 per the recorded decision)
 Date: 2026-06-18
 Scope: `client/admin/`, `client/debug/`, `src/debug/`, `src/stats/`, `src/usage/`
 
@@ -364,7 +364,13 @@ Shipped on `claude/admin-debug-dashboards-7dql4d`:
   preservation, oldest-record terminus, buffer-stats footer, full timestamp on
   hover. Redaction left untouched.
 
+Also shipped (former optional follow-ups):
+
+- Per-subject token-per-day chart embedded in the billing detail view
+  (`tokenUsageByDayForSubject` surfaced on `BillingDetail`; captioned chart in
+  `SubjectDetail`).
+- "Current operator session" pivot — the debug session list pins the signed-in
+  operator's own session to the top with a "you" badge (`pinOperatorFirst`,
+  driven by `/auth/whoami`'s `adminUserId`).
+
 Not pursued (per decisions): owned-scope de-redaction tier, durable log sink.
-Deferred (optional follow-ups): per-subject token chart embedded in the detail
-view (building block `tokenUsageByDayForSubject` already exists); a pinned
-"current operator session" pivot in the debug rail.
