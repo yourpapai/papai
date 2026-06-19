@@ -133,3 +133,75 @@ describe('buildTelegramReplyFn', () => {
     })
   })
 })
+
+describe('buildTelegramReplyFn createStatus', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  function makeApi(): {
+    api: {
+      editMessageText: (c: number, m: number, t: string) => Promise<unknown>
+      deleteMessage: (c: number, m: number) => Promise<unknown>
+    }
+    edits: Array<[number, number, string]>
+    deletes: Array<[number, number]>
+  } {
+    const edits: Array<[number, number, string]> = []
+    const deletes: Array<[number, number]> = []
+    return {
+      api: {
+        editMessageText: (c: number, m: number, t: string): Promise<unknown> => {
+          edits.push([c, m, t])
+          return Promise.resolve()
+        },
+        deleteMessage: (c: number, m: number): Promise<unknown> => {
+          deletes.push([c, m])
+          return Promise.resolve()
+        },
+      },
+      edits,
+      deletes,
+    }
+  }
+
+  test('creates, updates, and dismisses a status message', async () => {
+    const { api, edits, deletes } = makeApi()
+    const mockCtx = {
+      chat: { id: 99, type: 'private' },
+      message: { message_id: 321 },
+      reply: (_text: string): Promise<{ message_id: number; chat: { id: number } }> =>
+        Promise.resolve({ message_id: 555, chat: { id: 99 } }),
+      replyWithChatAction: (): Promise<void> => Promise.resolve(),
+    }
+    const buildFn: unknown = Reflect.get({ buildTelegramReplyFn }, 'buildTelegramReplyFn')
+    assert(typeof buildFn === 'function', 'buildTelegramReplyFn is callable')
+    const reply: unknown = Reflect.apply(buildFn, undefined, [mockCtx, undefined, false, api])
+    assert(isReplyFn(reply), 'Expected a ReplyFn')
+    assert(reply.createStatus !== undefined, 'expected createStatus')
+
+    const handle = await reply.createStatus('💭 Thinking…')
+    assert(handle !== undefined, 'expected a status handle')
+    await handle.update('📝 Creating task…')
+    await handle.dismiss()
+
+    expect(edits).toEqual([[99, 555, '📝 Creating task…']])
+    expect(deletes).toEqual([[99, 555]])
+  })
+
+  test('returns undefined when the send fails', async () => {
+    const { api } = makeApi()
+    const mockCtx = {
+      chat: { id: 99, type: 'private' },
+      message: { message_id: 321 },
+      reply: (): Promise<never> => Promise.reject(new Error('send failed')),
+      replyWithChatAction: (): Promise<void> => Promise.resolve(),
+    }
+    const buildFn: unknown = Reflect.get({ buildTelegramReplyFn }, 'buildTelegramReplyFn')
+    assert(typeof buildFn === 'function', 'buildTelegramReplyFn is callable')
+    const reply: unknown = Reflect.apply(buildFn, undefined, [mockCtx, undefined, false, api])
+    assert(isReplyFn(reply), 'Expected a ReplyFn')
+    assert(reply.createStatus !== undefined, 'expected createStatus')
+    expect(await reply.createStatus('💭 Thinking…')).toBeUndefined()
+  })
+})

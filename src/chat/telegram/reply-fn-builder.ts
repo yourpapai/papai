@@ -6,10 +6,11 @@
 import type { Context } from 'grammy'
 
 import { logger } from '../../logger.js'
-import type { ReplyFn, ReplyOptions } from '../types.js'
+import type { ReplyFn, ReplyOptions, StatusHandle } from '../types.js'
 import { buildTelegramPromptHandle, type TelegramBotEditApi } from './prompt-handle-builder.js'
 import {
   createReplyParamsBuilder,
+  type ReplyParamsBuilder,
   sendButtonReply,
   sendFileReply,
   sendFormattedReply,
@@ -23,6 +24,29 @@ const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
 
 export type CallbackAnswerState = { answered: boolean }
+
+async function buildStatusHandle(
+  ctx: Context,
+  api: TelegramBotEditApi,
+  initialText: string,
+  replyParams: ReturnType<ReplyParamsBuilder>,
+): Promise<StatusHandle | undefined> {
+  const sent = await ctx.reply(initialText, { reply_parameters: replyParams }).catch((err: unknown) => {
+    log.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to create status message')
+    return undefined
+  })
+  if (sent === undefined) return undefined
+  const statusChatId = sent.chat.id
+  const statusMessageId = sent.message_id
+  return {
+    update: async (text: string): Promise<void> => {
+      await api.editMessageText(statusChatId, statusMessageId, text).catch(() => undefined)
+    },
+    dismiss: async (): Promise<void> => {
+      await api.deleteMessage(statusChatId, statusMessageId).catch(() => undefined)
+    },
+  }
+}
 
 function attachReplacementMethods(
   replyFn: ReplyFn,
@@ -83,6 +107,7 @@ export function buildTelegramReplyFn(
       const sent = await sendButtonReply(ctx, content, buildReplyParams, opts)
       return buildTelegramPromptHandle(api, sent.chat.id, sent.message_id)
     },
+    createStatus: (initialText: string) => buildStatusHandle(ctx, api, initialText, buildReplyParams()),
   }
   if (allowReplacement) {
     attachReplacementMethods(replyFn, ctx, callbackAnswerState)
