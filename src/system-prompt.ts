@@ -99,6 +99,12 @@ const PROVIDERLESS_DEFERRED = `DEFERRED PROMPTS — The user can set up automate
 
 const PROACTIVE = `PROACTIVE MODE — When you receive a [PROACTIVE EXECUTION] system message at the end of the conversation, a deferred prompt has fired. You are delivering a previously scheduled result to the user. The user message marked with ===DEFERRED_TASK=== is the stored prompt — fulfill it directly. For reminders, deliver the message conversationally. For actions, execute them with tools and report the result. Never create new deferred prompts during proactive execution. Never mention triggers, cron jobs, or scheduling internals. Be warm and concise.`
 
+const STEERING_FRAGMENT =
+  'STEERING: A mid-run instruction from the user may arrive between your tool steps. ' +
+  'Fold an unambiguous correction into your current work and continue. If the user asks you to stop ' +
+  '("stop", "never mind"), wind down promptly and report what you have already done. ' +
+  'Ask a brief clarifying question only if you genuinely cannot proceed.'
+
 const WEB_FETCH = `WEB FETCH — When the user shares or refers back to a public URL and you need the page contents, call web_fetch. Use its returned summary/excerpt as source material for your answer. Only save the result via memo/task tools if the user explicitly asks you to persist it.`
 
 const WORKFLOW = `WORKFLOW:
@@ -189,6 +195,7 @@ function assembleSystemPrompt(
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const parts: string[] = [intro]
   if (options.progressiveDisclosure === true) parts.push(buildDisclosureFragment(enabledToolNames))
+  parts.push(STEERING_FRAGMENT)
   for (const fragment of FRAGMENTS) {
     if (!fragmentIncluded(fragment, enabledToolNames)) continue
     if (fragment.text === DEFERRED) {

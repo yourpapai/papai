@@ -454,3 +454,19 @@ describe('ask-tools instruction', () => {
     expect(prompt).not.toContain('- load_tool')
   })
 })
+
+describe('system prompt steering fragment', () => {
+  beforeEach(async () => {
+    mockLogger()
+    mock.restore()
+    await setupTestDb()
+  })
+
+  test('includes the mid-run instruction guidance', () => {
+    const prompt = buildProviderlessSystemPrompt('user-1', new Set<string>(), {
+      askPermissionAvailable: true,
+      contextType: 'dm',
+    })
+    expect(prompt).toContain('mid-run instruction')
+  })
+})
