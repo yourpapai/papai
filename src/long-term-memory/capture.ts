@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import type { ModelMessage } from 'ai'
 
 import { hasThreadContextId } from '../chat/scoped-context.js'
-import type { ContextType } from '../chat/types.js'
+import type { ActorRole, ContextType } from '../chat/types.js'
 import { getEmbeddingForContext } from '../embeddings.js'
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
@@ -29,6 +29,7 @@ export type RunMemoryCaptureInput = Readonly<{
   configContextId: string
   contextType: ContextType
   history: readonly ModelMessage[]
+  actorRole?: ActorRole
 }>
 
 export type CaptureExtractInput = Readonly<{

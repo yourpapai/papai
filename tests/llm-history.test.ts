@@ -126,6 +126,7 @@ describe('appendAssistantHistory', () => {
       configContextId: 'cfg',
       contextType: 'group',
       history: [...history, ...assistantMessages],
+      actorRole: 'member',
     })
   })
 })

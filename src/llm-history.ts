@@ -5,6 +5,7 @@
 
 import type { ModelMessage } from 'ai'
 
+import type { ActorRole } from './chat/types.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { appendHistory } from './history.js'
 import { logger } from './logger.js'
@@ -24,6 +25,7 @@ export const appendAssistantHistory = (
   history: readonly ModelMessage[],
   assistantMessages: ModelMessage[],
   contextType: 'dm' | 'group' = 'dm',
+  actorRole: ActorRole = 'member',
 ): void => {
   if (assistantMessages.length > 0) {
     appendHistory(contextId, assistantMessages)
@@ -32,14 +34,22 @@ export const appendAssistantHistory = (
   const combined = [...history, ...assistantMessages]
   if (shouldTriggerTrim(combined, mainModel)) {
     void runTrimInBackground(contextId, combined, undefined, configId)
-    void runMemoryExtractionInBackground({
-      storageContextId: contextId,
-      contextType,
-      configContextId: configId,
-      history: combined,
-    })
+    if (actorRole !== 'guest') {
+      void runMemoryExtractionInBackground({
+        storageContextId: contextId,
+        contextType,
+        configContextId: configId,
+        history: combined,
+      })
+    }
   }
-  armMemoryCapture({ storageContextId: contextId, configContextId: configId, contextType, history: combined })
+  armMemoryCapture({
+    storageContextId: contextId,
+    configContextId: configId,
+    contextType,
+    history: combined,
+    actorRole,
+  })
 }
 
 export const appendAssistantTurnHistory = (
@@ -50,6 +60,7 @@ export const appendAssistantTurnHistory = (
   historyMessage: ModelMessage,
   assistantMessages: ModelMessage[],
   contextType: 'dm' | 'group',
+  actorRole: ActorRole = 'member',
 ): void => {
   appendAssistantHistory(
     contextId,
@@ -58,5 +69,6 @@ export const appendAssistantTurnHistory = (
     [...baseHistory, historyMessage],
     assistantMessages,
     contextType,
+    actorRole,
   )
 }

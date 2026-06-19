@@ -7,7 +7,6 @@ import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
-import { getCachedHistory } from './cache.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
 import { appendHistory } from './history.js'
@@ -16,8 +15,8 @@ import { attemptAutoLink } from './identity/resolver.js'
 import { resolveEffectiveLlmConfig, type EffectiveLlmConfig } from './llm-config-resolver.js'
 import { appendAssistantTurnHistory } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
-import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
+import { buildHistory } from './llm-orchestrator-history.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
 import {
   resolveAttachmentIds,
@@ -181,24 +180,6 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   return result
 }
 
-const buildHistory = async (
-  contextId: string,
-  chatUserId: string,
-  modelName: string,
-  userText: string,
-  attachmentIds: readonly string[],
-): Promise<{ baseHistory: readonly ModelMessage[]; modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
-  const baseHistory = getCachedHistory(contextId)
-  const { modelMessage, historyMessage } = await buildUserTurnMessages(
-    contextId,
-    chatUserId,
-    modelName,
-    userText,
-    attachmentIds,
-  )
-  return { baseHistory, modelMessage, historyMessage }
-}
-
 type RunTurnArgs = {
   invocationSource: Omit<InvocationSource, 'history'>
   turn: Awaited<ReturnType<typeof buildHistory>>
@@ -211,7 +192,7 @@ type RunTurnArgs = {
 
 const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
   const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, startedAt } = args
-  const { reply, contextId, contextType } = invocationSource
+  const { reply, contextId, contextType, actorRole } = invocationSource
   const run = runRegistry.begin(contextId, { turnId: resolvedTurnId, reply })
   let leftover: InjectedMessage[] = []
   try {
@@ -231,6 +212,7 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
       turn.historyMessage,
       result.response.messages,
       contextType,
+      actorRole,
     )
     if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false }))
   } catch (error) {
@@ -295,6 +277,7 @@ export const processMessage = async (
       deps,
       [],
       undefined,
+      actorRole,
     )
   }
 }

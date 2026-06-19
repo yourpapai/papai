@@ -45,6 +45,7 @@ const defaultDeps: ArmCaptureDeps = {
 
 /** Record activity and (re)arm a debounced capture for this context. Safe to call every turn. */
 export function armMemoryCapture(input: RunMemoryCaptureInput, deps: ArmCaptureDeps = defaultDeps): void {
+  if (input.actorRole === 'guest') return
   if (input.contextType !== 'group') return
 
   deps.markActivity(input, input.history.length, deps.now())
