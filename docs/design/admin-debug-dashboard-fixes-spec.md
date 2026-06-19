@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Admin & Debug Dashboard Fixes — Verification + Spec
 
-Status: proposed
+Status: in progress (issues 1–4, 6 implemented; see Implementation status)
 Date: 2026-06-18
 Scope: `client/admin/`, `client/debug/`, `src/debug/`, `src/stats/`, `src/usage/`
 
@@ -333,12 +333,38 @@ non-durable, which is what the user is actually experiencing.
 6. Debug: current-session panel, `/logs` cursor pagination, buffer-stats header.
 7. Optional durable log sink (only if approved).
 
-## Open questions for the user
+## Decisions (resolved)
 
-1. **Operator content visibility (issue 5/6):** confine de-redaction to scopes
-   the operator _owns_, or add a separate audited "super-admin sees all" mode?
-2. **Durable logs (issue 6):** add an opt-in on-disk/DB log sink for
-   across-restart history, or keep logs in-memory only and just add
-   backward-paging within the buffer?
-3. **Token time-series granularity:** day buckets sufficient, or also want
-   hour buckets for the `1d`/`24h` window?
+1. **Operator content visibility (issue 5):** keep the redaction allowlist
+   unchanged. Improve the debug-log surface for issues that are independent of
+   redaction; do **not** de-redact content. No "super-admin sees all" mode.
+2. **Durable logs (issue 6):** no on-disk/DB sink. Keep logs in-memory; the gap
+   is that the browser never fetched previous records — fix that with
+   backward-paging through the buffer.
+3. **Token time-series granularity:** day buckets (UTC).
+
+## Implementation status
+
+Shipped on `claude/admin-debug-dashboards-7dql4d`:
+
+- **Issue 1/2** — `tokenUsageByDay{Global,ForSubject}` (day-bucketed, windowed,
+  anonymity-tested); `GlobalStats.tokenUsageByDay` + client schema; Overview
+  token KPI populated from `llmUsage`; captioned tokens-per-day chart in the
+  Stats panel (input/output/calls cards + peak/last); captions on the tool-call
+  sparkline; Overview "subject growth" panel relabeled + per-chart captions.
+- **Issue 3** — `formatDateTime` (UTC `YYYY-MM-DD HH:MM`); sortable `DataTable`
+  columns (`sortable`/`sortAccessor`/`defaultSort`); SubjectsTable sorts +
+  typed short labels (`DM/Group · id8`) instead of raw UUIDs; GroupsSection
+  formats/sorts `added_at`.
+- **Issue 4** — SubjectDetail tables restyled (sticky header, right-aligned
+  tabular numerics, framed JSON, UTC date+time); SubjectStatsPanel converted
+  from a bare `<dl>` to a MetricCard grid.
+- **Issue 6** — `before` cursor on the log buffer + `/logs`; client
+  `fetchOlderLogs`/`fetchLogStats`, "↑ load older" back-paging with scroll
+  preservation, oldest-record terminus, buffer-stats footer, full timestamp on
+  hover. Redaction left untouched.
+
+Not pursued (per decisions): owned-scope de-redaction tier, durable log sink.
+Deferred (optional follow-ups): per-subject token chart embedded in the detail
+view (building block `tokenUsageByDayForSubject` already exists); a pinned
+"current operator session" pivot in the debug rail.
