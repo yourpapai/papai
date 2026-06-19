@@ -10,6 +10,9 @@ export type AuthorizationDenyReason =
   | 'dm_not_allowed'
   | 'user_blocked'
 
+/** Effective actor role for a turn: a restricted group guest vs. a normal member/admin/user. */
+export type ActorRole = 'guest' | 'member'
+
 /** Authorization result for message processing. */
 export type AuthorizationResult = {
   allowed: boolean
@@ -19,4 +22,9 @@ export type AuthorizationResult = {
   // `configCommandAllowed`: set on an otherwise-denied DM result when the user can
   // manage a group; lets the launcher-only `/config` command through without
   // granting general DM access.
-} & Partial<{ configContextId: string; reason: AuthorizationDenyReason; configCommandAllowed: boolean }>
+} & Partial<{
+  configContextId: string
+  reason: AuthorizationDenyReason
+  configCommandAllowed: boolean
+  isGuest: boolean
+}>

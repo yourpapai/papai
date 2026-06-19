@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { isAuthorizedGroup } from './authorized-groups.js'
+import { isAuthorizedGroup, isGuestModeEnabled } from './authorized-groups.js'
 import { toScopedContextId, toScopedThreadContextId } from './chat/scoped-context.js'
 import type { AuthorizationResult, ContextType } from './chat/types.js'
 import { listManageableGroups } from './group-settings/access.js'
@@ -72,6 +72,20 @@ const getGroupMemberAuth = (
   allowed: true,
   isBotAdmin: false,
   isGroupAdmin: isPlatformAdmin,
+  storageContextId: getThreadScopedStorageContextId(contextId, contextType, threadId, platformInstanceId),
+  configContextId: getThreadScopedStorageContextId(contextId, contextType, undefined, platformInstanceId),
+})
+
+const getGuestGroupAuth = (
+  contextId: string,
+  contextType: ContextType,
+  threadId: string | undefined,
+  platformInstanceId: string,
+): AuthorizationResult => ({
+  allowed: true,
+  isBotAdmin: false,
+  isGroupAdmin: false,
+  isGuest: true,
   storageContextId: getThreadScopedStorageContextId(contextId, contextType, threadId, platformInstanceId),
   configContextId: getThreadScopedStorageContextId(contextId, contextType, undefined, platformInstanceId),
 })
@@ -161,6 +175,9 @@ const getUnauthenticatedGroupAuth = (
 
   if (isGroupMember(getGroupConfigContextId(contextId, platformInstanceId), userId)) {
     return getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
+  }
+  if (isGuestModeEnabled(getGroupConfigContextId(contextId, platformInstanceId))) {
+    return getGuestGroupAuth(contextId, contextType, threadId, platformInstanceId)
   }
   return getUnauthorizedGroupAuth(contextId, threadId, platformInstanceId, 'group_member_not_allowed')
 }
