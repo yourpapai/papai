@@ -11,6 +11,9 @@ import type { ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
+import { createLiveStatusReporter } from './live-status/reporter.js'
+import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
+import type { InvokeModelArgs } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
@@ -254,4 +257,33 @@ export const sendLlmResponse = async (
     )
   }
   log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
+}
+
+type InvokeWithLiveStatusArgs = {
+  reply: ReplyFn
+  invokeArgs: InvokeModelArgs & { turnId: string }
+  progressReporter: AiProgressReporter
+}
+
+export const invokeWithLiveStatus = async (
+  args: InvokeWithLiveStatusArgs,
+): Promise<{ response: { messages: ModelMessage[] } }> => {
+  const { reply, invokeArgs, progressReporter } = args
+  const liveStatus = createLiveStatusReporter(reply)
+  await liveStatus.start()
+  try {
+    const result = await invokeModelWithTyping(reply, { ...invokeArgs, liveStatus })
+    const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
+    log.debug(
+      { contextId: invokeArgs.contextId, toolCalls: toolCallCount, usage: result.usage },
+      'LLM response received',
+    )
+    progressReporter.reasoning(result.reasoningText, result.reasoning)
+    persistFactsFromResults(invokeArgs.contextId, result)
+    await liveStatus.dismiss()
+    await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter)
+    return result
+  } finally {
+    await liveStatus.dismiss()
+  }
 }

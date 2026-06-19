@@ -83,9 +83,16 @@ const makeLlmEndListener =
 
 type ResponseMetadata = Partial<{ id: string; modelId: string }>
 
+type ToolCallStartEvent = {
+  toolCall: { toolName: string; toolCallId: string; input: unknown }
+}
+
+type ToolCallStartHandler = (event: ToolCallStartEvent) => void
+
 type GenerateTextArgs = Partial<{
   messages: unknown[]
   tools: Record<string, unknown>
+  experimental_onToolCallStart: ToolCallStartHandler | undefined
   experimental_onToolCallFinish: ToolCallFinishHandler | undefined
 }>
 
@@ -1750,5 +1757,59 @@ describe('processMessage', () => {
       expect(capturedToolNames).toContain('search_memos')
       expect(capturedToolNames).toContain('create_task')
     })
+  })
+
+  test('callLlm creates a live status, updates it on a tool call, and dismisses it', async () => {
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    resetSystemConfigCacheForTesting()
+    seedSystemLlmConfig()
+    seedConfig()
+
+    const created: string[] = []
+    const updates: string[] = []
+    let dismissed = 0
+    const { reply: base } = createMockReply()
+    const reply: ReplyFn = {
+      ...base,
+      createStatus: (initialText: string) => {
+        created.push(initialText)
+        return Promise.resolve({
+          update: (text: string) => {
+            updates.push(text)
+            return Promise.resolve()
+          },
+          dismiss: () => {
+            dismissed += 1
+            return Promise.resolve()
+          },
+        })
+      },
+    }
+
+    generateTextImpl = (args: GenerateTextArgs): Promise<GenerateTextResult> => {
+      args.experimental_onToolCallStart?.({
+        toolCall: { toolName: 'create_task', toolCallId: 'c1', input: { title: 'X' } },
+      })
+      callToolFinish(args.experimental_onToolCallFinish, {
+        toolCall: { toolName: 'create_task', toolCallId: 'c1', input: { title: 'X' } },
+        durationMs: 1,
+        success: true,
+        output: {},
+      })
+      return defaultGenerateTextResult()
+    }
+
+    const deps: LlmOrchestratorDeps = {
+      ...defaultDeps,
+      buildOpenAI: buildMockOpenAI,
+      resolve: () => createMockProvider(),
+    }
+
+    await processMessage(reply, CTX_ID, 'user-1', null, 'do it', 'dm', undefined, deps)
+
+    expect(created).toEqual(['💭 Thinking…'])
+    expect(updates).toContain('📝 Creating task: "X"…')
+    expect(dismissed).toBeGreaterThanOrEqual(1)
   })
 })

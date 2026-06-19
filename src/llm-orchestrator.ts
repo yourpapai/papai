@@ -17,19 +17,13 @@ import { appendAssistantTurnHistory } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
-import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
 import {
   resolveAttachmentIds,
   resolveDeps,
   resolveTurnId,
   type ProcessMessageRest,
 } from './llm-orchestrator-process-args.js'
-import {
-  handleLlmTurnError,
-  logProcessMessage,
-  persistFactsFromResults,
-  sendLlmResponse,
-} from './llm-orchestrator-support.js'
+import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
@@ -157,27 +151,25 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
   const { tools, validatedMessages, enabledToolNames, disclosure } = await prepareLlmInvocation(invocationOpts)
   const progressReporter = createProgressReporterForContext(reply, contextId)
-  const result = await invokeModelWithTyping(reply, {
-    contextId,
-    chatUserId,
-    contextType,
-    mainModel,
-    model,
-    provider,
-    tools,
-    enabledToolNames,
-    messages: validatedMessages,
-    deps,
+  return invokeWithLiveStatus({
+    reply,
+    invokeArgs: {
+      contextId,
+      chatUserId,
+      contextType,
+      mainModel,
+      model,
+      provider,
+      tools,
+      enabledToolNames,
+      messages: validatedMessages,
+      deps,
+      progressReporter,
+      disclosure,
+      turnId,
+    },
     progressReporter,
-    disclosure,
-    turnId,
   })
-  const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
-  log.debug({ contextId, toolCalls: toolCallCount, usage: result.usage }, 'LLM response received')
-  progressReporter.reasoning(result.reasoningText, result.reasoning)
-  persistFactsFromResults(contextId, result)
-  await sendLlmResponse(reply, contextId, result, progressReporter)
-  return result
 }
 
 type RunTurnArgs = {
