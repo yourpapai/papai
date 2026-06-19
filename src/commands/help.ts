@@ -16,6 +16,7 @@ const DM_USER_HELP = [
   '/config — Open your settings in the web UI (single-use link)',
   '/clear — Clear conversation history and memory',
   '/context — Show current memory context (summary and known entities)',
+  '/stop — stop or steer the running task (send again to stop immediately)',
   '',
   'Any other message is sent to the AI assistant.',
 ].join('\n')

@@ -25,21 +25,20 @@ import {
   registerDashboardCommand,
   registerHelpCommand,
   registerStartCommand,
+  registerStopCommand,
 } from './commands/index.js'
 import { emitUser } from './debug/event-bus.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
-import { enqueueMessage } from './message-queue/index.js'
-import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
+import { enqueueMessage, type CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
 import { runRegistry } from './run-control/registry.js'
 
-type EnqueueMessageFn = typeof enqueueMessage
 const initializedChats = new WeakSet<ChatProvider>()
 export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
-  Readonly<Partial<Record<'stagedDownloadFn', StagedFileDownloadFn> & Record<'enqueueMessage', EnqueueMessageFn>>>
+  Readonly<Partial<Record<'stagedDownloadFn', StagedFileDownloadFn> & Record<'enqueueMessage', typeof enqueueMessage>>>
 const defaultBotDeps: BotDeps = {
   processMessage: defaultProcessMessage,
   enqueueMessage,
@@ -128,6 +127,7 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerContextCommand(observedChat)
   registerClearCommand(observedChat, undefined, adminUserId)
   registerDashboardCommand(observedChat)
+  registerStopCommand(observedChat)
   registerPluginCommands(observedChat)
 }
 async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps: BotDeps): Promise<void> {
