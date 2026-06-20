@@ -5,6 +5,192 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.0] - 2026-06-20
+
+### Added
+
+- **stats:** Token usage time-series + labeled charts
+- **admin:** Sortable tables, unambiguous timestamps, styled detail views
+- **debug:** Page backward through buffered logs from the browser
+- **admin:** Embed per-subject token-per-day chart in billing detail
+- **debug:** Pin the operator's own session with a 'you' badge
+- **tools:** Add riskDefaults tier to tool preferences
+- **tools:** Add permission preset definitions and detection
+- **settings:** Add preset branch + activePreset to tools route
+- **settings-client:** Add tool preset schema and fetcher
+- **settings-ui:** Add permission preset bar to Tools section
+- **providers:** Add linkTypeNotFound provider error
+- **memory:** Thread kind/include_stale filters through the recall cascade
+- **memory:** Search_memory uses the recall cascade (provenance, kind, include_stale)
+- **db:** Migration 058 — open_dm_access + users.blocked_at
+- **instances:** Open DM access read/write helpers
+- **users:** Block/unblock/isBlocked helpers + blocked_at
+- **auth:** Open-access auto-add + block gate; remove DEMO_MODE branch
+- **settings:** Open-access toggle + user block/unblock routes
+- **settings:** Audit-log user block; log casing + toggle/not-found tests
+- **settings-client:** Open-access + block fetchers and schemas
+- **settings-ui:** Open-access toggle + user source badge + block/unblock
+- **tool-prefs:** HasStoredToolPrefs presence check
+- **tools:** Admin tool-defaults store + seed helper
+- **tools:** Seed admin tool defaults on first toolset build
+- **settings:** Admin tool-defaults GET/POST route
+- **settings-ui:** Admin Default tool permissions section
+- **settings-ui:** Collapsible sidebar group support
+- **settings-ui:** Collapsible Advanced group; Personal stays minimal
+- **settings-ui:** Gate Kaneo auto-provision on provisionable bound instance
+- **run-control:** Add RunControl types and RunRegistry
+- **run-control:** Add stop summary builder
+- **run-control:** Add steering prepareStep and composer
+- **run-control:** Add stop-requested stopWhen condition
+- **run-control:** Wire run-control into invokeModel (Task 5)
+- **hooks:** Block @ts-expect-error inline suppressions
+- **run-control:** Manage run lifecycle, stop summary, and leftover re-enqueue in processMessage
+- **run-control:** Route mid-run messages to the steer queue with an ack
+- **message-queue:** Serialize different-user group flush for one-run-per-thread
+- **commands:** Add /stop command with graceful and force-abort escalation
+- **system-prompt:** Add mid-run steering guidance fragment
+- **db:** Add guest_mode column to authorized_groups (migration 059)
+- **groups:** IsGuestModeEnabled/setGuestMode store helpers
+- **auth:** Allow unknown group users as read-only guests when guest mode is on
+- **queue:** Thread actorRole from auth through message coalescing
+- **orchestrator:** Thread actorRole into processMessage and invocation options
+- **tools:** Hard read-only tool filter for guest actors
+- **memory:** Exclude guest turns from long-term memory capture and extraction
+- **settings-api:** GET/PATCH group guest-mode route
+- **settings-ui:** Guest-mode fetchers + schema
+- **settings-ui:** Group guest-mode toggle section
+- **chat:** Capture prompt handle, redact on timeout, return handle on resolve
+- **chat:** Tool-named ephemeral confirmation with edit-in-place fallback
+- **telegram:** Self-removing prompt + ephemeral callback toast
+- **discord:** Self-removing prompt + ephemeral follow-up confirmation
+- **mattermost:** Self-removing prompt post + ephemeral confirmation
+- **mattermost:** Add thread post + post-list schemas
+- **mattermost:** Add permalink parser with host validation
+- **mattermost:** ResolveChatLink single-post path with membership gate
+- **mattermost:** ResolveChatLink thread path, identity cache, 100-post cap
+- **tools:** Add fetch_chat_link tool over the Mattermost resolver
+- **tools:** Classify fetch_chat_link as open-world history-read
+- **tools:** Gate + register fetch_chat_link for Mattermost contexts
+- **system-prompt:** Add fetch_chat_link usage fragment
+- **chat:** Add StatusHandle capability to ReplyFn
+- **live-status:** Tool status label + argument registry
+- **live-status:** LiveStatusReporter lifecycle
+- **live-status:** Drive reporter from tool-call hooks
+- **live-status:** Create and dismiss reporter in callLlm
+- **chat/telegram:** CreateStatus implementation
+- **chat/discord:** CreateStatus implementation
+- **chat/mattermost:** CreateStatus implementation
+
+### Changed
+
+- **tools:** Simplify riskDefaultsEqual and co-locate PRESET_KEYS
+- **settings-client:** Extract shared StoredConfigValueSchema base, remove duplication
+- **settings-client:** Revert unnecessary fetcher-schemas split (max-lines is off), keep preset additions
+- **settings-client:** Extract Tools schemas to own module (proper split, no blank-line gaming, knip-clean)
+- **memory:** Always-on provisional capture executor (drop flagEnabled)
+- **memory:** Always arm debounced capture (drop flagEnabled)
+- **tools:** Register recall unconditionally in normal mode
+- **flags:** Remove crossThreadMemory from ReductionFlags and admin surfaces
+- **settings-ui:** Drop cross_thread_memory flag from admin UI
+- **tools:** Remove recall tool (search_memory is now the single retriever)
+- **prompt:** Retarget memory fragment from recall to search_memory
+- **users:** IsBlocked debug log + unblockUser no-row test
+- **auth:** Hoist isAuthorized; test clarity + blocked-group coverage
+- **start:** Drop demo-mode auto-add; welcome-only handler
+- **settings:** Export tools-route view/setter helpers
+- **tools:** Canonical isToolDomain guard; clarify admin tool validation + test
+- **settings-ui:** Parameterize ToolsSection (section id, header, fetchers)
+- **settings-ui:** Tidy admin tool-defaults fetcher signature + comments
+- **chat:** Move Embed types to context-types module
+- **auth:** Extract tryOpenDmAccessAuth helper
+- **chat:** Add PromptHandle + messages.ephemeral; widen buttons return type
+- **mattermost:** Extract makeMattermostApiFetch with status-carrying error
+- **live-status:** Drop unused exports for knip
+
+### Documentation
+
+- Spec for admin/debug dashboard fixes
+- Record dashboard-fix decisions and implementation status
+- Tool permission presets design (read-only/non-destructive/allow-all)
+- Implementation plan for tool permission presets
+- Document riskDefaults tier + permission presets in CLAUDE.md files
+- **youtrack:** Design spec for structured /links relation linking fix
+- **youtrack:** Implementation plan for structured /links relation linking fix
+- **specs:** Beta-onboarding designs — open DM access, admin tool defaults, settings Advanced grouping
+- **spec:** Design to remove cross_thread_memory flag (make behavior default-on)
+- **plan:** Implementation plan to remove cross_thread_memory flag
+- Cross-thread memory bridge is now always-on (flag removed)
+- **flags:** Correct reduction-flag count in resolveReductionFlags JSDoc (four→three)
+- **spec:** Consolidate recall + search_memory into one cascade-backed tool
+- **plan:** Implementation plan to consolidate recall into search_memory
+- Search_memory is the single cascade-backed memory retriever
+- **plans:** Implementation plan for admin open DM access (Spec 1)
+- **plans:** Implementation plan for admin default tool permissions (Spec 2)
+- **plans:** Implementation plan for settings UI Advanced grouping (Spec 3)
+- **env:** Replace DEMO_MODE note with open DM access
+- Admin default tool permissions
+- **spec:** Add agent interruption & steering design
+- **plan:** Add agent interruption & steering implementation plan
+- **spec:** Ephemeral/self-removing ask permission prompts
+- **spec:** Guest mode for group chats design
+- **plan:** Guest mode for group chats implementation plan
+- **plan:** Ephemeral/self-removing ask permission prompts implementation plan
+- Document mid-run steering, /stop, run-control, and one-run-per-thread
+- Document group guest mode behavior
+- **plan:** Follow Mattermost chat links design
+- **chat:** Explain register-before-send invariant in askPermissionViaChat
+- **chat:** Document self-removing permission prompts + perm callback routing
+- **plan:** Follow Mattermost chat links implementation plan
+- **spec:** Live task status design
+- **plan:** Live task status implementation plan
+- **live-status:** Document createStatus capability and live status behavior
+
+### Fixed
+
+- **providers:** Make link-type-not-found message provider-neutral, tighten guidance test assertion
+- **youtrack:** Add relations via structured /links/{linkID}/issues endpoint
+- **youtrack:** Read issue resource for link discovery, drop suffix for undirected link types
+- **settings-memory:** Surface provisional group records in settings UI
+- **youtrack:** Accept null for requested-but-empty API scalar fields
+- **memory:** Tolerate per-record extractor failures and pin kind enum in prompt
+- **settings-client:** Added_by is required on AdminUserRow
+- **settings-ui:** Correct toggle toast wording; guard remove during block; parallelize load
+- **settings-ui:** Propagate activePreset on toggle; reset pendingPreset on reload; derive input type
+- **settings-ui:** Track sectionIds in activeId-reset effect
+- Resolve checks failing on the merged tree
+- **run-control:** Guarantee run cleanup via finally; test error-path cleanup
+- **commands:** Capitalize /stop help description for consistency
+- **chat:** Deny immediately when permission prompt fails to send
+- **telegram:** Answer callback query exactly once on ephemeral confirm path
+- **chat/mattermost:** CreateStatus never rejects on post failure
+
+### Miscellaneous
+
+- Purge DEMO_MODE from tests/docs; add regression guard
+- **knip:** Stage run-control modules ahead of wiring
+- **knip:** Stage run-control/summary ahead of wiring
+- **knip:** Stage run-control/steering-prepare-step ahead of wiring
+- **knip:** Stage run-control/stop-condition ahead of wiring
+- **knip:** Remove run-control staged ignores now that modules are fully wired
+- **knip:** Stage fetch_chat_link modules ahead of wiring
+- **knip:** Stage fetch-chat-link tool ahead of wiring
+- **knip:** Drop fetch_chat_link staging + unused MattermostPostList type
+
+### Testing
+
+- **settings:** Preset riskDefaults survives a later domain toggle
+- **youtrack:** Align provider updateRelation test with structured /links flow
+- **memory:** Cover recall cascade DM path (active-only, no provisional/promotion)
+- **db:** Idempotency coverage for migration 058
+- **announcements:** Include migration 058 in local migration list
+- **run-control:** Assert steer-queue drain idempotency and compose drain
+- **run-control:** Replace ts-expect-error with typed fakes in invoke-wiring test
+- **run-control:** Assert RunAbortedError propagates completed effects
+- **message-queue:** Make serialization test genuinely prove one-run-per-thread; fix stale comment
+- **guest-mode:** Blocked-not-guest + buildFullToolSet guest-branch coverage; doc/comment fixups
+- **mattermost:** Cover reply scope, 429/5xx mapping, identity dedup, gating
+- **live-status:** Kontur omits createStatus; heartbeat passthrough
+- **run-control:** Set up test DB for invoke-wiring suite
 ## [6.3.3] - 2026-06-16
 
 ### Added
