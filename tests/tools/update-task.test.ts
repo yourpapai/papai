@@ -6,6 +6,7 @@
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { getConfig, setConfig } from '../../src/config.js'
 import { setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
 import { makeUpdateTaskTool } from '../../src/tools/update-task.js'
@@ -437,6 +438,41 @@ describe('update_task identity resolution', () => {
       // With UTC fallback, 14:00 stays 14:00
       const callArgs = updateTask.mock.calls[0] as [string, { dueDate?: string }] | undefined
       expect(callArgs?.[1]?.dueDate).toContain('14:00')
+    })
+
+    test('strips the thread suffix so a group-thread storageContextId resolves the group timezone', async () => {
+      const chatUserId = 'user-123'
+      const groupConfigContextId = toScopedContextId({ platformInstanceId: 'inst-1', nativeContextId: 'group-1' })
+      const threadContextId = toScopedThreadContextId({
+        platformInstanceId: 'inst-1',
+        nativeContextId: 'group-1',
+        threadId: 'thread-1',
+      })
+      setConfig(groupConfigContextId, 'timezone', 'Asia/Tokyo')
+
+      const updateTask = mock((taskId: string, params: { dueDate?: string }) => {
+        return Promise.resolve({
+          id: taskId,
+          title: 'Updated Task',
+          status: 'todo',
+          dueDate: params.dueDate,
+          url: 'https://test.com/task/1',
+        })
+      })
+
+      const provider = createMockProvider({ updateTask })
+      const tool = makeUpdateTaskTool(provider, undefined, chatUserId, threadContextId)
+
+      assert(tool.execute)
+      await tool.execute(
+        { taskId: 'task-1', dueDate: { date: '2024-06-15', time: '14:00' } },
+        { toolCallId: '1', messages: [] },
+      )
+
+      // 14:00 JST = 05:00 UTC. A regression that used the thread-scoped id would miss the
+      // config and leave 14:00 (UTC) — whose ISO seconds field would not contain '05:00'.
+      const callArgs = updateTask.mock.calls[0] as [string, { dueDate?: string }] | undefined
+      expect(callArgs?.[1]?.dueDate).toContain('05:00')
     })
   })
 })

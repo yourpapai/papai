@@ -6,6 +6,7 @@
 import type { ModelMessage, ToolSet } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getConfig } from '../config.js'
 import { buildMessagesWithMemory } from '../conversation.js'
 import type { TaskProvider } from '../providers/types.js'
@@ -43,7 +44,9 @@ export function buildFullMessages(
   metadata: ExecutionMetadata,
   contextType: 'dm' | 'group' = 'dm',
 ): { messages: ModelMessage[]; systemPrompt: string } {
-  const timezone = timezoneOrUtc(getConfig(createdByUserId, 'timezone'))
+  // createdByUserId is the prompt owner id, which may be thread-scoped; strip it to the main
+  // config-context key (where the timezone is stored) before the lookup.
+  const timezone = timezoneOrUtc(getConfig(getConfigContextIdFromStorageContextId(createdByUserId), 'timezone'))
   const trigger = buildProactiveTrigger(type, prompt, timezone, matchedTasksSummary)
   const history = getCachedHistory(storageContextId)
   const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history, contextType)

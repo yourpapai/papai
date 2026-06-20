@@ -5,6 +5,7 @@
 
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { getConfig, setConfig } from '../../src/config.js'
 import { makeGetTaskTool } from '../../src/tools/get-task.js'
 import { mockLogger, setupTestDb, getToolExecutor } from '../utils/test-helpers.js'
@@ -172,6 +173,36 @@ describe('get_task', () => {
       const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
       expect(JSON.stringify(result)).toContain('14:00')
+    })
+
+    test('strips the thread suffix so a group-thread storageContextId resolves the group timezone', async () => {
+      const chatUserId = 'user-123'
+      const groupConfigContextId = toScopedContextId({ platformInstanceId: 'inst-1', nativeContextId: 'group-1' })
+      const threadContextId = toScopedThreadContextId({
+        platformInstanceId: 'inst-1',
+        nativeContextId: 'group-1',
+        threadId: 'thread-1',
+      })
+      setConfig(groupConfigContextId, 'timezone', 'Europe/London')
+
+      const getTask = mock((_taskId: string) => {
+        return Promise.resolve({
+          id: 'task-1',
+          title: 'Test Task',
+          status: 'todo',
+          dueDate: '2024-06-15T12:00:00Z',
+          url: 'https://test.com/task/1',
+        })
+      })
+
+      const provider = createMockProvider({ getTask })
+      const tool = makeGetTaskTool(provider, chatUserId, threadContextId)
+
+      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+
+      // 12:00 UTC in Europe/London (BST, +1) = 13:00. A regression using the thread-scoped id
+      // would miss the config and render 12:00 (UTC).
+      expect(JSON.stringify(result)).toContain('13:00')
     })
   })
 })

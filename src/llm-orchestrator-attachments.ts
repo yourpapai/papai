@@ -14,6 +14,7 @@ import {
   supportsAttachmentModelInput,
 } from './attachments/index.js'
 import type { AttachmentRef, StoredAttachment } from './attachments/types.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import { hasContextTransformers, transformNewAttachments, type TransformLine } from './plugins/attachment-transform.js'
 import { getUserTimezoneOrDefault } from './utils/config-timezone.js'
 import { formatCurrentTimeTag } from './utils/current-time-format.js'
@@ -119,7 +120,11 @@ export const buildUserTurnMessages = (
   text: string,
   newAttachmentIds: readonly string[],
 ): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
-  const timeTag = formatCurrentTimeTag(new Date(), getUserTimezoneOrDefault(chatUserId))
+  // Timezone is stored under the (thread-stripped) config-context id, not the raw chatUserId.
+  // `contextId` here is the thread-scoped storageContextId, so strip it to the config-context id
+  // before the lookup (DM: no-op; group thread: drops the :thread: suffix).
+  const configContextId = getConfigContextIdFromStorageContextId(contextId)
+  const timeTag = formatCurrentTimeTag(new Date(), getUserTimezoneOrDefault(configContextId))
   const prefixedText = `${timeTag}\n${text}`
   const textOnly = {
     modelMessage: { role: 'user', content: prefixedText } as ModelMessage,

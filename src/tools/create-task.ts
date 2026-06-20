@@ -7,6 +7,7 @@ import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getConfig } from '../config.js'
 import { resolveMeReference } from '../identity/resolver.js'
 import { logger } from '../logger.js'
@@ -70,8 +71,13 @@ async function executeCreateTask(
   provider: TaskProvider,
 ): Promise<unknown> {
   const { title, description, priority, projectId, dueDate, status, assignee, customFields } = params
+  // Timezone is stored under the (thread-stripped) config-context id; storageContextId may be
+  // thread-scoped in a group thread, so strip it before the lookup (DM/non-thread: no-op).
   const configKey = storageContextId ?? userId
-  const timezone = configKey === undefined ? 'UTC' : (getConfig(configKey, 'timezone') ?? 'UTC')
+  const timezone =
+    configKey === undefined
+      ? 'UTC'
+      : (getConfig(getConfigContextIdFromStorageContextId(configKey), 'timezone') ?? 'UTC')
   const resolvedDueDate = provider.normalizeDueDateInput(dueDate, timezone)
   const { assignee: resolvedAssignee, identityRequired } = await resolveAssignee(assignee, userId, provider)
   if (identityRequired !== undefined) return identityRequired

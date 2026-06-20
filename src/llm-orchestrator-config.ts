@@ -3,14 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getCachedConfig } from './cache.js'
 import { getRequiredProviderConfigKeysForContext } from './config-keys.js'
 import { getConfig, getConfigValue } from './config.js'
-const readConfig = (contextId: string, key: 'timezone'): string | null => {
-  const value = getConfig(contextId, key)
-  if (value !== null) return value
-  return getCachedConfig(contextId, key)
-}
+// getConfig already delegates to the config cache (and normalizes the timezone value), so a
+// separate getCachedConfig fallback would be dead — it could only run when the value is null,
+// where the cache is null too.
+const readConfig = (contextId: string, key: 'timezone'): string | null => getConfig(contextId, key)
 
 export const checkRequiredProviderConfig = (contextId: string): string[] => {
   const requiredKeys = getRequiredProviderConfigKeysForContext(contextId)

@@ -6,6 +6,7 @@
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { getConfig, setConfig } from '../../src/config.js'
 import { setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
 import { resolveMeReference } from '../../src/identity/resolver.js'
@@ -512,6 +513,43 @@ describe('create_task identity resolution', () => {
       const callArgs = createTask.mock.calls[0]?.[0] as { dueDate?: string } | undefined
       expect(callArgs).toBeDefined()
       expect(callArgs?.dueDate).toContain('21:00')
+    })
+
+    test('strips the thread suffix so a group-thread storageContextId resolves the group timezone', async () => {
+      const chatUserId = 'user-123'
+      const groupConfigContextId = toScopedContextId({ platformInstanceId: 'inst-1', nativeContextId: 'group-1' })
+      const threadContextId = toScopedThreadContextId({
+        platformInstanceId: 'inst-1',
+        nativeContextId: 'group-1',
+        threadId: 'thread-1',
+      })
+      // Timezone is stored under the thread-stripped group config context.
+      setConfig(groupConfigContextId, 'timezone', 'America/New_York')
+
+      const createTask = mock((params: { title: string; dueDate?: string }) => {
+        return Promise.resolve({
+          id: 'task-1',
+          title: params.title,
+          status: 'todo',
+          url: 'https://test.com/task/1',
+          dueDate: params.dueDate,
+        })
+      })
+
+      const provider = createMockProvider({ createTask })
+      const tool = makeCreateTaskTool(provider, chatUserId, threadContextId)
+
+      assert(tool.execute, 'Tool execute is undefined')
+      await tool.execute(
+        { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2024-06-15', time: '14:00' } },
+        { toolCallId: '1', messages: [] },
+      )
+
+      // 14:00 EDT = 18:00 UTC. A regression that used the thread-scoped id would miss the
+      // config and leave 14:00 (UTC).
+      const callArgs = createTask.mock.calls[0]?.[0] as { dueDate?: string } | undefined
+      expect(callArgs).toBeDefined()
+      expect(callArgs?.dueDate).toContain('18:00')
     })
   })
 })

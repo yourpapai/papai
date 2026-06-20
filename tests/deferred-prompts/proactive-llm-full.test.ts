@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import type { ToolSet } from 'ai'
 
 import { userCachesForTesting } from '../../src/cache.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { setConfig } from '../../src/config.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -102,5 +104,31 @@ describe('buildFullMessages', () => {
 
     expect(includesMessageText(messages, 'Group release notes ship on Fridays')).toBe(true)
     expect(includesMessageText(messages, 'This personal thread memory should not be injected')).toBe(false)
+  })
+
+  test('strips a thread-scoped owner id so the proactive trigger uses the main group timezone', () => {
+    const scopedMainGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-9' })
+    const threadOwnerId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-9',
+      threadId: '42',
+    })
+    // Timezone is stored under the thread-stripped main group config context.
+    setConfig(scopedMainGroupId, 'timezone', 'Europe/Berlin')
+
+    // A thread-scoped owner id must still resolve the main group timezone.
+    const { messages } = buildFullMessages(
+      threadOwnerId,
+      threadOwnerId,
+      'scheduled',
+      'Summarize releases',
+      undefined,
+      { mode: 'full', delivery_brief: 'Release digest', context_snapshot: null },
+      'group',
+    )
+
+    // A regression that read the timezone under the raw thread-scoped owner id would fall back to UTC.
+    expect(includesMessageText(messages, '(Europe/Berlin)')).toBe(true)
+    expect(includesMessageText(messages, '(UTC)')).toBe(false)
   })
 })

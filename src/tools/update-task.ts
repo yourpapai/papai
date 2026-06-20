@@ -7,6 +7,7 @@ import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getConfig } from '../config.js'
 import { resolveMeReference } from '../identity/resolver.js'
 import { logger } from '../logger.js'
@@ -39,8 +40,12 @@ const assertCustomFieldsSupported = (
 }
 
 const getTimezone = (storageContextId: string | undefined, userId: string | undefined): string => {
+  // Timezone is stored under the (thread-stripped) config-context id; storageContextId may be
+  // thread-scoped in a group thread, so strip it before the lookup (DM/non-thread: no-op).
   const configKey = storageContextId ?? userId
-  return configKey === undefined ? 'UTC' : (getConfig(configKey, 'timezone') ?? 'UTC')
+  return configKey === undefined
+    ? 'UTC'
+    : (getConfig(getConfigContextIdFromStorageContextId(configKey), 'timezone') ?? 'UTC')
 }
 
 async function resolveAssignee(

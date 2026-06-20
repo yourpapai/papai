@@ -6,6 +6,7 @@
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { getConfig, setConfig } from '../../src/config.js'
 import { setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
 import { makeListTasksTool } from '../../src/tools/list-tasks.js'
@@ -376,6 +377,41 @@ describe('list_tasks identity resolution', () => {
       assert(Array.isArray(result))
       assert(hasDueDate(result[0]))
       expect(result[0].dueDate).toBe('2026-03-25')
+    })
+
+    test('strips the thread suffix so a group-thread storageContextId resolves the group timezone', async () => {
+      const chatUserId = 'user-123'
+      const groupConfigContextId = toScopedContextId({ platformInstanceId: 'inst-1', nativeContextId: 'group-1' })
+      const threadContextId = toScopedThreadContextId({
+        platformInstanceId: 'inst-1',
+        nativeContextId: 'group-1',
+        threadId: 'thread-1',
+      })
+      setConfig(groupConfigContextId, 'timezone', 'Europe/London')
+
+      const listTasks = mock(() => {
+        return Promise.resolve([
+          {
+            id: 'task-1',
+            title: 'Test Task',
+            status: 'todo',
+            dueDate: '2024-06-15T12:00:00Z',
+            url: 'https://test.com/task/1',
+          },
+        ])
+      })
+
+      const provider = createMockProvider({ listTasks })
+      const tool = makeListTasksTool(provider, chatUserId, threadContextId)
+
+      assert(tool.execute !== undefined)
+      const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+
+      // 12:00 UTC rendered in Europe/London (BST, +1) = 13:00. A regression using the
+      // thread-scoped id would miss the config and render 12:00 (UTC).
+      assert(Array.isArray(result))
+      assert(hasDueDate(result[0]))
+      expect(result[0].dueDate).toContain('13:00')
     })
   })
 })

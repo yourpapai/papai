@@ -13,6 +13,7 @@ import {
   saveAttachment,
 } from '../src/attachments/index.js'
 import { setCachedConfig } from '../src/cache.js'
+import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { buildUserTurnMessages } from '../src/llm-orchestrator-attachments.js'
 import { contributionRegistry, resetContributionCollisionStateForTesting } from '../src/plugins/contributions.js'
 import { pluginRegistry, resetPluginRegistryForTesting, setPluginEnabledForContext } from '../src/plugins/registry.js'
@@ -108,23 +109,56 @@ describe('llm-orchestrator-attachments', () => {
       expect(historyMessage.content).toBe(modelMessage.content)
     })
 
-    test('resolves the timezone from chatUserId', async () => {
-      // Asia/Karachi is UTC+5 (no DST); assert the tag shape is well-formed for a configured user.
-      setCachedConfig('user-tz', 'timezone', 'Asia/Karachi')
-      const utcResult = await buildUserTurnMessages('ctx-1', 'user-utc', 'gpt-4o', 'Hello', [])
-      const tzResult = await buildUserTurnMessages('ctx-1', 'user-tz', 'gpt-4o', 'Hello', [])
+    test('resolves the timezone from the config context, not chatUserId', async () => {
+      // The timezone is stored under the (thread-stripped) config-context id, never the raw
+      // chatUserId. Asia/Karachi is UTC+5 (no DST). Both calls share one chatUserId, so a
+      // regression that resolved by chatUserId — or always fell back to UTC — would make the
+      // two tags identical.
+      setCachedConfig('ctx-tz', 'timezone', 'Asia/Karachi')
+      const utcResult = await buildUserTurnMessages('ctx-utc', 'user-1', 'gpt-4o', 'Hello', [])
+      const tzResult = await buildUserTurnMessages('ctx-tz', 'user-1', 'gpt-4o', 'Hello', [])
 
       expect(utcResult.modelMessage.content).toMatch(TAG_THEN_HELLO)
       // The configured-timezone tag must also match the full pattern (which enforces two-digit HH:MM).
       expect(tzResult.modelMessage.content).toMatch(TAG_THEN_HELLO)
 
-      // The +5h Asia/Karachi offset shifts the hour field, so the two tags can never be identical:
-      // a regression that ignored chatUserId and always resolved UTC would make these equal.
       const utcContent = utcResult.modelMessage.content
       const tzContent = tzResult.modelMessage.content
       assert(typeof utcContent === 'string', 'expected string content')
       assert(typeof tzContent === 'string', 'expected string content')
       expect(utcContent).not.toBe(tzContent)
+    })
+
+    test('resolves the timezone from the thread-stripped group context inside a group thread', async () => {
+      // Group timezone lives under the thread-stripped group config context, but the live turn
+      // runs in a thread-scoped storage context. The tag must still honor the group timezone.
+      const groupConfigContextId = toScopedContextId({ platformInstanceId: 'inst-1', nativeContextId: 'group-1' })
+      const threadContextId = toScopedThreadContextId({
+        platformInstanceId: 'inst-1',
+        nativeContextId: 'group-1',
+        threadId: 'thread-1',
+      })
+      // Asia/Karachi is UTC+5 (no DST).
+      setCachedConfig(groupConfigContextId, 'timezone', 'Asia/Karachi')
+
+      const tzResult = await buildUserTurnMessages(threadContextId, 'user-1', 'gpt-4o', 'Hello', [])
+      // A sibling group with no configured timezone falls back to UTC.
+      const utcResult = await buildUserTurnMessages(
+        toScopedThreadContextId({ platformInstanceId: 'inst-1', nativeContextId: 'group-2', threadId: 'thread-1' }),
+        'user-1',
+        'gpt-4o',
+        'Hello',
+        [],
+      )
+
+      expect(tzResult.modelMessage.content).toMatch(TAG_THEN_HELLO)
+      const tzContent = tzResult.modelMessage.content
+      const utcContent = utcResult.modelMessage.content
+      assert(typeof tzContent === 'string', 'expected string content')
+      assert(typeof utcContent === 'string', 'expected string content')
+      // +5h offset shifts the hour: a regression that ignored the group timezone (always UTC)
+      // inside a thread would make these equal.
+      expect(tzContent).not.toBe(utcContent)
     })
 
     test('audio attachments never become file parts for multimodal models', async () => {

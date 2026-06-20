@@ -57,7 +57,9 @@ async function executeScheduledPromptsForGroup(
   buildProviderFn: BuildProviderFn,
 ): Promise<void> {
   const { createdByUserId } = execCtx
-  const timezone = getUserTimezoneOrDefault(createdByUserId)
+  // createdByUserId is the prompt owner id, which may be thread-scoped; strip it to the main
+  // config-context key (where the timezone is stored) before the lookup.
+  const timezone = getUserTimezoneOrDefault(getConfigContextIdFromStorageContextId(createdByUserId))
   const metadata = mergeExecutionMetadata(prompts)
   const mergedPrompt =
     prompts.length === 1 ? prompts[0]!.prompt : prompts.map((p, i) => `${String(i + 1)}. "${p.prompt}"`).join('\n')

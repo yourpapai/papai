@@ -8,7 +8,6 @@ import type { ToolSet } from 'ai'
 import type { TaskProvider } from '../providers/types.js'
 import { completionHook } from './completion-hook.js'
 import { makeCreateTaskTool } from './create-task.js'
-import { makeGetCurrentTimeTool } from './get-current-time.js'
 import { makeGetTaskTool } from './get-task.js'
 import { makeListTasksTool } from './list-tasks.js'
 import { makeSearchTasksTool } from './search-tasks.js'
@@ -21,6 +20,7 @@ export function makeCoreTools(provider: TaskProvider, userId?: string, storageCo
     search_tasks: makeSearchTasksTool(provider, userId),
     list_tasks: makeListTasksTool(provider, userId, storageContextId),
     get_task: makeGetTaskTool(provider, userId, storageContextId),
-    get_current_time: makeGetCurrentTimeTool(userId),
+    // get_current_time is added by addProviderIndependentTools (keyed on the thread-stripped
+    // config context); registering it here too would be dead — it is always overwritten.
   }
 }

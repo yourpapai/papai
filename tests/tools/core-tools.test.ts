@@ -9,6 +9,8 @@ import { makeCoreTools } from '../../src/tools/core-tools.js'
 import { createMockProvider } from './mock-provider.js'
 
 describe('makeCoreTools', () => {
+  // get_current_time is intentionally NOT registered here — it is owned by the
+  // provider-independent tools builder, which keys it on the thread-stripped config context.
   it('should return core tools', () => {
     const provider = createMockProvider()
     const tools = makeCoreTools(provider, 'user-123')
@@ -18,7 +20,7 @@ describe('makeCoreTools', () => {
     expect(tools).toHaveProperty('search_tasks')
     expect(tools).toHaveProperty('list_tasks')
     expect(tools).toHaveProperty('get_task')
-    expect(tools).toHaveProperty('get_current_time')
+    expect(tools).not.toHaveProperty('get_current_time')
   })
 
   it('should work without userId', () => {
@@ -30,6 +32,6 @@ describe('makeCoreTools', () => {
     expect(tools).toHaveProperty('search_tasks')
     expect(tools).toHaveProperty('list_tasks')
     expect(tools).toHaveProperty('get_task')
-    expect(tools).toHaveProperty('get_current_time')
+    expect(tools).not.toHaveProperty('get_current_time')
   })
 })

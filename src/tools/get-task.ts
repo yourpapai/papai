@@ -7,6 +7,7 @@ import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getConfig } from '../config.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
@@ -26,10 +27,14 @@ export function makeGetTaskTool(
       try {
         const task = await provider.getTask(taskId)
         log.info({ taskId }, 'Task fetched via tool')
-        // NI2 Fix: Use storageContextId for config lookup (per-user config stored there)
-        // Falls back to userId for backwards compatibility, then UTC
+        // Timezone is stored under the (thread-stripped) config-context id; storageContextId may
+        // be thread-scoped in a group thread, so strip it before the lookup (DM/non-thread: no-op).
+        // Falls back to userId, then UTC.
         const configKey = storageContextId ?? userId
-        const timezone = configKey === undefined ? 'UTC' : (getConfig(configKey, 'timezone') ?? 'UTC')
+        const timezone =
+          configKey === undefined
+            ? 'UTC'
+            : (getConfig(getConfigContextIdFromStorageContextId(configKey), 'timezone') ?? 'UTC')
         return { ...task, dueDate: provider.formatDueDateOutput(task.dueDate, timezone) }
       } catch (error) {
         log.error(
