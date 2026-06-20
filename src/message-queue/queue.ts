@@ -49,7 +49,7 @@ export class MessageQueue {
     return this.handler
   }
 
-  enqueue(item: QueueItem, reply: ReplyFn): CoalescedItem | null {
+  enqueue(item: QueueItem, reply: ReplyFn): void {
     const isGroup = item.contextType === 'group'
     const hasBufferedItems = this.messages.length > 0
     const isDifferentUser = this.lastUserId !== null && this.lastUserId !== item.userId
@@ -69,7 +69,7 @@ export class MessageQueue {
         bufferedCount: this.messages.length,
       })
       this.resetTimer()
-      return null
+      return
     }
 
     this.messages.push({ item, reply })
@@ -92,7 +92,6 @@ export class MessageQueue {
     })
 
     this.resetTimer()
-    return null
   }
 
   getBufferedCount(): number {

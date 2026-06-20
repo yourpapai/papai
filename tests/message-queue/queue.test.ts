@@ -609,9 +609,9 @@ describe('MessageQueue', () => {
 
       expect(queue.getBufferedCount()).toBe(1)
 
-      // Different user arrives: enqueue now returns null (no fire-and-forget),
-      // and alice's turn is serialized onto the handler chain.
-      const result = queue.enqueue(
+      // Different user arrives: enqueue buffers only (no fire-and-forget) and
+      // alice's turn is serialized onto the handler chain.
+      queue.enqueue(
         {
           text: 'Hello from bob',
           userId: 'user2',
@@ -624,7 +624,6 @@ describe('MessageQueue', () => {
         mockReply,
       )
 
-      expect(result).toBeNull()
       expect(queue.getBufferedCount()).toBe(1)
 
       // Alice's handler runs via the chain without needing the debounce.
@@ -638,7 +637,7 @@ describe('MessageQueue', () => {
       const groupQueue = new MessageQueue('group123')
       queue = groupQueue
 
-      const flushed1 = queue.enqueue(
+      queue.enqueue(
         {
           text: 'First from alice',
           userId: 'user1',
@@ -651,7 +650,7 @@ describe('MessageQueue', () => {
         mockReply,
       )
 
-      const flushed2 = queue.enqueue(
+      queue.enqueue(
         {
           text: 'Second from alice',
           userId: 'user1',
@@ -664,8 +663,6 @@ describe('MessageQueue', () => {
         mockReply,
       )
 
-      expect(flushed1).toBeNull()
-      expect(flushed2).toBeNull()
       expect(queue.getBufferedCount()).toBe(2)
     })
 
@@ -692,8 +689,8 @@ describe('MessageQueue', () => {
         mockReply,
       )
 
-      // Different user arrives: enqueue returns null (serialized via chain, not fire-and-forget).
-      const result = queue.enqueue(
+      // Different user arrives: enqueue buffers only (serialized via chain, not fire-and-forget).
+      queue.enqueue(
         {
           text: 'Second',
           userId: 'user2',
@@ -706,7 +703,6 @@ describe('MessageQueue', () => {
         mockReply,
       )
 
-      expect(result).toBeNull()
       expect(queue.getBufferedCount()).toBe(1)
 
       // Alice's turn runs via the handler chain with thread attribution.

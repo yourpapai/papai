@@ -58,30 +58,6 @@ function emitTurnEnd(
   )
 }
 
-function invokeHandlerWithEvents(
-  handler: (coalesced: CoalescedItem) => Promise<void>,
-  coalesced: CoalescedItem,
-  item: { storageContextId: string; contextType: string; userId: string },
-): void {
-  emitScoped('queue:dequeue', item.storageContextId, {
-    storageContextId: item.storageContextId,
-    contextType: item.contextType,
-    userId: item.userId,
-  })
-  const startTime = Date.now()
-  void handler(coalesced)
-    .then(() => {
-      emitTurnEnd(item.storageContextId, coalesced, item.contextType, item.userId, startTime)
-    })
-    .catch((error: unknown) => {
-      log.error(
-        { storageContextId: item.storageContextId, error: formatError(error) },
-        'Handler error during different-user flush',
-      )
-      emitTurnEnd(item.storageContextId, coalesced, item.contextType, item.userId, startTime, error)
-    })
-}
-
 // Export types for consumers
 export type { QueueItem, CoalescedItem }
 export type { ReplyFn } from '../chat/types.js'
@@ -124,13 +100,9 @@ export function enqueueMessage(
 
   const queue = registry.getOrCreate(item.storageContextId)
   queue.setHandler(handler)
-  const coalesced = queue.enqueue(item, reply)
-
-  // A non-null return is the shutdown/forced-flush path; the group different-user flush now
-  // serializes via the queue's handler chain (returns null) and is not dispatched here.
-  if (coalesced !== null) {
-    invokeHandlerWithEvents(handler, coalesced, item)
-  }
+  // Buffering only — dispatch happens inside the queue via its serializing handler
+  // chain (debounce timer + different-user flush), guaranteeing one run per thread.
+  queue.enqueue(item, reply)
 }
 
 /**
