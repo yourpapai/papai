@@ -75,6 +75,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'ai_live_status',
     ])
   })
 
@@ -95,6 +96,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'ai_live_status',
     ])
   })
 
@@ -111,6 +113,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'ai_live_status',
     ])
   })
 
@@ -125,6 +128,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'ai_live_status',
     ])
   })
 
@@ -147,6 +151,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'ai_live_status',
     ])
   })
 
@@ -173,6 +178,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'ai_live_status',
     ])
   })
 
@@ -267,7 +273,7 @@ describe('getConfigFieldsForContext', () => {
     expect(fields.map((field) => field.storageKey)).not.toContain('custom_token')
   })
 
-  test('includes the three AI-output fields as enum controls in any context', () => {
+  test('includes the AI-output fields as enum controls in any context', () => {
     const fields = getConfigFieldsForContext('ctx-any')
     const byKey = new Map(fields.map((field) => [field.storageKey, field]))
 
@@ -287,6 +293,15 @@ describe('getConfigFieldsForContext', () => {
     expect(detail?.options).toEqual([
       { value: 'sanitized', label: 'Sanitized' },
       { value: 'raw', label: 'Raw' },
+    ])
+
+    const liveStatus = byKey.get('ai_live_status')
+    expect(liveStatus?.kind).toBe('ai-output')
+    expect(liveStatus?.required).toBe(false)
+    expect(liveStatus?.control).toBe('toggle')
+    expect(liveStatus?.options).toEqual([
+      { value: 'off', label: 'Off' },
+      { value: 'on', label: 'On' },
     ])
   })
 

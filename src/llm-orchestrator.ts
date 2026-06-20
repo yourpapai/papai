@@ -151,8 +151,10 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
   const { tools, validatedMessages, enabledToolNames, disclosure } = await prepareLlmInvocation(invocationOpts)
   const progressReporter = createProgressReporterForContext(reply, contextId)
+  const liveStatusEnabled = getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)).liveStatus === 'on'
   return invokeWithLiveStatus({
     reply,
+    liveStatusEnabled,
     invokeArgs: {
       contextId,
       chatUserId,

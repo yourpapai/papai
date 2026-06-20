@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import {
+  AI_LIVE_STATUS_KEY,
   AI_OUTPUT_DETAIL_LEVEL_KEY,
   AI_REASONING_VISIBILITY_KEY,
   AI_TOOL_VISIBILITY_KEY,
@@ -71,6 +72,19 @@ const AI_OUTPUT_FIELDS: readonly ConfigField[] = [
     options: [
       { value: 'sanitized', label: 'Sanitized' },
       { value: 'raw', label: 'Raw' },
+    ],
+  },
+  {
+    key: 'ai_live_status',
+    storageKey: AI_LIVE_STATUS_KEY,
+    label: 'Show live status',
+    required: false,
+    sensitive: false,
+    kind: 'ai-output',
+    control: 'toggle',
+    options: [
+      { value: 'off', label: 'Off' },
+      { value: 'on', label: 'On' },
     ],
   },
 ]

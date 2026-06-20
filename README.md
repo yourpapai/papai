@@ -46,28 +46,28 @@ The bot interprets natural-language requests, invokes capability-gated tools thr
 
 ## Features
 
-| Category             | Capability                                      | Description                                                          |
-| -------------------- | ----------------------------------------------- | -------------------------------------------------------------------- |
-| **Tasks**            | Create, Update, Search, List, Get, Delete       | Full task lifecycle through natural language                         |
-| **Comments**         | Add, Read, Update, Delete, Reactions            | Task discussions with provider-specific reactions                    |
-| **Relations**        | Blocks, Duplicates, Related, Subtask            | Cross-task dependencies and associations                             |
-| **Projects**         | List, Create, Update, Delete, Team              | Workspace organization and team management                           |
-| **Statuses**         | CRUD, Reorder                                   | Board/status column management                                       |
-| **Labels**           | List, Create, Update, Delete, Assign            | Categorization and filtering                                         |
-| **Attachments**      | List, Upload, Remove                            | Attach task files directly from chat messages where supported        |
-| **Collaboration**    | Watchers, Votes, Visibility                     | Provider-dependent coordination surfaces                             |
-| **Work Tracking**    | Count tasks, log work, update work, remove work | Task counts and time tracking where supported                        |
-| **Identity**         | Link chat identity to tracker identity          | Enables reliable “assign to me” and similar flows in groups          |
-| **History**          | Thread-aware chat history lookup                | Search the main group chat from a thread when more context is needed |
-| **Web Fetch**        | Public URL fetch, summary, excerpt              | Fetch and summarize public web pages and PDFs                        |
-| **Memory**           | Conversation history, summary, facts            | Context-aware multi-turn interactions                                |
-| **Memos**            | Save, search, list, promote                     | Quick notes with keyword or semantic lookup                          |
-| **Recurring Tasks**  | Template schedules                              | Reusable recurring task automation                                   |
-| **Deferred Prompts** | One-shot, delayed, cron                         | Scheduled proactive assistance                                       |
-| **Instructions**     | Context-specific guidance                       | Per-chat custom instructions                                         |
-| **AI Output**        | Show tool calls / reasoning; sanitized or raw   | Per-context control of the execution detail the bot posts to chat    |
-| **Plugins**          | Trusted local extensions                        | Discover, approve, and enable first-party plugins per context        |
-| **MCP Servers**      | External tools via Model Context Protocol       | Merge tools from per-context or plugin-declared MCP servers          |
+| Category             | Capability                                                 | Description                                                          |
+| -------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
+| **Tasks**            | Create, Update, Search, List, Get, Delete                  | Full task lifecycle through natural language                         |
+| **Comments**         | Add, Read, Update, Delete, Reactions                       | Task discussions with provider-specific reactions                    |
+| **Relations**        | Blocks, Duplicates, Related, Subtask                       | Cross-task dependencies and associations                             |
+| **Projects**         | List, Create, Update, Delete, Team                         | Workspace organization and team management                           |
+| **Statuses**         | CRUD, Reorder                                              | Board/status column management                                       |
+| **Labels**           | List, Create, Update, Delete, Assign                       | Categorization and filtering                                         |
+| **Attachments**      | List, Upload, Remove                                       | Attach task files directly from chat messages where supported        |
+| **Collaboration**    | Watchers, Votes, Visibility                                | Provider-dependent coordination surfaces                             |
+| **Work Tracking**    | Count tasks, log work, update work, remove work            | Task counts and time tracking where supported                        |
+| **Identity**         | Link chat identity to tracker identity                     | Enables reliable “assign to me” and similar flows in groups          |
+| **History**          | Thread-aware chat history lookup                           | Search the main group chat from a thread when more context is needed |
+| **Web Fetch**        | Public URL fetch, summary, excerpt                         | Fetch and summarize public web pages and PDFs                        |
+| **Memory**           | Conversation history, summary, facts                       | Context-aware multi-turn interactions                                |
+| **Memos**            | Save, search, list, promote                                | Quick notes with keyword or semantic lookup                          |
+| **Recurring Tasks**  | Template schedules                                         | Reusable recurring task automation                                   |
+| **Deferred Prompts** | One-shot, delayed, cron                                    | Scheduled proactive assistance                                       |
+| **Instructions**     | Context-specific guidance                                  | Per-chat custom instructions                                         |
+| **AI Output**        | Show tool calls / reasoning; live status; sanitized or raw | Per-context control of the execution detail the bot posts to chat    |
+| **Plugins**          | Trusted local extensions                                   | Discover, approve, and enable first-party plugins per context        |
+| **MCP Servers**      | External tools via Model Context Protocol                  | Merge tools from per-context or plugin-declared MCP servers          |
 
 ### Platform Support
 

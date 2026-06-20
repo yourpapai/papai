@@ -263,13 +263,15 @@ type InvokeWithLiveStatusArgs = {
   reply: ReplyFn
   invokeArgs: InvokeModelArgs & { turnId: string }
   progressReporter: AiProgressReporter
+  /** Per-context toggle (ai_live_status); when false, no ephemeral status message is posted. */
+  liveStatusEnabled: boolean
 }
 
 export const invokeWithLiveStatus = async (
   args: InvokeWithLiveStatusArgs,
 ): Promise<{ response: { messages: ModelMessage[] } }> => {
-  const { reply, invokeArgs, progressReporter } = args
-  const liveStatus = createLiveStatusReporter(reply)
+  const { reply, invokeArgs, progressReporter, liveStatusEnabled } = args
+  const liveStatus = createLiveStatusReporter(reply, { enabled: liveStatusEnabled })
   await liveStatus.start()
   try {
     const result = await invokeModelWithTyping(reply, { ...invokeArgs, liveStatus })

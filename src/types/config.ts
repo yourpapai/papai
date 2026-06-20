@@ -21,7 +21,11 @@ export type PreferenceConfigKey = 'timezone'
 export type McpConfigKey = 'mcp_endpoints'
 
 // AI output visibility config keys (always available)
-export type AiOutputConfigKey = 'ai_tool_visibility' | 'ai_reasoning_visibility' | 'ai_output_detail_level'
+export type AiOutputConfigKey =
+  | 'ai_tool_visibility'
+  | 'ai_reasoning_visibility'
+  | 'ai_output_detail_level'
+  | 'ai_live_status'
 
 // Static per-user config keys. Provider-specific keys ('kaneo_apikey',
 // 'kaneo_workspace_id', 'youtrack_token', etc.) are no longer part of this
@@ -56,6 +60,7 @@ export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
   'ai_tool_visibility',
   'ai_reasoning_visibility',
   'ai_output_detail_level',
+  'ai_live_status',
 ]
 
 /**

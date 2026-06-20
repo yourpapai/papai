@@ -13,12 +13,14 @@ const hiddenSettings: AiOutputSettings = {
   toolVisibility: 'off',
   reasoningVisibility: 'off',
   detailLevel: 'sanitized',
+  liveStatus: 'on',
 }
 
 const toolSettings: AiOutputSettings = {
   toolVisibility: 'on',
   reasoningVisibility: 'off',
   detailLevel: 'sanitized',
+  liveStatus: 'on',
 }
 
 describe('createAiProgressReporter', () => {
@@ -198,6 +200,7 @@ describe('createAiProgressReporter', () => {
       toolVisibility: 'on',
       reasoningVisibility: 'off',
       detailLevel: 'raw',
+      liveStatus: 'on',
     })
 
     reporter.toolFinished({
@@ -222,6 +225,7 @@ describe('createAiProgressReporter', () => {
       toolVisibility: 'off',
       reasoningVisibility: 'on',
       detailLevel: 'sanitized',
+      liveStatus: 'on',
     })
 
     reporter.reasoning('Provider copied task title, user content, and attachment text into reasoning')
@@ -243,6 +247,7 @@ describe('createAiProgressReporter', () => {
       toolVisibility: 'off',
       reasoningVisibility: 'on',
       detailLevel: 'sanitized',
+      liveStatus: 'on',
     })
 
     reporter.reasoning('Provider considered token=secret-token from https://private.example/path')
@@ -305,6 +310,7 @@ describe('createAiProgressReporter', () => {
       toolVisibility: 'off',
       reasoningVisibility: 'on',
       detailLevel: 'raw',
+      liveStatus: 'on',
     })
 
     reporter.reasoning('Provider reasoning text', [{ type: 'reasoning', text: 'raw reasoning payload' }])
@@ -321,6 +327,7 @@ describe('createAiProgressReporter', () => {
       toolVisibility: 'off',
       reasoningVisibility: 'on',
       detailLevel: 'raw',
+      liveStatus: 'on',
     })
 
     reporter.reasoning('Raw provider reasoning text')
@@ -338,6 +345,7 @@ describe('createAiProgressReporter', () => {
       toolVisibility: 'off',
       reasoningVisibility: 'on',
       detailLevel: 'sanitized',
+      liveStatus: 'on',
     })
 
     reporter.reasoning(emptyReasoning)

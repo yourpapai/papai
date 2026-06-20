@@ -20,7 +20,14 @@ export type LiveStatusReporter = {
   dismiss: () => Promise<void>
 }
 
-export function createLiveStatusReporter(reply: ReplyFn): LiveStatusReporter {
+/** Options for {@link createLiveStatusReporter}. */
+export type LiveStatusReporterOptions = {
+  /** When false, the reporter is fully inert — no status message is ever created. Defaults to true. */
+  enabled?: boolean
+}
+
+export function createLiveStatusReporter(reply: ReplyFn, options?: LiveStatusReporterOptions): LiveStatusReporter {
+  const enabled = options?.enabled !== false
   let handle: StatusHandle | undefined
   let inFlight = 0
   let lastStartLabel = THINKING
@@ -42,6 +49,7 @@ export function createLiveStatusReporter(reply: ReplyFn): LiveStatusReporter {
 
   return {
     start: async (): Promise<void> => {
+      if (!enabled) return
       if (reply.createStatus === undefined) return
       handle = await reply.createStatus(THINKING).catch(() => undefined)
       if (handle !== undefined) lastRendered = THINKING

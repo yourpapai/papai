@@ -105,6 +105,25 @@ describe('createLiveStatusReporter', () => {
     expect(rec.dismissed).toBe(1)
   })
 
+  test('is a no-op when disabled via options even if the platform supports createStatus', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply, { enabled: false })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'create_task', input: { title: 'Buy milk' } })
+    reporter.onToolFinish()
+    await reporter.dismiss()
+    expect(rec.created).toEqual([])
+    expect(rec.updates).toEqual([])
+    expect(rec.dismissed).toBe(0)
+  })
+
+  test('honors enabled: true the same as the default', async () => {
+    const rec = makeReply()
+    const reporter = createLiveStatusReporter(rec.reply, { enabled: true })
+    await reporter.start()
+    expect(rec.created).toEqual(['💭 Thinking…'])
+  })
+
   test('is a no-op when the platform has no createStatus', async () => {
     const rec = makeReply({ createStatus: undefined })
     const reporter = createLiveStatusReporter(rec.reply)

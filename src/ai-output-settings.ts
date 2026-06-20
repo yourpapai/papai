@@ -8,6 +8,7 @@ import { getCachedConfig } from './cache.js'
 export const AI_TOOL_VISIBILITY_KEY = 'ai_tool_visibility'
 export const AI_REASONING_VISIBILITY_KEY = 'ai_reasoning_visibility'
 export const AI_OUTPUT_DETAIL_LEVEL_KEY = 'ai_output_detail_level'
+export const AI_LIVE_STATUS_KEY = 'ai_live_status'
 
 export type AiVisibility = 'on' | 'off'
 export type AiOutputDetailLevel = 'sanitized' | 'raw'
@@ -16,10 +17,17 @@ export type AiOutputSettings = {
   toolVisibility: AiVisibility
   reasoningVisibility: AiVisibility
   detailLevel: AiOutputDetailLevel
+  liveStatus: AiVisibility
 }
 
 function parseVisibility(value: string | null): AiVisibility {
   return value === 'on' || value === 'off' ? value : 'off'
+}
+
+// Live status is opt-out: any stored value other than the explicit 'off' (including
+// unset/invalid) preserves the historical always-on behavior.
+function parseLiveStatus(value: string | null): AiVisibility {
+  return value === 'off' ? 'off' : 'on'
 }
 
 function parseDetailLevel(value: string | null): AiOutputDetailLevel {
@@ -31,5 +39,6 @@ export function getAiOutputSettings(contextId: string): AiOutputSettings {
     toolVisibility: parseVisibility(getCachedConfig(contextId, AI_TOOL_VISIBILITY_KEY)),
     reasoningVisibility: parseVisibility(getCachedConfig(contextId, AI_REASONING_VISIBILITY_KEY)),
     detailLevel: parseDetailLevel(getCachedConfig(contextId, AI_OUTPUT_DETAIL_LEVEL_KEY)),
+    liveStatus: parseLiveStatus(getCachedConfig(contextId, AI_LIVE_STATUS_KEY)),
   }
 }

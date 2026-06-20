@@ -21,6 +21,7 @@ describe('config types', () => {
         'ai_tool_visibility',
         'ai_reasoning_visibility',
         'ai_output_detail_level',
+        'ai_live_status',
       ])
     })
   })
@@ -35,7 +36,12 @@ describe('config types', () => {
     })
 
     test('returns true for the AI-output keys', () => {
-      for (const key of ['ai_tool_visibility', 'ai_reasoning_visibility', 'ai_output_detail_level'] as const) {
+      for (const key of [
+        'ai_tool_visibility',
+        'ai_reasoning_visibility',
+        'ai_output_detail_level',
+        'ai_live_status',
+      ] as const) {
         expect(isConfigKey(key)).toBe(true)
       }
     })
@@ -84,6 +90,7 @@ describe('config types', () => {
       expect(isAllowedDynamicConfigKey('ai_tool_visibility')).toBe(true)
       expect(isAllowedDynamicConfigKey('ai_reasoning_visibility')).toBe(true)
       expect(isAllowedDynamicConfigKey('ai_output_detail_level')).toBe(true)
+      expect(isAllowedDynamicConfigKey('ai_live_status')).toBe(true)
     })
 
     test('accepts the system-reserved reduction-flags key', () => {
