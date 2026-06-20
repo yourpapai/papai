@@ -15,7 +15,7 @@ import type { InvokeModelArgs, LlmOrchestratorDeps } from '../../src/llm-orchest
 import { defaultDeps } from '../../src/llm-orchestrator.js'
 import { runRegistry } from '../../src/run-control/registry.js'
 import { RunAbortedError } from '../../src/run-control/types.js'
-import { createMockReply, mockLogger } from '../utils/test-helpers.js'
+import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type CapturedOpts = Parameters<LlmOrchestratorDeps['generateText']>[0]
 type GenerateResult = Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
@@ -92,8 +92,9 @@ function makeFinishEvent(toolName: string): OnToolCallFinishEvent {
 }
 
 describe('invokeModel run-control wiring', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockLogger()
+    await setupTestDb()
     runRegistry.clear()
     stepCountArgs.length = 0
   })
