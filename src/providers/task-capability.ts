@@ -47,6 +47,7 @@ export type TaskCapability =
   | 'sprints.assign'
   | 'activities.read'
   | 'queries.saved'
+  | 'members.provision'
 
 export type TaskProviderTrait =
   | 'workspace-scoped'

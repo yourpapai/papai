@@ -66,6 +66,7 @@ export type {
 export type { TaskCapability, TaskProviderTrait } from './task-capability.js'
 
 export type ToolDueDateInput = Readonly<{ date: string; time?: string }>
+export type ProvisionMemberInput = { chatUserId: string; displayName: string; username: string | null }
 
 /** User search result for identity resolution. */
 export type IdentityUser = { id: string; login: string; name?: string }
@@ -135,6 +136,11 @@ export interface TaskProvider {
   // --- Optional: shared user lookup helpers ---
   listUsers?(query?: string, limit?: number): Promise<UserRef[]>
   getCurrentUser?(): Promise<UserRef>
+  /** Provision a workspace member. Gated by `'members.provision'`. Caller encrypts returned password. */
+  provisionWorkspaceMember?(
+    member: ProvisionMemberInput,
+    opts?: { existingProviderUserId?: string; existingLogin?: string; existingPassword?: string },
+  ): Promise<{ providerUserId: string; login: string; password: string }>
   // --- Optional: projects.* ---
   getProject?(projectId: string): Promise<Project>
   listProjects?(): Promise<Project[]>
@@ -224,7 +230,6 @@ export interface TaskProvider {
     statuses: { id: string; position: number }[],
     confirm?: boolean,
   ): Promise<undefined | { status: 'confirmation_required'; message: string }>
-
   // --- Optional: attachments.* ---
   listAttachments?(taskId: string): Promise<Attachment[]>
   uploadAttachment?(
@@ -232,7 +237,6 @@ export interface TaskProvider {
     file: { name: string; content: Uint8Array | Blob; mimeType?: string },
   ): Promise<Attachment>
   deleteAttachment?(taskId: string, attachmentId: string): Promise<{ id: string }>
-
   // --- Optional: workItems.* ---
   listWorkItems?(taskId: string, params?: { limit?: number; offset?: number }): Promise<WorkItem[]>
   createWorkItem?(taskId: string, params: CreateWorkItemParams): Promise<WorkItem>
@@ -282,7 +286,6 @@ export interface TaskProvider {
   listSavedQueries?(): Promise<SavedQuery[]>
   runSavedQuery?(queryId: string): Promise<TaskSearchResult[]>
   countTasks?(params: { query: string; projectId?: string }): Promise<number>
-
   buildTaskUrl(taskId: string, projectId?: string): string
   buildProjectUrl(projectId: string): string
   classifyError(error: unknown): AppError
