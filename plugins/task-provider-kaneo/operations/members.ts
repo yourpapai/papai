@@ -246,33 +246,40 @@ export async function kaneoProvisionMember(
     'Provisioning Kaneo member',
   )
 
-  let userId: string
-  let sessionCookie: string
-  let login: string
-  let password: string
+  const session = await establishMemberSession(serviceConfig, member, publicUrl, existing)
+  const invitationId = await doInviteMember(serviceConfig, workspaceId, session.login, publicUrl)
+  await doAcceptInvitation(serviceConfig.baseUrl, session.sessionCookie, invitationId, publicUrl)
 
-  if (existing === undefined) {
-    // New member path: generate email and password, sign up.
-    const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-    const localPart = toEmailLocalPart(member.username ?? member.chatUserId, member.chatUserId)
-    login = `${localPart}-${uniqueSuffix}@pap.ai`
-    password = generateMemberPassword()
-    const signUp = await doMemberSignUp(serviceConfig.baseUrl, publicUrl, login, password, member.displayName)
-    userId = signUp.userId
-    sessionCookie = signUp.sessionCookie
-  } else {
-    // Reuse path: re-authenticate to get a fresh session cookie for accept-invitation.
+  log.info({ chatUserId: member.chatUserId, userId: session.userId, workspaceId }, 'Kaneo member provisioned')
+  return { providerUserId: session.userId, login: session.login, password: session.password }
+}
+
+type MemberSession = { userId: string; sessionCookie: string; login: string; password: string }
+
+/**
+ * Establish a member account + fresh session cookie. New member → sign up (generating a
+ * sanitized synthetic email + password); reuse → sign in with the stored credentials.
+ */
+async function establishMemberSession(
+  serviceConfig: KaneoConfig,
+  member: { chatUserId: string; displayName: string; username: string | null },
+  publicUrl: string,
+  existing: { providerUserId: string; login: string; password: string } | undefined,
+): Promise<MemberSession> {
+  if (existing !== undefined) {
     const signIn = await doMemberSignIn(serviceConfig.baseUrl, publicUrl, existing.login, existing.password)
-    userId = signIn.userId
-    sessionCookie = signIn.sessionCookie
-    login = existing.login
-    password = existing.password
-    log.info({ chatUserId: member.chatUserId, userId, workspaceId }, 'Kaneo member reuse: signed in')
+    log.info({ chatUserId: member.chatUserId, userId: signIn.userId }, 'Kaneo member reuse: signed in')
+    return {
+      userId: signIn.userId,
+      sessionCookie: signIn.sessionCookie,
+      login: existing.login,
+      password: existing.password,
+    }
   }
-
-  const invitationId = await doInviteMember(serviceConfig, workspaceId, login, publicUrl)
-  await doAcceptInvitation(serviceConfig.baseUrl, sessionCookie, invitationId, publicUrl)
-
-  log.info({ chatUserId: member.chatUserId, userId, workspaceId }, 'Kaneo member provisioned')
-  return { providerUserId: userId, login, password }
+  const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
+  const localPart = toEmailLocalPart(member.username ?? member.chatUserId, member.chatUserId)
+  const login = `${localPart}-${uniqueSuffix}@pap.ai`
+  const password = generateMemberPassword()
+  const signUp = await doMemberSignUp(serviceConfig.baseUrl, publicUrl, login, password, member.displayName)
+  return { userId: signUp.userId, sessionCookie: signUp.sessionCookie, login, password }
 }
