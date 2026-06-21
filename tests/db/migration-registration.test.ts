@@ -23,8 +23,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('059_guest_mode is the last migration', () => {
+  test('060_kaneo_workspace_members is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('059_guest_mode')
+    expect(lastMigration.id).toBe('060_kaneo_workspace_members')
   })
 })
