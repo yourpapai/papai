@@ -216,11 +216,14 @@ In `src/providers/types.ts`, add after `getCurrentUser?()` (line ~137):
    *
    * @returns providerUserId (Better Auth id) and login (synthetic email).
    */
-  provisionWorkspaceMember?(member: {
-    chatUserId: string
-    displayName: string
-    username: string | null
-  }): Promise<{ providerUserId: string; login: string }>
+  provisionWorkspaceMember?(
+    member: {
+      chatUserId: string
+      displayName: string
+      username: string | null
+    },
+    opts?: { existingProviderUserId?: string; existingLogin?: string },
+  ): Promise<{ providerUserId: string; login: string }>
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -628,6 +631,40 @@ describe('kaneoProvisionMember', () => {
     expect(result.providerUserId).toBe('existing-id')
     restoreFetch()
   })
+
+  test('reuse path makes NO sign-up fetch, calls add-member with existing id, returns existing login', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    setMockFetch(async (url, init) => {
+      const body = init?.body !== undefined ? JSON.parse(init.body as string) : undefined
+      calls.push({ url, body })
+      if (url.includes('/api/auth/organization/add-member')) {
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return new Response('unexpected', { status: 500 })
+    })
+
+    const result = await kaneoProvisionMember(
+      TEST_CONFIG,
+      WORKSPACE_ID,
+      { chatUserId: 'chat-3', displayName: 'Carol', username: 'carol' },
+      'http://kaneo-public',
+      { providerUserId: 'existing-uid', login: 'carol@pap.ai' },
+    )
+
+    expect(result.providerUserId).toBe('existing-uid')
+    expect(result.login).toBe('carol@pap.ai')
+
+    const signUpCall = calls.find((c) => c.url.includes('/api/auth/sign-up/email'))
+    expect(signUpCall).toBeUndefined()
+
+    const addMemberCall = calls.find((c) => c.url.includes('/api/auth/organization/add-member'))
+    expect(addMemberCall?.body).toMatchObject({ userId: 'existing-uid', organizationId: WORKSPACE_ID, role: 'member' })
+
+    restoreFetch()
+  })
 })
 ```
 
@@ -762,13 +799,31 @@ export async function kaneoProvisionMember(
   member: { chatUserId: string; displayName: string; username: string | null },
   /** Public-facing Kaneo URL (for origin header and secure-cookie detection). */
   publicUrl: string,
+  /**
+   * When provided, SKIP sign-up and reuse the existing Kaneo account.
+   * Only `doAddMember` is called to link the user to this workspace.
+   */
+  existing?: { providerUserId: string; login: string },
 ): Promise<ProvisionMemberResult> {
+  log.info(
+    { chatUserId: member.chatUserId, displayName: member.displayName, reuse: existing !== undefined },
+    'Provisioning Kaneo member',
+  )
+
+  if (existing !== undefined) {
+    // Reuse path: account already exists in another group — skip sign-up, just add to this workspace.
+    await doAddMember(serviceConfig, workspaceId, existing.providerUserId, publicUrl)
+    log.info(
+      { chatUserId: member.chatUserId, userId: existing.providerUserId, workspaceId },
+      'Kaneo member reused across groups',
+    )
+    return { providerUserId: existing.providerUserId, login: existing.login, password: '' }
+  }
+
   const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
   const emailBase = member.username !== null ? member.username : member.chatUserId
   const email = `${emailBase}-${uniqueSuffix}@pap.ai`
   const password = generateMemberPassword()
-
-  log.info({ chatUserId: member.chatUserId, displayName: member.displayName }, 'Provisioning Kaneo member')
 
   const { userId } = await doMemberSignUp(serviceConfig.baseUrl, publicUrl, email, password, member.displayName)
   await doAddMember(serviceConfig, workspaceId, userId, publicUrl)
@@ -789,13 +844,20 @@ import { kaneoProvisionMember } from './operations/members.js'
 Add method to the class (after `listUsers`):
 
 ```typescript
-  async provisionWorkspaceMember(member: {
-    chatUserId: string
-    displayName: string
-    username: string | null
-  }): Promise<{ providerUserId: string; login: string }> {
+  async provisionWorkspaceMember(
+    member: {
+      chatUserId: string
+      displayName: string
+      username: string | null
+    },
+    opts?: { existingProviderUserId?: string; existingLogin?: string },
+  ): Promise<{ providerUserId: string; login: string }> {
     const publicUrl = this.config.baseUrl // resolved from task instance config in caller
-    const result = await kaneoProvisionMember(this.config, this.workspaceId, member, publicUrl)
+    const existing =
+      opts?.existingProviderUserId !== undefined && opts.existingLogin !== undefined
+        ? { providerUserId: opts.existingProviderUserId, login: opts.existingLogin }
+        : undefined
+    const result = await kaneoProvisionMember(this.config, this.workspaceId, member, publicUrl, existing)
     return { providerUserId: result.providerUserId, login: result.login }
   }
 ```
@@ -855,6 +917,7 @@ describe('migration 060 kaneo_workspace_members', () => {
     expect(cols).toContain('provider_user_id')
     expect(cols).toContain('login')
     expect(cols).toContain('status')
+    expect(cols).toContain('encrypted_password')
     expect(cols).toContain('created_at')
   })
 
@@ -910,8 +973,9 @@ const up = (db: Database): void => {
         provider_name    TEXT NOT NULL DEFAULT 'kaneo',
         provider_user_id TEXT NOT NULL,
         login            TEXT NOT NULL,
-        status           TEXT NOT NULL DEFAULT 'active',
-        created_at       TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'active',
+        encrypted_password  TEXT,
+        created_at          TEXT NOT NULL,
         PRIMARY KEY (group_context_id, chat_user_id, provider_name)
       )
     `)
@@ -939,6 +1003,7 @@ export const kaneoWorkspaceMembers = sqliteTable(
     status: text('status', { enum: ['active', 'inactive', 'failed'] })
       .notNull()
       .default('active'),
+    encryptedPassword: text('encrypted_password'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [primaryKey({ columns: [table.groupContextId, table.chatUserId, table.providerName] })],
@@ -972,7 +1037,7 @@ Expected: PASS.
 
 ```
 git add src/db/migrations/060_kaneo_workspace_members.ts src/db/schema.ts src/db/index.ts tests/db/migration-060-kaneo-workspace-members.test.ts
-git commit -m "feat(db): migration 060 — kaneo_workspace_members table"
+git commit -m "feat(db): migration 060 — kaneo_workspace_members table with nullable encrypted_password"
 ```
 
 ---
@@ -1139,6 +1204,57 @@ describe('ensureWorkspaceMember', () => {
     expect(result).toBe('created')
     expect(usedLabel).toBe(`User ${CHAT_USER}`)
   })
+
+  test('passes existingProviderUserId when a mapping pre-exists', async () => {
+    const receivedOpts: Array<{ existingProviderUserId?: string }> = []
+    // Pre-seed an identity mapping with providerUserId
+    const { setIdentityMapping } = await import('../../../src/identity/mapping.js')
+    setIdentityMapping({
+      contextId: CHAT_USER,
+      providerName: 'kaneo',
+      providerUserId: 'pre-existing-uid',
+      providerUserLogin: 'pre@pap.ai',
+      displayName: 'PreExisting',
+      matchMethod: 'auto',
+      confidence: 1,
+    })
+
+    await ensureWorkspaceMember(
+      GROUP_CTX,
+      CHAT_USER,
+      makeDeps({
+        resolveProvider: async () =>
+          makeFakeProvider({
+            provisionWorkspaceMember: async (_member, opts) => {
+              receivedOpts.push({ existingProviderUserId: opts?.existingProviderUserId })
+              return { providerUserId: 'pre-existing-uid', login: 'pre@pap.ai' }
+            },
+          }),
+      }),
+    )
+
+    expect(receivedOpts[0]?.existingProviderUserId).toBe('pre-existing-uid')
+  })
+
+  test('does NOT pass existingProviderUserId when no mapping pre-exists', async () => {
+    const receivedOpts: Array<{ existingProviderUserId?: string }> = []
+
+    await ensureWorkspaceMember(
+      'grp-ctx-new',
+      'chat-user-new',
+      makeDeps({
+        resolveProvider: async () =>
+          makeFakeProvider({
+            provisionWorkspaceMember: async (_member, opts) => {
+              receivedOpts.push({ existingProviderUserId: opts?.existingProviderUserId })
+              return { providerUserId: KANEO_USER_ID, login: 'u@pap.ai' }
+            },
+          }),
+      }),
+    )
+
+    expect(receivedOpts[0]?.existingProviderUserId).toBeUndefined()
+  })
 })
 ```
 
@@ -1162,7 +1278,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { kaneoWorkspaceMembers } from '../../db/schema.js'
-import { setProvisionedIdentityMapping } from '../../identity/mapping.js'
+import { getIdentityMapping, setProvisionedIdentityMapping } from '../../identity/mapping.js'
 import { getContextSettings as defaultGetContextSettings } from '../../instances/context-store.js'
 import { logger } from '../../logger.js'
 import { defaultTaskProviderResolver } from '../resolver.js'
@@ -1175,7 +1291,8 @@ export type MemberOutcome = 'created' | 'exists' | 'skipped' | 'failed'
 export interface MembershipDeps {
   resolveProvider(configId: string): Promise<TaskProvider | null>
   getContextSettings(contextId: string): { taskInstanceId: string; platformInstanceId: string } | null
-  resolveUserLabel(userId: string, platformInstanceId: string): Promise<string | null>
+  /** Resolves a display label for a user. Returns null when the chat router cannot resolve it (best-effort). */
+  resolveUserLabel(userId: string, groupContextId: string, platformInstanceId: string): Promise<string | null>
 }
 
 export const defaultMembershipDeps: MembershipDeps = {
@@ -1257,15 +1374,28 @@ export async function ensureWorkspaceMember(
     return 'skipped'
   }
 
-  const resolvedLabel = await deps.resolveUserLabel(chatUserId, settings.platformInstanceId)
+  const resolvedLabel = await deps.resolveUserLabel(chatUserId, groupContextId, settings.platformInstanceId)
   const displayName = buildDisplayName(resolvedLabel, opts?.username ?? null, chatUserId)
 
+  // Reuse existing Kaneo account across groups if a prior identity mapping exists.
+  const existingMapping = getIdentityMapping(chatUserId, provider.name)
+  const existingOpts =
+    existingMapping?.providerUserId !== null && existingMapping?.providerUserId !== undefined
+      ? {
+          existingProviderUserId: existingMapping.providerUserId,
+          existingLogin: existingMapping.providerUserLogin ?? undefined,
+        }
+      : undefined
+
   try {
-    const { providerUserId, login } = await provider.provisionWorkspaceMember({
-      chatUserId,
-      displayName,
-      username: opts?.username ?? null,
-    })
+    const { providerUserId, login } = await provider.provisionWorkspaceMember(
+      {
+        chatUserId,
+        displayName,
+        username: opts?.username ?? null,
+      },
+      existingOpts,
+    )
 
     writeMemberRow(groupContextId, chatUserId, providerUserId, login, 'active')
     setProvisionedIdentityMapping({
@@ -1537,17 +1667,21 @@ Find the startup sequence in `src/index.ts` and add after the existing startup c
 
 ```typescript
 import { registerMembershipSubscriber } from './providers/membership/index.js'
-import { ensureWorkspaceMember, markMemberInactive } from './providers/membership/index.js'
-import { ChatRouter } from './chat/router.js'
+import { ensureWorkspaceMember, markMemberInactive, defaultMembershipDeps } from './providers/membership/index.js'
 
-// In the startup block, after the router is created:
+// In the startup block, AFTER `const chatProvider = new ChatRouter(...)` (~line 84):
 registerMembershipSubscriber({
-  ensure: (groupContextId, chatUserId) => ensureWorkspaceMember(groupContextId, chatUserId),
+  ensure: (groupContextId, chatUserId) =>
+    ensureWorkspaceMember(groupContextId, chatUserId, {
+      ...defaultMembershipDeps,
+      resolveUserLabel: (userId, groupCtxId, platformInstanceId) =>
+        chatProvider.resolveUserLabel(userId, { contextId: groupCtxId, contextType: 'group', platformInstanceId }),
+    }),
   markInactive: markMemberInactive,
 })
 ```
 
-> Exact placement depends on where `chatRouter` is available for `resolveUserLabel`. For the default `MembershipDeps`, `resolveUserLabel` returns `null` (falls back to `User <id>`). Wire the real label resolver after chatRouter is constructed. See the note in Task 3.3.
+> **Startup wiring:** `chatProvider` (a `ChatRouter`) is constructed at `src/index.ts` ~line 84. Register the subscriber AFTER that line so `chatProvider` is in scope. The `resolveUserLabel` call uses `(userId, groupContextId, platformInstanceId)` matching `ResolveUserContext` — it is best-effort: `null` resolves to `User <id>`. Note that `groupContextId` is the storage context id and may not equal the raw platform group id, so label resolution is best-effort only.
 
 - [ ] **Step 6: Run test to verify it passes**
 
@@ -1740,9 +1874,14 @@ After registering the event subscriber, add:
 ```typescript
 import { runMembershipBackfill } from './providers/membership/index.js'
 
-// After subscriber registration, fire-and-forget backfill at startup:
+// After subscriber registration (chatProvider already in scope), fire-and-forget backfill at startup:
 void runMembershipBackfill({
-  ensure: (groupContextId, chatUserId) => ensureWorkspaceMember(groupContextId, chatUserId),
+  ensure: (groupContextId, chatUserId) =>
+    ensureWorkspaceMember(groupContextId, chatUserId, {
+      ...defaultMembershipDeps,
+      resolveUserLabel: (userId, groupCtxId, platformInstanceId) =>
+        chatProvider.resolveUserLabel(userId, { contextId: groupCtxId, contextType: 'group', platformInstanceId }),
+    }),
 })
   .then((result) => {
     log.info(result, 'Startup membership backfill finished')
@@ -1815,7 +1954,7 @@ if (contextType === 'group' && provider !== null) {
 }
 ```
 
-Note: we pass `configId` (the group's config-context id) as `groupContextId`. The `ensureWorkspaceMember` service reads the same context id to resolve the provider via `defaultTaskProviderResolver.resolve(configId)`.
+Note: `configId` is the group's storage context id. `ensureWorkspaceMember` uses it to resolve the provider via `defaultTaskProviderResolver.resolve(configId)`. The full membership deps (including `resolveUserLabel` wired to `chatProvider`) are passed at the subscriber and backfill call sites in Tasks 3.1 and 3.2 — the backstop here uses `defaultMembershipDeps` which returns `null` for `resolveUserLabel` and falls back to `User <chatUserId>`. That is acceptable for the backstop path since labels are best-effort.
 
 - [ ] **Step 3: Run full test suite to confirm no regressions**
 
@@ -1956,7 +2095,7 @@ function handleGet(req: Request, url: URL): Response {
   if (!scope.ok) return scope.response
 
   const { contextId } = scope.scope
-  const chatUserId = auth.authed.principal.chatUserId
+  const chatUserId = auth.authed.principal.platformUserId
   const row = getKaneoMemberRow(contextId, chatUserId)
   if (row === undefined) {
     return settingsJson(404, { error: 'No Kaneo account provisioned for this member in this group.' })
@@ -1990,34 +2129,94 @@ async function handlePost(req: Request): Promise<Response> {
   if (!scope.ok) return scope.response
 
   const { contextId } = scope.scope
-  const chatUserId = auth.authed.principal.chatUserId
+  const chatUserId = auth.authed.principal.platformUserId
   const row = getKaneoMemberRow(contextId, chatUserId)
   if (row === undefined) {
     return settingsJson(404, { error: 'No Kaneo account provisioned for this member.' })
   }
 
-  // [add-member path] — Phase-0 confirmed /api/auth/admin/set-password is reachable.
-  // Replace <KANEO_BASE_URL> and service-account auth with real values from task instance config.
-  // If Phase-0 selected the encrypted-password fallback, replace this block with:
-  //   const decryptedPassword = await decryptInstanceConfig(row.encryptedPassword, instanceKey)
-  //   return settingsJson(200, { password: decryptedPassword })
-  const kaneoUrl = getKaneoPublicUrl(contextId)
-  if (kaneoUrl === null) return settingsJson(422, { error: 'Kaneo instance not configured for this group.' })
+  // ─── Branch A: admin-reset path ──────────────────────────────────────────
+  // Selected when Phase-0 spike confirms POST /api/auth/admin/set-password is reachable
+  // over HTTP with the service-account credential.
+  //
+  // Required imports (add at top of file when selecting this branch):
+  //   import { getConfigValue } from '../../config.js'
+  //   import { KANEO_PLUGIN_CREDENTIAL_KEY } from '../../types/config.js'
+  //
+  // Implementation:
+  //
+  //   const settings = getContextSettings(contextId)
+  //   if (settings === null) return settingsJson(422, { error: 'No task instance configured.' })
+  //   const instance = getTaskInstance(settings.taskInstanceId)
+  //   if (instance === null) return settingsJson(422, { error: 'Task instance not found.' })
+  //   const baseUrl: string = instance.config['baseUrl'] ?? ''
+  //   if (baseUrl === '') return settingsJson(422, { error: 'Kaneo base URL not configured.' })
+  //   const serviceCredential = await getConfigValue(contextId, KANEO_PLUGIN_CREDENTIAL_KEY)
+  //   const newPassword = generateNewPassword()
+  //   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  //   if (serviceCredential !== null && serviceCredential.startsWith('better-auth.session_token=')) {
+  //     headers['Cookie'] = serviceCredential
+  //   } else if (serviceCredential !== null) {
+  //     headers['Authorization'] = `Bearer ${serviceCredential}`
+  //   }
+  //   const resetRes = await fetch(`${baseUrl}/api/auth/admin/set-password`, {
+  //     method: 'POST',
+  //     headers,
+  //     body: JSON.stringify({ userId: row.providerUserId, newPassword }),
+  //   })
+  //   if (!resetRes.ok) {
+  //     const errText = await resetRes.text()
+  //     log.error({ contextId, status: resetRes.status, body: errText }, 'Kaneo admin/set-password failed')
+  //     return settingsJson(502, { error: 'Password reset failed. Contact your administrator.' })
+  //   }
+  //   return settingsJson(200, { newPassword, warning: 'This password is shown once. Store it securely.' })
 
-  const newPassword =
+  // ─── Branch B: encrypted-password fallback ───────────────────────────────
+  // Selected when Phase-0 spike finds /api/auth/admin/set-password unreachable.
+  // Requires Task 2.3 migration column `encrypted_password TEXT` (nullable),
+  // `kaneoProvisionMember` to return the password, and `ensureWorkspaceMember` to
+  // encrypt via `encryptInstanceConfig({ password })` and store it in the row.
+  //
+  // Required import (add at top of file when selecting this branch):
+  //   import { decryptInstanceConfig } from '../../instances/encryption.js'
+  //
+  // Implementation:
+  //
+  //   if (row.encryptedPassword === null) {
+  //     return settingsJson(404, { error: 'No stored password for this member. Re-provision to capture credentials.' })
+  //   }
+  //   const decrypted = decryptInstanceConfig(row.encryptedPassword)
+  //   const revealedPassword = decrypted['password'] ?? ''
+  //   if (revealedPassword === '') {
+  //     return settingsJson(500, { error: 'Stored password is empty — contact your administrator.' })
+  //   }
+  //   // Clear the stored password after reveal to enforce reveal-once semantics.
+  //   getDrizzleDb()
+  //     .update(kaneoWorkspaceMembers)
+  //     .set({ encryptedPassword: null })
+  //     .where(
+  //       and(
+  //         eq(kaneoWorkspaceMembers.groupContextId, contextId),
+  //         eq(kaneoWorkspaceMembers.chatUserId, chatUserId),
+  //       ),
+  //     )
+  //     .run()
+  //   return settingsJson(200, { newPassword: revealedPassword, warning: 'This password is shown once. Store it securely.' })
+
+  // Phase-0 decision: replace this placeholder return with Branch A or Branch B above.
+  // Both branches are complete — select one by removing the other's comment block and
+  // adding the required imports.
+  log.warn({ chatUserId, groupContextId: contextId }, 'Password reset: Phase-0 branch not yet selected')
+  return settingsJson(501, { error: 'Password reset not yet configured — Phase-0 branch selection pending.' })
+}
+
+function generateNewPassword(): string {
+  return (
     Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('')
       .slice(0, 20) + 'Aa1!'
-
-  // TODO: call Better Auth admin set-password endpoint (or use encrypted-pw fallback per Phase-0).
-  // Stub: log.warn and return the new password directly for now.
-  log.warn({ chatUserId, groupContextId: contextId }, 'Password reset stub — wire to Better Auth admin endpoint')
-
-  return settingsJson(200, {
-    newPassword,
-    warning: 'This password is shown once. Store it securely.',
-  })
+  )
 }
 
 export function handleKaneoCredentialsRoutes(req: Request, url: URL): Promise<Response> {
@@ -2053,7 +2252,311 @@ Expected: PASS.
 
 ```
 git add src/debug/settings/kaneo-credentials-routes.ts src/debug/settings-api-router.ts tests/debug/settings/kaneo-credentials-routes.test.ts
-git commit -m "feat(settings): GET/POST /settings/api/kaneo/credentials — member email + reveal-once reset stub"
+git commit -m "feat(settings): GET/POST /settings/api/kaneo/credentials — member email + reveal-once reset"
+```
+
+---
+
+### Task 4.2: Settings Svelte "My Kaneo access" section
+
+**Files:**
+
+- Create: `client/settings/KaneoAccessSection.svelte`
+- Modify: `client/settings/fetchers.ts` (add `getKaneoCredentials`, `postKaneoPasswordReset`)
+- Modify: `client/settings/fetcher-schemas.ts` (add `KaneoCredentialsSchema`, `KaneoResetSchema`)
+- Modify: `client/settings/SettingsApp.svelte` (static import + sidebar group entry)
+- Create: `tests/client/settings/kaneo-access-section.test.ts`
+
+- [ ] **Step 1: Write the failing client test**
+
+Create `tests/client/settings/kaneo-access-section.test.ts`:
+
+```typescript
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { flushSync, mount, unmount } from 'svelte'
+
+import KaneoAccessSection from '../../../client/settings/KaneoAccessSection.svelte'
+import { settingsSession } from '../../../client/settings/session.js'
+import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+
+const CONTEXT_ID = 'grp-ctx-test'
+
+function setupSession(): void {
+  settingsSession.set({
+    principalId: 'p-1',
+    contextId: CONTEXT_ID,
+    contextKind: 'group',
+    role: 'member',
+    csrfToken: 'csrf-tok',
+  })
+}
+
+describe('KaneoAccessSection', () => {
+  let target: HTMLElement
+  let component: ReturnType<typeof mount>
+
+  beforeEach(() => {
+    mockLogger()
+    target = document.createElement('div')
+    document.body.appendChild(target)
+    setupSession()
+  })
+
+  afterEach(() => {
+    if (component !== undefined) unmount(component)
+    document.body.removeChild(target)
+    restoreFetch()
+  })
+
+  test('shows login email when credentials fetch succeeds', async () => {
+    setMockFetch(async (url) => {
+      if (url.includes('/settings/api/kaneo/credentials')) {
+        return new Response(
+          JSON.stringify({ contextId: CONTEXT_ID, login: 'alice@pap.ai', status: 'active', kaneoUrl: 'http://kaneo' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response('not found', { status: 404 })
+    })
+
+    component = mount(KaneoAccessSection, { target })
+    flushSync()
+    // allow async fetch to resolve
+    await new Promise<void>((r) => setTimeout(r, 10))
+    flushSync()
+
+    expect(target.textContent).toContain('alice@pap.ai')
+  })
+
+  test('shows "not provisioned" message when GET returns 404', async () => {
+    setMockFetch(async () => new Response(JSON.stringify({ error: 'not found' }), { status: 404 }))
+
+    component = mount(KaneoAccessSection, { target })
+    flushSync()
+    await new Promise<void>((r) => setTimeout(r, 10))
+    flushSync()
+
+    expect(target.textContent).toContain('not provisioned')
+  })
+
+  test('Reset password button POSTs {action:"reset"} and reveals password once', async () => {
+    setMockFetch(async (url, init) => {
+      if (url.includes('/settings/api/kaneo/credentials') && (init?.method === 'GET' || init?.method === undefined)) {
+        return new Response(
+          JSON.stringify({ contextId: CONTEXT_ID, login: 'alice@pap.ai', status: 'active', kaneoUrl: 'http://kaneo' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url.includes('/settings/api/kaneo/credentials') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({ newPassword: 'Secret1!Aa', warning: 'This password is shown once. Store it securely.' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response('not found', { status: 404 })
+    })
+
+    component = mount(KaneoAccessSection, { target })
+    flushSync()
+    await new Promise<void>((r) => setTimeout(r, 10))
+    flushSync()
+
+    const btn = target.querySelector('button[data-action="reset-password"]') as HTMLButtonElement | null
+    expect(btn).not.toBeNull()
+    btn!.click()
+    flushSync()
+    await new Promise<void>((r) => setTimeout(r, 10))
+    flushSync()
+
+    expect(target.textContent).toContain('Secret1!Aa')
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+```
+bun test:client tests/client/settings/kaneo-access-section.test.ts
+```
+
+Expected: FAIL — `KaneoAccessSection.svelte` does not exist.
+
+- [ ] **Step 3: Add Zod schemas to `client/settings/fetcher-schemas.ts`**
+
+Read `client/settings/fetcher-schemas.ts` first, then append after the last existing schema:
+
+```typescript
+export const KaneoCredentialsSchema = z.object({
+  contextId: z.string(),
+  login: z.string(),
+  status: z.enum(['active', 'inactive', 'failed']),
+  kaneoUrl: z.string().nullable(),
+})
+export type KaneoCredentials = z.infer<typeof KaneoCredentialsSchema>
+
+export const KaneoResetSchema = z.object({
+  newPassword: z.string(),
+  warning: z.string(),
+})
+export type KaneoReset = z.infer<typeof KaneoResetSchema>
+```
+
+- [ ] **Step 4: Add fetchers to `client/settings/fetchers.ts`**
+
+Read `client/settings/fetchers.ts` first to find where to add imports. Then append at the end of the file:
+
+```typescript
+import type { KaneoCredentials, KaneoReset } from './fetcher-schemas.js'
+import { KaneoCredentialsSchema, KaneoResetSchema } from './fetcher-schemas.js'
+
+export function getKaneoCredentials(contextId: string): Promise<KaneoCredentials> {
+  return getJson(
+    `/settings/api/kaneo/credentials?contextId=${encodeURIComponent(contextId)}`,
+    KaneoCredentialsSchema.parse,
+  )
+}
+
+export function postKaneoPasswordReset(contextId: string): Promise<KaneoReset> {
+  return writeJson('/settings/api/kaneo/credentials', 'POST', { action: 'reset', contextId }, KaneoResetSchema.parse)
+}
+```
+
+> Note: `getJson` and `writeJson` are defined in `client/settings/fetchers.ts`; verify the exact names by reading the file before editing. CSRF token injection is automatic via `writeJson`.
+
+- [ ] **Step 5: Create `client/settings/KaneoAccessSection.svelte`**
+
+```svelte
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+<script lang="ts">
+  import { onMount } from 'svelte'
+  import { get } from 'svelte/store'
+  import type { KaneoCredentials } from './fetcher-schemas.js'
+  import { getKaneoCredentials, postKaneoPasswordReset } from './fetchers.js'
+  import { settingsSession } from './session.js'
+
+  let credentials: KaneoCredentials | null = $state(null)
+  let notProvisioned = $state(false)
+  let loading = $state(true)
+  let error: string | null = $state(null)
+  let revealedPassword: string | null = $state(null)
+  let resetting = $state(false)
+
+  onMount(async () => {
+    const session = get(settingsSession)
+    if (session === null) {
+      loading = false
+      return
+    }
+    try {
+      credentials = await getKaneoCredentials(session.contextId)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.includes('404')) {
+        notProvisioned = true
+      } else {
+        error = msg
+      }
+    } finally {
+      loading = false
+    }
+  })
+
+  async function resetPassword(): Promise<void> {
+    const session = get(settingsSession)
+    if (session === null || credentials === null) return
+    resetting = true
+    try {
+      const result = await postKaneoPasswordReset(session.contextId)
+      revealedPassword = result.newPassword
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : String(e)
+    } finally {
+      resetting = false
+    }
+  }
+</script>
+
+<section id="kaneo-access">
+  <h2>My Kaneo access</h2>
+  {#if loading}
+    <p>Loading…</p>
+  {:else if notProvisioned}
+    <p>Your account is not provisioned in this group's Kaneo workspace.</p>
+  {:else if error !== null}
+    <p class="error">{error}</p>
+  {:else if credentials !== null}
+    <dl>
+      <dt>Login email</dt>
+      <dd>{credentials.login}</dd>
+      {#if credentials.kaneoUrl !== null}
+        <dt>Workspace URL</dt>
+        <dd><a href={credentials.kaneoUrl} target="_blank" rel="noopener noreferrer">{credentials.kaneoUrl}</a></dd>
+      {/if}
+      <dt>Status</dt>
+      <dd>{credentials.status}</dd>
+    </dl>
+
+    {#if revealedPassword !== null}
+      <p><strong>New password (shown once):</strong> <code>{revealedPassword}</code></p>
+      <p class="warning">Store this password securely — it will not be shown again.</p>
+    {:else}
+      <button data-action="reset-password" disabled={resetting} onclick={resetPassword}>
+        {resetting ? 'Resetting…' : 'Reset password'}
+      </button>
+    {/if}
+  {/if}
+</section>
+```
+
+- [ ] **Step 6: Wire `KaneoAccessSection` into `SettingsApp.svelte`**
+
+Read `client/settings/SettingsApp.svelte` to understand the static-import and sidebar pattern used by other sections. Then:
+
+1. Add a static import alongside the other section imports:
+
+```typescript
+import KaneoAccessSection from './KaneoAccessSection.svelte'
+```
+
+2. In the `$derived` `SidebarGroup[]` array, add an entry in the member/personal group (show only in `group` context):
+
+```typescript
+{ id: 'kaneo-access', label: 'My Kaneo access', condition: contextKind === 'group' },
+```
+
+3. In the template, render the section conditionally alongside other sections (place after the AI output section or with other personal sections):
+
+```svelte
+{#if contextKind === 'group'}
+  <KaneoAccessSection />
+{/if}
+```
+
+> Read the file first to find the exact insertion points. Follow the established alphabetical or feature-group order used by existing sections.
+
+- [ ] **Step 7: Run test to verify it passes**
+
+```
+bun test:client tests/client/settings/kaneo-access-section.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+```
+git add client/settings/KaneoAccessSection.svelte client/settings/fetchers.ts client/settings/fetcher-schemas.ts client/settings/SettingsApp.svelte tests/client/settings/kaneo-access-section.test.ts
+git commit -m "feat(settings-ui): KaneoAccessSection — show login email, workspace URL, reveal-once password reset"
 ```
 
 ---
@@ -2137,19 +2640,20 @@ git commit -m "feat(system-prompt): add find_user Kaneo assignment resolution gu
 
 - [x] **Spec coverage:** All 9 spec sections (problem, goal, decisions, architecture, triggers, credentials, error-handling, testing, phasing) are covered by concrete tasks.
 - [x] **Phase 0 is blocking gate:** All build-phase tasks note conditional branches for add-member vs. encrypted-pw fallback.
-- [x] **No placeholders in production code paths:** All STUB/TODO comments identify the exact Phase-0-dependent wire-up, not missing design.
+- [x] **No bare TODO/STUB in production code:** Task 4.1 POST handler contains two fully-written, labelled branches (A and B); the placeholder `return` is the only line left, clearly documenting that Phase-0 selects which branch to activate.
 - [x] **Import paths use `.js` extension:** Verified throughout.
 - [x] **No `@ts-ignore` / lint suppressions:** None introduced.
 - [x] **p-limit used for concurrency:** Subscriber and backfill both use `pLimit(4)`.
 - [x] **`'provisioned'` no-overwrite rule:** Tested in Task 1.2 with 4 cases.
-- [x] **Migration number 060:** Correct (059 is `guest_mode`, last in index.ts).
+- [x] **Migration number 060:** Correct (059 is `guest_mode`, last in index.ts). Migration adds nullable `encrypted_password TEXT` for Branch B compatibility.
 - [x] **Identity mapping PK keyed by `chatUserId`:** `ensureWorkspaceMember` passes `chatUserId` as `contextId` to `setProvisionedIdentityMapping`, matching how `getIdentityMapping(chatUserId, providerName)` is called in `maybeAutoLinkIdentity`.
+- [x] **Multi-group reuse:** `kaneoProvisionMember` accepts `existing?: { providerUserId; login }` — reuse path skips sign-up, calls only `doAddMember`. `ensureWorkspaceMember` reads `getIdentityMapping` and forwards `existingOpts` to `provisionWorkspaceMember`. Two tests assert the forwarding and non-forwarding paths.
+- [x] **`resolveUserLabel` arity:** `MembershipDeps.resolveUserLabel(userId, groupContextId, platformInstanceId)` — three args matching `ChatRouter.resolveUserLabel(userId, ResolveUserContext)`. Subscriber and backfill call sites wired to `chatProvider` in `src/index.ts` after ChatRouter construction (~line 84). Best-effort: null → `User <id>`.
+- [x] **`SettingsPrincipal.platformUserId`:** Both GET and POST handlers in `kaneo-credentials-routes.ts` use `auth.authed.principal.platformUserId`.
+- [x] **Settings UI:** Task 4.2 adds `KaneoAccessSection.svelte` with `getKaneoCredentials`/`postKaneoPasswordReset` fetchers, Zod schemas, sidebar wiring, and a happy-dom client test.
 - [x] **DI-first testing:** All services have `Deps` interfaces; tests inject fakes, never mock modules.
 - [x] **No fixed-wall-clock assertions:** Subscriber test uses `setTimeout(resolve, 20)` as a minimal poll; for production use, replace with a proper `waitFor` helper if flakiness appears under CI contention.
 
 ## Spec Requirements Not Fully Turned Into Concrete Tasks
 
-- **Settings UI frontend (Svelte):** The `GET/POST /settings/api/kaneo/credentials` route is complete, but the corresponding settings SPA section (`client/settings/`) is not covered. Add a `GuestCredentialsSection.svelte` component and wire it into `SettingsApp.svelte` as a follow-up. The API contract is stable.
-- **Password-reset wire-up (Phase-0 gated):** `kaneo-credentials-routes.ts` contains a TODO stub for the actual Better Auth admin call. This is intentionally a stub pending Phase-0 outcome — either the `admin/set-password` HTTP call or the encrypted-password decrypt path.
-- **`resolveUserLabel` in subscriber:** The startup subscriber is wired with `defaultMembershipDeps.resolveUserLabel = () => null`. Thread the real `chatRouter.resolveUserLabel` after `ChatRouter` is constructed in `src/index.ts` — the exact location depends on startup sequencing.
-- **Multi-group account reuse:** The spec describes a single Kaneo account per chat person reused across groups. The current `ensureWorkspaceMember` always calls `provisionWorkspaceMember` (sign-up + add-member). A reuse check (look up existing identity link; if `matchMethod !== null && providerUserId !== null`, skip sign-up and only run add-member) should be added to `kaneoProvisionMember` or `ensureWorkspaceMember`. This is a correctness gap if one person joins multiple Kaneo-provisioned groups.
+- **Phase-0 branch selection:** `kaneo-credentials-routes.ts` Task 4.1 contains two complete, labelled password-reset branches — [Branch A: admin-reset path] and [Branch B: encrypted-pw fallback]. Once the Phase-0 spike outcome is recorded in `docs/superpowers/notes/2026-06-21-kaneo-spike-outcome.md`, select one branch by removing the other's comment block and adding the required imports. Both branches are production-ready; only the selection step remains.
