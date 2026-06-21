@@ -52,4 +52,9 @@ export type MakeToolsOptions = {
    * inside it. When undefined, ask-marked tools deny on each call.
    */
   askPermission?: import('./permission-gate.js').AskPermissionFn
+  /**
+   * Resolver for chat group participants by name — used by resolve_chat_participant.
+   * Absent in DM context or when no ChatRouter is available.
+   */
+  chatParticipantResolver?: import('../chat/participants/roster.js').ChatParticipantResolver
 }

@@ -7,6 +7,7 @@ import type { ToolSet } from 'ai'
 
 import type { StagedFileDownloadFn } from '../attachments/types.js'
 import { getScopeKey } from '../chat/context-scope.js'
+import type { ChatParticipantResolver } from '../chat/participants/roster.js'
 import type { ContextType } from '../chat/types.js'
 import type { TaskProvider } from '../providers/types.js'
 import { makeAddCommentReactionTool } from './add-comment-reaction.js'
@@ -49,6 +50,7 @@ import { makeRemoveTaskLabelTool } from './remove-task-label.js'
 import { makeRemoveTaskRelationTool } from './remove-task-relation.js'
 import { makeRemoveWorkTool } from './remove-work.js'
 import { makeReorderStatusesTool } from './reorder-statuses.js'
+import { makeResolveChatParticipantTool } from './resolve-chat-participant.js'
 import { makeRunSavedQueryTool } from './run-saved-query.js'
 import { makeSetMyIdentityTool } from './set-my-identity.js'
 import type { ToolMode } from './types.js'
@@ -67,6 +69,12 @@ type BuilderArgs =
       contextType: ContextType | undefined,
       username: string | null | undefined,
       stagedDownloadFn: StagedFileDownloadFn | undefined,
+    ]
+  | readonly [
+      contextType: ContextType | undefined,
+      username: string | null | undefined,
+      stagedDownloadFn: StagedFileDownloadFn | undefined,
+      chatParticipantResolver: ChatParticipantResolver | undefined,
     ]
 
 function maybeAddProjectTools(tools: ToolSet, provider: TaskProvider): void {
@@ -199,6 +207,7 @@ export function buildTools(
   const contextType = args[0]
   const username = args[1]
   const stagedDownloadFn = args[2]
+  const chatParticipantResolver = args[3]
   const groupReadContextId =
     contextType === 'group' && contextId !== undefined
       ? getScopeKey('group', { storageContextId: contextId, chatUserId: chatUserId ?? contextId, contextType })
@@ -229,6 +238,9 @@ export function buildTools(
   const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
   if (storageOwnerId !== undefined) tools['promote_memo'] = makePromoteMemoTool(provider, storageOwnerId)
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
+  if (contextType === 'group' && chatParticipantResolver !== undefined && contextId !== undefined) {
+    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId)
+  }
   return tools
 }
 

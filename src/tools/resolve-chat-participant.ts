@@ -12,8 +12,6 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:resolve-chat-participant' })
 
-export { type ChatParticipantResolver }
-
 export function makeResolveChatParticipantTool(resolver: ChatParticipantResolver, contextId: string): ToolSet[string] {
   return tool({
     description:

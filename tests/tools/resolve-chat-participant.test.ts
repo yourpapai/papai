@@ -91,3 +91,29 @@ describe('makeResolveChatParticipantTool', () => {
     expect(receivedContextId).toBe(CONTEXT_ID)
   })
 })
+
+describe('tool gating via buildTools', () => {
+  test('tool is absent when chatParticipantResolver is undefined', async () => {
+    // buildTools with no chatParticipantResolver → no resolve_chat_participant
+    const { buildTools } = await import('../../src/tools/tools-builder.js')
+    const { createMockProvider } = await import('../tools/mock-provider.js')
+    const tools = buildTools(createMockProvider(), 'u1', 'ctx1', 'normal', 'group', null, undefined, undefined)
+    expect(tools['resolve_chat_participant']).toBeUndefined()
+  })
+
+  test('tool is absent in dm context even when resolver is provided', async () => {
+    const { buildTools } = await import('../../src/tools/tools-builder.js')
+    const { createMockProvider } = await import('../tools/mock-provider.js')
+    const fakeResolver: ChatParticipantResolver = () => Promise.resolve([])
+    const tools = buildTools(createMockProvider(), 'u1', 'ctx1', 'normal', 'dm', null, undefined, fakeResolver)
+    expect(tools['resolve_chat_participant']).toBeUndefined()
+  })
+
+  test('tool is present in group context when resolver is provided', async () => {
+    const { buildTools } = await import('../../src/tools/tools-builder.js')
+    const { createMockProvider } = await import('../tools/mock-provider.js')
+    const fakeResolver: ChatParticipantResolver = () => Promise.resolve([])
+    const tools = buildTools(createMockProvider(), 'u1', 'ctx1', 'normal', 'group', null, undefined, fakeResolver)
+    expect(tools['resolve_chat_participant']).toBeDefined()
+  })
+})
