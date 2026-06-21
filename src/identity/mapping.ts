@@ -117,6 +117,27 @@ export function setIdentityMapping(params: SetIdentityMappingParams, deps: Ident
 }
 
 /**
+ * Write a 'provisioned' identity mapping that does NOT overwrite a higher-priority
+ * link already established by auto-detection ('auto') or manual NL assignment ('manual_nl').
+ * Safe to call concurrently — read-then-write is idempotent under the unique PK constraint.
+ */
+export function setProvisionedIdentityMapping(
+  params: SetIdentityMappingParams,
+  deps: IdentityMappingDeps = defaultDeps,
+): void {
+  log.debug({ contextId: params.contextId, providerName: params.providerName }, 'setProvisionedIdentityMapping called')
+  const existing = getIdentityMapping(params.contextId, params.providerName, deps)
+  if (existing !== null && (existing.matchMethod === 'auto' || existing.matchMethod === 'manual_nl')) {
+    log.debug(
+      { contextId: params.contextId, existingMethod: existing.matchMethod },
+      'Skipping provisioned identity link: existing higher-priority mapping',
+    )
+    return
+  }
+  setIdentityMapping(params, deps)
+}
+
+/**
  * List all identity mappings across all contexts and providers.
  */
 export function listAllIdentityMappings(deps: IdentityMappingDeps = defaultDeps): IdentityMapping[] {

@@ -4,9 +4,9 @@
 // See LICENSE in the project root for details.
 
 /** Methods by which an identity mapping can be established */
-export type MatchMethod = 'auto' | 'manual_nl' | 'unmatched'
+export type MatchMethod = 'auto' | 'manual_nl' | 'unmatched' | 'provisioned'
 
-const MATCH_METHOD_VALUES: readonly string[] = ['auto', 'manual_nl', 'unmatched']
+const MATCH_METHOD_VALUES: readonly string[] = ['auto', 'manual_nl', 'unmatched', 'provisioned']
 
 /**
  * Type guard to check if a value is a valid MatchMethod.
