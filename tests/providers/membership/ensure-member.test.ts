@@ -263,4 +263,83 @@ describe('ensureWorkspaceMember', () => {
 
     expect(receivedOpts[0]?.existingProviderUserId).toBeUndefined()
   })
+
+  // Carry-forward fix B: failed/inactive rows must not block retry
+  test('a "failed" row is retried and becomes "active" on success', async () => {
+    const db = getDrizzleDb()
+    // Pre-insert a failed row
+    db.insert(kaneoWorkspaceMembers)
+      .values({
+        groupContextId: GROUP_CTX,
+        chatUserId: CHAT_USER,
+        providerName: 'kaneo',
+        providerUserId: '',
+        login: '',
+        status: 'failed',
+        encryptedPassword: null,
+        createdAt: new Date().toISOString(),
+      })
+      .run()
+
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    expect(result).toBe('created')
+    const row = db
+      .select()
+      .from(kaneoWorkspaceMembers)
+      .where(and(eq(kaneoWorkspaceMembers.groupContextId, GROUP_CTX), eq(kaneoWorkspaceMembers.chatUserId, CHAT_USER)))
+      .get()
+    expect(row?.status).toBe('active')
+    expect(row?.providerUserId).toBe(KANEO_USER_ID)
+  })
+
+  test('an "inactive" row is retried and becomes "active" on success', async () => {
+    const db = getDrizzleDb()
+    // Pre-insert an inactive row
+    db.insert(kaneoWorkspaceMembers)
+      .values({
+        groupContextId: GROUP_CTX,
+        chatUserId: CHAT_USER,
+        providerName: 'kaneo',
+        providerUserId: 'old-uid',
+        login: 'old@pap.ai',
+        status: 'inactive',
+        encryptedPassword: null,
+        createdAt: new Date().toISOString(),
+      })
+      .run()
+
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    expect(result).toBe('created')
+    const row = db
+      .select()
+      .from(kaneoWorkspaceMembers)
+      .where(and(eq(kaneoWorkspaceMembers.groupContextId, GROUP_CTX), eq(kaneoWorkspaceMembers.chatUserId, CHAT_USER)))
+      .get()
+    expect(row?.status).toBe('active')
+    expect(row?.providerUserId).toBe(KANEO_USER_ID)
+  })
+
+  test('an "active" row still short-circuits to "exists"', async () => {
+    const db = getDrizzleDb()
+    db.insert(kaneoWorkspaceMembers)
+      .values({
+        groupContextId: GROUP_CTX,
+        chatUserId: CHAT_USER,
+        providerName: 'kaneo',
+        providerUserId: 'active-uid',
+        login: 'active@pap.ai',
+        status: 'active',
+        encryptedPassword: null,
+        createdAt: new Date().toISOString(),
+      })
+      .run()
+
+    const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
+    expect(result).toBe('exists')
+  })
+
+  test('ensureWorkspaceMember is exported from src/providers/membership/index.ts', async () => {
+    const mod = await import('../../../src/providers/membership/index.js')
+    expect(typeof mod.ensureWorkspaceMember).toBe('function')
+  })
 })

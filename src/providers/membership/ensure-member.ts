@@ -39,7 +39,12 @@ function buildDisplayName(resolvedLabel: string | null, username: string | null,
   return `User ${chatUserId}`
 }
 
-function findExistingMemberRow(groupContextId: string, chatUserId: string): boolean {
+/**
+ * Returns true ONLY when an `active` row exists, meaning the member is fully provisioned.
+ * A `failed` or `inactive` row should NOT block re-provisioning — it returns false so the
+ * caller proceeds to (re)provision and overwrites the existing row via upsert.
+ */
+function findActiveExistingMemberRow(groupContextId: string, chatUserId: string): boolean {
   const db = defaultGetDrizzleDb()
   const row = db
     .select({ status: kaneoWorkspaceMembers.status })
@@ -48,7 +53,7 @@ function findExistingMemberRow(groupContextId: string, chatUserId: string): bool
       and(eq(kaneoWorkspaceMembers.groupContextId, groupContextId), eq(kaneoWorkspaceMembers.chatUserId, chatUserId)),
     )
     .get()
-  return row !== undefined
+  return row?.status === 'active'
 }
 
 /**
@@ -78,6 +83,11 @@ function findStoredCredentialsAcrossGroups(
   return { providerUserId: row.providerUserId, login: row.login, encryptedPassword: row.encryptedPassword }
 }
 
+/**
+ * Insert or overwrite (upsert) a member row.
+ * A conflict on the PK (groupContextId, chatUserId, providerName) always UPDATES so that
+ * a prior `failed` or `inactive` row is replaced — never silently ignored.
+ */
 function writeMemberRow(
   groupContextId: string,
   chatUserId: string,
@@ -87,6 +97,7 @@ function writeMemberRow(
   encryptedPassword: string | null,
 ): void {
   const db = defaultGetDrizzleDb()
+  const now = new Date().toISOString()
   db.insert(kaneoWorkspaceMembers)
     .values({
       groupContextId,
@@ -96,9 +107,16 @@ function writeMemberRow(
       login,
       status,
       encryptedPassword,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     })
-    .onConflictDoNothing()
+    .onConflictDoUpdate({
+      target: [
+        kaneoWorkspaceMembers.groupContextId,
+        kaneoWorkspaceMembers.chatUserId,
+        kaneoWorkspaceMembers.providerName,
+      ],
+      set: { providerUserId, login, status, encryptedPassword, createdAt: now },
+    })
     .run()
 }
 
@@ -184,7 +202,7 @@ export async function ensureWorkspaceMember(
   opts?: { username?: string | null },
 ): Promise<MemberOutcome> {
   log.debug({ groupContextId, chatUserId }, 'ensureWorkspaceMember called')
-  if (findExistingMemberRow(groupContextId, chatUserId)) {
+  if (findActiveExistingMemberRow(groupContextId, chatUserId)) {
     log.debug({ groupContextId, chatUserId }, 'Member row already exists')
     return 'exists'
   }
