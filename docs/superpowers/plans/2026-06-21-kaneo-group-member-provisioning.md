@@ -17,7 +17,7 @@ See LICENSE in the project root for details.
 
 **Spec:** `docs/superpowers/specs/2026-06-21-kaneo-group-member-provisioning-design.md`
 
-**⚠️ PHASE 0 IS A BLOCKING GATE.** Phases 1–5 contain conditional branches labelled _[add-member path]_ and _[encrypted-pw fallback]_. Do **not** start Phase 1 until Phase 0 produces a decision record.
+**Phase 0 is COMPLETE.** Decisions are fixed: provisioning = invite-member + member auto-accept; credentials = encrypted-password-at-creation (Branch B) only. See `docs/superpowers/notes/2026-06-21-kaneo-spike-outcome.md`.
 
 ---
 
@@ -50,104 +50,22 @@ See LICENSE in the project root for details.
 
 ---
 
-## Phase 0 — Feasibility Spike (non-TDD, blocking)
+## Phase 0 — Feasibility Spike (COMPLETE)
 
-This phase produces a written decision record. **Nothing else may start until it completes.**
+**Outcome:** Tested against real Kaneo 2.7.2 over HTTP (2026-06-21). Full results in `docs/superpowers/notes/2026-06-21-kaneo-spike-outcome.md`.
 
-### Task 0.1: Test `organization/add-member` reachability with service-account session
+**Decisions (fixed — no conditional branches remain):**
 
-**Context:** The spec uses Better Auth's `POST /api/auth/organization/add-member` to add a newly-signed-up user to the existing group workspace. This endpoint is marked "server-only" in Better Auth docs. We need to confirm it works over HTTP with the service account's API key or session cookie.
+1. **Member provisioning: invite-member + member auto-accept.**
+   - `POST /api/auth/organization/add-member` → **404** (with api-key AND owner session cookie). DEAD.
+   - `POST /api/auth/organization/invite-member` → **200**, returns `{ id: <invitationId>, status: 'pending' }`. Works with service-account credential.
+   - `POST /api/auth/organization/accept-invitation` with the **member's own session cookie** + `{ invitationId }` → **200** (`status: accepted`). Member then appears in `GET /api/workspace/{id}/members`.
 
-The stored `kaneoKey` for a provisioned group context is either a Better Auth API key (`pk_…`) or a session cookie string. We need to confirm which form is present and whether it satisfies the org-management endpoint.
+2. **Credentials: encrypted-password-at-creation (Branch B) only.**
+   - `POST /api/auth/admin/set-password` → **404**. Branch A (admin reset) is DEAD.
+   - Generate password at sign-up, encrypt at rest via `encryptInstanceConfig`, reveal once through the settings UI.
 
-- [ ] **Step 1: Read the stored key shape for a provisioned group context**
-
-On a test/dev Kaneo deployment where a group has been provisioned:
-
-```bash
-# In the papai bot process or a bun REPL against the production DB:
-bun run -e "
-import { getConfigValue } from './src/config.js'
-const contextId = '<your-group-context-id>'
-console.log('credential:', getConfigValue(contextId, 'plugin:task-provider-kaneo:provider:credential'))
-console.log('workspaceId:', getConfigValue(contextId, 'plugin:task-provider-kaneo:provider:workspaceId'))
-"
-```
-
-Note whether `credential` is a raw API key (`pk_live_…`), a session cookie string (`better-auth.session_token=…`), or something else. The Kaneo client (`client.ts:22`) distinguishes these via `isKaneoSessionCookie()`.
-
-- [ ] **Step 2: Sign up a test member and call `add-member`**
-
-Replace `<base_url>`, `<session_cookie_or_api_key>`, `<workspace_id>` with real values:
-
-```bash
-# 1. Sign up a new test user
-SIGNUP=$(curl -s -X POST "$KANEO_BASE_URL/api/auth/sign-up/email" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test-member-001@pap.ai","password":"TestPass1!Aa","name":"Test Member"}')
-echo "$SIGNUP"
-NEW_USER_ID=$(echo "$SIGNUP" | bun -e "process.stdin |> JSON.parse |> .user.id |> console.log")
-echo "New user ID: $NEW_USER_ID"
-
-# 2. Call add-member using the service account API key
-curl -v -X POST "$KANEO_BASE_URL/api/auth/organization/add-member" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $SERVICE_API_KEY" \
-  -H "Origin: $KANEO_PUBLIC_URL" \
-  -d "{\"userId\":\"$NEW_USER_ID\",\"organizationId\":\"$WORKSPACE_ID\",\"role\":\"member\"}"
-```
-
-If the service key is a session cookie, replace the `Authorization` header with `Cookie: <session_cookie_string>`.
-
-**Pass criteria:** HTTP 200 with a JSON success body. The new user appears in `GET /api/workspace/$WORKSPACE_ID/members`.
-
-**Fail criteria:** 401 (auth rejected), 403 (org endpoint requires a different auth level), or 404/422 (endpoint not exposed over HTTP).
-
-- [ ] **Step 3: Test a password-reset path (fallback investigation)**
-
-```bash
-# Try Better Auth admin set-password (server-only — may not be HTTP-accessible)
-curl -v -X POST "$KANEO_BASE_URL/api/auth/admin/set-password" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $SERVICE_API_KEY" \
-  -d "{\"userId\":\"$NEW_USER_ID\",\"newPassword\":\"NewPass1!Aa\"}"
-```
-
-**Pass criteria:** 200 — password reset endpoint is reachable.
-**Fail criteria:** 404/405/401 — fallback to encrypted-password capture at sign-up time.
-
-- [ ] **Step 4: Write a decision record**
-
-Create `docs/superpowers/notes/2026-06-21-kaneo-spike-outcome.md` containing:
-
-```markdown
-# Phase-0 Spike Outcome
-
-Date: 2026-06-21
-
-## add-member endpoint
-
-Result: [PASS / FAIL]
-Auth shape: [api-key / session-cookie]
-Notes: <any quirks observed>
-
-## password-reset endpoint
-
-Result: [PASS / FAIL]
-Notes: <any quirks observed>
-
-## Decision
-
-- Member provisioning: [add-member-over-HTTP / escalate to Kaneo-side route]
-- Credential delivery: [admin/set-password / encrypted-password-at-creation]
-
-## Phases 1-5 branches to use
-
-- Task 2.2 branch: <add-member-path | encrypted-pw fallback>
-- Task 4.1 branch: <reset-api | reveal-once-encrypted>
-```
-
-Commit: `chore(kaneo-spike): record phase-0 feasibility spike outcome`
+- [x] **Task 0.1: Spike outcome recorded** — see `docs/superpowers/notes/2026-06-21-kaneo-spike-outcome.md`
 
 ---
 
@@ -214,7 +132,13 @@ In `src/providers/types.ts`, add after `getCurrentUser?()` (line ~137):
    * Provision a new workspace member for this provider's workspace.
    * Gated by capability `'members.provision'`.
    *
-   * @returns providerUserId (Better Auth id) and login (synthetic email).
+   * When `opts.existingProviderUserId`, `opts.existingLogin`, and `opts.existingPassword` are
+   * all present the implementation MUST skip sign-up and re-authenticate the member instead
+   * (sign-in with the stored password), then run invite + accept for the new workspace.
+   *
+   * @returns providerUserId (Better Auth id), login (synthetic email), and the password
+   *   (generated on new sign-up; the stored value passed through on reuse). The caller
+   *   is responsible for persisting the returned password encrypted.
    */
   provisionWorkspaceMember?(
     member: {
@@ -222,8 +146,8 @@ In `src/providers/types.ts`, add after `getCurrentUser?()` (line ~137):
       displayName: string
       username: string | null
     },
-    opts?: { existingProviderUserId?: string; existingLogin?: string },
-  ): Promise<{ providerUserId: string; login: string }>
+    opts?: { existingProviderUserId?: string; existingLogin?: string; existingPassword?: string },
+  ): Promise<{ providerUserId: string; login: string; password: string }>
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -547,12 +471,7 @@ git commit -m "feat(kaneo): implement KaneoProvider.listUsers and add members.pr
 
 ### Task 2.2: `kaneoProvisionMember` operation + `KaneoProvider.provisionWorkspaceMember`
 
-> ⚠️ Implementation in this task depends on the Phase-0 spike outcome.
->
-> - [add-member path]: `doAddMember` calls `POST /api/auth/organization/add-member` with the service-account config.
-> - [encrypted-pw fallback]: skip `doAddMember`; store the generated password encrypted using `encryptInstanceConfig`.
->
-> Write both branches; the decision record from Phase 0 selects which ships. Both pass their respective tests.
+**Mechanism (Phase-0 fixed):** invite-member + member auto-accept. `doAddMember` is replaced by the three-step sequence: `doMemberSignUp` (or `doMemberSignIn` for reuse) → `doInviteMember` (service credential) → `doAcceptInvitation` (member session cookie). Password is returned and the caller persists it encrypted.
 
 **Files:**
 
@@ -568,19 +487,30 @@ Add to `tests/plugins/task-provider-kaneo/operations/members.test.ts`:
 import { kaneoProvisionMember } from '../../../plugins/task-provider-kaneo/operations/members.js'
 
 describe('kaneoProvisionMember', () => {
-  test('signs up a new user and calls add-member [add-member path]', async () => {
-    const calls: { url: string; body: unknown }[] = []
+  test('new-member path: sign-up → invite-member (service auth + organizationId) → accept-invitation (member cookie + invitationId)', async () => {
+    const calls: { url: string; body: unknown; headers: Record<string, string> }[] = []
     setMockFetch(async (url, init) => {
       const body = init?.body !== undefined ? JSON.parse(init.body as string) : undefined
-      calls.push({ url, body })
+      const headers: Record<string, string> = {}
+      for (const [k, v] of Object.entries((init?.headers ?? {}) as Record<string, string>)) {
+        headers[k.toLowerCase()] = v
+      }
+      calls.push({ url, body, headers })
+
       if (url.includes('/api/auth/sign-up/email')) {
-        return new Response(JSON.stringify({ user: { id: 'new-user-id' }, token: 'tok' }), {
+        return new Response(JSON.stringify({ user: { id: 'new-user-id' }, token: 'member-session-token' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-      if (url.includes('/api/auth/organization/add-member')) {
-        return new Response(JSON.stringify({ success: true }), {
+      if (url.includes('/api/auth/organization/invite-member')) {
+        return new Response(JSON.stringify({ id: 'inv-001', status: 'pending' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/api/auth/organization/accept-invitation')) {
+        return new Response(JSON.stringify({ status: 'accepted' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
@@ -597,27 +527,45 @@ describe('kaneoProvisionMember', () => {
 
     expect(result.providerUserId).toBe('new-user-id')
     expect(result.login).toMatch(/@pap\.ai$/)
+    expect(result.password).toBeTruthy()
 
     const signUpCall = calls.find((c) => c.url.includes('/api/auth/sign-up/email'))
     expect(signUpCall?.body).toMatchObject({ name: 'Alice Liddell' })
 
-    const addMemberCall = calls.find((c) => c.url.includes('/api/auth/organization/add-member'))
-    expect(addMemberCall?.body).toMatchObject({ userId: 'new-user-id', organizationId: WORKSPACE_ID, role: 'member' })
+    const inviteCall = calls.find((c) => c.url.includes('/api/auth/organization/invite-member'))
+    expect(inviteCall?.body).toMatchObject({ organizationId: WORKSPACE_ID, role: 'member' })
+    // invite uses the SERVICE credential (api-key), not the member cookie
+    expect(inviteCall?.headers['authorization']).toMatch(/^Bearer /)
+
+    const acceptCall = calls.find((c) => c.url.includes('/api/auth/organization/accept-invitation'))
+    expect(acceptCall?.body).toMatchObject({ invitationId: 'inv-001' })
+    // accept uses the MEMBER session cookie, not the service key
+    expect(acceptCall?.headers['cookie']).toBeDefined()
+    expect(acceptCall?.headers['authorization']).toBeUndefined()
 
     restoreFetch()
   })
 
-  test('treats already-member conflict as success [add-member path]', async () => {
+  test('invite-member treats 200 already-invited and 409 already-member as success', async () => {
     setMockFetch(async (url) => {
       if (url.includes('/api/auth/sign-up/email')) {
-        return new Response(JSON.stringify({ user: { id: 'existing-id' }, token: 'tok' }), {
+        return new Response(JSON.stringify({ user: { id: 'uid-2' }, token: 'tok2' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-      if (url.includes('/api/auth/organization/add-member')) {
-        // 409 = already a member — should be treated as success
-        return new Response(JSON.stringify({ error: 'already a member' }), { status: 409 })
+      if (url.includes('/api/auth/organization/invite-member')) {
+        // simulate already-invited returning the existing invitationId
+        return new Response(JSON.stringify({ id: 'inv-existing', status: 'pending' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/api/auth/organization/accept-invitation')) {
+        return new Response(JSON.stringify({ status: 'accepted' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
       return new Response('not found', { status: 404 })
     })
@@ -628,17 +576,29 @@ describe('kaneoProvisionMember', () => {
       { chatUserId: 'chat-2', displayName: 'Bob', username: null },
       'http://kaneo-public',
     )
-    expect(result.providerUserId).toBe('existing-id')
+    expect(result.providerUserId).toBe('uid-2')
     restoreFetch()
   })
 
-  test('reuse path makes NO sign-up fetch, calls add-member with existing id, returns existing login', async () => {
+  test('reuse path: sign-IN (not sign-up) → invite-member → accept-invitation; returns existing id and stored password', async () => {
     const calls: { url: string; body: unknown }[] = []
     setMockFetch(async (url, init) => {
       const body = init?.body !== undefined ? JSON.parse(init.body as string) : undefined
       calls.push({ url, body })
-      if (url.includes('/api/auth/organization/add-member')) {
-        return new Response(JSON.stringify({ success: true }), {
+      if (url.includes('/api/auth/sign-in/email')) {
+        return new Response(JSON.stringify({ user: { id: 'existing-uid' }, token: 'reuse-token' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/api/auth/organization/invite-member')) {
+        return new Response(JSON.stringify({ id: 'inv-reuse', status: 'pending' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/api/auth/organization/accept-invitation')) {
+        return new Response(JSON.stringify({ status: 'accepted' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
@@ -651,17 +611,24 @@ describe('kaneoProvisionMember', () => {
       WORKSPACE_ID,
       { chatUserId: 'chat-3', displayName: 'Carol', username: 'carol' },
       'http://kaneo-public',
-      { providerUserId: 'existing-uid', login: 'carol@pap.ai' },
+      { providerUserId: 'existing-uid', login: 'carol@pap.ai', password: 'StoredPass1!Aa' },
     )
 
     expect(result.providerUserId).toBe('existing-uid')
     expect(result.login).toBe('carol@pap.ai')
+    expect(result.password).toBe('StoredPass1!Aa')
 
+    // Must call sign-IN, not sign-up
     const signUpCall = calls.find((c) => c.url.includes('/api/auth/sign-up/email'))
     expect(signUpCall).toBeUndefined()
+    const signInCall = calls.find((c) => c.url.includes('/api/auth/sign-in/email'))
+    expect(signInCall?.body).toMatchObject({ email: 'carol@pap.ai', password: 'StoredPass1!Aa' })
 
-    const addMemberCall = calls.find((c) => c.url.includes('/api/auth/organization/add-member'))
-    expect(addMemberCall?.body).toMatchObject({ userId: 'existing-uid', organizationId: WORKSPACE_ID, role: 'member' })
+    const inviteCall = calls.find((c) => c.url.includes('/api/auth/organization/invite-member'))
+    expect(inviteCall?.body).toMatchObject({ organizationId: WORKSPACE_ID, role: 'member' })
+
+    const acceptCall = calls.find((c) => c.url.includes('/api/auth/organization/accept-invitation'))
+    expect(acceptCall?.body).toMatchObject({ invitationId: 'inv-reuse' })
 
     restoreFetch()
   })
@@ -694,6 +661,24 @@ function generateMemberPassword(): string {
   return `${uuid.slice(0, 20)}Aa1!`
 }
 
+/**
+ * Extract a Better Auth session cookie from a sign-up or sign-in response.
+ * Prefers `Set-Cookie: better-auth.session_token=…`; falls back to the JSON `token` field.
+ * Uses `__Secure-` prefix when publicUrl is HTTPS, per Better Auth cookie semantics.
+ */
+function extractSessionCookie(res: Response, rawJson: unknown, publicUrl: string): string {
+  const setCookies = res.headers.getSetCookie()
+  const sessionHeader = setCookies.find((h) => h.includes('better-auth.session_token='))
+  if (sessionHeader !== undefined) {
+    return sessionHeader.split(';')[0]!
+  }
+  const token = String((rawJson as { token: string }).token)
+  const cookieName = publicUrl.startsWith('https://')
+    ? '__Secure-better-auth.session_token'
+    : 'better-auth.session_token'
+  return `${cookieName}=${token}`
+}
+
 async function doMemberSignUp(
   baseUrl: string,
   publicUrl: string,
@@ -720,36 +705,51 @@ async function doMemberSignUp(
     throw new Error('Member sign-up returned invalid data')
   }
   const userId = String((raw as { user: { id: string } }).user.id)
+  const sessionCookie = extractSessionCookie(res, raw, publicUrl)
+  return { userId, sessionCookie }
+}
 
-  // Prefer session cookie from Set-Cookie for subsequent calls; fall back to JSON token.
-  const setCookies = res.headers.getSetCookie()
-  const sessionHeader = setCookies.find((h) => h.includes('better-auth.session_token='))
-  let sessionCookie: string
-  if (sessionHeader !== undefined) {
-    sessionCookie = sessionHeader.split(';')[0]!
-  } else {
-    const token = String((raw as { token: string }).token)
-    const cookieName = publicUrl.startsWith('https://')
-      ? '__Secure-better-auth.session_token'
-      : 'better-auth.session_token'
-    sessionCookie = `${cookieName}=${token}`
+async function doMemberSignIn(
+  baseUrl: string,
+  publicUrl: string,
+  email: string,
+  password: string,
+): Promise<{ userId: string; sessionCookie: string }> {
+  log.debug({ email }, 'kaneoProvisionMember: sign-in (reuse path)')
+  const res = await fetch(`${baseUrl}/api/auth/sign-in/email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  if (!res.ok) {
+    throw new Error(`Member sign-in failed (${res.status}): ${await res.text()}`)
   }
-
+  const raw: unknown = await res.json()
+  if (
+    typeof raw !== 'object' ||
+    raw === null ||
+    !('user' in raw) ||
+    typeof (raw as { user: unknown }).user !== 'object'
+  ) {
+    throw new Error('Member sign-in returned invalid data')
+  }
+  const userId = String((raw as { user: { id: string } }).user.id)
+  const sessionCookie = extractSessionCookie(res, raw, publicUrl)
   return { userId, sessionCookie }
 }
 
 /**
- * Add a user (by Better Auth userId) to an existing workspace/organization,
- * authenticated with the service account's API key.
- * A 409 conflict (already a member) is treated as success.
+ * Invite a member (by email) to an existing workspace/organization using the SERVICE credential.
+ * Returns the `invitationId` to pass to `doAcceptInvitation`.
+ * A 200 response that already contains an existing invitation ID is treated as success.
  */
-async function doAddMember(
+async function doInviteMember(
   serviceConfig: KaneoConfig,
   workspaceId: string,
-  userId: string,
+  email: string,
   publicUrl: string,
-): Promise<void> {
-  log.debug({ workspaceId, userId }, 'kaneoProvisionMember: add-member')
+): Promise<string> {
+  log.debug({ workspaceId, email }, 'kaneoProvisionMember: invite-member')
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Origin: publicUrl || serviceConfig.baseUrl,
@@ -759,77 +759,120 @@ async function doAddMember(
   } else {
     headers['Authorization'] = `Bearer ${serviceConfig.apiKey}`
   }
-  const res = await fetch(`${serviceConfig.baseUrl}/api/auth/organization/add-member`, {
+  const res = await fetch(`${serviceConfig.baseUrl}/api/auth/organization/invite-member`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ userId, organizationId: workspaceId, role: 'member' }),
+    body: JSON.stringify({ email, role: 'member', organizationId: workspaceId }),
   })
-  if (res.status === 409) {
-    log.debug({ userId, workspaceId }, 'add-member: already a member — treated as success')
-    return
-  }
   if (!res.ok) {
-    throw new Error(`add-member failed (${res.status}): ${await res.text()}`)
+    throw new Error(`invite-member failed (${res.status}): ${await res.text()}`)
   }
-  log.info({ userId, workspaceId }, 'Member added to Kaneo workspace')
+  const raw: unknown = await res.json()
+  if (typeof raw !== 'object' || raw === null || !('id' in raw)) {
+    throw new Error('invite-member returned unexpected shape (expected { id })')
+  }
+  const invitationId = String((raw as { id: string }).id)
+  log.info({ email, workspaceId, invitationId }, 'Member invited to Kaneo workspace')
+  return invitationId
+}
+
+/**
+ * Accept an invitation using the MEMBER's own session cookie.
+ * This is the only step that authenticates as the member, not the service account.
+ */
+async function doAcceptInvitation(
+  baseUrl: string,
+  memberSessionCookie: string,
+  invitationId: string,
+  publicUrl: string,
+): Promise<void> {
+  log.debug({ invitationId }, 'kaneoProvisionMember: accept-invitation')
+  const res = await fetch(`${baseUrl}/api/auth/organization/accept-invitation`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: memberSessionCookie,
+      Origin: publicUrl || baseUrl,
+    },
+    body: JSON.stringify({ invitationId }),
+  })
+  if (!res.ok) {
+    throw new Error(`accept-invitation failed (${res.status}): ${await res.text()}`)
+  }
+  log.info({ invitationId }, 'Invitation accepted — member joined workspace')
 }
 
 export type ProvisionMemberResult = {
   providerUserId: string
   login: string
+  /** Generated password for new members; the stored password passed through for reuse. */
   password: string
 }
 
 /**
- * Provision a new Kaneo member for a group workspace:
- * 1. Sign up a new Better Auth account with displayName and a synthetic @pap.ai email.
- * 2. Add the new user to the workspace via the service-account session.
- * Returns the new user's provider ID, email (login), and the generated password.
+ * Provision a Kaneo member for a group workspace using the invite + accept flow:
  *
- * The caller is responsible for persisting credentials and writing the identity link.
+ * New member:
+ *   1. `doMemberSignUp` — create a Better Auth account; capture session cookie + userId.
+ *   2. `doInviteMember` — service account invites by email; capture invitationId.
+ *   3. `doAcceptInvitation` — member session cookie accepts; member joins workspace.
  *
- * [add-member path] — selected when Phase-0 spike confirms /api/auth/organization/add-member
- * is reachable with the service-account credential. If the spike fails, replace doAddMember
- * with the encrypted-password fallback branch documented in the spec.
+ * Reuse (existing account in another group):
+ *   1. `doMemberSignIn` — re-authenticate the member with their stored password.
+ *   2. `doInviteMember` — same as above.
+ *   3. `doAcceptInvitation` — same as above.
+ *
+ * Returns the member's provider ID, login (email), and password. The password is:
+ *   - Generated fresh for new members (caller MUST persist it encrypted).
+ *   - The stored value passed back unchanged for reuse (so the caller can re-save it).
  */
 export async function kaneoProvisionMember(
   /** Service account config (the group's stored kaneoKey + baseUrl). */
   serviceConfig: KaneoConfig,
   workspaceId: string,
   member: { chatUserId: string; displayName: string; username: string | null },
-  /** Public-facing Kaneo URL (for origin header and secure-cookie detection). */
+  /** Public-facing Kaneo URL (for Origin header and secure-cookie detection). */
   publicUrl: string,
   /**
-   * When provided, SKIP sign-up and reuse the existing Kaneo account.
-   * Only `doAddMember` is called to link the user to this workspace.
+   * When provided, SKIP sign-up and re-authenticate the member with their stored password instead.
+   * All three fields must be present for the reuse path; if any is missing, treat as new member.
    */
-  existing?: { providerUserId: string; login: string },
+  existing?: { providerUserId: string; login: string; password: string },
 ): Promise<ProvisionMemberResult> {
   log.info(
     { chatUserId: member.chatUserId, displayName: member.displayName, reuse: existing !== undefined },
     'Provisioning Kaneo member',
   )
 
+  let userId: string
+  let sessionCookie: string
+  let login: string
+  let password: string
+
   if (existing !== undefined) {
-    // Reuse path: account already exists in another group — skip sign-up, just add to this workspace.
-    await doAddMember(serviceConfig, workspaceId, existing.providerUserId, publicUrl)
-    log.info(
-      { chatUserId: member.chatUserId, userId: existing.providerUserId, workspaceId },
-      'Kaneo member reused across groups',
-    )
-    return { providerUserId: existing.providerUserId, login: existing.login, password: '' }
+    // Reuse path: re-authenticate to get a fresh session cookie for accept-invitation.
+    const signIn = await doMemberSignIn(serviceConfig.baseUrl, publicUrl, existing.login, existing.password)
+    userId = signIn.userId
+    sessionCookie = signIn.sessionCookie
+    login = existing.login
+    password = existing.password
+    log.info({ chatUserId: member.chatUserId, userId, workspaceId }, 'Kaneo member reuse: signed in')
+  } else {
+    // New member path: generate email and password, sign up.
+    const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
+    const emailBase = member.username !== null ? member.username : member.chatUserId
+    login = `${emailBase}-${uniqueSuffix}@pap.ai`
+    password = generateMemberPassword()
+    const signUp = await doMemberSignUp(serviceConfig.baseUrl, publicUrl, login, password, member.displayName)
+    userId = signUp.userId
+    sessionCookie = signUp.sessionCookie
   }
 
-  const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-  const emailBase = member.username !== null ? member.username : member.chatUserId
-  const email = `${emailBase}-${uniqueSuffix}@pap.ai`
-  const password = generateMemberPassword()
-
-  const { userId } = await doMemberSignUp(serviceConfig.baseUrl, publicUrl, email, password, member.displayName)
-  await doAddMember(serviceConfig, workspaceId, userId, publicUrl)
+  const invitationId = await doInviteMember(serviceConfig, workspaceId, login, publicUrl)
+  await doAcceptInvitation(serviceConfig.baseUrl, sessionCookie, invitationId, publicUrl)
 
   log.info({ chatUserId: member.chatUserId, userId, workspaceId }, 'Kaneo member provisioned')
-  return { providerUserId: userId, login: email, password }
+  return { providerUserId: userId, login, password }
 }
 ```
 
@@ -850,19 +893,24 @@ Add method to the class (after `listUsers`):
       displayName: string
       username: string | null
     },
-    opts?: { existingProviderUserId?: string; existingLogin?: string },
-  ): Promise<{ providerUserId: string; login: string }> {
+    opts?: { existingProviderUserId?: string; existingLogin?: string; existingPassword?: string },
+  ): Promise<{ providerUserId: string; login: string; password: string }> {
     const publicUrl = this.config.baseUrl // resolved from task instance config in caller
     const existing =
-      opts?.existingProviderUserId !== undefined && opts.existingLogin !== undefined
-        ? { providerUserId: opts.existingProviderUserId, login: opts.existingLogin }
+      opts?.existingProviderUserId !== undefined &&
+      opts.existingLogin !== undefined &&
+      opts.existingPassword !== undefined
+        ? {
+            providerUserId: opts.existingProviderUserId,
+            login: opts.existingLogin,
+            password: opts.existingPassword,
+          }
         : undefined
-    const result = await kaneoProvisionMember(this.config, this.workspaceId, member, publicUrl, existing)
-    return { providerUserId: result.providerUserId, login: result.login }
+    return kaneoProvisionMember(this.config, this.workspaceId, member, publicUrl, existing)
   }
 ```
 
-> **Note:** `publicUrl` here defaults to `baseUrl`. The `ensureWorkspaceMember` service (Task 2.4) will obtain the correct public URL from the task instance config and inject it via the `ProvisionMemberWithPublicUrl` wrapper if needed. If the Kaneo instance config exposes a `publicUrl` separately, thread it through `KaneoProvider`'s constructor instead.
+> **Note:** `publicUrl` defaults to `baseUrl`. If the Kaneo instance config exposes a separate `publicUrl`, thread it through `KaneoProvider`'s constructor and use it here.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -876,7 +924,7 @@ Expected: PASS.
 
 ```
 git add plugins/task-provider-kaneo/operations/members.ts plugins/task-provider-kaneo/provider.ts tests/plugins/task-provider-kaneo/operations/members.test.ts
-git commit -m "feat(kaneo): implement kaneoProvisionMember operation and KaneoProvider.provisionWorkspaceMember"
+git commit -m "feat(kaneo): implement kaneoProvisionMember (invite+accept flow) and KaneoProvider.provisionWorkspaceMember"
 ```
 
 ---
@@ -1037,12 +1085,14 @@ Expected: PASS.
 
 ```
 git add src/db/migrations/060_kaneo_workspace_members.ts src/db/schema.ts src/db/index.ts tests/db/migration-060-kaneo-workspace-members.test.ts
-git commit -m "feat(db): migration 060 — kaneo_workspace_members table with nullable encrypted_password"
+git commit -m "feat(db): migration 060 — kaneo_workspace_members table with encrypted_password column"
 ```
 
 ---
 
 ### Task 2.4: `ensureWorkspaceMember` service
+
+**Key change from original plan:** The reuse branch must look up the stored encrypted password from any existing `kaneo_workspace_members` row (across groups) for this `chatUserId`, decrypt it, and pass all three reuse fields (`existingProviderUserId`, `existingLogin`, `existingPassword`) to `provisionWorkspaceMember`. If no stored password is found (older row without credential), fall back to treating the user as new. On every successful provision (new or reuse), persist the returned `password` encrypted into the row's `encrypted_password` column via `encryptInstanceConfig({ password })`.
 
 **Files:**
 
@@ -1097,7 +1147,7 @@ function makeFakeProvider(overrides: Partial<TaskProvider> = {}): TaskProvider {
     normalizeDueDateInput: () => undefined,
     formatDueDateOutput: () => undefined,
     normalizeListTaskParams: (p) => p,
-    provisionWorkspaceMember: async () => ({ providerUserId: KANEO_USER_ID, login: 'u@pap.ai' }),
+    provisionWorkspaceMember: async () => ({ providerUserId: KANEO_USER_ID, login: 'u@pap.ai', password: 'gen-pass' }),
     ...overrides,
   }
 }
@@ -1117,7 +1167,7 @@ describe('ensureWorkspaceMember', () => {
     await setupTestDb()
   })
 
-  test('returns "created" on first call and writes the member row', async () => {
+  test('returns "created" on first call, writes the member row, and persists encrypted password', async () => {
     const result = await ensureWorkspaceMember(GROUP_CTX, CHAT_USER, makeDeps())
     expect(result).toBe('created')
     const db = getDrizzleDb()
@@ -1128,6 +1178,8 @@ describe('ensureWorkspaceMember', () => {
       .get()
     expect(row?.providerUserId).toBe(KANEO_USER_ID)
     expect(row?.status).toBe('active')
+    // encrypted_password must be non-null after provision (the sole credential mechanism)
+    expect(row?.encryptedPassword).not.toBeNull()
   })
 
   test('returns "exists" when row already present', async () => {
@@ -1196,7 +1248,7 @@ describe('ensureWorkspaceMember', () => {
           makeFakeProvider({
             provisionWorkspaceMember: async (member) => {
               usedLabel = member.displayName
-              return { providerUserId: KANEO_USER_ID, login: 'u@pap.ai' }
+              return { providerUserId: KANEO_USER_ID, login: 'u@pap.ai', password: 'gen-pass' }
             },
           }),
       }),
@@ -1205,20 +1257,70 @@ describe('ensureWorkspaceMember', () => {
     expect(usedLabel).toBe(`User ${CHAT_USER}`)
   })
 
-  test('passes existingProviderUserId when a mapping pre-exists', async () => {
-    const receivedOpts: Array<{ existingProviderUserId?: string }> = []
-    // Pre-seed an identity mapping with providerUserId
-    const { setIdentityMapping } = await import('../../../src/identity/mapping.js')
-    setIdentityMapping({
-      contextId: CHAT_USER,
-      providerName: 'kaneo',
-      providerUserId: 'pre-existing-uid',
-      providerUserLogin: 'pre@pap.ai',
-      displayName: 'PreExisting',
-      matchMethod: 'auto',
-      confidence: 1,
-    })
+  test('reuse path: fetches stored encrypted password and passes all three existing opts', async () => {
+    // Pre-insert a member row in a DIFFERENT group with an encrypted password
+    // (simulate: user was provisioned in another group, `encrypted_password` was stored)
+    const db = getDrizzleDb()
+    // We rely on the real encryptInstanceConfig / decryptInstanceConfig round-trip in the implementation,
+    // so use the test-helper encryption helper or insert a well-known encrypted value.
+    // For the test, we insert a plaintext sentinel and use a deps override for decryption:
+    db.insert(kaneoWorkspaceMembers)
+      .values({
+        groupContextId: 'other-group',
+        chatUserId: CHAT_USER,
+        providerName: 'kaneo',
+        providerUserId: 'pre-uid',
+        login: 'pre@pap.ai',
+        status: 'active',
+        encryptedPassword: 'ENCRYPTED:StoredPass1!Aa',
+        createdAt: new Date().toISOString(),
+      })
+      .run()
 
+    const receivedOpts: Array<{ existingProviderUserId?: string; existingLogin?: string; existingPassword?: string }> =
+      []
+    await ensureWorkspaceMember(
+      GROUP_CTX,
+      CHAT_USER,
+      makeDeps({
+        resolveProvider: async () =>
+          makeFakeProvider({
+            provisionWorkspaceMember: async (_member, opts) => {
+              receivedOpts.push({
+                existingProviderUserId: opts?.existingProviderUserId,
+                existingLogin: opts?.existingLogin,
+                existingPassword: opts?.existingPassword,
+              })
+              return { providerUserId: 'pre-uid', login: 'pre@pap.ai', password: 'StoredPass1!Aa' }
+            },
+          }),
+        // Override decrypt to decode the test sentinel
+        decryptPassword: (encrypted) => encrypted.replace('ENCRYPTED:', ''),
+      }),
+    )
+
+    expect(receivedOpts[0]?.existingProviderUserId).toBe('pre-uid')
+    expect(receivedOpts[0]?.existingLogin).toBe('pre@pap.ai')
+    expect(receivedOpts[0]?.existingPassword).toBe('StoredPass1!Aa')
+  })
+
+  test('falls back to new-member path when stored row has no encrypted_password', async () => {
+    // Pre-insert a member row with no password (pre-credential row from an older provisioning)
+    const db = getDrizzleDb()
+    db.insert(kaneoWorkspaceMembers)
+      .values({
+        groupContextId: 'other-group',
+        chatUserId: CHAT_USER,
+        providerName: 'kaneo',
+        providerUserId: 'old-uid',
+        login: 'old@pap.ai',
+        status: 'active',
+        encryptedPassword: null,
+        createdAt: new Date().toISOString(),
+      })
+      .run()
+
+    const receivedOpts: Array<{ existingProviderUserId?: string }> = []
     await ensureWorkspaceMember(
       GROUP_CTX,
       CHAT_USER,
@@ -1227,16 +1329,17 @@ describe('ensureWorkspaceMember', () => {
           makeFakeProvider({
             provisionWorkspaceMember: async (_member, opts) => {
               receivedOpts.push({ existingProviderUserId: opts?.existingProviderUserId })
-              return { providerUserId: 'pre-existing-uid', login: 'pre@pap.ai' }
+              return { providerUserId: KANEO_USER_ID, login: 'u@pap.ai', password: 'new-gen-pass' }
             },
           }),
       }),
     )
 
-    expect(receivedOpts[0]?.existingProviderUserId).toBe('pre-existing-uid')
+    // No existingProviderUserId because the stored row had no password
+    expect(receivedOpts[0]?.existingProviderUserId).toBeUndefined()
   })
 
-  test('does NOT pass existingProviderUserId when no mapping pre-exists', async () => {
+  test('does NOT pass existingProviderUserId when no prior member row exists at all', async () => {
     const receivedOpts: Array<{ existingProviderUserId?: string }> = []
 
     await ensureWorkspaceMember(
@@ -1247,7 +1350,7 @@ describe('ensureWorkspaceMember', () => {
           makeFakeProvider({
             provisionWorkspaceMember: async (_member, opts) => {
               receivedOpts.push({ existingProviderUserId: opts?.existingProviderUserId })
-              return { providerUserId: KANEO_USER_ID, login: 'u@pap.ai' }
+              return { providerUserId: KANEO_USER_ID, login: 'u@pap.ai', password: 'gen-pass' }
             },
           }),
       }),
@@ -1257,6 +1360,8 @@ describe('ensureWorkspaceMember', () => {
   })
 })
 ```
+
+> **Note on `decryptPassword` in `MembershipDeps`:** The reuse test adds a `decryptPassword` injectable to allow isolated testing without the real AES key. The implementation in Step 3 uses `decryptInstanceConfig` by default and accepts the override from `deps`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1274,12 +1379,13 @@ Expected: FAIL — module does not exist.
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
 import { kaneoWorkspaceMembers } from '../../db/schema.js'
 import { getIdentityMapping, setProvisionedIdentityMapping } from '../../identity/mapping.js'
 import { getContextSettings as defaultGetContextSettings } from '../../instances/context-store.js'
+import { decryptInstanceConfig, encryptInstanceConfig } from '../../instances/encryption.js'
 import { logger } from '../../logger.js'
 import { defaultTaskProviderResolver } from '../resolver.js'
 import type { TaskProvider } from '../types.js'
@@ -1293,6 +1399,8 @@ export interface MembershipDeps {
   getContextSettings(contextId: string): { taskInstanceId: string; platformInstanceId: string } | null
   /** Resolves a display label for a user. Returns null when the chat router cannot resolve it (best-effort). */
   resolveUserLabel(userId: string, groupContextId: string, platformInstanceId: string): Promise<string | null>
+  /** Decrypt an encrypted password value. Defaults to `decryptInstanceConfig`. Overridable for tests. */
+  decryptPassword?(encrypted: string): string
 }
 
 export const defaultMembershipDeps: MembershipDeps = {
@@ -1307,7 +1415,7 @@ function buildDisplayName(resolvedLabel: string | null, username: string | null,
   return `User ${chatUserId}`
 }
 
-function existingMemberRow(groupContextId: string, chatUserId: string): boolean {
+function findExistingMemberRowCurrentGroup(groupContextId: string, chatUserId: string): boolean {
   const db = defaultGetDrizzleDb()
   const row = db
     .select({ status: kaneoWorkspaceMembers.status })
@@ -1319,12 +1427,44 @@ function existingMemberRow(groupContextId: string, chatUserId: string): boolean 
   return row !== undefined
 }
 
+/**
+ * Look for a previously-provisioned row for this chatUserId in ANY group that has an
+ * `encrypted_password`. Returns `{ providerUserId, login, encryptedPassword }` or null.
+ */
+function findStoredCredentialsAcrossGroups(
+  chatUserId: string,
+): { providerUserId: string; login: string; encryptedPassword: string } | null {
+  const db = defaultGetDrizzleDb()
+  const row = db
+    .select({
+      providerUserId: kaneoWorkspaceMembers.providerUserId,
+      login: kaneoWorkspaceMembers.login,
+      encryptedPassword: kaneoWorkspaceMembers.encryptedPassword,
+    })
+    .from(kaneoWorkspaceMembers)
+    .where(
+      and(
+        eq(kaneoWorkspaceMembers.chatUserId, chatUserId),
+        eq(kaneoWorkspaceMembers.providerName, 'kaneo'),
+        isNotNull(kaneoWorkspaceMembers.encryptedPassword),
+      ),
+    )
+    .get()
+  if (row === undefined || row.encryptedPassword === null) return null
+  return {
+    providerUserId: row.providerUserId,
+    login: row.login,
+    encryptedPassword: row.encryptedPassword,
+  }
+}
+
 function writeMemberRow(
   groupContextId: string,
   chatUserId: string,
   providerUserId: string,
   login: string,
   status: 'active' | 'failed',
+  encryptedPassword?: string | null,
 ): void {
   const db = defaultGetDrizzleDb()
   db.insert(kaneoWorkspaceMembers)
@@ -1335,6 +1475,7 @@ function writeMemberRow(
       providerUserId,
       login,
       status,
+      encryptedPassword: encryptedPassword ?? null,
       createdAt: new Date().toISOString(),
     })
     .onConflictDoNothing()
@@ -1344,6 +1485,11 @@ function writeMemberRow(
 /**
  * Idempotent entry point: ensure a chat user is provisioned as a Kaneo workspace member.
  * All failures are logged and returned as 'failed' — never thrown into the caller.
+ *
+ * Reuse logic: if a prior `kaneo_workspace_members` row (any group) has `encrypted_password`,
+ * decrypt it and pass `existingProviderUserId`, `existingLogin`, and `existingPassword` to the
+ * provider so it can sign-in (not sign-up) and invite+accept. If the stored row has no password
+ * (older row), fall back to a fresh sign-up.
  */
 export async function ensureWorkspaceMember(
   groupContextId: string,
@@ -1353,7 +1499,7 @@ export async function ensureWorkspaceMember(
 ): Promise<MemberOutcome> {
   log.debug({ groupContextId, chatUserId }, 'ensureWorkspaceMember called')
 
-  if (existingMemberRow(groupContextId, chatUserId)) {
+  if (findExistingMemberRowCurrentGroup(groupContextId, chatUserId)) {
     log.debug({ groupContextId, chatUserId }, 'Member row already exists')
     return 'exists'
   }
@@ -1377,18 +1523,36 @@ export async function ensureWorkspaceMember(
   const resolvedLabel = await deps.resolveUserLabel(chatUserId, groupContextId, settings.platformInstanceId)
   const displayName = buildDisplayName(resolvedLabel, opts?.username ?? null, chatUserId)
 
-  // Reuse existing Kaneo account across groups if a prior identity mapping exists.
-  const existingMapping = getIdentityMapping(chatUserId, provider.name)
-  const existingOpts =
-    existingMapping?.providerUserId !== null && existingMapping?.providerUserId !== undefined
-      ? {
-          existingProviderUserId: existingMapping.providerUserId,
-          existingLogin: existingMapping.providerUserLogin ?? undefined,
+  // Reuse existing Kaneo account across groups if a stored credential exists.
+  const storedCredentials = findStoredCredentialsAcrossGroups(chatUserId)
+  let existingOpts: { existingProviderUserId: string; existingLogin: string; existingPassword: string } | undefined
+  if (storedCredentials !== null) {
+    try {
+      const decryptFn = deps.decryptPassword ?? ((enc) => decryptInstanceConfig(enc)['password'] ?? '')
+      const password = decryptFn(storedCredentials.encryptedPassword)
+      if (password !== '') {
+        existingOpts = {
+          existingProviderUserId: storedCredentials.providerUserId,
+          existingLogin: storedCredentials.login,
+          existingPassword: password,
         }
-      : undefined
+        log.debug(
+          { chatUserId, login: storedCredentials.login },
+          'Reusing stored credentials for cross-group provision',
+        )
+      } else {
+        log.warn({ chatUserId }, 'Stored encrypted_password decrypted to empty string — falling back to new sign-up')
+      }
+    } catch (decryptErr: unknown) {
+      log.warn(
+        { chatUserId, error: decryptErr instanceof Error ? decryptErr.message : String(decryptErr) },
+        'Failed to decrypt stored password — falling back to new sign-up',
+      )
+    }
+  }
 
   try {
-    const { providerUserId, login } = await provider.provisionWorkspaceMember(
+    const { providerUserId, login, password } = await provider.provisionWorkspaceMember(
       {
         chatUserId,
         displayName,
@@ -1397,7 +1561,9 @@ export async function ensureWorkspaceMember(
       existingOpts,
     )
 
-    writeMemberRow(groupContextId, chatUserId, providerUserId, login, 'active')
+    // Encrypt and persist the password — this is the sole credential mechanism.
+    const encryptedPassword = encryptInstanceConfig({ password })
+    writeMemberRow(groupContextId, chatUserId, providerUserId, login, 'active', encryptedPassword)
     setProvisionedIdentityMapping({
       contextId: chatUserId,
       providerName: provider.name,
@@ -1413,7 +1579,7 @@ export async function ensureWorkspaceMember(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     log.error({ groupContextId, chatUserId, error: msg }, 'ensureWorkspaceMember failed')
-    writeMemberRow(groupContextId, chatUserId, '', '', 'failed')
+    writeMemberRow(groupContextId, chatUserId, '', '', 'failed', null)
     return 'failed'
   }
 }
@@ -1451,7 +1617,7 @@ Expected: PASS.
 
 ```
 git add src/providers/membership/ tests/providers/membership/ensure-member.test.ts
-git commit -m "feat(membership): ensureWorkspaceMember service with DI, state machine, identity-link write"
+git commit -m "feat(membership): ensureWorkspaceMember with reuse-via-stored-password, encrypted_password persistence, identity-link write"
 ```
 
 ---
@@ -1977,12 +2143,12 @@ git commit -m "feat(membership): first-interaction backstop in llm-orchestrator 
 
 ### Task 4.1: `GET/POST /settings/api/kaneo/credentials`
 
+**Mechanism (Phase-0 fixed):** Branch B (encrypted-password) only. `POST /api/auth/admin/set-password` returns 404 in Kaneo 2.7.2; Branch A is dead. The `POST { action: 'reset' }` handler reads the member's `encrypted_password` column, decrypts it via `decryptInstanceConfig`, returns the plaintext once, and clears the stored value to enforce reveal-once semantics. If `encrypted_password` is null (row predates credential storage), return 409 with a re-provision instruction.
+
 **Files:**
 
 - Create: `src/debug/settings/kaneo-credentials-routes.ts`
 - Modify: `src/debug/settings-api-router.ts`
-
-> ⚠️ **Phase-0 dependency:** The `POST { action: 'reset' }` implementation uses either the Better Auth admin reset endpoint (if Phase-0 confirmed reachability) or a reveal-once encrypted-password path (fallback). Both branches are implemented below; Phase-0 decision record selects which ships. The `GET` handler is identical in both branches.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2058,12 +2224,13 @@ Expected: FAIL — module does not exist.
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { getDrizzleDb } from '../../db/drizzle.js'
 import { kaneoWorkspaceMembers } from '../../db/schema.js'
 import { getContextSettings } from '../../instances/context-store.js'
+import { decryptInstanceConfig } from '../../instances/encryption.js'
 import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
@@ -2106,7 +2273,7 @@ function handleGet(req: Request, url: URL): Response {
     login: row.login,
     status: row.status,
     kaneoUrl,
-    // password is never returned — use POST { action: 'reset' } to obtain a new one.
+    // password is never returned in GET — use POST { action: 'reset' } to reveal it once.
   })
 }
 
@@ -2129,94 +2296,47 @@ async function handlePost(req: Request): Promise<Response> {
   if (!scope.ok) return scope.response
 
   const { contextId } = scope.scope
+  // Use platformUserId (not chatUserId) to match the stored row keyed by platform user id.
   const chatUserId = auth.authed.principal.platformUserId
   const row = getKaneoMemberRow(contextId, chatUserId)
   if (row === undefined) {
     return settingsJson(404, { error: 'No Kaneo account provisioned for this member.' })
   }
 
-  // ─── Branch A: admin-reset path ──────────────────────────────────────────
-  // Selected when Phase-0 spike confirms POST /api/auth/admin/set-password is reachable
-  // over HTTP with the service-account credential.
-  //
-  // Required imports (add at top of file when selecting this branch):
-  //   import { getConfigValue } from '../../config.js'
-  //   import { KANEO_PLUGIN_CREDENTIAL_KEY } from '../../types/config.js'
-  //
-  // Implementation:
-  //
-  //   const settings = getContextSettings(contextId)
-  //   if (settings === null) return settingsJson(422, { error: 'No task instance configured.' })
-  //   const instance = getTaskInstance(settings.taskInstanceId)
-  //   if (instance === null) return settingsJson(422, { error: 'Task instance not found.' })
-  //   const baseUrl: string = instance.config['baseUrl'] ?? ''
-  //   if (baseUrl === '') return settingsJson(422, { error: 'Kaneo base URL not configured.' })
-  //   const serviceCredential = await getConfigValue(contextId, KANEO_PLUGIN_CREDENTIAL_KEY)
-  //   const newPassword = generateNewPassword()
-  //   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  //   if (serviceCredential !== null && serviceCredential.startsWith('better-auth.session_token=')) {
-  //     headers['Cookie'] = serviceCredential
-  //   } else if (serviceCredential !== null) {
-  //     headers['Authorization'] = `Bearer ${serviceCredential}`
-  //   }
-  //   const resetRes = await fetch(`${baseUrl}/api/auth/admin/set-password`, {
-  //     method: 'POST',
-  //     headers,
-  //     body: JSON.stringify({ userId: row.providerUserId, newPassword }),
-  //   })
-  //   if (!resetRes.ok) {
-  //     const errText = await resetRes.text()
-  //     log.error({ contextId, status: resetRes.status, body: errText }, 'Kaneo admin/set-password failed')
-  //     return settingsJson(502, { error: 'Password reset failed. Contact your administrator.' })
-  //   }
-  //   return settingsJson(200, { newPassword, warning: 'This password is shown once. Store it securely.' })
+  // Branch B (sole mechanism): reveal the stored encrypted password once.
+  // admin/set-password (Branch A) is not reachable over HTTP in Kaneo 2.7.2 (404).
+  if (row.encryptedPassword === null) {
+    return settingsJson(409, {
+      error:
+        'No stored password for this account. This account was provisioned before credential storage was introduced — ask an admin to re-provision it.',
+    })
+  }
 
-  // ─── Branch B: encrypted-password fallback ───────────────────────────────
-  // Selected when Phase-0 spike finds /api/auth/admin/set-password unreachable.
-  // Requires Task 2.3 migration column `encrypted_password TEXT` (nullable),
-  // `kaneoProvisionMember` to return the password, and `ensureWorkspaceMember` to
-  // encrypt via `encryptInstanceConfig({ password })` and store it in the row.
-  //
-  // Required import (add at top of file when selecting this branch):
-  //   import { decryptInstanceConfig } from '../../instances/encryption.js'
-  //
-  // Implementation:
-  //
-  //   if (row.encryptedPassword === null) {
-  //     return settingsJson(404, { error: 'No stored password for this member. Re-provision to capture credentials.' })
-  //   }
-  //   const decrypted = decryptInstanceConfig(row.encryptedPassword)
-  //   const revealedPassword = decrypted['password'] ?? ''
-  //   if (revealedPassword === '') {
-  //     return settingsJson(500, { error: 'Stored password is empty — contact your administrator.' })
-  //   }
-  //   // Clear the stored password after reveal to enforce reveal-once semantics.
-  //   getDrizzleDb()
-  //     .update(kaneoWorkspaceMembers)
-  //     .set({ encryptedPassword: null })
-  //     .where(
-  //       and(
-  //         eq(kaneoWorkspaceMembers.groupContextId, contextId),
-  //         eq(kaneoWorkspaceMembers.chatUserId, chatUserId),
-  //       ),
-  //     )
-  //     .run()
-  //   return settingsJson(200, { newPassword: revealedPassword, warning: 'This password is shown once. Store it securely.' })
+  let revealedPassword: string
+  try {
+    const decrypted = decryptInstanceConfig(row.encryptedPassword)
+    revealedPassword = (decrypted as Record<string, string>)['password'] ?? ''
+  } catch (err: unknown) {
+    log.error(
+      { contextId, error: err instanceof Error ? err.message : String(err) },
+      'Failed to decrypt Kaneo password',
+    )
+    return settingsJson(500, { error: 'Failed to decrypt stored password — contact your administrator.' })
+  }
 
-  // Phase-0 decision: replace this placeholder return with Branch A or Branch B above.
-  // Both branches are complete — select one by removing the other's comment block and
-  // adding the required imports.
-  log.warn({ chatUserId, groupContextId: contextId }, 'Password reset: Phase-0 branch not yet selected')
-  return settingsJson(501, { error: 'Password reset not yet configured — Phase-0 branch selection pending.' })
-}
+  if (revealedPassword === '') {
+    return settingsJson(500, { error: 'Stored password is empty — contact your administrator.' })
+  }
 
-function generateNewPassword(): string {
-  return (
-    Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
-      .slice(0, 20) + 'Aa1!'
-  )
+  // Enforce reveal-once semantics: clear the stored ciphertext immediately after decryption.
+  getDrizzleDb()
+    .update(kaneoWorkspaceMembers)
+    .set({ encryptedPassword: null })
+    .where(and(eq(kaneoWorkspaceMembers.groupContextId, contextId), eq(kaneoWorkspaceMembers.chatUserId, chatUserId)))
+    .run()
+
+  log.info({ contextId, chatUserId }, 'Kaneo member password revealed (reveal-once)')
+  return settingsJson(200, { password: revealedPassword, warning: 'This password is shown once. Store it securely.' })
 }
 
 export function handleKaneoCredentialsRoutes(req: Request, url: URL): Promise<Response> {
@@ -2354,7 +2474,7 @@ describe('KaneoAccessSection', () => {
       }
       if (url.includes('/settings/api/kaneo/credentials') && init?.method === 'POST') {
         return new Response(
-          JSON.stringify({ newPassword: 'Secret1!Aa', warning: 'This password is shown once. Store it securely.' }),
+          JSON.stringify({ password: 'Secret1!Aa', warning: 'This password is shown once. Store it securely.' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
       }
@@ -2400,7 +2520,7 @@ export const KaneoCredentialsSchema = z.object({
 export type KaneoCredentials = z.infer<typeof KaneoCredentialsSchema>
 
 export const KaneoResetSchema = z.object({
-  newPassword: z.string(),
+  password: z.string(),
   warning: z.string(),
 })
 export type KaneoReset = z.infer<typeof KaneoResetSchema>
@@ -2477,7 +2597,7 @@ See LICENSE in the project root for details.
     resetting = true
     try {
       const result = await postKaneoPasswordReset(session.contextId)
-      revealedPassword = result.newPassword
+      revealedPassword = result.password
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e)
     } finally {
@@ -2639,21 +2759,23 @@ git commit -m "feat(system-prompt): add find_user Kaneo assignment resolution gu
 ## Self-Review Checklist
 
 - [x] **Spec coverage:** All 9 spec sections (problem, goal, decisions, architecture, triggers, credentials, error-handling, testing, phasing) are covered by concrete tasks.
-- [x] **Phase 0 is blocking gate:** All build-phase tasks note conditional branches for add-member vs. encrypted-pw fallback.
-- [x] **No bare TODO/STUB in production code:** Task 4.1 POST handler contains two fully-written, labelled branches (A and B); the placeholder `return` is the only line left, clearly documenting that Phase-0 selects which branch to activate.
+- [x] **Phase 0 COMPLETE:** Spike outcome recorded in `docs/superpowers/notes/2026-06-21-kaneo-spike-outcome.md`. No conditional branches remain in the plan — all tasks are single-path.
+- [x] **No bare TODO/STUB in production code:** Task 4.1 POST handler is fully implemented (Branch B). No placeholder returns remain.
 - [x] **Import paths use `.js` extension:** Verified throughout.
 - [x] **No `@ts-ignore` / lint suppressions:** None introduced.
 - [x] **p-limit used for concurrency:** Subscriber and backfill both use `pLimit(4)`.
 - [x] **`'provisioned'` no-overwrite rule:** Tested in Task 1.2 with 4 cases.
-- [x] **Migration number 060:** Correct (059 is `guest_mode`, last in index.ts). Migration adds nullable `encrypted_password TEXT` for Branch B compatibility.
+- [x] **Migration number 060:** Correct (059 is `guest_mode`, last in index.ts). `encrypted_password TEXT` column is now the sole credential mechanism, populated on every successful provision.
 - [x] **Identity mapping PK keyed by `chatUserId`:** `ensureWorkspaceMember` passes `chatUserId` as `contextId` to `setProvisionedIdentityMapping`, matching how `getIdentityMapping(chatUserId, providerName)` is called in `maybeAutoLinkIdentity`.
-- [x] **Multi-group reuse:** `kaneoProvisionMember` accepts `existing?: { providerUserId; login }` — reuse path skips sign-up, calls only `doAddMember`. `ensureWorkspaceMember` reads `getIdentityMapping` and forwards `existingOpts` to `provisionWorkspaceMember`. Two tests assert the forwarding and non-forwarding paths.
+- [x] **Multi-group reuse uses stored password:** `kaneoProvisionMember` accepts `existing?: { providerUserId; login; password }` — reuse path calls `doMemberSignIn` (not sign-up) then invite+accept. `ensureWorkspaceMember` looks up any `kaneo_workspace_members` row with a non-null `encrypted_password` across groups, decrypts it, and passes all three reuse fields. Falls back to new sign-up when no stored password found. Tests assert the sign-IN call, the non-sign-up path, and the fallback.
+- [x] **Password always persisted encrypted:** `ensureWorkspaceMember` encrypts the returned `password` via `encryptInstanceConfig` and writes it to `encrypted_password` on every successful provision (new or reuse).
+- [x] **`provisionWorkspaceMember` return type updated:** Both the `TaskProvider` interface and `KaneoProvider` implementation return `{ providerUserId, login, password }`.
 - [x] **`resolveUserLabel` arity:** `MembershipDeps.resolveUserLabel(userId, groupContextId, platformInstanceId)` — three args matching `ChatRouter.resolveUserLabel(userId, ResolveUserContext)`. Subscriber and backfill call sites wired to `chatProvider` in `src/index.ts` after ChatRouter construction (~line 84). Best-effort: null → `User <id>`.
 - [x] **`SettingsPrincipal.platformUserId`:** Both GET and POST handlers in `kaneo-credentials-routes.ts` use `auth.authed.principal.platformUserId`.
-- [x] **Settings UI:** Task 4.2 adds `KaneoAccessSection.svelte` with `getKaneoCredentials`/`postKaneoPasswordReset` fetchers, Zod schemas, sidebar wiring, and a happy-dom client test.
-- [x] **DI-first testing:** All services have `Deps` interfaces; tests inject fakes, never mock modules.
+- [x] **Settings UI:** Task 4.2 adds `KaneoAccessSection.svelte` with `getKaneoCredentials`/`postKaneoPasswordReset` fetchers (using `password` field name, not `newPassword`), Zod schemas, sidebar wiring, and a happy-dom client test.
+- [x] **DI-first testing:** All services have `Deps` interfaces (including injectable `decryptPassword` in `MembershipDeps`); tests inject fakes, never mock modules.
 - [x] **No fixed-wall-clock assertions:** Subscriber test uses `setTimeout(resolve, 20)` as a minimal poll; for production use, replace with a proper `waitFor` helper if flakiness appears under CI contention.
 
 ## Spec Requirements Not Fully Turned Into Concrete Tasks
 
-- **Phase-0 branch selection:** `kaneo-credentials-routes.ts` Task 4.1 contains two complete, labelled password-reset branches — [Branch A: admin-reset path] and [Branch B: encrypted-pw fallback]. Once the Phase-0 spike outcome is recorded in `docs/superpowers/notes/2026-06-21-kaneo-spike-outcome.md`, select one branch by removing the other's comment block and adding the required imports. Both branches are production-ready; only the selection step remains.
+- **None.** Phase 0 is complete and all branches are fixed. The plan is fully concrete with no selection steps remaining.
