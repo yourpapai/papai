@@ -65,15 +65,15 @@ const DEFERRED = `DEFERRED PROMPTS — The user can set up automated tasks and a
 - For daily briefings, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0] }.
 - PROMPT CONTENT: When creating a deferred prompt, the prompt field should describe the deliverable action, not the scheduling. Write it as what to DO when it fires, not what to SCHEDULE. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles timing; the prompt handles content.`
 
-const GROUP_DEFERRED = `GROUP REMINDERS — This is a group chat. Any reminder or scheduled prompt you create here fires IN THIS GROUP CHAT, never in a private DM, and is owned by the group, not by one member. Control who gets @mentioned when it fires with delivery.mention_user_ids:
-- "remind me" / a reminder just for the requester → OMIT delivery.mention_user_ids; it fires in this group and @mentions the requester automatically.
-- "remind us" / "remind everyone" / "remind the team" / anything for the whole group → set delivery.mention_user_ids to [] (empty array); it fires in this group with no @mention.
-- Named people ("remind Alice and Bob", "ping @charlie") → for EACH named person, call resolve_chat_participant with their name, take the top candidate's userId, and collect them into delivery.mention_user_ids. Resolve all names before creating the reminder.
-  - If no candidate is returned for a name, ask ONE short, specific question (e.g. "I don't see an Alice in this group — do you mean @alice_m or @alice_s?").
-  - If multiple candidates are returned and the match is not clear, name the top candidates in ONE question and wait for the user to choose before creating the reminder.
-- If it is unclear whether the reminder is only for the requester or for the whole group, ask ONE short question before creating it.
-
-USER IDs IN THIS GROUP — resolve_chat_participant also works any time you need a chat user ID for a named person in this group, not only for reminders.`
+// resolve_chat_participant bullets + USER IDs note are gated on the enabled tool set; base group rules always present.
+function buildDeferredFragment(base: string, ctx: ContextType | undefined, e: ReadonlySet<string> | undefined): string {
+  if (ctx !== 'group') return base
+  const r = e?.has('resolve_chat_participant') === true
+  const groupReminders = r
+    ? `GROUP REMINDERS — This is a group chat. Any reminder or scheduled prompt you create here fires IN THIS GROUP CHAT, never in a private DM, and is owned by the group, not by one member. Control who gets @mentioned when it fires with delivery.mention_user_ids:\n- "remind me" / a reminder just for the requester → OMIT delivery.mention_user_ids; it fires in this group and @mentions the requester automatically.\n- "remind us" / "remind everyone" / "remind the team" / anything for the whole group → set delivery.mention_user_ids to [] (empty array); it fires in this group with no @mention.\n- Named people ("remind Alice and Bob", "ping @charlie") → for EACH named person, call resolve_chat_participant with their name, take the top candidate's userId, and collect them into delivery.mention_user_ids. Resolve all names before creating the reminder.\n  - If no candidate is returned for a name, ask ONE short, specific question (e.g. "I don't see an Alice in this group — do you mean @alice_m or @alice_s?").\n  - If multiple candidates are returned and the match is not clear, name the top candidates in ONE question and wait for the user to choose before creating the reminder.\n- If it is unclear whether the reminder is only for the requester or for the whole group, ask ONE short question before creating it.\n\nUSER IDs IN THIS GROUP — resolve_chat_participant also works any time you need a chat user ID for a named person in this group, not only for reminders.`
+    : `GROUP REMINDERS — This is a group chat. Any reminder or scheduled prompt you create here fires IN THIS GROUP CHAT, never in a private DM, and is owned by the group, not by one member. Control who gets @mentioned when it fires with delivery.mention_user_ids:\n- "remind me" / a reminder just for the requester → OMIT delivery.mention_user_ids; it fires in this group and @mentions the requester automatically.\n- "remind us" / "remind everyone" / "remind the team" / anything for the whole group → set delivery.mention_user_ids to [] (empty array); it fires in this group with no @mention.\n- If it is unclear whether the reminder is only for the requester or for the whole group, ask ONE short question before creating it.`
+  return `${base}\n\n${groupReminders}`
+}
 
 const DISCLOSURE_PROTOCOL = `TOOL DISCOVERY — Most tools are not loaded right now. To use a tool you must first find and load it:
 1. Call search_tools with a short natural-language description of what you want to do.
@@ -207,7 +207,7 @@ function assembleSystemPrompt(
     if (!fragmentIncluded(fragment, enabledToolNames)) continue
     if (fragment.text === DEFERRED) {
       const deferredText = options.deferredFragmentText ?? fragment.text
-      parts.push(options.contextType === 'group' ? `${deferredText}\n\n${GROUP_DEFERRED}` : deferredText)
+      parts.push(buildDeferredFragment(deferredText, options.contextType, enabledToolNames))
       continue
     }
     parts.push(fragment.text)

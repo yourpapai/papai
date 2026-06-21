@@ -43,6 +43,16 @@ describe('makeResolveChatParticipantTool', () => {
     expect(schemaValidates(tool, {})).toBe(false)
   })
 
+  test('schema rejects empty string query', () => {
+    const tool = makeResolveChatParticipantTool(makeResolver([]), CONTEXT_ID)
+    expect(schemaValidates(tool, { query: '' })).toBe(false)
+  })
+
+  test('schema rejects whitespace-only query', () => {
+    const tool = makeResolveChatParticipantTool(makeResolver([]), CONTEXT_ID)
+    expect(schemaValidates(tool, { query: '   ' })).toBe(false)
+  })
+
   test('returns ranked candidates from resolver', async () => {
     const candidate = {
       userId: 'u1',

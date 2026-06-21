@@ -190,6 +190,18 @@ describe('resolveChatParticipant', () => {
     expect(results).toHaveLength(2)
   })
 
+  test('returns empty array for empty query even when candidates exist', async () => {
+    insertSender(GROUP_CTX, 'm1', 'u1', 'alice')
+    const results = await resolveChatParticipant(GROUP_CTX, '', () => Promise.resolve(null))
+    expect(results).toHaveLength(0)
+  })
+
+  test('returns empty array for whitespace-only query even when candidates exist', async () => {
+    insertSender(GROUP_CTX, 'm1', 'u1', 'alice')
+    const results = await resolveChatParticipant(GROUP_CTX, '   ', () => Promise.resolve(null))
+    expect(results).toHaveLength(0)
+  })
+
   test('resolveLabel called with p-limit concurrency (all users resolved)', async () => {
     for (let i = 0; i < 12; i++) {
       insertMember(GROUP_CTX, `bulk-u${i}`)

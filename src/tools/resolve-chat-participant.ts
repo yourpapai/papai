@@ -20,7 +20,7 @@ export function makeResolveChatParticipantTool(resolver: ChatParticipantResolver
       'Returns a ranked list of candidates; take the top entry when the match is clear. ' +
       'If no confident match is found, ask ONE targeted question naming the returned candidates.',
     inputSchema: z.object({
-      query: z.string().describe('Name or partial name of the person to look up'),
+      query: z.string().trim().min(1).describe('Name or partial name of the person to look up'),
       limit: z.number().int().positive().optional().describe('Maximum number of candidates to return (default 5)'),
     }),
     execute: async ({ query, limit }) => {

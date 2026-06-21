@@ -31,6 +31,10 @@ async function availableToolNames(
 ): Promise<string[]> {
   const provider = await safeBuildProvider(contextId)
   if (provider === null) return []
+  // NOTE: `chatParticipantResolver` is intentionally omitted here — the settings-UI
+  // tool surface has no live ChatRouter-bound resolver available outside a chat turn,
+  // so `resolve_chat_participant` is absent from the displayed tool list even when it
+  // would be exposed during a real group turn. This is a known display-only discrepancy.
   const tools = buildTools(provider, actorUserId, contextId, 'normal', contextType)
   return Object.keys(tools).filter((name) => getToolMetadata(name) !== undefined)
 }

@@ -49,6 +49,10 @@ export function gatherParticipants(contextId: string): RawCandidate[] {
     .where(eq(groupMembers.groupId, groupContextId))
     .all()
 
+  // message_metadata is keyed by the thread-scoped storage contextId and has no
+  // group-level denormalized column, so this query is intentionally thread-local.
+  // Group-wide participant coverage comes from group_members above; informal senders
+  // seen only in sibling threads are out of scope.
   const senderRows = db
     .select({
       authorId: messageMetadata.authorId,
@@ -112,6 +116,8 @@ export async function resolveChatParticipant(
   limit: number = DEFAULT_LIMIT,
 ): Promise<ParticipantCandidate[]> {
   log.debug({ contextId, query, limit }, 'resolveChatParticipant')
+  // Defense-in-depth: ''.startsWith('') matches everyone; schema already rejects empty queries.
+  if (query.trim() === '') return []
   const raw = gatherParticipants(contextId)
   if (raw.length === 0) return []
 
@@ -124,7 +130,11 @@ export async function resolveChatParticipant(
         try {
           const label = await resolveLabel(candidate.userId)
           displayName = label ?? candidate.username ?? candidate.userId
-        } catch {
+        } catch (err) {
+          log.debug(
+            { userId: candidate.userId, err: err instanceof Error ? err.message : String(err) },
+            'resolveLabel failed; using fallback',
+          )
           displayName = candidate.username ?? candidate.userId
         }
         const score = computeScore(query, displayName, candidate.username)
