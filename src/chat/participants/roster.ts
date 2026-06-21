@@ -6,10 +6,10 @@
 import { eq } from 'drizzle-orm'
 import pLimit from 'p-limit'
 
-import { getMainContextIdFromThreadContextId } from '../scoped-context.js'
 import { getDrizzleDb } from '../../db/drizzle.js'
 import { groupMembers, messageMetadata } from '../../db/schema.js'
 import { logger } from '../../logger.js'
+import { getConfigContextIdFromStorageContextId } from '../scoped-context.js'
 
 const log = logger.child({ scope: 'chat:participants:roster' })
 
@@ -38,10 +38,10 @@ type RawCandidate = { userId: string; username: string | null }
  * Gather the union of curated group members and recently-seen senders.
  * Uses the group-level context id (strips thread suffix) for member lookup.
  */
-export async function gatherParticipants(contextId: string): Promise<RawCandidate[]> {
+export function gatherParticipants(contextId: string): RawCandidate[] {
   log.debug({ contextId }, 'gatherParticipants')
   const db = getDrizzleDb()
-  const groupContextId = getMainContextIdFromThreadContextId(contextId)
+  const groupContextId = getConfigContextIdFromStorageContextId(contextId)
 
   const memberRows = db
     .select({ userId: groupMembers.userId })
@@ -66,18 +66,16 @@ export async function gatherParticipants(contextId: string): Promise<RawCandidat
   for (const s of senderRows) {
     if (s.authorId === null || s.authorId === undefined) continue
     const existing = seen.get(s.authorId)
-    if (existing !== undefined) {
-      // prefer username from metadata if available
-      if (existing.username === null && s.authorUsername !== null && s.authorUsername !== undefined) {
-        seen.set(s.authorId, {
-          userId: s.authorId,
-          username: s.authorUsername,
-        })
-      }
-    } else {
+    if (existing === undefined) {
       seen.set(s.authorId, {
         userId: s.authorId,
         username: s.authorUsername ?? null,
+      })
+    } else if (existing.username === null && s.authorUsername !== null && s.authorUsername !== undefined) {
+      // prefer username from metadata if available
+      seen.set(s.authorId, {
+        userId: s.authorId,
+        username: s.authorUsername,
       })
     }
   }
@@ -114,9 +112,10 @@ export async function resolveChatParticipant(
   limit: number = DEFAULT_LIMIT,
 ): Promise<ParticipantCandidate[]> {
   log.debug({ contextId, query, limit }, 'resolveChatParticipant')
-  const raw = await gatherParticipants(contextId)
+  const raw = gatherParticipants(contextId)
   if (raw.length === 0) return []
 
+  // Per-call limiter: a module-level limiter would serialize concurrent invocations from different callers.
   const limiter = pLimit(LABEL_RESOLVE_CONCURRENCY)
   const resolved: ParticipantCandidate[] = await Promise.all(
     raw.map((candidate) =>
@@ -142,7 +141,6 @@ export async function resolveChatParticipant(
   const matched = resolved.filter((c) => c.score > 0)
   matched.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score
-    // stable tie-break: alphabetical by userId for determinism
     return a.userId.localeCompare(b.userId)
   })
 
