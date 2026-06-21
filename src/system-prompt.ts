@@ -68,8 +68,12 @@ const DEFERRED = `DEFERRED PROMPTS — The user can set up automated tasks and a
 const GROUP_DEFERRED = `GROUP REMINDERS — This is a group chat. Any reminder or scheduled prompt you create here fires IN THIS GROUP CHAT, never in a private DM, and is owned by the group, not by one member. Control who gets @mentioned when it fires with delivery.mention_user_ids:
 - "remind me" / a reminder just for the requester → OMIT delivery.mention_user_ids; it fires in this group and @mentions the requester automatically.
 - "remind us" / "remind everyone" / "remind the team" / anything for the whole group → set delivery.mention_user_ids to [] (empty array); it fires in this group with no @mention.
-- To @mention specific people, set delivery.mention_user_ids to their user IDs.
-- If it is unclear whether the reminder is only for the requester or for the whole group, ask ONE short question before creating it.`
+- Named people ("remind Alice and Bob", "ping @charlie") → for EACH named person, call resolve_chat_participant with their name, take the top candidate's userId, and collect them into delivery.mention_user_ids. Resolve all names before creating the reminder.
+  - If no candidate is returned for a name, ask ONE short, specific question (e.g. "I don't see an Alice in this group — do you mean @alice_m or @alice_s?").
+  - If multiple candidates are returned and the match is not clear, name the top candidates in ONE question and wait for the user to choose before creating the reminder.
+- If it is unclear whether the reminder is only for the requester or for the whole group, ask ONE short question before creating it.
+
+USER IDs IN THIS GROUP — resolve_chat_participant also works any time you need a chat user ID for a named person in this group, not only for reminders.`
 
 const DISCLOSURE_PROTOCOL = `TOOL DISCOVERY — Most tools are not loaded right now. To use a tool you must first find and load it:
 1. Call search_tools with a short natural-language description of what you want to do.
