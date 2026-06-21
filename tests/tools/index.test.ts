@@ -19,13 +19,20 @@ import { createMockProvider } from './mock-provider.js'
 
 const CONTEXT = 'test-tool-prefs-index-user'
 
-const buildDescriptorCacheKeys = (contextId: string, chatUserId: string, username: string): readonly string[] =>
-  [
-    'provider-backed:no-staged-download',
-    'provider-backed:with-staged-download',
-    'providerless:no-staged-download',
-    'providerless:with-staged-download',
-  ].map((prefix) => `${prefix}:${contextId}:${chatUserId}:${username}`)
+const buildDescriptorCacheKeys = (contextId: string, chatUserId: string, username: string): readonly string[] => {
+  const providerScopes = ['provider-backed', 'providerless']
+  const stagedScopes = ['no-staged-download', 'with-staged-download']
+  const resolverScopes = ['no-resolver', 'with-resolver']
+  const keys: string[] = []
+  for (const ps of providerScopes) {
+    for (const ss of stagedScopes) {
+      for (const rs of resolverScopes) {
+        keys.push(`${ps}:${ss}:${rs}:${contextId}:${chatUserId}:${username}`)
+      }
+    }
+  }
+  return keys
+}
 
 type CacheInvalidationFixtures = Readonly<{
   parentContextId: string
@@ -50,7 +57,7 @@ const getCacheInvalidationFixtures = (): CacheInvalidationFixtures => {
     threadContextId,
     parentCacheKeys: buildDescriptorCacheKeys(parentContextId, 'user-1', 'alice'),
     threadCacheKeys: buildDescriptorCacheKeys(threadContextId, 'user-1', 'alice'),
-    otherCacheKey: 'provider-backed:no-staged-download:other-context:user-1:alice',
+    otherCacheKey: 'provider-backed:no-staged-download:no-resolver:other-context:user-1:alice',
   }
 }
 

@@ -7,6 +7,7 @@ import type { ModelMessage, ToolSet } from 'ai'
 
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import { getCachedTools, setCachedTools } from './cache.js'
+import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { askPermissionViaChat } from './chat/permission-prompt.js'
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ActorRole, ReplyFn } from './chat/types.js'
@@ -57,7 +58,7 @@ const getOrCreateDescriptors = async (
   provider: TaskProvider | null,
   contextType: 'dm' | 'group' | undefined,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
-  chatParticipantResolver: import('./chat/participants/roster.js').ChatParticipantResolver | undefined,
+  chatParticipantResolver: ChatParticipantResolver | undefined,
   deps: PrepareLlmInvocationDeps,
 ): Promise<ToolSet> => {
   const providerCacheScope = provider === null ? 'providerless' : 'provider-backed'
@@ -99,7 +100,7 @@ export type LlmInvocationOptions = {
   stagedDownloadFn: StagedFileDownloadFn | undefined
   askPermission: AskPermissionFn | undefined
   actorRole?: ActorRole
-  chatParticipantResolver?: import('./chat/participants/roster.js').ChatParticipantResolver
+  chatParticipantResolver?: ChatParticipantResolver
 }
 
 /** Minimal shape of args required to build LlmInvocationOptions from a callLlm context. */

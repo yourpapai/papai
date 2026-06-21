@@ -25,7 +25,8 @@ const buildGroupDescriptorCacheKey = (
   username: string,
   providerScope: 'provider-backed' | 'providerless',
   stagedScope: 'no-staged-download' | 'with-staged-download',
-): string => `${providerScope}:${stagedScope}:${contextId}:${chatUserId}:${username}`
+  resolverScope: 'no-resolver' | 'with-resolver' = 'no-resolver',
+): string => `${providerScope}:${stagedScope}:${resolverScope}:${contextId}:${chatUserId}:${username}`
 
 describe('context-store', () => {
   beforeEach(async () => {
@@ -55,13 +56,13 @@ describe('context-store', () => {
   })
 
   test('setContextSettings clears cached tool sets for the context', () => {
-    setCachedTools('provider-backed:no-staged-download:u1', { old_tool: {} })
-    setCachedTools('providerless:with-staged-download:u1', { old_tool: {} })
+    setCachedTools('provider-backed:no-staged-download:no-resolver:u1', { old_tool: {} })
+    setCachedTools('providerless:with-staged-download:with-resolver:u1', { old_tool: {} })
 
     setContextSettings({ contextId: 'u1', taskInstanceId: 'yt-default', platformInstanceId: 'tg-default' })
 
-    expect(getCachedTools('provider-backed:no-staged-download:u1')).toBeUndefined()
-    expect(getCachedTools('providerless:with-staged-download:u1')).toBeUndefined()
+    expect(getCachedTools('provider-backed:no-staged-download:no-resolver:u1')).toBeUndefined()
+    expect(getCachedTools('providerless:with-staged-download:with-resolver:u1')).toBeUndefined()
   })
 
   test('setContextSettings clears cached group-derived tool sets for the context', () => {

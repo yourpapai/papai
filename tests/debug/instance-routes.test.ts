@@ -155,8 +155,9 @@ const buildDescriptorCacheKey = (
   stagedScope: 'no-staged-download' | 'with-staged-download',
   chatUserId?: string,
   username?: string,
+  resolverScope: 'no-resolver' | 'with-resolver' = 'no-resolver',
 ): string => {
-  const prefix = `${providerScope}:${stagedScope}:${contextId}`
+  const prefix = `${providerScope}:${stagedScope}:${resolverScope}:${contextId}`
   return chatUserId === undefined || username === undefined ? prefix : `${prefix}:${chatUserId}:${username}`
 }
 

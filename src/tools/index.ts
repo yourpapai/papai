@@ -222,7 +222,15 @@ export async function buildProviderlessToolDescriptors(options: MakeToolsOptions
   const contextType = options.contextType
   const stagedDownloadFn = options.stagedDownloadFn
 
-  const tools = buildProviderlessTools(chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
+  const tools = buildProviderlessTools(
+    chatUserId,
+    contextId,
+    mode,
+    contextType,
+    username,
+    stagedDownloadFn,
+    options.chatParticipantResolver,
+  )
   const wrappedBuiltins = wrapToolSet(tools)
 
   let mcpTools: ToolSet = {}

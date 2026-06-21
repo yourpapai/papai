@@ -8,6 +8,7 @@ import type { generateText, stepCountIs, ModelMessage, ToolSet } from 'ai'
 
 import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { StagedFileDownloadFn } from './attachments/types.js'
+import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import type { ReplyFn } from './chat/types.js'
 import type { LiveStatusReporter } from './live-status/reporter.js'
 import type { TaskProvider } from './providers/types.js'
@@ -28,7 +29,7 @@ export type LlmOrchestratorDeps = {
     username: string | null,
   ) => Promise<boolean>
 } & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>> &
-  Partial<Record<'chatParticipantResolver', import('./chat/participants/roster.js').ChatParticipantResolver>>
+  Partial<Record<'chatParticipantResolver', ChatParticipantResolver>>
 
 type TokenUsage = { inputTokens: number | undefined; outputTokens: number | undefined }
 

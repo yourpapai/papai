@@ -17,6 +17,7 @@ import { replyToUnauthorized } from './bot-unauthorized-reply.js'
 import { supportsFileReplies } from './chat/capabilities.js'
 import { userManagesAuthorizedGroupLive } from './chat/group-admin-live.js'
 import { routeInteraction } from './chat/interaction-router.js'
+import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
@@ -43,7 +44,7 @@ export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
     Partial<
       Record<'stagedDownloadFn', StagedFileDownloadFn> &
         Record<'enqueueMessage', typeof enqueueMessage> &
-        Record<'chatParticipantResolver', import('./chat/participants/roster.js').ChatParticipantResolver>
+        Record<'chatParticipantResolver', ChatParticipantResolver>
     >
   >
 const defaultBotDeps: BotDeps = {

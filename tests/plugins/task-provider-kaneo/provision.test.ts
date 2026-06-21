@@ -459,9 +459,9 @@ describe('provisionKaneoUser - unique email generation', () => {
   test('provisionAndConfigure clears all group-scoped tool cache variants after success', async () => {
     process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
 
-    const providerBackedKey = 'provider-backed:no-staged-download:group-1:user-a:alice'
-    const providerlessKey = 'providerless:with-staged-download:group-1:user-b:bob'
-    const otherGroupKey = 'provider-backed:no-staged-download:group-2:user-c:carol'
+    const providerBackedKey = 'provider-backed:no-staged-download:no-resolver:group-1:user-a:alice'
+    const providerlessKey = 'providerless:with-staged-download:with-resolver:group-1:user-b:bob'
+    const otherGroupKey = 'provider-backed:no-staged-download:no-resolver:group-2:user-c:carol'
     setCachedTools(providerBackedKey, { scope: 'user-a' })
     setCachedTools(providerlessKey, { scope: 'user-b' })
     setCachedTools(otherGroupKey, { scope: 'other-group' })

@@ -179,17 +179,34 @@ export function clearCachedTools(userId: string): void {
 }
 
 /**
+ * Returns all tool-descriptor cache key prefixes for a contextId, covering all
+ * combinations of provider scope, staged-download scope, and resolver scope
+ * that the llm-orchestrator may use.
+ *
+ * Key format: `${providerScope}:${stagedScope}:${resolverScope}:${contextId}`
+ */
+function toolCachePrefixesForContext(contextId: string): string[] {
+  const providerScopes = ['provider-backed', 'providerless']
+  const stagedScopes = ['no-staged-download', 'with-staged-download']
+  const resolverScopes = ['no-resolver', 'with-resolver']
+  const prefixes: string[] = []
+  for (const ps of providerScopes) {
+    for (const ss of stagedScopes) {
+      for (const rs of resolverScopes) {
+        prefixes.push(`${ps}:${ss}:${rs}:${contextId}`)
+      }
+    }
+  }
+  return prefixes
+}
+
+/**
  * Clear cached tools for a context id and all derived tool-descriptor cache keys.
  * Supports both legacy raw context keys and the current llm-orchestrator descriptor
- * keys scoped by provider mode and staged-download availability.
+ * keys scoped by provider mode, staged-download availability, and resolver scope.
  */
 export function clearCachedToolsByPrefix(contextId: string): void {
-  const currentPrefixes = [
-    `provider-backed:no-staged-download:${contextId}`,
-    `provider-backed:with-staged-download:${contextId}`,
-    `providerless:no-staged-download:${contextId}`,
-    `providerless:with-staged-download:${contextId}`,
-  ]
+  const currentPrefixes = toolCachePrefixesForContext(contextId)
   const legacyPrefix = `${contextId}:`
   for (const [key, cache] of userCacheStore) {
     if (
@@ -204,12 +221,7 @@ export function clearCachedToolsByPrefix(contextId: string): void {
 }
 
 export function getLatestCachedToolsForContext(contextId: string): unknown {
-  const currentPrefixes = [
-    `provider-backed:no-staged-download:${contextId}`,
-    `provider-backed:with-staged-download:${contextId}`,
-    `providerless:no-staged-download:${contextId}`,
-    `providerless:with-staged-download:${contextId}`,
-  ]
+  const currentPrefixes = toolCachePrefixesForContext(contextId)
   const legacyPrefix = `${contextId}:`
   let latestTools: unknown = undefined
   let latestAccessed = -1

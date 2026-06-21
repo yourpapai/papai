@@ -46,6 +46,12 @@ export function buildInvocationToolSet(
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
 ): Promise<ToolSet | null> | ToolSet | null {
+  // NOTE: `chatParticipantResolver` is intentionally omitted here.
+  // The settings-UI tool surface (which consumes this function) operates outside
+  // a live chat turn and has no access to a ChatRouter-bound resolver. As a result,
+  // `resolve_chat_participant` is absent from the displayed tool list even when it
+  // would be available in a real group turn. This is a known display-only discrepancy
+  // — the tool is still exposed correctly during live turns via the orchestrator path.
   if (provider === null) {
     return buildProviderlessToolDescriptors({
       storageContextId,

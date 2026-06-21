@@ -253,6 +253,7 @@ export function buildProviderlessTools(
   const contextType = args[0]
   const username = args[1]
   const stagedDownloadFn = args[2]
+  const chatParticipantResolver = args[3]
   const tools: ToolSet = {}
   addProviderIndependentTools(tools, {
     chatUserId,
@@ -263,5 +264,8 @@ export function buildProviderlessTools(
     stagedDownloadFn,
     allowTaskDependentDeferredPrompts: false,
   })
+  if (contextType === 'group' && chatParticipantResolver !== undefined && contextId !== undefined) {
+    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId)
+  }
   return tools
 }
