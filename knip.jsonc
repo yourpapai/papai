@@ -69,6 +69,8 @@
     "src/providers/registry.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.
     "src/system-config.ts": ["exports"],
+    // resetNotifyTokenCacheForTesting is a test-only seam.
+    "src/notify-token.ts": ["exports"],
     // resetStatsSaltCacheForTesting is a test-only seam.
     "src/stats/hashing.ts": ["exports"],
     // clearStatsCacheForTesting is a test-only seam.
