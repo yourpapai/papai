@@ -4,6 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import {
+  KaneoCredentialsSchema,
+  KaneoResetSchema,
+  type KaneoCredentials,
+  type KaneoReset,
+} from './fetcher-schemas-kaneo.js'
 import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
 import {
   ByokResponseSchema,
@@ -234,3 +240,11 @@ export const fetchContextTaskInstance = (contextId: string): Promise<ContextTask
 
 export const patchContextTaskInstance = (input: { taskInstanceId: string; contextId: string }): Promise<unknown> =>
   writeJson('/settings/api/context/task-instance', 'PATCH', input, (b) => b)
+
+// --- Kaneo member credentials ---
+
+export const getKaneoCredentials = (contextId: string): Promise<KaneoCredentials> =>
+  getJson(`/settings/api/kaneo/credentials?${ctxQuery(contextId)}`, (b) => KaneoCredentialsSchema.parse(b))
+
+export const postKaneoPasswordReset = (contextId: string): Promise<KaneoReset> =>
+  writeJson('/settings/api/kaneo/credentials', 'POST', { action: 'reset', contextId }, (b) => KaneoResetSchema.parse(b))

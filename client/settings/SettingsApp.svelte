@@ -25,6 +25,7 @@
   import MembersSection from './sections/MembersSection.svelte'
   import GroupProviderSection from './sections/GroupProviderSection.svelte'
   import GuestModeSection from './sections/GuestModeSection.svelte'
+  import KaneoAccessSection from './sections/KaneoAccessSection.svelte'
   import AdminInstancesSection from './sections/admin/AdminInstancesSection.svelte'
   import AdminSystemSection from './sections/admin/AdminSystemSection.svelte'
   import AdminByokSection from './sections/admin/AdminByokSection.svelte'
@@ -87,6 +88,7 @@
                 { id: 'members', label: 'Members' },
                 { id: 'group-provider', label: 'Group provider' },
                 { id: 'guest-mode', label: 'Guest mode' },
+                { id: 'kaneo-access', label: 'My Kaneo access' },
               ]
             : []),
         ],
@@ -187,6 +189,7 @@
               <MembersSection contextId={ctx} />
               <GroupProviderSection contextId={ctx} />
               <GuestModeSection contextId={ctx} />
+              <KaneoAccessSection contextId={ctx} />
             {/if}
           </div>
           <div class="settings-group settings-advanced">
