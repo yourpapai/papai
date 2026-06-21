@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from './db/drizzle.js'
 import { systemConfig } from './db/schema.js'
@@ -12,16 +12,16 @@ import { logger } from './logger.js'
 const log = logger.child({ scope: 'notify-token' })
 const NOTIFY_TOKEN_KEY = 'notify_token'
 
+// Cached for the process lifetime; rotating notify_token in the DB requires a bot restart.
 let cached: string | null = null
 
 const readFromDb = (): string | null => {
-  const rows = getDrizzleDb()
-    .select()
+  const row = getDrizzleDb()
+    .select({ value: systemConfig.value })
     .from(systemConfig)
-    .where(sql`${systemConfig.key} = ${NOTIFY_TOKEN_KEY}`)
-    .all()
-  const found = rows[0]?.value
-  return found !== undefined && found !== '' ? found : null
+    .where(eq(systemConfig.key, NOTIFY_TOKEN_KEY))
+    .get()
+  return row !== undefined && row.value !== '' ? row.value : null
 }
 
 const seedToDb = (value: string): void => {

@@ -71,17 +71,50 @@ export const buildNotifyTarget = (body: NotifyBody): DeferredDeliveryTarget => {
   }
 }
 
-export const handleNotifyRoute = async (req: Request): Promise<Response> => {
-  if (req.method !== 'POST') return jsonResponse({ error: 'method not allowed' }, { status: 405 })
-
-  const expected = getNotifyToken()
-  if (expected === null) return jsonResponse({ error: 'notify not configured' }, { status: 503 })
-
+const checkAuth = (req: Request): Response | null => {
   const provided = bearerToken(req)
-  if (provided === null || !tokensMatch(provided, expected)) {
+  if (provided === null) {
     log.warn('notify auth rejected: missing or invalid bearer token')
     return jsonResponse({ error: 'unauthorized' }, { status: 401 })
   }
+  const expected = getNotifyToken()
+  if (expected === null) return jsonResponse({ error: 'notify not configured' }, { status: 503 })
+  if (!tokensMatch(provided, expected)) {
+    log.warn('notify auth rejected: missing or invalid bearer token')
+    return jsonResponse({ error: 'unauthorized' }, { status: 401 })
+  }
+  return null
+}
+
+const sendNotify = async (
+  chat: { sendMessage: (id: string, target: DeferredDeliveryTarget, md: string) => Promise<boolean> },
+  platformInstanceId: string,
+  target: DeferredDeliveryTarget,
+  contextId: string,
+  markdown: string,
+): Promise<Response> => {
+  let sent: boolean
+  try {
+    sent = await chat.sendMessage(platformInstanceId, target, markdown)
+  } catch (error: unknown) {
+    log.warn(
+      { platformInstanceId, contextId, error: error instanceof Error ? error.message : String(error) },
+      'notify delivery threw',
+    )
+    return jsonResponse({ error: 'delivery failed' }, { status: 502 })
+  }
+  if (!sent) {
+    log.warn({ platformInstanceId, contextId }, 'notify delivery failed')
+    return jsonResponse({ error: 'delivery failed' }, { status: 502 })
+  }
+  return jsonResponse({ sent: true })
+}
+
+export const handleNotifyRoute = async (req: Request): Promise<Response> => {
+  if (req.method !== 'POST') return jsonResponse({ error: 'method not allowed' }, { status: 405 })
+
+  const authError = checkAuth(req)
+  if (authError !== null) return authError
 
   let raw: unknown
   try {
@@ -97,14 +130,7 @@ export const handleNotifyRoute = async (req: Request): Promise<Response> => {
 
   const target = buildNotifyTarget(parsed.data)
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
-  if (platformInstanceId === null) {
-    return jsonResponse({ error: 'context not deliverable' }, { status: 404 })
-  }
+  if (platformInstanceId === null) return jsonResponse({ error: 'context not deliverable' }, { status: 404 })
 
-  const sent = await chat.sendMessage(platformInstanceId, target, parsed.data.markdown)
-  if (!sent) {
-    log.warn({ platformInstanceId, contextId: parsed.data.contextId }, 'notify delivery failed')
-    return jsonResponse({ error: 'delivery failed' }, { status: 502 })
-  }
-  return jsonResponse({ sent: true })
+  return sendNotify(chat, platformInstanceId, target, parsed.data.contextId, parsed.data.markdown)
 }

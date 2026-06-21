@@ -115,4 +115,20 @@ describe('handleNotifyRoute', () => {
     const res = await handleNotifyRoute(req)
     expect(res.status).toBe(400)
   })
+
+  test('returns 401 when no bearer is provided (no config oracle)', async () => {
+    delete process.env['NOTIFY_TOKEN']
+    resetNotifyTokenCacheForTesting()
+    setRuntimeChatRouter(new RecordingRouter())
+    const res = await handleNotifyRoute(notifyReq(null, { contextId: 'user-1', markdown: 'x' }))
+    expect(res.status).toBe(401)
+  })
+
+  test('returns 502 when delivery throws', async () => {
+    const throwingRouter = new RecordingRouter()
+    throwingRouter.sendMessage = (): Promise<boolean> => Promise.reject(new Error('network down'))
+    setRuntimeChatRouter(throwingRouter)
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'user-1', markdown: 'x' }))
+    expect(res.status).toBe(502)
+  })
 })
