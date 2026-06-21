@@ -17,6 +17,7 @@ import { appendAssistantTurnHistory } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
+import { shouldBackstopGroupMembership } from './llm-orchestrator-membership.js'
 import {
   resolveAttachmentIds,
   resolveDeps,
@@ -142,7 +143,7 @@ type CallLlmArgs = InvocationSource & {
 }
 
 const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: ModelMessage[] } }> => {
-  const { reply, contextId, chatUserId, username, contextType, deps, configId, resolvedLlm, turnId } = args
+  const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId, resolvedLlm, turnId } = args
   if (contextType === 'dm') {
     try {
       await deps.maybeAutoProvision(reply, configId, chatUserId, username)
@@ -158,7 +159,8 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   } else {
     await ensureRequiredConfig(reply, contextId, configId)
     await maybeAutoLinkIdentity(chatUserId, username, provider)
-    if (contextType === 'group') maybeEnsureGroupMembership(configId, chatUserId, username)
+    if (shouldBackstopGroupMembership(contextType, actorRole))
+      maybeEnsureGroupMembership(configId, chatUserId, username)
   }
   const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
   const invocationOptsWithResolver = {
