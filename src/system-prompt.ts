@@ -10,6 +10,7 @@ import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { filterProviderlessPluginIds } from './plugins/providerless.js'
 import { getPluginsForContext } from './plugins/registry.js'
 import type { TaskProvider } from './providers/types.js'
+import { buildDeferredFragment } from './system-prompt-group.js'
 import { buildAskToolsLine, buildUnavailableLine } from './system-prompt-prefs.js'
 import { getToolPrefs } from './tools/tool-preferences.js'
 
@@ -64,16 +65,6 @@ const DEFERRED = `DEFERRED PROMPTS — The user can set up automated tasks and a
 - Use list_deferred_prompts to show active prompts/alerts. Use cancel_deferred_prompt to cancel one.
 - For daily briefings, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0] }.
 - PROMPT CONTENT: When creating a deferred prompt, the prompt field should describe the deliverable action, not the scheduling. Write it as what to DO when it fires, not what to SCHEDULE. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles timing; the prompt handles content.`
-
-// resolve_chat_participant bullets + USER IDs note are gated on the enabled tool set; base group rules always present.
-function buildDeferredFragment(base: string, ctx: ContextType | undefined, e: ReadonlySet<string> | undefined): string {
-  if (ctx !== 'group') return base
-  const r = e?.has('resolve_chat_participant') === true
-  const groupReminders = r
-    ? `GROUP REMINDERS — This is a group chat. Any reminder or scheduled prompt you create here fires IN THIS GROUP CHAT, never in a private DM, and is owned by the group, not by one member. Control who gets @mentioned when it fires with delivery.mention_user_ids:\n- "remind me" / a reminder just for the requester → OMIT delivery.mention_user_ids; it fires in this group and @mentions the requester automatically.\n- "remind us" / "remind everyone" / "remind the team" / anything for the whole group → set delivery.mention_user_ids to [] (empty array); it fires in this group with no @mention.\n- Named people ("remind Alice and Bob", "ping @charlie") → for EACH named person, call resolve_chat_participant with their name, take the top candidate's userId, and collect them into delivery.mention_user_ids. Resolve all names before creating the reminder.\n  - If no candidate is returned for a name, ask ONE short, specific question (e.g. "I don't see an Alice in this group — do you mean @alice_m or @alice_s?").\n  - If multiple candidates are returned and the match is not clear, name the top candidates in ONE question and wait for the user to choose before creating the reminder.\n- If it is unclear whether the reminder is only for the requester or for the whole group, ask ONE short question before creating it.\n\nUSER IDs IN THIS GROUP — resolve_chat_participant also works any time you need a chat user ID for a named person in this group, not only for reminders.`
-    : `GROUP REMINDERS — This is a group chat. Any reminder or scheduled prompt you create here fires IN THIS GROUP CHAT, never in a private DM, and is owned by the group, not by one member. Control who gets @mentioned when it fires with delivery.mention_user_ids:\n- "remind me" / a reminder just for the requester → OMIT delivery.mention_user_ids; it fires in this group and @mentions the requester automatically.\n- "remind us" / "remind everyone" / "remind the team" / anything for the whole group → set delivery.mention_user_ids to [] (empty array); it fires in this group with no @mention.\n- If it is unclear whether the reminder is only for the requester or for the whole group, ask ONE short question before creating it.`
-  return `${base}\n\n${groupReminders}`
-}
 
 const DISCLOSURE_PROTOCOL = `TOOL DISCOVERY — Most tools are not loaded right now. To use a tool you must first find and load it:
 1. Call search_tools with a short natural-language description of what you want to do.
@@ -144,6 +135,8 @@ const MEMOS = `MEMOS — Personal notes and observations:
 const MEMORY_SEARCH = `MEMORY SEARCH
 You can look up what is already known with the search_memory tool, which searches in priority order: this conversation, then shared group memory, then other conversations. Use it before re-asking the user or assuming nothing is known.`
 
+const GROUP_FIND_USER = `TASK ASSIGNMENT — When assigning a task to a group member, first call find_user with their display name or username to resolve their task-tracker user ID. Always resolve all names before calling create_task or update_task with an assignee.`
+
 const OUTPUT_CORE = `OUTPUT RULES:
 - When referencing tasks or projects, format them as Markdown links: [Task title](url). Never output raw IDs.
 - Keep replies short and friendly. Don't use tables.`
@@ -172,6 +165,7 @@ const FRAGMENTS: readonly PromptFragment[] = [
   { text: RELATIONS, requiredTools: ['add_task_relation', 'update_task_relation'] },
   { text: MEMOS, requiredTools: ['save_memo', 'search_memos', 'list_memos'] },
   { text: MEMORY_SEARCH, requiredTools: ['search_memory'] },
+  { text: GROUP_FIND_USER, requiredTools: ['find_user'] },
 ]
 
 function fragmentIncluded(fragment: PromptFragment, enabled: ReadonlySet<string> | undefined): boolean {
@@ -210,6 +204,7 @@ function assembleSystemPrompt(
       parts.push(buildDeferredFragment(deferredText, options.contextType, enabledToolNames))
       continue
     }
+    if (fragment.text === GROUP_FIND_USER && options.contextType !== 'group') continue
     parts.push(fragment.text)
   }
   parts.push(buildOutputRules(enabledToolNames))
