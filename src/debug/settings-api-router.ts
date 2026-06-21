@@ -15,6 +15,7 @@ import { handleConfigRoutes } from './settings/config-routes.js'
 import { handleContextTaskInstanceRoutes } from './settings/context-task-instance-routes.js'
 import { handleGroupRoutes } from './settings/group-routes.js'
 import { handleIdentityRoutes } from './settings/identity-routes.js'
+import { handleKaneoCredentialsRoutes } from './settings/kaneo-credentials-routes.js'
 import { handleMcpRoutes } from './settings/mcp-routes.js'
 import { handleMemoryRoutes } from './settings/memory-routes.js'
 import { handlePluginsRoutes } from './settings/plugins-routes.js'
@@ -75,5 +76,6 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   if (url.pathname === '/settings/api/identity') return handleIdentityRoutes(req, url)
   if (url.pathname.startsWith('/settings/api/group/')) return handleGroupRoutes(req, url, url.pathname)
   if (url.pathname === '/settings/api/provision/kaneo') return handleProvisionKaneo(req)
+  if (url.pathname === '/settings/api/kaneo/credentials') return handleKaneoCredentialsRoutes(req, url)
   return Promise.resolve(null)
 }
