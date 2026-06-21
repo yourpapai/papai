@@ -57,12 +57,14 @@ const getOrCreateDescriptors = async (
   provider: TaskProvider | null,
   contextType: 'dm' | 'group' | undefined,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
+  chatParticipantResolver: import('./chat/participants/roster.js').ChatParticipantResolver | undefined,
   deps: PrepareLlmInvocationDeps,
 ): Promise<ToolSet> => {
   const providerCacheScope = provider === null ? 'providerless' : 'provider-backed'
   const stagedDownloadScope = stagedDownloadFn === undefined ? 'no-staged-download' : 'with-staged-download'
+  const resolverScope = chatParticipantResolver === undefined ? 'no-resolver' : 'with-resolver'
   const usernameSuffix = username ?? ''
-  const cacheKey = `${providerCacheScope}:${stagedDownloadScope}:${contextId}:${chatUserId}:${usernameSuffix}`
+  const cacheKey = `${providerCacheScope}:${stagedDownloadScope}:${resolverScope}:${contextId}:${chatUserId}:${usernameSuffix}`
   const cached = getCachedTools(cacheKey)
   if (cached !== undefined && cached !== null && isToolSet(cached)) {
     log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Using cached tool descriptors')
@@ -75,6 +77,7 @@ const getOrCreateDescriptors = async (
     username,
     contextType,
     stagedDownloadFn,
+    chatParticipantResolver,
   }
   const descriptors =
     provider === null
@@ -96,6 +99,7 @@ export type LlmInvocationOptions = {
   stagedDownloadFn: StagedFileDownloadFn | undefined
   askPermission: AskPermissionFn | undefined
   actorRole?: ActorRole
+  chatParticipantResolver?: import('./chat/participants/roster.js').ChatParticipantResolver
 }
 
 /** Minimal shape of args required to build LlmInvocationOptions from a callLlm context. */
@@ -133,34 +137,14 @@ export function buildLlmInvocationOpts(
   }
 }
 
-const buildFullToolSet = async (
-  opts: LlmInvocationOptions,
+const applyCompactionAndDisclosure = (
+  prefTools: ToolSet,
+  contextId: string,
+  chatUserId: string,
+  contextType: 'dm' | 'group',
+  userText: string,
   deps: PrepareLlmInvocationDeps,
-): Promise<{ tools: ToolSet; enabledToolNames: Set<string>; disclosure: DisclosureSession | undefined }> => {
-  const {
-    contextId,
-    chatUserId,
-    username,
-    contextType,
-    provider,
-    userText,
-    stagedDownloadFn,
-    askPermission,
-    actorRole,
-  } = opts
-  const descriptors = await getOrCreateDescriptors(
-    contextId,
-    chatUserId,
-    username,
-    provider,
-    contextType,
-    stagedDownloadFn,
-    deps,
-  )
-  const prefTools =
-    actorRole === 'guest'
-      ? applyGuestReadOnlyFilter(descriptors)
-      : applyToolPreferences(descriptors, contextId, askPermission)
+): { tools: ToolSet; disclosure: DisclosureSession | undefined } => {
   // NOTE(forward-safety): meta-tools below (expand_result, search_tools, load_tool) run
   // POST guest-filter; if compaction/disclosure flags are enabled for guests, re-review.
   const flags = deps.resolveReductionFlags(contextId)
@@ -179,6 +163,47 @@ const buildFullToolSet = async (
   const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(compacted, contextId, retriever, {
     enabled: flags.progressiveDisclosure,
   })
+  return { tools: disclosedTools, disclosure }
+}
+
+const buildFullToolSet = async (
+  opts: LlmInvocationOptions,
+  deps: PrepareLlmInvocationDeps,
+): Promise<{ tools: ToolSet; enabledToolNames: Set<string>; disclosure: DisclosureSession | undefined }> => {
+  const {
+    contextId,
+    chatUserId,
+    username,
+    contextType,
+    provider,
+    userText,
+    stagedDownloadFn,
+    askPermission,
+    actorRole,
+    chatParticipantResolver,
+  } = opts
+  const descriptors = await getOrCreateDescriptors(
+    contextId,
+    chatUserId,
+    username,
+    provider,
+    contextType,
+    stagedDownloadFn,
+    chatParticipantResolver,
+    deps,
+  )
+  const prefTools =
+    actorRole === 'guest'
+      ? applyGuestReadOnlyFilter(descriptors)
+      : applyToolPreferences(descriptors, contextId, askPermission)
+  const { tools: disclosedTools, disclosure } = applyCompactionAndDisclosure(
+    prefTools,
+    contextId,
+    chatUserId,
+    contextType,
+    userText,
+    deps,
+  )
   log.debug({ contextId, toolCount: Object.keys(disclosedTools).length }, 'Prepared tool set for LLM invocation')
   return { tools: disclosedTools, enabledToolNames: new Set(Object.keys(disclosedTools)), disclosure }
 }

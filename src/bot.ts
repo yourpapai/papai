@@ -39,7 +39,13 @@ import { runRegistry } from './run-control/registry.js'
 
 const initializedChats = new WeakSet<ChatProvider>()
 export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
-  Readonly<Partial<Record<'stagedDownloadFn', StagedFileDownloadFn> & Record<'enqueueMessage', typeof enqueueMessage>>>
+  Readonly<
+    Partial<
+      Record<'stagedDownloadFn', StagedFileDownloadFn> &
+        Record<'enqueueMessage', typeof enqueueMessage> &
+        Record<'chatParticipantResolver', import('./chat/participants/roster.js').ChatParticipantResolver>
+    >
+  >
 const defaultBotDeps: BotDeps = {
   processMessage: defaultProcessMessage,
   enqueueMessage,
@@ -135,7 +141,11 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       coalescedItem.text,
       coalescedItem.contextType,
       coalescedItem.configContextId,
-      { ...defaultDeps, stagedDownloadFn: deps.stagedDownloadFn },
+      {
+        ...defaultDeps,
+        stagedDownloadFn: deps.stagedDownloadFn,
+        chatParticipantResolver: deps.chatParticipantResolver,
+      },
       [...voiceAttachmentIds, ...coalescedItem.newAttachmentIds],
       coalescedItem.turnId,
       coalescedItem.actorRole,

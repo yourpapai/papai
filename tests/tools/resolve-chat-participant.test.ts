@@ -116,4 +116,12 @@ describe('tool gating via buildTools', () => {
     const tools = buildTools(createMockProvider(), 'u1', 'ctx1', 'normal', 'group', null, undefined, fakeResolver)
     expect(tools['resolve_chat_participant']).toBeDefined()
   })
+
+  test('tool is absent when contextId is undefined even with resolver and group context', async () => {
+    const { buildTools } = await import('../../src/tools/tools-builder.js')
+    const { createMockProvider } = await import('../tools/mock-provider.js')
+    const fakeResolver: ChatParticipantResolver = () => Promise.resolve([])
+    const tools = buildTools(createMockProvider(), 'u1', undefined, 'normal', 'group', null, undefined, fakeResolver)
+    expect(tools['resolve_chat_participant']).toBeUndefined()
+  })
 })

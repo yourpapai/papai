@@ -27,7 +27,8 @@ export type LlmOrchestratorDeps = {
     chatUserId: string,
     username: string | null,
   ) => Promise<boolean>
-} & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>>
+} & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>> &
+  Partial<Record<'chatParticipantResolver', import('./chat/participants/roster.js').ChatParticipantResolver>>
 
 type TokenUsage = { inputTokens: number | undefined; outputTokens: number | undefined }
 

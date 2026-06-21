@@ -7,6 +7,7 @@ import { announceNewVersion } from './announcements.js'
 import { isS3Configured } from './attachments/index.js'
 import { createStagedDownloader } from './attachments/staged-download.js'
 import { setupBot, type BotDeps } from './bot.js'
+import { resolveChatParticipant } from './chat/participants/roster.js'
 import { createChatProviderFromConfig } from './chat/registry.js'
 import { ChatRouter } from './chat/router.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
@@ -115,7 +116,14 @@ const processMessage: BotDeps['processMessage'] = (...args) =>
   import('./llm-orchestrator.js').then((mod) => mod.processMessage(...args))
 
 const stagedDownloadFn = createStagedDownloadFn()
-const botDeps: BotDeps = { processMessage, stagedDownloadFn }
+const chatParticipantResolver: BotDeps['chatParticipantResolver'] = (contextId, query, limit) =>
+  resolveChatParticipant(
+    contextId,
+    query,
+    (userId) => chatProvider.resolveUserLabel(userId, { contextId, contextType: 'group' }),
+    limit,
+  )
+const botDeps: BotDeps = { processMessage, stagedDownloadFn, chatParticipantResolver }
 
 // Discover and activate plugins before command registration so contributed commands are registered.
 const pluginDir = 'plugins'

@@ -180,7 +180,16 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
   const contextType = options.contextType
   const stagedDownloadFn = options.stagedDownloadFn
 
-  const tools = buildTools(provider, chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
+  const tools = buildTools(
+    provider,
+    chatUserId,
+    contextId,
+    mode,
+    contextType,
+    username,
+    stagedDownloadFn,
+    options.chatParticipantResolver,
+  )
   const wrappedBuiltins = wrapToolSet(tools)
 
   let mcpTools: ToolSet = {}
