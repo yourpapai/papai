@@ -28,14 +28,7 @@ const seedToDb = (value: string): void => {
   getDrizzleDb()
     .insert(systemConfig)
     .values({ key: NOTIFY_TOKEN_KEY, value, updatedAt: Date.now(), updatedBy: 'env' })
-    .onConflictDoUpdate({
-      target: systemConfig.key,
-      set: {
-        value: sql`excluded.value`,
-        updatedAt: sql`excluded.updated_at`,
-        updatedBy: sql`excluded.updated_by`,
-      },
-    })
+    .onConflictDoNothing()
     .run()
 }
 
@@ -51,7 +44,7 @@ export const getNotifyToken = (): string | null => {
   const value = env.trim()
   seedToDb(value)
   cached = value
-  log.info('notify_token seeded from env')
+  log.info({ key: NOTIFY_TOKEN_KEY }, 'notify_token seeded from env')
   return value
 }
 

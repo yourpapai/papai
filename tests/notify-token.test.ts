@@ -39,4 +39,9 @@ describe('notify-token', () => {
     delete process.env['NOTIFY_TOKEN']
     expect(getNotifyToken()).toBe('persisted')
   })
+
+  test('returns null when NOTIFY_TOKEN is whitespace only', () => {
+    process.env['NOTIFY_TOKEN'] = '   '
+    expect(getNotifyToken()).toBeNull()
+  })
 })
