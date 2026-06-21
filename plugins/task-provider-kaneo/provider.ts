@@ -51,6 +51,7 @@ import {
   kaneoSearchTasks,
   kaneoUpdateTask,
 } from './operations/tasks.js'
+import { kaneoListUsers } from './operations/users.js'
 import { buildProjectUrl, buildTaskUrl } from './url-builder.js'
 
 const log = logger.child({ scope: 'provider:kaneo' })
@@ -121,6 +122,10 @@ export class KaneoProvider implements TaskProvider {
 
   deleteTask(taskId: string): Promise<{ id: string }> {
     return kaneoDeleteTask(this.config, taskId)
+  }
+
+  listUsers(query?: string, limit?: number): Promise<import('papai/plugin-types').UserRef[]> {
+    return kaneoListUsers(this.config, this.workspaceId, query, limit)
   }
 
   listProjects(): Promise<Project[]> {

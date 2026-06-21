@@ -33,6 +33,7 @@ export const ALL_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapabil
   'statuses.update',
   'statuses.delete',
   'statuses.reorder',
+  'members.provision',
 ])
 
 export const KANEO_TRAITS: ReadonlySet<TaskProviderTrait> = new Set<TaskProviderTrait>([
