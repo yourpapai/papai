@@ -104,4 +104,15 @@ describe('handleNotifyRoute', () => {
     const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'user-1', markdown: 'x' }, 'GET'))
     expect(res.status).toBe(405)
   })
+
+  test('returns 400 on malformed JSON', async () => {
+    setRuntimeChatRouter(new RecordingRouter())
+    const req = new Request('http://x/api/notify', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer tok', 'Content-Type': 'application/json' },
+      body: '{not json',
+    })
+    const res = await handleNotifyRoute(req)
+    expect(res.status).toBe(400)
+  })
 })

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 
 import { z } from 'zod'
 
@@ -35,12 +35,21 @@ const bearerToken = (req: Request): string | null => {
 }
 
 const tokensMatch = (provided: string, expected: string): boolean => {
-  const a = Buffer.from(provided)
-  const b = Buffer.from(expected)
-  if (a.length !== b.length) return false
+  const a = createHash('sha256').update(provided).digest()
+  const b = createHash('sha256').update(expected).digest()
   return timingSafeEqual(a, b)
 }
 
+/**
+ * Build a delivery target from the notify payload.
+ *
+ * Delivery contract: when `contextType` is omitted, a thread-scoped storage
+ * context id is treated as a group, everything else as a DM. Callers MUST pass
+ * `contextType: 'group'` (and `threadId`) for non-thread group contexts, since a
+ * bare context id cannot be disambiguated from a DM user id. `threadId` is
+ * ignored for DM targets. `storageContextId` is always set so the platform
+ * instance resolves correctly regardless of the addressing fields.
+ */
 export const buildNotifyTarget = (body: NotifyBody): DeferredDeliveryTarget => {
   const storageContextId = body.contextId
   const isGroup =
@@ -55,6 +64,7 @@ export const buildNotifyTarget = (body: NotifyBody): DeferredDeliveryTarget => {
     threadId: body.threadId ?? null,
     audience: 'shared',
     mentionUserIds: [],
+    // service-posted notification: no originating user
     createdByUserId: '',
     createdByUsername: null,
     storageContextId,
@@ -69,6 +79,7 @@ export const handleNotifyRoute = async (req: Request): Promise<Response> => {
 
   const provided = bearerToken(req)
   if (provided === null || !tokensMatch(provided, expected)) {
+    log.warn('notify auth rejected: missing or invalid bearer token')
     return jsonResponse({ error: 'unauthorized' }, { status: 401 })
   }
 
