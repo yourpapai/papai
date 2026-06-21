@@ -16,6 +16,7 @@ import type {
   TaskListItem,
   TaskProvider,
   TaskSearchResult,
+  UserRef,
 } from 'papai/plugin-types'
 
 import { logger } from '../../src/logger.js'
@@ -34,6 +35,7 @@ import {
   kaneoRemoveTaskLabel,
   kaneoUpdateLabel,
 } from './operations/labels.js'
+import { kaneoProvisionMember } from './operations/members.js'
 import { kaneoCreateProject, kaneoDeleteProject, kaneoListProjects, kaneoUpdateProject } from './operations/projects.js'
 import { kaneoAddRelation, kaneoRemoveRelation, kaneoUpdateRelation } from './operations/relations.js'
 import {
@@ -124,8 +126,20 @@ export class KaneoProvider implements TaskProvider {
     return kaneoDeleteTask(this.config, taskId)
   }
 
-  listUsers(query?: string, limit?: number): Promise<import('papai/plugin-types').UserRef[]> {
+  listUsers(query?: string, limit?: number): Promise<UserRef[]> {
     return kaneoListUsers(this.config, this.workspaceId, query, limit)
+  }
+
+  provisionWorkspaceMember(
+    member: { chatUserId: string; displayName: string; username: string | null },
+    opts?: { existingProviderUserId?: string; existingLogin?: string; existingPassword?: string },
+  ): Promise<{ providerUserId: string; login: string; password: string }> {
+    const { existingProviderUserId, existingLogin, existingPassword } = opts ?? {}
+    const existing =
+      existingProviderUserId !== undefined && existingLogin !== undefined && existingPassword !== undefined
+        ? { providerUserId: existingProviderUserId, login: existingLogin, password: existingPassword }
+        : undefined
+    return kaneoProvisionMember(this.config, this.workspaceId, member, this.config.baseUrl, existing)
   }
 
   listProjects(): Promise<Project[]> {
