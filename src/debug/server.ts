@@ -17,6 +17,7 @@ import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { redactLogEntry } from './log-redaction.js'
 import { handleMcpStatus } from './mcp-routes.js'
+import { handleNotifyRoute } from './notify-route.js'
 import { handleAdminPluginConfigGet, handleAdminPluginConfigPost } from './plugin-config-routes.js'
 import {
   handleAuthGroups,
@@ -232,6 +233,8 @@ async function routeRequest(req: Request, options: WebServerRouteOptions = route
   }
 
   if (!options.debugEnabled && isDebugOnlyPath(url.pathname)) return new Response('Not found', { status: 404 })
+
+  if (url.pathname === '/api/notify') return handleNotifyRoute(req)
 
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
