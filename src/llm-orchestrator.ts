@@ -28,6 +28,7 @@ import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } f
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
+import { ensureWorkspaceMember } from './providers/membership/index.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { runRegistry } from './run-control/registry.js'
@@ -47,6 +48,16 @@ export const defaultDeps: LlmOrchestratorDeps = {
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   maybeAutoProvision: (reply, contextId, chatUserId, username) =>
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
+}
+
+/** Fire-and-forget workspace member provisioning backstop for group contexts. */
+const maybeEnsureGroupMembership = (configId: string, chatUserId: string, username: string | null): void => {
+  ensureWorkspaceMember(configId, chatUserId, undefined, { username }).catch((err: unknown) => {
+    log.warn(
+      { chatUserId, error: err instanceof Error ? err.message : String(err) },
+      'Backstop ensureWorkspaceMember failed',
+    )
+  })
 }
 
 const maybeAutoLinkIdentity = async (
@@ -147,6 +158,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   } else {
     await ensureRequiredConfig(reply, contextId, configId)
     await maybeAutoLinkIdentity(chatUserId, username, provider)
+    if (contextType === 'group') maybeEnsureGroupMembership(configId, chatUserId, username)
   }
   const invocationOpts = buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn)
   const invocationOptsWithResolver = {
