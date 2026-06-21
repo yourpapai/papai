@@ -87,6 +87,13 @@
     "src/chat/group-admin-live.ts": ["exports"],
     // clearBriefEmbeddingCachesForTesting is a test-only seam.
     "src/tools/disclosure/embedding-tool-retriever.ts": ["exports"],
+    // Membership provisioning service is created ahead of Phase 3 trigger wiring
+    // (group_member:added subscriber + startup backfill in src/index.ts).
+    // setProvisionedIdentityMapping is consumed by ensure-member.ts, but knip cannot
+    // trace the import because ensure-member.ts is excluded from analysis above.
+    "src/identity/mapping.ts": ["exports"],
+    "src/providers/membership/ensure-member.ts": ["files"],
+    "src/providers/membership/index.ts": ["files"],
     // Mattermost action context signing is created ahead of the action adapter integration.
     "src/chat/mattermost/action-signing.ts": ["files"],
     // Mattermost action callback route entry points are created ahead of the web server route wiring.
