@@ -129,6 +129,7 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   run_saved_query: read('query'),
 
   find_user: read('collaboration'),
+  resolve_chat_participant: read('collaboration'),
   get_current_user: read('identity'),
   list_watchers: read('collaboration'),
   add_watcher: write('collaboration', 'create'),
