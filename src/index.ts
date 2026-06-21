@@ -34,6 +34,7 @@ import {
   ensureWorkspaceMember,
   markMemberInactive,
   registerMembershipSubscriber,
+  runMembershipBackfill,
 } from './providers/membership/index.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
@@ -117,6 +118,17 @@ registerMembershipSubscriber({
     return Promise.resolve()
   },
 })
+
+// Fire-and-forget startup backfill: ensure every existing group member is provisioned.
+void runMembershipBackfill({
+  ensure: (groupContextId, chatUserId) => ensureWorkspaceMember(groupContextId, chatUserId, membershipDeps),
+})
+  .then((result) => {
+    log.info(result, 'Startup membership backfill finished')
+  })
+  .catch((err: unknown) => {
+    log.warn({ error: err instanceof Error ? err.message : String(err) }, 'Startup membership backfill failed')
+  })
 
 log.info(
   {
