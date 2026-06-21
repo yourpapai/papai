@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { kaneoProvisionMember } from '../../../../plugins/task-provider-kaneo/operations/members.js'
+import { kaneoProvisionMember, toEmailLocalPart } from '../../../../plugins/task-provider-kaneo/operations/members.js'
 import { KaneoProvider } from '../../../../plugins/task-provider-kaneo/provider.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
@@ -69,8 +69,40 @@ function parseHeaders(init: RequestInit): Record<string, string> {
 }
 
 // ---------------------------------------------------------------------------
+// Error-response factories
+// ---------------------------------------------------------------------------
+
+function errorResponse(status: number, message: string): Response {
+  return new Response(message, { status })
+}
+
+// ---------------------------------------------------------------------------
 // Module-level mock handlers (no conditionals inside test bodies)
 // ---------------------------------------------------------------------------
+
+function signUpFailsHandler(url: string): Promise<Response> {
+  if (url.includes('/api/auth/sign-up/email')) return Promise.resolve(errorResponse(500, 'internal error'))
+  return Promise.resolve(new Response('unexpected', { status: 500 }))
+}
+
+function inviteFailsHandler(url: string): Promise<Response> {
+  if (url.includes('/api/auth/sign-up/email')) return Promise.resolve(signUpResponse('uid-x', 'tok-x'))
+  if (url.includes('/api/auth/organization/invite-member')) return Promise.resolve(errorResponse(403, 'forbidden'))
+  return Promise.resolve(new Response('unexpected', { status: 500 }))
+}
+
+function acceptFailsHandler(url: string): Promise<Response> {
+  if (url.includes('/api/auth/sign-up/email')) return Promise.resolve(signUpResponse('uid-y', 'tok-y'))
+  if (url.includes('/api/auth/organization/invite-member')) return Promise.resolve(inviteResponse('inv-y'))
+  if (url.includes('/api/auth/organization/accept-invitation'))
+    return Promise.resolve(errorResponse(422, 'unprocessable'))
+  return Promise.resolve(new Response('unexpected', { status: 500 }))
+}
+
+function signInFailsHandler(url: string): Promise<Response> {
+  if (url.includes('/api/auth/sign-in/email')) return Promise.resolve(errorResponse(401, 'unauthorized'))
+  return Promise.resolve(new Response('unexpected', { status: 500 }))
+}
 
 type MockCall = { url: string; body: unknown; headers: Record<string, string> }
 
@@ -78,7 +110,11 @@ let newMemberCalls: MockCall[] = []
 let reuseCalls: { url: string; body: unknown }[] = []
 
 function newMemberHandler(url: string, init: RequestInit): Promise<Response> {
-  newMemberCalls.push({ url, body: parseBody(init), headers: parseHeaders(init) })
+  newMemberCalls.push({
+    url,
+    body: parseBody(init),
+    headers: parseHeaders(init),
+  })
   if (url.includes('/api/auth/sign-up/email'))
     return Promise.resolve(signUpResponse('new-user-id', 'member-session-token'))
   if (url.includes('/api/auth/organization/invite-member')) return Promise.resolve(inviteResponse('inv-001'))
@@ -118,7 +154,12 @@ describe('KaneoProvider.listUsers', () => {
       Promise.resolve(
         new Response(
           JSON.stringify([
-            { id: 'u1', name: 'Alice', email: 'alice@example.com', role: 'member' },
+            {
+              id: 'u1',
+              name: 'Alice',
+              email: 'alice@example.com',
+              role: 'member',
+            },
             { id: 'u2', name: 'Bob', email: 'bob@example.com', role: 'admin' },
           ]),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -128,7 +169,11 @@ describe('KaneoProvider.listUsers', () => {
     const provider = makeProvider()
     const result = await provider.listUsers()
     expect(result).toHaveLength(2)
-    expect(result[0]).toMatchObject({ id: 'u1', login: 'alice@example.com', name: 'Alice' })
+    expect(result[0]).toMatchObject({
+      id: 'u1',
+      login: 'alice@example.com',
+      name: 'Alice',
+    })
     restoreFetch()
   })
 
@@ -158,12 +203,18 @@ describe('kaneoProvisionMember', () => {
     expect(result.providerUserId).toBe('new-user-id')
     expect(result.login).toMatch(/@pap\.ai$/u)
     expect(result.password).toBeTruthy()
+    // RFC-valid: exactly one '@', no ':'
+    expect(result.login.split('@')).toHaveLength(2)
+    expect(result.login).not.toContain(':')
 
     const signUpCall = newMemberCalls.find((c) => c.url.includes('/api/auth/sign-up/email'))
     expect(signUpCall?.body).toMatchObject({ name: 'Alice Liddell' })
 
     const inviteCall = newMemberCalls.find((c) => c.url.includes('/api/auth/organization/invite-member'))
-    expect(inviteCall?.body).toMatchObject({ organizationId: WORKSPACE_ID, role: 'member' })
+    expect(inviteCall?.body).toMatchObject({
+      organizationId: WORKSPACE_ID,
+      role: 'member',
+    })
     // invite uses the SERVICE credential (api-key), not the member cookie
     expect(inviteCall?.headers['authorization']).toMatch(/^Bearer /u)
 
@@ -197,7 +248,11 @@ describe('kaneoProvisionMember', () => {
       WORKSPACE_ID,
       { chatUserId: 'chat-3', displayName: 'Carol', username: 'carol' },
       'http://kaneo-public',
-      { providerUserId: 'existing-uid', login: 'carol@pap.ai', password: 'StoredPass1!Aa' },
+      {
+        providerUserId: 'existing-uid',
+        login: 'carol@pap.ai',
+        password: 'StoredPass1!Aa',
+      },
     )
 
     expect(result.providerUserId).toBe('existing-uid')
@@ -208,13 +263,131 @@ describe('kaneoProvisionMember', () => {
     const signUpCall = reuseCalls.find((c) => c.url.includes('/api/auth/sign-up/email'))
     expect(signUpCall).toBeUndefined()
     const signInCall = reuseCalls.find((c) => c.url.includes('/api/auth/sign-in/email'))
-    expect(signInCall?.body).toMatchObject({ email: 'carol@pap.ai', password: 'StoredPass1!Aa' })
+    expect(signInCall?.body).toMatchObject({
+      email: 'carol@pap.ai',
+      password: 'StoredPass1!Aa',
+    })
 
     const inviteCall = reuseCalls.find((c) => c.url.includes('/api/auth/organization/invite-member'))
-    expect(inviteCall?.body).toMatchObject({ organizationId: WORKSPACE_ID, role: 'member' })
+    expect(inviteCall?.body).toMatchObject({
+      organizationId: WORKSPACE_ID,
+      role: 'member',
+    })
 
     const acceptCall = reuseCalls.find((c) => c.url.includes('/api/auth/organization/accept-invitation'))
     expect(acceptCall?.body).toMatchObject({ invitationId: 'inv-reuse' })
+
+    restoreFetch()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// toEmailLocalPart — pure helper unit tests
+// ---------------------------------------------------------------------------
+
+describe('toEmailLocalPart', () => {
+  test('strips leading @ and drops server suffix from Matrix ID', () => {
+    expect(toEmailLocalPart('@john:chat.company.com')).toBe('john')
+  })
+
+  test('passes through plain username unchanged', () => {
+    expect(toEmailLocalPart('alice')).toBe('alice')
+  })
+
+  test('passes through numeric Telegram user ID unchanged', () => {
+    expect(toEmailLocalPart('123456789')).toBe('123456789')
+  })
+
+  test('replaces spaces and special chars with dashes, collapses repeats, trims', () => {
+    expect(toEmailLocalPart('foo bar  baz')).toBe('foo-bar-baz')
+  })
+
+  test('falls back to sanitized fallback when base sanitizes to empty', () => {
+    // A string of only characters not in [A-Za-z0-9._-] after stripping @ and server suffix
+    // e.g. just "@:" — after strip @ → "", cut at : already done → "" → falls back
+    expect(toEmailLocalPart('@:illegal', 'fallback-user')).toBe('fallback-user')
+  })
+
+  test('returns "user" when both base and fallback sanitize to empty', () => {
+    expect(toEmailLocalPart('@:', '')).toBe('user')
+  })
+
+  test('strips leading @ before applying character replacement', () => {
+    // @alice.smith:host → after strip @ → alice.smith:host → cut at : → alice.smith
+    expect(toEmailLocalPart('@alice.smith:host')).toBe('alice.smith')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// kaneoProvisionMember — error-path tests (FIX 2)
+// ---------------------------------------------------------------------------
+
+describe('kaneoProvisionMember error paths', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('throws when sign-up returns non-2xx', async () => {
+    setMockFetch(signUpFailsHandler)
+
+    await expect(
+      kaneoProvisionMember(
+        TEST_CONFIG,
+        WORKSPACE_ID,
+        { chatUserId: 'chat-err', displayName: 'Err', username: null },
+        'http://kaneo-public',
+      ),
+    ).rejects.toThrow(/sign-up failed.*500/u)
+
+    restoreFetch()
+  })
+
+  test('throws when invite-member returns non-2xx', async () => {
+    setMockFetch(inviteFailsHandler)
+
+    await expect(
+      kaneoProvisionMember(
+        TEST_CONFIG,
+        WORKSPACE_ID,
+        { chatUserId: 'chat-err2', displayName: 'Err2', username: null },
+        'http://kaneo-public',
+      ),
+    ).rejects.toThrow(/invite-member failed.*403/u)
+
+    restoreFetch()
+  })
+
+  test('throws when accept-invitation returns non-2xx', async () => {
+    setMockFetch(acceptFailsHandler)
+
+    await expect(
+      kaneoProvisionMember(
+        TEST_CONFIG,
+        WORKSPACE_ID,
+        { chatUserId: 'chat-err3', displayName: 'Err3', username: null },
+        'http://kaneo-public',
+      ),
+    ).rejects.toThrow(/accept-invitation failed.*422/u)
+
+    restoreFetch()
+  })
+
+  test('throws when sign-in returns non-2xx (reuse path)', async () => {
+    setMockFetch(signInFailsHandler)
+
+    await expect(
+      kaneoProvisionMember(
+        TEST_CONFIG,
+        WORKSPACE_ID,
+        { chatUserId: 'chat-err4', displayName: 'Err4', username: 'err4' },
+        'http://kaneo-public',
+        {
+          providerUserId: 'uid-reuse',
+          login: 'err4@pap.ai',
+          password: 'Pass1!Aa',
+        },
+      ),
+    ).rejects.toThrow(/sign-in failed.*401/u)
 
     restoreFetch()
   })

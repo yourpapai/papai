@@ -10,6 +10,47 @@ import type { KaneoConfig } from '../client.js'
 
 const log = logger.child({ scope: 'kaneo:members' })
 
+/**
+ * Converts an arbitrary user identifier (username or chatUserId) into a valid
+ * RFC 5321 email local-part:
+ *   1. Strip a leading `@` (Matrix/Kontur Talk IDs start with `@`).
+ *   2. Drop anything from the first remaining `@` or `:` onward
+ *      (Matrix server suffix looks like `:chat.company.com`).
+ *   3. Replace any character not in `[A-Za-z0-9._-]` with `-`.
+ *   4. Collapse consecutive `-` into one.
+ *   5. Strip leading/trailing `-`.
+ *   6. If the result is empty, apply the same sanitization to `fallback`
+ *      and return it (or `'user'` when that too is empty).
+ *
+ * Examples:
+ *   `@john:chat.company.com` → `john`
+ *   `alice`                  → `alice`
+ *   `123456789`              → `123456789`
+ *   all-illegal chars        → falls back to sanitized `fallback`
+ */
+export function toEmailLocalPart(base: string, fallback?: string): string {
+  const sanitize = (s: string): string => {
+    let v = s
+    // Strip leading @
+    if (v.startsWith('@')) v = v.slice(1)
+    // Drop from first @ or : onward
+    const cut = v.search(/[@:]/u)
+    if (cut !== -1) v = v.slice(0, cut)
+    // Replace invalid chars, collapse, trim
+    v = v
+      .replace(/[^A-Za-z0-9._-]/gu, '-')
+      .replace(/-{2,}/gu, '-')
+      .replace(/^-|-$/gu, '')
+    return v
+  }
+
+  const result = sanitize(base)
+  if (result.length > 0) return result
+
+  const fb = sanitize(fallback ?? '')
+  return fb.length > 0 ? fb : 'user'
+}
+
 // Schemas for Better Auth responses (auth endpoints, not Kaneo API)
 const AuthResponseSchema = z.object({
   user: z.object({ id: z.string() }),
@@ -109,7 +150,11 @@ async function doInviteMember(
   const res = await fetch(`${serviceConfig.baseUrl}/api/auth/organization/invite-member`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ email, role: 'member', organizationId: workspaceId }),
+    body: JSON.stringify({
+      email,
+      role: 'member',
+      organizationId: workspaceId,
+    }),
   })
   if (!res.ok) {
     throw new Error(`invite-member failed (${res.status}): ${await res.text()}`)
@@ -170,6 +215,12 @@ export type ProvisionMemberResult = {
  * Returns the member's provider ID, login (email), and password. The password is:
  *   - Generated fresh for new members (caller MUST persist it encrypted).
  *   - The stored value passed back unchanged for reuse (so the caller can re-save it).
+ *
+ * v1 limitation — partial-failure orphan risk: this flow is not idempotent. If sign-up
+ * succeeds but a subsequent invite or accept step fails, a retry will create a second
+ * Better Auth account (orphaning the first). Re-inviting a still-pending invitation may
+ * also produce an error from Kaneo. Full idempotency (resume-by-stored-state /
+ * already-invited detection) is deferred to a future iteration.
  */
 export async function kaneoProvisionMember(
   /** Service account config (the group's stored kaneoKey + baseUrl). */
@@ -184,8 +235,14 @@ export async function kaneoProvisionMember(
    */
   existing?: { providerUserId: string; login: string; password: string },
 ): Promise<ProvisionMemberResult> {
-  log.info(
-    { chatUserId: member.chatUserId, displayName: member.displayName, reuse: existing !== undefined },
+  log.debug(
+    {
+      chatUserId: member.chatUserId,
+      displayName: member.displayName,
+      workspaceId,
+      publicUrl,
+      reuse: existing !== undefined,
+    },
     'Provisioning Kaneo member',
   )
 
@@ -197,8 +254,8 @@ export async function kaneoProvisionMember(
   if (existing === undefined) {
     // New member path: generate email and password, sign up.
     const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-    const emailBase = member.username ?? member.chatUserId
-    login = `${emailBase}-${uniqueSuffix}@pap.ai`
+    const localPart = toEmailLocalPart(member.username ?? member.chatUserId, member.chatUserId)
+    login = `${localPart}-${uniqueSuffix}@pap.ai`
     password = generateMemberPassword()
     const signUp = await doMemberSignUp(serviceConfig.baseUrl, publicUrl, login, password, member.displayName)
     userId = signUp.userId
