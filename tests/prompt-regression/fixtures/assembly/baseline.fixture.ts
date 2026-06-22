@@ -311,8 +311,11 @@ export const assemblyFixtures: readonly AssemblyFixture[] = [
       prompt: {
         mustContain: [
           'example_1_id: ambiguous-task-target',
+          'example_1_text: User asks to update an unclear task. Assistant searches, finds multiple plausible matches, and asks one short clarification question before mutating anything.',
           'example_2_id: confirmation-declined',
+          'example_2_text: User declines a destructive confirmation. Assistant acknowledges and does not retry the destructive tool.',
           'example_3_id: ask-gated-tool-permission',
+          'example_3_text: Tool requires permission. Assistant asks for permission with _permission_reason before calling the tool.',
         ],
       },
     },
