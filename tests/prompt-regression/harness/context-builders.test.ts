@@ -3,13 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { getConfigValue } from '../../../src/config.js'
+import { STRUCTURED_PROMPT_SURFACE_KEY } from '../../../src/prompt-surface/config.js'
+import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 import { buildPromptRegressionContext } from './context-builders.js'
 import type { PromptRegressionSetup } from './fixture-types.js'
 
 describe('buildPromptRegressionContext', () => {
   const setup: PromptRegressionSetup = { contextType: 'dm', provider: 'kaneo' }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
 
   test('uses fixture id for deterministic default context isolation', () => {
     const ctx = buildPromptRegressionContext(setup, 'assembly-ask-gated-tool-preference')
@@ -41,6 +49,18 @@ describe('buildPromptRegressionContext', () => {
     )
 
     expect([...ctx.enabledToolNames].toSorted()).toEqual(['ask_permission', 'create_task'])
+  })
+
+  test('translates structured prompt fixture flag into context config', () => {
+    const ctx = buildPromptRegressionContext(
+      {
+        ...setup,
+        flags: { structured_prompt_surface: true },
+      },
+      'assembly-structured-flag',
+    )
+
+    expect(getConfigValue(ctx.contextId, STRUCTURED_PROMPT_SURFACE_KEY)).toBe('on')
   })
 
   test('does not yet translate memory or flags into built context', () => {

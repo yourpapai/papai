@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { setConfigValue } from '../../../src/config.js'
+import { STRUCTURED_PROMPT_SURFACE_KEY } from '../../../src/prompt-surface/config.js'
 import type { TaskProvider } from '../../../src/providers/types.js'
 import { partitionToolNames, setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
 import { createMockProvider } from '../../tools/mock-provider.js'
@@ -22,6 +24,12 @@ function buildToolPrefs(setup: PromptRegressionSetup): ToolPrefs {
   return { domainDefaults: {}, toolOverrides }
 }
 
+function applyFixtureFlags(contextId: string, setup: PromptRegressionSetup): void {
+  if (setup.flags?.['structured_prompt_surface'] === true) {
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+  }
+}
+
 export function buildPromptRegressionContext(
   setup: PromptRegressionSetup,
   fixtureId?: string,
@@ -35,6 +43,8 @@ export function buildPromptRegressionContext(
   const prefs = buildToolPrefs(setup)
   if (Object.keys(prefs.toolOverrides).length > 0) setToolPrefs(contextId, prefs)
   const enabledToolNames = partitionToolNames(prefs, configuredToolNames).exposed
+
+  applyFixtureFlags(contextId, setup)
 
   return { contextId, chatUserId, provider, enabledToolNames }
 }
