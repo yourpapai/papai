@@ -216,8 +216,14 @@ export const invokeModel = async (
   const start = Date.now()
   const systemPrompt =
     provider === null
-      ? buildProviderlessSystemPrompt(contextId, enabledToolNames, { askPermissionAvailable: true })
-      : buildSystemPrompt(provider, contextId, enabledToolNames, { askPermissionAvailable: true })
+      ? buildProviderlessSystemPrompt(contextId, enabledToolNames, {
+          askPermissionAvailable: true,
+          contextType,
+        })
+      : buildSystemPrompt(provider, contextId, enabledToolNames, {
+          askPermissionAvailable: true,
+          contextType,
+        })
   emitLlmStart(contextId, mainModel, messages, tools, turnId)
   const ctx: ToolCallContext = {
     contextId,

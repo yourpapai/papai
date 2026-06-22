@@ -9,7 +9,11 @@ import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { filterProviderlessPluginIds } from './plugins/providerless.js'
 import { getPluginsForContext } from './plugins/registry.js'
 import { isStructuredPromptSurfaceEnabled } from './prompt-surface/config.js'
-import { buildPromptSurfaceModel, type PromptSurfaceMode } from './prompt-surface/model.js'
+import {
+  buildPromptSurfaceModel,
+  type PromptSurfaceContextType,
+  type PromptSurfaceMode,
+} from './prompt-surface/model.js'
 import { renderStructuredPromptSurface } from './prompt-surface/renderer.js'
 import type { TaskProvider } from './providers/types.js'
 import { getToolMetadata, TOOL_METADATA } from './tools/tool-metadata.js'
@@ -177,6 +181,11 @@ interface AssembleOptions {
   readonly deferredFragmentText?: string
 }
 
+type PromptBuildOptions = Readonly<{
+  askPermissionAvailable: boolean
+  contextType?: PromptSurfaceContextType
+}>
+
 function assembleSystemPrompt(
   intro: string,
   contextId: string,
@@ -211,12 +220,7 @@ function assembleSystemPrompt(
 function appendSection(basePrompt: string, section: string): string {
   const trimmed = section.trim()
   if (trimmed === '') return basePrompt
-  if (basePrompt === '') return trimmed
-  return `${basePrompt}\n\n${trimmed}`
-}
-
-function appendPromptAddendum(basePrompt: string, addendum: string): string {
-  return appendSection(basePrompt, addendum)
+  return basePrompt === '' ? trimmed : `${basePrompt}\n\n${trimmed}`
 }
 
 function buildStructuredPrompt(
@@ -224,7 +228,7 @@ function buildStructuredPrompt(
   contextId: string,
   sharedContextId: string,
   enabledToolNames: ReadonlySet<string>,
-  options: AssembleOptions,
+  options: PromptBuildOptions,
   providerAddendum: string,
 ): string {
   const activePluginIds = getPluginsForContext(sharedContextId).map((plugin) => plugin.manifest.id)
@@ -235,7 +239,7 @@ function buildStructuredPrompt(
   return renderStructuredPromptSurface(
     buildPromptSurfaceModel({
       mode,
-      contextType: 'dm',
+      contextType: options.contextType ?? 'dm',
       contextId,
       enabledToolNames,
       askPermissionAvailable: options.askPermissionAvailable,
@@ -248,10 +252,13 @@ function buildStructuredPrompt(
 export function buildSystemPrompt(
   provider: TaskProvider,
   contextId: string,
-  ...args: readonly [ReadonlySet<string>, { askPermissionAvailable: boolean }?] | readonly []
+  ...args: readonly [ReadonlySet<string>, PromptBuildOptions?] | readonly []
 ): string {
   const enabledToolNames = args[0]
-  const options: AssembleOptions = { askPermissionAvailable: args[1]?.askPermissionAvailable ?? true }
+  const options: PromptBuildOptions = {
+    askPermissionAvailable: args[1]?.askPermissionAvailable ?? true,
+    contextType: args[1]?.contextType,
+  }
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const providerAddendum = provider.getPromptAddendum()
   if (enabledToolNames !== undefined && isStructuredPromptSurfaceEnabled(sharedContextId)) {
@@ -266,7 +273,7 @@ export function buildSystemPrompt(
   }
   const basePrompt = assembleSystemPrompt(CORE_INTRO, contextId, enabledToolNames, options)
   return appendSection(
-    appendPromptAddendum(basePrompt, providerAddendum),
+    appendSection(basePrompt, providerAddendum),
     buildPluginPromptSection(getPluginsForContext(sharedContextId).map((plugin) => plugin.manifest.id)),
   )
 }
@@ -274,7 +281,7 @@ export function buildSystemPrompt(
 export function buildProviderlessSystemPrompt(
   contextId: string,
   enabledToolNames: ReadonlySet<string>,
-  options: { askPermissionAvailable: boolean } = { askPermissionAvailable: true },
+  options: PromptBuildOptions = { askPermissionAvailable: true },
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   if (isStructuredPromptSurfaceEnabled(sharedContextId)) {

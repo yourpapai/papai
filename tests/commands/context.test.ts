@@ -15,7 +15,9 @@ import {
   safeBuildProvider,
 } from '../../src/commands/context-tool-resolution.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
+import { setConfigValue } from '../../src/config.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
+import { STRUCTURED_PROMPT_SURFACE_KEY } from '../../src/prompt-surface/config.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { buildProviderlessSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
@@ -561,6 +563,40 @@ describe('registerContextCommand', () => {
       askPermissionAvailable: true,
     })
     expect(capturedPrompt).toBe(expectedPrompt)
+  })
+
+  test('threads group context type into the structured providerless prompt', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const chat = createMockChat({ commandHandlers: commands })
+    let capturedPrompt = ''
+    const groupContextId = 'group-structured-context'
+    setConfigValue(groupContextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        buildProvider: () => null,
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          capturedPrompt = collectorDeps.buildSystemPrompt()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+
+    const { reply } = createMockReply()
+    await handler(createGroupMessage('actor-user', '/context', false, groupContextId), reply, {
+      ...createAuth('actor-user'),
+      storageContextId: groupContextId,
+    })
+
+    expect(capturedPrompt).toContain('context_type: group')
+    expect(capturedPrompt).toContain('group-context-quiet')
   })
 
   test('uses resolved active tool surface when building provider-backed system prompt', async () => {

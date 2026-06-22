@@ -198,7 +198,7 @@ async function prepareFullGenerationInput(
     deliveryTarget.contextType,
     prompt,
   )
-  const systemPrompt = buildFullSystemPrompt(provider, storageContextId, enabledToolNames)
+  const systemPrompt = buildFullSystemPrompt(provider, storageContextId, enabledToolNames, deliveryTarget.contextType)
   const { messages } = buildFullMessages(
     createdByUserId,
     storageContextId,

@@ -179,6 +179,32 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('WORKFLOW:')
   })
 
+  test('uses structured group metadata and example when contextType is group', () => {
+    const contextId = 'ctx-structured-group'
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+
+    const prompt = buildSystemPrompt(provider, contextId, new Set(['get_current_time']), {
+      askPermissionAvailable: true,
+      contextType: 'group',
+    })
+
+    expect(prompt).toContain('context_type: group')
+    expect(prompt).toContain('example_1_id: group-context-quiet')
+  })
+
+  test('does not include the group example for structured dm prompts', () => {
+    const contextId = 'ctx-structured-dm'
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+
+    const prompt = buildSystemPrompt(provider, contextId, new Set(['get_current_time']), {
+      askPermissionAvailable: true,
+      contextType: 'dm',
+    })
+
+    expect(prompt).toContain('context_type: dm')
+    expect(prompt).not.toContain('group-context-quiet')
+  })
+
   test('keeps the no-arg buildSystemPrompt overload on the legacy renderer even when the flag is enabled', () => {
     const contextId = 'ctx-structured-no-arg-legacy'
     setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')

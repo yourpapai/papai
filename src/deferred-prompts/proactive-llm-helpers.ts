@@ -146,10 +146,17 @@ export const buildFullSystemPrompt = (
   provider: TaskProvider | null,
   storageContextId: string,
   enabledToolNames: ReadonlySet<string>,
+  contextType: 'dm' | 'group' = 'dm',
 ): string =>
   provider === null
-    ? buildProviderlessSystemPrompt(storageContextId, enabledToolNames, { askPermissionAvailable: false })
-    : buildSystemPrompt(provider, storageContextId, enabledToolNames, { askPermissionAvailable: false })
+    ? buildProviderlessSystemPrompt(storageContextId, enabledToolNames, {
+        askPermissionAvailable: false,
+        contextType,
+      })
+    : buildSystemPrompt(provider, storageContextId, enabledToolNames, {
+        askPermissionAvailable: false,
+        contextType,
+      })
 
 export async function resolveFullProvider(
   buildProviderFn: BuildProviderFn,

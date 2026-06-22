@@ -97,9 +97,11 @@ async function buildCollectorDeps(
       provider === null
         ? buildProviderlessSystemPrompt(storageContextId, new Set(Object.keys(resolvedToolSurface.definitions)), {
             askPermissionAvailable: true,
+            contextType,
           })
         : buildSystemPromptImpl(provider, storageContextId, new Set(Object.keys(resolvedToolSurface.definitions)), {
             askPermissionAvailable: true,
+            contextType,
           }),
     buildInstructionsBlock: () => buildInstructionsBlock(storageContextId),
     getProviderAddendum: () => (provider === null ? '' : provider.getPromptAddendum()),

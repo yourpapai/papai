@@ -3,13 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
+import { setConfigValue } from '../../src/config.js'
 import * as conversationModule from '../../src/conversation.js'
 import {
+  buildFullSystemPrompt,
   buildMetadataMessages,
   buildMinimalSystemPrompt,
   getStorageContextId,
@@ -24,6 +26,8 @@ import {
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import * as historyModule from '../../src/history.js'
 import * as memoryRunnerModule from '../../src/long-term-memory/runner.js'
+import { STRUCTURED_PROMPT_SURFACE_KEY } from '../../src/prompt-surface/config.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const dmTarget: DeferredDeliveryTarget = {
   contextId: 'user-1',
@@ -37,6 +41,11 @@ const dmTarget: DeferredDeliveryTarget = {
 
 describe('proactive-llm-helpers', () => {
   const spies: Array<{ mockRestore: () => void }> = []
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
 
   afterEach(() => {
     for (const spy of spies) spy.mockRestore()
@@ -92,6 +101,15 @@ describe('proactive-llm-helpers', () => {
       { role: 'system', content: '[CONTEXT FROM CREATION TIME]\nSnapshot' },
     ])
     expect(wrapPrompt('drink water')).toBe('===DEFERRED_TASK===\ndrink water\n===END_DEFERRED_TASK===')
+  })
+
+  test('buildFullSystemPrompt threads group context type into the structured prompt', () => {
+    setConfigValue('-1001:42', STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+
+    const prompt = buildFullSystemPrompt(null, '-1001:42', new Set(['get_current_time']), 'group')
+
+    expect(prompt).toContain('context_type: group')
+    expect(prompt).toContain('group-context-quiet')
   })
 
   test('context-mode persistence triggers long-term extraction when trimming', () => {
