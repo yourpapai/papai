@@ -1,0 +1,31 @@
+{
+  "id": "acp",
+  "name": "ACP Coding Sessions",
+  "version": "1.0.0",
+  "description": "Drive sandboxed AI coding-agent sessions via the magi control service",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "contributes": {
+    "tools": [
+      "start_session",
+      "list_sessions",
+      "session_status",
+      "finish_session",
+      "cancel_session",
+      "answer_permission",
+      "review_pr",
+      "list_projects",
+      "list_agents"
+    ],
+    "commands": ["acp"],
+    "promptFragments": ["acp-hint"]
+  },
+  "permissions": ["http", "storage", "commands"],
+  "providerAllowedHostsFromConfig": ["magi_base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "magi_base_url", "label": "Magi Base URL", "required": true, "sensitive": false, "scope": "admin" },
+    { "key": "magi_token", "label": "Magi Bearer Token", "required": true, "sensitive": true, "scope": "admin" }
+  ],
+  "activationTimeoutMs": 5000
+}
