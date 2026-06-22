@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { beforeEach, describe, expect, test } from 'bun:test'
+
+import { buildPromptSurfaceModel } from '../../src/prompt-surface/model.js'
+import { setToolPrefs } from '../../src/tools/tool-preferences.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+describe('buildPromptSurfaceModel', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('derives capability domains from enabled tool names', () => {
+    const model = buildPromptSurfaceModel({
+      mode: 'task-provider',
+      contextId: 'ctx-model-capabilities',
+      enabledToolNames: new Set(['create_task', 'web_fetch', 'get_current_time']),
+      askPermissionAvailable: true,
+      providerAddendum: '',
+      pluginGuidance: '',
+    })
+
+    expect(model.capabilities.availableDomains).toEqual(['task', 'time', 'web'])
+    expect(model.capabilities.enabledToolNames).toEqual(['create_task', 'get_current_time', 'web_fetch'])
+    expect(model.capabilities.providerless).toBe(false)
+  })
+
+  test('summarizes denied and ask-gated tools', () => {
+    setToolPrefs('ctx-model-prefs', {
+      domainDefaults: {},
+      toolOverrides: { delete_task: 'ask', delete_project: 'deny' },
+    })
+
+    const model = buildPromptSurfaceModel({
+      mode: 'task-provider',
+      contextId: 'ctx-model-prefs',
+      enabledToolNames: new Set(['create_task', 'delete_task']),
+      askPermissionAvailable: true,
+      providerAddendum: '',
+      pluginGuidance: '',
+    })
+
+    expect(model.capabilities.askGatedTools).toEqual(['delete_task'])
+    expect(model.capabilities.deniedTools).toEqual(['delete_project'])
+  })
+
+  test('selects relevant examples from mode and tools', () => {
+    const model = buildPromptSurfaceModel({
+      mode: 'providerless',
+      contextId: 'ctx-model-examples',
+      enabledToolNames: new Set(['get_current_time']),
+      askPermissionAvailable: true,
+      providerAddendum: '',
+      pluginGuidance: '',
+    })
+
+    expect(model.examples.map((example) => example.id)).toContain('missing-provider-tools')
+    expect(model.examples.map((example) => example.id)).not.toContain('ask-gated-tool-permission')
+  })
+})
