@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { callMagi, NOT_CONFIGURED, readMagiConfig } from './client.js'
+import { asObject, asString, callMagi, NOT_CONFIGURED, optionalString, readMagiConfig } from './client.js'
 import type { HttpFetch } from './client.js'
-import { emptySchema } from './schemas.js'
+import { emptySchema, startSessionSchema } from './schemas.js'
 
 // Local structural tool types (mirrors plugins/synthetic-web-search): the real PluginTool.inputSchema
 // is z.ZodType, but plugins cannot static-import zod (discovery rejects bare-module imports),
@@ -80,6 +80,42 @@ function extractActivationContext(ctx: unknown): ActivationContext {
   return { registerTool, registerFragment, logInfo, httpFetch }
 }
 
+const DEFAULT_AGENT = 'claude-code-acp'
+
+function sessionIdOf(result: unknown): string | null {
+  if (typeof result !== 'object' || result === null) return null
+  const map: Map<string, unknown> = new Map(Object.entries(result))
+  const id = map.get('id')
+  return typeof id === 'string' && id.length > 0 ? id : null
+}
+
+function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
+  return {
+    name: 'start_session',
+    description: 'Start a sandboxed coding-agent session on a configured project.',
+    inputSchema: startSessionSchema,
+    execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
+      const cfg = readMagiConfig(runtimeContext.adminConfig)
+      if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
+      const args = asObject(input)
+      const project = asString(args, 'project')
+      const prompt = asString(args, 'prompt')
+      if (project === null || prompt === null)
+        return { error: 'invalid_input', message: 'project and prompt are required' }
+      const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
+      const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
+        project,
+        agent,
+        contextId: runtimeContext.storageContextId,
+        prompt,
+      })
+      const id = sessionIdOf(result)
+      if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
+      return result
+    },
+  }
+}
+
 function getTool(name: string, description: string, path: string, httpFetch: HttpFetch | undefined): Tool {
   return {
     name,
@@ -98,6 +134,7 @@ const factory = (): { activate(ctx: unknown): void } => ({
     const ctx = extractActivationContext(rawCtx)
     ctx.registerTool(getTool('list_projects', 'List coding projects configured in magi.', '/projects', ctx.httpFetch))
     ctx.registerTool(getTool('list_agents', 'List coding agents available in magi.', '/agents', ctx.httpFetch))
+    ctx.registerTool(startSessionTool(ctx.httpFetch))
     ctx.logInfo({}, 'acp plugin activated')
   },
 })

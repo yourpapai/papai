@@ -16,6 +16,21 @@ export function readMagiConfig(adminConfig: AdminConfigReader): MagiConfig | nul
   return { baseUrl: baseUrl.trim().replace(/\/+$/u, ''), token: token.trim() }
 }
 
+export function asObject(input: unknown): Record<string, unknown> {
+  if (typeof input === 'object' && input !== null) return Object.fromEntries(Object.entries(input))
+  return {}
+}
+
+export function asString(input: Record<string, unknown>, key: string): string | null {
+  const v = input[key]
+  return typeof v === 'string' && v.length > 0 ? v : null
+}
+
+export function optionalString(input: Record<string, unknown>, key: string): string | undefined {
+  const v = input[key]
+  return typeof v === 'string' && v.length > 0 ? v : undefined
+}
+
 export async function callMagi(
   httpFetch: HttpFetch,
   cfg: MagiConfig,
