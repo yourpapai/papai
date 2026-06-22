@@ -215,6 +215,25 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('<role>')
     expect(prompt).not.toContain('<capabilities>')
   })
+
+  test('structured prompt includes provider addendum and configured plugin fragments in bounded sections', () => {
+    const contextId = 'ctx-structured-plugin-addendum'
+    const pluginId = 'structured-configured-plugin'
+    registerPromptPlugin(makePromptPlugin(pluginId), 'STRUCTURED_PLUGIN_GUIDANCE')
+    setPluginConfig(contextId, pluginId, 'api_token', 'secret-token')
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+
+    const structuredProvider = createMockProvider({
+      getPromptAddendum: () => 'STRUCTURED_PROVIDER_ADDENDUM',
+    })
+    const prompt = buildSystemPrompt(structuredProvider, contextId, new Set(['create_task']))
+
+    expect(prompt).toContain('<provider_addendum>\nSTRUCTURED_PROVIDER_ADDENDUM\n</provider_addendum>')
+    expect(prompt).toContain('<plugin_guidance>')
+    expect(prompt).toContain('STRUCTURED_PLUGIN_GUIDANCE')
+
+    contributionRegistry.deregister(pluginId)
+  })
 })
 
 describe('buildProviderlessSystemPrompt', () => {
@@ -334,6 +353,26 @@ describe('buildProviderlessSystemPrompt', () => {
     expect(prompt).toContain('task-tracker tools are unavailable')
     expect(prompt).toContain('example_1_id: missing-provider-tools')
     expect(prompt).not.toContain('SCHEDULED PROMPTS')
+  })
+
+  test('structured providerless prompt keeps providerless plugin filtering', () => {
+    const contextId = 'ctx-structured-providerless-plugin-filter'
+    const safePluginId = 'structured-providerless-safe-plugin'
+    const providerPluginId = 'structured-providerless-provider-plugin'
+
+    registerPromptPlugin(makePromptPlugin(safePluginId), 'STRUCTURED_SAFE_PROVIDERLESS_PLUGIN')
+    registerPromptPlugin(makePromptPlugin(providerPluginId, ['tasks.read']), 'STRUCTURED_TASK_PROVIDER_PLUGIN')
+    setPluginConfig(contextId, safePluginId, 'api_token', 'safe-token')
+    setPluginConfig(contextId, providerPluginId, 'api_token', 'provider-token')
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+
+    const prompt = buildProviderlessSystemPrompt(contextId, new Set(['web_fetch', 'get_current_time']))
+
+    expect(prompt).toContain('STRUCTURED_SAFE_PROVIDERLESS_PLUGIN')
+    expect(prompt).not.toContain('STRUCTURED_TASK_PROVIDER_PLUGIN')
+
+    contributionRegistry.deregister(safePluginId)
+    contributionRegistry.deregister(providerPluginId)
   })
 })
 
