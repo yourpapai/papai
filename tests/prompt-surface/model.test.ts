@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { buildPromptSurfaceModel } from '../../src/prompt-surface/model.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -92,5 +93,34 @@ describe('buildPromptSurfaceModel', () => {
     })
 
     expect(model.examples.map((example) => example.id)).toContain('group-context-quiet')
+  })
+
+  test('uses parent context tool prefs for scoped thread contexts', () => {
+    const parentContextId = toScopedContextId({
+      platformInstanceId: 'telegram-main',
+      nativeContextId: '-100123',
+    })
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-main',
+      nativeContextId: '-100123',
+      threadId: 'topic-1',
+    })
+    setToolPrefs(parentContextId, {
+      domainDefaults: {},
+      toolOverrides: { delete_task: 'ask', delete_project: 'deny' },
+    })
+
+    const model = buildPromptSurfaceModel({
+      mode: 'task-provider',
+      contextType: 'group',
+      contextId: threadContextId,
+      enabledToolNames: new Set(['create_task', 'delete_task']),
+      askPermissionAvailable: true,
+      providerAddendum: '',
+      pluginGuidance: '',
+    })
+
+    expect(model.capabilities.askGatedTools).toEqual(['delete_task'])
+    expect(model.capabilities.deniedTools).toEqual(['delete_project'])
   })
 })

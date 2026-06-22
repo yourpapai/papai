@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getToolMetadata, TOOL_METADATA, type ToolDomain } from '../tools/tool-metadata.js'
-import { getToolPrefs, resolveToolPermission } from '../tools/tool-preferences.js'
+import { getToolPrefs, resolveToolPermission, type ToolPrefs } from '../tools/tool-preferences.js'
 import { PROMPT_SURFACE_EXAMPLES, type PromptExample } from './examples.js'
 
 export type PromptSurfaceMode = 'task-provider' | 'providerless'
@@ -38,8 +39,7 @@ export interface PromptSurfaceModel {
   readonly examples: readonly PromptExample[]
 }
 
-function collectDeniedTools(enabledToolNames: ReadonlySet<string>, contextId: string): readonly string[] {
-  const prefs = getToolPrefs(contextId)
+function collectDeniedTools(enabledToolNames: ReadonlySet<string>, prefs: ToolPrefs): readonly string[] {
   const enabledDomains = new Set<ToolDomain>()
   for (const toolName of enabledToolNames) {
     const meta = getToolMetadata(toolName)
@@ -60,8 +60,7 @@ function collectDeniedTools(enabledToolNames: ReadonlySet<string>, contextId: st
   return [...denied].toSorted()
 }
 
-function buildCapabilities(input: PromptSurfaceModelInput): PromptSurfaceCapabilities {
-  const prefs = getToolPrefs(input.contextId)
+function buildCapabilities(input: PromptSurfaceModelInput, prefs: ToolPrefs): PromptSurfaceCapabilities {
   const enabledToolNames = [...input.enabledToolNames].toSorted()
   const availableDomains = [
     ...new Set(
@@ -80,7 +79,7 @@ function buildCapabilities(input: PromptSurfaceModelInput): PromptSurfaceCapabil
     enabledToolNames,
     availableDomains,
     askGatedTools,
-    deniedTools: collectDeniedTools(input.enabledToolNames, input.contextId),
+    deniedTools: collectDeniedTools(input.enabledToolNames, prefs),
   }
 }
 
@@ -98,7 +97,9 @@ function selectExamples(
 }
 
 export function buildPromptSurfaceModel(input: PromptSurfaceModelInput): PromptSurfaceModel {
-  const capabilities = buildCapabilities(input)
+  const prefsContextId = getConfigContextIdFromStorageContextId(input.contextId)
+  const prefs = getToolPrefs(prefsContextId)
+  const capabilities = buildCapabilities(input, prefs)
   const baseModel = {
     mode: input.mode,
     contextType: input.contextType,
