@@ -54,3 +54,10 @@ export const answerPermissionSchema = {
   required: ['sessionId', 'decision'],
   additionalProperties: false,
 } as const
+
+export const reviewPrSchema = {
+  type: 'object',
+  properties: { project: { type: 'string' }, prNumber: { type: 'integer', description: 'Pull/merge request number' } },
+  required: ['project', 'prNumber'],
+  additionalProperties: false,
+} as const

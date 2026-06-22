@@ -56,7 +56,7 @@ describe('acp finish_session tool', () => {
       calls.push({ url, init })
       return Promise.resolve(jsonResponse({ merged: true }))
     }
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools
       .get('finish_session')!
       .execute({ sessionId: 's-1', action: 'pr' }, runtimeCtx(), options())
@@ -75,7 +75,7 @@ describe('acp finish_session tool', () => {
       calls.push({ url, init })
       return Promise.resolve(jsonResponse({ merged: true }))
     }
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     await tools
       .get('finish_session')!
       .execute(
@@ -93,7 +93,7 @@ describe('acp finish_session tool', () => {
 
   test('missing sessionId returns invalid_input, httpFetch not called', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('finish_session')!.execute({ action: 'pr' }, runtimeCtx(), options())
     expect(result).toHaveProperty('error', 'invalid_input')
     expect(httpFetch).not.toHaveBeenCalled()
@@ -101,7 +101,7 @@ describe('acp finish_session tool', () => {
 
   test('action not in push|pr returns invalid_input, httpFetch not called', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools
       .get('finish_session')!
       .execute({ sessionId: 's-1', action: 'squash' }, runtimeCtx(), options())
@@ -111,7 +111,7 @@ describe('acp finish_session tool', () => {
 
   test('not configured returns not_configured without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('finish_session')!.execute(
       { sessionId: 's-1', action: 'push' },
       runtimeCtx(() => undefined),
@@ -129,7 +129,7 @@ describe('acp cancel_session tool', () => {
       calls.push({ url, init })
       return Promise.resolve(jsonResponse({ cancelled: true }))
     }
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('cancel_session')!.execute({ sessionId: 's-1' }, runtimeCtx(), options())
     expect(calls).toHaveLength(1)
     expect(calls[0]!.url).toBe('http://magi:8787/sessions/s-1/cancel')
@@ -138,7 +138,7 @@ describe('acp cancel_session tool', () => {
 
   test('missing sessionId returns invalid_input, httpFetch not called', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('cancel_session')!.execute({}, runtimeCtx(), options())
     expect(result).toHaveProperty('error', 'invalid_input')
     expect(httpFetch).not.toHaveBeenCalled()
@@ -146,7 +146,7 @@ describe('acp cancel_session tool', () => {
 
   test('not configured returns not_configured without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('cancel_session')!.execute(
       { sessionId: 's-1' },
       runtimeCtx(() => undefined),
@@ -163,7 +163,7 @@ describe('acp answer_permission tool', () => {
       { toolCallId: 't1', title: 'x' },
       { toolCallId: 't2', title: 'y' },
     ])
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools
       .get('answer_permission')!
       .execute({ sessionId: 's-1', decision: 'allow' }, runtimeCtx(), options())
@@ -177,7 +177,7 @@ describe('acp answer_permission tool', () => {
 
   test('no pending permissions returns resolved:0 without POSTing', async () => {
     const [httpFetch, postCalls] = makePermissionFetch([])
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools
       .get('answer_permission')!
       .execute({ sessionId: 's-1', decision: 'allow' }, runtimeCtx(), options())
@@ -187,7 +187,7 @@ describe('acp answer_permission tool', () => {
 
   test('missing sessionId returns invalid_input, httpFetch not called', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('answer_permission')!.execute({ decision: 'allow' }, runtimeCtx(), options())
     expect(result).toHaveProperty('error', 'invalid_input')
     expect(httpFetch).not.toHaveBeenCalled()
@@ -195,7 +195,7 @@ describe('acp answer_permission tool', () => {
 
   test('bad decision returns invalid_input, httpFetch not called', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools
       .get('answer_permission')!
       .execute({ sessionId: 's-1', decision: 'maybe' }, runtimeCtx(), options())
@@ -205,7 +205,7 @@ describe('acp answer_permission tool', () => {
 
   test('not configured returns not_configured without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('answer_permission')!.execute(
       { sessionId: 's-1', decision: 'deny' },
       runtimeCtx(() => undefined),

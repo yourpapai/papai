@@ -23,7 +23,7 @@ describe('acp list_sessions tool', () => {
     }
     const store = new Map<string, string>()
     store.set('session:s-1', '1')
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('list_sessions')!.execute({}, runtimeCtxWithKv(store), options())
     expect(seenUrl).toContain('filter=active')
     expect(result).toEqual([{ id: 's-1', status: 'running' }])
@@ -36,7 +36,7 @@ describe('acp list_sessions tool', () => {
       return Promise.resolve(jsonResponse([]))
     }
     const store = new Map<string, string>()
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     await tools.get('list_sessions')!.execute({ filter: 'waiting' }, runtimeCtxWithKv(store), options())
     expect(seenUrl).toContain('filter=waiting')
   })
@@ -44,7 +44,7 @@ describe('acp list_sessions tool', () => {
   test('invalid filter returns invalid_input without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse([])))
     const store = new Map<string, string>()
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('list_sessions')!.execute({ filter: 'bogus' }, runtimeCtxWithKv(store), options())
     expect(result).toHaveProperty('error', 'invalid_input')
     expect(result).toHaveProperty('message', expect.stringContaining('filter'))
@@ -54,7 +54,7 @@ describe('acp list_sessions tool', () => {
   test('not configured returns not_configured without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse([])))
     const store = new Map<string, string>()
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('list_sessions')!.execute(
       {},
       runtimeCtxWithKv(store, () => undefined),
@@ -72,7 +72,7 @@ describe('acp session_status tool', () => {
       seenUrl = url
       return Promise.resolve(jsonResponse({ id: 's-1', status: 'running', output: 'done' }))
     }
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('session_status')!.execute({ sessionId: 's-1' }, runtimeCtx(), options())
     expect(seenUrl).toBe('http://magi:8787/sessions/s-1')
     expect(result).toEqual({ id: 's-1', status: 'running', output: 'done' })
@@ -80,7 +80,7 @@ describe('acp session_status tool', () => {
 
   test('missing sessionId returns invalid_input without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('session_status')!.execute({}, runtimeCtx(), options())
     expect(result).toEqual({ error: 'invalid_input', message: 'sessionId is required' })
     expect(httpFetch).not.toHaveBeenCalled()
@@ -88,7 +88,7 @@ describe('acp session_status tool', () => {
 
   test('not configured returns not_configured without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('session_status')!.execute(
       { sessionId: 's-1' },
       runtimeCtx(() => undefined),

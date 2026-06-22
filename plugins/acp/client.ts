@@ -31,6 +31,11 @@ export function optionalString(input: Record<string, unknown>, key: string): str
   return typeof v === 'string' && v.length > 0 ? v : undefined
 }
 
+export function asPositiveInt(input: Record<string, unknown>, key: string): number | null {
+  const v = input[key]
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null
+}
+
 export async function callMagi(
   httpFetch: HttpFetch,
   cfg: MagiConfig,

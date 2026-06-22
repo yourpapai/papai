@@ -27,7 +27,7 @@ describe('acp start_session tool', () => {
       return Promise.resolve(jsonResponse({ id: 's-1', status: 'queued' }, 202))
     }
     const store = new Map<string, string>()
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools
       .get('start_session')!
       .execute({ project: 'demo', prompt: 'do it' }, runtimeCtxWithKv(store), options())
@@ -43,7 +43,7 @@ describe('acp start_session tool', () => {
       return Promise.resolve(jsonResponse({ id: 's-2', status: 'queued' }, 202))
     }
     const store = new Map<string, string>()
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     await tools
       .get('start_session')!
       .execute({ project: 'demo', prompt: 'do it', agent: 'opencode' }, runtimeCtxWithKv(store), options())
@@ -53,7 +53,7 @@ describe('acp start_session tool', () => {
   test('missing project/prompt returns invalid_input without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
     const store = new Map<string, string>()
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('start_session')!.execute({ project: 'demo' }, runtimeCtxWithKv(store), options())
     expect(result).toEqual({ error: 'invalid_input', message: 'project and prompt are required' })
     expect(httpFetch).not.toHaveBeenCalled()
@@ -62,7 +62,7 @@ describe('acp start_session tool', () => {
   test('not configured returns not_configured without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
     const store = new Map<string, string>()
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('start_session')!.execute(
       { project: 'demo', prompt: 'do it' },
       runtimeCtxWithKv(store, () => undefined),

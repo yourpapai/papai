@@ -3,38 +3,34 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { asObject, asString, callMagi, NOT_CONFIGURED, optionalString, readMagiConfig } from './client.js'
 import type { HttpFetch } from './client.js'
 import {
-  answerPermissionSchema,
-  emptySchema,
-  finishSessionSchema,
-  listSessionsSchema,
-  sessionIdSchema,
-  startSessionSchema,
-} from './schemas.js'
+  answerPermissionTool,
+  cancelSessionTool,
+  finishSessionTool,
+  getTool,
+  listSessionsTool,
+  reviewPrTool,
+  sessionStatusTool,
+  startSessionTool,
+} from './tools.js'
+import type { Tool } from './tools.js'
 
-// Local structural tool types (mirrors plugins/synthetic-web-search): the real PluginTool.inputSchema
-// is z.ZodType, but plugins cannot static-import zod (discovery rejects bare-module imports),
-// so we type inputSchema loosely to use raw JSON-Schema objects.
-type AdminConfigReader = { get(key: string): string | undefined }
-type KvStore = {
-  get(key: string): string | undefined
-  set(key: string, value: string): void
-  delete(key: string): void
-  list(prefix?: string): Array<{ key: string; value: string }>
-}
-type RuntimeContext = { storageContextId: string; adminConfig: AdminConfigReader; kv: KvStore }
-type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
-type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
-
+// Local structural plugin-context types: plugins cannot static-import src/ or zod
+// (discovery rejects bare-module imports), so we use structural types throughout.
 type RegisterTool = (tool: Tool) => void
 type RegisterFragment = (f: { name: string; content: string }) => void
+type RegisterCommand = (c: {
+  name: string
+  description: string
+  execute: (message: unknown, reply: { text(s: string): Promise<void> | void }, auth: unknown) => Promise<void> | void
+}) => void
 type LogInfo = (meta: Record<string, unknown>, msg: string) => void
 
 type ActivationContext = {
   registerTool: RegisterTool
   registerFragment: RegisterFragment
+  registerCommand: RegisterCommand
   logInfo: LogInfo
   httpFetch: HttpFetch | undefined
 }
@@ -56,6 +52,10 @@ function isRegisterFragment(value: unknown): value is RegisterFragment {
   return typeof value === 'function'
 }
 
+function isRegisterCommand(value: unknown): value is RegisterCommand {
+  return typeof value === 'function'
+}
+
 function isLogInfo(value: unknown): value is LogInfo {
   return typeof value === 'function'
 }
@@ -74,180 +74,32 @@ function extractActivationContext(ctx: unknown): ActivationContext {
   if (!isRegisterTool(registration['registerTool'])) throw new Error('acp: registerTool must be a function')
   if (!isRegisterFragment(registration['registerPromptFragment']))
     throw new Error('acp: registerPromptFragment must be a function')
+  if (!isRegisterCommand(registration['registerCommand'])) throw new Error('acp: registerCommand must be a function')
 
   const logInfo = log['info']
   const registerTool = registration['registerTool']
   const registerFragment = registration['registerPromptFragment']
+  const registerCommand = registration['registerCommand']
 
   let httpFetch: HttpFetch | undefined
   if (isRecord(providerRuntime) && isHttpFetch(providerRuntime['httpFetch'])) {
     httpFetch = providerRuntime['httpFetch']
   }
 
-  return { registerTool, registerFragment, logInfo, httpFetch }
+  return { registerTool, registerFragment, registerCommand, logInfo, httpFetch }
 }
 
-const DEFAULT_AGENT = 'claude-code-acp'
-const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
+const ACP_PROMPT_FRAGMENT =
+  'Coding sessions: use start_session(project, prompt) to run a sandboxed AI coding agent on a ' +
+  'configured project, list_sessions/session_status to check progress, answer_permission(sessionId, ' +
+  'decision) when the agent needs approval, finish_session(sessionId, action) to commit/push or open a ' +
+  'PR, cancel_session to stop one, and review_pr(project, prNumber) to review an open PR. ' +
+  'Use list_projects/list_agents to discover what is configured. The user is notified when a session ' +
+  'finishes or needs input.'
 
-function sessionIdOf(result: unknown): string | null {
-  if (typeof result !== 'object' || result === null) return null
-  const map: Map<string, unknown> = new Map(Object.entries(result))
-  const id = map.get('id')
-  return typeof id === 'string' && id.length > 0 ? id : null
-}
-
-function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
-  return {
-    name: 'start_session',
-    description: 'Start a sandboxed coding-agent session on a configured project.',
-    inputSchema: startSessionSchema,
-    execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
-      const args = asObject(input)
-      const project = asString(args, 'project')
-      const prompt = asString(args, 'prompt')
-      if (project === null || prompt === null)
-        return { error: 'invalid_input', message: 'project and prompt are required' }
-      const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
-      const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
-        project,
-        agent,
-        contextId: runtimeContext.storageContextId,
-        prompt,
-      })
-      const id = sessionIdOf(result)
-      if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
-      return result
-    },
-  }
-}
-
-function listSessionsTool(httpFetch: HttpFetch | undefined): Tool {
-  return {
-    name: 'list_sessions',
-    description: 'List coding sessions started from this chat (filter: new|active|waiting|review|done).',
-    inputSchema: listSessionsSchema,
-    execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
-      const filter = optionalString(asObject(input), 'filter') ?? 'active'
-      if (!SESSION_FILTERS.includes(filter))
-        return { error: 'invalid_input', message: `filter must be one of ${SESSION_FILTERS.join(', ')}` }
-      const result = await callMagi(httpFetch, cfg, 'GET', `/sessions?filter=${encodeURIComponent(filter)}`)
-      if (!Array.isArray(result)) return result
-      const known = new Set(runtimeContext.kv.list('session:').map((row): string => row.key.slice('session:'.length)))
-      return result.filter((s): boolean => {
-        const id = sessionIdOf(s)
-        return id !== null && known.has(id)
-      })
-    },
-  }
-}
-
-function sessionStatusTool(httpFetch: HttpFetch | undefined): Tool {
-  return {
-    name: 'session_status',
-    description: 'Get the status and metadata of a coding session.',
-    inputSchema: sessionIdSchema,
-    execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
-      const sessionId = asString(asObject(input), 'sessionId')
-      if (sessionId === null) return Promise.resolve({ error: 'invalid_input', message: 'sessionId is required' })
-      return callMagi(httpFetch, cfg, 'GET', `/sessions/${encodeURIComponent(sessionId)}`)
-    },
-  }
-}
-
-const DEFAULT_FINISH_MESSAGE = 'Apply changes from magi coding session'
-
-function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
-  return {
-    name: 'finish_session',
-    description: 'Finish a session: commit + push the branch, or open a PR.',
-    inputSchema: finishSessionSchema,
-    execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
-      const args = asObject(input)
-      const sessionId = asString(args, 'sessionId')
-      const action = asString(args, 'action')
-      if (sessionId === null || (action !== 'push' && action !== 'pr'))
-        return Promise.resolve({ error: 'invalid_input', message: 'sessionId and action (push|pr) are required' })
-      const bodyFields: Record<string, string | undefined> = {
-        message: optionalString(args, 'message') ?? DEFAULT_FINISH_MESSAGE,
-        action,
-        title: optionalString(args, 'title'),
-        body: optionalString(args, 'body'),
-      }
-      const payload = Object.fromEntries(Object.entries(bodyFields).filter(([, v]) => v !== undefined))
-      return callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/finish`, payload)
-    },
-  }
-}
-
-function cancelSessionTool(httpFetch: HttpFetch | undefined): Tool {
-  return {
-    name: 'cancel_session',
-    description: 'Cancel a running coding session and tear down its sandbox.',
-    inputSchema: sessionIdSchema,
-    execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
-      const sessionId = asString(asObject(input), 'sessionId')
-      if (sessionId === null) return Promise.resolve({ error: 'invalid_input', message: 'sessionId is required' })
-      return callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/cancel`)
-    },
-  }
-}
-
-function answerPermissionTool(httpFetch: HttpFetch | undefined): Tool {
-  return {
-    name: 'answer_permission',
-    description: 'Answer a coding agent pending permission request (allow or deny).',
-    inputSchema: answerPermissionSchema,
-    execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
-      const args = asObject(input)
-      const sessionId = asString(args, 'sessionId')
-      const decision = asString(args, 'decision')
-      if (sessionId === null || (decision !== 'allow' && decision !== 'deny'))
-        return { error: 'invalid_input', message: 'sessionId and decision (allow|deny) are required' }
-      const pending = await callMagi(httpFetch, cfg, 'GET', `/sessions/${encodeURIComponent(sessionId)}/permissions`)
-      if (!Array.isArray(pending)) return pending
-      const toolCallIds = pending
-        .map((p): string | null => asString(asObject(p), 'toolCallId'))
-        .filter((id): id is string => id !== null)
-      if (toolCallIds.length === 0) return { resolved: 0, message: 'no pending permission requests' }
-      await Promise.all(
-        toolCallIds.map(
-          (toolCallId): Promise<unknown> =>
-            callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/permission`, {
-              toolCallId,
-              decision,
-            }),
-        ),
-      )
-      return { resolved: toolCallIds.length, decision }
-    },
-  }
-}
-
-function getTool(name: string, description: string, path: string, httpFetch: HttpFetch | undefined): Tool {
-  return {
-    name,
-    description,
-    inputSchema: emptySchema,
-    execute: (_input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
-      return callMagi(httpFetch, cfg, 'GET', path)
-    },
-  }
-}
+const ACP_COMMAND_TEXT =
+  'ACP coding sessions are available. Ask me in natural language, e.g. "start a session on demo to add a ' +
+  'health check", "what sessions are running?", or "review PR 42 on demo".'
 
 const factory = (): { activate(ctx: unknown): void } => ({
   activate(rawCtx: unknown): void {
@@ -260,6 +112,14 @@ const factory = (): { activate(ctx: unknown): void } => ({
     ctx.registerTool(finishSessionTool(ctx.httpFetch))
     ctx.registerTool(cancelSessionTool(ctx.httpFetch))
     ctx.registerTool(answerPermissionTool(ctx.httpFetch))
+    ctx.registerTool(reviewPrTool(ctx.httpFetch))
+    ctx.registerFragment({ name: 'acp-hint', content: ACP_PROMPT_FRAGMENT })
+    ctx.registerCommand({
+      name: 'acp',
+      description: 'About ACP coding sessions',
+      execute: (_message: unknown, reply: { text(s: string): Promise<void> | void }): Promise<void> | void =>
+        reply.text(ACP_COMMAND_TEXT),
+    })
     ctx.logInfo({}, 'acp plugin activated')
   },
 })

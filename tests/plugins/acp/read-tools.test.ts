@@ -24,7 +24,7 @@ describe('acp read tools', () => {
         jsonResponse([{ name: 'demo', baseBranch: 'main', forgeKind: 'github', agent: 'claude-code-acp' }]),
       )
     }
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('list_projects')!.execute({}, runtimeCtx(), options())
     expect(seenUrl).toBe('http://magi:8787/projects')
     expect(seenAuth).toBe('Bearer tok')
@@ -33,13 +33,13 @@ describe('acp read tools', () => {
 
   test('list_agents GETs /agents', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse([{ name: 'claude-code-acp' }])))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('list_agents')!.execute({}, runtimeCtx(), options())
     expect(result).toEqual([{ name: 'claude-code-acp' }])
   })
 
   test('returns not_configured when admin config is missing', async () => {
-    const tools = activate(mock())
+    const { tools } = activate(mock())
     const result = await tools.get('list_projects')!.execute(
       {},
       runtimeCtx(() => undefined),
@@ -50,7 +50,7 @@ describe('acp read tools', () => {
 
   test('surfaces a magi error response', async () => {
     const httpFetch: HttpFetch = () => Promise.resolve(jsonResponse({ error: 'boom' }, 500))
-    const tools = activate(httpFetch)
+    const { tools } = activate(httpFetch)
     const result = await tools.get('list_projects')!.execute({}, runtimeCtx(), options())
     expect(result).toEqual({ error: 'magi_error', status: 500, body: { error: 'boom' } })
   })

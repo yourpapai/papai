@@ -7,16 +7,29 @@ import type { ToolExecutionOptions } from 'ai'
 
 import factory from '../../../plugins/acp/index.js'
 import type { PluginContext } from '../../../src/plugins/context.js'
-import type { PluginTool, PluginToolRuntimeContext } from '../../../src/plugins/types.js'
+import type {
+  PluginCommand,
+  PluginPromptFragment,
+  PluginTool,
+  PluginToolRuntimeContext,
+} from '../../../src/plugins/types.js'
 
 export type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
+
+export type ActivateResult = {
+  tools: Map<string, PluginTool>
+  command: PluginCommand | undefined
+  fragment: PluginPromptFragment | undefined
+}
 
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
-export function activate(httpFetch: HttpFetch): Map<string, PluginTool> {
+export function activate(httpFetch: HttpFetch): ActivateResult {
   const tools = new Map<string, PluginTool>()
+  let command: PluginCommand | undefined
+  let fragment: PluginPromptFragment | undefined
   const ctx = {
     pluginId: 'acp',
     contextId: '__system__',
@@ -27,8 +40,12 @@ export function activate(httpFetch: HttpFetch): Map<string, PluginTool> {
       registerTool: (t: PluginTool) => {
         tools.set(t.name, t)
       },
-      registerPromptFragment: () => {},
-      registerCommand: () => {},
+      registerPromptFragment: (f: PluginPromptFragment) => {
+        fragment = f
+      },
+      registerCommand: (c: PluginCommand) => {
+        command = c
+      },
       registerScheduledJob: () => {},
       registerAttachmentTransformer: () => {},
       registerTaskProviderType: () => {},
@@ -41,7 +58,7 @@ export function activate(httpFetch: HttpFetch): Map<string, PluginTool> {
     adminConfig: { get: () => undefined },
   } as PluginContext
   factory().activate(ctx)
-  return tools
+  return { tools, command, fragment }
 }
 
 export function runtimeCtx(adminGet?: (k: string) => string | undefined): PluginToolRuntimeContext {
