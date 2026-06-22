@@ -229,8 +229,13 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt(structuredProvider, contextId, new Set(['create_task']))
 
     expect(prompt).toContain('<provider_addendum>\nSTRUCTURED_PROVIDER_ADDENDUM\n</provider_addendum>')
-    expect(prompt).toContain('<plugin_guidance>')
-    expect(prompt).toContain('STRUCTURED_PLUGIN_GUIDANCE')
+    expect(prompt).toContain(
+      '<plugin_guidance>\n' +
+        '<!-- plugin:structured-configured-plugin:guidance -->\n' +
+        'STRUCTURED_PLUGIN_GUIDANCE\n' +
+        '<!-- /plugin:structured-configured-plugin:guidance -->\n' +
+        '</plugin_guidance>',
+    )
 
     contributionRegistry.deregister(pluginId)
   })
