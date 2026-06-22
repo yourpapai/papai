@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { KaneoCredentialsSchema, KaneoResetSchema } from '../../../client/settings/fetcher-schemas-kaneo.js'
+import { KaneoCredentialsSchema, KaneoRevealSchema } from '../../../client/settings/fetcher-schemas-kaneo.js'
 
 describe('KaneoCredentialsSchema', () => {
   test('parses a valid credentials response', () => {
@@ -36,9 +36,9 @@ describe('KaneoCredentialsSchema', () => {
   })
 })
 
-describe('KaneoResetSchema', () => {
-  test('parses a valid reset response', () => {
-    const result = KaneoResetSchema.parse({
+describe('KaneoRevealSchema', () => {
+  test('parses a valid reveal response', () => {
+    const result = KaneoRevealSchema.parse({
       password: 'S3cr3tP@ss',
       warning: 'This password is shown once. Store it securely.',
     })

@@ -52,12 +52,12 @@ function handleGet(req: Request, url: URL): Response {
     login: row.login,
     status: row.status,
     kaneoUrl,
-    // password is never returned in GET — use POST { action: 'reset' } to reveal it once.
+    // password is never returned in GET — use POST { action: 'reveal' } to reveal it once.
   })
 }
 
 const PostBodySchema = z.object({
-  action: z.literal('reset'),
+  action: z.literal('reveal'),
   contextId: z.string().optional(),
 })
 

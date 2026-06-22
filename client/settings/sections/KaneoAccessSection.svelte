@@ -6,7 +6,7 @@
 <script lang="ts">
   import type { KaneoCredentials } from '../fetcher-schemas-kaneo.js'
   import { KaneoCredentialsSchema } from '../fetcher-schemas-kaneo.js'
-  import { postKaneoPasswordReset, settingsFetch } from '../fetchers.js'
+  import { revealKaneoPassword, settingsFetch } from '../fetchers.js'
   import { readBody } from '../../shared/fetcher-helpers.js'
 
   interface Props {
@@ -20,7 +20,7 @@
   let loading = $state(true)
   let error: string | null = $state(null)
   let revealedPassword: string | null = $state(null)
-  let resetting = $state(false)
+  let revealing = $state(false)
 
   async function load(id: string): Promise<void> {
     credentials = null
@@ -51,17 +51,17 @@
     void load(contextId)
   })
 
-  async function resetPassword(): Promise<void> {
+  async function revealPassword(): Promise<void> {
     if (credentials === null) return
-    resetting = true
+    revealing = true
     error = null
     try {
-      const result = await postKaneoPasswordReset(contextId)
+      const result = await revealKaneoPassword(contextId)
       revealedPassword = result.password
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e)
     } finally {
-      resetting = false
+      revealing = false
     }
   }
 </script>
@@ -90,8 +90,8 @@
       <p><strong>Password (shown once):</strong> <code>{revealedPassword}</code></p>
       <p>Store this password securely — it will not be shown again.</p>
     {:else}
-      <button data-action="reset-password" disabled={resetting} onclick={resetPassword}>
-        {resetting ? 'Revealing…' : 'Reveal password'}
+      <button data-action="reveal-password" disabled={revealing} onclick={revealPassword}>
+        {revealing ? 'Revealing…' : 'Reveal password'}
       </button>
     {/if}
   {/if}

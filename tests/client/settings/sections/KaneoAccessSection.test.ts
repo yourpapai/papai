@@ -63,7 +63,7 @@ describe('KaneoAccessSection', () => {
       return Promise.resolve(getResponse)
     }
 
-  test('Reset password button POSTs {action:"reset"} and reveals password once', async () => {
+  test('Reveal password button POSTs {action:"reveal"} and reveals password once', async () => {
     setCsrfToken('csrf-test')
     setMockFetch(
       routeCredentialsMock(
@@ -77,7 +77,7 @@ describe('KaneoAccessSection', () => {
     const component = mount(KaneoAccessSection, { target, props: { contextId: CONTEXT_ID } })
     await drain()
 
-    const btn = target.querySelector<HTMLButtonElement>('button[data-action="reset-password"]')
+    const btn = target.querySelector<HTMLButtonElement>('button[data-action="reveal-password"]')
     expect(btn).not.toBeNull()
     btn!.click()
     await drain()

@@ -28,7 +28,7 @@ const GetResponseSchema = z.object({
   kaneoUrl: z.string().nullable().optional(),
 })
 
-const ResetResponseSchema = z.object({
+const RevealResponseSchema = z.object({
   password: z.string(),
   warning: z.string(),
 })
@@ -189,7 +189,7 @@ describe('POST /settings/api/kaneo/credentials', () => {
       request('/settings/api/kaneo/credentials', session, {
         method: 'POST',
         csrf: true,
-        body: { action: 'reset', contextId: groupContextId },
+        body: { action: 'reveal', contextId: groupContextId },
       }),
       new URL('https://x/settings/api/kaneo/credentials'),
     )
@@ -216,12 +216,12 @@ describe('POST /settings/api/kaneo/credentials', () => {
       request('/settings/api/kaneo/credentials', session, {
         method: 'POST',
         csrf: true,
-        body: { action: 'reset', contextId: groupContextId },
+        body: { action: 'reveal', contextId: groupContextId },
       }),
       new URL('https://x/settings/api/kaneo/credentials'),
     )
     expect(res.status).toBe(200)
-    const body = ResetResponseSchema.parse(await res.json())
+    const body = RevealResponseSchema.parse(await res.json())
     expect(body.password).toBe(plainPassword)
 
     // Verify encrypted_password was cleared (reveal-once semantics)
@@ -238,7 +238,7 @@ describe('POST /settings/api/kaneo/credentials', () => {
       request('/settings/api/kaneo/credentials', session, {
         method: 'POST',
         csrf: true,
-        body: { action: 'reset', contextId: groupContextId },
+        body: { action: 'reveal', contextId: groupContextId },
       }),
       new URL('https://x/settings/api/kaneo/credentials'),
     )
@@ -264,7 +264,7 @@ describe('POST /settings/api/kaneo/credentials', () => {
       request('/settings/api/kaneo/credentials', session, {
         method: 'POST',
         csrf: false,
-        body: { action: 'reset', contextId: groupContextId },
+        body: { action: 'reveal', contextId: groupContextId },
       }),
       new URL('https://x/settings/api/kaneo/credentials'),
     )

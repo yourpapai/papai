@@ -6,9 +6,9 @@
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
   KaneoCredentialsSchema,
-  KaneoResetSchema,
+  KaneoRevealSchema,
   type KaneoCredentials,
-  type KaneoReset,
+  type KaneoReveal,
 } from './fetcher-schemas-kaneo.js'
 import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
 import {
@@ -246,5 +246,7 @@ export const patchContextTaskInstance = (input: { taskInstanceId: string; contex
 export const getKaneoCredentials = (contextId: string): Promise<KaneoCredentials> =>
   getJson(`/settings/api/kaneo/credentials?${ctxQuery(contextId)}`, (b) => KaneoCredentialsSchema.parse(b))
 
-export const postKaneoPasswordReset = (contextId: string): Promise<KaneoReset> =>
-  writeJson('/settings/api/kaneo/credentials', 'POST', { action: 'reset', contextId }, (b) => KaneoResetSchema.parse(b))
+export const revealKaneoPassword = (contextId: string): Promise<KaneoReveal> =>
+  writeJson('/settings/api/kaneo/credentials', 'POST', { action: 'reveal', contextId }, (b) =>
+    KaneoRevealSchema.parse(b),
+  )

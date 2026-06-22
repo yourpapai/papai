@@ -15,8 +15,8 @@ export const KaneoCredentialsSchema = z.object({
 })
 export type KaneoCredentials = z.infer<typeof KaneoCredentialsSchema>
 
-export const KaneoResetSchema = z.object({
+export const KaneoRevealSchema = z.object({
   password: z.string(),
   warning: z.string(),
 })
-export type KaneoReset = z.infer<typeof KaneoResetSchema>
+export type KaneoReveal = z.infer<typeof KaneoRevealSchema>
