@@ -91,7 +91,7 @@
       <p>Store this password securely — it will not be shown again.</p>
     {:else}
       <button data-action="reset-password" disabled={resetting} onclick={resetPassword}>
-        {resetting ? 'Resetting…' : 'Reset password'}
+        {resetting ? 'Revealing…' : 'Reveal password'}
       </button>
     {/if}
   {/if}
