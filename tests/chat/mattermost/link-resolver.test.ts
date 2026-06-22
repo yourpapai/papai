@@ -129,7 +129,7 @@ describe('resolveChatLink (single post)', () => {
     })
   })
 
-  test('membership denied (members endpoint 403) → not-accessible AppError, no content', async () => {
+  test('non-member of a private channel (members 403) → access-denied AppError, no content', async () => {
     routeFetch({
       '/api/v4/posts/abc123': {
         body: {
@@ -144,6 +144,7 @@ describe('resolveChatLink (single post)', () => {
         status: 403,
         body: { message: 'forbidden' },
       },
+      '/api/v4/channels/c1': { body: { type: 'P' } },
     })
 
     const error = await resolveChatLink({
@@ -155,7 +156,39 @@ describe('resolveChatLink (single post)', () => {
       () => null,
       (e: unknown) => e,
     )
-    expectAppError(error, 'Chat message "abc123" was not found.')
+    expectAppError(
+      error,
+      "You don't have access to that chat channel. You need to be a member of it (or it must be a public channel) for me to read it.",
+    )
+  })
+
+  test('non-member of a public (open) channel → allowed, returns content', async () => {
+    routeFetch({
+      '/api/v4/posts/abc123': {
+        body: {
+          id: 'abc123',
+          user_id: 'u1',
+          channel_id: 'c1',
+          message: 'public chatter',
+          create_at: 1700000000000,
+        },
+      },
+      // No membership record for the requester …
+      '/api/v4/channels/c1/members/user-1': { status: 404, body: {} },
+      // … but the channel is open, so reading it is allowed.
+      '/api/v4/channels/c1': { body: { type: 'O' } },
+      '/api/v4/users/u1': { body: { id: 'u1', username: 'alice' } },
+    })
+
+    const result = await resolveChatLink({
+      platformInstanceId: 'mm-1',
+      requesterUserId: 'user-1',
+      url: `${BASE}/eng/pl/abc123`,
+      scope: 'post',
+    })
+
+    expect(result.messages).toHaveLength(1)
+    expect(result.messages[0]?.text).toBe('public chatter')
   })
 
   test('post not found (404) → not-found AppError', async () => {
@@ -354,7 +387,7 @@ describe('resolveChatLink (thread)', () => {
     expectAppError(error, 'Network error: Mattermost returned 500. Please check your connection and try again.')
   })
 
-  test('membership 404 (channel not found) → same not-found AppError as a 403', async () => {
+  test('non-member and channel not visible to the bot (members 404, channel 404) → access-denied', async () => {
     routeFetch({
       '/api/v4/posts/abc123': {
         body: {
@@ -366,6 +399,8 @@ describe('resolveChatLink (thread)', () => {
         },
       },
       '/api/v4/channels/c1/members/user-1': { status: 404, body: {} },
+      // Channel metadata is unreadable (private / not visible) → not public → denied.
+      '/api/v4/channels/c1': { status: 404, body: {} },
     })
     const error = await resolveChatLink({
       platformInstanceId: 'mm-1',
@@ -376,7 +411,10 @@ describe('resolveChatLink (thread)', () => {
       () => null,
       (e: unknown) => e,
     )
-    expectAppError(error, 'Chat message "abc123" was not found.')
+    expectAppError(
+      error,
+      "You don't have access to that chat channel. You need to be a member of it (or it must be a public channel) for me to read it.",
+    )
   })
 
   test('resolves a repeated author label only once (dedup)', async () => {

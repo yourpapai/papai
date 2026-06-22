@@ -52,6 +52,15 @@ describe('getProviderMessage', () => {
     expect(getProviderMessage(error)).toContain('API key')
   })
 
+  test('returns message for access-denied that frames it as the user lacking access', () => {
+    const error = providerError.accessDenied('that chat channel')
+    const message = getProviderMessage(error)
+    expect(message).toContain('that chat channel')
+    expect(message).toContain('access')
+    // Must not blame the bot's own membership.
+    expect(message.toLowerCase()).not.toContain('bot')
+  })
+
   test('returns message for rate-limited', () => {
     const error = providerError.rateLimited()
     expect(getProviderMessage(error)).toContain('rate limit')

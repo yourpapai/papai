@@ -29,6 +29,8 @@ const getProviderGuidance = (error: ProviderError): string => {
       return `The requested task relation does not exist. Re-fetch the task relations before retrying.`
     case 'not-found':
       return `The requested ${error.resourceType} was not found. Search or list available resources before retrying.`
+    case 'access-denied':
+      return `The requesting user lacks access to ${error.resource}. This denial is about the user's own access, not the bot's membership — do not claim the bot is not a participant. Do not retry; tell the user they need access to it.`
     case 'auth-failed':
       return `Authentication failed. Ask the user to verify provider credentials before retrying.`
     case 'rate-limited':
@@ -129,6 +131,8 @@ const getProviderErrorDetails = (error: ProviderError): AppErrorDetails => {
       return { taskId: error.taskId, relatedTaskId: error.relatedTaskId }
     case 'not-found':
       return { resourceType: error.resourceType, resourceId: error.resourceId }
+    case 'access-denied':
+      return { resource: error.resource }
     case 'validation-failed':
       return { field: error.field, reason: error.reason }
     case 'workflow-validation-failed':

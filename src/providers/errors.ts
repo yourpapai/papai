@@ -22,6 +22,7 @@ export type ProviderError =
   | { type: 'provider'; code: 'label-not-found'; labelName: string }
   | { type: 'provider'; code: 'relation-not-found'; taskId: string; relatedTaskId: string }
   | { type: 'provider'; code: 'not-found'; resourceType: string; resourceId: string }
+  | { type: 'provider'; code: 'access-denied'; resource: string }
   | { type: 'provider'; code: 'auth-failed' }
   | { type: 'provider'; code: 'rate-limited' }
   | { type: 'provider'; code: 'validation-failed'; field: string; reason: string }
@@ -76,6 +77,11 @@ export const providerError = {
     code: 'not-found',
     resourceType,
     resourceId,
+  }),
+  accessDenied: (resource: string): ProviderError => ({
+    type: 'provider',
+    code: 'access-denied',
+    resource,
   }),
   authFailed: (): ProviderError => ({ type: 'provider', code: 'auth-failed' }),
   rateLimited: (): ProviderError => ({ type: 'provider', code: 'rate-limited' }),
@@ -138,6 +144,8 @@ export const getProviderMessage = (error: ProviderError): string => {
       return `Relation between tasks "${error.taskId}" and "${error.relatedTaskId}" was not found.`
     case 'not-found':
       return `${error.resourceType} "${error.resourceId}" was not found.`
+    case 'access-denied':
+      return `You don't have access to ${error.resource}. You need to be a member of it (or it must be a public channel) for me to read it.`
     case 'auth-failed':
       return `Failed to connect to the task tracker. Please check your API key.`
     case 'rate-limited':

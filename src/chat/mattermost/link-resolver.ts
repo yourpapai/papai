@@ -12,7 +12,12 @@ import { logger } from '../../logger.js'
 import { makeMattermostApiFetch, MattermostApiError } from './api-fetch.js'
 import type { MattermostApiFetch } from './file-helpers.js'
 import { resolveMattermostUserLabel } from './label-helpers.js'
-import { MattermostPostListSchema, MattermostThreadPostSchema, type MattermostThreadPost } from './schema.js'
+import {
+  ChannelInfoSchema,
+  MattermostPostListSchema,
+  MattermostThreadPostSchema,
+  type MattermostThreadPost,
+} from './schema.js'
 
 const PERMALINK_PATTERN = /\/pl\/([a-z0-9]+)\/?$/iu
 const MAX_THREAD_POSTS = 100
@@ -113,22 +118,64 @@ function loadMattermostInstance(
   return { apiFetch: factory(baseUrl, token), baseUrl }
 }
 
-async function assertRequesterMember(
+// Mattermost channel type for an open (public) channel; `P` is private, `D`/`G` direct.
+const OPEN_CHANNEL_TYPE = 'O'
+
+/** True when the requester has an explicit membership record for the channel. */
+async function isRequesterChannelMember(
   apiFetch: MattermostApiFetch,
   channelId: string,
   requesterUserId: string,
   postId: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await apiFetch(
       'GET',
       `/api/v4/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(requesterUserId)}`,
       undefined,
     )
-  } catch {
-    // Identical failure whether the channel is missing or the user is not a member.
-    throw new ChatLinkError('Requester not a channel member', providerError.notFound('Chat message', postId))
+    return true
+  } catch (e) {
+    // 403/404 are the "no membership record" signals. Surface anything else
+    // (rate limit, 5xx) as a classified error instead of masking it as a denial.
+    if (e instanceof MattermostApiError && (e.status === 403 || e.status === 404)) return false
+    throw toChatLinkError(e, postId)
   }
+}
+
+/**
+ * True when the channel is an open (public) channel the bot can see. Public
+ * channels are readable by anyone in the workspace without an explicit
+ * membership record, mirroring Mattermost's `read_public_channels` access model.
+ */
+async function isOpenChannel(apiFetch: MattermostApiFetch, channelId: string): Promise<boolean> {
+  try {
+    const raw = await apiFetch('GET', `/api/v4/channels/${encodeURIComponent(channelId)}`, undefined)
+    return ChannelInfoSchema.parse(raw).type === OPEN_CHANNEL_TYPE
+  } catch {
+    // If the channel metadata can't be read (private / not visible), it is not public.
+    return false
+  }
+}
+
+/**
+ * Authorize the requester to read the linked channel. A direct membership record
+ * is the fast path; a non-member is still allowed when the channel is public, so
+ * "public and open to everyone" channels work. Otherwise the denial is the
+ * requester's own lack of access — never framed as the bot not being a member.
+ */
+async function assertRequesterAccess(
+  apiFetch: MattermostApiFetch,
+  channelId: string,
+  requesterUserId: string,
+  postId: string,
+): Promise<void> {
+  if (await isRequesterChannelMember(apiFetch, channelId, requesterUserId, postId)) return
+  if (await isOpenChannel(apiFetch, channelId)) return
+  throw new ChatLinkError(
+    `Requester ${requesterUserId} cannot access channel ${channelId} for post ${postId}`,
+    providerError.accessDenied('that chat channel'),
+  )
 }
 
 function toMessage(post: MattermostThreadPost, rootId: string, linkedId: string, author: string): ChatLinkMessage {
@@ -239,6 +286,6 @@ export async function resolveChatLink(args: ResolveChatLinkArgs): Promise<ChatLi
     throw toChatLinkError(e, postId)
   }
 
-  await assertRequesterMember(apiFetch, linked.channel_id, requesterUserId, postId)
+  await assertRequesterAccess(apiFetch, linked.channel_id, requesterUserId, postId)
   return buildResult(apiFetch, linked, postId, scope, platformInstanceId)
 }

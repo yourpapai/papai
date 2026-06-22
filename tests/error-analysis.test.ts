@@ -49,4 +49,14 @@ describe('error-analysis', () => {
 
     expect(getAppErrorDetails(error)).toEqual({ linkTypeName: 'Depend', available: ['Relates', 'Subtask'] })
   })
+
+  test('access-denied is non-retryable and steers the agent away from blaming the bot', () => {
+    const error = providerError.accessDenied('that chat channel')
+
+    expect(isRetryableAppError(error)).toBe(false)
+    const guidance = getAgentGuidance(error)
+    expect(guidance).toContain("user's")
+    expect(guidance).toContain('not the bot')
+    expect(getAppErrorDetails(error)).toEqual({ resource: 'that chat channel' })
+  })
 })
