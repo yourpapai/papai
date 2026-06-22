@@ -9,9 +9,13 @@ See LICENSE in the project root for details.
 
 Covers: how `src/llm-orchestrator.ts` drives the Vercel AI SDK loop today, what `stopWhen` / `prepareStep` unlock, when (and how) to split work between `main_model` and `small_model`, and how the orchestrator should pick between "just answer", "answer with tool calls", and "plan then act".
 
+## 2026-06-12 refresh note
+
+The April note that the main loop relied on a default step limit is stale. The current main loop uses Vercel AI SDK v6 `generateText` with `stopWhen: stepCountIs(25)`. The architectural gap remains: papai does not yet use `prepareStep` to narrow active tools, vary model/effort, or inject phase-specific system/messages across a multi-step turn.
+
 ## 1. Current loop (summarised)
 
-Single call to `generateText()` with `tools` (or `streamText()` where streaming). Default `stopWhen` (up to 20 steps in AI SDK v5/v6). No `prepareStep`. Small-model usage is limited to the memory summariser and web-fetch distillation.
+Single call to `generateText()` with `tools` and explicit `stopWhen: stepCountIs(25)`. No `prepareStep`. Small-model usage exists in memory summarisation, web-fetch distillation, and some proactive lightweight paths.
 
 `experimental_onToolCallFinish` wraps tool errors into `ToolFailureResult` but does not classify the turn ("did the model converge?"), does not route to different models, and does not short-circuit on simple classifications.
 
@@ -24,7 +28,7 @@ Anthropic's _Building Effective Agents_ ([10](./10-references.md) #1):
 papai already runs as an "agent" (tools + dynamic decisions). That's fine — but not every turn needs the full agent. Two levers:
 
 1. **Routing.** Classify the turn early; skip the agent when the turn is trivial.
-2. **`prepareStep` / `stopWhen`.** Inside the agent loop, reshape the context per step rather than running the same 3k-token prompt 20 times.
+2. **`prepareStep` / route-specific `stopWhen`.** Inside the agent loop, reshape the context per step rather than running the same broad prompt and tool set for up to 25 steps.
 
 ## 3. Turn classification (optional routing layer)
 
@@ -57,7 +61,7 @@ Caveat from Vercel issue tracker ([10](./10-references.md) #36): tool execution 
 
 ## 5. `stopWhen` — bounding the loop
 
-Today: default step count (20). Recommended:
+Today: explicit 25-step cap. Recommended:
 
 - **Hard cap at 6 steps** for normal turns. Most legitimate sequences are 1–3 tool calls + reply. A 20-step loop is almost always an error (the model is stuck in a retry loop or hallucinating).
 - **Stop early on `recovery.action = 'ask_user'`.** If any tool returns an `ask_user` recovery, the next step must be the assistant reply, not another tool call. Detect and short-circuit.
