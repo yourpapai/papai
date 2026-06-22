@@ -6,12 +6,13 @@
 import { beforeEach, describe, expect, test, mock } from 'bun:test'
 
 import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
-import { setPluginConfig } from '../src/config.js'
+import { setConfigValue, setPluginConfig } from '../src/config.js'
 import { saveInstruction } from '../src/instructions.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { pluginRegistry } from '../src/plugins/registry.js'
 import type { DiscoveredPlugin, PluginManifest, PluginPermission } from '../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../src/plugins/types.js'
+import { STRUCTURED_PROMPT_SURFACE_KEY } from '../src/prompt-surface/config.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../src/system-prompt.js'
 import { setToolPrefs } from '../src/tools/tool-preferences.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -151,6 +152,43 @@ describe('buildSystemPrompt', () => {
 
     expect(prompt).toContain('Use concise status updates for this group.')
   })
+
+  test('keeps legacy prompt when structured prompt surface is disabled', () => {
+    const contextId = 'ctx-structured-disabled'
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'off')
+
+    const prompt = buildSystemPrompt(provider, contextId, new Set(['create_task', 'web_fetch']))
+
+    expect(prompt).toContain('You are papai, a personal assistant that helps the user manage their tasks.')
+    expect(prompt).toContain('WORKFLOW:')
+    expect(prompt).not.toContain('<role>')
+    expect(prompt).not.toContain('<capabilities>')
+  })
+
+  test('uses structured prompt when structured prompt surface is enabled and enabled tools are provided', () => {
+    const contextId = 'ctx-structured-enabled'
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+
+    const prompt = buildSystemPrompt(provider, contextId, new Set(['create_task', 'web_fetch', 'get_current_time']))
+
+    expect(prompt).toContain('<role>')
+    expect(prompt).toContain('<capabilities>')
+    expect(prompt).toContain('available_domains: task, time, web')
+    expect(prompt).toContain('<safety>')
+    expect(prompt).toContain('<examples>')
+    expect(prompt).not.toContain('WORKFLOW:')
+  })
+
+  test('keeps the no-arg buildSystemPrompt overload on the legacy renderer even when the flag is enabled', () => {
+    const contextId = 'ctx-structured-no-arg-legacy'
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+
+    const prompt = buildSystemPrompt(provider, contextId)
+
+    expect(prompt).toContain('WORKFLOW:')
+    expect(prompt).not.toContain('<role>')
+    expect(prompt).not.toContain('<capabilities>')
+  })
 })
 
 describe('buildProviderlessSystemPrompt', () => {
@@ -257,6 +295,19 @@ describe('buildProviderlessSystemPrompt', () => {
     expect(prompt).not.toContain('REQUIRED_CAPABILITIES_PLUGIN_GUIDANCE')
 
     contributionRegistry.deregister(requiredCapabilitiesPluginId)
+  })
+
+  test('uses structured providerless prompt when structured prompt surface is enabled', () => {
+    const contextId = 'ctx-structured-providerless'
+    setConfigValue(contextId, STRUCTURED_PROMPT_SURFACE_KEY, 'on')
+
+    const prompt = buildProviderlessSystemPrompt(contextId, new Set(['web_fetch', 'get_current_time']))
+
+    expect(prompt).toContain('<capabilities>')
+    expect(prompt).toContain('mode: providerless')
+    expect(prompt).toContain('task-tracker tools are unavailable')
+    expect(prompt).toContain('example_1_id: missing-provider-tools')
+    expect(prompt).not.toContain('SCHEDULED PROMPTS')
   })
 })
 

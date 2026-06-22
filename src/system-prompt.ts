@@ -8,6 +8,9 @@ import { buildInstructionsBlock } from './instructions.js'
 import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { filterProviderlessPluginIds } from './plugins/providerless.js'
 import { getPluginsForContext } from './plugins/registry.js'
+import { isStructuredPromptSurfaceEnabled } from './prompt-surface/config.js'
+import { buildPromptSurfaceModel, type PromptSurfaceMode } from './prompt-surface/model.js'
+import { renderStructuredPromptSurface } from './prompt-surface/renderer.js'
 import type { TaskProvider } from './providers/types.js'
 import { getToolMetadata, TOOL_METADATA } from './tools/tool-metadata.js'
 import { getToolPrefs, resolveToolPermission, type ToolPrefs } from './tools/tool-preferences.js'
@@ -115,11 +118,7 @@ const OUTPUT_CORE = `OUTPUT RULES:
 
 const INSTRUCTIONS_RULE = `- When the user expresses a persistent preference ("always", "never", "from now on"), call save_instruction. To list them, call list_instructions. To remove one, call list_instructions first, then delete_instruction.`
 
-interface PromptFragment {
-  readonly text: string
-  /** Fragment is included when at least one of these tools is enabled. Empty = always. */
-  readonly requiredTools: readonly string[]
-}
+type PromptFragment = Readonly<{ text: string; requiredTools: readonly string[] }>
 
 // Order here defines prompt order. Empty requiredTools = always included.
 const FRAGMENTS: readonly PromptFragment[] = [
@@ -129,18 +128,14 @@ const FRAGMENTS: readonly PromptFragment[] = [
   { text: PROACTIVE, requiredTools: [] },
   { text: WEB_FETCH, requiredTools: ['web_fetch'] },
   { text: WORKFLOW, requiredTools: [] },
-  {
-    text: DESTRUCTIVE,
-    requiredTools: ['delete_task', 'delete_project', 'delete_status', 'remove_label'],
-  },
+  { text: DESTRUCTIVE, requiredTools: ['delete_task', 'delete_project', 'delete_status', 'remove_label'] },
   { text: RELATIONS, requiredTools: ['add_task_relation', 'update_task_relation'] },
   { text: MEMOS, requiredTools: ['save_memo', 'search_memos', 'list_memos'] },
 ]
 
 function fragmentIncluded(fragment: PromptFragment, enabled: ReadonlySet<string> | undefined): boolean {
   if (enabled === undefined) return true
-  if (fragment.requiredTools.length === 0) return true
-  return fragment.requiredTools.some((name) => enabled.has(name))
+  return fragment.requiredTools.length === 0 || fragment.requiredTools.some((name) => enabled.has(name))
 }
 
 function buildOutputRules(enabled: ReadonlySet<string> | undefined): string {
@@ -149,11 +144,7 @@ function buildOutputRules(enabled: ReadonlySet<string> | undefined): string {
   return OUTPUT_CORE
 }
 
-/**
- * Safety-net: list tools that are disabled by prefs but whose domain still has at least
- * one enabled tool (a "partial" disable). Whole-domain disables are already handled by
- * fragment exclusion, so they are intentionally not repeated here.
- */
+// Safety-net: list tools disabled by prefs while the domain still has at least one enabled tool.
 function buildUnavailableLine(prefs: ToolPrefs, enabled: ReadonlySet<string>): string | null {
   const enabledDomains = new Set<string>()
   for (const name of enabled) {
@@ -217,46 +208,43 @@ function assembleSystemPrompt(
   return `${buildInstructionsBlock(sharedContextId)}${parts.join('\n\n')}`
 }
 
+function appendSection(basePrompt: string, section: string): string {
+  const trimmed = section.trim()
+  if (trimmed === '') return basePrompt
+  if (basePrompt === '') return trimmed
+  return `${basePrompt}\n\n${trimmed}`
+}
+
 function appendPromptAddendum(basePrompt: string, addendum: string): string {
-  return addendum === '' ? basePrompt : `${basePrompt}\n\n${addendum}`
+  return appendSection(basePrompt, addendum)
 }
 
-function appendPluginPromptSection(basePrompt: string, sharedContextId: string): string {
-  const activePlugins = getPluginsForContext(sharedContextId)
-  if (activePlugins.length === 0) return basePrompt
-
-  const activePluginIds = activePlugins.map((p) => p.manifest.id)
-  const pluginSection = buildPluginPromptSection(activePluginIds)
-  if (pluginSection === '') return basePrompt
-
-  return `${basePrompt}\n\n${pluginSection}`
-}
-
-function appendProviderlessPluginPromptSection(basePrompt: string, sharedContextId: string): string {
-  const activePlugins = getPluginsForContext(sharedContextId)
-  if (activePlugins.length === 0) return basePrompt
-
-  const providerlessPluginIds = filterProviderlessPluginIds(activePlugins.map((p) => p.manifest.id))
-  if (providerlessPluginIds.length === 0) return basePrompt
-
-  const pluginSection = buildPluginPromptSection(providerlessPluginIds)
-  if (pluginSection === '') return basePrompt
-
-  return `${basePrompt}\n\n${pluginSection}`
-}
-
-export function buildSystemPrompt(provider: TaskProvider, contextId: string): string
-export function buildSystemPrompt(
-  provider: TaskProvider,
+function buildStructuredPrompt(
+  mode: PromptSurfaceMode,
   contextId: string,
+  sharedContextId: string,
   enabledToolNames: ReadonlySet<string>,
-): string
-export function buildSystemPrompt(
-  provider: TaskProvider,
-  contextId: string,
-  enabledToolNames: ReadonlySet<string>,
-  options: { askPermissionAvailable: boolean },
-): string
+  options: AssembleOptions,
+  providerAddendum: string,
+): string {
+  const activePluginIds = getPluginsForContext(sharedContextId).map((plugin) => plugin.manifest.id)
+  const pluginGuidance = buildPluginPromptSection(
+    mode === 'providerless' ? filterProviderlessPluginIds(activePluginIds) : activePluginIds,
+  )
+
+  return renderStructuredPromptSurface(
+    buildPromptSurfaceModel({
+      mode,
+      contextType: 'dm',
+      contextId,
+      enabledToolNames,
+      askPermissionAvailable: options.askPermissionAvailable,
+      providerAddendum: providerAddendum.trim(),
+      pluginGuidance: appendSection(buildInstructionsBlock(sharedContextId), pluginGuidance),
+    }),
+  )
+}
+
 export function buildSystemPrompt(
   provider: TaskProvider,
   contextId: string,
@@ -265,8 +253,22 @@ export function buildSystemPrompt(
   const enabledToolNames = args[0]
   const options: AssembleOptions = { askPermissionAvailable: args[1]?.askPermissionAvailable ?? true }
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
+  const providerAddendum = provider.getPromptAddendum()
+  if (enabledToolNames !== undefined && isStructuredPromptSurfaceEnabled(sharedContextId)) {
+    return buildStructuredPrompt(
+      'task-provider',
+      contextId,
+      sharedContextId,
+      enabledToolNames,
+      options,
+      providerAddendum,
+    )
+  }
   const basePrompt = assembleSystemPrompt(CORE_INTRO, contextId, enabledToolNames, options)
-  return appendPluginPromptSection(appendPromptAddendum(basePrompt, provider.getPromptAddendum()), sharedContextId)
+  return appendSection(
+    appendPromptAddendum(basePrompt, providerAddendum),
+    buildPluginPromptSection(getPluginsForContext(sharedContextId).map((plugin) => plugin.manifest.id)),
+  )
 }
 
 export function buildProviderlessSystemPrompt(
@@ -275,9 +277,17 @@ export function buildProviderlessSystemPrompt(
   options: { askPermissionAvailable: boolean } = { askPermissionAvailable: true },
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
+  if (isStructuredPromptSurfaceEnabled(sharedContextId)) {
+    return buildStructuredPrompt('providerless', contextId, sharedContextId, enabledToolNames, options, '')
+  }
   const basePrompt = assembleSystemPrompt(PROVIDERLESS_INTRO, contextId, enabledToolNames, {
     ...options,
     deferredFragmentText: PROVIDERLESS_DEFERRED,
   })
-  return appendProviderlessPluginPromptSection(basePrompt, sharedContextId)
+  return appendSection(
+    basePrompt,
+    buildPluginPromptSection(
+      filterProviderlessPluginIds(getPluginsForContext(sharedContextId).map((plugin) => plugin.manifest.id)),
+    ),
+  )
 }
