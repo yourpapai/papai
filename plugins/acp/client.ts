@@ -23,9 +23,11 @@ export async function callMagi(
   path: string,
   body?: unknown,
 ): Promise<unknown> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${cfg.token}` }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
   const res = await httpFetch(`${cfg.baseUrl}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const text = await res.text()

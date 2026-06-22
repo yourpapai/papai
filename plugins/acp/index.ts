@@ -3,15 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 import { callMagi, NOT_CONFIGURED, readMagiConfig } from './client.js'
 import type { HttpFetch } from './client.js'
 import { emptySchema } from './schemas.js'
 
-type AdminConfigReader = { get(key: string): string | undefined }
-type RuntimeContext = { storageContextId: string; adminConfig: AdminConfigReader }
-type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
-type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
-type RegisterTool = (tool: Tool) => void
+type RegisterTool = (tool: PluginTool) => void
 type RegisterFragment = (f: { name: string; content: string }) => void
 type LogInfo = (meta: Record<string, unknown>, msg: string) => void
 
@@ -70,12 +67,12 @@ function extractActivationContext(ctx: unknown): ActivationContext {
   return { registerTool, registerFragment, logInfo, httpFetch }
 }
 
-function getTool(name: string, description: string, path: string, httpFetch: HttpFetch | undefined): Tool {
+function getTool(name: string, description: string, path: string, httpFetch: HttpFetch | undefined): PluginTool {
   return {
     name,
     description,
     inputSchema: emptySchema,
-    execute: (_input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
+    execute: (_input: unknown, runtimeContext: PluginToolRuntimeContext): Promise<unknown> => {
       const cfg = readMagiConfig(runtimeContext.adminConfig)
       if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
       return callMagi(httpFetch, cfg, 'GET', path)
