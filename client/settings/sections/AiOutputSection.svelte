@@ -21,16 +21,7 @@
   let error: string | null = $state(null)
   let loading = $state(false)
 
-  // Unset keys come back as value: ''. Display the first option (the default) so the
-  // control is never rendered in an indeterminate state.
-  const visible = $derived(
-    fields
-      .filter((field) => field.kind === 'ai-output')
-      .map((field) => ({
-        ...field,
-        value: field.value === '' ? (field.options?.[0]?.value ?? '') : field.value,
-      })),
-  )
+  const visible = $derived(fields.filter((field) => field.kind === 'ai-output'))
 
   async function load(id: string): Promise<void> {
     error = null

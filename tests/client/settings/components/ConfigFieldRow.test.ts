@@ -308,6 +308,35 @@ describe('ConfigFieldRow', () => {
     void unmount(component)
   })
 
+  test('an unset enum field displays the first option as selected', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'structured_prompt_surface',
+        storageKey: 'structured_prompt_surface',
+        label: 'Structured prompt surface',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        control: 'toggle',
+        options: [
+          { value: 'off', label: 'Off' },
+          { value: 'on', label: 'On' },
+        ],
+        hasValue: false,
+        value: '',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const offBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-structured_prompt_surface-off"]')!
+    const onBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-structured_prompt_surface-on"]')!
+    expect(offBtn.getAttribute('aria-checked')).toBe('true')
+    expect(onBtn.getAttribute('aria-checked')).toBe('false')
+    void unmount(component)
+  })
+
   test('an enum field reverts to the previous value when the PATCH fails', async () => {
     setCsrfToken('c')
     setMockFetch(() => Promise.resolve(new Response('nope', { status: 500 })))

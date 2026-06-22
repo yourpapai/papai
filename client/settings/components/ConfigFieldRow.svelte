@@ -28,7 +28,8 @@
   let error: string | null = $state(null)
   let saving = $state(false)
   const isEnum = $derived(field.control === 'toggle' || field.control === 'select')
-  let current = $state(field.value)
+  const displayValue = $derived(field.options !== undefined && field.value === '' ? (field.options[0]?.value ?? '') : field.value)
+  let current = $state(displayValue)
 
   // An unset secret (no stored value) has nothing to mask, so open the editor
   // directly — otherwise there is no Replace button and no way to enter a first value.
@@ -38,10 +39,11 @@
     // Re-sync local edit state when the field prop changes (parent re-fetch / context switch).
     const sensitive = field.sensitive
     const value = field.value
+    const nextCurrent = field.options !== undefined && value === '' ? (field.options[0]?.value ?? '') : value
     void field.key
     untrack(() => {
       draft = sensitive ? '' : value
-      current = value
+      current = nextCurrent
       replacing = false
     })
   })
