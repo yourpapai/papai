@@ -53,6 +53,34 @@ function makeReply(overrides?: { createStatus?: ReplyFn['createStatus'] }): Reco
   }
 }
 
+type FakeTimers = {
+  now: () => number
+  schedule: (fn: () => void, ms: number) => () => void
+  /** Advance the virtual clock, firing any timers whose deadline has passed. */
+  advance: (ms: number) => void
+}
+
+function makeFakeTimers(): FakeTimers {
+  let current = 0
+  let pending: Array<{ at: number; fn: () => void; cancelled: boolean }> = []
+  return {
+    now: () => current,
+    schedule: (fn, ms) => {
+      const entry = { at: current + ms, fn, cancelled: false }
+      pending.push(entry)
+      return () => {
+        entry.cancelled = true
+      }
+    },
+    advance: (ms) => {
+      current += ms
+      const due = pending.filter((e) => !e.cancelled && e.at <= current)
+      pending = pending.filter((e) => !e.cancelled && e.at > current)
+      for (const e of due) e.fn()
+    },
+  }
+}
+
 describe('createLiveStatusReporter', () => {
   test('start creates the status with the Thinking placeholder', async () => {
     const rec = makeReply()
@@ -70,14 +98,66 @@ describe('createLiveStatusReporter', () => {
     expect(rec.updates).toEqual(['📝 Creating task: "Buy milk"…'])
   })
 
-  test('parallel tool starts render a (+n) suffix; finishing returns to a single label then Thinking', async () => {
+  test('parallel tool starts render then clear the (+n) suffix', async () => {
     const rec = makeReply()
     const reporter = createLiveStatusReporter(rec.reply)
     await reporter.start()
     reporter.onToolStart({ toolName: 'search_memory', input: { query: 'a' } })
     reporter.onToolStart({ toolName: 'create_task', input: { title: 'b' } })
     reporter.onToolFinish()
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🔍 Searching memory: "a"…', '📝 Creating task: "b"… (+1)', '📝 Creating task: "b"…'])
+  })
+
+  test('holds the last tool label until minLabelMs elapses, then reverts to Thinking', async () => {
+    const rec = makeReply()
+    const timers = makeFakeTimers()
+    const reporter = createLiveStatusReporter(rec.reply, { now: timers.now, schedule: timers.schedule })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'get_current_time', input: {} })
+    // A fast tool returns almost immediately.
     reporter.onToolFinish()
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🕒 Checking the time…'])
+    timers.advance(999)
+    await flushMicrotasks()
+    // Still held — no flicker to Thinking before the minimum hold elapses.
+    expect(rec.updates).toEqual(['🕒 Checking the time…'])
+    timers.advance(1)
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🕒 Checking the time…', '💭 Thinking…'])
+  })
+
+  test('a new tool start during the hold cancels the pending revert and shows the new label immediately', async () => {
+    const rec = makeReply()
+    const timers = makeFakeTimers()
+    const reporter = createLiveStatusReporter(rec.reply, { now: timers.now, schedule: timers.schedule })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'get_current_time', input: {} })
+    reporter.onToolFinish()
+    await flushMicrotasks()
+    timers.advance(200)
+    reporter.onToolStart({ toolName: 'create_task', input: { title: 'b' } })
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🕒 Checking the time…', '📝 Creating task: "b"…'])
+    // The superseded revert must not fire.
+    timers.advance(1000)
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🕒 Checking the time…', '📝 Creating task: "b"…'])
+  })
+
+  test('reverts to Thinking after the hold once all parallel tools finish', async () => {
+    const rec = makeReply()
+    const timers = makeFakeTimers()
+    const reporter = createLiveStatusReporter(rec.reply, { now: timers.now, schedule: timers.schedule })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'search_memory', input: { query: 'a' } })
+    reporter.onToolStart({ toolName: 'create_task', input: { title: 'b' } })
+    reporter.onToolFinish()
+    reporter.onToolFinish()
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🔍 Searching memory: "a"…', '📝 Creating task: "b"… (+1)', '📝 Creating task: "b"…'])
+    timers.advance(1000)
     await flushMicrotasks()
     expect(rec.updates).toEqual([
       '🔍 Searching memory: "a"…',
@@ -85,6 +165,21 @@ describe('createLiveStatusReporter', () => {
       '📝 Creating task: "b"…',
       '💭 Thinking…',
     ])
+  })
+
+  test('dismiss cancels a pending Thinking revert', async () => {
+    const rec = makeReply()
+    const timers = makeFakeTimers()
+    const reporter = createLiveStatusReporter(rec.reply, { now: timers.now, schedule: timers.schedule })
+    await reporter.start()
+    reporter.onToolStart({ toolName: 'get_current_time', input: {} })
+    reporter.onToolFinish()
+    await flushMicrotasks()
+    await reporter.dismiss()
+    timers.advance(1000)
+    await flushMicrotasks()
+    expect(rec.updates).toEqual(['🕒 Checking the time…'])
+    expect(rec.dismissed).toBe(1)
   })
 
   test('does not emit redundant updates for unchanged text', async () => {
