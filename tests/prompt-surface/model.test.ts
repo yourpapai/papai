@@ -18,6 +18,7 @@ describe('buildPromptSurfaceModel', () => {
   test('derives capability domains from enabled tool names', () => {
     const model = buildPromptSurfaceModel({
       mode: 'task-provider',
+      contextType: 'dm',
       contextId: 'ctx-model-capabilities',
       enabledToolNames: new Set(['create_task', 'web_fetch', 'get_current_time']),
       askPermissionAvailable: true,
@@ -38,6 +39,7 @@ describe('buildPromptSurfaceModel', () => {
 
     const model = buildPromptSurfaceModel({
       mode: 'task-provider',
+      contextType: 'dm',
       contextId: 'ctx-model-prefs',
       enabledToolNames: new Set(['create_task', 'delete_task']),
       askPermissionAvailable: true,
@@ -52,6 +54,7 @@ describe('buildPromptSurfaceModel', () => {
   test('selects relevant examples from mode and tools', () => {
     const model = buildPromptSurfaceModel({
       mode: 'providerless',
+      contextType: 'dm',
       contextId: 'ctx-model-examples',
       enabledToolNames: new Set(['get_current_time']),
       askPermissionAvailable: true,
@@ -61,5 +64,33 @@ describe('buildPromptSurfaceModel', () => {
 
     expect(model.examples.map((example) => example.id)).toContain('missing-provider-tools')
     expect(model.examples.map((example) => example.id)).not.toContain('ask-gated-tool-permission')
+  })
+
+  test('does not select group example for dm task history tools', () => {
+    const model = buildPromptSurfaceModel({
+      mode: 'task-provider',
+      contextType: 'dm',
+      contextId: 'ctx-model-dm-history',
+      enabledToolNames: new Set(['get_task_history']),
+      askPermissionAvailable: true,
+      providerAddendum: '',
+      pluginGuidance: '',
+    })
+
+    expect(model.examples.map((example) => example.id)).not.toContain('group-context-quiet')
+  })
+
+  test('selects group example for group context', () => {
+    const model = buildPromptSurfaceModel({
+      mode: 'task-provider',
+      contextType: 'group',
+      contextId: 'ctx-model-group',
+      enabledToolNames: new Set(['get_current_time']),
+      askPermissionAvailable: true,
+      providerAddendum: '',
+      pluginGuidance: '',
+    })
+
+    expect(model.examples.map((example) => example.id)).toContain('group-context-quiet')
   })
 })

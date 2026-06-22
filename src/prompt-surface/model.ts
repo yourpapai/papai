@@ -8,9 +8,11 @@ import { getToolPrefs, resolveToolPermission } from '../tools/tool-preferences.j
 import { PROMPT_SURFACE_EXAMPLES, type PromptExample } from './examples.js'
 
 export type PromptSurfaceMode = 'task-provider' | 'providerless'
+export type PromptSurfaceContextType = 'dm' | 'group'
 
 export interface PromptSurfaceModelInput {
   readonly mode: PromptSurfaceMode
+  readonly contextType: PromptSurfaceContextType
   readonly contextId: string
   readonly enabledToolNames: ReadonlySet<string>
   readonly askPermissionAvailable: boolean
@@ -28,6 +30,7 @@ export interface PromptSurfaceCapabilities {
 
 export interface PromptSurfaceModel {
   readonly mode: PromptSurfaceMode
+  readonly contextType: PromptSurfaceContextType
   readonly contextId: string
   readonly capabilities: PromptSurfaceCapabilities
   readonly providerAddendum: string
@@ -81,12 +84,14 @@ function buildCapabilities(input: PromptSurfaceModelInput): PromptSurfaceCapabil
   }
 }
 
-function selectExamples(model: Pick<PromptSurfaceModel, 'mode' | 'capabilities'>): readonly PromptExample[] {
+function selectExamples(
+  model: Pick<PromptSurfaceModel, 'mode' | 'contextType' | 'capabilities'>,
+): readonly PromptExample[] {
   const tags = new Set<string>()
   if (model.mode === 'providerless') tags.add('providerless')
   if (model.capabilities.availableDomains.includes('task')) tags.add('task')
   if (model.capabilities.availableDomains.includes('memory')) tags.add('memory')
-  if (model.capabilities.availableDomains.includes('history')) tags.add('group')
+  if (model.contextType === 'group') tags.add('group')
   if (model.capabilities.askGatedTools.length > 0) tags.add('ask-gated')
 
   return PROMPT_SURFACE_EXAMPLES.filter((example) => example.appliesWhen.some((tag) => tags.has(tag)))
@@ -96,6 +101,7 @@ export function buildPromptSurfaceModel(input: PromptSurfaceModelInput): PromptS
   const capabilities = buildCapabilities(input)
   const baseModel = {
     mode: input.mode,
+    contextType: input.contextType,
     contextId: input.contextId,
     capabilities,
     providerAddendum: input.providerAddendum,
