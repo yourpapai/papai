@@ -5,7 +5,7 @@
 
 import { asObject, asString, callMagi, NOT_CONFIGURED, optionalString, readMagiConfig } from './client.js'
 import type { HttpFetch } from './client.js'
-import { emptySchema, startSessionSchema } from './schemas.js'
+import { emptySchema, listSessionsSchema, sessionIdSchema, startSessionSchema } from './schemas.js'
 
 // Local structural tool types (mirrors plugins/synthetic-web-search): the real PluginTool.inputSchema
 // is z.ZodType, but plugins cannot static-import zod (discovery rejects bare-module imports),
@@ -81,6 +81,7 @@ function extractActivationContext(ctx: unknown): ActivationContext {
 }
 
 const DEFAULT_AGENT = 'claude-code-acp'
+const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
 
 function sessionIdOf(result: unknown): string | null {
   if (typeof result !== 'object' || result === null) return null
@@ -116,6 +117,43 @@ function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
   }
 }
 
+function listSessionsTool(httpFetch: HttpFetch | undefined): Tool {
+  return {
+    name: 'list_sessions',
+    description: 'List coding sessions started from this chat (filter: new|active|waiting|review|done).',
+    inputSchema: listSessionsSchema,
+    execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
+      const cfg = readMagiConfig(runtimeContext.adminConfig)
+      if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
+      const filter = optionalString(asObject(input), 'filter') ?? 'active'
+      if (!SESSION_FILTERS.includes(filter))
+        return { error: 'invalid_input', message: `filter must be one of ${SESSION_FILTERS.join(', ')}` }
+      const result = await callMagi(httpFetch, cfg, 'GET', `/sessions?filter=${encodeURIComponent(filter)}`)
+      if (!Array.isArray(result)) return result
+      const known = new Set(runtimeContext.kv.list('session:').map((row): string => row.key.slice('session:'.length)))
+      return result.filter((s): boolean => {
+        const id = sessionIdOf(s)
+        return id !== null && known.has(id)
+      })
+    },
+  }
+}
+
+function sessionStatusTool(httpFetch: HttpFetch | undefined): Tool {
+  return {
+    name: 'session_status',
+    description: 'Get the status and metadata of a coding session.',
+    inputSchema: sessionIdSchema,
+    execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
+      const cfg = readMagiConfig(runtimeContext.adminConfig)
+      if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
+      const sessionId = asString(asObject(input), 'sessionId')
+      if (sessionId === null) return Promise.resolve({ error: 'invalid_input', message: 'sessionId is required' })
+      return callMagi(httpFetch, cfg, 'GET', `/sessions/${encodeURIComponent(sessionId)}`)
+    },
+  }
+}
+
 function getTool(name: string, description: string, path: string, httpFetch: HttpFetch | undefined): Tool {
   return {
     name,
@@ -135,6 +173,8 @@ const factory = (): { activate(ctx: unknown): void } => ({
     ctx.registerTool(getTool('list_projects', 'List coding projects configured in magi.', '/projects', ctx.httpFetch))
     ctx.registerTool(getTool('list_agents', 'List coding agents available in magi.', '/agents', ctx.httpFetch))
     ctx.registerTool(startSessionTool(ctx.httpFetch))
+    ctx.registerTool(listSessionsTool(ctx.httpFetch))
+    ctx.registerTool(sessionStatusTool(ctx.httpFetch))
     ctx.logInfo({}, 'acp plugin activated')
   },
 })

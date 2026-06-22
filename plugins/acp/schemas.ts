@@ -15,3 +15,22 @@ export const startSessionSchema = {
   required: ['project', 'prompt'],
   additionalProperties: false,
 } as const
+
+export const listSessionsSchema = {
+  type: 'object',
+  properties: {
+    filter: {
+      type: 'string',
+      enum: ['new', 'active', 'waiting', 'review', 'done'],
+      description: 'Which sessions to list; defaults to active',
+    },
+  },
+  additionalProperties: false,
+} as const
+
+export const sessionIdSchema = {
+  type: 'object',
+  properties: { sessionId: { type: 'string', description: 'magi session id' } },
+  required: ['sessionId'],
+  additionalProperties: false,
+} as const
