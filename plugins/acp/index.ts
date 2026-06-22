@@ -5,7 +5,14 @@
 
 import { asObject, asString, callMagi, NOT_CONFIGURED, optionalString, readMagiConfig } from './client.js'
 import type { HttpFetch } from './client.js'
-import { emptySchema, listSessionsSchema, sessionIdSchema, startSessionSchema } from './schemas.js'
+import {
+  answerPermissionSchema,
+  emptySchema,
+  finishSessionSchema,
+  listSessionsSchema,
+  sessionIdSchema,
+  startSessionSchema,
+} from './schemas.js'
 
 // Local structural tool types (mirrors plugins/synthetic-web-search): the real PluginTool.inputSchema
 // is z.ZodType, but plugins cannot static-import zod (discovery rejects bare-module imports),
@@ -154,6 +161,81 @@ function sessionStatusTool(httpFetch: HttpFetch | undefined): Tool {
   }
 }
 
+const DEFAULT_FINISH_MESSAGE = 'Apply changes from magi coding session'
+
+function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
+  return {
+    name: 'finish_session',
+    description: 'Finish a session: commit + push the branch, or open a PR.',
+    inputSchema: finishSessionSchema,
+    execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
+      const cfg = readMagiConfig(runtimeContext.adminConfig)
+      if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
+      const args = asObject(input)
+      const sessionId = asString(args, 'sessionId')
+      const action = asString(args, 'action')
+      if (sessionId === null || (action !== 'push' && action !== 'pr'))
+        return Promise.resolve({ error: 'invalid_input', message: 'sessionId and action (push|pr) are required' })
+      const bodyFields: Record<string, string | undefined> = {
+        message: optionalString(args, 'message') ?? DEFAULT_FINISH_MESSAGE,
+        action,
+        title: optionalString(args, 'title'),
+        body: optionalString(args, 'body'),
+      }
+      const payload = Object.fromEntries(Object.entries(bodyFields).filter(([, v]) => v !== undefined))
+      return callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/finish`, payload)
+    },
+  }
+}
+
+function cancelSessionTool(httpFetch: HttpFetch | undefined): Tool {
+  return {
+    name: 'cancel_session',
+    description: 'Cancel a running coding session and tear down its sandbox.',
+    inputSchema: sessionIdSchema,
+    execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
+      const cfg = readMagiConfig(runtimeContext.adminConfig)
+      if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
+      const sessionId = asString(asObject(input), 'sessionId')
+      if (sessionId === null) return Promise.resolve({ error: 'invalid_input', message: 'sessionId is required' })
+      return callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/cancel`)
+    },
+  }
+}
+
+function answerPermissionTool(httpFetch: HttpFetch | undefined): Tool {
+  return {
+    name: 'answer_permission',
+    description: 'Answer a coding agent pending permission request (allow or deny).',
+    inputSchema: answerPermissionSchema,
+    execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
+      const cfg = readMagiConfig(runtimeContext.adminConfig)
+      if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
+      const args = asObject(input)
+      const sessionId = asString(args, 'sessionId')
+      const decision = asString(args, 'decision')
+      if (sessionId === null || (decision !== 'allow' && decision !== 'deny'))
+        return { error: 'invalid_input', message: 'sessionId and decision (allow|deny) are required' }
+      const pending = await callMagi(httpFetch, cfg, 'GET', `/sessions/${encodeURIComponent(sessionId)}/permissions`)
+      if (!Array.isArray(pending)) return pending
+      const toolCallIds = pending
+        .map((p): string | null => asString(asObject(p), 'toolCallId'))
+        .filter((id): id is string => id !== null)
+      if (toolCallIds.length === 0) return { resolved: 0, message: 'no pending permission requests' }
+      await Promise.all(
+        toolCallIds.map(
+          (toolCallId): Promise<unknown> =>
+            callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/permission`, {
+              toolCallId,
+              decision,
+            }),
+        ),
+      )
+      return { resolved: toolCallIds.length, decision }
+    },
+  }
+}
+
 function getTool(name: string, description: string, path: string, httpFetch: HttpFetch | undefined): Tool {
   return {
     name,
@@ -175,6 +257,9 @@ const factory = (): { activate(ctx: unknown): void } => ({
     ctx.registerTool(startSessionTool(ctx.httpFetch))
     ctx.registerTool(listSessionsTool(ctx.httpFetch))
     ctx.registerTool(sessionStatusTool(ctx.httpFetch))
+    ctx.registerTool(finishSessionTool(ctx.httpFetch))
+    ctx.registerTool(cancelSessionTool(ctx.httpFetch))
+    ctx.registerTool(answerPermissionTool(ctx.httpFetch))
     ctx.logInfo({}, 'acp plugin activated')
   },
 })

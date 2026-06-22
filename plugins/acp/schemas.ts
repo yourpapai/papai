@@ -34,3 +34,23 @@ export const sessionIdSchema = {
   required: ['sessionId'],
   additionalProperties: false,
 } as const
+
+export const finishSessionSchema = {
+  type: 'object',
+  properties: {
+    sessionId: { type: 'string' },
+    action: { type: 'string', enum: ['push', 'pr'], description: 'push the branch, or open a PR' },
+    message: { type: 'string', description: 'Commit message; defaults to a generic message' },
+    title: { type: 'string', description: 'PR title (action=pr)' },
+    body: { type: 'string', description: 'PR body (action=pr)' },
+  },
+  required: ['sessionId', 'action'],
+  additionalProperties: false,
+} as const
+
+export const answerPermissionSchema = {
+  type: 'object',
+  properties: { sessionId: { type: 'string' }, decision: { type: 'string', enum: ['allow', 'deny'] } },
+  required: ['sessionId', 'decision'],
+  additionalProperties: false,
+} as const
