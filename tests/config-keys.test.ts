@@ -75,6 +75,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'structured_prompt_surface',
     ])
   })
 
@@ -95,6 +96,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'structured_prompt_surface',
     ])
   })
 
@@ -111,6 +113,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'structured_prompt_surface',
     ])
   })
 
@@ -125,6 +128,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'structured_prompt_surface',
     ])
   })
 
@@ -147,6 +151,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'structured_prompt_surface',
     ])
   })
 
@@ -173,6 +178,7 @@ describe('getConfigKeysForContext', () => {
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
+      'structured_prompt_surface',
     ])
   })
 
@@ -288,6 +294,24 @@ describe('getConfigFieldsForContext', () => {
       { value: 'sanitized', label: 'Sanitized' },
       { value: 'raw', label: 'Raw' },
     ])
+  })
+
+  test('includes structured prompt surface toggle for every context', () => {
+    const field = getConfigFieldsForContext('ctx-unassigned').find((f) => f.storageKey === 'structured_prompt_surface')
+
+    expect(field).toEqual({
+      key: 'structured_prompt_surface',
+      storageKey: 'structured_prompt_surface',
+      label: 'Structured prompt surface',
+      required: false,
+      sensitive: false,
+      kind: 'preference',
+      control: 'toggle',
+      options: [
+        { value: 'off', label: 'Off' },
+        { value: 'on', label: 'On' },
+      ],
+    })
   })
 
   test('provider context field label comes from the descriptor field, not a hardcoded map', () => {

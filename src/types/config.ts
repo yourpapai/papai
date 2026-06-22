@@ -17,6 +17,9 @@ export const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:w
 // User preference config keys (always available)
 export type PreferenceConfigKey = 'timezone'
 
+// Structured prompt surface feature flag keys (always available)
+export type PromptSurfaceConfigKey = 'structured_prompt_surface'
+
 // MCP endpoint config keys
 export type McpConfigKey = 'mcp_endpoints'
 
@@ -29,7 +32,7 @@ export type AiOutputConfigKey = 'ai_tool_visibility' | 'ai_reasoning_visibility'
 // setConfigValue/getConfigValue + isAllowedDynamicConfigKey.
 // LLM credentials live in `system_config` (see `src/system-config.ts`)
 // and are owned by the bot admin, not per-user.
-export type ConfigKey = PreferenceConfigKey | McpConfigKey | AiOutputConfigKey
+export type ConfigKey = PreferenceConfigKey | McpConfigKey | AiOutputConfigKey | PromptSurfaceConfigKey
 
 export type ConfigFieldOption = {
   readonly value: string
@@ -56,6 +59,7 @@ export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
   'ai_tool_visibility',
   'ai_reasoning_visibility',
   'ai_output_detail_level',
+  'structured_prompt_surface',
 ]
 
 /**

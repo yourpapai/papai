@@ -21,6 +21,7 @@ describe('config types', () => {
         'ai_tool_visibility',
         'ai_reasoning_visibility',
         'ai_output_detail_level',
+        'structured_prompt_surface',
       ])
     })
   })
@@ -38,6 +39,10 @@ describe('config types', () => {
       for (const key of ['ai_tool_visibility', 'ai_reasoning_visibility', 'ai_output_detail_level'] as const) {
         expect(isConfigKey(key)).toBe(true)
       }
+    })
+
+    test('returns true for the structured prompt surface flag', () => {
+      expect(isConfigKey('structured_prompt_surface')).toBe(true)
     })
 
     test('isConfigKey rejects the legacy flat provider keys', () => {
@@ -78,6 +83,7 @@ describe('config types', () => {
     test('accepts static config keys', () => {
       expect(isAllowedDynamicConfigKey('timezone')).toBe(true)
       expect(isAllowedDynamicConfigKey('mcp_endpoints')).toBe(true)
+      expect(isAllowedDynamicConfigKey('structured_prompt_surface')).toBe(true)
     })
 
     test('accepts the AI-output config keys', () => {

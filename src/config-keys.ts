@@ -75,6 +75,22 @@ const AI_OUTPUT_FIELDS: readonly ConfigField[] = [
   },
 ]
 
+const PROMPT_SURFACE_FIELDS: readonly ConfigField[] = [
+  {
+    key: 'structured_prompt_surface',
+    storageKey: 'structured_prompt_surface',
+    label: 'Structured prompt surface',
+    required: false,
+    sensitive: false,
+    kind: 'preference',
+    control: 'toggle',
+    options: [
+      { value: 'off', label: 'Off' },
+      { value: 'on', label: 'On' },
+    ],
+  },
+]
+
 const storageKeyForProviderField = (
   descriptor: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>,
   field: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>['contextConfigSchema'][number],
@@ -110,14 +126,15 @@ function getPluginContextFields(): readonly ConfigField[] {
 export function getConfigFieldsForContext(contextId: string): readonly ConfigField[] {
   const pluginFields = getPluginContextFields()
   const settings = getContextSettings(contextId)
-  if (settings === null) return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
+  if (settings === null) return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS, ...PROMPT_SURFACE_FIELDS]
 
   const instance = getTaskInstance(settings.taskInstanceId)
   if (instance === null || instance.status !== 'active')
-    return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
+    return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS, ...PROMPT_SURFACE_FIELDS]
 
   const descriptor = getTaskProviderDescriptor(instance.type)
-  if (descriptor === undefined) return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
+  if (descriptor === undefined)
+    return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS, ...PROMPT_SURFACE_FIELDS]
 
   const providerFields = descriptor.contextConfigSchema
     .map(
@@ -132,7 +149,7 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
     )
     .filter((field) => field.storageKey !== KANEO_PLUGIN_WORKSPACE_KEY)
 
-  return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
+  return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS, ...PROMPT_SURFACE_FIELDS]
 }
 
 export function getConfigKeysForContext(contextId: string): readonly string[] {

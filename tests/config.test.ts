@@ -68,7 +68,9 @@ describe('setConfig', () => {
   test('handles static and dynamic per-user keys', () => {
     // Static keys still use setConfig/getConfig
     setConfig(USER_A, 'timezone', 'UTC')
+    setConfig(USER_A, 'structured_prompt_surface', 'on')
     expect(getConfig(USER_A, 'timezone')).toBe('UTC')
+    expect(getConfig(USER_A, 'structured_prompt_surface')).toBe('on')
     // Dynamic provider keys use setConfigValue/getConfigValue
     setConfigValue(USER_A, KANEO_CREDENTIAL_KEY, 'value-for-kaneo')
     setConfigValue(USER_A, YOUTRACK_TOKEN_KEY_DYNAMIC, 'value-for-youtrack')
@@ -110,7 +112,7 @@ describe('getConfig', () => {
 describe('isConfigKey', () => {
   test('returns true for static per-user keys only', () => {
     // Only static (non-provider) keys are ConfigKey members after refactor
-    const validKeys: ConfigKey[] = ['timezone', 'mcp_endpoints']
+    const validKeys: ConfigKey[] = ['timezone', 'mcp_endpoints', 'structured_prompt_surface']
     for (const key of validKeys) {
       expect(isConfigKey(key)).toBe(true)
     }
