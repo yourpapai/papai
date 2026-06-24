@@ -127,6 +127,14 @@ export const fetchByok = (contextId: string): Promise<ByokResponse> =>
 export const patchByok = (input: { contextId: string; values: Record<string, string> }): Promise<unknown> =>
   writeJson('/settings/api/byok', 'PATCH', input, (b) => b)
 
+export const toggleByok = (input: { contextId: string; enabled: boolean }): Promise<unknown> =>
+  writeJson(
+    '/settings/api/byok',
+    'PATCH',
+    { contextId: input.contextId, action: input.enabled ? 'enable' : 'disable' },
+    (b) => b,
+  )
+
 // --- Tools ---
 
 export const fetchTools = (contextId: string): Promise<ToolsResponse> =>

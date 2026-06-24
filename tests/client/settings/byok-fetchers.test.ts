@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { fetchAdminByok, patchAdminByok } from '../../../client/settings/admin-fetchers.js'
-import { fetchByok, patchByok, setCsrfToken } from '../../../client/settings/fetchers.js'
+import { fetchByok, patchByok, setCsrfToken, toggleByok } from '../../../client/settings/fetchers.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type CapturedFetchCall = Readonly<{ url: string; init: RequestInit }>
@@ -66,6 +66,24 @@ describe('BYOK fetchers', () => {
     expect(result.contexts).toEqual([])
     expect(captured[0]?.url).toBe('/settings/api/admin/byok')
     expect(methodOf(captured[0]!.init)).toBe('GET')
+  })
+
+  test('toggleByok PATCHes an enable action as JSON', async () => {
+    installFetch({ ok: true, contextId: 'ctx-1', enabled: true })
+
+    await toggleByok({ contextId: 'ctx-1', enabled: true })
+
+    expect(methodOf(captured[0]!.init)).toBe('PATCH')
+    expect(captured[0]?.url).toBe('/settings/api/byok')
+    expect(parseBody(captured[0]?.init.body)).toEqual({ contextId: 'ctx-1', action: 'enable' })
+  })
+
+  test('toggleByok PATCHes a disable action as JSON', async () => {
+    installFetch({ ok: true, contextId: 'ctx-1', enabled: false })
+
+    await toggleByok({ contextId: 'ctx-1', enabled: false })
+
+    expect(parseBody(captured[0]?.init.body)).toEqual({ contextId: 'ctx-1', action: 'disable' })
   })
 
   test('patchAdminByok PATCHes admin BYOK enablement as JSON', async () => {
