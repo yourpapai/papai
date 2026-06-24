@@ -13,7 +13,7 @@
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import type { ByokField, ByokResponse } from '../fetcher-schemas.js'
-  import { fetchByok, patchByok } from '../fetchers.js'
+  import { fetchByok, patchByok, toggleByok } from '../fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
 
   interface Props {
@@ -27,6 +27,7 @@
   let status: string | null = $state(null)
   let loading = $state(false)
   let savingKey: string | null = $state(null)
+  let toggling: boolean = $state(false)
   let drafts: Record<string, string> = $state({})
   let replacing: Record<string, boolean> = $state({})
   let loadedContextId: string | null = $state(null)
@@ -105,6 +106,21 @@
     }
   }
 
+  async function setEnabled(next: boolean): Promise<void> {
+    if (loading || toggling) return
+    error = null
+    status = null
+    toggling = true
+    try {
+      await toggleByok({ contextId, enabled: next })
+      await load(contextId)
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      toggling = false
+    }
+  }
+
   $effect(() => {
     const id = contextId
     untrack(() => {
@@ -124,6 +140,16 @@
 <section id="byok" class="settings-section">
   <PageHeader eyebrow="Personal" title="BYOK LLM">
     {#snippet action()}
+      {#if currentData !== null}
+        <Btn
+          variant={currentData.enabled ? 'outline' : 'primary'}
+          size="sm"
+          testid="byok-toggle"
+          disabled={loading || toggling}
+          onClick={() => void setEnabled(!currentData.enabled)}>
+          {#snippet children()}{currentData.enabled ? 'Use central credentials' : 'Use my own credentials'}{/snippet}
+        </Btn>
+      {/if}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="byok-refresh" />
     {/snippet}
   </PageHeader>
@@ -134,7 +160,9 @@
   {#if currentData === null && loading}
     <p class="placeholder">Loading…</p>
   {:else if currentData !== null && !currentData.enabled}
-    <p class="placeholder">BYOK is not enabled for this context. Ask a bot admin to enable it first.</p>
+    <p class="placeholder">
+      Using the central LLM credentials. Turn on "Use my own credentials" to configure BYOK for this context.
+    </p>
   {:else if currentData !== null}
     {#if unreadableError !== null}
       <p class="status-error">Stored BYOK credentials are unreadable. Re-enter the values to repair this context.</p>
