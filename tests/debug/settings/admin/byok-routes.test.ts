@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { getByokCredentialState, getByokLlmConfig, updateByokLlmConfig } from '../../../../src/byok-llm/store.js'
+import { getByokLlmConfig, updateByokLlmConfig } from '../../../../src/byok-llm/store.js'
 import { handleAdminByokRoutes } from '../../../../src/debug/settings/admin/byok-routes.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
 import { addUser } from '../../../../src/users.js'
@@ -27,8 +27,6 @@ const AdminByokResponseSchema = z.object({
   ),
 })
 
-const PatchResponseSchema = z.object({ ok: z.literal(true), contextId: z.string(), enabled: z.boolean() })
-
 describe('settings admin BYOK routes', () => {
   let adminSession: SettingsSession
   let userSession: SettingsSession
@@ -45,64 +43,9 @@ describe('settings admin BYOK routes', () => {
     userSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'user-1' })
   })
 
-  test('admin can enable BYOK for a context', async () => {
-    const url = new URL('https://x/settings/api/admin/byok')
-    const res = await handleAdminByokRoutes(
-      new Request(url, {
-        method: 'PATCH',
-        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contextId: 'ctx-1', enabled: true }),
-      }),
-      url,
-    )
-    expect(res.status).toBe(200)
-    const body = PatchResponseSchema.parse(await res.json())
-    expect(body).toEqual({ ok: true, contextId: 'ctx-1', enabled: true })
-    expect(getByokCredentialState('ctx-1').enabled).toBe(true)
-  })
-
-  test('admin can disable BYOK for a context', async () => {
-    const url = new URL('https://x/settings/api/admin/byok')
-    await handleAdminByokRoutes(
-      new Request(url, {
-        method: 'PATCH',
-        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contextId: 'ctx-1', enabled: true }),
-      }),
-      url,
-    )
-
-    const res = await handleAdminByokRoutes(
-      new Request(url, {
-        method: 'PATCH',
-        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contextId: 'ctx-1', enabled: false }),
-      }),
-      url,
-    )
-
-    expect(res.status).toBe(200)
-    const body = PatchResponseSchema.parse(await res.json())
-    expect(body.enabled).toBe(false)
-    expect(getByokCredentialState('ctx-1').enabled).toBe(false)
-  })
-
   test('non-admin cannot read BYOK summaries', async () => {
     const url = new URL('https://x/settings/api/admin/byok')
     const res = await handleAdminByokRoutes(new Request(url, { headers: authHeaders(userSession) }), url)
-    expect(res.status).toBe(403)
-  })
-
-  test('non-admin cannot enable BYOK', async () => {
-    const url = new URL('https://x/settings/api/admin/byok')
-    const res = await handleAdminByokRoutes(
-      new Request(url, {
-        method: 'PATCH',
-        headers: { ...authHeaders(userSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contextId: 'ctx-1', enabled: true }),
-      }),
-      url,
-    )
     expect(res.status).toBe(403)
   })
 
@@ -126,30 +69,17 @@ describe('settings admin BYOK routes', () => {
     expect(getByokLlmConfig('ctx-1')?.llm_apikey).toBe(secret)
   })
 
-  test('PATCH rejects invalid JSON with 400', async () => {
+  test('PATCH is not allowed on the admin route', async () => {
     const url = new URL('https://x/settings/api/admin/byok')
     const res = await handleAdminByokRoutes(
       new Request(url, {
         method: 'PATCH',
         headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: '{',
+        body: JSON.stringify({ contextId: 'ctx-1', enabled: true }),
       }),
       url,
     )
-    expect(res.status).toBe(400)
-  })
-
-  test('PATCH rejects invalid body with 422', async () => {
-    const url = new URL('https://x/settings/api/admin/byok')
-    const res = await handleAdminByokRoutes(
-      new Request(url, {
-        method: 'PATCH',
-        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contextId: '', enabled: true }),
-      }),
-      url,
-    )
-    expect(res.status).toBe(422)
+    expect(res.status).toBe(405)
   })
 
   test('unsupported method returns 405', async () => {
