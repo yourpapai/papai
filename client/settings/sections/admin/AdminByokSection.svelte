@@ -13,7 +13,6 @@
 
   let contexts: AdminByokContext[] = $state([])
   let error: string | null = $state(null)
-  let status: string | null = $state(null)
   let loading = $state(false)
 
   interface ByokAdminRow extends Record<string, unknown> {
@@ -56,7 +55,6 @@
 
   async function load(): Promise<void> {
     error = null
-    status = null
     loading = true
     try {
       contexts = (await fetchAdminByok()).contexts
@@ -80,7 +78,6 @@
   </PageHeader>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
 
   <div class="settings-table-wrap">
     {#snippet cell(row: ByokAdminRow, col: { key: string; label: string })}

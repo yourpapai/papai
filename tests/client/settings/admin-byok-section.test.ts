@@ -7,7 +7,6 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { flushSync, mount, unmount } from 'svelte'
 
-import { setCsrfToken } from '../../../client/settings/fetchers.js'
 import AdminByokSection from '../../../client/settings/sections/admin/AdminByokSection.svelte'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
@@ -44,7 +43,6 @@ const adminPayload = {
 
 afterEach(() => {
   restoreFetch()
-  setCsrfToken('')
 })
 
 describe('AdminByokSection', () => {
@@ -73,7 +71,7 @@ describe('AdminByokSection', () => {
     await drain()
 
     expect(target.querySelector('[data-testid="admin-byok-toggle-user:1"]')).toBeNull()
-    expect(target.textContent).toContain('user:1')
+    expect(target.querySelectorAll('[data-testid^="admin-byok-toggle-"]').length).toBe(0)
     void unmount(component)
   })
 
