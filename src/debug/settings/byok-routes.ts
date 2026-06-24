@@ -29,14 +29,18 @@ const BYOK_FIELDS = [
   readonly sensitive: boolean
 }[]
 
-const ToggleBodySchema = z.object({
-  contextId: z.string().optional(),
-  action: z.enum(['enable', 'disable']),
-})
-const SaveBodySchema = z.object({
-  contextId: z.string().optional(),
-  values: z.record(z.string(), z.string()),
-})
+const ToggleBodySchema = z
+  .object({
+    contextId: z.string().optional(),
+    action: z.enum(['enable', 'disable']),
+  })
+  .strict()
+const SaveBodySchema = z
+  .object({
+    contextId: z.string().optional(),
+    values: z.record(z.string(), z.string()),
+  })
+  .strict()
 const PatchBodySchema = z.union([ToggleBodySchema, SaveBodySchema])
 
 const allowedKeys = new Set<string>(BYOK_LLM_KEYS)

@@ -348,6 +348,20 @@ describe('settings BYOK routes', () => {
       url,
     )
     expect(res.status).toBe(200)
+    expect(getByokCredentialState(scopedGroupId).enabled).toBe(true)
+  })
+
+  test('PATCH body with both action and values returns 422', async () => {
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enable', values: { main_model: 'x' } }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
   })
 
   test('PATCH action:enable for a group the principal cannot manage → 403', async () => {
