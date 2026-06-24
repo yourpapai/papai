@@ -42,18 +42,7 @@ const adminPayload = {
   ],
 }
 
-let capturedPatchBody = ''
-
-const routeAdminByokMock = (url: string, init?: RequestInit): Promise<Response> => {
-  if (url.includes('/settings/api/admin/byok') && (init?.method ?? 'GET') === 'PATCH') {
-    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
-    return Promise.resolve(json({ ok: true, contextId: 'user:1', enabled: false }))
-  }
-  return Promise.resolve(json(adminPayload))
-}
-
 afterEach(() => {
-  capturedPatchBody = ''
   restoreFetch()
   setCsrfToken('')
 })
@@ -75,18 +64,16 @@ describe('AdminByokSection', () => {
     void unmount(component)
   })
 
-  test('enablement action PATCHes the inverted enabled state', async () => {
-    setCsrfToken('c')
-    setMockFetch(routeAdminByokMock)
+  test('renders a read-only overview with no enable/disable control', async () => {
+    setMockFetch(() => Promise.resolve(json(adminPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(AdminByokSection, { target })
 
     await drain()
-    target.querySelector<HTMLButtonElement>('[data-testid="admin-byok-toggle-user:1"]')!.click()
-    await drain()
 
-    expect(capturedPatchBody).toBe(JSON.stringify({ contextId: 'user:1', enabled: false }))
+    expect(target.querySelector('[data-testid="admin-byok-toggle-user:1"]')).toBeNull()
+    expect(target.textContent).toContain('user:1')
     void unmount(component)
   })
 

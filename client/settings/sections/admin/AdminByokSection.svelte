@@ -4,11 +4,10 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fetchAdminByok, patchAdminByok } from '../../admin-fetchers.js'
+  import { fetchAdminByok } from '../../admin-fetchers.js'
   import type { AdminByokContext } from '../../fetcher-schemas.js'
   import IdCell from '../../components/IdCell.svelte'
   import SettingsTable from '../../components/SettingsTable.svelte'
-  import Btn from '../../../shared/ui/Btn.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
 
@@ -16,7 +15,6 @@
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
-  let toggling: string | null = $state(null)
 
   interface ByokAdminRow extends Record<string, unknown> {
     contextId: string
@@ -24,7 +22,6 @@
     missing: string
     updatedAt: string
     updatedBy: string
-    action: string
     raw: AdminByokContext
   }
 
@@ -34,7 +31,6 @@
     { key: 'missing' as const, label: 'Missing' },
     { key: 'updatedAt' as const, label: 'Updated' },
     { key: 'updatedBy' as const, label: 'Updated by' },
-    { key: 'action' as const, label: '', align: 'right' as const },
   ]
 
   function statusFor(row: AdminByokContext): string {
@@ -54,7 +50,6 @@
       missing: row.missing.length > 0 ? row.missing.join(', ') : '—',
       updatedAt: formatUpdatedAt(row.updatedAt),
       updatedBy: row.updatedBy || '—',
-      action: row.enabled ? 'Disable' : 'Enable',
       raw: row,
     })),
   )
@@ -69,21 +64,6 @@
       error = err instanceof Error ? err.message : String(err)
     } finally {
       loading = false
-    }
-  }
-
-  async function toggle(row: AdminByokContext): Promise<void> {
-    error = null
-    status = null
-    toggling = row.contextId
-    try {
-      await patchAdminByok({ contextId: row.contextId, enabled: !row.enabled })
-      await load()
-      status = `BYOK ${row.enabled ? 'disabled' : 'enabled'} for ${row.contextId}.`
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    } finally {
-      toggling = null
     }
   }
 
@@ -104,16 +84,7 @@
 
   <div class="settings-table-wrap">
     {#snippet cell(row: ByokAdminRow, col: { key: string; label: string })}
-      {#if col.key === 'action'}
-        <Btn
-          variant={row.raw.enabled ? 'danger' : 'secondary'}
-          size="sm"
-          testid={`admin-byok-toggle-${row.contextId}`}
-          disabled={toggling === row.contextId}
-          onClick={() => void toggle(row.raw)}>
-          {#snippet children()}{toggling === row.contextId ? 'Saving…' : row.action}{/snippet}
-        </Btn>
-      {:else if col.key === 'contextId'}
+      {#if col.key === 'contextId'}
         <IdCell value={row.contextId} />
       {:else if col.key === 'status' && row.raw.unreadable === true}
         <span class="settings-byok-admin__unreadable">Unreadable</span>
