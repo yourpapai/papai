@@ -156,12 +156,12 @@ interface ToggleMockState {
 }
 
 const makeToggleMock =
-  (state: ToggleMockState) =>
+  (state: ToggleMockState, postPatchPayload: unknown) =>
   (url: string, init?: RequestInit): Promise<Response> => {
     if (url.includes('/settings/api/byok') && (init?.method ?? 'GET') === 'PATCH') {
       capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
-      state.payload = enabledPayload
-      return Promise.resolve(json({ ok: true, contextId: 'user:1', enabled: true }))
+      state.payload = postPatchPayload
+      return Promise.resolve(json({ ok: true }))
     }
     return Promise.resolve(json(state.payload))
   }
@@ -191,18 +191,37 @@ describe('ByokSection', () => {
 
   test('enabling the toggle PATCHes an enable action', async () => {
     setCsrfToken('c')
-    setMockFetch(makeToggleMock({ payload: disabledPayload }))
+    setMockFetch(makeToggleMock({ payload: disabledPayload }, enabledPayload))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
 
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="byok-toggle"]')!.click()
+    // two drains: setEnabled awaits toggleByok then load
     await drain()
     await drain()
 
     expect(capturedPatchBody).toBe(JSON.stringify({ contextId: 'user:1', action: 'enable' }))
     expect(target.querySelector('[data-testid="byok-input-small_model"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('disabling the toggle PATCHes a disable action', async () => {
+    setCsrfToken('c')
+    setMockFetch(makeToggleMock({ payload: enabledPayload }, disabledPayload))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-toggle"]')!.click()
+    // two drains: setEnabled awaits toggleByok then load
+    await drain()
+    await drain()
+
+    expect(capturedPatchBody).toBe(JSON.stringify({ contextId: 'user:1', action: 'disable' }))
+    expect(target.querySelector('[data-testid="byok-input-small_model"]')).toBeNull()
     void unmount(component)
   })
 

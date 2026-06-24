@@ -91,7 +91,7 @@
   }
 
   async function save(field: ByokField): Promise<void> {
-    if (loading || loadedContextId !== contextId || !fields.some((candidate) => candidate.key === field.key)) return
+    if (loading || toggling || loadedContextId !== contextId || !fields.some((candidate) => candidate.key === field.key)) return
     error = null
     status = null
     savingKey = field.key
@@ -200,7 +200,7 @@
                 variant="primary"
                 size="sm"
                 testid={`byok-save-${field.key}`}
-                disabled={savingKey === field.key || loading}
+                disabled={savingKey === field.key || loading || toggling}
                 onClick={() => void save(field)}>
                 {#snippet children()}{savingKey === field.key ? 'Saving…' : 'Save'}{/snippet}
               </Btn>
