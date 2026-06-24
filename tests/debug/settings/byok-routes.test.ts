@@ -9,7 +9,12 @@ import assert from 'node:assert/strict'
 import { z } from 'zod'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
-import { enableByokForContext, getByokLlmConfig, updateByokLlmConfig } from '../../../src/byok-llm/store.js'
+import {
+  enableByokForContext,
+  getByokCredentialState,
+  getByokLlmConfig,
+  updateByokLlmConfig,
+} from '../../../src/byok-llm/store.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { maskSensitiveValue } from '../../../src/config.js'
 import { byokLlmCredentials } from '../../../src/db/byok-llm-schema.js'
@@ -283,5 +288,78 @@ describe('settings BYOK routes', () => {
     const url = new URL('https://x/settings/api/byok')
     const res = await handleByokRoutes(new Request(url, { method: 'POST', headers: authHeaders(session) }), url)
     expect(res.status).toBe(405)
+  })
+
+  test('PATCH action:enable turns BYOK on for the owner personal context', async () => {
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enable' }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, contextId: personalConfigContextId, enabled: true })
+    expect(getByokCredentialState(personalConfigContextId).enabled).toBe(true)
+  })
+
+  test('PATCH action:disable turns BYOK off for the owner personal context', async () => {
+    enableByokForContext(personalConfigContextId, 'admin')
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'disable' }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, contextId: personalConfigContextId, enabled: false })
+    expect(getByokCredentialState(personalConfigContextId).enabled).toBe(false)
+  })
+
+  test('PATCH action:enable for a group the principal manages turns BYOK on', async () => {
+    const scopedGroupId = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'grp-1' })
+    upsertKnownGroupContext({
+      contextId: scopedGroupId,
+      provider: 'telegram',
+      displayName: 'Test Group',
+      parentName: null,
+    })
+    upsertGroupAdminObservation({
+      contextId: scopedGroupId,
+      provider: 'telegram',
+      userId: 'u-1',
+      username: 'u-1',
+      isAdmin: true,
+    })
+    addAuthorizedGroup(scopedGroupId, 'u-1')
+
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enable', contextId: scopedGroupId }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+  })
+
+  test('PATCH action:enable for a group the principal cannot manage → 403', async () => {
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enable', contextId: 'unmanaged-context' }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(403)
   })
 })

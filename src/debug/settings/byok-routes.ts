@@ -5,7 +5,13 @@
 
 import { z } from 'zod'
 
-import { getByokCredentialState, getByokLlmConfig, updateByokLlmConfig } from '../../byok-llm/store.js'
+import {
+  disableByokForContext,
+  enableByokForContext,
+  getByokCredentialState,
+  getByokLlmConfig,
+  updateByokLlmConfig,
+} from '../../byok-llm/store.js'
 import { BYOK_LLM_KEYS, type ByokLlmKey, type PartialByokLlmConfig } from '../../byok-llm/types.js'
 import { maskSensitiveValue } from '../../config.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
@@ -23,10 +29,15 @@ const BYOK_FIELDS = [
   readonly sensitive: boolean
 }[]
 
-const PatchBodySchema = z.object({
+const ToggleBodySchema = z.object({
+  contextId: z.string().optional(),
+  action: z.enum(['enable', 'disable']),
+})
+const SaveBodySchema = z.object({
   contextId: z.string().optional(),
   values: z.record(z.string(), z.string()),
 })
+const PatchBodySchema = z.union([ToggleBodySchema, SaveBodySchema])
 
 const allowedKeys = new Set<string>(BYOK_LLM_KEYS)
 
@@ -89,6 +100,16 @@ export async function handleByokRoutes(req: Request, url: URL): Promise<Response
 
     const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
     if (!scope.ok) return scope.response
+
+    if ('action' in body.data) {
+      const enabled = body.data.action === 'enable'
+      if (enabled) {
+        enableByokForContext(scope.scope.contextId, auth.authed.principal.platformUserId)
+      } else {
+        disableByokForContext(scope.scope.contextId, auth.authed.principal.platformUserId)
+      }
+      return settingsJson(200, { ok: true, contextId: scope.scope.contextId, enabled })
+    }
 
     const state = getByokCredentialState(scope.scope.contextId)
     if (!state.enabled) return settingsJson(403, { error: 'BYOK is not enabled for this context' })
