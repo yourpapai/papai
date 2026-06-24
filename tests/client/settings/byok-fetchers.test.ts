@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { fetchAdminByok, patchAdminByok } from '../../../client/settings/admin-fetchers.js'
+import { fetchAdminByok } from '../../../client/settings/admin-fetchers.js'
 import { fetchByok, patchByok, setCsrfToken, toggleByok } from '../../../client/settings/fetchers.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
@@ -84,17 +84,5 @@ describe('BYOK fetchers', () => {
     await toggleByok({ contextId: 'ctx-1', enabled: false })
 
     expect(parseBody(captured[0]?.init.body)).toEqual({ contextId: 'ctx-1', action: 'disable' })
-  })
-
-  test('patchAdminByok PATCHes admin BYOK enablement as JSON', async () => {
-    setCsrfToken('csrf-byok')
-    installFetch({ ok: true, contextId: 'ctx-1', enabled: true })
-
-    await patchAdminByok({ contextId: 'ctx-1', enabled: true })
-
-    expect(methodOf(captured[0]!.init)).toBe('PATCH')
-    expect(captured[0]?.url).toBe('/settings/api/admin/byok')
-    expect(new Headers(captured[0]?.init.headers).get('X-Settings-CSRF')).toBe('csrf-byok')
-    expect(parseBody(captured[0]?.init.body)).toEqual({ contextId: 'ctx-1', enabled: true })
   })
 })

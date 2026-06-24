@@ -112,9 +112,6 @@ export const submitAdminSystem = (input: { key: string; value: string }): Promis
 export const fetchAdminByok = (): Promise<AdminByokResponse> =>
   getJson('/settings/api/admin/byok', (b) => AdminByokResponseSchema.parse(b))
 
-export const patchAdminByok = (input: { contextId: string; enabled: boolean }): Promise<unknown> =>
-  writeJson('/settings/api/admin/byok', 'PATCH', input, (b) => b)
-
 export const fetchAdminUsers = (): Promise<AdminUsersResponse> =>
   getJson('/settings/api/admin/users', (b) => AdminUsersResponseSchema.parse(b))
 
