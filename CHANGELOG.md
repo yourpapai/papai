@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.2] - 2026-06-25
+
+### Added
+
+- **coding-credentials:** Encrypted per-context agent-provider vault
+- **plugins:** CodingSecrets capability gated by coding.secrets permission
+- **settings:** Coding-credentials user route
+- **settings-ui:** Coding sessions AI-provider section + fetchers
+- **acp:** Inject per-context agent key into magi sessions; refuse when unconfigured
+
+### Documentation
+
+- **coding-credentials:** Top-level multiphase spec + Phase 1 spec & plan
+- **coding-credentials:** Phase 2 forge-identity design spec
+- **coding-credentials:** Lock Phase 2 forge-identity decisions
+
+### Fixed
+
+- **coding-credentials:** Complete namespace dispatch + cover unreadable path
+- **audio-transcribe:** Dedicated per-user quota, group-shared + language-aware cache
+
+### Testing
+
+- **coding-credentials:** Cover masked-value preservation, optional clear, thread-scoped resolve
 ## [6.4.1] - 2026-06-25
 
 ### Added
