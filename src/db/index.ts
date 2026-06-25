@@ -71,6 +71,7 @@ import { migration057AttachmentGroupContext } from './migrations/057_attachment_
 import { migration058OpenDmAccess } from './migrations/058_open_dm_access.js'
 import { migration059GuestMode } from './migrations/059_guest_mode.js'
 import { migration060KaneoWorkspaceMembers } from './migrations/060_kaneo_workspace_members.js'
+import { migration061CodingSessionCredentials } from './migrations/061_coding_session_credentials.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -166,6 +167,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration058OpenDmAccess,
   migration059GuestMode,
   migration060KaneoWorkspaceMembers,
+  migration061CodingSessionCredentials,
 ]
 
 export const initDb = (): void => {
