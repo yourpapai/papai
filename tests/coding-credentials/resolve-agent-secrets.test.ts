@@ -6,10 +6,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import {
-  resolveAgentSecrets,
-  resolveForgeToken,
-} from '../../src/coding-credentials/resolve-agent-secrets.js'
+import { resolveAgentSecrets, resolveForgeToken } from '../../src/coding-credentials/resolve-agent-secrets.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 

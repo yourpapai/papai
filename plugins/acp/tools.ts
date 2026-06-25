@@ -90,7 +90,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         contextId: runtimeContext.storageContextId,
         prompt,
         secrets,
-        ...(forgeToken !== null ? { forgeToken } : {}),
+        ...(forgeToken === null ? {} : { forgeToken }),
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
