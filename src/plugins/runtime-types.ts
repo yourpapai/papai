@@ -44,7 +44,7 @@ export type PluginToolRuntimeContext = {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }
   }
   attachments: PluginAttachmentFacade
-  codingSecrets: { resolve(): Record<string, string> | null }
+  codingSecrets: { resolve(): Record<string, string> | null; resolveForgeToken(): string | null }
 }
 
 export type PluginScheduledJobRuntimeContext = {

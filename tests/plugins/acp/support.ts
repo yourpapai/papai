@@ -76,7 +76,10 @@ export function runtimeCtx(adminGet?: (k: string) => string | undefined): Plugin
     contextConfig: { get: () => undefined },
     rateLimit: { check: () => ({ allowed: true }) },
     attachments: { read: () => notImplemented() },
-    codingSecrets: { resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }) },
+    codingSecrets: {
+      resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+      resolveForgeToken: () => 'ghp-test',
+    },
   } as PluginToolRuntimeContext
 }
 
@@ -112,7 +115,10 @@ export function runtimeCtxWithKv(
     contextConfig: { get: () => undefined },
     rateLimit: { check: () => ({ allowed: true }) },
     attachments: { read: () => notImplemented() },
-    codingSecrets: { resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }) },
+    codingSecrets: {
+      resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+      resolveForgeToken: () => 'ghp-test',
+    },
   } as PluginToolRuntimeContext
 }
 

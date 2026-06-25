@@ -65,6 +65,7 @@ describe('acp finish_session tool', () => {
     expect(parsedBody(calls[0]!.init)).toEqual({
       message: 'Apply changes from magi coding session',
       action: 'pr',
+      forgeToken: 'ghp-test',
     })
     expect(result).toEqual({ merged: true })
   })
@@ -88,6 +89,7 @@ describe('acp finish_session tool', () => {
       action: 'pr',
       title: 'My PR',
       body: 'Some body text',
+      forgeToken: 'ghp-test',
     })
   })
 

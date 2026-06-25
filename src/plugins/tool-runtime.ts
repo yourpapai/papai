@@ -5,7 +5,7 @@
 
 import { loadAttachmentRecord } from '../attachments/store.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
-import { resolveAgentSecrets } from '../coding-credentials/resolve-agent-secrets.js'
+import { resolveAgentSecrets, resolveForgeToken } from '../coding-credentials/resolve-agent-secrets.js'
 import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildIdentityFacade } from './identity-facade.js'
@@ -160,6 +160,10 @@ export function buildCodingSecretsFacade(
     resolve(): Record<string, string> | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
       return resolveAgentSecrets(storageContextId)
+    },
+    resolveForgeToken(): string | null {
+      if (!hasPermission) deny(pluginId, 'coding.secrets')
+      return resolveForgeToken(storageContextId)
     },
   })
 }

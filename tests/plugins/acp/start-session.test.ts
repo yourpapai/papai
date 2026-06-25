@@ -37,6 +37,7 @@ describe('acp start_session tool', () => {
       contextId: 'ctx-1',
       prompt: 'do it',
       secrets: { ANTHROPIC_API_KEY: 'sk-test' },
+      forgeToken: 'ghp-test',
     })
     expect(result).toEqual({ id: 's-1', status: 'queued' })
     expect(store.get('session:s-1')).toBeDefined()

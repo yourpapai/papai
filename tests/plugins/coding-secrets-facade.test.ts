@@ -35,3 +35,9 @@ test('resolve throws without the coding.secrets permission', () => {
   const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
   expect(() => facade.resolve()).toThrow("does not have 'coding.secrets' permission")
 })
+
+test('resolveForgeToken via facade; denied without permission', () => {
+  updateCodingCredentials(STORAGE_CTX, 'forge', { forge_token: 'ghp_1' }, 'user-3')
+  expect(buildCodingSecretsFacade('acp', STORAGE_CTX, true).resolveForgeToken()).toBe('ghp_1')
+  expect(() => buildCodingSecretsFacade('acp', STORAGE_CTX, false).resolveForgeToken()).toThrow("'coding.secrets'")
+})

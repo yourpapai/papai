@@ -34,7 +34,7 @@ export type RuntimeContext = {
   storageContextId: string
   adminConfig: AdminConfigReader
   kv: KvStore
-  codingSecrets: { resolve(): Record<string, string> | null }
+  codingSecrets: { resolve(): Record<string, string> | null; resolveForgeToken(): string | null }
 }
 type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
 export type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
@@ -82,6 +82,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
           error: 'not_configured',
           message: 'Set up your AI provider key in settings → Coding sessions before starting a session.',
         }
+      const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         project,
@@ -89,6 +90,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         contextId: runtimeContext.storageContextId,
         prompt,
         secrets,
+        ...(forgeToken !== null ? { forgeToken } : {}),
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
@@ -142,6 +144,12 @@ export function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
     execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
       const cfg = readMagiConfig(runtimeContext.adminConfig)
       if (cfg === null || httpFetch === undefined) return Promise.resolve(NOT_CONFIGURED)
+      const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
+      if (forgeToken === null)
+        return Promise.resolve({
+          error: 'not_configured',
+          message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
+        })
       const args = asObject(input)
       const sessionId = asString(args, 'sessionId')
       const action = asString(args, 'action')
@@ -153,7 +161,10 @@ export function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
         title: optionalString(args, 'title'),
         body: optionalString(args, 'body'),
       }
-      const payload = Object.fromEntries(Object.entries(bodyFields).filter(([, v]) => v !== undefined))
+      const payload = {
+        ...Object.fromEntries(Object.entries(bodyFields).filter(([, v]) => v !== undefined)),
+        forgeToken,
+      }
       return callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/finish`, payload)
     },
   }
@@ -226,11 +237,18 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
           error: 'not_configured',
           message: 'Set up your AI provider key in settings → Coding sessions before starting a review.',
         }
+      const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
+      if (forgeToken === null)
+        return {
+          error: 'not_configured',
+          message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
+        }
       const result = await callMagi(httpFetch, cfg, 'POST', '/reviews', {
         project,
         prNumber,
         contextId: runtimeContext.storageContextId,
         secrets,
+        forgeToken,
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')

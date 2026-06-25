@@ -6,7 +6,10 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { resolveAgentSecrets } from '../../src/coding-credentials/resolve-agent-secrets.js'
+import {
+  resolveAgentSecrets,
+  resolveForgeToken,
+} from '../../src/coding-credentials/resolve-agent-secrets.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -59,4 +62,10 @@ test('reads credentials at config-context when called with a thread-scoped stora
   expect(resolveAgentSecrets(threadContextId)).toEqual({
     ANTHROPIC_API_KEY: 'sk-ant-thread',
   })
+})
+
+test('resolveForgeToken returns the stored forge token, or null when absent', () => {
+  expect(resolveForgeToken(STORAGE_CTX)).toBeNull()
+  updateCodingCredentials(STORAGE_CTX, 'forge', { forge_token: 'ghp_1' }, 'user-9')
+  expect(resolveForgeToken(STORAGE_CTX)).toBe('ghp_1')
 })

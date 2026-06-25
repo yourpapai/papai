@@ -64,6 +64,7 @@ describe('acp review_pr tool', () => {
       prNumber: 42,
       contextId: 'ctx-1',
       secrets: { ANTHROPIC_API_KEY: 'sk-test' },
+      forgeToken: 'ghp-test',
     })
     expect(result).toEqual({ id: 'r-1', status: 'queued' })
     expect(store.get('session:r-1')).toBeDefined()
