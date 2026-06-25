@@ -60,6 +60,17 @@ export function normalizeLanguage(raw: string | undefined): string | undefined {
   return /^[a-z]{2,8}$/iu.test(value) ? value : undefined
 }
 
+/**
+ * Cache key for a transcript. A language-specific request gets its OWN key so an
+ * explicit re-transcription (e.g. fixing a wrong auto-detected language) actually
+ * re-runs instead of returning the stale base transcript. Auto-transcription and
+ * language-less tool calls share the base `transcript:<id>` key.
+ */
+export function buildCacheKey(attachmentId: string, language?: string): string {
+  const lang = normalizeLanguage(language)
+  return lang === undefined ? `transcript:${attachmentId}` : `transcript:${attachmentId}:lang:${lang}`
+}
+
 export function resolveConfig(runtimeContext: PluginToolRuntimeContext): ResolvedConfig {
   const contextKey = runtimeContext.contextConfig.get('api_key')
   const contextBase = runtimeContext.contextConfig.get('base_url')
@@ -138,12 +149,19 @@ function pruneOldCacheEntries(kv: PluginToolRuntimeContext['kv'], justWrittenKey
   }
 }
 
-export function writeCache(kv: PluginToolRuntimeContext['kv'], cacheKey: string, result: TranscribeResult): void {
+/**
+ * Persist a transcript to the cache. Returns `false` if the KV write failed
+ * (e.g. storage denied) so the caller can surface it — a silently-failing cache
+ * means every carry-over re-transcribes and re-consumes quota.
+ */
+export function writeCache(kv: PluginToolRuntimeContext['kv'], cacheKey: string, result: TranscribeResult): boolean {
   try {
     kv.set(cacheKey, JSON.stringify({ ...result, cachedAt: new Date().toISOString() }))
     pruneOldCacheEntries(kv, cacheKey)
+    return true
   } catch {
-    // KV may be denied; ignore cache write failure.
+    // KV may be denied; report the failure so the caller can log it.
+    return false
   }
 }
 

@@ -11,11 +11,13 @@ import type { ToolExecutionOptions } from 'ai'
 import factory from '../../plugins/audio-transcribe/index.js'
 import manifest from '../../plugins/audio-transcribe/plugin.json'
 import {
+  buildCacheKey,
   DEFAULT_MODEL,
   describeApiFailure,
   normalizeLanguage,
   normalizeModel,
   resolveConfig,
+  writeCache,
 } from '../../plugins/audio-transcribe/transcription.js'
 import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
 import type {
@@ -145,6 +147,7 @@ type RuntimeOverrides = {
   contextModel?: string | undefined
   adminModel?: string | undefined
   adminBaseUrl?: string | undefined
+  onRateCheck?: (actorId: string) => void
 }
 
 function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolRuntimeContext {
@@ -176,10 +179,13 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
       },
     },
     rateLimit: {
-      check: () => ({
-        allowed: overrides.rateAllowed ?? true,
-        retryAfterSec: overrides.retryAfterSec,
-      }),
+      check: (actorId: string) => {
+        overrides.onRateCheck?.(actorId)
+        return {
+          allowed: overrides.rateAllowed ?? true,
+          retryAfterSec: overrides.retryAfterSec,
+        }
+      },
     },
     adminConfig: {
       get: (key: string) => {
@@ -230,7 +236,10 @@ describe('audio-transcribe plugin', () => {
 
   test('v2 plugin.json manifest parses correctly', () => {
     const parsed = pluginManifestSchema.parse(manifest)
-    expect(parsed.version).toBe('2.1.0')
+    expect(parsed.version).toBe('2.2.0')
+    // Group-shared transcript cache: voice notes are not re-transcribed across a
+    // group's sibling threads.
+    expect(parsed.storageScope).toBe('group')
     expect(parsed.contributes.attachmentTransformers).toContain('audio-transcribe')
     expect(parsed.configRequirements.map((r) => `${r.key}:${r.scope}`)).toContain('api_key:admin')
     expect(parsed.configRequirements.map((r) => `${r.key}:${r.scope}`)).toContain('api_key:context')
@@ -297,6 +306,109 @@ describe('audio-transcribe plugin', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     expect(result).toEqual({ text: 'hello world', language: 'en', durationSec: 1.5 })
+  })
+
+  test('buildCacheKey: base key without language, distinct key with normalized language', () => {
+    expect(buildCacheKey('att_1')).toBe('transcript:att_1')
+    expect(buildCacheKey('att_1', undefined)).toBe('transcript:att_1')
+    expect(buildCacheKey('att_1', 'ru')).toBe('transcript:att_1:lang:ru')
+    // Invalid language normalizes away → base key (no injection of junk into the key).
+    expect(buildCacheKey('att_1', 'not a lang!!')).toBe('transcript:att_1')
+  })
+
+  test('re-transcribe with explicit language re-runs even when a base transcript is cached', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'привет', language: 'ru', duration: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const kvBacking = new Map<string, string>()
+    // A wrong-language base transcript is already cached (e.g. from auto-transcription).
+    kvBacking.set(
+      'transcript:att_lang',
+      JSON.stringify({ text: 'preevyet', language: 'en', durationSec: 1, cachedAt: new Date().toISOString() }),
+    )
+
+    const result = await registeredTool.value!.execute(
+      { attachment_id: 'att_lang', language: 'ru' },
+      createMockRuntimeContext({ kvBacking }),
+      createMockOptions(),
+    )
+
+    // Must NOT return the stale cached English transcript — the explicit language forces a re-run.
+    expect(mockHttpFetch).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({ text: 'привет', language: 'ru', durationSec: 1 })
+    // Stored under a language-specific key; the base entry is untouched.
+    expect(kvBacking.has('transcript:att_lang:lang:ru')).toBe(true)
+    // Base entry untouched — still holds the original (wrong) transcript.
+    expect(kvBacking.get('transcript:att_lang')).toContain('preevyet')
+
+    // A second identical-language call is a cache hit (no second network call).
+    mockHttpFetch.mockClear()
+    const second = await registeredTool.value!.execute(
+      { attachment_id: 'att_lang', language: 'ru' },
+      createMockRuntimeContext({ kvBacking }),
+      createMockOptions(),
+    )
+    expect(mockHttpFetch).not.toHaveBeenCalled()
+    expect(second).toEqual({ text: 'привет', language: 'ru', durationSec: 1 })
+  })
+
+  test('writeCache returns true on success and false when the KV write throws', () => {
+    const store = new Map<string, string>()
+    const okKv: PluginToolRuntimeContext['kv'] = {
+      get: (k) => store.get(k),
+      set: (k, v) => {
+        store.set(k, v)
+      },
+      delete: (k) => {
+        store.delete(k)
+      },
+      list: () => [],
+    }
+    expect(writeCache(okKv, 'transcript:ok', { text: 'hi' })).toBe(true)
+
+    const denyingKv: PluginToolRuntimeContext['kv'] = {
+      get: () => undefined,
+      set: () => {
+        throw new Error('storage denied')
+      },
+      delete: () => {},
+      list: () => [],
+    }
+    expect(writeCache(denyingKv, 'transcript:bad', { text: 'hi' })).toBe(false)
+  })
+
+  test('rate limit is keyed by chatUserId (per-user), not storageContextId', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'hi', language: 'en', duration: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const seenActorIds: string[] = []
+    await registeredTool.value!.execute(
+      { attachment_id: 'att_user_key' },
+      createMockRuntimeContext({
+        onRateCheck: (actorId) => {
+          seenActorIds.push(actorId)
+        },
+      }),
+      createMockOptions(),
+    )
+
+    // storageContextId is 'test-context'; chatUserId is 'test-user'. Keying by
+    // the group/thread context id would let one user starve a whole group.
+    expect(seenActorIds).toEqual(['test-user'])
   })
 
   test('returns cached transcript on second call without invoking httpFetch', async () => {

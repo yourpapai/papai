@@ -4,11 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { loadAttachmentRecord } from '../attachments/store.js'
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { resolveAgentSecrets } from '../coding-credentials/resolve-agent-secrets.js'
 import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
-import { consumeWebFetchQuota } from '../web/rate-limit.js'
 import { buildIdentityFacade } from './identity-facade.js'
+import { consumePluginQuota } from './rate-limit.js'
 import type { PluginScheduledJobRuntimeContext } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
@@ -183,12 +184,14 @@ export function buildPluginScheduledJobRuntimeContext(
   }
 }
 
-// Intentionally shares the web_fetch rate-limit bucket (20 req / 5 min per actor).
+// Dedicated plugin self-throttle bucket, SEPARATE from web_fetch's quota so the
+// two never drain each other. Keyed per (plugin, actor); callers should pass a
+// per-user actor id so one user cannot starve a shared group context.
 // Ungated: rate limiting is a safety mechanism, not a capability — any plugin may self-throttle.
-function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
+function buildRateLimit(pluginId: string): PluginToolRuntimeContext['rateLimit'] {
   return Object.freeze({
     check(actorId: string): { allowed: boolean; retryAfterSec?: number } {
-      const result = consumeWebFetchQuota(actorId)
+      const result = consumePluginQuota(pluginId, actorId)
       if (result.allowed) return { allowed: true }
       return { allowed: false, retryAfterSec: result.retryAfterSec }
     },
@@ -208,6 +211,13 @@ export function buildPluginToolRuntimeContext(
   runtime: PluginToolSetRuntime,
 ): PluginToolRuntimeContext {
   const permissions = new Set(manifest.permissions)
+  // Group-scoped plugins key their KV by the config-context id so durable state
+  // (e.g. transcript caches) is shared across a group's sibling threads instead
+  // of re-derived per thread. Attachment reads still use the raw storage context.
+  const kvContextId =
+    manifest.storageScope === 'group'
+      ? getConfigContextIdFromStorageContextId(runtime.storageContextId)
+      : runtime.storageContextId
   const identity = buildRuntimeIdentity(manifest, runtime.chatUserId)
   const taskProvider =
     runtime.provider === undefined
@@ -222,12 +232,12 @@ export function buildPluginToolRuntimeContext(
     pluginId,
     storageContextId: runtime.storageContextId,
     chatUserId: runtime.chatUserId,
-    kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
+    kv: buildRuntimeKv(pluginId, kvContextId, permissions.has('storage')),
     adminConfig: buildRuntimeAdminConfig(pluginId, manifest),
     contextConfig: buildRuntimeContextConfig(pluginId, runtime.storageContextId, manifest),
     ...(taskProvider === undefined ? {} : { taskProvider }),
     ...(identity === undefined ? {} : { identity }),
-    rateLimit: buildRateLimit(),
+    rateLimit: buildRateLimit(pluginId),
     attachments: buildAttachmentsFacade(pluginId, runtime.storageContextId, permissions.has('attachments.read')),
     codingSecrets: buildCodingSecretsFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
   })

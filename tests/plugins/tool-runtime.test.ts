@@ -6,8 +6,10 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { saveAttachment } from '../../src/attachments/store.js'
+import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setPluginConfig } from '../../src/config.js'
-import { setPluginAdminConfig } from '../../src/plugins/store.js'
+import { PLUGIN_QUOTA_LIMIT } from '../../src/plugins/rate-limit.js'
+import { kvGet, setPluginAdminConfig } from '../../src/plugins/store.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from '../../src/plugins/tool-runtime.js'
 import { pluginManifestSchema, type PluginManifest } from '../../src/plugins/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -75,7 +77,8 @@ describe('buildPluginToolRuntimeContext', () => {
     test('denies requests when rate limit is exceeded', () => {
       const ctx = buildPluginToolRuntimeContext('test-plugin', makeManifest(), makeRuntime())
       let lastResult: { allowed: boolean; retryAfterSec?: number } = { allowed: true }
-      for (let i = 0; i < 21; i++) {
+      // Exhaust the dedicated plugin quota (separate from web_fetch's 20/5-min).
+      for (let i = 0; i < PLUGIN_QUOTA_LIMIT + 1; i++) {
         lastResult = ctx.rateLimit.check('actor-1')
       }
       expect(lastResult.allowed).toBe(false)
@@ -354,6 +357,45 @@ describe('buildPluginToolRuntimeContext', () => {
     expect(() => runtime.kv.set('key', 'value')).toThrow("Plugin test-plugin does not have 'storage' permission")
     expect(() => runtime.kv.delete('key')).toThrow("Plugin test-plugin does not have 'storage' permission")
     expect(() => runtime.kv.list()).toThrow("Plugin test-plugin does not have 'storage' permission")
+  })
+
+  describe('kv storage scope', () => {
+    const threadId = (thread: string): string =>
+      toScopedThreadContextId({ platformInstanceId: 'pi1', nativeContextId: 'grp1', threadId: thread })
+
+    test('default (context scope) keys KV by the raw thread-scoped storage context id', () => {
+      const thread = threadId('tA')
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({ permissions: ['storage'] }),
+        makeRuntime({ storageContextId: thread }),
+      )
+      ctx.kv.set('k', 'v')
+      expect(kvGet('test-plugin', thread, 'k')).toBe('v')
+      // Not visible under the group-shared config-context id.
+      expect(kvGet('test-plugin', getConfigContextIdFromStorageContextId(thread), 'k')).toBeUndefined()
+    })
+
+    test("storageScope 'group' keys KV by the config-context id, shared across sibling threads", () => {
+      const threadA = threadId('tA')
+      const threadB = threadId('tB')
+      const config = getConfigContextIdFromStorageContextId(threadA)
+      // Sanity: both threads resolve to the same group config-context.
+      expect(getConfigContextIdFromStorageContextId(threadB)).toBe(config)
+      expect(config).not.toBe(threadA)
+
+      const manifest = makeManifest({ permissions: ['storage'], storageScope: 'group' })
+      const ctxA = buildPluginToolRuntimeContext('test-plugin', manifest, makeRuntime({ storageContextId: threadA }))
+      ctxA.kv.set('transcript:att', 'hi')
+
+      // A sibling thread's runtime context sees the same group-shared cache entry.
+      const ctxB = buildPluginToolRuntimeContext('test-plugin', manifest, makeRuntime({ storageContextId: threadB }))
+      expect(ctxB.kv.get('transcript:att')).toBe('hi')
+
+      // Stored under the config-context id, not the per-thread storage id.
+      expect(kvGet('test-plugin', config, 'transcript:att')).toBe('hi')
+      expect(kvGet('test-plugin', threadA, 'transcript:att')).toBeUndefined()
+    })
   })
 
   test('tool runtime read methods throw without tasks.read permission', () => {

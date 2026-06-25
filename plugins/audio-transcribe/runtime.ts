@@ -9,6 +9,7 @@ import type { PluginContext } from '../../src/plugins/context.js'
 import type { AttachmentTransformResult, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 import {
   AUDIO_EXTENSIONS,
+  buildCacheKey,
   describeApiFailure,
   describeLoadFailure,
   loadAudioAttachment,
@@ -20,6 +21,23 @@ import {
   type HttpFetch,
   type TranscribeResult,
 } from './transcription.js'
+
+type RuntimeLogger = PluginContext['log']
+
+/** Persist a transcript and warn (rather than silently swallow) on KV failure. */
+const persistTranscript = (
+  runtimeContext: PluginToolRuntimeContext,
+  cacheKey: string,
+  result: TranscribeResult,
+  log: RuntimeLogger,
+): void => {
+  if (!writeCache(runtimeContext.kv, cacheKey, result)) {
+    log.warn(
+      { cacheKey, storageContextId: runtimeContext.storageContextId },
+      'audio-transcribe: failed to persist transcript to cache — future turns will re-transcribe',
+    )
+  }
+}
 
 const transcribeInputSchema = z.object({
   attachment_id: z.string().min(1).max(200),
@@ -56,11 +74,15 @@ async function executeTranscribe(
   input: unknown,
   runtimeContext: PluginToolRuntimeContext,
   httpFetch: HttpFetch | undefined,
+  log: RuntimeLogger,
 ): Promise<unknown> {
   const parsed = parseTranscribeInput(input)
   if ('error' in parsed) return parsed
 
-  const cacheKey = `transcript:${parsed.attachment_id}`
+  // A language-specific request gets its own cache key so an explicit
+  // re-transcription re-runs instead of returning a stale base transcript.
+  const language = normalizeLanguage(parsed.language)
+  const cacheKey = buildCacheKey(parsed.attachment_id, language)
   const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
   if (cached !== undefined) return cached
 
@@ -77,7 +99,10 @@ async function executeTranscribe(
     return { error: 'not_configured', message: 'audio-transcribe: api_key missing or providerRuntime unavailable' }
   }
 
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
+  // Key the quota per-user (chatUserId), not per storage context: in a group the
+  // storage context is shared, so context-keying would let one chatty voice user
+  // exhaust the whole group's transcription budget.
+  const rateResult = runtimeContext.rateLimit.check(runtimeContext.chatUserId)
   if (!rateResult.allowed) {
     return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
   }
@@ -85,16 +110,11 @@ async function executeTranscribe(
   const audio = await loadAudioAttachment(runtimeContext, parsed.attachment_id)
   if (!audio.ok) return audio.result
 
-  const apiResult = await transcribeRecord(
-    audio.record,
-    audio.bytes,
-    normalizeLanguage(parsed.language),
-    config,
-    httpFetch,
-  )
+  log.debug({ attachmentId: parsed.attachment_id, language }, 'audio-transcribe: transcribing (cache miss)')
+  const apiResult = await transcribeRecord(audio.record, audio.bytes, language, config, httpFetch)
   if ('error' in apiResult) return apiResult
 
-  writeCache(runtimeContext.kv, cacheKey, apiResult)
+  persistTranscript(runtimeContext, cacheKey, apiResult, log)
   return apiResult
 }
 
@@ -102,8 +122,9 @@ async function runTransform(
   record: { attachmentId: string },
   runtimeContext: PluginToolRuntimeContext,
   httpFetch: HttpFetch | undefined,
+  log: RuntimeLogger,
 ): Promise<AttachmentTransformResult> {
-  const cacheKey = `transcript:${record.attachmentId}`
+  const cacheKey = buildCacheKey(record.attachmentId)
   const cached = readCachedTranscript(runtimeContext.kv, cacheKey)
   if (cached !== undefined) return toTransformResult(cached)
 
@@ -120,16 +141,20 @@ async function runTransform(
     return { ok: false, reason: 'not configured — the admin can set a transcription API key in the settings UI' }
   }
 
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
+  // Key the quota per-user (chatUserId), not per storage context: in a group the
+  // storage context is shared, so context-keying would let one chatty voice user
+  // exhaust the whole group's transcription budget.
+  const rateResult = runtimeContext.rateLimit.check(runtimeContext.chatUserId)
   if (!rateResult.allowed) return { ok: false, reason: 'rate limited — try again shortly' }
 
   const audio = await loadAudioAttachment(runtimeContext, record.attachmentId)
   if (!audio.ok) return { ok: false, reason: describeLoadFailure(audio.result) }
 
+  log.debug({ attachmentId: record.attachmentId }, 'audio-transcribe: auto-transcribing voice note (cache miss)')
   const apiResult = await transcribeRecord(audio.record, audio.bytes, undefined, config, httpFetch)
   if ('error' in apiResult) return { ok: false, reason: describeApiFailure(apiResult) }
 
-  writeCache(runtimeContext.kv, cacheKey, apiResult)
+  persistTranscript(runtimeContext, cacheKey, apiResult, log)
   return toTransformResult(apiResult)
 }
 
@@ -142,8 +167,9 @@ async function runTransform(
  */
 export function registerAudioTranscribe(ctx: PluginContext): void {
   const httpFetch = ctx.providerRuntime?.httpFetch
+  const log = ctx.log
 
-  ctx.log.info({}, 'audio-transcribe plugin activated')
+  log.info({}, 'audio-transcribe plugin activated')
 
   ctx.registration.registerTool({
     name: 'transcribe',
@@ -151,7 +177,7 @@ export function registerAudioTranscribe(ctx: PluginContext): void {
       'Transcribes an audio attachment to text. Call this when the user asks to transcribe an audio file attachment, or to re-transcribe a voice note with an explicit language.',
     inputSchema: transcribeInputSchema,
     execute: (input: unknown, runtimeContext: PluginToolRuntimeContext) =>
-      executeTranscribe(input, runtimeContext, httpFetch),
+      executeTranscribe(input, runtimeContext, httpFetch, log),
   })
 
   ctx.registration.registerPromptFragment({
@@ -166,6 +192,6 @@ export function registerAudioTranscribe(ctx: PluginContext): void {
     filenameExtensions: [...AUDIO_EXTENSIONS],
     origins: ['voice'],
     timeoutMs: 60_000,
-    transform: (record, runtimeContext) => runTransform(record, runtimeContext, httpFetch),
+    transform: (record, runtimeContext) => runTransform(record, runtimeContext, httpFetch, log),
   })
 }

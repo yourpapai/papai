@@ -1,6 +1,6 @@
 # Audio Transcribe
 
-> Plugin ID: `audio-transcribe` · Version: 2.1.0 · `defaultEnabled: false`
+> Plugin ID: `audio-transcribe` · Version: 2.2.0 · `defaultEnabled: false`
 
 Transcribes voice notes automatically before the LLM turn and transcribes audio
 file attachments on demand, via an OpenAI-compatible
@@ -51,11 +51,19 @@ until an `api_key` is set. Context `model` overrides admin `model`.
 ## Behavior notes
 
 - **Caching** — transcripts are cached in plugin KV keyed by attachment id;
-  repeat `transcribe` calls and re-renders are free. Cache entries older than 30
-  days are pruned on write.
+  repeat `transcribe` calls and re-renders are free. A request with an explicit
+  `language` is cached under its own key, so re-transcribing a wrong transcript
+  in a named language actually re-runs instead of returning the stale text. The
+  manifest sets `storageScope: "group"`, so the cache is **shared across a
+  group's sibling threads** (config-context scope) rather than re-derived per
+  thread. Cache entries older than 30 days are pruned on write; a failed cache
+  write is logged (`warn`) rather than silently swallowed.
 - **Limits** — audio over 24 MiB returns `audio_too_large`. The transformer has
   a 60 s timeout (`activationTimeoutMs` for activation is 3000 ms).
-- **Rate limiting** — checked per storage context before the network call.
+- **Rate limiting** — a **dedicated** per-user quota (keyed by `chatUserId`),
+  separate from the `web_fetch` quota so the two never drain each other, and
+  per-user so one chatty voice sender cannot exhaust a whole group's budget.
+  Checked after the config/cache checks, before the network call.
 - **Failure handling** — failures surface as structured tool errors
   (`not_configured`, `rate_limited`, `attachment_not_found`,
   `unsupported_media_type`, `timeout`, `api_error`, …); for the transformer they

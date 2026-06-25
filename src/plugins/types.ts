@@ -196,6 +196,11 @@ export const pluginManifestSchema = z
       .regex(/^[a-zA-Z_$][a-zA-Z0-9_$]*$/u, 'Provider config validator must be a valid identifier')
       .optional(),
     activationTimeoutMs: z.number().int().min(100).max(10000).optional().default(5000),
+    // Scope of this plugin's KV store. 'context' (default) keys entries by the
+    // raw storage-context id (thread-scoped in groups). 'group' keys them by the
+    // config-context id so a durable cache (e.g. transcripts) is shared across a
+    // group's sibling threads instead of re-derived per thread.
+    storageScope: z.enum(['context', 'group']).optional().default('context'),
     mcp: mcpPluginConfigSchema.optional(),
   })
   .refine((m) => m.contributes.commands.length === 0 || m.permissions.includes('commands'), {
@@ -243,11 +248,12 @@ export type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
 // Fields with Zod `.default([])` are optional on the hand-constructed type; test fixtures and non-provider plugins may omit them.
 export type PluginManifest = Omit<
   ParsedPluginManifest,
-  'providerContextConfigSchema' | 'providerTraits' | 'providerAllowedHostsFromConfig'
+  'providerContextConfigSchema' | 'providerTraits' | 'providerAllowedHostsFromConfig' | 'storageScope'
 > & {
   providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
   providerTraits?: ParsedPluginManifest['providerTraits']
   providerAllowedHostsFromConfig?: ParsedPluginManifest['providerAllowedHostsFromConfig']
+  storageScope?: ParsedPluginManifest['storageScope']
 }
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {
