@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { getPluginConfig, maskSensitiveValue, setPluginConfig } from '../../config.js'
+import { getPluginConfig, maskSensitiveValue, setPluginConfig, unsetPluginConfig } from '../../config.js'
 import { logger } from '../../logger.js'
 import {
   getPluginContextEligibility,
@@ -87,12 +87,22 @@ async function handleToggle(req: Request): Promise<Response> {
   return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
 }
 
-const ConfigBodySchema = z.object({
+const ConfigSetBodySchema = z.object({
+  action: z.literal('set').optional(),
   pluginId: z.string().min(1),
   key: z.string().min(1),
   value: z.string(),
   contextId: z.string().optional(),
 })
+
+const ConfigUnsetBodySchema = z.object({
+  action: z.literal('unset'),
+  pluginId: z.string().min(1),
+  key: z.string().min(1),
+  contextId: z.string().optional(),
+})
+
+const ConfigBodySchema = z.union([ConfigUnsetBodySchema, ConfigSetBodySchema])
 
 async function handleConfig(req: Request): Promise<Response> {
   const auth = authenticate(req)
@@ -113,6 +123,16 @@ async function handleConfig(req: Request): Promise<Response> {
     (r) => r.scope === 'context' && r.key === body.data.key,
   )
   if (requirement === undefined) return settingsJson(422, { error: 'unknown plugin config key' })
+
+  if (body.data.action === 'unset') {
+    unsetPluginConfig(scope.scope.contextId, body.data.pluginId, body.data.key)
+    log.info(
+      { contextId: scope.scope.contextId, pluginId: body.data.pluginId, key: body.data.key },
+      'Settings plugin config unset',
+    )
+    return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
+  }
+
   // Masked secrets: an empty submit or a submit equal to the masked form of the stored value means "no change".
   if (requirement.sensitive) {
     const current = getPluginConfig(scope.scope.contextId, body.data.pluginId, body.data.key) ?? ''

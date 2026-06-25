@@ -222,4 +222,63 @@ describe('settings plugins routes', () => {
       'stored plugin secret must not be overwritten with the masked sentinel value',
     )
   })
+
+  test('config PATCH action:unset clears a plugin context config value', async () => {
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: false, sensitive: false, scope: 'context' }],
+      },
+    })
+    pluginRegistry.registerDiscovered(plugin)
+
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    setPluginConfig(personalConfigContextId, 'test-plugin', 'api_key', 'my-secret')
+    expect(getPluginConfig(personalConfigContextId, 'test-plugin', 'api_key')).toBe('my-secret')
+
+    const url = new URL('https://x/settings/api/plugins/config')
+    const res = await handlePluginsRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unset', pluginId: 'test-plugin', key: 'api_key' }),
+      }),
+      url,
+      '/settings/api/plugins/config',
+    )
+
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true) }).parse(await res.json())
+    expect(body.ok).toBe(true)
+    expect(getPluginConfig(personalConfigContextId, 'test-plugin', 'api_key')).toBeNull()
+  })
+
+  test('config PATCH action:unset for unknown plugin returns 422', async () => {
+    const url = new URL('https://x/settings/api/plugins/config')
+    const res = await handlePluginsRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unset', pluginId: 'no-such-plugin', key: 'api_key' }),
+      }),
+      url,
+      '/settings/api/plugins/config',
+    )
+    expect(res.status).toBe(422)
+  })
+
+  test('config PATCH action:unset for unknown key returns 422', async () => {
+    pluginRegistry.registerDiscovered(makePlugin())
+    const url = new URL('https://x/settings/api/plugins/config')
+    const res = await handlePluginsRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unset', pluginId: 'test-plugin', key: 'not-declared' }),
+      }),
+      url,
+      '/settings/api/plugins/config',
+    )
+    expect(res.status).toBe(422)
+  })
 })
