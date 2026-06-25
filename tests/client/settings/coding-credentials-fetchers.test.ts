@@ -31,6 +31,16 @@ const installFetch = (payload: unknown): void => {
   })
 }
 
+/** Alias matching the plan's naming convention for new tests. */
+const installFetchStub = installFetch
+
+/** Returns the most recently captured request. */
+const lastRequest = (): CapturedFetchCall => {
+  const last = captured[captured.length - 1]
+  if (last === undefined) throw new Error('No requests captured')
+  return last
+}
+
 const parseBody = (body: BodyInit | null | undefined): unknown => (typeof body === 'string' ? JSON.parse(body) : null)
 const methodOf = (init: RequestInit): string => (init.method ?? 'GET').toUpperCase()
 
@@ -67,5 +77,27 @@ describe('coding credentials fetchers', () => {
       contextId: 'pi:telegram:ctx:u1',
       values: { provider_api_key: 'sk-1' },
     })
+  })
+
+  test('fetchCodingCredentials sends namespace; patch includes it', async () => {
+    installFetchStub({
+      namespace: 'forge',
+      configured: false,
+      complete: false,
+      missing: ['forge_token'],
+      fields: [
+        { key: 'forge_token', label: 'Code-host token', required: true, sensitive: true, hasValue: false, value: '' },
+      ],
+    })
+    await fetchCodingCredentials('pi:telegram:ctx:u1', 'forge')
+    expect(lastRequest().url).toContain('namespace=forge')
+
+    installFetchStub({ ok: true })
+    await patchCodingCredentials({
+      contextId: 'pi:telegram:ctx:u1',
+      namespace: 'forge',
+      values: { forge_token: 'ghp_1' },
+    })
+    expect(parseBody(lastRequest().init.body)).toMatchObject({ namespace: 'forge' })
   })
 })

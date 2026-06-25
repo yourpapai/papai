@@ -139,11 +139,17 @@ export const toggleByok = (input: { contextId: string; enabled: boolean }): Prom
 
 // --- Coding credentials ---
 
-export const fetchCodingCredentials = (contextId: string): Promise<CodingCredentialsResponse> =>
-  getJson(`/settings/api/coding-credentials?${ctxQuery(contextId)}`, (b) => CodingCredentialsResponseSchema.parse(b))
+export const fetchCodingCredentials = (
+  contextId: string,
+  namespace = 'agent-provider',
+): Promise<CodingCredentialsResponse> =>
+  getJson(`/settings/api/coding-credentials?${ctxQuery(contextId)}&namespace=${encodeURIComponent(namespace)}`, (b) =>
+    CodingCredentialsResponseSchema.parse(b),
+  )
 
 export const patchCodingCredentials = (input: {
   contextId: string
+  namespace?: string
   values: Record<string, string>
 }): Promise<unknown> => writeJson('/settings/api/coding-credentials', 'PATCH', input, (b) => b)
 
