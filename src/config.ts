@@ -5,7 +5,7 @@
 
 import { eq } from 'drizzle-orm'
 
-import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from './cache.js'
+import { clearCachedConfig, clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from './cache.js'
 import { getConfigKeysForContext, isSensitiveProviderStorageKey } from './config-keys.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { userConfig } from './db/schema.js'
@@ -74,6 +74,14 @@ export function setConfigValue(contextId: string, key: string, value: string): v
   log.info({ contextId, key }, 'Config value set (DB sync in background)')
 }
 
+export function unsetConfigValue(contextId: string, key: string): void {
+  if (!isAllowedDynamicConfigKey(key)) throw new Error(`Invalid config key: ${key}`)
+  log.debug({ contextId, key }, 'unsetConfigValue called')
+  clearCachedConfig(contextId, key)
+  clearToolCacheIfToolAssemblyConfig(contextId, key)
+  log.info({ contextId, key }, 'Config value unset')
+}
+
 export function getConfigValue(contextId: string, key: string): string | null {
   if (!isAllowedDynamicConfigKey(key)) return null
   log.debug({ contextId, key }, 'getConfigValue called')
@@ -109,6 +117,11 @@ export function getPluginConfig(contextId: string, pluginId: string, key: string
 
 export function setPluginConfig(contextId: string, pluginId: string, key: string, value: string): void {
   setCachedConfig(contextId, getPluginConfigStorageKey(pluginId, key), value)
+  clearCachedToolsByPrefix(contextId)
+}
+
+export function unsetPluginConfig(contextId: string, pluginId: string, key: string): void {
+  clearCachedConfig(contextId, getPluginConfigStorageKey(pluginId, key))
   clearCachedToolsByPrefix(contextId)
 }
 

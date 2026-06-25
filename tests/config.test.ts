@@ -10,6 +10,7 @@ import {
   getAllConfig,
   getConfig,
   getConfigValue,
+  getPluginConfig,
   isConfigKey,
   isSensitiveKey,
   listPluginConfigValues,
@@ -17,6 +18,8 @@ import {
   setConfig,
   setConfigValue,
   setPluginConfig,
+  unsetConfigValue,
+  unsetPluginConfig,
 } from '../src/config.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
@@ -220,6 +223,47 @@ describe('getAllConfig', () => {
     const configA = getAllConfig(USER_A)
     expect(configA.timezone).toBe('America/New_York')
     expect(configA.timezone).not.toBe('Europe/Berlin')
+  })
+})
+
+describe('unsetConfigValue', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    clearUserCache('ctx-unset-1')
+    clearUserCache('ctx-unset-2')
+  })
+
+  test('clears a stored dynamic config value', () => {
+    const ctx = 'ctx-unset-1'
+    setConfigValue(ctx, 'timezone', 'UTC')
+    expect(getConfigValue(ctx, 'timezone')).toBe('UTC')
+
+    unsetConfigValue(ctx, 'timezone')
+
+    expect(getConfigValue(ctx, 'timezone')).toBeNull()
+  })
+
+  test('throws for a disallowed key', () => {
+    expect(() => unsetConfigValue('ctx-unset-2', 'not_a_real_key')).toThrow('Invalid config key')
+  })
+})
+
+describe('unsetPluginConfig', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    clearUserCache('ctx-unset-plg-1')
+  })
+
+  test('clears a stored plugin context config value', () => {
+    const ctx = 'ctx-unset-plg-1'
+    setPluginConfig(ctx, 'demo-plugin', 'api_key', 'secret')
+    expect(getPluginConfig(ctx, 'demo-plugin', 'api_key')).toBe('secret')
+
+    unsetPluginConfig(ctx, 'demo-plugin', 'api_key')
+
+    expect(getPluginConfig(ctx, 'demo-plugin', 'api_key')).toBeNull()
   })
 })
 
