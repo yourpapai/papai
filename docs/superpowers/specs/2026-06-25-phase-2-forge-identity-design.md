@@ -248,14 +248,18 @@ URL(...))`): reads `MAGI_GIT_USERNAME`/`MAGI_GIT_TOKEN` from env and echoes the
 | `src/server/router.ts`                | parse `forgeToken` on start/finish/review                       |
 | tests above                           | coverage                                                        |
 
-## Open questions
+## Resolved decisions (confirmed)
 
-- **Username convention:** `x-access-token`(github)/`oauth2`(gitlab) vs a single
-  generic username. Spec assumes per-kind; confirm acceptable for plain PATs.
-- **Start-time refusal:** keep `start_session` lenient (token optional) vs
-  hard-refuse there too for consistency with finish/review. Spec assumes lenient
-  (allows public-repo exploration); a private clone without a token fails at the
-  git layer with a clear error.
-- **Askpass asset packaging:** a shipped `.sh` asset (assumed, mirrors
-  `magi-init.sh`) vs writing a temp script per call. Spec assumes the shipped
-  asset.
+- **Username convention — per forge kind.** `x-access-token` (GitHub) /
+  `oauth2` (GitLab), derived from `forge.kind`. Robust for non-PAT token types
+  (App/CI tokens) and Phase-4 self-hosted forges; trivial cost since `forge.kind`
+  is already threaded.
+- **Start-time refusal — lenient.** `start_session` includes the forge token when
+  configured but does not refuse without it (public-repo exploration stays
+  possible); a private clone without a token fails at the git layer with a clear
+  error. `finish_session` / `review_pr` remain hard pre-flight refusals.
+- **Askpass packaging — shipped `.sh` asset.** A committed, exec-bit
+  (`0755`, defensively `chmod`-ed at startup) `src/git/assets/git-askpass.sh`
+  resolved via `import.meta.url`, mirroring `magi-init.sh`. The script is
+  token-free (reads the token from the child env), so a static asset has no
+  security downside over a per-call temp script and avoids temp-file lifecycle.
