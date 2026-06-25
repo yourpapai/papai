@@ -14,6 +14,7 @@ import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetc
 import {
   ByokResponseSchema,
   BootstrapSchema,
+  CodingCredentialsResponseSchema,
   ConfigResponseSchema,
   GroupGuestModeResponseSchema,
   GroupMembersResponseSchema,
@@ -25,6 +26,7 @@ import {
   ProvisionResultSchema,
   type ByokResponse,
   type BootstrapData,
+  type CodingCredentialsResponse,
   type ConfigResponse,
   type ContextTaskInstanceResponse,
   type GroupGuestModeResponse,
@@ -134,6 +136,16 @@ export const toggleByok = (input: { contextId: string; enabled: boolean }): Prom
     { contextId: input.contextId, action: input.enabled ? 'enable' : 'disable' },
     (b) => b,
   )
+
+// --- Coding credentials ---
+
+export const fetchCodingCredentials = (contextId: string): Promise<CodingCredentialsResponse> =>
+  getJson(`/settings/api/coding-credentials?${ctxQuery(contextId)}`, (b) => CodingCredentialsResponseSchema.parse(b))
+
+export const patchCodingCredentials = (input: {
+  contextId: string
+  values: Record<string, string>
+}): Promise<unknown> => writeJson('/settings/api/coding-credentials', 'PATCH', input, (b) => b)
 
 // --- Tools ---
 

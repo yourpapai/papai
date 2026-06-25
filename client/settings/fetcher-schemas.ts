@@ -71,6 +71,21 @@ export const AdminByokResponseSchema = z.object({ contexts: z.array(AdminByokCon
 export type AdminByokContext = z.infer<typeof AdminByokContextSchema>
 export type AdminByokResponse = z.infer<typeof AdminByokResponseSchema>
 
+// --- Coding credentials ---
+
+export const CodingCredentialFieldSchema = StoredConfigValueSchema
+export const CodingCredentialsResponseSchema = z.object({
+  namespace: z.string(),
+  configured: z.boolean(),
+  complete: z.boolean(),
+  missing: z.array(z.string()),
+  unreadable: z.literal(true).optional(),
+  error: z.string().optional(),
+  fields: z.array(CodingCredentialFieldSchema),
+})
+export type CodingCredentialField = z.infer<typeof CodingCredentialFieldSchema>
+export type CodingCredentialsResponse = z.infer<typeof CodingCredentialsResponseSchema>
+
 export const MemoryRecordSchema = z.object({
   id: z.string(),
   kind: z.string(),
