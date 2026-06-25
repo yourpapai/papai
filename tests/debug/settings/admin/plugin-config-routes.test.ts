@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { handleAdminPluginConfigRoutes } from '../../../../src/debug/settings/admin/plugin-config-routes.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../../../src/instances/admin-store.js'
 import { pluginRegistry } from '../../../../src/plugins/registry.js'
-import { getPluginAdminConfig } from '../../../../src/plugins/store.js'
+import { getPluginAdminConfig, setPluginAdminConfig } from '../../../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../../../src/plugins/types.js'
 import { addUser } from '../../../../src/users.js'
@@ -318,5 +318,64 @@ describe('settings admin plugin-config routes', () => {
       '/settings/api/admin/plugin-config',
     )
     expect(res.status).toBe(405)
+  })
+
+  // --- PATCH action:unset ---
+
+  test('PATCH action:unset removes a stored admin config value', async () => {
+    pluginRegistry.registerDiscovered(makePlugin())
+    setPluginAdminConfig('test-plugin', 'endpoint', 'https://api.example.com', 'ba-1')
+    expect(getPluginAdminConfig('test-plugin', 'endpoint')).toBe('https://api.example.com')
+
+    const url = new URL('https://x/settings/api/admin/plugin-config')
+    const res = await handleAdminPluginConfigRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(botAdminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unset', pluginId: 'test-plugin', key: 'endpoint' }),
+      }),
+      url,
+      '/settings/api/admin/plugin-config',
+    )
+
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), pluginId: z.string(), key: z.string() }).parse(await res.json())
+    expect(body.pluginId).toBe('test-plugin')
+    expect(body.key).toBe('endpoint')
+    expect(getPluginAdminConfig('test-plugin', 'endpoint')).toBeUndefined()
+  })
+
+  test('PATCH action:unset for undeclared/non-admin key returns 422', async () => {
+    pluginRegistry.registerDiscovered(makePlugin())
+    const url = new URL('https://x/settings/api/admin/plugin-config')
+    // user_token is scope: 'context', not 'admin'
+    const res = await handleAdminPluginConfigRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(botAdminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unset', pluginId: 'test-plugin', key: 'not-declared' }),
+      }),
+      url,
+      '/settings/api/admin/plugin-config',
+    )
+    expect(res.status).toBe(422)
+    const body = z.object({ error: z.string() }).parse(await res.json())
+    expect(body.error).toContain('not-declared')
+  })
+
+  test('PATCH action:unset for unknown plugin returns 422', async () => {
+    const url = new URL('https://x/settings/api/admin/plugin-config')
+    const res = await handleAdminPluginConfigRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(botAdminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unset', pluginId: 'no-such-plugin', key: 'api_key' }),
+      }),
+      url,
+      '/settings/api/admin/plugin-config',
+    )
+    expect(res.status).toBe(422)
+    const body = z.object({ error: z.string() }).parse(await res.json())
+    expect(body.error).toContain('no-such-plugin')
   })
 })

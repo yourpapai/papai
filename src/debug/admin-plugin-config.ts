@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import { pluginRegistry } from '../plugins/registry.js'
-import { getPluginAdminConfig, setPluginAdminConfig } from '../plugins/store.js'
+import { deletePluginAdminConfig, getPluginAdminConfig, setPluginAdminConfig } from '../plugins/store.js'
 
 const log = logger.child({ scope: 'debug:admin-plugin-config' })
 
@@ -124,4 +124,33 @@ export const applyAdminPluginConfigUpdate = (
   setPluginAdminConfig(parsed.data.pluginId, parsed.data.key, trimmed, updatedBy)
   log.info({ pluginId: parsed.data.pluginId, key: parsed.data.key, updatedBy }, 'admin plugin config updated')
   return { pluginId: parsed.data.pluginId, key: parsed.data.key, updatedAt }
+}
+
+const UnsetBodySchema = z.object({
+  action: z.literal('unset'),
+  pluginId: z.string(),
+  key: z.string(),
+})
+
+export const applyAdminPluginConfigUnset = (
+  body: unknown,
+  updatedBy: string,
+  descriptors: PluginConfigDescriptor[],
+): { pluginId: string; key: string } => {
+  const parsed = UnsetBodySchema.safeParse(body)
+  if (!parsed.success) throw new AdminPluginConfigError('bad-value', 'invalid body shape')
+
+  const descriptor = descriptors.find((d) => d.pluginId === parsed.data.pluginId)
+  if (descriptor === undefined) {
+    throw new AdminPluginConfigError('bad-plugin', `unknown plugin: ${parsed.data.pluginId}`)
+  }
+
+  const requirement = descriptor.configRequirements.find((req) => req.key === parsed.data.key && req.scope === 'admin')
+  if (requirement === undefined) {
+    throw new AdminPluginConfigError('bad-key', `undeclared or non-admin key: ${parsed.data.key}`)
+  }
+
+  deletePluginAdminConfig(parsed.data.pluginId, parsed.data.key)
+  log.info({ pluginId: parsed.data.pluginId, key: parsed.data.key, updatedBy }, 'admin plugin config unset')
+  return { pluginId: parsed.data.pluginId, key: parsed.data.key }
 }

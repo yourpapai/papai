@@ -6,6 +6,7 @@
 import { logger } from '../../../logger.js'
 import {
   AdminPluginConfigError,
+  applyAdminPluginConfigUnset,
   applyAdminPluginConfigUpdate,
   buildPluginConfigDescriptors,
   getAdminPluginConfigSnapshot,
@@ -48,6 +49,19 @@ async function handlePatch(req: Request, authed: Parameters<typeof requireAdmin>
   if (!parsed.ok) return parsed.response
 
   try {
+    const isUnset =
+      typeof parsed.value === 'object' &&
+      parsed.value !== null &&
+      (parsed.value as { action?: unknown }).action === 'unset'
+    if (isUnset) {
+      const result = applyAdminPluginConfigUnset(
+        parsed.value,
+        authed.principal.platformUserId,
+        buildPluginConfigDescriptors(),
+      )
+      log.info({ pluginId: result.pluginId, key: result.key }, 'Settings admin unset plugin config')
+      return settingsJson(200, { ok: true, pluginId: result.pluginId, key: result.key })
+    }
     const result = applyAdminPluginConfigUpdate(
       parsed.value,
       authed.principal.platformUserId,
