@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { toScopedContextId } from '../chat/scoped-context.js'
-import { getConfigValue, setConfigValue } from '../config.js'
+import { getConfigValue, setConfigValue, unsetConfigValue } from '../config.js'
 import { listKnownGroupContextsForPlatform } from '../group-settings/admin-group-list.js'
 import { listPlatformInstancesSafe } from '../instances/platform-store.js'
 import { parseReductionFlagsJson, REDUCTION_FLAGS_CONFIG_KEY, type ReductionFlags } from '../tools/feature-flags.js'
@@ -87,5 +87,12 @@ export function applyAdminFeatureFlagsUpdate(contextId: string, flags: AdminFlag
   const row = listContextRows().find((r) => r.contextId === contextId)
   if (row === undefined) throw new AdminFeatureFlagsError('unknown context')
   setConfigValue(contextId, REDUCTION_FLAGS_CONFIG_KEY, JSON.stringify(flags))
+  return { ...row, flags: readFlags(contextId) }
+}
+
+export function applyAdminFeatureFlagsUnset(contextId: string): AdminFlagContextRow {
+  const row = listContextRows().find((r) => r.contextId === contextId)
+  if (row === undefined) throw new AdminFeatureFlagsError('unknown context')
+  unsetConfigValue(contextId, REDUCTION_FLAGS_CONFIG_KEY)
   return { ...row, flags: readFlags(contextId) }
 }

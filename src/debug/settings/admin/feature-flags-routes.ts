@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { logger } from '../../../logger.js'
 import {
   AdminFeatureFlagsError,
+  applyAdminFeatureFlagsUnset,
   applyAdminFeatureFlagsUpdate,
   getAdminFeatureFlagsSnapshot,
 } from '../../admin-feature-flags.js'
@@ -24,7 +25,10 @@ const FlagsSchema = z
   })
   .strict()
 
-const PatchBodySchema = z.object({ contextId: z.string().min(1), flags: FlagsSchema }).strict()
+const PatchBodySchema = z.union([
+  z.object({ contextId: z.string().min(1), flags: FlagsSchema }).strict(),
+  z.object({ contextId: z.string().min(1), action: z.literal('unset') }).strict(),
+])
 
 export function handleAdminFeatureFlagsRoutes(req: Request, _url: URL, pathname: string): Promise<Response> {
   if (pathname !== '/settings/api/admin/feature-flags') {
@@ -60,6 +64,11 @@ async function handlePatch(req: Request, authed: Parameters<typeof requireSuperA
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   try {
+    if (!('flags' in body.data)) {
+      const row = applyAdminFeatureFlagsUnset(body.data.contextId)
+      log.info({ contextId: body.data.contextId }, 'Settings admin unset reduction flags')
+      return settingsJson(200, row)
+    }
     const row = applyAdminFeatureFlagsUpdate(body.data.contextId, body.data.flags)
     log.info({ contextId: body.data.contextId }, 'Settings admin updated reduction flags')
     return settingsJson(200, row)

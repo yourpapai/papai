@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import { toScopedContextId } from '../../../../src/chat/scoped-context.js'
+import { getConfigValue } from '../../../../src/config.js'
 import { handleAdminFeatureFlagsRoutes } from '../../../../src/debug/settings/admin/feature-flags-routes.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../../../src/instances/admin-store.js'
+import { REDUCTION_FLAGS_CONFIG_KEY } from '../../../../src/tools/feature-flags.js'
 import { addUser } from '../../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from '../helpers.js'
@@ -163,6 +165,41 @@ describe('settings admin feature-flags routes', () => {
     const res = await call(new Request(URL_PATH, { headers: authHeaders(superSession) }))
     const body = z.object({ killSwitchEngaged: z.boolean() }).parse(await res.json())
     expect(body.killSwitchEngaged).toBe(true)
+  })
+
+  test('PATCH action:unset clears the flags config and returns the row with all-OFF defaults', async () => {
+    const FlagsSchema = z.object({
+      result_compaction: z.boolean(),
+      progressive_disclosure: z.boolean(),
+      semantic_tool_retrieval: z.boolean(),
+    })
+
+    // First set some flags so there is a stored value
+    await call(
+      new Request(URL_PATH, {
+        method: 'PATCH',
+        headers: authHeaders(superSession, true),
+        body: JSON.stringify({ contextId: userCtx, flags: FLAGS_ON }),
+      }),
+    )
+
+    // Now unset
+    const res = await call(
+      new Request(URL_PATH, {
+        method: 'PATCH',
+        headers: authHeaders(superSession, true),
+        body: JSON.stringify({ contextId: userCtx, action: 'unset' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const row = z.object({ flags: FlagsSchema }).parse(await res.json())
+    expect(row.flags).toEqual({
+      result_compaction: false,
+      progressive_disclosure: false,
+      semantic_tool_retrieval: false,
+    })
+    expect(getConfigValue(userCtx, REDUCTION_FLAGS_CONFIG_KEY)).toBeNull()
   })
 
   test('PUT is not allowed', async () => {
