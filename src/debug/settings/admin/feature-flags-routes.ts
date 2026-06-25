@@ -64,7 +64,7 @@ async function handlePatch(req: Request, authed: Parameters<typeof requireSuperA
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   try {
-    if (!('flags' in body.data)) {
+    if ('action' in body.data) {
       const row = applyAdminFeatureFlagsUnset(body.data.contextId)
       log.info({ contextId: body.data.contextId }, 'Settings admin unset reduction flags')
       return settingsJson(200, row)
