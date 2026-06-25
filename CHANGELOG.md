@@ -5,6 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.1] - 2026-06-25
+
+### Added
+
+- **live-status:** Add per-context ai_live_status toggle
+- **participants:** Add chat roster service with fuzzy-rank resolution
+- **tool:** Add resolve_chat_participant tool for group @mention resolution
+- **tools:** Gate resolve_chat_participant by chatParticipantResolver in group context
+- **plumbing:** Thread chatParticipantResolver from ChatRouter into MakeToolsOptions
+- **prompt:** Add explicit resolve_chat_participant population procedure to GROUP_DEFERRED
+- **acp:** Notify_token from system_config with lazy env seed
+- **acp:** POST /api/notify handler
+- **acp:** Mount /api/notify on its own token trust plane
+- **membership:** Add members.provision capability and TaskProvider.provisionWorkspaceMember seam
+- **identity:** Add 'provisioned' MatchMethod with no-overwrite guard
+- **kaneo:** Implement KaneoProvider.listUsers and add members.provision capability
+- **kaneo:** Implement kaneoProvisionMember (invite+accept flow) and KaneoProvider.provisionWorkspaceMember
+- **db:** Migration 060 — kaneo_workspace_members table with encrypted_password column
+- **membership:** EnsureWorkspaceMember with reuse-via-stored-password, encrypted_password persistence, identity-link write
+- **membership:** Group_member:added/removed event subscriber, p-limit bounded, placeholder skip; fix failed/inactive rows to allow retry via upsert
+- **membership:** Startup backfill iterates group_members, p-limit bounded, placeholder skip
+- **membership:** First-interaction backstop in llm-orchestrator callLlm
+- **settings:** GET/POST /settings/api/kaneo/credentials — member email + reveal-once reset
+- **settings-ui:** KaneoAccessSection — show login email, workspace URL, reveal-once password reset
+- **system-prompt:** Add find_user Kaneo assignment resolution guidance for group context
+- **acp-plugin:** Scaffold acp plugin with magi client and read tools
+- **acp-plugin:** Start_session tool with kv session tracking
+- **acp-plugin:** List_sessions (kv-scoped) and session_status
+- **acp-plugin:** Finish, cancel, answer_permission tools
+- **acp-plugin:** Review_pr tool, /acp command, prompt fragment
+- **byok:** Self-serve enable/disable toggle on user route
+- **byok:** Add toggleByok client fetcher
+- **byok:** Self-serve toggle in user BYOK section
+
+### Changed
+
+- **message-queue:** Remove dead fire-and-forget seam, narrow enqueue to void
+- **kaneo:** Extract establishMemberSession to satisfy max-lines-per-function
+- **settings-ui:** Rename Kaneo credential reset→reveal for behavior consistency
+- **byok:** Make admin BYOK route read-only
+- **byok:** Read-only admin BYOK overview
+- **byok:** Remove dead status state and dead CSRF test code
+- **byok:** Remove dead patchAdminByok fetcher
+
+### Documentation
+
+- **spec:** Kaneo group-member provisioning design
+- **spec:** Reminder @mention resolution design
+- **plan:** Reminder @mention resolution implementation plan
+- **plan:** Kaneo group-member provisioning implementation plan
+- **plan:** Close 4 gaps in Kaneo group-member plan (reuse, settings UI, reset branches, label wiring)
+- Note resolve_chat_participant tool and chat-participant roster
+- **acp:** Add papai notify-endpoint implementation plan (#6)
+- **acp:** Document /api/notify endpoint and NOTIFY_TOKEN
+- **kaneo-spike:** Record phase-0 feasibility outcome (invite+accept; no add-member/set-password over HTTP)
+- **plan:** Revise Kaneo plan to Phase-0 reality (invite+accept, Branch-B credentials, reuse via stored password)
+- **acp-spec:** Rename geofront sandbox to acp-agent
+- **acp:** Add papai acp plugin implementation plan (#7)
+- **acp:** Document the acp plugin in CLAUDE.md
+- **live-status:** Document the minimum tool-label hold before Thinking
+- **byok:** Design spec for self-serve BYOK enablement
+- **byok:** Implementation plan for self-serve BYOK
+- **byok:** Document self-serve BYOK enablement model
+
+### Fixed
+
+- **timezone:** Resolve timezone from config-context id, not raw chatUserId
+- **participants:** Use canonical group-context derivation + realistic scoped-id test
+- **tools:** Repair tool-cache invalidation for resolver-scoped keys + wire resolver into providerless group tools
+- **participants:** Reject empty query, gate prompt on tool availability, log label fallback
+- **acp:** Notify_token seed uses onConflictDoNothing; add whitespace test
+- **acp:** Constant-time token compare, document target contract, log 401, test bad JSON
+- **acp:** Check bearer before config-state, guard sendMessage throws, type-safe token read
+- **kaneo:** Sanitize synthetic member email, add provisioning error-path tests, debug entry log
+- **membership:** Skip group-membership backstop for guest actors
+- **settings-ui:** Relabel reveal-once button 'Reveal password' (was misleadingly 'Reset password')
+- **acp-plugin:** Omit Content-Type on bodyless requests; use real plugin types
+- **acp-plugin:** Revert zod import; keep raw JSON-Schema + loose tool types for discovery
+- **mattermost-link:** Allow reading public channels the requester hasn't joined
+- **live-status:** Hold a tool label ≥1s before reverting to Thinking
+- **byok:** Reject ambiguous bodies carrying both action and values
+- **byok:** Guard save against in-flight toggle; add disable-direction test
+
+### Miscellaneous
+
+- **acp:** Register notify-token test-only seam in knip
+- **knip:** Remove temporary suppression for membership module and identity mapping
+- **acp-plugin:** Register acp plugin entry in knip
 ## [6.4.0] - 2026-06-20
 
 ### Added
