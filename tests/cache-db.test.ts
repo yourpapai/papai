@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
 
 import {
+  deleteConfigFromDb,
   deleteInstructionFromDb,
   syncConfigToDb,
   syncFactToDb,
@@ -190,6 +191,30 @@ describe('cache-db', () => {
       const definedResult = requireDefined(result)
       expect(definedResult.text).toBe(instruction.text)
       expect(definedResult.contextId).toBe(contextId)
+    })
+  })
+
+  describe('deleteConfigFromDb', () => {
+    test('removes the config row for the user+key', async () => {
+      const userId = 'user-del-cfg-1'
+      const db = getDrizzleDb()
+      db.insert(userConfig).values({ userId, key: 'timezone', value: 'UTC' }).run()
+
+      deleteConfigFromDb(userId, 'timezone')
+
+      await waitFor(() => {
+        const row = db
+          .select()
+          .from(userConfig)
+          .where(and(eq(userConfig.userId, userId), eq(userConfig.key, 'timezone')))
+          .get()
+        return row === undefined
+      })
+    })
+
+    test('is a no-op when the row does not exist', async () => {
+      deleteConfigFromDb('user-del-cfg-missing', 'timezone')
+      await waitFor(() => true)
     })
   })
 

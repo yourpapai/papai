@@ -120,6 +120,23 @@ export function syncConfigToDb(userId: string, key: string, value: string): void
   })
 }
 
+export function deleteConfigFromDb(userId: string, key: string): void {
+  const db = getDrizzleDb()
+  queueMicrotask(() => {
+    try {
+      db.delete(userConfig)
+        .where(and(eq(userConfig.userId, userId), eq(userConfig.key, key)))
+        .run()
+      log.debug({ userId, key }, 'Config deleted from DB')
+    } catch (error) {
+      log.error(
+        { userId, key, error: error instanceof Error ? error.message : String(error) },
+        'Failed to delete config from DB',
+      )
+    }
+  })
+}
+
 export function syncInstructionToDb(
   contextId: string,
   instruction: { id: string; text: string; createdAt: string },
