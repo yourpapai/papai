@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { getCodingCredentials } from '../../../src/coding-credentials/store.js'
+import { maskSensitiveValue } from '../../../src/config.js'
 import { handleCodingCredentialsRoutes } from '../../../src/debug/settings/coding-credentials-routes.js'
 import { resolveSettingsPrincipal } from '../../../src/settings/principal.js'
 import { addUser } from '../../../src/users.js'
@@ -35,7 +37,10 @@ const GetResponseSchema = z.object({
   fields: z.array(FieldSchema),
 })
 
-const PatchResponseSchema = z.object({ ok: z.literal(true), contextId: z.string() })
+const PatchResponseSchema = z.object({
+  ok: z.literal(true),
+  contextId: z.string(),
+})
 
 const ErrorResponseSchema = z.object({ error: z.string() })
 
@@ -46,7 +51,10 @@ function get(path: string, session: SettingsSession): Request {
 function patch(path: string, session: SettingsSession, body: unknown): Request {
   return new Request(`https://x${path}`, {
     method: 'PATCH',
-    headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+    headers: {
+      ...authHeaders(session, true),
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(body),
   })
 }
@@ -60,8 +68,16 @@ describe('coding-credentials routes', () => {
     process.env['INSTANCE_CONFIG_KEY'] = 'e'.repeat(64)
     await setupTestDb()
     seedTestPlatformInstance({ id: PLATFORM_INSTANCE_ID })
-    addUser({ userId: USER_ID, platformInstanceId: PLATFORM_INSTANCE_ID, addedBy: 'admin', username: undefined })
-    session = await establishSession({ platformInstanceId: PLATFORM_INSTANCE_ID, platformUserId: USER_ID })
+    addUser({
+      userId: USER_ID,
+      platformInstanceId: PLATFORM_INSTANCE_ID,
+      addedBy: 'admin',
+      username: undefined,
+    })
+    session = await establishSession({
+      platformInstanceId: PLATFORM_INSTANCE_ID,
+      platformUserId: USER_ID,
+    })
     personalConfigContextId = resolveSettingsPrincipal(PLATFORM_INSTANCE_ID, USER_ID).personalConfigContextId
   })
 
@@ -81,7 +97,9 @@ describe('coding-credentials routes', () => {
     const secret = 'sk-ant-1234'
     const patchUrl = new URL('https://x/settings/api/coding-credentials')
     const patchRes = await handleCodingCredentialsRoutes(
-      patch('/settings/api/coding-credentials', session, { values: { provider_api_key: secret } }),
+      patch('/settings/api/coding-credentials', session, {
+        values: { provider_api_key: secret },
+      }),
       patchUrl,
     )
     expect(patchRes.status).toBe(200)
@@ -105,7 +123,9 @@ describe('coding-credentials routes', () => {
   test('PATCH with clear:true removes credentials', async () => {
     const patchUrl = new URL('https://x/settings/api/coding-credentials')
     await handleCodingCredentialsRoutes(
-      patch('/settings/api/coding-credentials', session, { values: { provider_api_key: 'sk-1' } }),
+      patch('/settings/api/coding-credentials', session, {
+        values: { provider_api_key: 'sk-1' },
+      }),
       patchUrl,
     )
     await handleCodingCredentialsRoutes(patch('/settings/api/coding-credentials', session, { clear: true }), patchUrl)
@@ -152,5 +172,59 @@ describe('coding-credentials routes', () => {
       url,
     )
     expect(res.status).toBe(405)
+  })
+
+  test('PATCH preserves existing api key when client submits masked value', async () => {
+    const secret = 'sk-ant-original-9999'
+    const url = new URL('https://x/settings/api/coding-credentials')
+
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        values: { provider_api_key: secret },
+      }),
+      url,
+    )
+
+    const patchRes = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        values: {
+          provider_api_key: maskSensitiveValue(secret),
+          provider_base_url: 'https://new.example',
+        },
+      }),
+      url,
+    )
+    expect(patchRes.status).toBe(200)
+
+    const stored = getCodingCredentials(personalConfigContextId, 'agent-provider')
+    expect(stored?.provider_api_key).toBe(secret)
+    expect(stored?.provider_base_url).toBe('https://new.example')
+  })
+
+  test('PATCH clears optional field when client submits blank value', async () => {
+    const secret = 'sk-ant-keep-me-7777'
+    const url = new URL('https://x/settings/api/coding-credentials')
+
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        values: {
+          provider_api_key: secret,
+          provider_base_url: 'https://old.example',
+        },
+      }),
+      url,
+    )
+
+    const patchRes = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        values: { provider_base_url: '' },
+      }),
+      url,
+    )
+    expect(patchRes.status).toBe(200)
+
+    const stored = getCodingCredentials(personalConfigContextId, 'agent-provider')
+    expect(stored?.provider_api_key).toBe(secret)
+    expect(stored?.provider_base_url).toBeUndefined()
   })
 })
