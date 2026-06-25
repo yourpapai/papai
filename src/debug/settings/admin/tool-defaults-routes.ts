@@ -11,6 +11,7 @@ import { adminToolDefaultsContextId } from '../../../tools/admin-tool-defaults.j
 import { getToolMetadata, isToolDomain, TOOL_METADATA } from '../../../tools/tool-metadata.js'
 import {
   applyPreset,
+  clearToolPrefs,
   detectActivePreset,
   getToolPrefs,
   hasStoredToolPrefs,
@@ -28,6 +29,7 @@ const ToggleBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('domain'), permission: z.enum(['allow', 'ask', 'deny']), domain: z.string() }),
   z.object({ kind: z.literal('tool'), permission: z.enum(['allow', 'ask', 'deny']), tool: z.string() }),
   z.object({ kind: z.literal('preset'), preset: z.enum(['allow-all', 'non-destructive', 'read-only']) }),
+  z.object({ kind: z.literal('unset') }),
 ])
 
 function view(contextId: string): Response {
@@ -60,7 +62,11 @@ async function handlePost(req: Request, authed: AuthenticatedSettingsRequest): P
   const ctx = adminToolDefaultsContextId(authed.principal.platformInstanceId)
   const prefs = getToolPrefs(ctx)
 
-  if (body.data.kind === 'domain') {
+  if (body.data.kind === 'unset') {
+    clearToolPrefs(ctx)
+    log.info({ platformInstanceId: authed.principal.platformInstanceId }, 'Admin tool defaults unset')
+    return view(ctx)
+  } else if (body.data.kind === 'domain') {
     if (!isToolDomain(body.data.domain)) return settingsJson(422, { error: 'unknown tool domain' })
     setToolPrefs(ctx, setDomainPermission(prefs, body.data.domain, body.data.permission))
   } else if (body.data.kind === 'tool') {

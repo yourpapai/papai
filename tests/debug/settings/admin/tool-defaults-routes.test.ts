@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { handleAdminToolDefaultsRoutes } from '../../../../src/debug/settings/admin/tool-defaults-routes.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
 import { adminToolDefaultsContextId, getAdminToolDefaults } from '../../../../src/tools/admin-tool-defaults.js'
-import { detectActivePreset, getToolPrefs } from '../../../../src/tools/tool-preferences.js'
+import { detectActivePreset, getToolPrefs, hasStoredToolPrefs } from '../../../../src/tools/tool-preferences.js'
 import { addUser } from '../../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from '../helpers.js'
@@ -142,6 +142,40 @@ describe('settings admin tool-defaults routes', () => {
     expect(res.status).toBe(422)
     const body = z.object({ error: z.string() }).parse(await res.json())
     expect(body.error).toBe('unknown tool')
+  })
+
+  test('POST kind:unset clears admin tool defaults and returns 200 with activePreset null', async () => {
+    const ctx = adminToolDefaultsContextId('pi-1')
+    const url = new URL('https://x/settings/api/admin/tool-defaults')
+
+    // First, set a preset so there are stored prefs
+    await handleAdminToolDefaultsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'preset', preset: 'read-only' }),
+      }),
+      url,
+      '/settings/api/admin/tool-defaults',
+    )
+    expect(hasStoredToolPrefs(ctx)).toBe(true)
+
+    // Now unset
+    const res = await handleAdminToolDefaultsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'unset' }),
+      }),
+      url,
+      '/settings/api/admin/tool-defaults',
+    )
+
+    expect(res.status).toBe(200)
+    const body = ToolsResponseSchema.parse(await res.json())
+    expect(body.contextId).toBe(ctx)
+    expect(body.activePreset).toBeNull()
+    expect(hasStoredToolPrefs(ctx)).toBe(false)
   })
 
   test('non-admin GET → 403', async () => {
