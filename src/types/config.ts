@@ -50,6 +50,12 @@ export type ConfigField = {
   readonly control?: 'text' | 'toggle' | 'select'
   // Only meaningful for 'toggle'/'select' controls; ignored for 'text'.
   readonly options?: readonly ConfigFieldOption[]
+  /** Whether this field can be cleared back to its default. Defaults to true. */
+  readonly unsettable?: boolean
+}
+
+export function isFieldUnsettable(field: ConfigField): boolean {
+  return field.unsettable !== false
 }
 
 // All valid static config keys (preference and MCP only; provider keys are

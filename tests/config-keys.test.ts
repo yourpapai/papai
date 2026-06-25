@@ -22,6 +22,7 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../src/providers/registry.js'
+import { isFieldUnsettable, type ConfigField } from '../src/types/config.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import {
   getTestDb,
@@ -420,5 +421,25 @@ describe('isSensitiveProviderStorageKey', () => {
   test('false for a non-sensitive provider field and for unknown/static keys', () => {
     expect(isSensitiveProviderStorageKey('plugin:plugin-tracker:provider:workspaceId')).toBe(false)
     expect(isSensitiveProviderStorageKey('timezone')).toBe(false)
+  })
+})
+
+describe('isFieldUnsettable', () => {
+  const base: ConfigField = {
+    key: 'timezone',
+    storageKey: 'timezone',
+    label: 'Timezone',
+    required: false,
+    sensitive: false,
+    kind: 'preference',
+    control: 'text',
+  }
+
+  test('declared fields are unsettable by default', () => {
+    expect(isFieldUnsettable(base)).toBe(true)
+  })
+
+  test('an explicit unsettable:false opts out', () => {
+    expect(isFieldUnsettable({ ...base, unsettable: false })).toBe(false)
   })
 })
