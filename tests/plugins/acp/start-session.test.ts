@@ -31,7 +31,13 @@ describe('acp start_session tool', () => {
     const result = await tools
       .get('start_session')!
       .execute({ project: 'demo', prompt: 'do it' }, runtimeCtxWithKv(store), options())
-    expect(capturedBody).toEqual({ project: 'demo', agent: 'claude-code-acp', contextId: 'ctx-1', prompt: 'do it' })
+    expect(capturedBody).toEqual({
+      project: 'demo',
+      agent: 'claude-code-acp',
+      contextId: 'ctx-1',
+      prompt: 'do it',
+      secrets: { ANTHROPIC_API_KEY: 'sk-test' },
+    })
     expect(result).toEqual({ id: 's-1', status: 'queued' })
     expect(store.get('session:s-1')).toBeDefined()
   })

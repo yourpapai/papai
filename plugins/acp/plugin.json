@@ -20,7 +20,7 @@
     "commands": ["acp"],
     "promptFragments": ["acp-hint"]
   },
-  "permissions": ["http", "storage", "commands"],
+  "permissions": ["http", "storage", "commands", "coding.secrets"],
   "providerAllowedHostsFromConfig": ["magi_base_url"],
   "defaultEnabled": false,
   "configRequirements": [

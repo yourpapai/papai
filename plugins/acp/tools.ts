@@ -30,7 +30,12 @@ type KvStore = {
   delete(key: string): void
   list(prefix?: string): Array<{ key: string; value: string }>
 }
-export type RuntimeContext = { storageContextId: string; adminConfig: AdminConfigReader; kv: KvStore }
+export type RuntimeContext = {
+  storageContextId: string
+  adminConfig: AdminConfigReader
+  kv: KvStore
+  codingSecrets: { resolve(): Record<string, string> | null }
+}
 type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
 export type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
 
@@ -71,12 +76,19 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       const prompt = asString(args, 'prompt')
       if (project === null || prompt === null)
         return { error: 'invalid_input', message: 'project and prompt are required' }
+      const secrets = runtimeContext.codingSecrets.resolve()
+      if (secrets === null)
+        return {
+          error: 'not_configured',
+          message: 'Set up your AI provider key in settings → Coding sessions before starting a session.',
+        }
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         project,
         agent,
         contextId: runtimeContext.storageContextId,
         prompt,
+        secrets,
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
@@ -208,10 +220,17 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
       const prNumber = asPositiveInt(args, 'prNumber')
       if (project === null || prNumber === null)
         return { error: 'invalid_input', message: 'project and a positive prNumber are required' }
+      const secrets = runtimeContext.codingSecrets.resolve()
+      if (secrets === null)
+        return {
+          error: 'not_configured',
+          message: 'Set up your AI provider key in settings → Coding sessions before starting a review.',
+        }
       const result = await callMagi(httpFetch, cfg, 'POST', '/reviews', {
         project,
         prNumber,
         contextId: runtimeContext.storageContextId,
+        secrets,
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')

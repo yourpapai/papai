@@ -33,7 +33,7 @@ export function activate(httpFetch: HttpFetch): ActivateResult {
   const ctx = {
     pluginId: 'acp',
     contextId: '__system__',
-    permissions: new Set(['http', 'storage', 'commands']),
+    permissions: new Set(['http', 'storage', 'commands', 'coding.secrets']),
     kv: { get: () => undefined, set: () => {}, delete: () => {}, list: () => [] },
     log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
     registration: {
@@ -76,7 +76,7 @@ export function runtimeCtx(adminGet?: (k: string) => string | undefined): Plugin
     contextConfig: { get: () => undefined },
     rateLimit: { check: () => ({ allowed: true }) },
     attachments: { read: () => notImplemented() },
-    codingSecrets: { resolve: () => null },
+    codingSecrets: { resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }) },
   } as PluginToolRuntimeContext
 }
 
@@ -112,7 +112,7 @@ export function runtimeCtxWithKv(
     contextConfig: { get: () => undefined },
     rateLimit: { check: () => ({ allowed: true }) },
     attachments: { read: () => notImplemented() },
-    codingSecrets: { resolve: () => null },
+    codingSecrets: { resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }) },
   } as PluginToolRuntimeContext
 }
 
