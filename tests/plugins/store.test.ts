@@ -10,6 +10,7 @@ import { eq, sql } from 'drizzle-orm'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { pluginRuntimeEvents } from '../../src/db/schema.js'
 import {
+  deletePluginAdminConfig,
   getPluginAdminConfig,
   getPluginAdminState,
   getPluginContextState,
@@ -203,6 +204,22 @@ describe('plugin store', () => {
       const events = getRecentRuntimeEvents('plug')
       const err = events.find((e) => e.eventType === 'error')
       expect(err!.message).toBe('something broke')
+    })
+  })
+
+  describe('deletePluginAdminConfig', () => {
+    test('removes a stored admin config value', () => {
+      setPluginAdminConfig('demo-plugin', 'magi_token', 'tok-123', 'admin-1')
+      expect(getPluginAdminConfig('demo-plugin', 'magi_token')).toBe('tok-123')
+
+      deletePluginAdminConfig('demo-plugin', 'magi_token')
+
+      expect(getPluginAdminConfig('demo-plugin', 'magi_token')).toBeUndefined()
+    })
+
+    test('is a no-op for an absent key', () => {
+      deletePluginAdminConfig('demo-plugin', 'never_set')
+      expect(getPluginAdminConfig('demo-plugin', 'never_set')).toBeUndefined()
     })
   })
 })

@@ -244,6 +244,14 @@ export function getPluginAdminConfig(pluginId: string, key: string): string | un
   return row === undefined ? undefined : row.value
 }
 
+export function deletePluginAdminConfig(pluginId: string, key: string): void {
+  getDrizzleDb()
+    .delete(systemConfig)
+    .where(eq(systemConfig.key, pluginAdminConfigKey(pluginId, key)))
+    .run()
+  log.debug({ pluginId, key }, 'Plugin admin config deleted')
+}
+
 export function setPluginAdminConfig(pluginId: string, key: string, value: string, updatedBy: string): void {
   const dbKey = pluginAdminConfigKey(pluginId, key)
   const updatedAt = Date.now()
