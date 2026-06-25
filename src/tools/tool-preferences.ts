@@ -158,6 +158,7 @@ export function setToolPrefs(contextId: string, prefs: ToolPrefs): void {
 export function clearToolPrefs(contextId: string): void {
   clearCachedConfig(contextId, TOOL_PREFS_CONFIG_KEY)
   clearCachedToolsByPrefix(contextId)
+  log.info({ contextId }, 'Tool prefs cleared')
 }
 
 export function partitionToolNames(
