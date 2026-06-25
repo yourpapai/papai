@@ -227,4 +227,59 @@ describe('coding-credentials routes', () => {
     expect(stored?.provider_api_key).toBe(secret)
     expect(stored?.provider_base_url).toBeUndefined()
   })
+
+  test('GET ?namespace=forge returns the forge field; default stays agent-provider', async () => {
+    const forgeUrl = new URL(
+      `https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=forge`,
+    )
+    const forge = await handleCodingCredentialsRoutes(
+      get(`/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=forge`, session),
+      forgeUrl,
+    )
+    expect(forge.status).toBe(200)
+    const forgeBody = GetResponseSchema.parse(await forge.json())
+    expect(forgeBody.fields.map((f) => f.key)).toEqual(['forge_token'])
+
+    const dfltUrl = new URL(`https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}`)
+    const dflt = await handleCodingCredentialsRoutes(
+      get(`/settings/api/coding-credentials?contextId=${personalConfigContextId}`, session),
+      dfltUrl,
+    )
+    expect(dflt.status).toBe(200)
+    const dfltBody = GetResponseSchema.parse(await dflt.json())
+    expect(dfltBody.fields.map((f) => f.key)).toEqual(['provider_api_key', 'provider_base_url'])
+  })
+
+  test('unknown namespace is rejected', async () => {
+    const url = new URL(
+      `https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=bogus`,
+    )
+    const res = await handleCodingCredentialsRoutes(
+      get(`/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=bogus`, session),
+      url,
+    )
+    expect(res.status).toBe(400)
+  })
+
+  test('PATCH ?namespace=forge saves the forge token masked on GET', async () => {
+    const patchUrl = new URL('https://x/settings/api/coding-credentials')
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'forge',
+        values: { forge_token: 'ghp_secret' },
+      }),
+      patchUrl,
+    )
+    const getUrl = new URL(
+      `https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=forge`,
+    )
+    const res = await handleCodingCredentialsRoutes(
+      get(`/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=forge`, session),
+      getUrl,
+    )
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    const field = body.fields.find((f) => f.key === 'forge_token')
+    expect(field?.value).not.toContain('ghp_secret')
+  })
 })

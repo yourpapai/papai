@@ -85,4 +85,12 @@ describe('coding-credentials store', () => {
     expect(state.error).toBeTruthy()
     expect(getCodingCredentials('ctx-bad', NS)).toBeNull()
   })
+
+  test('forge namespace round-trips independently of agent-provider', () => {
+    updateCodingCredentials(CTX, 'agent-provider', { provider_api_key: 'sk-1' }, 'u')
+    updateCodingCredentials(CTX, 'forge', { forge_token: 'ghp_xyz' }, 'u')
+    expect(getCodingCredentials(CTX, 'forge')).toEqual({ forge_token: 'ghp_xyz' })
+    expect(getCodingCredentials(CTX, 'agent-provider')).toEqual({ provider_api_key: 'sk-1' })
+    expect(getCodingCredentialState(CTX, 'forge').complete).toBe(true)
+  })
 })

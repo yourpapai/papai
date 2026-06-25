@@ -12,39 +12,63 @@ import {
   updateCodingCredentials,
 } from '../../coding-credentials/store.js'
 import type { CodingCredentialConfig } from '../../coding-credentials/types.js'
+import { CODING_NAMESPACES, type CodingNamespace } from '../../coding-credentials/types.js'
 import { maskSensitiveValue } from '../../config.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
-const NAMESPACE = 'agent-provider' as const
+type FieldMeta = { key: string; label: string; required: boolean; sensitive: boolean }
 
-const CODING_FIELDS = [
-  { key: 'provider_api_key', label: 'Anthropic API Key', required: true, sensitive: true },
-  { key: 'provider_base_url', label: 'Anthropic Base URL (optional)', required: false, sensitive: false },
-] as const
+const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
+  'agent-provider': [
+    { key: 'provider_api_key', label: 'Anthropic API Key', required: true, sensitive: true },
+    { key: 'provider_base_url', label: 'Anthropic Base URL (optional)', required: false, sensitive: false },
+  ],
+  forge: [{ key: 'forge_token', label: 'Code-host token', required: true, sensitive: true }],
+}
 
-const SaveBodySchema = z.object({ contextId: z.string().optional(), values: z.record(z.string(), z.string()) }).strict()
-const ClearBodySchema = z.object({ contextId: z.string().optional(), clear: z.literal(true) }).strict()
+const NamespaceSchema = z.enum(CODING_NAMESPACES).default('agent-provider')
+
+const parseNamespace = (raw: string | null | undefined): CodingNamespace | null => {
+  const result = NamespaceSchema.safeParse(raw ?? undefined)
+  return result.success ? result.data : null
+}
+
+const SaveBodySchema = z
+  .object({
+    contextId: z.string().optional(),
+    namespace: z.string().optional(),
+    values: z.record(z.string(), z.string()),
+  })
+  .strict()
+const ClearBodySchema = z
+  .object({ contextId: z.string().optional(), namespace: z.string().optional(), clear: z.literal(true) })
+  .strict()
 const PatchBodySchema = z.union([ClearBodySchema, SaveBodySchema])
 
-const allowedKeys = new Set<string>(CODING_FIELDS.map((f) => f.key))
-
-const fieldResponse = (contextId: string): unknown => {
-  const state = getCodingCredentialState(contextId, NAMESPACE)
-  const config = getCodingCredentials(contextId, NAMESPACE) ?? {}
-  const fields = CODING_FIELDS.map((field) => {
+const fieldResponse = (contextId: string, namespace: CodingNamespace): unknown => {
+  const fields = FIELDS_META[namespace]
+  const state = getCodingCredentialState(contextId, namespace)
+  const config = getCodingCredentials(contextId, namespace) ?? {}
+  const fieldList = fields.map((field) => {
     const raw = (config as Record<string, string | undefined>)[field.key] ?? ''
     const hasValue = raw.length > 0
     return { ...field, hasValue, value: hasValue && field.sensitive ? maskSensitiveValue(raw) : raw }
   })
-  return { namespace: NAMESPACE, ...state, fields }
+  return { namespace, ...state, fields: fieldList }
 }
 
-const valuesToPersist = (contextId: string, values: Record<string, string>): CodingCredentialConfig => {
-  const current = getCodingCredentials(contextId, NAMESPACE) ?? {}
+const valuesToPersist = (
+  contextId: string,
+  namespace: CodingNamespace,
+  values: Record<string, string>,
+): CodingCredentialConfig => {
+  const fields = FIELDS_META[namespace]
+  const allowedKeys = new Set<string>(fields.map((f) => f.key))
+  const current = getCodingCredentials(contextId, namespace) ?? {}
   return Object.fromEntries(
     Object.entries(values).flatMap(([key, value]) => {
       if (!allowedKeys.has(key)) return []
-      const field = CODING_FIELDS.find((c) => c.key === key)
+      const field = fields.find((c) => c.key === key)
       const existing = (current as Record<string, string | undefined>)[key] ?? ''
       const keepExistingSensitive =
         field?.sensitive === true &&
@@ -59,9 +83,11 @@ export async function handleCodingCredentialsRoutes(req: Request, url: URL): Pro
   if (!auth.ok) return auth.response
 
   if (req.method === 'GET') {
+    const namespace = parseNamespace(url.searchParams.get('namespace'))
+    if (namespace === null) return settingsJson(400, { error: 'unknown namespace' })
     const scope = resolveContextScope(auth.authed.principal, 'read', url.searchParams.get('contextId') ?? undefined)
     if (!scope.ok) return scope.response
-    return settingsJson(200, fieldResponse(scope.scope.contextId))
+    return settingsJson(200, fieldResponse(scope.scope.contextId, namespace))
   }
 
   if (req.method === 'PATCH') {
@@ -72,18 +98,21 @@ export async function handleCodingCredentialsRoutes(req: Request, url: URL): Pro
     const body = PatchBodySchema.safeParse(parsed.value)
     if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
+    const namespace = parseNamespace('namespace' in body.data ? body.data.namespace : undefined)
+    if (namespace === null) return settingsJson(400, { error: 'unknown namespace' })
+
     const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
     if (!scope.ok) return scope.response
 
     if ('clear' in body.data) {
-      clearCodingCredentials(scope.scope.contextId, NAMESPACE, auth.authed.principal.platformUserId)
+      clearCodingCredentials(scope.scope.contextId, namespace, auth.authed.principal.platformUserId)
       return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
     }
 
     updateCodingCredentials(
       scope.scope.contextId,
-      NAMESPACE,
-      valuesToPersist(scope.scope.contextId, body.data.values),
+      namespace,
+      valuesToPersist(scope.scope.contextId, namespace, body.data.values),
       auth.authed.principal.platformUserId,
     )
     return settingsJson(200, { ok: true, contextId: scope.scope.contextId })

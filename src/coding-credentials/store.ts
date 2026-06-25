@@ -15,7 +15,6 @@ import {
   type CodingNamespace,
   FIELDS_BY_NAMESPACE,
   REQUIRED_BY_NAMESPACE,
-  type RequiredAgentProviderField,
 } from './types.js'
 
 const log = logger.child({ scope: 'coding-credentials:store' })
@@ -23,9 +22,7 @@ const UNREADABLE = 'stored coding credentials are unreadable'
 
 const now = (): number => Date.now()
 
-const allRequiredFields = (namespace: CodingNamespace): readonly RequiredAgentProviderField[] => [
-  ...REQUIRED_BY_NAMESPACE[namespace],
-]
+const allRequiredFields = (namespace: CodingNamespace): readonly string[] => [...REQUIRED_BY_NAMESPACE[namespace]]
 
 const cleanConfig = (namespace: CodingNamespace, input: CodingCredentialConfig): CodingCredentialConfig =>
   Object.fromEntries(
@@ -51,12 +48,9 @@ const decrypt = (contextId: string, blob: string): CodingCredentialConfig | 'unr
   }
 }
 
-const missingRequired = (
-  namespace: CodingNamespace,
-  config: CodingCredentialConfig | null,
-): readonly RequiredAgentProviderField[] =>
+const missingRequired = (namespace: CodingNamespace, config: CodingCredentialConfig | null): readonly string[] =>
   REQUIRED_BY_NAMESPACE[namespace].filter((key) => {
-    const value = config?.[key]?.trim()
+    const value = (config as Record<string, string | undefined> | null)?.[key]?.trim()
     return value === undefined || value.length === 0
   })
 
