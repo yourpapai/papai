@@ -10,12 +10,11 @@ import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
 import { decryptSecretPayload, encryptSecretPayload, type SecretPayload } from '../secret-payload-crypto.js'
 import {
-  AGENT_PROVIDER_FIELDS,
   type CodingCredentialConfig,
   type CodingCredentialState,
   type CodingNamespace,
   FIELDS_BY_NAMESPACE,
-  REQUIRED_AGENT_PROVIDER_FIELDS,
+  REQUIRED_BY_NAMESPACE,
   type RequiredAgentProviderField,
 } from './types.js'
 
@@ -24,7 +23,9 @@ const UNREADABLE = 'stored coding credentials are unreadable'
 
 const now = (): number => Date.now()
 
-const allRequiredFields = (): readonly RequiredAgentProviderField[] => [...REQUIRED_AGENT_PROVIDER_FIELDS]
+const allRequiredFields = (namespace: CodingNamespace): readonly RequiredAgentProviderField[] => [
+  ...REQUIRED_BY_NAMESPACE[namespace],
+]
 
 const cleanConfig = (namespace: CodingNamespace, input: CodingCredentialConfig): CodingCredentialConfig =>
   Object.fromEntries(
@@ -50,8 +51,11 @@ const decrypt = (contextId: string, blob: string): CodingCredentialConfig | 'unr
   }
 }
 
-const missingRequired = (config: CodingCredentialConfig | null): readonly RequiredAgentProviderField[] =>
-  REQUIRED_AGENT_PROVIDER_FIELDS.filter((key) => {
+const missingRequired = (
+  namespace: CodingNamespace,
+  config: CodingCredentialConfig | null,
+): readonly RequiredAgentProviderField[] =>
+  REQUIRED_BY_NAMESPACE[namespace].filter((key) => {
     const value = config?.[key]?.trim()
     return value === undefined || value.length === 0
   })
@@ -59,19 +63,19 @@ const missingRequired = (config: CodingCredentialConfig | null): readonly Requir
 export function getCodingCredentialState(contextId: string, namespace: CodingNamespace): CodingCredentialState {
   const row = findRow(contextId, namespace)
   if (row === undefined) {
-    return { configured: false, complete: false, missing: allRequiredFields() }
+    return { configured: false, complete: false, missing: allRequiredFields(namespace) }
   }
   const decrypted = decrypt(contextId, row.encryptedConfig)
   if (decrypted === 'unreadable') {
     return {
       configured: true,
       complete: false,
-      missing: allRequiredFields(),
+      missing: allRequiredFields(namespace),
       unreadable: true,
       error: UNREADABLE,
     }
   }
-  const missing = missingRequired(decrypted)
+  const missing = missingRequired(namespace, decrypted)
   return { configured: true, complete: missing.length === 0, missing }
 }
 
@@ -89,10 +93,10 @@ export function updateCodingCredentials(
   updatedBy: string,
 ): void {
   const current = getCodingCredentials(contextId, namespace) ?? {}
-  const merged: Partial<Record<(typeof AGENT_PROVIDER_FIELDS)[number], string | undefined>> = { ...current }
-  for (const key of AGENT_PROVIDER_FIELDS) {
+  const merged: Record<string, string | undefined> = { ...current }
+  for (const key of FIELDS_BY_NAMESPACE[namespace]) {
     if (!Object.prototype.hasOwnProperty.call(config, key)) continue
-    const value = config[key]?.trim() ?? ''
+    const value = (config as Record<string, string | undefined>)[key]?.trim() ?? ''
     merged[key] = value.length === 0 ? undefined : value
   }
   const cleaned = cleanConfig(namespace, merged)

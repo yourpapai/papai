@@ -23,6 +23,6 @@ export type CodingCredentialState = {
 export const FIELDS_BY_NAMESPACE: Record<CodingNamespace, readonly string[]> = {
   'agent-provider': AGENT_PROVIDER_FIELDS,
 }
-export const REQUIRED_BY_NAMESPACE: Record<CodingNamespace, readonly string[]> = {
+export const REQUIRED_BY_NAMESPACE: Record<CodingNamespace, readonly RequiredAgentProviderField[]> = {
   'agent-provider': REQUIRED_AGENT_PROVIDER_FIELDS,
 }

@@ -11,10 +11,25 @@ import {
   getCodingCredentials,
   updateCodingCredentials,
 } from '../../src/coding-credentials/store.js'
+import { codingSessionCredentials } from '../../src/db/coding-credentials-schema.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const CTX = 'pi:telegram:ctx:user-1'
 const NS = 'agent-provider' as const
+
+const insertCorruptedCredentialRow = (contextId: string, namespace: typeof NS): void => {
+  getDrizzleDb()
+    .insert(codingSessionCredentials)
+    .values({
+      contextId,
+      namespace,
+      encryptedConfig: 'not-base64',
+      updatedAt: Date.now(),
+      updatedBy: 'seed-user',
+    })
+    .run()
+}
 
 describe('coding-credentials store', () => {
   beforeEach(async () => {
@@ -58,5 +73,16 @@ describe('coding-credentials store', () => {
   test('is keyed per context', () => {
     updateCodingCredentials(CTX, NS, { provider_api_key: 'sk-1' }, 'user-1')
     expect(getCodingCredentialState('pi:telegram:ctx:user-2', NS).configured).toBe(false)
+  })
+
+  test('credential state and credentials tolerate unreadable encrypted payloads', () => {
+    insertCorruptedCredentialRow('ctx-bad', NS)
+
+    const state = getCodingCredentialState('ctx-bad', NS)
+    expect(state.unreadable).toBe(true)
+    expect(state.complete).toBe(false)
+    expect(state.error).toBeTypeOf('string')
+    expect(state.error).toBeTruthy()
+    expect(getCodingCredentials('ctx-bad', NS)).toBeNull()
   })
 })
