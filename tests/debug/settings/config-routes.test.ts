@@ -197,6 +197,37 @@ describe('settings config routes', () => {
     expect(res.status).toBe(422)
   })
 
+  test('PATCH action:unset clears a configured field', async () => {
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    setConfigValue(personalConfigContextId, 'timezone', 'UTC')
+    expect(getConfigValue(personalConfigContextId, 'timezone')).toBe('UTC')
+
+    const res = await handleConfigRoutes(
+      new Request('https://x/settings/api/config', {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unset', key: 'timezone' }),
+      }),
+      new URL('https://x/settings/api/config'),
+    )
+
+    expect(res.status).toBe(200)
+    expect(getConfigValue(personalConfigContextId, 'timezone')).toBeNull()
+  })
+
+  test('PATCH action:unset with unknown key returns 422', async () => {
+    const res = await handleConfigRoutes(
+      new Request('https://x/settings/api/config', {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unset', key: 'not_a_real_field' }),
+      }),
+      new URL('https://x/settings/api/config'),
+    )
+
+    expect(res.status).toBe(422)
+  })
+
   test('GET forwards control and options for AI-output fields', async () => {
     const res = await handleConfigRoutes(
       new Request('https://x/settings/api/config', { headers: authHeaders(session) }),

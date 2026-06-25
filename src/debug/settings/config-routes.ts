@@ -7,17 +7,25 @@ import { z } from 'zod'
 
 import { validateConfigField } from '../../config-editor/validation.js'
 import { getConfigFieldsForContext } from '../../config-keys.js'
-import { getConfigValue, maskSensitiveValue, setConfigValue } from '../../config.js'
+import { getConfigValue, maskSensitiveValue, setConfigValue, unsetConfigValue } from '../../config.js'
 import { logger } from '../../logger.js'
+import { isFieldUnsettable } from '../../types/config.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-config' })
 
-const PatchBodySchema = z.object({
+const SetBodySchema = z.object({
+  action: z.literal('set').optional(),
   key: z.string().min(1),
   value: z.string(),
   contextId: z.string().optional(),
 })
+const UnsetBodySchema = z.object({
+  action: z.literal('unset'),
+  key: z.string().min(1),
+  contextId: z.string().optional(),
+})
+const PatchBodySchema = z.union([UnsetBodySchema, SetBodySchema])
 
 function handleGet(req: Request, url: URL): Response {
   const auth = authenticate(req)
@@ -62,6 +70,13 @@ async function handlePatch(req: Request): Promise<Response> {
     (f) => f.key === body.data.key || f.storageKey === body.data.key,
   )
   if (field === undefined) return settingsJson(422, { error: 'unknown config field' })
+
+  if (body.data.action === 'unset') {
+    if (!isFieldUnsettable(field)) return settingsJson(422, { error: 'field cannot be unset' })
+    unsetConfigValue(scope.scope.contextId, field.storageKey)
+    log.info({ contextId: scope.scope.contextId, key: field.key }, 'Settings config field unset')
+    return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
+  }
 
   // Masked secrets: an empty submit or a submit equal to the masked form of the stored value means "no change".
   if (field.sensitive) {
