@@ -9,7 +9,7 @@ import { z } from 'zod'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { handleToolsRoutes } from '../../../src/debug/settings/tools-routes.js'
-import { getToolPrefs, setToolPrefs } from '../../../src/tools/tool-preferences.js'
+import { getToolPrefs, hasStoredToolPrefs, setToolPrefs } from '../../../src/tools/tool-preferences.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
@@ -278,6 +278,34 @@ describe('settings tools routes', () => {
       '/settings/api/tools/toggle',
     )
     expect(res.status).toBe(403)
+  })
+
+  test('toggle kind:unset clears stored tool prefs and returns a 200 view with activePreset', async () => {
+    // Arrange: seed some prefs so hasStoredToolPrefs is true
+    setToolPrefs(personalContextId, {
+      riskDefaults: { write: 'ask' },
+      domainDefaults: {},
+      toolOverrides: {},
+    })
+    expect(hasStoredToolPrefs(personalContextId)).toBe(true)
+
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'unset', contextId: personalContextId }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
+
+    expect(res.status).toBe(200)
+    const body = DomainsResponseWithPresetSchema.parse(await res.json())
+    expect(body.contextId).toBe(personalContextId)
+    // After unset, prefs are cleared — activePreset is allow-all (empty prefs)
+    expect(body.activePreset).toBe('allow-all')
+    expect(hasStoredToolPrefs(personalContextId)).toBe(false)
   })
 
   test('a domain toggle after a preset preserves riskDefaults', async () => {

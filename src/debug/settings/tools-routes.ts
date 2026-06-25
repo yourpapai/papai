@@ -10,6 +10,7 @@ import { logger } from '../../logger.js'
 import { getToolMetadata, isToolDomain, type ToolDomain } from '../../tools/tool-metadata.js'
 import {
   applyPreset,
+  clearToolPrefs,
   detectActivePreset,
   getDomainSummary,
   getToolPrefs,
@@ -133,6 +134,10 @@ const ToggleBodySchema = z.discriminatedUnion('kind', [
     preset: z.enum(['allow-all', 'non-destructive', 'read-only']),
     contextId: z.string().optional(),
   }),
+  z.object({
+    kind: z.literal('unset'),
+    contextId: z.string().optional(),
+  }),
 ])
 
 async function handleToggle(req: Request): Promise<Response> {
@@ -153,7 +158,10 @@ async function handleToggle(req: Request): Promise<Response> {
   const names = await availableToolNames(scope.scope.contextId, auth.authed.principal.platformUserId, contextType)
   const prefs = getToolPrefs(scope.scope.contextId)
 
-  if (body.data.kind === 'domain') {
+  if (body.data.kind === 'unset') {
+    clearToolPrefs(scope.scope.contextId)
+    log.info({ contextId: scope.scope.contextId }, 'Tool prefs unset')
+  } else if (body.data.kind === 'domain') {
     const domain = body.data.domain
     if (!isToolDomain(domain)) return settingsJson(422, { error: 'unknown tool domain' })
     setToolPrefs(scope.scope.contextId, setDomainPermission(prefs, domain, body.data.permission))
