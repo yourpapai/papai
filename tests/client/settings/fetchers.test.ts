@@ -13,6 +13,8 @@ import {
   patchConfig,
   patchContextTaskInstance,
   setCsrfToken,
+  unsetConfigField,
+  unsetPluginConfig,
 } from '../../../client/settings/fetchers.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
@@ -102,5 +104,45 @@ describe('fetchers', () => {
     await expect(fetchConfig('user:1')).rejects.toThrow()
     expect(fired).toBe(true)
     off()
+  })
+
+  test('unsetConfigField PATCHes /settings/api/config with action=unset', async () => {
+    setCsrfToken('csrf-xyz')
+    let seenUrl = ''
+    let seenMethod = ''
+    let seenBody = ''
+    let seenCsrf = ''
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenMethod = methodOf(init)
+      seenBody = bodyString(init)
+      seenCsrf = csrfHeader(init)
+      return Promise.resolve(json({ ok: true, contextId: 'user:1' }))
+    })
+    await unsetConfigField({ contextId: 'user:1', key: 'timezone' })
+    expect(seenUrl).toBe('/settings/api/config')
+    expect(seenMethod).toBe('PATCH')
+    expect(seenBody).toBe(JSON.stringify({ action: 'unset', contextId: 'user:1', key: 'timezone' }))
+    expect(seenCsrf).toBe('csrf-xyz')
+  })
+
+  test('unsetPluginConfig PATCHes /settings/api/plugins/config with action=unset', async () => {
+    setCsrfToken('csrf-abc')
+    let seenUrl = ''
+    let seenMethod = ''
+    let seenBody = ''
+    let seenCsrf = ''
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenMethod = methodOf(init)
+      seenBody = bodyString(init)
+      seenCsrf = csrfHeader(init)
+      return Promise.resolve(json({ ok: true }))
+    })
+    await unsetPluginConfig({ pluginId: 'my-plugin', key: 'token', contextId: 'user:1' })
+    expect(seenUrl).toBe('/settings/api/plugins/config')
+    expect(seenMethod).toBe('PATCH')
+    expect(seenBody).toBe(JSON.stringify({ action: 'unset', pluginId: 'my-plugin', key: 'token', contextId: 'user:1' }))
+    expect(seenCsrf).toBe('csrf-abc')
   })
 })

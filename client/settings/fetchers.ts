@@ -214,6 +214,12 @@ export const patchPluginConfig = (input: {
   contextId: string
 }): Promise<unknown> => writeJson('/settings/api/plugins/config', 'PATCH', input, (b) => b)
 
+export const unsetConfigField = (input: { contextId: string; key: string }): Promise<unknown> =>
+  writeJson('/settings/api/config', 'PATCH', { action: 'unset', ...input }, (b) => b)
+
+export const unsetPluginConfig = (input: { pluginId: string; key: string; contextId: string }): Promise<unknown> =>
+  writeJson('/settings/api/plugins/config', 'PATCH', { action: 'unset', ...input }, (b) => b)
+
 // --- Identity ---
 
 export const fetchIdentity = (contextId: string): Promise<IdentityResponse> =>
