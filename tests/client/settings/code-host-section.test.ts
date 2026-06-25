@@ -82,7 +82,7 @@ describe('CodeHostSection', () => {
     void unmount(component)
   })
 
-  test('renders the section with id code-host', async () => {
+  test('renders the section with id code-host and code-host-refresh testid', async () => {
     setMockFetch(() => Promise.resolve(json(unconfiguredPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -91,6 +91,7 @@ describe('CodeHostSection', () => {
     await drain()
 
     expect(target.querySelector('#code-host')).not.toBeNull()
+    expect(target.querySelector('[data-testid="code-host-refresh"]')).not.toBeNull()
     void unmount(component)
   })
 

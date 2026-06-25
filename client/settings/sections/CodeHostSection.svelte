@@ -99,7 +99,7 @@
 <section id="code-host" class="settings-section">
   <PageHeader eyebrow="Coding sessions" title="Code host">
     {#snippet action()}
-      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="coding-refresh" />
+      <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="code-host-refresh" />
     {/snippet}
   </PageHeader>
 
