@@ -5,7 +5,13 @@
 
 import { describe, expect, test, beforeEach } from 'bun:test'
 
-import { getCachedHistory, userCachesForTesting } from '../src/cache.js'
+import {
+  clearCachedConfig,
+  getCachedConfig,
+  getCachedHistory,
+  setCachedConfig,
+  userCachesForTesting,
+} from '../src/cache.js'
 import { appendHistory, saveHistory } from '../src/history.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -13,6 +19,18 @@ beforeEach(async () => {
   mockLogger()
   await setupTestDb()
   userCachesForTesting.clear()
+})
+
+describe('clearCachedConfig', () => {
+  test('a read after clear returns null', () => {
+    const userId = 'user-clear-1'
+    setCachedConfig(userId, 'timezone', 'UTC')
+    expect(getCachedConfig(userId, 'timezone')).toBe('UTC')
+
+    clearCachedConfig(userId, 'timezone')
+
+    expect(getCachedConfig(userId, 'timezone')).toBeNull()
+  })
 })
 
 describe('getCachedHistory', () => {

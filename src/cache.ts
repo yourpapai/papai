@@ -6,7 +6,7 @@
 import type { ModelMessage } from 'ai'
 import { sql } from 'drizzle-orm'
 
-import { syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb } from './cache-db.js'
+import { deleteConfigFromDb, syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb } from './cache-db.js'
 import { parseHistoryFromDb } from './cache-helpers.js'
 import { userCacheStore } from './cache-store.js'
 import type { CachedFact, UserCache } from './cache-types.js'
@@ -163,6 +163,13 @@ export function setCachedConfig(userId: string, key: string, value: string): voi
   cache.config.set(key, value)
   syncConfigToDb(userId, key, value)
   emitUser('cache:sync', userId, { field: 'config', operation: 'set' })
+}
+
+export function clearCachedConfig(userId: string, key: string): void {
+  const cache = getOrCreateCache(userId)
+  cache.config.set(key, null)
+  deleteConfigFromDb(userId, key)
+  emitUser('cache:sync', userId, { field: 'config', operation: 'unset' })
 }
 
 export function getCachedTools(userId: string): unknown {
