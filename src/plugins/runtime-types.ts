@@ -44,6 +44,7 @@ export type PluginToolRuntimeContext = {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }
   }
   attachments: PluginAttachmentFacade
+  codingSecrets: { resolve(): Record<string, string> | null }
 }
 
 export type PluginScheduledJobRuntimeContext = {

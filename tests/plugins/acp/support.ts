@@ -76,6 +76,7 @@ export function runtimeCtx(adminGet?: (k: string) => string | undefined): Plugin
     contextConfig: { get: () => undefined },
     rateLimit: { check: () => ({ allowed: true }) },
     attachments: { read: () => notImplemented() },
+    codingSecrets: { resolve: () => null },
   } as PluginToolRuntimeContext
 }
 
@@ -111,6 +112,7 @@ export function runtimeCtxWithKv(
     contextConfig: { get: () => undefined },
     rateLimit: { check: () => ({ allowed: true }) },
     attachments: { read: () => notImplemented() },
+    codingSecrets: { resolve: () => null },
   } as PluginToolRuntimeContext
 }
 

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { loadAttachmentRecord } from '../attachments/store.js'
+import { resolveAgentSecrets } from '../coding-credentials/resolve-agent-secrets.js'
 import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
 import { consumeWebFetchQuota } from '../web/rate-limit.js'
@@ -149,6 +150,19 @@ function buildAttachmentsFacade(
   })
 }
 
+export function buildCodingSecretsFacade(
+  pluginId: string,
+  storageContextId: string,
+  hasPermission: boolean,
+): PluginToolRuntimeContext['codingSecrets'] {
+  return Object.freeze({
+    resolve(): Record<string, string> | null {
+      if (!hasPermission) deny(pluginId, 'coding.secrets')
+      return resolveAgentSecrets(storageContextId)
+    },
+  })
+}
+
 export function buildPluginScheduledJobRuntimeContext(
   pluginId: string,
   contextId: string,
@@ -215,5 +229,6 @@ export function buildPluginToolRuntimeContext(
     ...(identity === undefined ? {} : { identity }),
     rateLimit: buildRateLimit(),
     attachments: buildAttachmentsFacade(pluginId, runtime.storageContextId, permissions.has('attachments.read')),
+    codingSecrets: buildCodingSecretsFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
   })
 }

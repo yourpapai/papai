@@ -54,6 +54,7 @@ export const PLUGIN_PERMISSIONS = [
   'identity',
   'http',
   'attachments.read',
+  'coding.secrets',
 ] as const
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]

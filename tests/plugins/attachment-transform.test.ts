@@ -113,6 +113,7 @@ function makeStubRuntimeContext(): PluginToolRuntimeContext {
     attachments: {
       read: () => notImplemented(),
     },
+    codingSecrets: { resolve: () => null },
   }
 }
 

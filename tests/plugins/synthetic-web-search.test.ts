@@ -107,6 +107,7 @@ function createMockRuntimeContext(
     contextConfig: {
       get: () => undefined,
     },
+    codingSecrets: { resolve: () => null },
   } as PluginToolRuntimeContext
 }
 
