@@ -10,6 +10,7 @@ import {
   applyAdminPluginConfigUpdate,
   buildPluginConfigDescriptors,
   getAdminPluginConfigSnapshot,
+  PatchAdminPluginConfigBodySchema,
 } from '../../admin-plugin-config.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
 import { requireAdmin } from './admin-guard.js'
@@ -45,17 +46,16 @@ async function handlePatch(req: Request, authed: Parameters<typeof requireAdmin>
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
 
-  const parsed = await parseJsonBody(req)
-  if (!parsed.ok) return parsed.response
+  const rawParsed = await parseJsonBody(req)
+  if (!rawParsed.ok) return rawParsed.response
+
+  const body = PatchAdminPluginConfigBodySchema.safeParse(rawParsed.value)
+  if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
   try {
-    const isUnset =
-      typeof parsed.value === 'object' &&
-      parsed.value !== null &&
-      (parsed.value as { action?: unknown }).action === 'unset'
-    if (isUnset) {
+    if (body.data.action === 'unset') {
       const result = applyAdminPluginConfigUnset(
-        parsed.value,
+        body.data,
         authed.principal.platformUserId,
         buildPluginConfigDescriptors(),
       )
@@ -63,7 +63,7 @@ async function handlePatch(req: Request, authed: Parameters<typeof requireAdmin>
       return settingsJson(200, { ok: true, pluginId: result.pluginId, key: result.key })
     }
     const result = applyAdminPluginConfigUpdate(
-      parsed.value,
+      body.data,
       authed.principal.platformUserId,
       buildPluginConfigDescriptors(),
     )

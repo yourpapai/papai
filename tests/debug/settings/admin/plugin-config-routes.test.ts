@@ -348,7 +348,7 @@ describe('settings admin plugin-config routes', () => {
   test('PATCH action:unset for undeclared/non-admin key returns 422', async () => {
     pluginRegistry.registerDiscovered(makePlugin())
     const url = new URL('https://x/settings/api/admin/plugin-config')
-    // user_token is scope: 'context', not 'admin'
+    // 'not-declared' is a key that does not exist at all in the plugin's configRequirements
     const res = await handleAdminPluginConfigRoutes(
       new Request(url, {
         method: 'PATCH',
@@ -361,6 +361,26 @@ describe('settings admin plugin-config routes', () => {
     expect(res.status).toBe(422)
     const body = z.object({ error: z.string() }).parse(await res.json())
     expect(body.error).toContain('not-declared')
+  })
+
+  test('PATCH wrong-case action (UNSET) returns 422 and does not silently set', async () => {
+    pluginRegistry.registerDiscovered(makePlugin())
+    // Pre-set a value so we can verify it is unchanged after the bad request
+    setPluginAdminConfig('test-plugin', 'endpoint', 'original-value', 'ba-1')
+
+    const url = new URL('https://x/settings/api/admin/plugin-config')
+    const res = await handleAdminPluginConfigRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(botAdminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'UNSET', pluginId: 'test-plugin', key: 'endpoint', value: 'tampered' }),
+      }),
+      url,
+      '/settings/api/admin/plugin-config',
+    )
+    expect(res.status).toBe(422)
+    // The original stored value must be unchanged
+    expect(getPluginAdminConfig('test-plugin', 'endpoint')).toBe('original-value')
   })
 
   test('PATCH action:unset for unknown plugin returns 422', async () => {

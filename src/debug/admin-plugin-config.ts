@@ -95,6 +95,24 @@ const UpdateBodySchema = z.object({
   value: z.string(),
 })
 
+export const SetAdminPluginConfigBodySchema = z.object({
+  action: z.literal('set').optional(),
+  pluginId: z.string(),
+  key: z.string(),
+  value: z.string(),
+})
+
+export const UnsetAdminPluginConfigBodySchema = z.object({
+  action: z.literal('unset'),
+  pluginId: z.string(),
+  key: z.string(),
+})
+
+export const PatchAdminPluginConfigBodySchema = z.union([
+  UnsetAdminPluginConfigBodySchema,
+  SetAdminPluginConfigBodySchema,
+])
+
 export const applyAdminPluginConfigUpdate = (
   body: unknown,
   updatedBy: string,
