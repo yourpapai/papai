@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from '../cache.js'
+import { clearCachedConfig, clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from '../cache.js'
 import { logger } from '../logger.js'
 import { getToolMetadata, TOOL_DOMAINS, type ToolDomain, type ToolRisk } from './tool-metadata.js'
 
@@ -153,6 +153,11 @@ export function setToolPrefs(contextId: string, prefs: ToolPrefs): void {
   setCachedConfig(contextId, TOOL_PREFS_CONFIG_KEY, serializeToolPrefs(prefs))
   clearCachedToolsByPrefix(contextId)
   log.info({ contextId, configuredDomains: Object.keys(prefs.domainDefaults).length }, 'Tool prefs updated')
+}
+
+export function clearToolPrefs(contextId: string): void {
+  clearCachedConfig(contextId, TOOL_PREFS_CONFIG_KEY)
+  clearCachedToolsByPrefix(contextId)
 }
 
 export function partitionToolNames(

@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, test } from 'bun:test'
 import { getToolMetadata } from '../../src/tools/tool-metadata.js'
 import {
   applyPreset,
+  clearToolPrefs,
   cycleDomain,
   cycleTool,
   detectActivePreset,
@@ -416,5 +417,22 @@ describe('hasStoredToolPrefs', () => {
     expect(hasStoredToolPrefs('ctx-none')).toBe(false)
     setToolPrefs('ctx-none', { riskDefaults: {}, domainDefaults: { web: 'deny' }, toolOverrides: {} })
     expect(hasStoredToolPrefs('ctx-none')).toBe(true)
+  })
+})
+
+describe('clearToolPrefs', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('after clear, hasStoredToolPrefs is false', () => {
+    const ctx = 'ctx-clear-prefs-1'
+    setToolPrefs(ctx, applyPreset('read-only'))
+    expect(hasStoredToolPrefs(ctx)).toBe(true)
+
+    clearToolPrefs(ctx)
+
+    expect(hasStoredToolPrefs(ctx)).toBe(false)
   })
 })
