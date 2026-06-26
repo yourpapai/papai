@@ -7,12 +7,13 @@
   import { untrack } from 'svelte'
 
   import type { ConfigField } from '../fetcher-schemas.js'
-  import { patchConfig } from '../fetchers.js'
+  import { patchConfig, unsetConfigField } from '../fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
+  import Confirm from '../../shared/Confirm.svelte'
 
   interface Props {
     contextId: string
@@ -27,6 +28,7 @@
   let draft = $state(field.sensitive ? '' : field.value)
   let error: string | null = $state(null)
   let saving = $state(false)
+  let pendingClear = $state(false)
   const isEnum = $derived(field.control === 'toggle' || field.control === 'select')
   let current = $state(field.value)
 
@@ -52,6 +54,19 @@
     try {
       await patchConfig({ key: field.key, value: draft, contextId })
       replacing = false
+      onSaved()
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      saving = false
+    }
+  }
+
+  async function clearField(): Promise<void> {
+    error = null
+    saving = true
+    try {
+      await unsetConfigField({ key: field.key, contextId })
       onSaved()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
@@ -88,6 +103,11 @@
         ariaLabel={field.label}
         onChange={(v) => void saveEnum(v)}
         testidPrefix={`cfg-seg-${field.key}`} />
+      {#if field.hasValue}
+        <Btn variant="ghost" size="sm" testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
+          {#snippet children()}Clear{/snippet}
+        </Btn>
+      {/if}
     </div>
     {#if error !== null}
       <p class="status-error">{error}</p>
@@ -101,6 +121,11 @@
         <Secret value={maskSecret(field.value)} />
         <Btn variant="secondary" size="sm" testid={`cfg-replace-${field.key}`} onClick={() => (replacing = true)}>
           {#snippet children()}Replace{/snippet}
+        </Btn>
+      {/if}
+      {#if field.hasValue}
+        <Btn variant="ghost" size="sm" testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
+          {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
     </div>
@@ -129,6 +154,16 @@
     {/if}
   </div>
 {/if}
+
+<Confirm
+  open={pendingClear}
+  title="Clear field value"
+  danger
+  confirmLabel="Clear"
+  onCancel={() => (pendingClear = false)}
+  onConfirm={() => { pendingClear = false; void clearField() }}>
+  {#snippet body()}<p>Clear the stored value for <strong>{field.label}</strong>? The field will revert to its default.</p>{/snippet}
+</Confirm>
 
 <style>
   .settings-field {

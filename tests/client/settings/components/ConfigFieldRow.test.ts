@@ -344,4 +344,90 @@ describe('ConfigFieldRow', () => {
     expect(saved).toBe(false)
     void unmount(component)
   })
+
+  test('a field with hasValue=true shows a Clear button', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    expect(target.querySelector('[data-testid="cfg-clear-timezone"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a field with hasValue=false does not show a Clear button', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: false,
+        value: '',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    expect(target.querySelector('[data-testid="cfg-clear-timezone"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('clicking Clear opens a confirm dialog and confirming calls unsetConfigField', async () => {
+    setCsrfToken('c')
+    let seenBody = ''
+    setMockFetch((_url, init) => {
+      seenBody = bodyString(init)
+      return Promise.resolve(json({ ok: true, contextId: 'user:1' }))
+    })
+    let saved = false
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {
+        saved = true
+      },
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-clear-timezone"]')!.click()
+    await drain()
+    // Confirm dialog should be open
+    expect(target.querySelector('.modal')).not.toBeNull()
+    // No request yet
+    expect(seenBody).toBe('')
+    // Confirm the clear
+    const confirmBtns = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).filter((b) =>
+      b.textContent?.includes('Clear'),
+    )
+    const confirmBtn = confirmBtns.at(-1)
+    expect(confirmBtn).not.toBeUndefined()
+    confirmBtn!.click()
+    await drain()
+    expect(JSON.parse(seenBody)).toEqual({ action: 'unset', contextId: 'user:1', key: 'timezone' })
+    expect(saved).toBe(true)
+    void unmount(component)
+  })
 })

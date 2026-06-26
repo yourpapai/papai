@@ -68,6 +68,25 @@ const captureDisabledToggleMock = (url: string, init: RequestInit): Promise<Resp
   return Promise.resolve(json(contextDisabledPayload))
 }
 
+const pluginClearPayload = {
+  contextId: 'user:1',
+  plugins: [
+    {
+      id: 'my-plugin',
+      name: 'My Plugin',
+      active: true,
+      enabled: true,
+      eligibility: { eligible: true },
+      contextConfig: [{ key: 'token', label: 'Token', required: false, sensitive: false, hasValue: true }],
+    },
+  ],
+}
+let capturedPluginConfigBody = ''
+const capturePluginConfigMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url === '/settings/api/plugins/config') capturedPluginConfigBody = extractStringBody(init)
+  return Promise.resolve(json(pluginClearPayload))
+}
+
 const inactivePayload = {
   contextId: 'user:1',
   plugins: [
@@ -229,6 +248,125 @@ describe('PluginsSection', () => {
     await drain()
     expect(target.querySelector('.ui-empty')).not.toBeNull()
     expect(target.textContent).toContain('No plugins discovered')
+    void unmount(component)
+  })
+
+  test('a plugin config field with hasValue=true shows a Clear button', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          contextId: 'user:1',
+          plugins: [
+            {
+              id: 'my-plugin',
+              name: 'My Plugin',
+              active: true,
+              enabled: true,
+              eligibility: { eligible: true },
+              contextConfig: [{ key: 'token', label: 'Token', required: false, sensitive: false, hasValue: true }],
+            },
+          ],
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="plugin-cfg-clear-my-plugin-token"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a plugin config field with hasValue=false does not show a Clear button', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          contextId: 'user:1',
+          plugins: [
+            {
+              id: 'my-plugin',
+              name: 'My Plugin',
+              active: true,
+              enabled: false,
+              eligibility: { eligible: false, reason: 'config_missing', missingKeys: ['token'] },
+              contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false }],
+            },
+          ],
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="plugin-cfg-clear-my-plugin-token"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('clicking plugin config Clear opens confirm and confirming calls unsetPluginConfig', async () => {
+    setCsrfToken('c')
+    capturedPluginConfigBody = ''
+    setMockFetch(capturePluginConfigMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const clearBtn = target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-clear-my-plugin-token"]')!
+    expect(clearBtn).not.toBeNull()
+    clearBtn.click()
+    await drain()
+
+    // Dialog should be open, no unset request yet
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(capturedPluginConfigBody).toBe('')
+
+    // Confirm
+    const confirmBtns = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).filter((b) =>
+      b.textContent?.includes('Clear'),
+    )
+    const confirmBtn = confirmBtns.at(-1)
+    expect(confirmBtn).not.toBeUndefined()
+    confirmBtn!.click()
+    await drain()
+
+    expect(JSON.parse(capturedPluginConfigBody)).toEqual({
+      action: 'unset',
+      pluginId: 'my-plugin',
+      key: 'token',
+      contextId: 'user:1',
+    })
+    void unmount(component)
+  })
+
+  test('Clear confirm for a required plugin config field warns about ineligibility', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          contextId: 'user:1',
+          plugins: [
+            {
+              id: 'my-plugin',
+              name: 'My Plugin',
+              active: true,
+              enabled: true,
+              eligibility: { eligible: true },
+              contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: true }],
+            },
+          ],
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-clear-my-plugin-token"]')!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.textContent).toContain('ineligible')
     void unmount(component)
   })
 })
