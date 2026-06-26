@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ChatParticipantResolver } from '../../src/chat/participants/roster.js'
 import { makeResolveChatParticipantTool } from '../../src/tools/resolve-chat-participant.js'
-import { mockLogger } from '../utils/test-helpers.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { getToolExecutor, schemaValidates } from '../utils/test-helpers.js'
 
 const CONTEXT_ID = 'ctx-group-1'
@@ -103,6 +103,14 @@ describe('makeResolveChatParticipantTool', () => {
 })
 
 describe('tool gating via buildTools', () => {
+  // buildTools reads per-context tool prefs from the DB; install a migrated test DB so the
+  // gating assertions don't depend on global DB state left by a prior test (CI has no dev
+  // papai.db to fall back to, so the read throws "no such table: user_config" without this).
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   test('tool is absent when chatParticipantResolver is undefined', async () => {
     // buildTools with no chatParticipantResolver → no resolve_chat_participant
     const { buildTools } = await import('../../src/tools/tools-builder.js')
