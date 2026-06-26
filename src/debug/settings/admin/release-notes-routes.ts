@@ -79,16 +79,19 @@ async function handlePost(req: Request, authed: AuthenticatedSettingsRequest): P
     return view()
   }
 
-  // broadcast
-  const draft = getAnnouncementDraft(VERSION)
-  const sendBody = draft?.humanizedBody ?? draft?.rawBody
-  if (sendBody === null || sendBody === undefined || sendBody.length === 0)
-    return settingsJson(422, { error: 'nothing to broadcast' })
-  const chat = getRuntimeChatRouter()
-  if (chat === null) return settingsJson(422, { error: 'chat router not running' })
-  const result = await broadcastAnnouncement(chat, VERSION, sendBody)
-  log.info({ version: VERSION, ...result }, 'release notes broadcast')
-  return settingsJson(200, { version: VERSION, broadcast: result, counts: countSubscribers() })
+  if (body.data.action === 'broadcast') {
+    const draft = getAnnouncementDraft(VERSION)
+    const sendBody = draft?.humanizedBody ?? draft?.rawBody
+    if (sendBody === null || sendBody === undefined || sendBody.length === 0)
+      return settingsJson(422, { error: 'nothing to broadcast' })
+    const chat = getRuntimeChatRouter()
+    if (chat === null) return settingsJson(422, { error: 'chat router not running' })
+    const result = await broadcastAnnouncement(chat, VERSION, sendBody)
+    log.info({ version: VERSION, ...result }, 'release notes broadcast')
+    return settingsJson(200, { version: VERSION, broadcast: result, counts: countSubscribers() })
+  }
+
+  return settingsJson(422, { error: 'invalid request' })
 }
 
 export function handleAdminReleaseNotesRoutes(req: Request, _url: URL, pathname: string): Promise<Response> {

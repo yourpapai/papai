@@ -113,9 +113,9 @@ export function upsertAnnouncementDraft(input: {
 
 export function updateHumanizedBody(version: string, body: string): void {
   getDrizzleDb()
-    .update(versionAnnouncements)
-    .set({ humanizedBody: body })
-    .where(eq(versionAnnouncements.version, version))
+    .insert(versionAnnouncements)
+    .values({ version, announcedAt: new Date().toISOString(), humanizedBody: body })
+    .onConflictDoUpdate({ target: versionAnnouncements.version, set: { humanizedBody: body } })
     .run()
   log.info({ version }, 'announcement humanized body updated')
 }

@@ -117,4 +117,53 @@ describe('admin release-notes route', () => {
     )
     expect(res.status).toBe(422)
   })
+
+  test('POST save without pre-seeded row → 200 with body (proves upsert)', async () => {
+    // no upsertAnnouncementDraft call — row absent
+    const url = new URL(`https://x${PATH}`)
+    const res = await handleAdminReleaseNotesRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save', body: 'edited body' }),
+      }),
+      url,
+      PATH,
+    )
+    expect(res.status).toBe(200)
+    const saved = z.object({ body: z.string() }).parse(await res.json())
+    expect(saved.body).toBe('edited body')
+  })
+
+  test('POST regenerate with no LLM creds → 422', async () => {
+    // fresh DB: no system_config LLM creds; humanizeChangelog returns null or changelog missing
+    const url = new URL(`https://x${PATH}`)
+    const res = await handleAdminReleaseNotesRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'regenerate' }),
+      }),
+      url,
+      PATH,
+    )
+    expect(res.status).toBe(422)
+  })
+
+  test('POST broadcast with body but no running router → 422', async () => {
+    upsertAnnouncementDraft({ version: VERSION, rawBody: 'r', humanizedBody: 'h' })
+    const url = new URL(`https://x${PATH}`)
+    const res = await handleAdminReleaseNotesRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'broadcast' }),
+      }),
+      url,
+      PATH,
+    )
+    expect(res.status).toBe(422)
+    const json = z.object({ error: z.string() }).parse(await res.json())
+    expect(json.error).toBe('chat router not running')
+  })
 })

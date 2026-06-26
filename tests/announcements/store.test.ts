@@ -84,6 +84,14 @@ describe('announcement subscription store', () => {
     expect(getAnnouncementDraft('9.9.9')?.broadcastAt).toBe('2026-06-26T00:00:00Z')
   })
 
+  test('updateHumanizedBody creates row when absent', () => {
+    updateHumanizedBody('7.7.7', 'created')
+    const draft = getAnnouncementDraft('7.7.7')
+    expect(draft?.humanizedBody).toBe('created')
+    expect(draft?.rawBody).toBeNull()
+    expect(draft?.broadcastAt).toBeNull()
+  })
+
   test('delivery idempotency: only sent counts as delivered', () => {
     upsertAnnouncementDraft({ version: '9.9.9', rawBody: 'x', humanizedBody: null })
     recordDelivery('9.9.9', 'pi-1:u1', 'dm', 'failed')
