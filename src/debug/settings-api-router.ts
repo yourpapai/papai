@@ -22,6 +22,7 @@ import { handleMcpRoutes } from './settings/mcp-routes.js'
 import { handleMemoryRoutes } from './settings/memory-routes.js'
 import { handlePluginsRoutes } from './settings/plugins-routes.js'
 import { handleProvisionKaneo } from './settings/provision-routes.js'
+import { handleReleaseSubscriptionRoutes } from './settings/release-subscription-routes.js'
 import { handleToolsRoutes } from './settings/tools-routes.js'
 
 function routeAdminApi(req: Request, url: URL): Promise<Response> | null {
@@ -78,6 +79,7 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   }
   if (url.pathname.startsWith('/settings/api/plugins')) return handlePluginsRoutes(req, url, url.pathname)
   if (url.pathname === '/settings/api/identity') return handleIdentityRoutes(req, url)
+  if (url.pathname === '/settings/api/release-subscription') return handleReleaseSubscriptionRoutes(req, url)
   if (url.pathname.startsWith('/settings/api/group/')) return handleGroupRoutes(req, url, url.pathname)
   if (url.pathname === '/settings/api/provision/kaneo') return handleProvisionKaneo(req)
   if (url.pathname === '/settings/api/kaneo/credentials') return handleKaneoCredentialsRoutes(req, url)
