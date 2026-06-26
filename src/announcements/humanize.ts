@@ -45,7 +45,11 @@ export async function humanizeChangelog(
   const config = deps.resolveConfig()
   if (!config.ok) {
     log.warn(
-      { type: config.type, source: config.source },
+      {
+        type: config.type,
+        source: config.source,
+        missing: config.type === 'missing' ? config.missing : undefined,
+      },
       'Central LLM not configured; skipping changelog humanization',
     )
     return null

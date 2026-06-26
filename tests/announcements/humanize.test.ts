@@ -31,17 +31,20 @@ function deps(over: Partial<HumanizeChangelogDeps>): HumanizeChangelogDeps {
 describe('humanizeChangelog', () => {
   test('returns trimmed model text and passes raw as prompt', async () => {
     let seenPrompt = ''
+    let seenSystem = ''
     const result = await humanizeChangelog(
       '### Added\n- thing',
       deps({
         generate: (opts) => {
           seenPrompt = opts.prompt
+          seenSystem = opts.system
           return Promise.resolve({ text: '  ✨ New\n- Thing  ' })
         },
       }),
     )
     expect(result).toBe('✨ New\n- Thing')
     expect(seenPrompt).toContain('### Added')
+    expect(seenSystem).toContain('announcement')
   })
 
   test('returns null when LLM config is missing', async () => {
