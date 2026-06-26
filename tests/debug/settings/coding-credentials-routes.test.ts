@@ -306,6 +306,34 @@ describe('coding-credentials routes', () => {
     expect(res.status).toBe(400)
   })
 
+  test('PATCH rejects unknown agent value with 422', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { agent: 'gemini', provider: 'anthropic', provider_api_key: 'x' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toContain('unknown')
+  })
+
+  test('PATCH rejects unknown provider value with 422', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { agent: 'claude', provider: 'azure', provider_api_key: 'x' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toContain('unknown')
+  })
+
   test('PATCH ?namespace=forge saves the forge token masked on GET', async () => {
     const patchUrl = new URL('https://x/settings/api/coding-credentials')
     await handleCodingCredentialsRoutes(

@@ -18,6 +18,7 @@ import {
   PROVIDERS,
   compatible,
   isAgent,
+  isProvider,
   type CodingNamespace,
 } from '../../coding-credentials/types.js'
 import { maskSensitiveValue } from '../../config.js'
@@ -116,6 +117,12 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
   const merged = { ...existing, ...toPersist }
   const agentRaw = merged.agent?.trim()
   const providerRaw = merged.provider?.trim()
+  if (agentRaw !== undefined && agentRaw.length > 0 && !isAgent(agentRaw)) {
+    return settingsJson(422, { error: `unknown agent: ${agentRaw}` })
+  }
+  if (providerRaw !== undefined && providerRaw.length > 0 && !isProvider(providerRaw)) {
+    return settingsJson(422, { error: `unknown provider: ${providerRaw}` })
+  }
   if (
     agentRaw !== undefined &&
     agentRaw.length > 0 &&

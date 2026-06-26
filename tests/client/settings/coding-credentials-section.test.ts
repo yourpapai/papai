@@ -253,6 +253,26 @@ describe('CodingCredentialsSection', () => {
     void unmount(component)
   })
 
+  test('provider_api_key Replace control and provider_base_url input render alongside agent/provider selects', async () => {
+    setMockFetch(() => Promise.resolve(json(withSelectsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    // agent and provider selects must be present
+    expect(target.querySelector('[data-testid="coding-select-agent"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="coding-select-provider"]')).not.toBeNull()
+    // Replace control for the masked api key must be present alongside the selects
+    expect(target.querySelector('[data-testid="coding-replace-provider_api_key"]')).not.toBeNull()
+    // The api key input itself should NOT be visible (key has a value, shows Replace)
+    expect(target.querySelector('[data-testid="coding-input-provider_api_key"]')).toBeNull()
+    // provider_base_url text input must be present (no value, not sensitive → always input)
+    expect(target.querySelector('[data-testid="coding-input-provider_base_url"]')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('saves select field by PATCHing on change', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(routeSelectsMock)
