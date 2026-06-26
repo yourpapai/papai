@@ -24,11 +24,13 @@ time, because its host is now in the derived egress.
 
 ## Decisions locked
 
-1. **The repo host IS in the sandbox egress.** Although magi clones/pushes
-   host-side, coding agents commonly run `git fetch`/`status`/etc. inside the
-   sandbox, and Story 9 expects the forge reachable. So the **repo URL host** is
-   added to the derived egress. (The forge **API** host stays host-side — magi
-   calls the forge API, not the agent.)
+1. **The repo host is NOT in the sandbox egress.** magi clones/pushes host-side,
+   and the **forge token is host-side — never staged into the sandbox** (Phase 2
+   askpass), so the agent cannot authenticate to the forge from inside the
+   container regardless. Including the repo host would only enable _anonymous_ git
+   (public clone/fetch) while widening the exfiltration surface, so it is
+   **excluded**. (If a future phase moves git into the sandbox — staging the forge
+   token there — revisit this.)
 2. **The operator base set is `MAGI_PROJECT_DEFAULTS.egressAllowlistDomains`,
    repurposed** from "the whole egress" to "always-included tooling hosts" (npm /
    pip / etc. the agent needs). It is unioned into every derived allowlist.
@@ -64,7 +66,7 @@ time, because its host is now in the derived egress.
 - **acp** (`session-tools.ts`): include `providerHost: resolveProviderHost()` in
   the projectSpec (omit when null).
 - **(Optional) read-only egress summary:** the section can show "this session can
-  reach: `<provider host>`, `<repo host>`, `models.dev`(opencode), `<base domains>`"
+  reach: `<provider host>`, `models.dev`(opencode), `<base domains>`"
   for transparency. Nice-to-have; can ship in a follow-up.
 
 ## Design — magi
@@ -77,20 +79,29 @@ time, because its host is now in the derived egress.
   deriveEgress(spec, defaults) = unique([
     ...defaults.egressAllowlistDomains,        // operator base (npm/pip/…)
     spec.providerHost,                          // model host (custom base URL ok)
-    spec.agent === 'opencode' ? 'models.dev' : —,
-    hostOf(spec.repoUrl),                       // repo host for agent git (4c decision 1)
+    ...agentInfraEgress(spec.agent),            // opencode→models.dev; codex→chatgpt.com
   ].filter(Boolean))
   ```
 
-- **The per-agent preset `defaultEgress` is no longer the egress source.** Today
-  `resolvePlan` merges `project.egressAllowlistDomains + config.egressAllowlistDomains
-  - preset.defaultEgress`; in 4c the **project's derived `egressAllowlistDomains`is authoritative** and the preset`defaultEgress`is dropped from the merge (or
-emptied) so a broad`['api.anthropic.com','api.openai.com']`opencode default
-can't widen past the user's actual provider. Verify`resolvePlan`/the
-    geofront.toml egress emission reflects only the derived set.
+  The **repo host is NOT included** (decision 1).
+
+- **Split the preset egress: drop the _provider_ hosts, keep the _agent-infra_
+  hosts.** Today `resolvePlan` merges `project + config + preset.defaultEgress`,
+  and `preset.defaultEgress` mixes provider hosts (`api.anthropic.com`,
+  `api.openai.com`) with agent-infrastructure hosts (`chatgpt.com` for codex,
+  `models.dev` for opencode). In 4c the **derived `egressAllowlistDomains` is
+  authoritative** for provider reachability, so the preset must **no longer
+  contribute provider hosts** (else opencode's broad `[api.anthropic.com,
+api.openai.com]` would defeat the per-provider narrowing). But the
+  agent-infrastructure hosts are still needed for the agent itself to function —
+  **dropping `chatgpt.com` would break codex.** So replace `preset.defaultEgress`
+  with a `preset.agentInfraEgress` (codex→`[chatgpt.com]`, opencode→`[models.dev]`,
+  claude→`[]`) that the derive unions in; the provider host comes only from
+  `spec.providerHost`. Verify the emitted geofront.toml egress reflects only the
+  derived set (base + provider + agent-infra).
 - Validation: when `spec.providerHost` is present it must be a bare host (no
   scheme/path); `buildEphemeralProject` ignores a malformed one (falls back to the
-  base set + repo host) rather than throwing.
+  base set + agent-infra) rather than throwing.
 
 ## Design — geofront (config / doc only)
 
@@ -148,17 +159,18 @@ can't widen past the user's actual provider. Verify`resolvePlan`/the
 `buildEphemeralProject`), `src/runtime/geofront/provisioning/plan.ts` (drop preset
 `defaultEgress` from the merge), tests. Operator doc under `docs/deployment/`.
 
-## Open questions
+## Resolved decisions (confirmed)
 
-- **Decision 1 (repo host in sandbox egress):** include it (assumed — agents run
-  git; Story 9) vs. exclude it (magi does all git host-side; tighter egress). If
-  excluded, a self-hosted repo host need not be in the ceiling at all.
-- **Preset `defaultEgress` handling:** drop it from the merge entirely (assumed) vs.
-  keep it as a floor (looser). Dropping it is the point of "derived, not default".
-- **Ceiling enforcement point:** rely on geofront's clamp only (assumed — parent
-  spec says config/doc) vs. add a `MAGI_EGRESS_CEILING` that rejects an
-  over-ceiling derived host at session start with a clear error (better UX, more
-  magi code — candidate for Phase 5).
-- **Operator base set source:** reuse `MAGI_PROJECT_DEFAULTS.egressAllowlistDomains`
-  as the base (assumed) vs. a dedicated `MAGI_EGRESS_BASE` to disentangle "the old
-  default" from "always-on tooling hosts".
+- **Repo host — excluded** from the sandbox egress. The forge token is host-side
+  (not in the sandbox), so the agent can't authenticate to the forge anyway;
+  including the repo host would only buy anonymous git while widening exfiltration.
+  Revisit only if git ever moves into the sandbox.
+- **Preset egress — split.** Drop the _provider_ hosts from `preset.defaultEgress`
+  (the derived `providerHost` supplies them), but keep the _agent-infrastructure_
+  hosts (`preset.agentInfraEgress`: codex→`chatgpt.com`, opencode→`models.dev`) —
+  dropping `chatgpt.com` would break codex.
+- **Ceiling — geofront clamp only** (config/doc, no magi code); magi **logs** the
+  derived egress so an over-ceiling custom-provider failure is diagnosable. A
+  fail-fast `MAGI_EGRESS_CEILING` early rejection is deferred to **Phase 5**.
+- **Base set — reuse `MAGI_PROJECT_DEFAULTS.egressAllowlistDomains`**, repurposed
+  to "always-on tooling hosts" (documented). No new config field.
