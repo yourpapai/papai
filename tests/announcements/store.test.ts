@@ -58,6 +58,7 @@ describe('announcement subscription store', () => {
     setUserAnnounceSubscribed(PID, 'u1', true)
     setUserAnnounceSubscribed(PID, 'u2', true)
     getDrizzleDb().update(users).set({ blockedAt: '2026-01-01T00:00:00Z' }).where(eq(users.platformUserId, 'u2')).run()
+    expect(listSubscribedUsers()).toHaveLength(1)
     const subs = listSubscribedUsers().filter((u) => u.platformUserId === 'u1')
     expect(subs).toEqual([{ platformInstanceId: PID, platformUserId: 'u1' }])
     expect(listSubscribedUsers().some((u) => u.platformUserId === 'u2')).toBe(false)

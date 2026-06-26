@@ -108,6 +108,7 @@ export function upsertAnnouncementDraft(input: {
     })
     .onConflictDoNothing()
     .run()
+  log.info({ version: input.version }, 'announcement draft upserted')
 }
 
 export function updateHumanizedBody(version: string, body: string): void {
@@ -116,6 +117,7 @@ export function updateHumanizedBody(version: string, body: string): void {
     .set({ humanizedBody: body })
     .where(eq(versionAnnouncements.version, version))
     .run()
+  log.info({ version }, 'announcement humanized body updated')
 }
 
 export function markBroadcast(version: string, atIso: string): void {
@@ -124,6 +126,7 @@ export function markBroadcast(version: string, atIso: string): void {
     .set({ broadcastAt: atIso })
     .where(eq(versionAnnouncements.version, version))
     .run()
+  log.info({ version }, 'announcement broadcast marked')
 }
 
 export function recordDelivery(
@@ -132,14 +135,16 @@ export function recordDelivery(
   contextType: 'dm' | 'group',
   status: 'sent' | 'failed',
 ): void {
+  const deliveredAt = new Date().toISOString()
   getDrizzleDb()
     .insert(announcementDeliveries)
-    .values({ version, contextId, contextType, status, deliveredAt: new Date().toISOString() })
+    .values({ version, contextId, contextType, status, deliveredAt })
     .onConflictDoUpdate({
       target: [announcementDeliveries.version, announcementDeliveries.contextId],
-      set: { status, deliveredAt: new Date().toISOString() },
+      set: { status, deliveredAt },
     })
     .run()
+  log.info({ version, contextId, status }, 'announcement delivery recorded')
 }
 
 export function isDelivered(version: string, contextId: string): boolean {
