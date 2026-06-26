@@ -8,12 +8,14 @@ import { z } from 'zod'
 
 import { configFingerprint, errorMessage } from '../chat/router-helpers.js'
 import type { ChatRouter } from '../chat/router.js'
+import { listPlatformInstances, listPlatformInstancesSafe } from '../instances/platform-store.js'
 import type {
   InstanceConfig,
   InstanceDecodeFailure,
   InstanceDecodeResult,
   PlatformInstance,
 } from '../instances/types.js'
+import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { jsonResponse } from './json-response.js'
 
 export type InstanceApiDeps = {
@@ -256,6 +258,13 @@ const reconcilePlatformInstances = async (deps: InstanceApiDeps): Promise<Respon
 
 export const applyPlatformInstances = (deps: InstanceApiDeps): Promise<Response> =>
   instanceApplyLock(reconcilePlatformInstances, deps)
+
+/** Production deps shared by the operator-API apply route and the settings-admin apply route. */
+export const defaultInstanceApiDeps: InstanceApiDeps = {
+  getRuntimeChatRouter,
+  listPlatformInstances,
+  listPlatformInstancesSafe,
+}
 
 const parseJson = async (req: Request): Promise<unknown> => {
   try {

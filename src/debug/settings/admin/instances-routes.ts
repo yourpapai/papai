@@ -27,6 +27,7 @@ import { logger } from '../../../logger.js'
 import { listTaskProviderTypes } from '../../../providers/registry.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { validatePlatformInstanceConfig, validateTaskInstanceRouteConfig } from '../../instance-config-validation.js'
+import { applyPlatformInstances, defaultInstanceApiDeps, type InstanceApiDeps } from '../../instance-route-support.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
 import { requireAdmin } from './admin-guard.js'
 
@@ -225,11 +226,22 @@ function handlePlatformInstanceDelete(req: Request, id: string, authed: Authenti
   return settingsJson(200, { ok: true, id })
 }
 
-function handlePlatformInstances(req: Request, url: URL, authed: AuthenticatedSettingsRequest): Promise<Response> {
+function handlePlatformInstances(
+  req: Request,
+  url: URL,
+  authed: AuthenticatedSettingsRequest,
+  deps: InstanceApiDeps,
+): Promise<Response> {
   if (req.method === 'GET') return Promise.resolve(handlePlatformInstancesGet(authed))
 
   const writeGuard = requireAdmin(authed, 'write')
   if (writeGuard !== null) return Promise.resolve(writeGuard)
+
+  if (req.method === 'POST' && url.pathname === '/settings/api/admin/platform-instances/apply') {
+    const csrf = requireCsrf(req, authed)
+    if (csrf !== null) return Promise.resolve(csrf)
+    return applyPlatformInstances(deps)
+  }
 
   if (req.method === 'POST' && url.pathname === '/settings/api/admin/platform-instances') {
     return handlePlatformInstancesPost(req, authed)
@@ -246,13 +258,6 @@ function handlePlatformInstances(req: Request, url: URL, authed: AuthenticatedSe
   return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
 }
 
-function routeAdminInstances(req: Request, url: URL, authed: AuthenticatedSettingsRequest): Promise<Response> {
-  if (url.pathname.startsWith('/settings/api/admin/task-instances')) {
-    return handleTaskInstances(req, url, authed)
-  }
-  return handlePlatformInstances(req, url, authed)
-}
-
 function handleProviderTypesRead(authed: AuthenticatedSettingsRequest, pathname: string): Response {
   const guard = requireAdmin(authed, 'read')
   if (guard !== null) return guard
@@ -262,7 +267,12 @@ function handleProviderTypesRead(authed: AuthenticatedSettingsRequest, pathname:
   return settingsJson(200, { providerTypes: listTaskProviderTypes() })
 }
 
-export function handleAdminInstancesRoutes(req: Request, url: URL, pathname: string): Promise<Response> {
+export function handleAdminInstancesRoutes(
+  req: Request,
+  url: URL,
+  pathname: string,
+  deps: InstanceApiDeps = defaultInstanceApiDeps,
+): Promise<Response> {
   const auth = authenticate(req)
   if (!auth.ok) return Promise.resolve(auth.response)
 
@@ -274,5 +284,6 @@ export function handleAdminInstancesRoutes(req: Request, url: URL, pathname: str
     return Promise.resolve(handleProviderTypesRead(auth.authed, pathname))
   }
 
-  return routeAdminInstances(req, url, auth.authed)
+  if (url.pathname.startsWith('/settings/api/admin/task-instances')) return handleTaskInstances(req, url, auth.authed)
+  return handlePlatformInstances(req, url, auth.authed, deps)
 }

@@ -12,6 +12,7 @@ import {
 } from '../admin/feature-flags-fetcher-schemas.js'
 import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import { ApplyInstancesResultSchema, type ApplyInstancesResult } from './fetcher-schemas-instances.js'
 import {
   AdminPluginConfigSnapshotSchema,
   SubmitAdminPluginConfigResponseSchema,
@@ -97,6 +98,9 @@ export const deleteAdminPlatformInstance = (id: string): Promise<unknown> =>
       return body
     },
   )
+
+export const applyAdminPlatformInstances = (): Promise<ApplyInstancesResult> =>
+  writeJson('/settings/api/admin/platform-instances/apply', 'POST', {}, (b) => ApplyInstancesResultSchema.parse(b))
 
 export const deleteAdminTaskInstance = (id: string): Promise<unknown> =>
   settingsFetch(`/settings/api/admin/task-instances/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(

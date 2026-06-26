@@ -11,7 +11,6 @@ import {
   deletePlatformInstance,
   getPlatformInstance,
   insertPlatformInstance,
-  listPlatformInstances,
   listPlatformInstancesSafe,
   updatePlatformInstance,
 } from '../instances/platform-store.js'
@@ -26,11 +25,11 @@ import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation
 import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { getTaskProviderDescriptor } from '../providers/registry.js'
-import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { handleAdmins } from './instance-admin-routes.js'
 import { validatePlatformInstanceConfig, validateTaskInstanceRouteConfig } from './instance-config-validation.js'
 import {
   applyPlatformInstances,
+  defaultInstanceApiDeps,
   type InstanceApiDeps,
   instanceExistsError,
   instancePatchSchema,
@@ -48,12 +47,6 @@ import { handlePlatformProviderTypes } from './platform-provider-type-routes.js'
 import { handleTaskProviderTypes } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
-
-const defaultDeps: InstanceApiDeps = {
-  getRuntimeChatRouter,
-  listPlatformInstances,
-  listPlatformInstancesSafe,
-}
 
 const INSTANCE_ROUTE_MASK = '********'
 
@@ -294,4 +287,4 @@ export const handleInstanceApiRouteWithDeps = async (
 }
 
 export const handleInstanceApiRoute = (req: Request, url: URL): Promise<Response | null> =>
-  handleInstanceApiRouteWithDeps(req, url, defaultDeps)
+  handleInstanceApiRouteWithDeps(req, url, defaultInstanceApiDeps)

@@ -329,4 +329,35 @@ describe('admin-fetchers', () => {
     expect(result.counts.dm).toBe(5)
     expect('broadcast' in result).toBe(false)
   })
+
+  test('applyAdminPlatformInstances POSTs to platform-instances/apply with CSRF and parses apply result', async () => {
+    const { applyAdminPlatformInstances } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-apply')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    const applyPayload = {
+      applied: 1,
+      started: ['tg-main'],
+      stopped: [],
+      removed: [],
+      removedDetails: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+      unreadable: [],
+    }
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      return Promise.resolve(json(applyPayload))
+    })
+    const result = await applyAdminPlatformInstances()
+    expect(seenUrl).toBe('/settings/api/admin/platform-instances/apply')
+    expect(seenCsrf).toBe('csrf-apply')
+    expect(seenMethod).toBe('POST')
+    expect(result.applied).toBe(1)
+    expect(result.started).toEqual(['tg-main'])
+  })
 })

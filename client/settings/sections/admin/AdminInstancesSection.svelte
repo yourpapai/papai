@@ -6,6 +6,7 @@
 <script lang="ts">
   import type { AdminInstanceDecodeFailure, AdminInstanceRow, ProviderType } from '../../fetcher-schemas.js'
   import {
+    applyAdminPlatformInstances,
     createAdminPlatformInstance,
     createAdminTaskInstance,
     deleteAdminPlatformInstance,
@@ -195,6 +196,23 @@
     }
   }
 
+  async function applyPlatforms(): Promise<void> {
+    error = null
+    status = null
+    try {
+      const result = await applyAdminPlatformInstances()
+      if (result.failed.length > 0) {
+        const details = result.failed.map((f) => `${f.id} ${f.action}: ${f.error}`).join('; ')
+        error = `Apply completed with failures: ${details}`
+      } else {
+        status = `Applied ${result.applied} platform change${result.applied === 1 ? '' : 's'}.`
+      }
+      await load()
+    } catch (err) {
+      setErr(err)
+    }
+  }
+
   $effect(() => {
     void load()
   })
@@ -224,6 +242,9 @@
 <section id="instances" class="settings-section">
   <PageHeader eyebrow="Admin · Runtime" title="Instances">
     {#snippet action()}
+      <Btn variant="outline" size="sm" testid="admin-instances-apply" onClick={() => void applyPlatforms()}>
+        {#snippet children()}Apply platform changes{/snippet}
+      </Btn>
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="instances-refresh" />
     {/snippet}
   </PageHeader>

@@ -258,6 +258,44 @@ const createDeleteMock = (onDelete: (url: string) => void) => {
   }
 }
 
+const createApplyMock = (onApply: () => void) => {
+  const applyResult = {
+    applied: 1,
+    started: ['tg'],
+    stopped: [],
+    removed: [],
+    removedDetails: [],
+    recreated: [],
+    unchanged: [],
+    failed: [],
+    unreadable: [],
+  }
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (method === 'POST' && url.includes('/admin/platform-instances/apply')) {
+      onApply()
+      return Promise.resolve(json(applyResult))
+    }
+    if (url.includes('/admin/platform-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/task-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/platform-provider-types'))
+      return Promise.resolve(
+        json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+      )
+    if (url.includes('/admin/task-provider-types'))
+      return Promise.resolve(
+        json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] }),
+      )
+    return Promise.resolve(json({}))
+  }
+}
+
 describe('AdminInstancesSection', () => {
   test('renders platform and task instance rows', async () => {
     installFetch()
@@ -487,6 +525,26 @@ describe('AdminInstancesSection', () => {
     target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(deletedUrl).toContain('k')
+    void unmount(component)
+  })
+
+  test('clicking the apply button POSTs to the platform-instances/apply endpoint', async () => {
+    setCsrfToken('c')
+    let applyPostSeen = false
+    setMockFetch(
+      createApplyMock(() => {
+        applyPostSeen = true
+      }),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const applyBtn = target.querySelector<HTMLButtonElement>('[data-testid="admin-instances-apply"]')
+    expect(applyBtn).not.toBeNull()
+    applyBtn!.click()
+    await drain()
+    expect(applyPostSeen).toBe(true)
     void unmount(component)
   })
 })
