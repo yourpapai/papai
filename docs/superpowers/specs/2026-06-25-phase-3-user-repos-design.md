@@ -61,9 +61,11 @@ allowed-host repo, but cannot change the image, egress, or provisioning.
 3. **Operator policy gate:** magi validates the inline spec against a host
    allowlist (`MAGI_ALLOWED_REPO_HOSTS`) and the HTTPS-only transport rule
    (Phase 2). A spec outside policy is rejected (`400`), never run.
-4. **The static `MAGI_PROJECTS` registry stays as an optional fallback** for
-   operator-defined shared projects (named-project path unchanged); the inline
-   path is additive. `list_projects` switches to the **papai catalogue**.
+4. **The static `MAGI_PROJECTS` registry is dropped entirely** — the inline
+   `projectSpec` is the **only** project source. `InMemoryProjectRegistry` /
+   `loadProjects` / the `MAGI_PROJECTS` env and the `GET /projects` route are
+   removed; `POST /sessions` and `/reviews` **require** a `projectSpec`.
+   `list_projects` reads the **papai catalogue**.
 5. **geofront unchanged.**
 
 ## Design — papai
@@ -144,8 +146,8 @@ from `resolve-agent-secrets.ts`, already extracted in Phase 2.)
 
 - Add `ProjectSpec` (`src/project/config.ts`): `{ name, repoUrl, baseBranch,
 permissionPreset }`.
-- Operator defaults: a new `MAGI_PROJECT_DEFAULTS` (JSON file, like
-  `MAGI_PROJECTS`) supplying the sandbox template — `workspaceImage`,
+- Operator defaults: a new `MAGI_PROJECT_DEFAULTS` (a JSON config file) supplying
+  the sandbox template — `workspaceImage`,
   `agentEntrypoint`, `provisioning`, `egressAllowlistDomains`, `forge.kind`,
   `forge.apiBaseUrl`. A pure `buildEphemeralProject(spec, defaults)` merges them
   into a full `ProjectConfig`, deriving `forge.repo` from `repoUrl`
@@ -155,27 +157,29 @@ permissionPreset }`.
   `forge.apiBaseUrl` host); `permissionPreset` ∈ the three presets. Reject → the
   router returns `400`.
 
-### 6. Request channel + session persistence
+### 6. Request channel + session persistence (single path — no registry)
 
-- `StartSessionInput.projectSpec?` / `StartReviewInput.projectSpec?`. The router
-  (`handleStart`/`handleReview`) parses `body['projectSpec']`, validates it, and
-  forwards it.
-- `SessionManager.startSession` / `ReviewManager.startReview`: when `projectSpec`
-  is present, `buildEphemeralProject` → use that `ProjectConfig` (skip the
-  registry lookup); else the existing `this.projects.get(name)` path
-  (backward-compatible named projects).
-- **Persist the spec with the session.** Add a nullable `project_spec` JSON
-  column to the `sessions` table (migration). `store.create` stores it when the
-  session came from an inline spec. This is **non-secret** repo metadata —
-  consistent with the no-secret-persistence rule (forge token / agent key are
-  still never stored).
-- A `resolveProjectFor(session)` helper: if the row has a `project_spec`, return
-  `buildEphemeralProject(spec, defaults)`; else `this.projects.get(session.project)`.
-  Replace the three `this.projects.get(session.project)` call sites in
-  `session/manager.ts` (finish + teardown) and `review/manager.ts` with it, so
-  finish/push/PR work for ephemeral projects.
-- `GET /projects` (magi) keeps returning the static registry (operator shared
-  projects); it is no longer the source for `list_projects`.
+- `StartSessionInput.projectSpec` / `StartReviewInput.projectSpec` (**required**).
+  The router (`handleStart`/`handleReview`) parses `body['projectSpec']`, validates
+  it, and forwards it; a missing or invalid spec → `400`.
+- `SessionManager` / `ReviewManager` **no longer take a project registry** — their
+  constructors take the `MAGI_PROJECT_DEFAULTS` + the host policy instead.
+  `startSession` / `startReview` always `buildEphemeralProject(spec, defaults)` to
+  get the run's `ProjectConfig`.
+- **Persist the spec with the session.** Add a `project_spec` JSON column to the
+  `sessions` table (migration); `store.create` stores it. This is **non-secret**
+  repo metadata — consistent with the no-secret-persistence rule (forge token /
+  agent key are still never stored).
+- `resolveProjectFor(session)` returns
+  `buildEphemeralProject(session.projectSpec, defaults)`. It **replaces every**
+  `this.projects.get(...)` call site in `session/manager.ts` (start + finish +
+  teardown) and `review/manager.ts`, so the whole lifecycle (clone → provision →
+  push → PR) runs from the persisted spec.
+- **Remove** the magi `GET /projects` route (no registry to list — `list_projects`
+  uses the papai catalogue). `GET /agents` returns the single default agent from
+  `MAGI_PROJECT_DEFAULTS` (or is removed). The CLI one-shot modes (`runStart` /
+  `runReview` in `main.ts`) build an ephemeral project from `MAGI_PROJECT_DEFAULTS`
+  - a `repoUrl` argument (the dev/test path), replacing their registry lookup.
 
 ## Security / data
 
@@ -194,7 +198,6 @@ permissionPreset }`.
   URL, derived egress (Phase 4).
 - Admin guardrails beyond the repo-host allowlist; group-session identity
   (Phase 5).
-- Removing the static `MAGI_PROJECTS` registry (kept as an operator fallback).
 
 ## Testing
 
@@ -218,11 +221,11 @@ permissionPreset }`.
   bad preset.
 - `tests/session/manager.test.ts`, `tests/review/manager.test.ts` — inline
   `projectSpec` runs an ephemeral project; the spec is persisted and
-  `resolveProjectFor` returns it at finish; named-project path still works.
-- `tests/session/store.test.ts` — `project_spec` column round-trips; null for
-  named projects.
-- `tests/server/router.test.ts` — `/sessions` + `/reviews` accept + validate
-  `projectSpec`; disallowed host → 400.
+  `resolveProjectFor` returns it at finish (clone → provision → push → PR all use
+  the persisted spec).
+- `tests/session/store.test.ts` — `project_spec` column round-trips.
+- `tests/server/router.test.ts` — `/sessions` + `/reviews` require + validate
+  `projectSpec`; missing spec → `400`; non-https / disallowed host → `400`.
 
 ## Files touched
 
@@ -240,26 +243,28 @@ permissionPreset }`.
 
 **magi**
 
-| File                                  | Change                                                     |
-| ------------------------------------- | ---------------------------------------------------------- |
-| `src/project/config.ts`               | `ProjectSpec`, `buildEphemeralProject`, `validateRepoSpec` |
-| `src/main.ts`                         | load `MAGI_PROJECT_DEFAULTS` + `MAGI_ALLOWED_REPO_HOSTS`   |
-| `src/session/state.ts` / `manager.ts` | `projectSpec` input; `resolveProjectFor`; ephemeral path   |
-| `src/review/manager.ts`               | `projectSpec` input; ephemeral path                        |
-| `src/session/store.ts`                | `project_spec` column + round-trip                         |
-| `src/server/router.ts`                | parse + validate `projectSpec` on start/review             |
+| File                                  | Change                                                                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/project/config.ts`               | `ProjectSpec`/`ProjectDefaults`, `buildEphemeralProject`, `validateRepoSpec`; **remove** `InMemoryProjectRegistry`/`ProjectRegistry`              |
+| `src/main.ts`                         | load `MAGI_PROJECT_DEFAULTS` + `MAGI_ALLOWED_REPO_HOSTS`; **remove** `loadProjects`/`MAGI_PROJECTS`; CLI modes build ephemeral from a repoUrl arg |
+| `src/session/state.ts` / `manager.ts` | required `projectSpec` input; `resolveProjectFor`; drop registry; ephemeral-only path                                                             |
+| `src/review/manager.ts`               | required `projectSpec` input; drop registry; ephemeral path                                                                                       |
+| `src/session/store.ts`                | `project_spec` column + round-trip                                                                                                                |
+| `src/server/router.ts`                | require + validate `projectSpec` on start/review; **remove** `GET /projects`                                                                      |
 
-## Open questions
+## Resolved decisions (confirmed)
 
-- **Operator defaults mechanism:** a dedicated `MAGI_PROJECT_DEFAULTS` file
-  (assumed) vs. designating a "template" entry in the existing `MAGI_PROJECTS`.
-  The dedicated file is explicit and avoids overloading the registry.
-- **Repo-host allowlist default:** default to the `forge.apiBaseUrl` host
-  (assumed — safe, narrow) vs. an explicit always-required `MAGI_ALLOWED_REPO_HOSTS`
-  (fail-closed if unset) vs. allow-all (rejected — unsafe). Phase 5 expands this
-  into the broader guardrail UI.
-- **`forge.repo` derivation:** done in magi from `repoUrl` (assumed) vs. papai
-  sending it explicitly. magi-side keeps papai's repo spec minimal and centralizes
-  `ProjectConfig` construction.
-- **Keep `MAGI_PROJECTS`?** Retained as an optional operator fallback (assumed);
-  could be dropped entirely if no shared operator projects are wanted.
+- **Operator defaults mechanism — dedicated `MAGI_PROJECT_DEFAULTS` file.** Models
+  the sandbox template as its own shape (no user-supplied `repoUrl`/`forge.repo`/
+  `name`), avoiding overloading `ProjectConfig`/the registry.
+- **Repo-host allowlist default — the `forge.apiBaseUrl` host.** Fail-safe-narrow:
+  only the configured forge's repo host is allowed unless the operator widens
+  `MAGI_ALLOWED_REPO_HOSTS`. This is the SSRF gate on user-supplied URLs (allow-all
+  rejected). Phase 5 expands it into the guardrail UI.
+- **`forge.repo` derivation — magi, from `repoUrl`.** magi owns `forge.kind`
+  (operator default) and all `ProjectConfig` construction; papai's spec stays
+  minimal (`repoUrl`).
+- **Drop `MAGI_PROJECTS` entirely.** No static registry; the inline `projectSpec`
+  (persisted with the session) is the only path. `GET /projects` removed; the CLI
+  one-shot modes build an ephemeral project from `MAGI_PROJECT_DEFAULTS` + a
+  repoUrl arg.
