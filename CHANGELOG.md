@@ -5,6 +5,112 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.0] - 2026-06-26
+
+### Added
+
+- **coding-credentials:** Forge namespace + namespace-generalized settings route
+- **acp:** Per-context forge token — resolveForgeToken + finish/review injection
+- **settings-ui:** Code host token section
+- **config:** DeleteConfigFromDb primitive for config-row removal
+- **config:** ClearCachedConfig clears cache entry and DB row
+- **config:** UnsetConfigValue + unsetPluginConfig with tool-cache invalidation
+- **plugins:** DeletePluginAdminConfig removes the system_config row
+- **tools:** ClearToolPrefs removes the tool_prefs row + invalidates tool cache
+- **config:** Unsettable flag + isFieldUnsettable gate on ConfigField
+- **settings:** Unset action on /settings/api/config (all context ConfigFields)
+- **settings:** Unset action on /settings/api/plugins/config
+- **settings:** Unset action on /settings/api/admin/plugin-config
+- **settings:** Unset kind clears per-context tool_prefs
+- **settings:** Unset kind clears admin tool defaults
+- **settings:** Unset action clears tool_context_flags
+- **settings-ui:** Unset fetchers for config and plugin fields
+- **settings-ui:** Clear affordance for config + plugin fields
+- **settings-ui:** Add unsetAdminPluginConfig + unsetToolDefaults fetchers
+- **admin-ui:** Clear affordance for admin plugin config keys
+- **admin-ui:** Clear admin defaults control in tool-defaults section
+- **db:** Migration 063 — release announcement subscription columns + deliveries
+- **announcements:** Subscription + draft + delivery store
+- **announcements:** Central-LLM changelog humanizer
+- **announcements:** Subscriber broadcast fan-out
+- **announcements:** Humanize + persist draft + admin review notice on new version
+- **settings:** Admin release-notes route (view/regenerate/save/broadcast)
+- **settings:** Personal + group release-subscription routes
+- **settings-ui:** Release notes + subscription fetchers and schemas
+- **settings-ui:** Admin Release notes section
+- **settings-ui:** Release announcement subscription toggle (personal + group)
+- **settings:** Migrate platform-instance apply (live router reconcile) into settings admin
+
+### Changed
+
+- **settings:** Clearer action-presence narrowing in feature-flags unset dispatch
+- **admin:** Remove duplicate Plugin Config section from operator dashboard
+- **admin:** Remove duplicate System (LLM creds) section from operator dashboard
+- **admin:** Remove duplicate Groups section from operator dashboard
+- **debug:** Drop dead AuthorizedGroupEntry re-export from dashboard-types
+- **admin:** Remove operator Instances UI and /api/* instance routes
+- **admin:** Derive admin nav lists from a single source
+
+### Documentation
+
+- **coding-credentials:** Phase 2 forge-identity implementation plan
+- **coding-credentials:** Phase 3 user-defined repositories design spec
+- **config:** Registry-gated generic config unset design
+- **config:** Implementation plan for registry-gated config unset
+- **config:** Note unset/Clear capability in settings UI
+- **spec:** Opt-in version announcement subscriptions design
+- **spec:** Rename announcements feature to 'Release notes' to coexist with existing Announce
+- **plan:** Release announcement subscriptions implementation plan
+- **claude:** Document opt-in version release announcements feature
+- **adr:** Write ADR-0169..0222 for completed plans; archive plans and specs
+- **admin:** Design to deduplicate admin controls out of the dashboard into settings
+- **admin:** Implementation plan for admin dashboard deduplication
+- **admin:** Point admin controls at settings; /admin is now a read-only dashboard
+- **plugins:** Point operator workflow at settings admin Instances + Plugins area
+
+### Fixed
+
+- **settings-ui:** Unique testids for Code host section
+- **settings:** Admin plugin-config PATCH dispatches via typed union (reject wrong-case action)
+- **settings-ui:** Required-field Clear confirm warns about plugin ineligibility
+- **settings-ui:** Kind-aware Clear warning + guard Clear against double-submit
+- **settings-ui:** Gate admin tool-defaults Clear on hasStoredDefaults (covers custom defaults)
+- **deferred:** Deliver proactive prompts to new users + seed context_settings
+- **ci:** Take a WAL-consistent, verified DB backup before deploy
+- **db:** Add deliveries FK + strengthen migration 063 tests
+- **announcements:** Upsert humanized body so admin save/regenerate persist without a seeded row
+- **settings-ui:** Guard stale subscription loads + unique section id per scope
+- **announcements:** Pre-LLM dedup anchor, save-before-broadcast, no sent-downgrade, result styling
+- **settings:** Apply UX — keep failure message, 405 on non-POST, busy state, info log
+- **debug:** 405 on non-GET to /admin/subjects/:id/recent-requests
+
+### Miscellaneous
+
+- **tools:** Log info on clearToolPrefs for parity with setToolPrefs
+- **admin:** Remove dead types/handlers/tests orphaned by dashboard dedup
+
+### Styling
+
+- **acp:** Invert forgeToken spread guard; collapse test import
+
+### Testing
+
+- **settings:** Assert excluded operational secrets cannot be unset via config route
+- Install test DB in tool-prefs-reading suites to fix CI flakiness
+- **settings:** Cover release-subscription 422, unauthorized 403, group GET default
+- **admin-llm:** Restore unit coverage for masking + validation (kept module)
+- **admin:** Drop stale tests targeting removed /api/platform-instances + stale 'groups' id
+- **admin:** Delete tombstone server-write-auth test file (coverage moved to settings/admin suites)
+
+### Polish
+
+- **settings-ui:** Style Clear row; mutually exclude the two tool-defaults confirm bars
+- **announcements:** Single delivery timestamp + write logs + stronger store test
+- **announcements:** Log missing central keys + assert humanizer system prompt
+- **announcements:** Broadcast author comment, Readonly chat, honest test mocks + empty-list case
+- **announcements:** Direct humanize ref, fuller persist assertion, document persist-before-send
+- **settings-ui:** Share ctxQuery, cover regenerate + broadcast CSRF
+- **settings-ui:** Reset broadcast result on retry + initial loading line
 ## [6.4.2] - 2026-06-25
 
 ### Added
