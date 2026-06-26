@@ -97,6 +97,7 @@
     loading = true
     expanded = {}
     pendingPreset = null
+    pendingClear = false
     try {
       const res = await fetchToolsFn(id)
       domains = res.domains
@@ -136,6 +137,7 @@
 
   function requestPreset(preset: ToolPreset): void {
     error = null
+    pendingClear = false
     pendingPreset = preset
   }
 
@@ -215,7 +217,7 @@
 
   {#if clearPresetFn !== undefined && storedDefaults && !pendingClear}
     <div class="settings-tools__clear-row">
-      <Btn variant="ghost" size="sm" testid="tool-defaults-clear" onClick={() => (pendingClear = true)}>
+      <Btn variant="ghost" size="sm" testid="tool-defaults-clear" onClick={() => { pendingPreset = null; pendingClear = true }}>
         {#snippet children()}Clear admin defaults{/snippet}
       </Btn>
     </div>
@@ -356,5 +358,9 @@
     border: 1px solid var(--border);
     background: var(--surface);
     font-size: 12px;
+  }
+  .settings-tools__clear-row {
+    display: flex;
+    margin-bottom: 12px;
   }
 </style>
