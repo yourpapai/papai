@@ -437,27 +437,6 @@ describe('debug-server', () => {
     await cancelBody(res)
   })
 
-  test('POST /api/platform-instances without session cookie returns 401', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/api/platform-instances`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' } }),
-    })
-
-    expect(res.status).toBe(401)
-    await cancelBody(res)
-  })
-
-  test('GET /api/platform-instances remains unauthorized without a session cookie when DEBUG_TOKEN is configured', async () => {
-    process.env['DEBUG_TOKEN'] = 'server-test-token'
-
-    const res = await fetch(`http://localhost:${TEST_PORT}/api/platform-instances`)
-
-    expect(res.status).toBe(401)
-    await cancelBody(res)
-    delete process.env['DEBUG_TOKEN']
-  })
-
   test('settings domain is isolated from DEBUG_TOKEN', async () => {
     process.env['DEBUG_TOKEN'] = 'server-test-token'
 

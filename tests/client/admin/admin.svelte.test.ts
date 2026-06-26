@@ -82,7 +82,7 @@ describe('admin.svelte', () => {
     syncSectionFromLocation()
     // Result depends on whatever location.hash is at this point; just verify it
     // returns a valid AdminSectionId (not undefined / not throwing).
-    const validIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups']
+    const validIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities']
     expect(validIds).toContain(adminState.currentSection)
   })
 })

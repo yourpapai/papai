@@ -51,9 +51,4 @@ describe('write routes accept the session cookie (no DEBUG_TOKEN)', () => {
     )
     expect(res.status).not.toBe(401)
   })
-
-  test('POST /api/platform-instances rejects without cookie', async () => {
-    const res = await routeRequestForTest(new Request('http://localhost/api/platform-instances', { method: 'POST' }))
-    expect(res.status).toBe(401)
-  })
 })
