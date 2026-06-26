@@ -32,6 +32,7 @@ const snapshotPayload = {
 }
 
 let capturedPatchBody: string | undefined
+let capturedClearBody: unknown = null
 
 const capturePatchMock = (url: string, init: RequestInit): Promise<Response> => {
   if (url.includes('/admin/plugin-config') && init.method === 'PATCH') {
@@ -53,8 +54,17 @@ const patchErrorMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(snapshotPayload))
 }
 
+const captureUnsetMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/plugin-config') && init.method === 'PATCH') {
+    capturedClearBody = typeof init.body === 'string' ? (JSON.parse(init.body) as unknown) : null
+    return Promise.resolve(json({ ok: true, pluginId: 'my-plugin', key: 'api_key' }))
+  }
+  return Promise.resolve(json(snapshotPayload))
+}
+
 afterEach(() => {
   capturedPatchBody = undefined
+  capturedClearBody = null
   restoreFetch()
   setCsrfToken('')
 })
@@ -168,6 +178,42 @@ describe('AdminPluginsConfigSection', () => {
 
     expect(target.querySelector('.status-error')).not.toBeNull()
     expect(target.querySelector('[data-testid="plugin-config-key-my-plugin-api_key"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('Clear button appears only for keys that have a value set', async () => {
+    setMockFetch(() => Promise.resolve(json(snapshotPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+    // api_key has value '****cret' → Clear should be visible
+    expect(target.querySelector('[data-testid="plugin-config-clear-my-plugin-api_key"]')).not.toBeNull()
+    // endpoint has value null → Clear should NOT be visible
+    expect(target.querySelector('[data-testid="plugin-config-clear-my-plugin-endpoint"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('clicking Clear and confirming calls unsetAdminPluginConfig with correct args and refreshes', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureUnsetMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-config-clear-my-plugin-api_key"]')!.click()
+    await drain()
+    // Confirm dialog should now be open
+    expect(target.querySelector('.modal')).not.toBeNull()
+    // Click the last "Clear" button in the modal (the confirm action button)
+    const clearBtns = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).filter((b) =>
+      b.textContent?.includes('Clear'),
+    )
+    clearBtns.at(-1)!.click()
+    await drain()
+
+    expect(capturedClearBody).toEqual({ action: 'unset', pluginId: 'my-plugin', key: 'api_key' })
     void unmount(component)
   })
 })

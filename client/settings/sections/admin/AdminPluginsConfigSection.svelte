@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fetchAdminPluginConfig, patchAdminPluginConfig } from '../../admin-fetchers.js'
+  import { fetchAdminPluginConfig, patchAdminPluginConfig, unsetAdminPluginConfig } from '../../admin-fetchers.js'
   import type { AdminPluginConfigEntry } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
   import EmptyState from '../../../shared/ui/EmptyState.svelte'
@@ -13,12 +13,14 @@
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Secret from '../../../shared/ui/Secret.svelte'
+  import Confirm from '../../../shared/Confirm.svelte'
 
   let plugins: AdminPluginConfigEntry[] = $state([])
   let drafts: Record<string, string> = $state({})
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
+  let pendingClear: { pluginId: string; key: string; required: boolean } | null = $state(null)
 
   function draftKey(pluginId: string, key: string): string {
     return `${pluginId}::${key}`
@@ -48,6 +50,18 @@
       drafts[dk] = ''
       await load()
       status = `${pluginId} / ${key} updated.`
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  async function clearConfig(pluginId: string, key: string): Promise<void> {
+    error = null
+    status = null
+    try {
+      await unsetAdminPluginConfig({ pluginId, key })
+      await load()
+      status = `${pluginId} / ${key} cleared.`
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -100,6 +114,15 @@
                   onClick={() => void save(plugin.pluginId, keyState.key)}>
                   {#snippet children()}Save{/snippet}
                 </Btn>
+                {#if keyState.value !== null}
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    testid={`plugin-config-clear-${plugin.pluginId}-${keyState.key}`}
+                    onClick={() => (pendingClear = { pluginId: plugin.pluginId, key: keyState.key, required: keyState.required })}>
+                    {#snippet children()}Clear{/snippet}
+                  </Btn>
+                {/if}
               </div>
             </Field>
           </div>
@@ -111,6 +134,22 @@
   {#if plugins.length === 0 && !loading}
     <EmptyState title="No plugin config keys" hint="No plugins with admin config keys found." />
   {/if}
+
+  <Confirm
+    open={pendingClear !== null}
+    title="Clear plugin config value"
+    danger
+    confirmLabel="Clear"
+    onCancel={() => (pendingClear = null)}
+    onConfirm={() => {
+      const pending = pendingClear
+      pendingClear = null
+      if (pending !== null) void clearConfig(pending.pluginId, pending.key)
+    }}>
+    {#snippet body()}
+      <p>Clear the stored value for this field?{pendingClear?.required ? ' This field is required — clearing it will make the plugin ineligible for this context.' : ' The field will revert to its default (unset).'}</p>
+    {/snippet}
+  </Confirm>
 </section>
 
 <style>
