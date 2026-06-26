@@ -21,6 +21,7 @@
   import ByokSection from './sections/ByokSection.svelte'
   import CodingCredentialsSection from './sections/CodingCredentialsSection.svelte'
   import CodeHostSection from './sections/CodeHostSection.svelte'
+  import ReposSection from './sections/ReposSection.svelte'
   import McpSection from './sections/McpSection.svelte'
   import PluginsSection from './sections/PluginsSection.svelte'
   import IdentitySection from './sections/IdentitySection.svelte'
@@ -45,7 +46,7 @@
   type SidebarItem = SidebarGroup['items'][number]
 
   /** Section ids that live under the collapsible Advanced group. */
-  const ADVANCED_IDS: readonly string[] = ['memory', 'ai-output', 'identity', 'byok', 'coding-credentials', 'code-host', 'mcp', 'plugins']
+  const ADVANCED_IDS: readonly string[] = ['memory', 'ai-output', 'identity', 'byok', 'coding-credentials', 'code-host', 'repos', 'mcp', 'plugins']
 
   function buildAdminSidebarItems(session: typeof settingsSession): SidebarItem[] {
     const items: SidebarItem[] = []
@@ -109,6 +110,7 @@
           { id: 'byok', label: 'BYOK LLM' },
           { id: 'coding-credentials', label: 'Coding sessions' },
           { id: 'code-host', label: 'Code host' },
+          { id: 'repos', label: 'Repositories' },
           { id: 'mcp', label: 'MCP' },
           { id: 'plugins', label: 'Plugins' },
         ],
@@ -221,6 +223,7 @@
                 <ByokSection contextId={ctx} />
                 <CodingCredentialsSection contextId={ctx} />
                 <CodeHostSection contextId={ctx} />
+                <ReposSection contextId={ctx} />
                 <McpSection contextId={ctx} />
                 <PluginsSection contextId={ctx} />
               </div>
