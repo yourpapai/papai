@@ -35,7 +35,7 @@ describe('ReleaseSubscriptionSection', () => {
 
     await drain()
 
-    expect(urls.some((u) => u.includes('/settings/api/release-subscription'))).toBe(true)
+    expect(urls.some((u) => u.endsWith('/settings/api/release-subscription'))).toBe(true)
     expect(target.querySelector('[data-testid="release-subscription-toggle"]')).not.toBeNull()
     void unmount(component)
   })

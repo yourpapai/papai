@@ -37,9 +37,9 @@
       if (scope === 'group' && id !== contextId) return
       enabled = result.enabled
     } catch (err) {
-      error = messageFrom(err)
+      if (id === contextId) error = messageFrom(err)
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
@@ -63,7 +63,7 @@
   })
 </script>
 
-<section id="release-announcements" class="settings-section">
+<section id="release-announcements-{scope}" class="settings-section">
   <PageHeader eyebrow={scope === 'group' ? 'Group' : 'Personal'} title="Release announcements">
     {#snippet action()}
       <Btn
