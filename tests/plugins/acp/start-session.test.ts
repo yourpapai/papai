@@ -42,6 +42,7 @@ describe('acp start_session tool', () => {
         repoUrl: 'https://github.com/acme/demo.git',
         baseBranch: 'main',
         permissionPreset: 'cautious',
+        agent: 'claude',
       },
     })
     expect(result).toEqual({ id: 's-1', status: 'queued' })

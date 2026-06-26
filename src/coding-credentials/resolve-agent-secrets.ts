@@ -37,6 +37,16 @@ export function resolveAgentSecrets(storageContextId: string): Record<string, st
 }
 
 /**
+ * Resolve the acting context's configured coding agent name.
+ * Returns null when the agent field is absent or empty.
+ */
+export function resolveAgent(storageContextId: string): string | null {
+  const creds = getCodingCredentials(configContextOf(storageContextId), 'agent-provider')
+  const agent = creds?.agent?.trim()
+  return agent === undefined || agent.length === 0 ? null : agent
+}
+
+/**
  * Resolve the acting context's forge (code-host) token.
  * Returns null when no token is stored.
  */

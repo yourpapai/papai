@@ -102,6 +102,7 @@ export function runtimeCtx(
     codingSecrets: {
       resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }),
       resolveForgeToken: () => 'ghp-test',
+      resolveAgent: () => null,
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
   } as PluginToolRuntimeContext
@@ -143,6 +144,7 @@ export function runtimeCtxWithKv(
     codingSecrets: {
       resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }),
       resolveForgeToken: () => 'ghp-test',
+      resolveAgent: () => null,
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
   } as PluginToolRuntimeContext

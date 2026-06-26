@@ -55,7 +55,8 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         }
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
-      const projectSpec = buildProjectSpec(repo)
+      const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
+      const projectSpec = buildProjectSpec(repo, resolvedAgent)
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         agent,
         contextId: runtimeContext.storageContextId,
@@ -221,7 +222,8 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
           error: 'not_configured',
           message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
         }
-      const projectSpec = buildProjectSpec(repo)
+      const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
+      const projectSpec = buildProjectSpec(repo, resolvedAgent)
       const result = await callMagi(httpFetch, cfg, 'POST', '/reviews', {
         prNumber,
         contextId: runtimeContext.storageContextId,

@@ -18,7 +18,11 @@ export type RuntimeContext = {
   storageContextId: string
   adminConfig: AdminConfigReader
   kv: KvStore
-  codingSecrets: { resolve(): Record<string, string> | null; resolveForgeToken(): string | null }
+  codingSecrets: {
+    resolve(): Record<string, string> | null
+    resolveForgeToken(): string | null
+    resolveAgent(): string | null
+  }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
     get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
@@ -36,17 +40,22 @@ export function sessionIdOf(result: unknown): string | null {
   return typeof id === 'string' && id.length > 0 ? id : null
 }
 
-export function buildProjectSpec(repo: RepoEntry): {
+export function buildProjectSpec(
+  repo: RepoEntry,
+  agent: string,
+): {
   name: string
   repoUrl: string
   baseBranch: string
   permissionPreset: string
+  agent: string
 } {
   return {
     name: repo.name,
     repoUrl: repo.repoUrl,
     baseBranch: repo.baseBranch,
     permissionPreset: repo.permissionPreset,
+    agent,
   }
 }
 

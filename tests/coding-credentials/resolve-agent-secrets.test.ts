@@ -6,7 +6,11 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { resolveAgentSecrets, resolveForgeToken } from '../../src/coding-credentials/resolve-agent-secrets.js'
+import {
+  resolveAgent,
+  resolveAgentSecrets,
+  resolveForgeToken,
+} from '../../src/coding-credentials/resolve-agent-secrets.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -114,4 +118,15 @@ test('resolveForgeToken returns the stored forge token, or null when absent', ()
   expect(resolveForgeToken(STORAGE_CTX)).toBeNull()
   updateCodingCredentials(STORAGE_CTX, 'forge', { forge_token: 'ghp_1' }, 'user-9')
   expect(resolveForgeToken(STORAGE_CTX)).toBe('ghp_1')
+})
+
+test('resolveAgent returns the stored agent or null when absent', () => {
+  expect(resolveAgent(STORAGE_CTX)).toBeNull()
+  updateCodingCredentials(STORAGE_CTX, 'agent-provider', { agent: 'codex', provider_api_key: 'sk-o' }, 'user-9')
+  expect(resolveAgent(STORAGE_CTX)).toBe('codex')
+})
+
+test('resolveAgent returns null when agent field is absent', () => {
+  updateCodingCredentials(STORAGE_CTX, 'agent-provider', { provider_api_key: 'sk-1' }, 'user-9')
+  expect(resolveAgent(STORAGE_CTX)).toBeNull()
 })

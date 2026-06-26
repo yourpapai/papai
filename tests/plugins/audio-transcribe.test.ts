@@ -206,7 +206,7 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
       },
     },
     attachments: overrides.attachments ?? createMockAttachments().facade,
-    codingSecrets: { resolve: () => null, resolveForgeToken: () => null },
+    codingSecrets: { resolve: () => null, resolveForgeToken: () => null, resolveAgent: () => null },
     codingRepos: { list: () => [], get: () => null },
   }
 }

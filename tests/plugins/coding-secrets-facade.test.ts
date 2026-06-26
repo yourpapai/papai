@@ -41,3 +41,25 @@ test('resolveForgeToken via facade; denied without permission', () => {
   expect(buildCodingSecretsFacade('acp', STORAGE_CTX, true).resolveForgeToken()).toBe('ghp_1')
   expect(() => buildCodingSecretsFacade('acp', STORAGE_CTX, false).resolveForgeToken()).toThrow("'coding.secrets'")
 })
+
+test('resolveAgent returns stored agent when set', () => {
+  updateCodingCredentials(STORAGE_CTX, 'agent-provider', { agent: 'codex', provider_api_key: 'sk-1' }, 'user-3')
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveAgent()).toBe('codex')
+})
+
+test('resolveAgent returns null when agent not set', () => {
+  updateCodingCredentials(STORAGE_CTX, 'agent-provider', { provider_api_key: 'sk-1' }, 'user-3')
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveAgent()).toBeNull()
+})
+
+test('resolveAgent returns null when no credentials stored', () => {
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveAgent()).toBeNull()
+})
+
+test('resolveAgent throws without the coding.secrets permission', () => {
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
+  expect(() => facade.resolveAgent()).toThrow("does not have 'coding.secrets' permission")
+})

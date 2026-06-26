@@ -44,7 +44,11 @@ export type PluginToolRuntimeContext = {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }
   }
   attachments: PluginAttachmentFacade
-  codingSecrets: { resolve(): Record<string, string> | null; resolveForgeToken(): string | null }
+  codingSecrets: {
+    resolve(): Record<string, string> | null
+    resolveForgeToken(): string | null
+    resolveAgent(): string | null
+  }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
     get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null

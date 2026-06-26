@@ -46,7 +46,11 @@ type FakeRuntimeContext = {
   storageContextId: string
   adminConfig: typeof ADMIN
   kv: typeof KV
-  codingSecrets: { resolve(): Record<string, string> | null; resolveForgeToken(): string | null }
+  codingSecrets: {
+    resolve(): Record<string, string> | null
+    resolveForgeToken(): string | null
+    resolveAgent(): string | null
+  }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
     get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
@@ -56,12 +60,13 @@ type FakeRuntimeContext = {
 function ctx(
   resolve: () => Record<string, string> | null,
   resolveForgeToken: () => string | null = (): null => null,
+  resolveAgent: () => string | null = (): null => null,
 ): FakeRuntimeContext {
   return {
     storageContextId: 'pi:telegram:ctx:u1',
     adminConfig: ADMIN,
     kv: KV,
-    codingSecrets: { resolve, resolveForgeToken },
+    codingSecrets: { resolve, resolveForgeToken, resolveAgent },
     codingRepos: {
       list: () => [{ name: 'demo', baseBranch: 'main' }],
       get: (name: string) => (name === 'demo' ? DEMO_REPO : null),

@@ -69,6 +69,7 @@ describe('acp review_pr tool', () => {
         repoUrl: 'https://github.com/acme/demo.git',
         baseBranch: 'main',
         permissionPreset: 'cautious',
+        agent: 'claude',
       },
     })
     expect(result).toEqual({ id: 'r-1', status: 'queued' })
