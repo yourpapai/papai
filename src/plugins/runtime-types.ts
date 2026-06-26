@@ -45,6 +45,10 @@ export type PluginToolRuntimeContext = {
   }
   attachments: PluginAttachmentFacade
   codingSecrets: { resolve(): Record<string, string> | null; resolveForgeToken(): string | null }
+  codingRepos: {
+    list(): { name: string; baseBranch: string }[]
+    get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
+  }
 }
 
 export type PluginScheduledJobRuntimeContext = {

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const codingSessionRepos = sqliteTable(
   'coding_session_repos',
@@ -19,7 +19,7 @@ export const codingSessionRepos = sqliteTable(
   },
   (t) => [
     primaryKey({ columns: [t.contextId, t.repoId] }),
-    index('idx_coding_session_repos_name').on(t.contextId, t.name),
+    uniqueIndex('uq_coding_session_repos_name').on(t.contextId, t.name),
   ],
 )
 

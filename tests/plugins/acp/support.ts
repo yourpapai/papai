@@ -61,7 +61,30 @@ export function activate(httpFetch: HttpFetch): ActivateResult {
   return { tools, command, fragment }
 }
 
-export function runtimeCtx(adminGet?: (k: string) => string | undefined): PluginToolRuntimeContext {
+export type FakeCodingRepos = {
+  list(): { name: string; baseBranch: string }[]
+  get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
+}
+
+export function defaultCodingRepos(): FakeCodingRepos {
+  return {
+    list: () => [{ name: 'demo', baseBranch: 'main' }],
+    get: (name: string) =>
+      name === 'demo'
+        ? {
+            name: 'demo',
+            repoUrl: 'https://github.com/acme/demo.git',
+            baseBranch: 'main',
+            permissionPreset: 'cautious',
+          }
+        : null,
+  }
+}
+
+export function runtimeCtx(
+  adminGet?: (k: string) => string | undefined,
+  codingRepos?: FakeCodingRepos,
+): PluginToolRuntimeContext {
   const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
   return {
     pluginId: 'acp',
@@ -80,12 +103,14 @@ export function runtimeCtx(adminGet?: (k: string) => string | undefined): Plugin
       resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }),
       resolveForgeToken: () => 'ghp-test',
     },
+    codingRepos: codingRepos ?? defaultCodingRepos(),
   } as PluginToolRuntimeContext
 }
 
 export function runtimeCtxWithKv(
   store: Map<string, string>,
   adminGet?: (k: string) => string | undefined,
+  codingRepos?: FakeCodingRepos,
 ): PluginToolRuntimeContext {
   const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
   return {
@@ -119,6 +144,7 @@ export function runtimeCtxWithKv(
       resolve: () => ({ ANTHROPIC_API_KEY: 'sk-test' }),
       resolveForgeToken: () => 'ghp-test',
     },
+    codingRepos: codingRepos ?? defaultCodingRepos(),
   } as PluginToolRuntimeContext
 }
 

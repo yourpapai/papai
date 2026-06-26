@@ -20,7 +20,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 describe('acp start_session tool', () => {
-  test('injects context, POSTs /sessions, records kv', async () => {
+  test('injects context, POSTs /sessions with projectSpec, records kv', async () => {
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (_url, init) => {
       capturedBody = JSON.parse(bodyString(init))
@@ -38,6 +38,12 @@ describe('acp start_session tool', () => {
       prompt: 'do it',
       secrets: { ANTHROPIC_API_KEY: 'sk-test' },
       forgeToken: 'ghp-test',
+      projectSpec: {
+        name: 'demo',
+        repoUrl: 'https://github.com/acme/demo.git',
+        baseBranch: 'main',
+        permissionPreset: 'cautious',
+      },
     })
     expect(result).toEqual({ id: 's-1', status: 'queued' })
     expect(store.get('session:s-1')).toBeDefined()
@@ -55,6 +61,24 @@ describe('acp start_session tool', () => {
       .get('start_session')!
       .execute({ project: 'demo', prompt: 'do it', agent: 'opencode' }, runtimeCtxWithKv(store), options())
     expect(asRecord(capturedBody)['agent']).toBe('opencode')
+  })
+
+  test('unknown project returns not_found without calling httpFetch', async () => {
+    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const emptyCodingRepos = {
+      list: (): { name: string; baseBranch: string }[] => [],
+      get: (_name: string): null => null,
+    }
+    const result = await tools
+      .get('start_session')!
+      .execute({ project: 'unknown', prompt: 'do it' }, runtimeCtxWithKv(store, undefined, emptyCodingRepos), options())
+    expect(result).toEqual({
+      error: 'not_found',
+      message: 'No repository named "unknown". Add it in settings → Repositories.',
+    })
+    expect(httpFetch).not.toHaveBeenCalled()
   })
 
   test('missing project/prompt returns invalid_input without calling httpFetch', async () => {

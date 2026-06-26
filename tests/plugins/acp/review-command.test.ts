@@ -45,7 +45,7 @@ function bodyString(init: RequestInit | undefined): string {
 }
 
 describe('acp review_pr tool', () => {
-  test('injects contextId, POSTs /reviews, records kv', async () => {
+  test('injects contextId, POSTs /reviews with projectSpec, records kv', async () => {
     let capturedUrl = ''
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (url, init) => {
@@ -65,9 +65,33 @@ describe('acp review_pr tool', () => {
       contextId: 'ctx-1',
       secrets: { ANTHROPIC_API_KEY: 'sk-test' },
       forgeToken: 'ghp-test',
+      projectSpec: {
+        name: 'demo',
+        repoUrl: 'https://github.com/acme/demo.git',
+        baseBranch: 'main',
+        permissionPreset: 'cautious',
+      },
     })
     expect(result).toEqual({ id: 'r-1', status: 'queued' })
     expect(store.get('session:r-1')).toBeDefined()
+  })
+
+  test('unknown project returns not_found without calling httpFetch', async () => {
+    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const emptyCodingRepos = {
+      list: (): { name: string; baseBranch: string }[] => [],
+      get: (_name: string): null => null,
+    }
+    const result = await tools
+      .get('review_pr')!
+      .execute({ project: 'unknown', prNumber: 42 }, runtimeCtxWithKv(store, undefined, emptyCodingRepos), options())
+    expect(result).toEqual({
+      error: 'not_found',
+      message: 'No repository named "unknown". Add it in settings → Repositories.',
+    })
+    expect(httpFetch).not.toHaveBeenCalled()
   })
 
   test('missing project returns invalid_input without calling httpFetch', async () => {

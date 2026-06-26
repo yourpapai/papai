@@ -50,6 +50,15 @@ export function listRepos(contextId: string): RepoRecord[] {
     .map(rowToRecord)
 }
 
+export function getRepoByName(contextId: string, name: string): RepoRecord | null {
+  const r = getDrizzleDb()
+    .select()
+    .from(codingSessionRepos)
+    .where(and(eq(codingSessionRepos.contextId, contextId), eq(codingSessionRepos.name, name)))
+    .get()
+  return r === undefined ? null : rowToRecord(r)
+}
+
 export function upsertRepo(contextId: string, input: RepoInput, updatedBy: string): string {
   assertValid(input)
   // Find the existing repo by name (unique per context) to get its repoId for upsert

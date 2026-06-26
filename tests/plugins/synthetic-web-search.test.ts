@@ -108,6 +108,7 @@ function createMockRuntimeContext(
       get: () => undefined,
     },
     codingSecrets: { resolve: () => null, resolveForgeToken: () => null },
+    codingRepos: { list: () => [], get: () => null },
   } as PluginToolRuntimeContext
 }
 

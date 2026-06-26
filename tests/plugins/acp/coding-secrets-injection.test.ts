@@ -35,11 +35,22 @@ const KV = {
   list: (): [] => [],
 }
 
+const DEMO_REPO = {
+  name: 'demo',
+  repoUrl: 'https://github.com/acme/demo.git',
+  baseBranch: 'main',
+  permissionPreset: 'cautious',
+}
+
 type FakeRuntimeContext = {
   storageContextId: string
   adminConfig: typeof ADMIN
   kv: typeof KV
   codingSecrets: { resolve(): Record<string, string> | null; resolveForgeToken(): string | null }
+  codingRepos: {
+    list(): { name: string; baseBranch: string }[]
+    get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
+  }
 }
 
 function ctx(
@@ -51,6 +62,10 @@ function ctx(
     adminConfig: ADMIN,
     kv: KV,
     codingSecrets: { resolve, resolveForgeToken },
+    codingRepos: {
+      list: () => [{ name: 'demo', baseBranch: 'main' }],
+      get: (name: string) => (name === 'demo' ? DEMO_REPO : null),
+    },
   }
 }
 

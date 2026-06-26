@@ -5,7 +5,8 @@
 
 import { loadAttachmentRecord } from '../attachments/store.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
-import { resolveAgentSecrets, resolveForgeToken } from '../coding-credentials/resolve-agent-secrets.js'
+import { resolveAgentSecrets, resolveForgeToken, configContextOf } from '../coding-credentials/resolve-agent-secrets.js'
+import { getRepoByName, listRepos } from '../coding-repos/store.js'
 import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildIdentityFacade } from './identity-facade.js'
@@ -168,6 +169,27 @@ export function buildCodingSecretsFacade(
   })
 }
 
+export function buildCodingReposFacade(
+  pluginId: string,
+  storageContextId: string,
+  hasPermission: boolean,
+): PluginToolRuntimeContext['codingRepos'] {
+  return Object.freeze({
+    list(): { name: string; baseBranch: string }[] {
+      if (!hasPermission) deny(pluginId, 'coding.secrets')
+      const contextId = configContextOf(storageContextId)
+      return listRepos(contextId).map((r) => ({ name: r.name, baseBranch: r.baseBranch }))
+    },
+    get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null {
+      if (!hasPermission) deny(pluginId, 'coding.secrets')
+      const contextId = configContextOf(storageContextId)
+      const r = getRepoByName(contextId, name)
+      if (r === null) return null
+      return { name: r.name, repoUrl: r.repoUrl, baseBranch: r.baseBranch, permissionPreset: r.permissionPreset }
+    },
+  })
+}
+
 export function buildPluginScheduledJobRuntimeContext(
   pluginId: string,
   contextId: string,
@@ -244,5 +266,6 @@ export function buildPluginToolRuntimeContext(
     rateLimit: buildRateLimit(pluginId),
     attachments: buildAttachmentsFacade(pluginId, runtime.storageContextId, permissions.has('attachments.read')),
     codingSecrets: buildCodingSecretsFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
+    codingRepos: buildCodingReposFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
   })
 }

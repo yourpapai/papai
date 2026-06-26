@@ -9,6 +9,7 @@ import {
   cancelSessionTool,
   finishSessionTool,
   getTool,
+  listProjectsTool,
   listSessionsTool,
   reviewPrTool,
   sessionStatusTool,
@@ -104,7 +105,7 @@ const ACP_COMMAND_TEXT =
 const factory = (): { activate(ctx: unknown): void } => ({
   activate(rawCtx: unknown): void {
     const ctx = extractActivationContext(rawCtx)
-    ctx.registerTool(getTool('list_projects', 'List coding projects configured in magi.', '/projects', ctx.httpFetch))
+    ctx.registerTool(listProjectsTool())
     ctx.registerTool(getTool('list_agents', 'List coding agents available in magi.', '/agents', ctx.httpFetch))
     ctx.registerTool(startSessionTool(ctx.httpFetch))
     ctx.registerTool(listSessionsTool(ctx.httpFetch))

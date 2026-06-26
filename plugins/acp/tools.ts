@@ -35,6 +35,10 @@ export type RuntimeContext = {
   adminConfig: AdminConfigReader
   kv: KvStore
   codingSecrets: { resolve(): Record<string, string> | null; resolveForgeToken(): string | null }
+  codingRepos: {
+    list(): { name: string; baseBranch: string }[]
+    get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
+  }
 }
 type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
 export type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
@@ -63,6 +67,33 @@ export function getTool(name: string, description: string, path: string, httpFet
   }
 }
 
+type RepoEntry = { name: string; repoUrl: string; baseBranch: string; permissionPreset: string }
+
+function buildProjectSpec(repo: RepoEntry): {
+  name: string
+  repoUrl: string
+  baseBranch: string
+  permissionPreset: string
+} {
+  return {
+    name: repo.name,
+    repoUrl: repo.repoUrl,
+    baseBranch: repo.baseBranch,
+    permissionPreset: repo.permissionPreset,
+  }
+}
+
+export function listProjectsTool(): Tool {
+  return {
+    name: 'list_projects',
+    description: 'List coding projects configured in your repository catalogue.',
+    inputSchema: emptySchema,
+    execute: (_input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
+      return Promise.resolve(runtimeContext.codingRepos.list())
+    },
+  }
+}
+
 export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'start_session',
@@ -76,6 +107,12 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       const prompt = asString(args, 'prompt')
       if (project === null || prompt === null)
         return { error: 'invalid_input', message: 'project and prompt are required' }
+      const repo = runtimeContext.codingRepos.get(project)
+      if (repo === null)
+        return {
+          error: 'not_found',
+          message: `No repository named "${project}". Add it in settings → Repositories.`,
+        }
       const secrets = runtimeContext.codingSecrets.resolve()
       if (secrets === null)
         return {
@@ -84,6 +121,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         }
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
+      const projectSpec = buildProjectSpec(repo)
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         project,
         agent,
@@ -91,6 +129,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         prompt,
         secrets,
         ...(forgeToken === null ? {} : { forgeToken }),
+        projectSpec,
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
@@ -231,6 +270,12 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
       const prNumber = asPositiveInt(args, 'prNumber')
       if (project === null || prNumber === null)
         return { error: 'invalid_input', message: 'project and a positive prNumber are required' }
+      const repo = runtimeContext.codingRepos.get(project)
+      if (repo === null)
+        return {
+          error: 'not_found',
+          message: `No repository named "${project}". Add it in settings → Repositories.`,
+        }
       const secrets = runtimeContext.codingSecrets.resolve()
       if (secrets === null)
         return {
@@ -243,12 +288,14 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
           error: 'not_configured',
           message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
         }
+      const projectSpec = buildProjectSpec(repo)
       const result = await callMagi(httpFetch, cfg, 'POST', '/reviews', {
         project,
         prNumber,
         contextId: runtimeContext.storageContextId,
         secrets,
         forgeToken,
+        projectSpec,
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
