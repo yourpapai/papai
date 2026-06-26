@@ -609,6 +609,8 @@ The repo currently uses:
 - `release.yml` to bump version, update `package.json`, generate `CHANGELOG.md`, and create a GitHub release
 - `deploy.yml` to build/push the container and deploy over SSH on version tags or successful release workflow completion
 
+Before each deploy, `deploy.yml` takes a verified SQLite backup of the running bot's database (`scripts/deploy-backup.ts`, run inside the container via `VACUUM INTO` so the WAL is captured consistently; `cp` of the live `papai.db` alone would lose unflushed WAL data). Backups are written to `~/<repo>/backups/papai-<timestamp>.db` on the deploy host (last 5 kept). A failed or empty backup aborts the deploy.
+
 Current deployment automation is opinionated for the Telegram + Kaneo production path. If you deploy Mattermost, Discord, or YouTrack in production, adapt the workflow and `.env` generation accordingly.
 
 ### Manual (Bare Metal)

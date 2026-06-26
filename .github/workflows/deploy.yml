@@ -119,6 +119,7 @@ jobs:
           ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" mkdir -p "~/${GITHUB_REPOSITORY##*/}"
           scp -i ~/.ssh/id_rsa -P "$SSH_PORT" docker-compose.yml "$SSH_USER@$SSH_HOST:~/${GITHUB_REPOSITORY##*/}/docker-compose.yml"
           scp -i ~/.ssh/id_rsa -P "$SSH_PORT" Caddyfile "$SSH_USER@$SSH_HOST:~/${GITHUB_REPOSITORY##*/}/Caddyfile"
+          scp -i ~/.ssh/id_rsa -P "$SSH_PORT" scripts/deploy-backup.ts "$SSH_USER@$SSH_HOST:~/${GITHUB_REPOSITORY##*/}/deploy-backup.ts"
           if [ -n "$CADDY_ADDITIONAL_CONFIG" ]; then
             printf '%s\n' "$CADDY_ADDITIONAL_CONFIG" > /tmp/caddy-extra.conf
             scp -i ~/.ssh/id_rsa -P "$SSH_PORT" /tmp/caddy-extra.conf "$SSH_USER@$SSH_HOST:~/${GITHUB_REPOSITORY##*/}/caddy-extra.conf"
@@ -161,23 +162,30 @@ jobs:
             rm -f caddy-extra.conf
           fi
 
-          # Backup database before deployment
+          # Backup database before deployment.
+          # The DB runs in WAL mode (PRAGMA journal_mode=WAL), so a plain file
+          # copy of papai.db misses everything still in papai.db-wal and yields a
+          # torn, stale snapshot. scripts/deploy-backup.ts (streamed into the
+          # running container over stdin so it never depends on the image version)
+          # uses SQLite VACUUM INTO to produce a consistent single-file copy that
+          # includes committed WAL pages and verifies it. A failed backup exits
+          # non-zero and aborts the deploy (no silent swallow).
           echo "Creating database backup..."
           backup_dir="backups"
           mkdir -p "\$backup_dir"
           backup_file="papai-\$(date +%Y%m%d_%H%M%S).db"
+          tmp_backup="/data/.deploy-backup.db"
 
-          # Check if papai is running and backup the database
           if docker compose ps --status running --services | grep -qx "papai"; then
-            docker compose cp papai:/data/papai.db "\$backup_dir/\$backup_file" 2>/dev/null || echo "Note: Could not backup database (may not exist yet)"
-            if [ -f "\$backup_dir/\$backup_file" ]; then
-              echo "Database backed up to: \$backup_dir/\$backup_file"
-              # Keep only last 5 backups
-              ls -t "\$backup_dir"/papai-*.db 2>/dev/null | tail -n +6 | xargs -r rm
-              echo "Kept last 5 backups, removed older ones"
-            fi
+            docker compose exec -T papai bun run - /data/papai.db "\$tmp_backup" < deploy-backup.ts
+            docker compose cp "papai:\$tmp_backup" "\$backup_dir/\$backup_file"
+            docker compose exec -T papai rm -f "\$tmp_backup"
+            echo "Database backed up to: \$backup_dir/\$backup_file"
+            # Keep only the last 5 backups
+            ls -t "\$backup_dir"/papai-*.db 2>/dev/null | tail -n +6 | xargs -r rm
+            echo "Kept last 5 backups, removed older ones"
           else
-            echo "Note: papai container not running, skipping backup"
+            echo "WARNING: papai container not running, skipping backup (first deploy or stopped container)" >&2
           fi
 
           IMAGE="${IMAGE}" docker compose pull
