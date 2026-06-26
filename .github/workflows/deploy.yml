@@ -125,7 +125,7 @@ jobs:
             scp -i ~/.ssh/id_rsa -P "$SSH_PORT" /tmp/caddy-extra.conf "$SSH_USER@$SSH_HOST:~/${GITHUB_REPOSITORY##*/}/caddy-extra.conf"
             rm -f /tmp/caddy-extra.conf
           fi
-          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << EOF
+          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << EOF 2>&1 | tee /tmp/papai-deploy.log
           set -e
           echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
           cd ~/${GITHUB_REPOSITORY##*/}
@@ -179,7 +179,7 @@ jobs:
           if docker compose ps --status running --services | grep -qx "papai"; then
             docker compose exec -T papai bun run - /data/papai.db "\$tmp_backup" < deploy-backup.ts
             docker compose cp "papai:\$tmp_backup" "\$backup_dir/\$backup_file"
-            docker compose exec -T papai rm -f "\$tmp_backup"
+            docker compose exec -T papai rm -f "\$tmp_backup" </dev/null
             echo "Database backed up to: \$backup_dir/\$backup_file"
             # Keep only the last 5 backups
             ls -t "\$backup_dir"/papai-*.db 2>/dev/null | tail -n +6 | xargs -r rm
@@ -216,3 +216,16 @@ jobs:
           }
           echo "All services healthy"
           EOF
+          # Guard: the remote `bash << EOF` heredoc shares its stdin with the script
+          # body, so a stdin-consuming command (e.g. `docker compose exec -T`) can
+          # eat the rest of the script and make bash exit 0 mid-deploy — a green job
+          # that never pulled/restarted. Fail unless the remote reached the sentinel.
+          ssh_rc=${PIPESTATUS[0]}
+          if [ "$ssh_rc" -ne 0 ]; then
+            echo "::error::Deploy SSH script exited with code $ssh_rc" >&2
+            exit "$ssh_rc"
+          fi
+          if ! grep -q "All services healthy" /tmp/papai-deploy.log; then
+            echo "::error::Deploy did not reach 'All services healthy' — remote script exited early without pulling/restarting. Treating as FAILED." >&2
+            exit 1
+          fi
