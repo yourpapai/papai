@@ -30,8 +30,13 @@ export interface BroadcastDeps {
   isDelivered: (version: string, contextId: string) => boolean
   recordDelivery: (version: string, contextId: string, contextType: 'dm' | 'group', status: 'sent' | 'failed') => void
   markBroadcast: (version: string, atIso: string) => void
-  sendDm: (chat: ChatProvider, platformInstanceId: string, platformUserId: string, body: string) => Promise<boolean>
-  sendGroup: (chat: ChatProvider, groupId: string, body: string) => Promise<boolean>
+  sendDm: (
+    chat: Readonly<ChatProvider>,
+    platformInstanceId: string,
+    platformUserId: string,
+    body: string,
+  ) => Promise<boolean>
+  sendGroup: (chat: Readonly<ChatProvider>, groupId: string, body: string) => Promise<boolean>
   now: () => string
 }
 
@@ -42,6 +47,7 @@ function groupTarget(groupId: string): DeferredDeliveryTarget {
     threadId: null,
     audience: 'shared',
     mentionUserIds: [],
+    // broadcast: no individual author
     createdByUserId: '',
     createdByUsername: null,
     storageContextId: groupId,
@@ -66,7 +72,7 @@ const dmContextKey = (u: SubscribedUser): string => `${u.platformInstanceId}:${u
 
 /** Fan out `body` to all opt-in subscribers. Idempotent per recipient; failure-isolated. */
 export async function broadcastAnnouncement(
-  chat: ChatProvider,
+  chat: Readonly<ChatProvider>,
   version: string,
   body: string,
   deps: BroadcastDeps = defaultDeps,

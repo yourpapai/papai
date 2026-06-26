@@ -15,9 +15,9 @@ function makeDeps(over: Partial<BroadcastDeps>): BroadcastDeps {
   return {
     listSubscribedUsers: () => [{ platformInstanceId: 'pi', platformUserId: 'u1' }],
     listSubscribedGroups: () => [{ groupId: 'g1' }],
-    isDelivered: (_v, ctx) => delivered.has(ctx),
-    recordDelivery: (_v, ctx, _t, status) => {
-      if (status === 'sent') delivered.add(ctx)
+    isDelivered: (v, ctx) => delivered.has(`${v}:${ctx}`),
+    recordDelivery: (v, ctx, _t, status) => {
+      if (status === 'sent') delivered.add(`${v}:${ctx}`)
     },
     markBroadcast: () => {},
     sendDm: () => Promise.resolve(true),
@@ -82,5 +82,23 @@ describe('broadcastAnnouncement', () => {
       }),
     )
     expect(markedAt!).toBe('2026-06-26T00:00:00Z')
+  })
+
+  test('empty subscriber lists return zero counts and still call markBroadcast', async () => {
+    let broadcastMarked = false
+    const result = await broadcastAnnouncement(
+      chat,
+      '9.9.9',
+      'body',
+      makeDeps({
+        listSubscribedUsers: () => [],
+        listSubscribedGroups: () => [],
+        markBroadcast: () => {
+          broadcastMarked = true
+        },
+      }),
+    )
+    expect(result).toEqual({ sent: 0, failed: 0, skipped: 0 })
+    expect(broadcastMarked).toBe(true)
   })
 })
