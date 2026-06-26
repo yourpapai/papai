@@ -16,6 +16,11 @@
   import { fetchCodingCredentials, patchCodingCredentials } from '../fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
 
+  // Client-side mirror of src/coding-credentials/types.ts `needsInstanceUrl`
+  function needsInstanceUrl(kind: string): boolean {
+    return kind === 'github-enterprise' || kind === 'gitlab-self-hosted'
+  }
+
   interface Props {
     contextId: string
   }
@@ -33,6 +38,11 @@
   const currentData = $derived(loadedContextId === contextId ? data : null)
   const fields = $derived(currentData?.fields ?? [])
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
+
+  // Compute whether instance_url field should be shown based on selected kind
+  const kindField = $derived(fields.find((f) => f.key === 'kind'))
+  const currentKind = $derived(drafts['kind'] ?? kindField?.value ?? '')
+  const showInstanceUrl = $derived(needsInstanceUrl(currentKind))
 
   function initialDrafts(nextFields: CodingCredentialField[]): Record<string, string> {
     return Object.fromEntries(nextFields.map((f) => [f.key, f.sensitive && f.hasValue ? '' : f.value]))
@@ -87,6 +97,27 @@
       savingKey = null
     }
   }
+  async function saveSelect(field: CodingCredentialField, value: string): Promise<void> {
+    updateDraft(field.key, value)
+    if (loading || loadedContextId !== contextId) return
+    error = null
+    status = null
+    savingKey = field.key
+    try {
+      await patchCodingCredentials({ contextId, namespace: 'forge', values: { [field.key]: value } })
+      await load(contextId)
+      status = `${field.label} saved.`
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      savingKey = null
+    }
+  }
+
+  function shouldShowField(field: CodingCredentialField): boolean {
+    if (field.key === 'instance_url') return showInstanceUrl
+    return true
+  }
 
   $effect(() => {
     const id = contextId
@@ -115,44 +146,63 @@
 
     <div class="settings-byok-fields">
       {#each fields as field (field.key)}
-        <div class="settings-field" data-testid={`coding-row-${field.key}`}>
-          <div class="settings-field__head">
-            <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
-            {#if field.sensitive && field.hasValue && !editorOpen(field)}
-              <Secret value={displaySecret(field.value)} />
-              <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
-                {#snippet children()}Replace{/snippet}
-              </Btn>
-            {/if}
-          </div>
-          {#if editorOpen(field)}
-            <div class="settings-field__editor">
-              <Field label={field.sensitive ? 'New value' : 'Value'}>
-                {#snippet children()}
-                  <Input
-                    type={field.sensitive ? 'password' : 'text'}
-                    value={drafts[field.key] ?? ''}
-                    placeholder={field.sensitive ? 'enter a new value' : ''}
-                    onInput={(value) => updateDraft(field.key, value)}
-                    testid={`coding-input-${field.key}`} />
-                {/snippet}
-              </Field>
-              <Btn
-                variant="primary"
-                size="sm"
-                testid={`coding-save-${field.key}`}
-                disabled={savingKey === field.key || loading}
-                onClick={() => void save(field)}>
-                {#snippet children()}{savingKey === field.key ? 'Saving…' : 'Save'}{/snippet}
-              </Btn>
-              {#if field.sensitive && field.hasValue}
-                <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
-                  {#snippet children()}Cancel{/snippet}
+        {#if shouldShowField(field)}
+          <div class="settings-field" data-testid={`coding-row-${field.key}`}>
+            <div class="settings-field__head">
+              <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
+              {#if field.sensitive && field.hasValue && !editorOpen(field)}
+                <Secret value={displaySecret(field.value)} />
+                <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
+                  {#snippet children()}Replace{/snippet}
                 </Btn>
               {/if}
             </div>
-          {/if}
-        </div>
+            {#if field.control === 'select'}
+              <div class="settings-field__editor">
+                <Field label="Value">
+                  {#snippet children()}
+                    <select
+                      data-testid={`coding-select-${field.key}`}
+                      value={drafts[field.key] ?? ''}
+                      disabled={savingKey === field.key || loading}
+                      onchange={(e) => void saveSelect(field, (e.currentTarget as HTMLSelectElement).value)}
+                      class="coding-select">
+                      {#each field.options ?? [] as opt (opt)}
+                        <option value={opt}>{opt}</option>
+                      {/each}
+                    </select>
+                  {/snippet}
+                </Field>
+              </div>
+            {:else if editorOpen(field)}
+              <div class="settings-field__editor">
+                <Field label={field.sensitive ? 'New value' : 'Value'}>
+                  {#snippet children()}
+                    <Input
+                      type={field.sensitive ? 'password' : 'text'}
+                      value={drafts[field.key] ?? ''}
+                      placeholder={field.sensitive ? 'enter a new value' : ''}
+                      onInput={(value) => updateDraft(field.key, value)}
+                      testid={`coding-input-${field.key}`} />
+                  {/snippet}
+                </Field>
+                <Btn
+                  variant="primary"
+                  size="sm"
+                  testid={`coding-save-${field.key}`}
+                  disabled={savingKey === field.key || loading}
+                  onClick={() => void save(field)}>
+                  {#snippet children()}{savingKey === field.key ? 'Saving…' : 'Save'}{/snippet}
+                </Btn>
+                {#if field.sensitive && field.hasValue}
+                  <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
+                    {#snippet children()}Cancel{/snippet}
+                  </Btn>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
       {/each}
     </div>
   {/if}
@@ -190,5 +240,13 @@
   .settings-field__editor :global(.ui-field) {
     flex: 1;
     min-width: 200px;
+  }
+  .coding-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 14px;
   }
 </style>

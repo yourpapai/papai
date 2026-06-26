@@ -53,6 +53,77 @@ const configuredPayload = {
   ],
 }
 
+// Payload with kind select + instance_url + forge_token fields (A1 route shape)
+const typedForgePayloadSaas = {
+  namespace: 'forge',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'kind',
+      label: 'Code host',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'github',
+      control: 'select' as const,
+      options: ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted'],
+    },
+    {
+      key: 'instance_url',
+      label: 'Instance URL (enterprise / self-hosted)',
+      required: false,
+      sensitive: false,
+      hasValue: false,
+      value: '',
+    },
+    {
+      key: 'forge_token',
+      label: 'Access token',
+      required: true,
+      sensitive: true,
+      hasValue: true,
+      value: '****',
+    },
+  ],
+}
+
+const typedForgePayloadSelfHosted = {
+  namespace: 'forge',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'kind',
+      label: 'Code host',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'gitlab-self-hosted',
+      control: 'select' as const,
+      options: ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted'],
+    },
+    {
+      key: 'instance_url',
+      label: 'Instance URL (enterprise / self-hosted)',
+      required: false,
+      sensitive: false,
+      hasValue: true,
+      value: 'https://gitlab.corp.com',
+    },
+    {
+      key: 'forge_token',
+      label: 'Access token',
+      required: true,
+      sensitive: true,
+      hasValue: true,
+      value: '****',
+    },
+  ],
+}
+
 let capturedPatchBody = ''
 
 const routeCodeHostMock = (_url: string, init?: RequestInit): Promise<Response> => {
@@ -61,6 +132,14 @@ const routeCodeHostMock = (_url: string, init?: RequestInit): Promise<Response> 
     return Promise.resolve(json({ ok: true }))
   }
   return Promise.resolve(json(unconfiguredPayload))
+}
+
+const routeCodeHostMockTyped = (_url: string, init?: RequestInit): Promise<Response> => {
+  if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
+    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(typedForgePayloadSaas))
 }
 
 afterEach(() => {
@@ -127,6 +206,89 @@ describe('CodeHostSection', () => {
       namespace: 'forge',
       contextId: 'pi:telegram:ctx:u1',
       values: { forge_token: 'ghp_secret' },
+    })
+    void unmount(component)
+  })
+
+  test('renders kind select with 4 options when field has control:select', async () => {
+    setMockFetch(() => Promise.resolve(json(typedForgePayloadSaas)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-kind"]')
+    expect(select).not.toBeNull()
+    expect(select!.options.length).toBe(4)
+    expect(Array.from(select!.options).map((o) => o.value)).toEqual([
+      'github',
+      'github-enterprise',
+      'gitlab',
+      'gitlab-self-hosted',
+    ])
+    void unmount(component)
+  })
+
+  test('hides instance_url field for SaaS kind (github)', async () => {
+    setMockFetch(() => Promise.resolve(json(typedForgePayloadSaas)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    // instance_url field should not be visible when kind = 'github'
+    expect(target.querySelector('[data-testid="coding-input-instance_url"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('shows instance_url field for self-hosted kind (gitlab-self-hosted)', async () => {
+    setMockFetch(() => Promise.resolve(json(typedForgePayloadSelfHosted)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    // instance_url field should be visible when kind = 'gitlab-self-hosted'
+    expect(target.querySelector('[data-testid="coding-input-instance_url"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders token field masked (no plain text) when token is configured', async () => {
+    setMockFetch(() => Promise.resolve(json(typedForgePayloadSaas)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    // token should show Replace button (sensitive, hasValue=true, not in replace mode)
+    expect(target.querySelector('[data-testid="coding-replace-forge_token"]')).not.toBeNull()
+    // input for token should NOT be visible (not in replace mode)
+    expect(target.querySelector('[data-testid="coding-input-forge_token"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('saving a select issues per-field PATCH with the selected value', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeCodeHostMockTyped)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-kind"]')!
+    select.value = 'gitlab'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await drain()
+
+    expect(JSON.parse(capturedPatchBody)).toMatchObject({
+      namespace: 'forge',
+      contextId: 'pi:telegram:ctx:u1',
+      values: { kind: 'gitlab' },
     })
     void unmount(component)
   })
