@@ -31,6 +31,8 @@ const StoredConfigValueSchema = z.object({
   sensitive: z.boolean(),
   hasValue: z.boolean(),
   value: z.string(),
+  control: z.enum(['text', 'select']).optional(),
+  options: z.array(z.string()).optional(),
 })
 export const ConfigFieldSchema = StoredConfigValueSchema.extend({
   storageKey: z.string(),
@@ -194,10 +196,8 @@ export const GroupTaskInstanceResponseSchema = z.object({
   canProvision: z.boolean(),
 })
 export type GroupTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponseSchema>
-
 // The per-context route returns the same shape as the group route; only the type name is distinct.
 export type ContextTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponseSchema>
-
 export const GroupGuestModeResponseSchema = z.object({ contextId: z.string(), enabled: z.boolean() })
 export type GroupGuestModeResponse = z.infer<typeof GroupGuestModeResponseSchema>
 

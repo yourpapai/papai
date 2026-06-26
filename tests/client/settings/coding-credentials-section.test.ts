@@ -69,6 +69,51 @@ const unconfiguredPayload = {
   ],
 }
 
+const withSelectsPayload = {
+  namespace: 'agent-provider',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'agent',
+      label: 'Coding agent',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'claude',
+      control: 'select',
+      options: ['claude', 'codex', 'opencode'],
+    },
+    {
+      key: 'provider',
+      label: 'Model provider',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'anthropic',
+      control: 'select',
+      options: ['anthropic', 'openai'],
+    },
+    {
+      key: 'provider_api_key',
+      label: 'API key',
+      required: true,
+      sensitive: true,
+      hasValue: true,
+      value: '****',
+    },
+    {
+      key: 'provider_base_url',
+      label: 'Base URL (optional)',
+      required: false,
+      sensitive: false,
+      hasValue: false,
+      value: '',
+    },
+  ],
+}
+
 let capturedPatchBody = ''
 
 const routeCodingMock = (_url: string, init?: RequestInit): Promise<Response> => {
@@ -77,6 +122,14 @@ const routeCodingMock = (_url: string, init?: RequestInit): Promise<Response> =>
     return Promise.resolve(json({ ok: true }))
   }
   return Promise.resolve(json(unconfiguredPayload))
+}
+
+const routeSelectsMock = (_url: string, init?: RequestInit): Promise<Response> => {
+  if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
+    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(withSelectsPayload))
 }
 
 afterEach(() => {
@@ -142,6 +195,81 @@ describe('CodingCredentialsSection', () => {
       contextId: 'pi:telegram:ctx:u1',
       values: { provider_api_key: 'sk-ant-test' },
     })
+    void unmount(component)
+  })
+
+  test('renders agent <select> with all agent options when control is select', async () => {
+    setMockFetch(() => Promise.resolve(json(withSelectsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const agentSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-agent"]')
+    expect(agentSelect).not.toBeNull()
+    const options = Array.from(agentSelect!.options).map((o) => o.value)
+    expect(options).toContain('claude')
+    expect(options).toContain('codex')
+    expect(options).toContain('opencode')
+    void unmount(component)
+  })
+
+  test('renders provider <select> with options compatible with selected agent (claude→anthropic only)', async () => {
+    setMockFetch(() => Promise.resolve(json(withSelectsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    // agent is 'claude', so only 'anthropic' should be available
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')
+    expect(providerSelect).not.toBeNull()
+    const options = Array.from(providerSelect!.options).map((o) => o.value)
+    expect(options).toContain('anthropic')
+    expect(options).not.toContain('openai')
+    void unmount(component)
+  })
+
+  test('provider options expand when agent is changed to opencode', async () => {
+    setMockFetch(() => Promise.resolve(json(withSelectsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const agentSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-agent"]')!
+    agentSelect.value = 'opencode'
+    agentSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')
+    expect(providerSelect).not.toBeNull()
+    const options = Array.from(providerSelect!.options).map((o) => o.value)
+    expect(options).toContain('anthropic')
+    expect(options).toContain('openai')
+    void unmount(component)
+  })
+
+  test('saves select field by PATCHing on change', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeSelectsMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const agentSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-agent"]')!
+    agentSelect.value = 'codex'
+    agentSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    await drain()
+
+    const body: unknown = JSON.parse(capturedPatchBody)
+    expect(body).toMatchObject({ values: { agent: 'codex' } })
     void unmount(component)
   })
 })

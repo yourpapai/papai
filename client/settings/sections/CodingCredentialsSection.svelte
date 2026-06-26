@@ -16,6 +16,14 @@
   import { fetchCodingCredentials, patchCodingCredentials } from '../fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
 
+  // Client-side compatibility map (mirrors src/coding-credentials/types.ts `compatible`)
+  function compatibleProviders(agent: string, allProviders: readonly string[]): string[] {
+    if (agent === 'claude') return allProviders.filter((p) => p === 'anthropic')
+    if (agent === 'codex') return allProviders.filter((p) => p === 'openai')
+    if (agent === 'opencode') return allProviders.filter((p) => p === 'anthropic' || p === 'openai')
+    return [...allProviders]
+  }
+
   interface Props {
     contextId: string
   }
@@ -33,6 +41,18 @@
   const currentData = $derived(loadedContextId === contextId ? data : null)
   const fields = $derived(currentData?.fields ?? [])
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
+
+  // Track current agent draft for filtering provider options
+  const agentField = $derived(fields.find((f) => f.key === 'agent'))
+  const currentAgent = $derived(drafts['agent'] ?? agentField?.value ?? '')
+
+  function selectOptionsFor(field: CodingCredentialField): string[] {
+    const opts = field.options ?? []
+    if (field.key === 'provider' && currentAgent.length > 0) {
+      return compatibleProviders(currentAgent, opts)
+    }
+    return opts
+  }
 
   function initialDrafts(nextFields: CodingCredentialField[]): Record<string, string> {
     return Object.fromEntries(nextFields.map((f) => [f.key, f.sensitive && f.hasValue ? '' : f.value]))
@@ -87,6 +107,22 @@
       savingKey = null
     }
   }
+  async function saveSelect(field: CodingCredentialField, value: string): Promise<void> {
+    updateDraft(field.key, value)
+    if (loading || loadedContextId !== contextId) return
+    error = null
+    status = null
+    savingKey = field.key
+    try {
+      await patchCodingCredentials({ contextId, values: { [field.key]: value } })
+      await load(contextId)
+      status = `${field.label} saved.`
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      savingKey = null
+    }
+  }
 
   $effect(() => {
     const id = contextId
@@ -130,7 +166,24 @@
               </Btn>
             {/if}
           </div>
-          {#if editorOpen(field)}
+          {#if field.control === 'select'}
+            <div class="settings-field__editor">
+              <Field label="Value">
+                {#snippet children()}
+                  <select
+                    data-testid={`coding-select-${field.key}`}
+                    value={drafts[field.key] ?? ''}
+                    disabled={savingKey === field.key || loading}
+                    onchange={(e) => void saveSelect(field, (e.currentTarget as HTMLSelectElement).value)}
+                    class="coding-select">
+                    {#each selectOptionsFor(field) as opt (opt)}
+                      <option value={opt}>{opt}</option>
+                    {/each}
+                  </select>
+                {/snippet}
+              </Field>
+            </div>
+          {:else if editorOpen(field)}
             <div class="settings-field__editor">
               <Field label={field.sensitive ? 'New value' : 'Value'}>
                 {#snippet children()}
@@ -195,5 +248,13 @@
   .settings-field__editor :global(.ui-field) {
     flex: 1;
     min-width: 200px;
+  }
+  .coding-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 14px;
   }
 </style>
