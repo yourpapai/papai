@@ -128,5 +128,12 @@ describe('coding-credentials types', () => {
       expect(compatible('bogus', 'anthropic')).toBe(false)
       expect(compatible('claude', 'bogus')).toBe(false)
     })
+
+    test('openai-compatible provider + compatibility', () => {
+      expect(PROVIDERS).toContain('openai-compatible')
+      expect(compatible('opencode', 'openai-compatible')).toBe(true)
+      expect(compatible('codex', 'openai-compatible')).toBe(true)
+      expect(compatible('claude', 'openai-compatible')).toBe(false)
+    })
   })
 })

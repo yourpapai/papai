@@ -14,6 +14,7 @@ export function configContextOf(storageContextId: string): string {
 const PROVIDER_ENV: Record<Provider, { key: string; base: string }> = {
   anthropic: { key: 'ANTHROPIC_API_KEY', base: 'ANTHROPIC_BASE_URL' },
   openai: { key: 'OPENAI_API_KEY', base: 'OPENAI_BASE_URL' },
+  'openai-compatible': { key: 'OPENAI_API_KEY', base: 'OPENAI_BASE_URL' },
 }
 
 /**

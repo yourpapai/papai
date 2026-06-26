@@ -6,7 +6,7 @@
 export const CODING_NAMESPACES = ['agent-provider', 'forge'] as const
 export type CodingNamespace = (typeof CODING_NAMESPACES)[number]
 
-export const PROVIDERS = ['anthropic', 'openai'] as const
+export const PROVIDERS = ['anthropic', 'openai', 'openai-compatible'] as const
 export type Provider = (typeof PROVIDERS)[number]
 
 export const AGENTS = ['claude', 'codex', 'opencode'] as const
@@ -22,8 +22,8 @@ export function isProvider(value: string): value is Provider {
 
 export function compatible(agent: string, provider: string): boolean {
   if (agent === 'claude') return provider === 'anthropic'
-  if (agent === 'codex') return provider === 'openai'
-  if (agent === 'opencode') return provider === 'anthropic' || provider === 'openai'
+  if (agent === 'codex') return provider === 'openai' || provider === 'openai-compatible'
+  if (agent === 'opencode') return provider === 'anthropic' || provider === 'openai' || provider === 'openai-compatible'
   return false
 }
 

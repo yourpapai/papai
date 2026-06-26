@@ -403,6 +403,34 @@ describe('coding-credentials routes', () => {
     expect(res.status).toBe(422)
   })
 
+  test('openai-compatible provider requires a base URL (422 without, 200 with)', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const bad = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { agent: 'opencode', provider: 'openai-compatible', provider_api_key: 'k' },
+      }),
+      url,
+    )
+    expect(bad.status).toBe(422)
+    const badBody = ErrorResponseSchema.parse(await bad.json())
+    expect(badBody.error).toContain('base URL')
+
+    const ok = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: {
+          agent: 'opencode',
+          provider: 'openai-compatible',
+          provider_api_key: 'k',
+          provider_base_url: 'https://llm.corp.com/v1',
+        },
+      }),
+      url,
+    )
+    expect(ok.status).toBe(200)
+  })
+
   test('forge PATCH token-only (no kind) with github defaults is allowed', async () => {
     // Patching only forge_token without kind should be accepted when existing kind is set
     const url = new URL('https://x/settings/api/coding-credentials')

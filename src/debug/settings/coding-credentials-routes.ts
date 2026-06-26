@@ -158,6 +158,12 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
       return settingsJson(422, { error: 'incompatible agent/provider' })
     }
   }
+  if (providerRaw === 'openai-compatible') {
+    const baseUrl = merged.provider_base_url?.trim() ?? ''
+    if (baseUrl.length === 0) {
+      return settingsJson(422, { error: 'openai-compatible requires a base URL' })
+    }
+  }
   return null
 }
 
