@@ -19,6 +19,7 @@ import { extractChangelogSection } from './utils/changelog.js'
 export interface AnnouncementsDeps {
   readChangelogFile: () => Promise<string>
   humanizeChangelog: (rawSection: string) => Promise<string | null>
+  // synchronous (SQLite); call site does not await
   persistDraft: (input: { version: string; rawBody: string; humanizedBody: string | null }) => void
   isVersionAnnounced: (version: string) => boolean
 }
@@ -30,7 +31,7 @@ function defaultIsVersionAnnounced(version: string): boolean {
 
 const defaultAnnouncementsDeps: AnnouncementsDeps = {
   readChangelogFile: defaultReadChangelogFile,
-  humanizeChangelog: (raw) => defaultHumanizeChangelog(raw),
+  humanizeChangelog: defaultHumanizeChangelog,
   persistDraft: defaultUpsertDraft,
   isVersionAnnounced: defaultIsVersionAnnounced,
 }
@@ -67,6 +68,12 @@ async function sendAnnouncementToAdmin(
   }
 }
 
+/**
+ * Detect a new version, humanize its changelog once, persist the draft, and DM
+ * the admin a review notice. Persists BEFORE the (best-effort) admin DM, so the
+ * version is deduped even if the DM fails; on failure the admin reviews/broadcasts
+ * from Settings → Release notes. Does NOT fan out to subscribers.
+ */
 export async function announceNewVersion(
   chat: ChatProvider,
   platformInstanceId: string,

@@ -34,18 +34,21 @@ function makeDeps(over: Partial<AnnouncementsDeps>): AnnouncementsDeps {
 describe('announceNewVersion', () => {
   test('humanizes, persists, and DMs the admin a review notice (no fan-out)', async () => {
     const sent: string[] = []
-    let persisted: unknown = null
+    const persistCalls: Array<{ version: string; rawBody: string; humanizedBody: string | null }> = []
     await announceNewVersion(
       makeChat(sent),
       'pi-1',
       'admin-1',
       makeDeps({
         persistDraft: (d) => {
-          persisted = { humanizedBody: d.humanizedBody }
+          persistCalls.push({ version: d.version, rawBody: d.rawBody, humanizedBody: d.humanizedBody })
         },
       }),
     )
-    expect(persisted).toEqual({ humanizedBody: '✨ New\n- A friendly thing' })
+    expect(persistCalls).toHaveLength(1)
+    expect(persistCalls[0]?.version).toBe(VERSION)
+    expect(persistCalls[0]?.rawBody).toContain('- thing')
+    expect(persistCalls[0]?.humanizedBody).toBe('✨ New\n- A friendly thing')
     expect(sent).toHaveLength(1)
     expect(sent[0]).toContain('✨ New')
     expect(sent[0]).toContain('Release notes')
@@ -53,7 +56,7 @@ describe('announceNewVersion', () => {
 
   test('falls back to raw body in the admin notice when humanization returns null', async () => {
     const sent: string[] = []
-    let persisted: unknown = null
+    let persistedHumanized: string | null | undefined
     await announceNewVersion(
       makeChat(sent),
       'pi-1',
@@ -61,11 +64,11 @@ describe('announceNewVersion', () => {
       makeDeps({
         humanizeChangelog: () => Promise.resolve(null),
         persistDraft: (d) => {
-          persisted = { humanizedBody: d.humanizedBody }
+          persistedHumanized = d.humanizedBody
         },
       }),
     )
-    expect(persisted).toEqual({ humanizedBody: null })
+    expect(persistedHumanized).toBeNull()
     expect(sent[0]).toContain('- thing')
   })
 
