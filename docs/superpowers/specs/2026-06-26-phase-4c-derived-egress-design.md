@@ -15,9 +15,10 @@ See LICENSE in the project root for details.
 ## Scope
 
 Make the sandbox's egress allowlist **derived per session** from the user's
-actual choices — the model-provider host (incl. a custom base URL), `models.dev`
-for opencode, the repo host (so the agent may run git), and an operator base set
-— instead of a static operator default, bounded by a hard **geofront org-ceiling**.
+actual choices — the model-provider host (incl. a custom base URL), the
+agent-infrastructure host (`models.dev` for opencode, `chatgpt.com` for codex),
+and an operator base set — instead of a static operator default, bounded by a
+hard **geofront org-ceiling**.
 This also closes the 4a deferral: a **custom provider base URL** /
 `openai-compatible` provider becomes reachable from the sandbox for the first
 time, because its host is now in the derived egress.
@@ -142,9 +143,9 @@ api.openai.com]` would defeat the per-provider narrowing). But the
 
 **magi**
 
-- `project/*` — `deriveEgress` unions base + providerHost + (opencode→models.dev) +
-  repo host; dedups; opencode without a custom provider still reaches its provider
-  host (not both); a malformed providerHost is ignored.
+- `project/*` — `deriveEgress` unions base + providerHost + agent-infra
+  (opencode→models.dev, codex→chatgpt.com); dedups; the repo host is NOT included;
+  a malformed providerHost is ignored.
 - provisioning/plan — the emitted geofront.toml egress equals the derived set
   (preset `defaultEgress` no longer widens it).
 
