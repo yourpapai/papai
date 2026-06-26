@@ -21,6 +21,7 @@ const GROUP = '/settings/api/group/release-subscription'
 
 const PersonalGetSchema = z.object({ enabled: z.boolean() })
 const PersonalPatchSchema = z.object({ ok: z.boolean(), enabled: z.boolean() })
+const GroupGetSchema = z.object({ contextId: z.string(), enabled: z.boolean() })
 const GroupPatchSchema = z.object({ ok: z.boolean(), contextId: z.string(), enabled: z.boolean() })
 
 function seedManageableGroup(): string {
@@ -124,5 +125,35 @@ describe('release-subscription routes', () => {
       GROUP,
     )
     expect(res.status).toBe(403)
+  })
+
+  test('personal PATCH with invalid body → 422', async () => {
+    const url = new URL(`https://x${PERSONAL}`)
+    const res = await handleReleaseSubscriptionRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: 'yes' }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+  })
+
+  test('personal GET with unauthorized principal → 403', async () => {
+    const ghostSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'ghost' })
+    const url = new URL(`https://x${PERSONAL}`)
+    const res = await handleReleaseSubscriptionRoutes(new Request(url, { headers: authHeaders(ghostSession) }), url)
+    expect(res.status).toBe(403)
+  })
+
+  test('group GET returns { contextId, enabled: false } for a freshly authorized group', async () => {
+    const contextId = seedManageableGroup()
+    const url = new URL(`https://x${GROUP}?contextId=${encodeURIComponent(contextId)}`)
+    const res = await handleGroupRoutes(new Request(url, { headers: authHeaders(session) }), url, GROUP)
+    expect(res.status).toBe(200)
+    const body = GroupGetSchema.parse(await res.json())
+    expect(body.contextId).toBe(contextId)
+    expect(body.enabled).toBe(false)
   })
 })
