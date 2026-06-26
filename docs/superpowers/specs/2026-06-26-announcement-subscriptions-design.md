@@ -33,8 +33,13 @@ We want:
 
 - **Trigger model:** Admin approves, then broadcast. Startup never fans out
   automatically.
-- **Approval UX:** A new settings-UI **admin** _Announcements_ section where the
+- **Approval UX:** A new settings-UI **admin** _Release notes_ section where the
   admin reviews, can regenerate or edit the draft, and clicks **Broadcast**.
+  This is **separate** from the pre-existing admin _Announce_ section
+  (`AdminAnnounceSection.svelte` → `POST /settings/api/admin/announce` →
+  `broadcastMessage`), which is a manual free-text broadcast to **all** users
+  with no opt-in and no group support. The two coexist independently; the new
+  feature is named _Release notes_ to avoid confusion with _Announce_.
 - **LLM:** Central/global credentials only (`resolveGlobalConfig`), **not**
   per-context BYOK. Use `main_model` for quality. Processed once, stored,
   reused for every recipient.
@@ -58,7 +63,7 @@ startup → announceNewVersion(version)
   └─ DM admin: "vX.Y.Z ready to announce — review & broadcast" + settings link
         (NO automatic fan-out)
 
-admin opens Settings → Announcements (admin-scoped)
+admin opens Settings → Release notes (admin-scoped)
   ├─ GET draft + subscriber counts
   ├─ Regenerate (re-run LLM)  /  Save (edit text)
   └─ Broadcast → broadcastAnnouncement(version)
@@ -107,21 +112,26 @@ no `ENTITY_SCOPES` entry. Confirm against the consistency test
 
 ## Settings UI + routes
 
-- **Admin section** `client/settings/sections/AnnouncementsAdminSection.svelte`
-  — shows latest pending version, editable humanized draft (textarea),
-  **Regenerate** / **Save** / **Broadcast** (broadcast confirms first, shows
-  subscriber count + last result).
-  - `GET /settings/api/admin/announcements` →
+- **Admin section** `client/settings/sections/admin/AdminReleaseNotesSection.svelte`
+  (nav label **"Release notes"**, section id `release-notes`) — shows latest
+  pending version, editable humanized draft (textarea), **Regenerate** / **Save**
+  / **Broadcast** (broadcast confirms first, shows subscriber count + last
+  result). Mounted in the `isBotAdmin` admin zone alongside (and distinct from)
+  the existing _Announce_ section.
+  - `GET /settings/api/admin/release-notes` →
     `{version, body, broadcastAt, counts: {dm, group}}` (admin scope).
-  - `POST /settings/api/admin/announcements` → discriminated
+  - `POST /settings/api/admin/release-notes` → discriminated
     `{action:'regenerate'} | {action:'save', body} | {action:'broadcast'}`
-    (admin scope + CSRF; strict schemas → 422 on ambiguity; `GET`-only siblings
-    405, following the BYOK admin precedent).
-- **Subscription toggles** (reuse the guest-mode route shape):
-  - DM: personal-scope toggle (authenticated session) →
-    `PATCH /settings/api/announce-subscription`.
-  - Group: group-admin-scope toggle →
-    `PATCH /settings/api/group/announce-subscription`.
+    (admin scope + CSRF; strict schemas → 422 on ambiguity; non-GET/POST → 405,
+    following the admin tool-defaults precedent).
+- **Subscription toggle** — one `ReleaseSubscriptionSection.svelte` component
+  (nav label **"Release announcements"**) mounted in both the personal and group
+  areas, choosing its endpoint by a `scope: 'personal' | 'group'` prop (reuses
+  the guest-mode toggle shape):
+  - DM (personal): authenticated-session scope →
+    `GET/PATCH /settings/api/release-subscription`.
+  - Group: group-admin scope →
+    `GET/PATCH /settings/api/group/release-subscription`.
 
 ## Behavior & edge cases
 
