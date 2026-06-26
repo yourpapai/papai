@@ -37,6 +37,7 @@
   import AdminPluginsApprovalSection from './sections/admin/AdminPluginsApprovalSection.svelte'
   import AdminPluginsConfigSection from './sections/admin/AdminPluginsConfigSection.svelte'
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
+  import AdminReleaseNotesSection from './sections/admin/AdminReleaseNotesSection.svelte'
   import AdminFeatureFlagsSection from './sections/admin/AdminFeatureFlagsSection.svelte'
   import AdminToolDefaultsSection from './sections/admin/AdminToolDefaultsSection.svelte'
 
@@ -57,6 +58,7 @@
         { id: 'tool-defaults', label: 'Tool defaults' },
         { id: 'groups', label: 'Groups' },
         { id: 'announce', label: 'Announce' },
+        { id: 'release-notes', label: 'Release notes' },
       )
     }
     // super admins are always bot admins, so items already has the bot-admin entries here
@@ -232,6 +234,7 @@
                 <AdminToolDefaultsSection />
                 <AdminGroupsSection />
                 <AdminAnnounceSection />
+                <AdminReleaseNotesSection />
               {/if}
               {#if settingsSession.isSuperAdmin}
                 <AdminAdminsSection />
