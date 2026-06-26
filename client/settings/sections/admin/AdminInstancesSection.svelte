@@ -197,19 +197,22 @@
   }
 
   async function applyPlatforms(): Promise<void> {
+    loading = true
     error = null
     status = null
     try {
       const result = await applyAdminPlatformInstances()
-      if (result.failed.length > 0) {
-        const details = result.failed.map((f) => `${f.id} ${f.action}: ${f.error}`).join('; ')
-        error = `Apply completed with failures: ${details}`
-      } else {
-        status = `Applied ${result.applied} platform change${result.applied === 1 ? '' : 's'}.`
-      }
+      const applyError =
+        result.failed.length > 0
+          ? `Apply completed with failures: ${result.failed.map((f) => `${f.id} ${f.action}: ${f.error}`).join('; ')}`
+          : null
       await load()
+      if (applyError !== null) error = applyError
+      else status = `Applied ${result.applied} platform change${result.applied === 1 ? '' : 's'}.`
     } catch (err) {
       setErr(err)
+    } finally {
+      loading = false
     }
   }
 
@@ -242,7 +245,7 @@
 <section id="instances" class="settings-section">
   <PageHeader eyebrow="Admin · Runtime" title="Instances">
     {#snippet action()}
-      <Btn variant="outline" size="sm" testid="admin-instances-apply" onClick={() => void applyPlatforms()}>
+      <Btn variant="outline" size="sm" testid="admin-instances-apply" disabled={loading} onClick={() => void applyPlatforms()}>
         {#snippet children()}Apply platform changes{/snippet}
       </Btn>
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="instances-refresh" />

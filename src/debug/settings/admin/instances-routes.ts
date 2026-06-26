@@ -237,9 +237,14 @@ function handlePlatformInstances(
   const writeGuard = requireAdmin(authed, 'write')
   if (writeGuard !== null) return Promise.resolve(writeGuard)
 
-  if (req.method === 'POST' && url.pathname === '/settings/api/admin/platform-instances/apply') {
+  if (url.pathname === '/settings/api/admin/platform-instances/apply') {
+    if (req.method !== 'POST') {
+      // 'apply' is never an instance id — reject all non-POST methods explicitly
+      return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
+    }
     const csrf = requireCsrf(req, authed)
     if (csrf !== null) return Promise.resolve(csrf)
+    log.info({ platformUserId: authed.session.platformUserId }, 'Settings admin applying platform instances')
     return applyPlatformInstances(deps)
   }
 

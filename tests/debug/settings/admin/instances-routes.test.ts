@@ -558,4 +558,23 @@ describe('settings admin instances routes', () => {
     // reconciler returns 503 when router is null — confirms we delegated to it
     expect(res.status).toBe(503)
   })
+
+  test('admin DELETE platform-instances/apply returns 405 (not 404)', async () => {
+    const fakeDeps: InstanceApiDeps = {
+      getRuntimeChatRouter: () => null,
+      listPlatformInstances: () => [],
+      listPlatformInstancesSafe: () => ({ instances: [], failures: [] }),
+    }
+    const url = new URL('https://x/settings/api/admin/platform-instances/apply')
+    const res = await handleAdminInstancesRoutes(
+      new Request(url, {
+        method: 'DELETE',
+        headers: authHeaders(adminSession, true),
+      }),
+      url,
+      '/settings/api/admin/platform-instances/apply',
+      fakeDeps,
+    )
+    expect(res.status).toBe(405)
+  })
 })

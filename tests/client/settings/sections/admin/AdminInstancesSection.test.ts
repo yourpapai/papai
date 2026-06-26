@@ -296,6 +296,63 @@ const createApplyMock = (onApply: () => void) => {
   }
 }
 
+const baseInstances = (url: string): Response | null => {
+  if (url.includes('/admin/platform-instances'))
+    return json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }] })
+  if (url.includes('/admin/task-instances'))
+    return json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }] })
+  if (url.includes('/admin/platform-provider-types'))
+    return json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] })
+  if (url.includes('/admin/task-provider-types'))
+    return json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] })
+  return null
+}
+
+const createDeferredApplyMock =
+  (applyPromise: Promise<Response>) =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    const method = requestMethod(init)
+    if (method === 'POST' && url.includes('/admin/platform-instances/apply')) return applyPromise
+    return Promise.resolve(baseInstances(url) ?? json({}))
+  }
+
+const createApplyWithFailureMock = () => {
+  const applyResult = {
+    applied: 0,
+    started: [],
+    stopped: [],
+    removed: [],
+    removedDetails: [],
+    recreated: [],
+    unchanged: [],
+    failed: [{ id: 'tg', action: 'start', error: 'connection refused' }],
+    unreadable: [],
+  }
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (method === 'POST' && url.includes('/admin/platform-instances/apply')) {
+      return Promise.resolve(json(applyResult))
+    }
+    if (url.includes('/admin/platform-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/task-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/platform-provider-types'))
+      return Promise.resolve(
+        json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+      )
+    if (url.includes('/admin/task-provider-types'))
+      return Promise.resolve(
+        json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] }),
+      )
+    return Promise.resolve(json({}))
+  }
+}
+
 describe('AdminInstancesSection', () => {
   test('renders platform and task instance rows', async () => {
     installFetch()
@@ -525,6 +582,61 @@ describe('AdminInstancesSection', () => {
     target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(deletedUrl).toContain('k')
+    void unmount(component)
+  })
+
+  test('apply failure message survives the table refresh that follows', async () => {
+    setCsrfToken('c')
+    setMockFetch(createApplyWithFailureMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const applyBtn = target.querySelector<HTMLButtonElement>('[data-testid="admin-instances-apply"]')!
+    applyBtn.click()
+    await drain()
+    await drain()
+    await drain()
+    const errorEl = target.querySelector('.status-error')
+    expect(errorEl).not.toBeNull()
+    expect(errorEl!.textContent).toContain('tg start: connection refused')
+    void unmount(component)
+  })
+
+  test('apply button is disabled while apply is in progress', async () => {
+    setCsrfToken('c')
+    // Use a deferred apply response so we can check disabled state mid-flight
+    let resolveApply!: (r: Response) => void
+    const applyPromise = new Promise<Response>((resolve) => {
+      resolveApply = resolve
+    })
+    setMockFetch(createDeferredApplyMock(applyPromise))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const applyBtn = target.querySelector<HTMLButtonElement>('[data-testid="admin-instances-apply"]')!
+    applyBtn.click()
+    flushSync()
+    expect(applyBtn.disabled).toBe(true)
+    // Resolve the apply, let the refresh complete (extra ticks for the nested load() with 4 parallel fetches)
+    resolveApply(
+      json({
+        applied: 1,
+        started: ['tg'],
+        stopped: [],
+        removed: [],
+        removedDetails: [],
+        recreated: [],
+        unchanged: [],
+        failed: [],
+        unreadable: [],
+      }),
+    )
+    await drain()
+    await drain()
+    await drain()
+    expect(applyBtn.disabled).toBe(false)
     void unmount(component)
   })
 
