@@ -228,6 +228,22 @@ describe('settings config routes', () => {
     expect(res.status).toBe(422)
   })
 
+  test('PATCH action:unset refuses excluded operational secrets (boundary)', async () => {
+    // These live in system_config / their own stores and are NOT ConfigFields; they
+    // must never be unsettable through this route. Each should 422 as "unknown config field".
+    for (const key of ['llm_apikey', 'llm_baseurl', 'main_model', 'notify_token', 'stats_anonymity_salt']) {
+      const res = await handleConfigRoutes(
+        new Request('https://x/settings/api/config', {
+          method: 'PATCH',
+          headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'unset', key }),
+        }),
+        new URL('https://x/settings/api/config'),
+      )
+      expect(res.status).toBe(422)
+    }
+  })
+
   test('GET forwards control and options for AI-output fields', async () => {
     const res = await handleConfigRoutes(
       new Request('https://x/settings/api/config', { headers: authHeaders(session) }),
