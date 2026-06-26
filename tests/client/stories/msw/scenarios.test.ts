@@ -9,9 +9,6 @@ import { scenarios, type ScenarioName } from '../../../../client/stories/msw/sce
 
 describe('msw scenarios', () => {
   test.each<ScenarioName>([
-    'admin-populated',
-    'admin-empty',
-    'admin-error',
     'billing-populated',
     'billing-empty',
     'billing-error',
@@ -27,8 +24,9 @@ describe('msw scenarios', () => {
     expect(scenarios[name].length).toBeGreaterThan(0)
   })
 
-  test('admin-populated composes admin, billing, stats, pluginConfig, instances, and identityMappings families', () => {
-    // admin (2) + billing (2) + stats (2) + pluginConfig (2) + instances (8) + identityMappings (1) populated handlers
-    expect(scenarios['admin-populated'].length).toBe(17)
+  test('admin-populated composes billing, stats, pluginConfig, instances, and identityMappings families', () => {
+    // billing (2) + stats (2) + pluginConfig (2) + instances (8) + identityMappings (1) populated handlers
+    // admin handlers are now empty (System / LLM section removed)
+    expect(scenarios['admin-populated'].length).toBe(15)
   })
 })

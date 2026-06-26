@@ -6,9 +6,7 @@
 import { HttpResponse, delay, http } from 'msw'
 import type { HttpHandler } from 'msw'
 
-import type { AdminSystemSummary } from '../../shared/api-types.js'
 import {
-  makeAdminLlmSnapshot,
   makeBillingDetail,
   makeBillingSubject,
   makeGlobalStats,
@@ -25,13 +23,6 @@ export interface HandlerFamily {
   loading: HttpHandler[]
 }
 
-const systemSummary: AdminSystemSummary = {
-  chatProvider: 'telegram',
-  taskProvider: 'kaneo',
-  debugServer: true,
-  adminUserSet: true,
-}
-
 function billingSubjectsBody(subjects: ReturnType<typeof makeBillingSubject>[]): Record<string, unknown> {
   return { window: '30d', subjects }
 }
@@ -42,40 +33,10 @@ function billingDetailBody(id: string): Record<string, unknown> {
 }
 
 export const adminHandlers: HandlerFamily = {
-  populated: [
-    http.get('/admin/llm', () => HttpResponse.json(makeAdminLlmSnapshot())),
-    http.get('/admin/system', () => HttpResponse.json(systemSummary)),
-  ],
-  empty: [
-    http.get('/admin/llm', () =>
-      HttpResponse.json(
-        makeAdminLlmSnapshot({
-          llm_apikey: { value: null, updatedAt: null, updatedBy: null, required: true },
-          llm_baseurl: { value: null, updatedAt: null, updatedBy: null, required: true },
-          main_model: { value: null, updatedAt: null, updatedBy: null, required: true },
-          small_model: { value: null, updatedAt: null, updatedBy: null, required: false },
-          embedding_model: { value: null, updatedAt: null, updatedBy: null, required: false },
-        }),
-      ),
-    ),
-    http.get('/admin/system', () =>
-      HttpResponse.json({ ...systemSummary, adminUserSet: false } satisfies AdminSystemSummary),
-    ),
-  ],
-  error: [
-    http.get('/admin/llm', () => HttpResponse.json({ error: 'denied' }, { status: 401 })),
-    http.get('/admin/system', () => HttpResponse.json({ error: 'denied' }, { status: 500 })),
-  ],
-  loading: [
-    http.get('/admin/llm', async () => {
-      await delay(NEVER_RESOLVE_MS)
-      return HttpResponse.json(makeAdminLlmSnapshot())
-    }),
-    http.get('/admin/system', async () => {
-      await delay(NEVER_RESOLVE_MS)
-      return HttpResponse.json(systemSummary)
-    }),
-  ],
+  populated: [],
+  empty: [],
+  error: [],
+  loading: [],
 }
 
 export const billingHandlers: HandlerFamily = {

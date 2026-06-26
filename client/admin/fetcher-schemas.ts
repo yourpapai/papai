@@ -201,35 +201,7 @@ export const SubjectStatsSchema = z.object({
   }),
 })
 
-const AdminLlmKeyStateSchema = z.object({
-  value: z.string().nullable(),
-  updatedAt: z.number().nullable(),
-  updatedBy: z.string().nullable(),
-  required: z.boolean(),
-})
-
-export const AdminLlmSnapshotSchema = z.object({
-  llm_apikey: AdminLlmKeyStateSchema,
-  llm_baseurl: AdminLlmKeyStateSchema,
-  main_model: AdminLlmKeyStateSchema,
-  small_model: AdminLlmKeyStateSchema,
-  embedding_model: AdminLlmKeyStateSchema,
-})
-const AdminChatProviderSchema = z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk', 'unknown'])
-const AdminTaskProviderSchema = z.enum(['kaneo', 'youtrack', 'unknown'])
-export const AdminSystemSummarySchema = z.object({
-  chatProvider: AdminChatProviderSchema,
-  taskProvider: AdminTaskProviderSchema,
-  debugServer: z.boolean(),
-  adminUserSet: z.boolean(),
-})
 export * from './instance-fetcher-schemas.js'
-const AdminLlmKeySchema = z.enum(['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model'])
-export const SubmitAdminLlmResponseSchema = z.object({
-  ok: z.literal(true),
-  key: AdminLlmKeySchema,
-  updatedAt: z.number(),
-})
 
 export const RecurringTaskSchema = z.object({
   id: z.string(),
@@ -277,8 +249,6 @@ export const AuthorizedGroupEntrySchema = z.object({
   added_by: z.string(),
   added_at: z.string(),
 })
-
-export type SubmitAdminLlmKey = z.infer<typeof AdminLlmKeySchema>
 
 export const RecentRequestRowSchema = z.object({
   ts: z.number(),

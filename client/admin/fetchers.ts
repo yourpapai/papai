@@ -7,8 +7,6 @@ import { z } from 'zod'
 
 import type { GlobalStats, StatsWindow, SubjectStats } from '../../src/stats/types.js'
 import type {
-  AdminLlmSnapshot,
-  AdminSystemSummary,
   AuthorizedGroupEntry,
   BillingDetail,
   BillingSubject,
@@ -20,8 +18,6 @@ import type {
 } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
-  AdminLlmSnapshotSchema,
-  AdminSystemSummarySchema,
   AuthorizedGroupEntrySchema,
   BillingDetailResponseSchema,
   BillingSubjectsResponseSchema,
@@ -32,19 +28,10 @@ import {
   RecentRequestsResponseSchema,
   RecurringTaskSchema,
   SubjectStatsSchema,
-  SubmitAdminLlmResponseSchema,
   type RecentRequestRow,
-  type SubmitAdminLlmKey,
 } from './fetcher-schemas.js'
 
 export * from './instance-fetchers.js'
-
-export type SubmitAdminLlmInput = {
-  readonly key: SubmitAdminLlmKey
-  readonly value: string
-}
-
-export type SubmitAdminLlmResult = z.infer<typeof SubmitAdminLlmResponseSchema>
 
 export type FetchBillingSubjectsResult = {
   readonly window: BillingWindow
@@ -84,31 +71,6 @@ export const fetchStatsSubject = async (storageContextId: string): Promise<Subje
   const body = await readBody(res)
   requireOk(res, body)
   return SubjectStatsSchema.parse(body) as SubjectStats
-}
-
-export const fetchAdminLlm = async (): Promise<AdminLlmSnapshot> => {
-  const res = await fetch('/admin/llm')
-  const body = await readBody(res)
-  requireOk(res, body)
-  return AdminLlmSnapshotSchema.parse(body)
-}
-
-export const submitAdminLlm = async (input: SubmitAdminLlmInput): Promise<SubmitAdminLlmResult> => {
-  const res = await fetch('/admin/llm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-  const body = await readBody(res)
-  requireOk(res, body)
-  return SubmitAdminLlmResponseSchema.parse(body)
-}
-
-export const fetchAdminSystem = async (): Promise<AdminSystemSummary> => {
-  const res = await fetch('/admin/system')
-  const body = await readBody(res)
-  requireOk(res, body)
-  return AdminSystemSummarySchema.parse(body)
 }
 
 export const fetchMemos = async (userId: string, state: 'active' | 'archived'): Promise<Memo[]> => {

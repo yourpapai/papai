@@ -19,10 +19,11 @@ describe('AdminSidebarPanel.svelte', () => {
 
   test('renders an anchor link for each section', () => {
     const component = mount(AdminSidebarPanel, { target, props: { activeId: 'overview' } })
-    for (const id of ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'system']) {
+    for (const id of ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances']) {
       const link = target.querySelector<HTMLAnchorElement>(`a[href="#${id}"]`)
       expect(link).not.toBeNull()
     }
+    expect(target.querySelector<HTMLAnchorElement>('a[href="#system"]')).toBeNull()
     void unmount(component)
   })
 

@@ -21,9 +21,8 @@ function pathsOf(handlers: readonly HttpHandler[]): string[] {
 }
 
 describe('msw handlers', () => {
-  test('every family exposes populated / empty / error / loading variants', () => {
+  test('every non-empty family exposes populated / empty / error / loading variants', () => {
     for (const family of [
-      adminHandlers,
       billingHandlers,
       statsHandlers,
       pluginConfigHandlers,
@@ -38,14 +37,15 @@ describe('msw handlers', () => {
     }
   })
 
-  test('billing populated handlers cover the /billing/subjects route', () => {
-    expect(pathsOf(billingHandlers.populated).some((p) => p.includes('/billing/subjects'))).toBe(true)
+  test('adminHandlers family is empty (System / LLM section removed)', () => {
+    expect(adminHandlers.populated).toHaveLength(0)
+    expect(adminHandlers.empty).toHaveLength(0)
+    expect(adminHandlers.error).toHaveLength(0)
+    expect(adminHandlers.loading).toHaveLength(0)
   })
 
-  test('admin populated handlers cover /admin/llm and /admin/system', () => {
-    const paths = pathsOf(adminHandlers.populated)
-    expect(paths.some((p) => p.includes('/admin/llm'))).toBe(true)
-    expect(paths.some((p) => p.includes('/admin/system'))).toBe(true)
+  test('billing populated handlers cover the /billing/subjects route', () => {
+    expect(pathsOf(billingHandlers.populated).some((p) => p.includes('/billing/subjects'))).toBe(true)
   })
 
   test('stats populated handlers cover /stats/global', () => {

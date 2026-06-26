@@ -10,17 +10,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import AdminApp from '../../../client/admin/AdminApp.svelte'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
-const sectionIds = [
-  'overview',
-  'billing',
-  'stats',
-  'memos',
-  'reminders',
-  'identities',
-  'groups',
-  'instances',
-  'system',
-] as const
+const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances'] as const
 
 function mountAdminApp(): ReturnType<typeof mount> {
   document.body.innerHTML = '<div id="root"></div>'
@@ -49,7 +39,7 @@ afterEach(() => {
 })
 
 describe('AdminApp.svelte', () => {
-  test('renders all nine section anchor ids', async () => {
+  test('renders all eight section anchor ids', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
@@ -61,13 +51,13 @@ describe('AdminApp.svelte', () => {
     void unmount(component)
   })
 
-  test('renders nine navigation items', async () => {
+  test('renders eight navigation items', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
 
     const navLinks = Array.from(document.querySelectorAll('.admin-sidebar__link'))
-    expect(navLinks).toHaveLength(9)
+    expect(navLinks).toHaveLength(8)
 
     void unmount(component)
   })
@@ -82,26 +72,23 @@ describe('AdminApp.svelte', () => {
     void unmount(component)
   })
 
-  test('renders system section in the DOM', async () => {
+  test('system section is absent from the DOM', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
 
-    expect(document.querySelector('#system')).not.toBeNull()
+    expect(document.querySelector('#system')).toBeNull()
 
     void unmount(component)
   })
 
-  test('renders instances section before system in the DOM', async () => {
+  test('instances section is the last section in the DOM', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
 
     const instances = document.querySelector('#instances')
-    const system = document.querySelector('#system')
     expect(instances).not.toBeNull()
-    expect(system).not.toBeNull()
-    expect(instances!.compareDocumentPosition(system!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     void unmount(component)
   })

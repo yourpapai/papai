@@ -24,7 +24,6 @@
     { id: 'identities', label: 'Identities' },
     { id: 'groups', label: 'Groups' },
     { id: 'instances', label: 'Instances' },
-    { id: 'system', label: 'System' },
   ]
 
   interface Props {

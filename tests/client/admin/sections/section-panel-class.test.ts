@@ -5,14 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-const SECTIONS: string[] = [
-  'BillingSection',
-  'GroupsSection',
-  'IdentitiesSection',
-  'MemosSection',
-  'RemindersSection',
-  'SystemSection',
-]
+const SECTIONS: string[] = ['BillingSection', 'GroupsSection', 'IdentitiesSection', 'MemosSection', 'RemindersSection']
 
 function parseSectionClasses(source: string): string[] {
   const tagMatch = source.match(/<section\b[^>]*class="([^"]*)"/u)

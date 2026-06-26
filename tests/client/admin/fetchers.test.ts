@@ -17,8 +17,6 @@ import {
   fetchAdminGroups,
   fetchAdminIdentity,
   fetchAdminIdentityMappings,
-  fetchAdminLlm,
-  fetchAdminSystem,
   fetchDeferredPrompts,
   fetchMemos,
   fetchPlatformInstances,
@@ -28,7 +26,6 @@ import {
   fetchTaskInstances,
   fetchTaskProviderTypes,
   setPlatformInstanceStatus,
-  submitAdminLlm,
 } from '../../../client/admin/fetchers.js'
 import type { AdminInstanceView, ApplyInstancesResult } from '../../../client/shared/api-types.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
@@ -114,81 +111,6 @@ const expectDefined = <T>(value: T | undefined | null, message: string): NonNull
   expect(value, message).not.toBeNull()
   return value!
 }
-
-describe('fetchAdminLlm', () => {
-  test('GETs /admin/llm', async () => {
-    const empty = { value: null, updatedAt: null, updatedBy: null, required: false }
-    installFetch(200, {
-      llm_apikey: { ...empty, required: true },
-      llm_baseurl: { ...empty, required: true },
-      main_model: { ...empty, required: true },
-      small_model: empty,
-      embedding_model: empty,
-    })
-    const snap = await fetchAdminLlm()
-    expect(firstCaptured().url).toBe('/admin/llm')
-    expect(snap.llm_apikey.value).toBeNull()
-    expect(snap.llm_apikey.required).toBe(true)
-    expect(snap.llm_baseurl.required).toBe(true)
-    expect(snap.main_model.required).toBe(true)
-    expect(snap.small_model.required).toBe(false)
-    expect(snap.embedding_model.required).toBe(false)
-  })
-
-  test('rejects snapshot missing required flag', async () => {
-    const empty = { value: null, updatedAt: null, updatedBy: null }
-    installFetch(200, {
-      llm_apikey: empty,
-      llm_baseurl: empty,
-      main_model: empty,
-      small_model: empty,
-      embedding_model: empty,
-    })
-    await expect(fetchAdminLlm()).rejects.toThrow()
-  })
-})
-
-describe('submitAdminLlm', () => {
-  test('POSTs JSON body to /admin/llm', async () => {
-    installFetch(200, { ok: true, key: 'main_model', updatedAt: 123 })
-    const result = await submitAdminLlm({ key: 'main_model', value: 'gpt-6' })
-    const call = firstCaptured()
-    expect(call.url).toBe('/admin/llm')
-    expect(call.init.method).toBe('POST')
-    expect(call.init.body).toBe(JSON.stringify({ key: 'main_model', value: 'gpt-6' }))
-    expect(result.key).toBe('main_model')
-  })
-
-  test('throws on 400 with the server message', async () => {
-    installFetch(400, { error: 'value must be a non-empty string' })
-    await expect(submitAdminLlm({ key: 'main_model', value: '' })).rejects.toThrow('value must be a non-empty string')
-  })
-})
-
-describe('fetchAdminSystem', () => {
-  test('GETs /admin/system and validates the summary', async () => {
-    installFetch(200, {
-      chatProvider: 'telegram',
-      taskProvider: 'kaneo',
-      debugServer: true,
-      adminUserSet: true,
-    })
-    const result = await fetchAdminSystem()
-    expect(firstCaptured().url).toBe('/admin/system')
-    expect(result.chatProvider).toBe('telegram')
-  })
-
-  test('rejects raw provider strings outside the safe enums', async () => {
-    installFetch(200, {
-      chatProvider: 'custom-chat-secret',
-      taskProvider: 'kaneo',
-      debugServer: true,
-      adminUserSet: true,
-    })
-
-    await expect(fetchAdminSystem()).rejects.toThrow()
-  })
-})
 
 describe('fetchMemos', () => {
   test('GETs /memos with userId and state', async () => {

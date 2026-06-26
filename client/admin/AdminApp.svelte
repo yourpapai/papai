@@ -20,9 +20,8 @@
   import OverviewSection from './sections/OverviewSection.svelte'
   import RemindersSection from './sections/RemindersSection.svelte'
   import StatsSection from './sections/StatsSection.svelte'
-  import SystemSection from './sections/SystemSection.svelte'
 
-  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances', 'system']
+  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances']
 
   onMount(() => {
     void refreshAll()
@@ -58,7 +57,6 @@
         <IdentitiesSection />
         <GroupsSection />
         <InstancesSection />
-        <SystemSection />
       </main>
     </div>
   {/snippet}

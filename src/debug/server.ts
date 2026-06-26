@@ -10,9 +10,9 @@ import { handleMattermostActionRequest, isMattermostActionPath } from '../chat/m
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
-import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
+import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
-import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
+import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { redactLogEntry } from './log-redaction.js'
@@ -147,15 +147,6 @@ function handleTurnLookup(url: URL): Response {
 const handleAdminIdentityMappings = (): Response => jsonResponse(listAllIdentityMappings())
 
 function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> | null {
-  if (url.pathname === '/admin/system') {
-    if (req.method === 'GET') return handleAdminSystem()
-    return new Response('Method not allowed', { status: 405 })
-  }
-  if (url.pathname === '/admin/llm') {
-    if (req.method === 'GET') return handleAdminLlmGet()
-    if (req.method === 'POST') return handleAdminLlmPost(req)
-    return new Response('Method not allowed', { status: 405 })
-  }
   if (url.pathname.startsWith('/admin/subjects/') && url.pathname.endsWith('/recent-requests')) {
     return handleAdminRecentRequests(url)
   }
