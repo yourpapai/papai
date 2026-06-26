@@ -496,8 +496,8 @@ For Kaneo: `plugin:task-provider-kaneo:provider:credential` and `plugin:task-pro
 
 ### Operator workflow
 
-1. Create a task instance in `/admin#instances` (fills `providerConfigSchema` fields).
-2. Run `/plugin approve task-provider-kaneo` (DM, super admin) and restart. Until approved, affected contexts won't resolve and `/admin#instances` shows an "unresolved" label; a startup `WARN` lists pending approvals.
+1. Create a task instance in the settings admin "Instances" section (fills `providerConfigSchema` fields).
+2. Approve the plugin in the settings UI admin Plugins area (super admin) and restart. Until approved, affected contexts won't resolve and the settings admin Instances section shows an "unresolved" label; a startup `WARN` lists pending approvals.
 3. Users configure context-scoped fields (`credential`, `workspaceId`) via `/setup`.
 
 See `plugins/task-provider-kaneo/` for the complete source. The YouTrack plugin at `plugins/task-provider-youtrack/` is a second provider-plugin example with a simpler config schema: one instance field (**`baseUrl`**) and one context credential (**`token`**).
