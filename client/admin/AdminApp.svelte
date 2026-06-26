@@ -8,7 +8,7 @@
 
   import Shell from '../shared/ui/Shell.svelte'
 
-  import { adminState, refreshAll, setSection } from './admin.svelte.js'
+  import { adminSections, adminState, refreshAll, setSection } from './admin.svelte.js'
   import AdminSidebarPanel from './components/AdminSidebarPanel.svelte'
   import AdminTopBar from './components/AdminTopBar.svelte'
   import { useScrollSpy } from './scrollspy.js'
@@ -19,7 +19,7 @@
   import RemindersSection from './sections/RemindersSection.svelte'
   import StatsSection from './sections/StatsSection.svelte'
 
-  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities']
+  const sectionIds = adminSections.map((s) => s.id)
 
   onMount(() => {
     void refreshAll()

@@ -8,21 +8,10 @@
   import HR from '../../shared/ui/HR.svelte'
   import KV from '../../shared/ui/KV.svelte'
 
+  import { adminSections } from '../admin.svelte.js'
   import { adminGlobals } from '../global-stats.svelte.js'
 
-  interface SidebarItem {
-    id: string
-    label: string
-  }
-
-  const items: readonly SidebarItem[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'billing', label: 'Billing' },
-    { id: 'stats', label: 'Stats' },
-    { id: 'memos', label: 'Memos' },
-    { id: 'reminders', label: 'Reminders' },
-    { id: 'identities', label: 'Identities' },
-  ]
+  const items = adminSections
 
   interface Props {
     activeId: string
