@@ -31,9 +31,20 @@ export const AGENT_PROVIDER_FIELDS = ['agent', 'provider', 'provider_api_key', '
 export const REQUIRED_AGENT_PROVIDER_FIELDS = ['agent', 'provider', 'provider_api_key'] as const
 export type AgentProviderField = (typeof AGENT_PROVIDER_FIELDS)[number]
 
-export const FORGE_FIELDS = ['forge_token'] as const
-export const REQUIRED_FORGE_FIELDS = ['forge_token'] as const
+export const FORGE_FIELDS = ['kind', 'instance_url', 'forge_token'] as const
+export const REQUIRED_FORGE_FIELDS = ['kind', 'forge_token'] as const
 export type ForgeField = (typeof FORGE_FIELDS)[number]
+
+export const FORGE_KINDS = ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted'] as const
+export type ForgeKindUi = (typeof FORGE_KINDS)[number]
+
+export function isForgeKind(v: string): v is ForgeKindUi {
+  return (FORGE_KINDS as readonly string[]).includes(v)
+}
+
+export function needsInstanceUrl(kind: string): boolean {
+  return kind === 'github-enterprise' || kind === 'gitlab-self-hosted'
+}
 
 export type CodingCredentialConfig = Partial<Record<AgentProviderField | ForgeField, string>>
 

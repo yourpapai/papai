@@ -15,10 +15,13 @@ import type { CodingCredentialConfig } from '../../coding-credentials/types.js'
 import {
   AGENTS,
   CODING_NAMESPACES,
+  FORGE_KINDS,
   PROVIDERS,
   compatible,
   isAgent,
+  isForgeKind,
   isProvider,
+  needsInstanceUrl,
   type CodingNamespace,
 } from '../../coding-credentials/types.js'
 import { maskSensitiveValue } from '../../config.js'
@@ -47,7 +50,11 @@ const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
     { key: 'provider_api_key', label: 'API key', required: true, sensitive: true },
     { key: 'provider_base_url', label: 'Base URL (optional)', required: false, sensitive: false },
   ],
-  forge: [{ key: 'forge_token', label: 'Code-host token', required: true, sensitive: true }],
+  forge: [
+    { key: 'kind', label: 'Code host', required: true, sensitive: false, control: 'select', options: FORGE_KINDS },
+    { key: 'instance_url', label: 'Instance URL (enterprise / self-hosted)', required: false, sensitive: false },
+    { key: 'forge_token', label: 'Access token', required: true, sensitive: true },
+  ],
 }
 
 const NamespaceSchema = z.enum(CODING_NAMESPACES).default('agent-provider')
@@ -112,6 +119,23 @@ const valuesToPersist = (
   ) as CodingCredentialConfig
 }
 
+const checkForgeKind = (contextId: string, toPersist: CodingCredentialConfig): Response | null => {
+  const existing = getCodingCredentials(contextId, 'forge') ?? {}
+  const merged = { ...existing, ...toPersist }
+  const kindRaw = merged.kind?.trim()
+  if (kindRaw === undefined || kindRaw.length === 0) return null
+  if (!isForgeKind(kindRaw)) {
+    return settingsJson(422, { error: `unknown forge kind: ${kindRaw}` })
+  }
+  if (needsInstanceUrl(kindRaw)) {
+    const instanceUrl = merged.instance_url?.trim() ?? ''
+    if (instanceUrl.length === 0 || !instanceUrl.startsWith('https://')) {
+      return settingsJson(422, { error: 'instance_url must be an https URL for self-hosted forge kinds' })
+    }
+  }
+  return null
+}
+
 const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig): Response | null => {
   const existing = getCodingCredentials(contextId, 'agent-provider') ?? {}
   const merged = { ...existing, ...toPersist }
@@ -173,6 +197,11 @@ export async function handleCodingCredentialsRoutes(req: Request, url: URL): Pro
     if (namespace === 'agent-provider') {
       const incompatibleErr = checkCompatibility(scope.scope.contextId, toPersist)
       if (incompatibleErr !== null) return incompatibleErr
+    }
+
+    if (namespace === 'forge') {
+      const forgeErr = checkForgeKind(scope.scope.contextId, toPersist)
+      if (forgeErr !== null) return forgeErr
     }
 
     updateCodingCredentials(scope.scope.contextId, namespace, toPersist, auth.authed.principal.platformUserId)

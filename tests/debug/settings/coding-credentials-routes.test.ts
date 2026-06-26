@@ -273,7 +273,7 @@ describe('coding-credentials routes', () => {
     expect(stored?.provider_base_url).toBeUndefined()
   })
 
-  test('GET ?namespace=forge returns the forge field; default stays agent-provider', async () => {
+  test('GET ?namespace=forge returns forge fields; default stays agent-provider', async () => {
     const forgeUrl = new URL(
       `https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=forge`,
     )
@@ -283,7 +283,7 @@ describe('coding-credentials routes', () => {
     )
     expect(forge.status).toBe(200)
     const forgeBody = GetResponseSchema.parse(await forge.json())
-    expect(forgeBody.fields.map((f) => f.key)).toEqual(['forge_token'])
+    expect(forgeBody.fields.map((f) => f.key)).toEqual(['kind', 'instance_url', 'forge_token'])
 
     const dfltUrl = new URL(`https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}`)
     const dflt = await handleCodingCredentialsRoutes(
@@ -339,7 +339,7 @@ describe('coding-credentials routes', () => {
     await handleCodingCredentialsRoutes(
       patch('/settings/api/coding-credentials', session, {
         namespace: 'forge',
-        values: { forge_token: 'ghp_secret' },
+        values: { kind: 'github', forge_token: 'ghp_secret' },
       }),
       patchUrl,
     )
@@ -354,5 +354,74 @@ describe('coding-credentials routes', () => {
     const body = GetResponseSchema.parse(await res.json())
     const field = body.fields.find((f) => f.key === 'forge_token')
     expect(field?.value).not.toContain('ghp_secret')
+  })
+
+  test('forge PATCH requires instance_url for self-hosted kinds', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const bad = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'forge',
+        values: { kind: 'gitlab-self-hosted', forge_token: 't' },
+      }),
+      url,
+    )
+    expect(bad.status).toBe(422)
+
+    const ok = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'forge',
+        values: { kind: 'gitlab-self-hosted', instance_url: 'https://gl.corp.com', forge_token: 't' },
+      }),
+      url,
+    )
+    expect(ok.status).toBe(200)
+  })
+
+  test('forge PATCH rejects unknown kind with 422', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'forge',
+        values: { kind: 'bitbucket', forge_token: 't' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toContain('unknown')
+  })
+
+  test('forge PATCH instance_url must be https for self-hosted', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'forge',
+        values: { kind: 'github-enterprise', instance_url: 'http://ghe.corp.com', forge_token: 't' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+  })
+
+  test('forge PATCH token-only (no kind) with github defaults is allowed', async () => {
+    // Patching only forge_token without kind should be accepted when existing kind is set
+    const url = new URL('https://x/settings/api/coding-credentials')
+    // First set kind + token
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'forge',
+        values: { kind: 'github', forge_token: 'tok-first' },
+      }),
+      url,
+    )
+    // Then update only the token — merged kind is 'github', still valid
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'forge',
+        values: { forge_token: 'tok-second' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
   })
 })

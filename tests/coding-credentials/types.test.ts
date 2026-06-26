@@ -10,6 +10,7 @@ import {
   AGENTS,
   CODING_NAMESPACES,
   FIELDS_BY_NAMESPACE,
+  FORGE_KINDS,
   PROVIDERS,
   REQUIRED_AGENT_PROVIDER_FIELDS,
   REQUIRED_BY_NAMESPACE,
@@ -54,6 +55,15 @@ describe('coding-credentials types', () => {
 
   test('REQUIRED_BY_NAMESPACE maps agent-provider to required fields', () => {
     expect(REQUIRED_BY_NAMESPACE['agent-provider']).toEqual(REQUIRED_AGENT_PROVIDER_FIELDS)
+  })
+
+  describe('FORGE_KINDS', () => {
+    test('FORGE_KINDS contains all four code-host kinds', () => {
+      expect(FORGE_KINDS).toContain('github')
+      expect(FORGE_KINDS).toContain('github-enterprise')
+      expect(FORGE_KINDS).toContain('gitlab')
+      expect(FORGE_KINDS).toContain('gitlab-self-hosted')
+    })
   })
 
   describe('compatible', () => {
