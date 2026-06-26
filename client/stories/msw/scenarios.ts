@@ -6,7 +6,6 @@
 import type { HttpHandler } from 'msw'
 
 import {
-  adminHandlers,
   billingHandlers,
   identityMappingsHandlers,
   instancesHandlers,
@@ -16,7 +15,6 @@ import {
 
 export const scenarios = {
   'admin-populated': [
-    ...adminHandlers.populated,
     ...billingHandlers.populated,
     ...statsHandlers.populated,
     ...pluginConfigHandlers.populated,
@@ -24,7 +22,6 @@ export const scenarios = {
     ...identityMappingsHandlers.populated,
   ],
   'admin-empty': [
-    ...adminHandlers.empty,
     ...billingHandlers.empty,
     ...statsHandlers.empty,
     ...pluginConfigHandlers.empty,
@@ -32,7 +29,6 @@ export const scenarios = {
     ...identityMappingsHandlers.empty,
   ],
   'admin-error': [
-    ...adminHandlers.error,
     ...billingHandlers.error,
     ...statsHandlers.error,
     ...pluginConfigHandlers.error,

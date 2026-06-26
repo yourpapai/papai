@@ -8,7 +8,6 @@ import { describe, expect, test } from 'bun:test'
 import type { HttpHandler } from 'msw'
 
 import {
-  adminHandlers,
   billingHandlers,
   identityMappingsHandlers,
   instancesHandlers,
@@ -35,13 +34,6 @@ describe('msw handlers', () => {
       expect(Array.isArray(family.loading)).toBe(true)
       expect(family.populated.length).toBeGreaterThan(0)
     }
-  })
-
-  test('adminHandlers family is empty (System / LLM section removed)', () => {
-    expect(adminHandlers.populated).toHaveLength(0)
-    expect(adminHandlers.empty).toHaveLength(0)
-    expect(adminHandlers.error).toHaveLength(0)
-    expect(adminHandlers.loading).toHaveLength(0)
   })
 
   test('billing populated handlers cover the /billing/subjects route', () => {

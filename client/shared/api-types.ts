@@ -164,16 +164,6 @@ export type AdminLlmSnapshot = {
   embedding_model: AdminLlmKeyState
 }
 
-export type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'kontur-talk' | 'unknown'
-export type AdminTaskProvider = 'kaneo' | 'youtrack' | 'unknown'
-
-export type AdminSystemSummary = {
-  chatProvider: AdminChatProvider
-  taskProvider: AdminTaskProvider
-  debugServer: boolean
-  adminUserSet: boolean
-}
-
 export type InstanceConfigView = Record<string, string>
 
 export type InstanceStatusView = 'pending' | 'active' | 'stopped'

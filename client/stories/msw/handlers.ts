@@ -32,13 +32,6 @@ function billingDetailBody(id: string): Record<string, unknown> {
   return { window: '30d', ...detail }
 }
 
-export const adminHandlers: HandlerFamily = {
-  populated: [],
-  empty: [],
-  error: [],
-  loading: [],
-}
-
 export const billingHandlers: HandlerFamily = {
   populated: [
     http.get('/billing/subjects', () =>
