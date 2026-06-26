@@ -318,7 +318,7 @@ Unsupported in the MVP: raw chat provider access, raw task provider access, raw 
 
 Required `configRequirements` are evaluated per target context. Missing required config does not globally break activation; it makes that plugin ineligible for that context, so tools and prompt fragments are hidden and enable actions report the missing keys. Sensitive plugin config values are masked in `/config` output.
 
-Admin-scoped plugin config stays in the admin UI. Context-scoped plugin config declared through `contributes.configKeys` appears in `/config` and is written to the per-context plugin config store under the plugin's namespace.
+Admin-scoped plugin config stays in the admin UI. Context-scoped plugin config declared through `contributes.configKeys` appears in `/config` and is written to the per-context plugin config store under the plugin's namespace. Both admin- and context-scoped config values can be unset (cleared back to default/removed) via the settings UI; clearing a required key makes the plugin ineligible for that context until a value is supplied again.
 
 Capability requirements are evaluated in two layers. At startup, Papai checks approved plugins against the union of active platform/task instances and marks a plugin globally incompatible only when no active instance combination can satisfy the manifest. At request or scheduled-job time, `getPluginContextEligibility(pluginId, contextId)` checks the context's assigned platform and task instances. If that concrete assignment lacks required capabilities, the plugin is ineligible for that context with `capability_missing`, and its tools, prompt fragments, and jobs are hidden there without affecting other contexts.
 

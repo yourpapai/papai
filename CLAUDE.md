@@ -155,7 +155,7 @@ Trusted, repository-local first-party plugins only — no sandbox, marketplace, 
 - **Naming** — tool `plugin_<sanitized-id>__<tool>`; command `plugin_<sanitized-id>_<command>`; scheduled-job owner `plugin:<pluginId>:<jobName>` (runs only where enabled + eligible). Prompt fragments are sync strings/functions, budgeted 2,000 chars/fragment, 8,000 total.
 - **Permissions (MVP)** — `storage`, `scheduler`, `commands`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, `http`, `attachments.read` (context-scoped read of stored attachment bytes/metadata via `PluginToolRuntimeContext.attachments`). Raw chat send, raw provider/DB access, and unallowlisted network access are not exposed.
 - **Attachment transformers** — plugins can pre-process new attachments before the LLM turn (e.g., `audio-transcribe` transcribes voice notes); dispatch is MIME/extension/origin-filtered, eligibility-aware, timeout-isolated (per-call clamp 1000–120000 ms + 120 s per-turn budget), and failures become in-turn marker lines. Group voice notes are eagerly resolved from the staged-file store post-coalescing.
-- **Admin** — discover/approve/reject/enable-disable entirely in the settings UI admin area; approve/reject take effect next startup, enable/disable on next tool/prompt assembly.
+- **Admin** — discover/approve/reject/enable-disable entirely in the settings UI admin area; approve/reject take effect next startup, enable/disable on next tool/prompt assembly. Both admin- and context-scoped config values support an **unset/Clear** action (discriminated `{action:'unset'}` / `{kind:'unset'}` on the existing settings routes, gated by `unsettable` on `ConfigField`); clearing a required key makes the plugin ineligible for that context until a value is set again.
 
 ## Tools
 
