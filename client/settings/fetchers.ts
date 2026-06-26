@@ -70,7 +70,7 @@ export async function settingsFetch(path: string, init: RequestInit = {}): Promi
   return res
 }
 
-const ctxQuery = (contextId: string): string => `contextId=${encodeURIComponent(contextId)}`
+export const ctxQuery = (contextId: string): string => `contextId=${encodeURIComponent(contextId)}`
 
 export async function getJson<T>(path: string, parse: (body: unknown) => T): Promise<T> {
   const res = await settingsFetch(path)

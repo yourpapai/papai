@@ -293,13 +293,40 @@ describe('admin-fetchers', () => {
       counts: { dm: 5, group: 2 },
     }
     let seenBody: unknown
+    let seenCsrf = ''
     setMockFetch((_url, init) => {
       seenBody = parseBody(init.body)
+      seenCsrf = csrfHeader(init)
       return Promise.resolve(json(broadcastPayload))
     })
     const result = await broadcastReleaseNotes()
     expect(seenBody).toEqual({ action: 'broadcast' })
+    expect(seenCsrf).toBe('csrf-brn')
     expect(result.broadcast.sent).toBe(7)
     expect(result.broadcast.skipped).toBe(1)
+  })
+
+  test('regenerateReleaseNotes POSTs action:regenerate with CSRF and parses ReleaseNotes shape', async () => {
+    const { regenerateReleaseNotes } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-rrn')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json(releaseNotesPayload))
+    })
+    const result = await regenerateReleaseNotes()
+    expect(seenUrl).toBe('/settings/api/admin/release-notes')
+    expect(seenCsrf).toBe('csrf-rrn')
+    expect(seenMethod).toBe('POST')
+    expect(seenBody).toEqual({ action: 'regenerate' })
+    expect(result.version).toBe('1.2.3')
+    expect(result.counts.dm).toBe(5)
+    expect('broadcast' in result).toBe(false)
   })
 })

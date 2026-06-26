@@ -9,9 +9,7 @@ import {
   type GroupReleaseSubscriptionResponse,
   type ReleaseSubscriptionResponse,
 } from './fetcher-schemas-release.js'
-import { getJson, writeJson } from './fetchers.js'
-
-const ctxQuery = (contextId: string): string => `contextId=${encodeURIComponent(contextId)}`
+import { ctxQuery, getJson, writeJson } from './fetchers.js'
 
 export const fetchReleaseSubscription = (): Promise<ReleaseSubscriptionResponse> =>
   getJson('/settings/api/release-subscription', (b) => ReleaseSubscriptionResponseSchema.parse(b))
