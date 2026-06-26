@@ -220,3 +220,18 @@ test('resolveProviderHost returns null for openai-compatible without a base URL'
   )
   expect(resolveProviderHost(STORAGE_CTX)).toBeNull()
 })
+
+test('resolveProviderHost returns null when provider_base_url is malformed (parse error)', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    {
+      provider: 'openai-compatible',
+      agent: 'opencode',
+      provider_api_key: 'sk-c',
+      provider_base_url: 'not-a-url',
+    },
+    'user-9',
+  )
+  expect(resolveProviderHost(STORAGE_CTX)).toBeNull()
+})
