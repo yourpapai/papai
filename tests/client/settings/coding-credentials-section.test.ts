@@ -93,7 +93,7 @@ const withSelectsPayload = {
       hasValue: true,
       value: 'anthropic',
       control: 'select',
-      options: ['anthropic', 'openai'],
+      options: ['anthropic', 'openai', 'openai-compatible'],
     },
     {
       key: 'provider_api_key',
@@ -111,6 +111,25 @@ const withSelectsPayload = {
       hasValue: false,
       value: '',
     },
+  ],
+}
+
+const withCodexPayload = {
+  ...withSelectsPayload,
+  fields: [{ ...withSelectsPayload.fields[0]!, value: 'codex' }, ...withSelectsPayload.fields.slice(1)],
+}
+
+const withOpencodePayload = {
+  ...withSelectsPayload,
+  fields: [{ ...withSelectsPayload.fields[0]!, value: 'opencode' }, ...withSelectsPayload.fields.slice(1)],
+}
+
+const withOpenAiCompatiblePayload = {
+  ...withSelectsPayload,
+  fields: [
+    { ...withSelectsPayload.fields[0]!, value: 'opencode' },
+    { ...withSelectsPayload.fields[1]!, value: 'openai-compatible' },
+    ...withSelectsPayload.fields.slice(2),
   ],
 }
 
@@ -343,6 +362,89 @@ describe('CodingCredentialsSection', () => {
     expect(target.querySelector('.placeholder')).not.toBeNull()
     expect(String(target.querySelector('.placeholder')?.textContent).toLowerCase()).not.toContain('anthropic')
 
+    void unmount(component)
+  })
+
+  test('codex agent: provider options include openai-compatible', async () => {
+    setMockFetch(() => Promise.resolve(json(withCodexPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')
+    expect(providerSelect).not.toBeNull()
+    const options = Array.from(providerSelect!.options).map((o) => o.value)
+    expect(options).toContain('openai-compatible')
+    expect(options).toContain('openai')
+    expect(options).not.toContain('anthropic')
+    void unmount(component)
+  })
+
+  test('opencode agent: provider options include openai-compatible', async () => {
+    setMockFetch(() => Promise.resolve(json(withOpencodePayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')
+    expect(providerSelect).not.toBeNull()
+    const options = Array.from(providerSelect!.options).map((o) => o.value)
+    expect(options).toContain('openai-compatible')
+    expect(options).toContain('anthropic')
+    expect(options).toContain('openai')
+    void unmount(component)
+  })
+
+  test('claude agent: provider options do not include openai-compatible', async () => {
+    setMockFetch(() => Promise.resolve(json(withSelectsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')
+    expect(providerSelect).not.toBeNull()
+    const options = Array.from(providerSelect!.options).map((o) => o.value)
+    expect(options).not.toContain('openai-compatible')
+    void unmount(component)
+  })
+
+  test('base-URL label shows as required when openai-compatible provider is selected', async () => {
+    setMockFetch(() => Promise.resolve(json(withOpenAiCompatiblePayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const baseUrlRow = target.querySelector<HTMLElement>('[data-testid="coding-row-provider_base_url"]')
+    expect(baseUrlRow).not.toBeNull()
+    const label = baseUrlRow!.querySelector('.settings-field__label')
+    expect(label).not.toBeNull()
+    // Should show a required indicator (asterisk) when openai-compatible is selected
+    expect(label!.textContent).toContain('*')
+    void unmount(component)
+  })
+
+  test('base-URL label does not show required asterisk for non-openai-compatible providers', async () => {
+    setMockFetch(() => Promise.resolve(json(withSelectsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const baseUrlRow = target.querySelector<HTMLElement>('[data-testid="coding-row-provider_base_url"]')
+    expect(baseUrlRow).not.toBeNull()
+    const label = baseUrlRow!.querySelector('.settings-field__label')
+    expect(label).not.toBeNull()
+    // With anthropic selected, base URL is optional — no asterisk
+    expect(label!.textContent).not.toContain('*')
     void unmount(component)
   })
 })

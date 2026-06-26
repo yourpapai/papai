@@ -19,8 +19,9 @@
   // Client-side compatibility map (mirrors src/coding-credentials/types.ts `compatible`)
   function compatibleProviders(agent: string, allProviders: readonly string[]): string[] {
     if (agent === 'claude') return allProviders.filter((p) => p === 'anthropic')
-    if (agent === 'codex') return allProviders.filter((p) => p === 'openai')
-    if (agent === 'opencode') return allProviders.filter((p) => p === 'anthropic' || p === 'openai')
+    if (agent === 'codex') return allProviders.filter((p) => p === 'openai' || p === 'openai-compatible')
+    if (agent === 'opencode')
+      return allProviders.filter((p) => p === 'anthropic' || p === 'openai' || p === 'openai-compatible')
     return [...allProviders]
   }
 
@@ -45,6 +46,11 @@
   // Track current agent draft for filtering provider options
   const agentField = $derived(fields.find((f) => f.key === 'agent'))
   const currentAgent = $derived(drafts['agent'] ?? agentField?.value ?? '')
+
+  // Track current provider draft to surface base-URL-required hint for openai-compatible
+  const providerField = $derived(fields.find((f) => f.key === 'provider'))
+  const currentProvider = $derived(drafts['provider'] ?? providerField?.value ?? '')
+  const isOpenAiCompatible = $derived(currentProvider === 'openai-compatible')
 
   function selectOptionsFor(field: CodingCredentialField): string[] {
     const opts = field.options ?? []
@@ -169,9 +175,10 @@
 
     <div class="settings-byok-fields">
       {#each fields as field (field.key)}
+        {@const effectiveRequired = field.required || (field.key === 'provider_base_url' && isOpenAiCompatible)}
         <div class="settings-field" data-testid={`coding-row-${field.key}`}>
           <div class="settings-field__head">
-            <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
+            <span class="t-label settings-field__label">{field.label}{effectiveRequired ? ' *' : ''}</span>
             {#if field.sensitive && field.hasValue && !editorOpen(field)}
               <Secret value={displaySecret(field.value)} />
               <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
@@ -203,7 +210,11 @@
                   <Input
                     type={field.sensitive ? 'password' : 'text'}
                     value={drafts[field.key] ?? ''}
-                    placeholder={field.sensitive ? 'enter a new value' : ''}
+                    placeholder={field.sensitive
+                      ? 'enter a new value'
+                      : field.key === 'provider_base_url' && isOpenAiCompatible
+                        ? 'https://your-llm-endpoint/v1 (required)'
+                        : ''}
                     onInput={(value) => updateDraft(field.key, value)}
                     testid={`coding-input-${field.key}`} />
                 {/snippet}

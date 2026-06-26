@@ -431,6 +431,62 @@ describe('coding-credentials routes', () => {
     expect(ok.status).toBe(200)
   })
 
+  test('openai-compatible 422 uses MERGED state: clearing base URL when provider is openai-compatible → 422', async () => {
+    // Establish vault with openai-compatible + base URL
+    const url = new URL('https://x/settings/api/coding-credentials')
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: {
+          agent: 'opencode',
+          provider: 'openai-compatible',
+          provider_api_key: 'k',
+          provider_base_url: 'https://llm.corp.com/v1',
+        },
+      }),
+      url,
+    )
+
+    // Now PATCH that clears provider_base_url — merged state is openai-compatible without base URL → 422
+    const bad = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { provider_base_url: '' },
+      }),
+      url,
+    )
+    expect(bad.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await bad.json())
+    expect(body.error).toContain('base URL')
+  })
+
+  test('openai-compatible 200 uses MERGED state: patch only provider when base URL already stored → 200', async () => {
+    // Establish vault with a base URL set (and anthropic provider)
+    const url = new URL('https://x/settings/api/coding-credentials')
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: {
+          agent: 'opencode',
+          provider: 'anthropic',
+          provider_api_key: 'k',
+          provider_base_url: 'https://llm.corp.com/v1',
+        },
+      }),
+      url,
+    )
+
+    // Now PATCH only provider: 'openai-compatible' — merged base URL is non-empty → 200
+    const ok = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { provider: 'openai-compatible' },
+      }),
+      url,
+    )
+    expect(ok.status).toBe(200)
+  })
+
   test('forge PATCH token-only (no kind) with github defaults is allowed', async () => {
     // Patching only forge_token without kind should be accepted when existing kind is set
     const url = new URL('https://x/settings/api/coding-credentials')
