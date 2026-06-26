@@ -69,6 +69,7 @@
 
   async function confirmedBroadcast(): Promise<void> {
     confirming = false
+    lastBroadcast = null
     error = null
     busy = true
     try {
@@ -90,6 +91,8 @@
   <PageHeader eyebrow="Admin" title="Release notes" />
 
   {#if error !== null}<p class="status-error" data-testid="release-notes-error">{error}</p>{/if}
+
+  {#if busy && data === null}<p class="settings-section__caption" data-testid="release-notes-loading">Loading…</p>{/if}
 
   {#if data !== null}
     <p class="settings-section__caption">
