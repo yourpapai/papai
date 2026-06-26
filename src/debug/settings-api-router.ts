@@ -7,6 +7,7 @@ import { handleAdminByokRoutes } from './settings/admin/byok-routes.js'
 import { handleAdminFeatureFlagsRoutes } from './settings/admin/feature-flags-routes.js'
 import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
 import { handleAdminPluginConfigRoutes } from './settings/admin/plugin-config-routes.js'
+import { handleAdminReleaseNotesRoutes } from './settings/admin/release-notes-routes.js'
 import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
 import { handleAdminSystemAccessRoutes } from './settings/admin/system-access-routes.js'
 import { handleAdminToolDefaultsRoutes } from './settings/admin/tool-defaults-routes.js'
@@ -50,6 +51,7 @@ function routeAdminApi(req: Request, url: URL): Promise<Response> | null {
   if (p === '/settings/api/admin/feature-flags') return handleAdminFeatureFlagsRoutes(req, url, p)
   if (p === '/settings/api/admin/byok') return handleAdminByokRoutes(req, url)
   if (p === '/settings/api/admin/tool-defaults') return handleAdminToolDefaultsRoutes(req, url, p)
+  if (p === '/settings/api/admin/release-notes') return handleAdminReleaseNotesRoutes(req, url, p)
   return null
 }
 
