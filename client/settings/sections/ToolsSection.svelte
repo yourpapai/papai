@@ -46,6 +46,7 @@
     fetchToolsFn?: (contextId: string) => Promise<ToolsResponse>
     setToolPermissionFn?: (input: SetToolPermissionInput) => Promise<ToolsResponse>
     applyToolPresetFn?: (input: { preset: ToolPreset; contextId: string }) => Promise<ToolsResponse>
+    clearPresetFn?: () => Promise<ToolsResponse>
   }
 
   let {
@@ -56,6 +57,7 @@
     fetchToolsFn = fetchTools,
     setToolPermissionFn = setToolPermission,
     applyToolPresetFn = applyToolPreset,
+    clearPresetFn = undefined,
   }: Props = $props()
 
   let domains: ToolDomainView[] = $state([])
@@ -64,6 +66,7 @@
   let loading = $state(false)
   let activePreset: ToolPreset | null = $state(null)
   let pendingPreset: ToolPreset | null = $state(null)
+  let pendingClear = $state(false)
 
   const riskTone = (risk: ToolRisk): 'mute' | 'info' | 'warn' | 'danger' => {
     if (risk === 'read') return 'mute'
@@ -144,6 +147,19 @@
     }
   }
 
+  async function confirmClear(): Promise<void> {
+    if (clearPresetFn === undefined) return
+    pendingClear = false
+    error = null
+    try {
+      const res = await clearPresetFn()
+      domains = res.domains
+      activePreset = res.activePreset
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    }
+  }
+
   $effect(() => {
     void load(contextId)
   })
@@ -184,6 +200,26 @@
         {#snippet children()}Apply{/snippet}
       </Btn>
       <Btn variant="ghost" size="sm" testid="preset-confirm-cancel" onClick={() => (pendingPreset = null)}>
+        {#snippet children()}Cancel{/snippet}
+      </Btn>
+    </div>
+  {/if}
+
+  {#if clearPresetFn !== undefined && activePreset !== null && !pendingClear}
+    <div class="settings-tools__clear-row">
+      <Btn variant="ghost" size="sm" testid="tool-defaults-clear" onClick={() => (pendingClear = true)}>
+        {#snippet children()}Clear admin defaults{/snippet}
+      </Btn>
+    </div>
+  {/if}
+
+  {#if pendingClear}
+    <div class="settings-tools__confirm" data-testid="tool-defaults-clear-confirm">
+      <span>Clear all admin default tool permissions? Contexts will revert to the allow-all baseline.</span>
+      <Btn variant="danger" size="sm" testid="tool-defaults-clear-confirm-apply" onClick={() => void confirmClear()}>
+        {#snippet children()}Clear{/snippet}
+      </Btn>
+      <Btn variant="ghost" size="sm" testid="tool-defaults-clear-confirm-cancel" onClick={() => (pendingClear = false)}>
         {#snippet children()}Cancel{/snippet}
       </Btn>
     </div>

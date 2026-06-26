@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { applyToolDefaultPreset, fetchToolDefaults, setToolDefault } from '../../admin-fetchers.js'
+  import { applyToolDefaultPreset, fetchToolDefaults, setToolDefault, unsetToolDefaults } from '../../admin-fetchers.js'
   import ToolsSection from '../ToolsSection.svelte'
 </script>
 
@@ -16,4 +16,5 @@
   title="Default tool permissions"
   fetchToolsFn={fetchToolDefaults}
   setToolPermissionFn={setToolDefault}
-  applyToolPresetFn={applyToolDefaultPreset} />
+  applyToolPresetFn={applyToolDefaultPreset}
+  clearPresetFn={unsetToolDefaults} />

@@ -33,18 +33,54 @@ const toolsPayload = {
 
 let capturedUrl: string | undefined
 let capturedBody: unknown = null
+let capturedClearBody: unknown = null
+
+const toolsPayloadWithPreset = {
+  contextId: '__admin_tool_defaults__:pi-1',
+  activePreset: 'read-only',
+  domains: [
+    {
+      domain: 'task',
+      summary: 'allow',
+      tools: [{ name: 'create_task', permission: 'allow', risk: 'write' }],
+    },
+  ],
+}
+
+const clearedToolsPayload = {
+  contextId: '__admin_tool_defaults__:pi-1',
+  activePreset: null,
+  domains: [
+    {
+      domain: 'task',
+      summary: 'allow',
+      tools: [{ name: 'create_task', permission: 'allow', risk: 'write' }],
+    },
+  ],
+}
 
 const captureMock = (url: string, init: RequestInit): Promise<Response> => {
   capturedUrl = url
   if (init.method === 'POST') {
-    capturedBody = typeof init.body === 'string' ? JSON.parse(init.body) : init.body
+    capturedBody = typeof init.body === 'string' ? (JSON.parse(init.body) as unknown) : init.body
   }
   return Promise.resolve(json(toolsPayload))
+}
+
+const captureUnsetMock = (url: string, init: RequestInit): Promise<Response> => {
+  capturedUrl = url
+  if (init.method === 'POST') {
+    capturedBody = typeof init.body === 'string' ? (JSON.parse(init.body) as unknown) : init.body
+    capturedClearBody = capturedBody
+    return Promise.resolve(json(clearedToolsPayload))
+  }
+  return Promise.resolve(json(toolsPayloadWithPreset))
 }
 
 afterEach(() => {
   capturedUrl = undefined
   capturedBody = null
+  capturedClearBody = null
   restoreFetch()
   setCsrfToken('')
 })
@@ -92,6 +128,44 @@ describe('AdminToolDefaultsSection', () => {
     expect(String(capturedUrl)).toContain('/settings/api/admin/tool-defaults')
     expect(JSON.stringify(capturedBody)).toContain('"kind":"preset"')
     expect(JSON.stringify(capturedBody)).toContain('"preset":"read-only"')
+    void unmount(component)
+  })
+
+  test('Clear admin defaults button is visible when activePreset is set', async () => {
+    setMockFetch(() => Promise.resolve(json(toolsPayloadWithPreset)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminToolDefaultsSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="tool-defaults-clear"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('Clear admin defaults button is NOT visible when activePreset is null', async () => {
+    setMockFetch(() => Promise.resolve(json(toolsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminToolDefaultsSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="tool-defaults-clear"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('clicking Clear admin defaults and confirming POSTs kind:unset to admin endpoint', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureUnsetMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminToolDefaultsSection, { target })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-defaults-clear-confirm-apply"]')!.click()
+    await drain()
+
+    expect(String(capturedUrl)).toContain('/settings/api/admin/tool-defaults')
+    expect(capturedClearBody).toEqual({ kind: 'unset' })
     void unmount(component)
   })
 })
