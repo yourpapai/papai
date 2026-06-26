@@ -190,4 +190,52 @@ describe('admin-fetchers', () => {
     expect(seenMethod).toBe('POST')
     expect(seenBody).toEqual({ userId: 'u1', blocked: true })
   })
+
+  test('unsetAdminPluginConfig PATCHes plugin-config with action:unset and CSRF header', async () => {
+    const { unsetAdminPluginConfig } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-uapc')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json({ ok: true, pluginId: 'acp', key: 'magi_token' }))
+    })
+    await unsetAdminPluginConfig({ pluginId: 'acp', key: 'magi_token' })
+    expect(seenUrl).toBe('/settings/api/admin/plugin-config')
+    expect(seenCsrf).toBe('csrf-uapc')
+    expect(seenMethod).toBe('PATCH')
+    expect(seenBody).toEqual({ action: 'unset', pluginId: 'acp', key: 'magi_token' })
+  })
+
+  test('unsetToolDefaults POSTs tool-defaults with kind:unset and CSRF header', async () => {
+    const { unsetToolDefaults } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-utd')
+    const toolsPayload = {
+      contextId: '__admin_tool_defaults__:pi-1',
+      activePreset: null,
+      domains: [],
+    }
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json(toolsPayload))
+    })
+    const result = await unsetToolDefaults()
+    expect(seenUrl).toBe('/settings/api/admin/tool-defaults')
+    expect(seenCsrf).toBe('csrf-utd')
+    expect(seenMethod).toBe('POST')
+    expect(seenBody).toEqual({ kind: 'unset' })
+    expect(result.activePreset).toBeNull()
+  })
 })

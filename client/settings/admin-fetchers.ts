@@ -167,6 +167,9 @@ export const patchAdminPluginConfig = (input: {
 }): Promise<AdminPluginConfigUpdateResult> =>
   writeJson('/settings/api/admin/plugin-config', 'PATCH', input, (b) => SubmitAdminPluginConfigResponseSchema.parse(b))
 
+export const unsetAdminPluginConfig = (input: { pluginId: string; key: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/plugin-config', 'PATCH', { action: 'unset', ...input }, (b) => b)
+
 // --- Admin: feature flags ---
 
 export const fetchAdminFeatureFlags = (): Promise<AdminFeatureFlagsSnapshot> =>
@@ -194,3 +197,6 @@ export const applyToolDefaultPreset = (input: { preset: ToolPreset }): Promise<T
   writeJson('/settings/api/admin/tool-defaults', 'POST', { kind: 'preset', preset: input.preset }, (b) =>
     ToolsResponseSchema.parse(b),
   )
+
+export const unsetToolDefaults = (): Promise<ToolsResponse> =>
+  writeJson('/settings/api/admin/tool-defaults', 'POST', { kind: 'unset' }, (b) => ToolsResponseSchema.parse(b))
