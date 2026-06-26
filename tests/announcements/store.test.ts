@@ -99,4 +99,12 @@ describe('announcement subscription store', () => {
     recordDelivery('9.9.9', 'pi-1:u1', 'dm', 'sent')
     expect(isDelivered('9.9.9', 'pi-1:u1')).toBe(true)
   })
+
+  test('delivery: sent status is not downgraded to failed on conflict', () => {
+    upsertAnnouncementDraft({ version: '9.9.9', rawBody: 'x', humanizedBody: null })
+    recordDelivery('9.9.9', 'pi-1:u1', 'dm', 'sent')
+    expect(isDelivered('9.9.9', 'pi-1:u1')).toBe(true)
+    recordDelivery('9.9.9', 'pi-1:u1', 'dm', 'failed')
+    expect(isDelivered('9.9.9', 'pi-1:u1')).toBe(true)
+  })
 })

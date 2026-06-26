@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm'
 import packageJson from '../package.json' with { type: 'json' }
 import type { AnnouncementsDeps } from '../src/announcements.js'
 import { announceNewVersion } from '../src/announcements.js'
-import { upsertAnnouncementDraft } from '../src/announcements/store.js'
+import { upsertAnnouncementDraft, updateHumanizedBody } from '../src/announcements/store.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import * as schema from '../src/db/schema.js'
 import { versionAnnouncements } from '../src/db/schema.js'
@@ -126,6 +126,7 @@ describe('announceNewVersion', () => {
       },
       humanizeChangelog: (): Promise<string | null> => Promise.resolve(null),
       persistDraft: upsertAnnouncementDraft,
+      updateHumanizedBody: updateHumanizedBody,
       isVersionAnnounced: (version): boolean => {
         const row = getTestDb()
           .select()

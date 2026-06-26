@@ -7,7 +7,10 @@ import { eq } from 'drizzle-orm'
 
 import packageJson from '../package.json' with { type: 'json' }
 import { humanizeChangelog as defaultHumanizeChangelog } from './announcements/humanize.js'
-import { upsertAnnouncementDraft as defaultUpsertDraft } from './announcements/store.js'
+import {
+  upsertAnnouncementDraft as defaultUpsertDraft,
+  updateHumanizedBody as defaultUpdateHumanizedBody,
+} from './announcements/store.js'
 import { readChangelogFile as defaultReadChangelogFile } from './changelog-reader.js'
 import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
@@ -21,6 +24,8 @@ export interface AnnouncementsDeps {
   humanizeChangelog: (rawSection: string) => Promise<string | null>
   // synchronous (SQLite); call site does not await
   persistDraft: (input: { version: string; rawBody: string; humanizedBody: string | null }) => void
+  // synchronous (SQLite)
+  updateHumanizedBody: (version: string, body: string) => void
   isVersionAnnounced: (version: string) => boolean
 }
 
@@ -33,6 +38,7 @@ const defaultAnnouncementsDeps: AnnouncementsDeps = {
   readChangelogFile: defaultReadChangelogFile,
   humanizeChangelog: defaultHumanizeChangelog,
   persistDraft: defaultUpsertDraft,
+  updateHumanizedBody: defaultUpdateHumanizedBody,
   isVersionAnnounced: defaultIsVersionAnnounced,
 }
 
@@ -70,9 +76,12 @@ async function sendAnnouncementToAdmin(
 
 /**
  * Detect a new version, humanize its changelog once, persist the draft, and DM
- * the admin a review notice. Persists BEFORE the (best-effort) admin DM, so the
- * version is deduped even if the DM fails; on failure the admin reviews/broadcasts
- * from Settings → Release notes. Does NOT fan out to subscribers.
+ * the admin a review notice. The dedup anchor (rawBody, humanizedBody: null) is
+ * persisted immediately after the dedup check and BEFORE the LLM humanization
+ * call, so a concurrent process (rolling restart) cannot pass the dedup check
+ * and trigger a duplicate LLM call or duplicate admin DM. On DM failure the
+ * admin reviews/broadcasts from Settings → Release notes. Does NOT fan out to
+ * subscribers.
  */
 export async function announceNewVersion(
   chat: ChatProvider,
@@ -93,8 +102,9 @@ export async function announceNewVersion(
 
   log.info({ version: VERSION }, 'Humanizing changelog and notifying admin')
 
+  deps.persistDraft({ version: VERSION, rawBody: rawSection, humanizedBody: null })
   const humanized = await deps.humanizeChangelog(rawSection)
-  deps.persistDraft({ version: VERSION, rawBody: rawSection, humanizedBody: humanized })
+  if (humanized !== null) deps.updateHumanizedBody(VERSION, humanized)
 
   const draftBody = humanized ?? rawSection
   const message =

@@ -26,6 +26,7 @@ function makeDeps(over: Partial<AnnouncementsDeps>): AnnouncementsDeps {
     readChangelogFile: () => Promise.resolve(`## [${VERSION}]\n\n### Added\n- thing\n\n## [0.0.1]\n- old`),
     humanizeChangelog: () => Promise.resolve('✨ New\n- A friendly thing'),
     persistDraft: () => {},
+    updateHumanizedBody: () => {},
     isVersionAnnounced: () => false,
     ...over,
   }
@@ -35,6 +36,7 @@ describe('announceNewVersion', () => {
   test('humanizes, persists, and DMs the admin a review notice (no fan-out)', async () => {
     const sent: string[] = []
     const persistCalls: Array<{ version: string; rawBody: string; humanizedBody: string | null }> = []
+    const updateHumanizedCalls: Array<{ version: string; body: string }> = []
     await announceNewVersion(
       makeChat(sent),
       'pi-1',
@@ -43,12 +45,18 @@ describe('announceNewVersion', () => {
         persistDraft: (d) => {
           persistCalls.push({ version: d.version, rawBody: d.rawBody, humanizedBody: d.humanizedBody })
         },
+        updateHumanizedBody: (version, body) => {
+          updateHumanizedCalls.push({ version, body })
+        },
       }),
     )
     expect(persistCalls).toHaveLength(1)
     expect(persistCalls[0]?.version).toBe(VERSION)
     expect(persistCalls[0]?.rawBody).toContain('- thing')
-    expect(persistCalls[0]?.humanizedBody).toBe('✨ New\n- A friendly thing')
+    expect(persistCalls[0]?.humanizedBody).toBeNull()
+    expect(updateHumanizedCalls).toHaveLength(1)
+    expect(updateHumanizedCalls[0]?.version).toBe(VERSION)
+    expect(updateHumanizedCalls[0]?.body).toBe('✨ New\n- A friendly thing')
     expect(sent).toHaveLength(1)
     expect(sent[0]).toContain('✨ New')
     expect(sent[0]).toContain('Release notes')
@@ -57,6 +65,7 @@ describe('announceNewVersion', () => {
   test('falls back to raw body in the admin notice when humanization returns null', async () => {
     const sent: string[] = []
     let persistedHumanized: string | null | undefined
+    let updateHumanizedCalled = false
     await announceNewVersion(
       makeChat(sent),
       'pi-1',
@@ -66,15 +75,20 @@ describe('announceNewVersion', () => {
         persistDraft: (d) => {
           persistedHumanized = d.humanizedBody
         },
+        updateHumanizedBody: () => {
+          updateHumanizedCalled = true
+        },
       }),
     )
     expect(persistedHumanized).toBeNull()
+    expect(updateHumanizedCalled).toBe(false)
     expect(sent[0]).toContain('- thing')
   })
 
   test('skips entirely when the version is already announced', async () => {
     const sent: string[] = []
     let persistCalls = 0
+    let updateHumanizedCalls = 0
     await announceNewVersion(
       makeChat(sent),
       'pi-1',
@@ -84,9 +98,13 @@ describe('announceNewVersion', () => {
         persistDraft: () => {
           persistCalls += 1
         },
+        updateHumanizedBody: () => {
+          updateHumanizedCalls += 1
+        },
       }),
     )
     expect(persistCalls).toBe(0)
+    expect(updateHumanizedCalls).toBe(0)
     expect(sent).toHaveLength(0)
   })
 })

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, ne } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { announcementDeliveries, authorizedGroups, users, versionAnnouncements } from '../db/schema.js'
@@ -142,6 +142,7 @@ export function recordDelivery(
     .onConflictDoUpdate({
       target: [announcementDeliveries.version, announcementDeliveries.contextId],
       set: { status, deliveredAt },
+      setWhere: ne(announcementDeliveries.status, 'sent'),
     })
     .run()
   log.info({ version, contextId, status }, 'announcement delivery recorded')

@@ -73,6 +73,9 @@
     error = null
     busy = true
     try {
+      if (body !== (data?.body ?? '') && body !== '') {
+        data = await saveReleaseNotes(body)
+      }
       lastBroadcast = await broadcastReleaseNotes()
       await load()
     } catch (err) {
@@ -122,7 +125,7 @@
     </div>
 
     {#if lastBroadcast !== null}
-      <p class="status-success" data-testid="release-notes-result">
+      <p class={lastBroadcast.broadcast.failed === 0 ? 'status-success' : 'status-error'} data-testid="release-notes-result">
         Sent {lastBroadcast.broadcast.sent}, failed {lastBroadcast.broadcast.failed}, skipped {lastBroadcast.broadcast.skipped}.
       </p>
     {/if}

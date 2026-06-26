@@ -68,6 +68,7 @@ const defaultDeps: BroadcastDeps = {
   now: () => new Date().toISOString(),
 }
 
+// dedup key for announcement_deliveries only; not a canonical scoped context id
 const dmContextKey = (u: SubscribedUser): string => `${u.platformInstanceId}:${u.platformUserId}`
 
 /** Fan out `body` to all opt-in subscribers. Idempotent per recipient; failure-isolated. */
