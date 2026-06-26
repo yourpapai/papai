@@ -5,7 +5,7 @@
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getCodingCredentials } from './store.js'
-import { isProvider, type Provider } from './types.js'
+import { deriveApiBaseUrl, forgeMagiKind, isProvider, type Provider } from './types.js'
 
 export function configContextOf(storageContextId: string): string {
   return getConfigContextIdFromStorageContextId(storageContextId)
@@ -54,4 +54,22 @@ export function resolveForgeToken(storageContextId: string): string | null {
   const creds = getCodingCredentials(configContextOf(storageContextId), 'forge')
   const token = creds?.forge_token?.trim()
   return token === undefined || token.length === 0 ? null : token
+}
+
+/**
+ * Resolve the acting context's typed forge connection (kind + apiBaseUrl).
+ * Legacy token-only vaults (no kind stored) default to github SaaS.
+ * Returns null when no forge vault is stored or when the kind cannot be derived.
+ */
+export function resolveForge(storageContextId: string): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null {
+  const creds = getCodingCredentials(configContextOf(storageContextId), 'forge')
+  if (creds === null) return null
+  const kind = creds.kind?.trim()
+  // Legacy vaults stored before kind was required; default to github SaaS.
+  const uiKind = kind === undefined || kind.length === 0 ? 'github' : kind
+  try {
+    return { kind: forgeMagiKind(uiKind), apiBaseUrl: deriveApiBaseUrl(uiKind, creds.instance_url?.trim()) }
+  } catch {
+    return null
+  }
 }

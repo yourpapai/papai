@@ -113,7 +113,12 @@ function makeStubRuntimeContext(): PluginToolRuntimeContext {
     attachments: {
       read: () => notImplemented(),
     },
-    codingSecrets: { resolve: () => null, resolveForgeToken: () => null, resolveAgent: () => null },
+    codingSecrets: {
+      resolve: () => null,
+      resolveForgeToken: () => null,
+      resolveAgent: () => null,
+      resolveForge: () => null,
+    },
     codingRepos: { list: () => [], get: () => null },
   }
 }

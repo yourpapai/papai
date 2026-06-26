@@ -76,6 +76,32 @@ describe('acp review_pr tool', () => {
     expect(store.get('session:r-1')).toBeDefined()
   })
 
+  test('projectSpec includes forge when resolveForge returns a value', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 'r-forge', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const ctxWithForge = {
+      ...runtimeCtxWithKv(store),
+      codingSecrets: {
+        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+        resolveForgeToken: (): string => 'ghp-test',
+        resolveAgent: (): null => null,
+        resolveForge: (): { kind: 'github'; apiBaseUrl: string } => ({
+          kind: 'github',
+          apiBaseUrl: 'https://api.github.com',
+        }),
+      },
+    }
+    await tools.get('review_pr')!.execute({ project: 'demo', prNumber: 7 }, ctxWithForge, options())
+    expect(capturedBody).toMatchObject({
+      projectSpec: { forge: { kind: 'github', apiBaseUrl: 'https://api.github.com' } },
+    })
+  })
+
   test('unknown project returns not_found without calling httpFetch', async () => {
     const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
     const store = new Map<string, string>()

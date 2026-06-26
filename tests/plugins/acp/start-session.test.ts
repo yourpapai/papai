@@ -103,6 +103,33 @@ describe('acp start_session tool', () => {
     expect(httpFetch).not.toHaveBeenCalled()
   })
 
+  test('projectSpec includes forge when resolveForge returns a value', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 's-forge', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const ctxWithForge = {
+      ...runtimeCtxWithKv(store),
+      codingSecrets: {
+        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+        resolveForgeToken: (): string => 'glpat-test',
+        resolveAgent: (): null => null,
+        resolveForge: (): { kind: 'gitlab'; apiBaseUrl: string } => ({
+          kind: 'gitlab',
+          apiBaseUrl: 'https://gl.corp.com/api/v4',
+        }),
+      },
+    }
+    await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithForge, options())
+    expect(asRecord(asRecord(capturedBody)['projectSpec'])['forge']).toEqual({
+      kind: 'gitlab',
+      apiBaseUrl: 'https://gl.corp.com/api/v4',
+    })
+  })
+
   test('projectSpec.agent reflects the resolved agent from codingSecrets', async () => {
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (_url, init) => {
@@ -118,6 +145,7 @@ describe('acp start_session tool', () => {
         resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
         resolveForgeToken: (): string => 'ghp-test',
         resolveAgent: (): string => 'codex',
+        resolveForge: (): null => null,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithCodex, options())

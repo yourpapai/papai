@@ -63,3 +63,30 @@ test('resolveAgent throws without the coding.secrets permission', () => {
   const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
   expect(() => facade.resolveAgent()).toThrow("does not have 'coding.secrets' permission")
 })
+
+test('resolveForge returns typed forge for a gitlab-self-hosted vault', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'forge',
+    { kind: 'gitlab-self-hosted', instance_url: 'https://gl.corp.com', forge_token: 'glpat-1' },
+    'user-3',
+  )
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveForge()).toEqual({ kind: 'gitlab', apiBaseUrl: 'https://gl.corp.com/api/v4' })
+})
+
+test('resolveForge returns github SaaS defaults for a legacy token-only vault', () => {
+  updateCodingCredentials(STORAGE_CTX, 'forge', { forge_token: 'ghp_legacy' }, 'user-3')
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveForge()).toEqual({ kind: 'github', apiBaseUrl: 'https://api.github.com' })
+})
+
+test('resolveForge returns null when no forge vault stored', () => {
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveForge()).toBeNull()
+})
+
+test('resolveForge throws without the coding.secrets permission', () => {
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
+  expect(() => facade.resolveForge()).toThrow("does not have 'coding.secrets' permission")
+})

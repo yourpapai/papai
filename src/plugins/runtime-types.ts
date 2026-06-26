@@ -48,6 +48,7 @@ export type PluginToolRuntimeContext = {
     resolve(): Record<string, string> | null
     resolveForgeToken(): string | null
     resolveAgent(): string | null
+    resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]

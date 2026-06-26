@@ -9,6 +9,7 @@ import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from 
 import {
   resolveAgent,
   resolveAgentSecrets,
+  resolveForge,
   resolveForgeToken,
 } from '../../src/coding-credentials/resolve-agent-secrets.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
@@ -129,4 +130,28 @@ test('resolveAgent returns the stored agent or null when absent', () => {
 test('resolveAgent returns null when agent field is absent', () => {
   updateCodingCredentials(STORAGE_CTX, 'agent-provider', { provider_api_key: 'sk-1' }, 'user-9')
   expect(resolveAgent(STORAGE_CTX)).toBeNull()
+})
+
+test('resolveForge returns null when no forge vault stored', () => {
+  expect(resolveForge(STORAGE_CTX)).toBeNull()
+})
+
+test('resolveForge returns gitlab kind and derived apiBaseUrl for gitlab-self-hosted vault', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'forge',
+    { kind: 'gitlab-self-hosted', instance_url: 'https://gl.corp.com', forge_token: 'glpat-1' },
+    'user-9',
+  )
+  expect(resolveForge(STORAGE_CTX)).toEqual({ kind: 'gitlab', apiBaseUrl: 'https://gl.corp.com/api/v4' })
+})
+
+test('resolveForge defaults to github SaaS for a legacy token-only vault', () => {
+  updateCodingCredentials(STORAGE_CTX, 'forge', { forge_token: 'ghp_legacy' }, 'user-9')
+  expect(resolveForge(STORAGE_CTX)).toEqual({ kind: 'github', apiBaseUrl: 'https://api.github.com' })
+})
+
+test('resolveForge returns github kind and apiBaseUrl for a typed github vault', () => {
+  updateCodingCredentials(STORAGE_CTX, 'forge', { kind: 'github', forge_token: 'ghp_1' }, 'user-9')
+  expect(resolveForge(STORAGE_CTX)).toEqual({ kind: 'github', apiBaseUrl: 'https://api.github.com' })
 })

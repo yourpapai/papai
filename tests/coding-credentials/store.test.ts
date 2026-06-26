@@ -109,8 +109,8 @@ describe('coding-credentials store', () => {
       { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-1' },
       'u',
     )
-    updateCodingCredentials(CTX, 'forge', { forge_token: 'ghp_xyz' }, 'u')
-    expect(getCodingCredentials(CTX, 'forge')).toEqual({ forge_token: 'ghp_xyz' })
+    updateCodingCredentials(CTX, 'forge', { kind: 'github', forge_token: 'ghp_xyz' }, 'u')
+    expect(getCodingCredentials(CTX, 'forge')).toEqual({ kind: 'github', forge_token: 'ghp_xyz' })
     expect(getCodingCredentials(CTX, 'agent-provider')).toEqual({
       provider: 'anthropic',
       agent: 'claude',

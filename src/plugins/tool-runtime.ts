@@ -7,6 +7,7 @@ import { loadAttachmentRecord } from '../attachments/store.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import {
   resolveAgentSecrets,
+  resolveForge,
   resolveForgeToken,
   resolveAgent,
   configContextOf,
@@ -174,6 +175,10 @@ export function buildCodingSecretsFacade(
     resolveAgent(): string | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
       return resolveAgent(storageContextId)
+    },
+    resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null {
+      if (!hasPermission) deny(pluginId, 'coding.secrets')
+      return resolveForge(storageContextId)
     },
   })
 }

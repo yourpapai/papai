@@ -54,6 +54,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
           message: 'Set up your AI provider key in settings → Coding sessions before starting a session.',
         }
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
+      const forge = runtimeContext.codingSecrets.resolveForge()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
       const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
       const projectSpec = buildProjectSpec(repo, resolvedAgent)
@@ -63,7 +64,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         prompt,
         secrets,
         ...(forgeToken === null ? {} : { forgeToken }),
-        projectSpec,
+        projectSpec: { ...projectSpec, ...(forge === null ? {} : { forge }) },
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
@@ -223,13 +224,14 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
           message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
         }
       const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
+      const forge = runtimeContext.codingSecrets.resolveForge()
       const projectSpec = buildProjectSpec(repo, resolvedAgent)
       const result = await callMagi(httpFetch, cfg, 'POST', '/reviews', {
         prNumber,
         contextId: runtimeContext.storageContextId,
         secrets,
         forgeToken,
-        projectSpec,
+        projectSpec: { ...projectSpec, ...(forge === null ? {} : { forge }) },
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')

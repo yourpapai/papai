@@ -46,6 +46,20 @@ export function needsInstanceUrl(kind: string): boolean {
   return kind === 'github-enterprise' || kind === 'gitlab-self-hosted'
 }
 
+export function forgeMagiKind(kind: string): 'github' | 'gitlab' {
+  return kind.startsWith('gitlab') ? 'gitlab' : 'github'
+}
+
+const stripSlash = (u: string): string => u.replace(/\/+$/u, '')
+
+export function deriveApiBaseUrl(kind: string, instanceUrl: string | undefined): string {
+  if (kind === 'github') return 'https://api.github.com'
+  if (kind === 'gitlab') return 'https://gitlab.com/api/v4'
+  if (kind === 'github-enterprise') return `${stripSlash(instanceUrl ?? '')}/api/v3`
+  if (kind === 'gitlab-self-hosted') return `${stripSlash(instanceUrl ?? '')}/api/v4`
+  throw new Error(`unknown forge kind: ${kind}`)
+}
+
 export type CodingCredentialConfig = Partial<Record<AgentProviderField | ForgeField, string>>
 
 export type CodingCredentialState = {

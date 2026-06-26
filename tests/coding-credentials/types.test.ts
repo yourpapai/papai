@@ -15,6 +15,8 @@ import {
   REQUIRED_AGENT_PROVIDER_FIELDS,
   REQUIRED_BY_NAMESPACE,
   compatible,
+  deriveApiBaseUrl,
+  forgeMagiKind,
 } from '../../src/coding-credentials/types.js'
 
 describe('coding-credentials types', () => {
@@ -63,6 +65,46 @@ describe('coding-credentials types', () => {
       expect(FORGE_KINDS).toContain('github-enterprise')
       expect(FORGE_KINDS).toContain('gitlab')
       expect(FORGE_KINDS).toContain('gitlab-self-hosted')
+    })
+  })
+
+  describe('deriveApiBaseUrl', () => {
+    test('github returns the fixed SaaS API base URL', () => {
+      expect(deriveApiBaseUrl('github', undefined)).toBe('https://api.github.com')
+    })
+
+    test('gitlab returns the fixed SaaS API base URL', () => {
+      expect(deriveApiBaseUrl('gitlab', undefined)).toBe('https://gitlab.com/api/v4')
+    })
+
+    test('github-enterprise appends /api/v3 to the instance URL', () => {
+      expect(deriveApiBaseUrl('github-enterprise', 'https://ghe.corp.com')).toBe('https://ghe.corp.com/api/v3')
+    })
+
+    test('gitlab-self-hosted appends /api/v4 to the instance URL, stripping trailing slash', () => {
+      expect(deriveApiBaseUrl('gitlab-self-hosted', 'https://gitlab.corp.com/')).toBe('https://gitlab.corp.com/api/v4')
+    })
+
+    test('unknown kind throws', () => {
+      expect(() => deriveApiBaseUrl('bitbucket', undefined)).toThrow('unknown forge kind: bitbucket')
+    })
+  })
+
+  describe('forgeMagiKind', () => {
+    test('github maps to github', () => {
+      expect(forgeMagiKind('github')).toBe('github')
+    })
+
+    test('github-enterprise maps to github', () => {
+      expect(forgeMagiKind('github-enterprise')).toBe('github')
+    })
+
+    test('gitlab maps to gitlab', () => {
+      expect(forgeMagiKind('gitlab')).toBe('gitlab')
+    })
+
+    test('gitlab-self-hosted maps to gitlab', () => {
+      expect(forgeMagiKind('gitlab-self-hosted')).toBe('gitlab')
     })
   })
 
