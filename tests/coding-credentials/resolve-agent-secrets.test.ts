@@ -25,18 +25,44 @@ test('returns null when no api key configured', () => {
   expect(resolveAgentSecrets(STORAGE_CTX)).toBeNull()
 })
 
-test('maps the stored key to ANTHROPIC_API_KEY', () => {
+test('maps the stored key to ANTHROPIC_API_KEY when provider is anthropic', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-ant-1' },
+    'user-9',
+  )
+  expect(resolveAgentSecrets(STORAGE_CTX)).toEqual({
+    ANTHROPIC_API_KEY: 'sk-ant-1',
+  })
+})
+
+test('maps the stored key to OPENAI_API_KEY when provider is openai', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { provider: 'openai', agent: 'codex', provider_api_key: 'sk-o' },
+    'user-9',
+  )
+  expect(resolveAgentSecrets(STORAGE_CTX)).toEqual({
+    OPENAI_API_KEY: 'sk-o',
+  })
+})
+
+test('defaults to anthropic env when provider field absent', () => {
   updateCodingCredentials(STORAGE_CTX, 'agent-provider', { provider_api_key: 'sk-ant-1' }, 'user-9')
   expect(resolveAgentSecrets(STORAGE_CTX)).toEqual({
     ANTHROPIC_API_KEY: 'sk-ant-1',
   })
 })
 
-test('includes ANTHROPIC_BASE_URL when set', () => {
+test('includes ANTHROPIC_BASE_URL when set for anthropic provider', () => {
   updateCodingCredentials(
     STORAGE_CTX,
     'agent-provider',
     {
+      provider: 'anthropic',
+      agent: 'claude',
       provider_api_key: 'sk-ant-1',
       provider_base_url: 'https://proxy.example',
     },
@@ -48,6 +74,24 @@ test('includes ANTHROPIC_BASE_URL when set', () => {
   })
 })
 
+test('includes OPENAI_BASE_URL when set for openai provider', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    {
+      provider: 'openai',
+      agent: 'codex',
+      provider_api_key: 'sk-o',
+      provider_base_url: 'https://openai-proxy.example',
+    },
+    'user-9',
+  )
+  expect(resolveAgentSecrets(STORAGE_CTX)).toEqual({
+    OPENAI_API_KEY: 'sk-o',
+    OPENAI_BASE_URL: 'https://openai-proxy.example',
+  })
+})
+
 test('reads credentials at config-context when called with a thread-scoped storage context id', () => {
   const threadContextId = toScopedThreadContextId({
     platformInstanceId: 'pi-test',
@@ -55,7 +99,12 @@ test('reads credentials at config-context when called with a thread-scoped stora
     threadId: 'thread-7',
   })
   const configContextId = getConfigContextIdFromStorageContextId(threadContextId)
-  updateCodingCredentials(configContextId, 'agent-provider', { provider_api_key: 'sk-ant-thread' }, 'user-9')
+  updateCodingCredentials(
+    configContextId,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-ant-thread' },
+    'user-9',
+  )
   expect(resolveAgentSecrets(threadContextId)).toEqual({
     ANTHROPIC_API_KEY: 'sk-ant-thread',
   })

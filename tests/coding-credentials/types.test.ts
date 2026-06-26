@@ -7,10 +7,13 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   AGENT_PROVIDER_FIELDS,
+  AGENTS,
   CODING_NAMESPACES,
   FIELDS_BY_NAMESPACE,
+  PROVIDERS,
   REQUIRED_AGENT_PROVIDER_FIELDS,
   REQUIRED_BY_NAMESPACE,
+  compatible,
 } from '../../src/coding-credentials/types.js'
 
 describe('coding-credentials types', () => {
@@ -23,8 +26,26 @@ describe('coding-credentials types', () => {
     expect(AGENT_PROVIDER_FIELDS).toContain('provider_base_url')
   })
 
-  test('REQUIRED_AGENT_PROVIDER_FIELDS contains only provider_api_key', () => {
-    expect(REQUIRED_AGENT_PROVIDER_FIELDS).toEqual(['provider_api_key'])
+  test('REQUIRED_AGENT_PROVIDER_FIELDS contains provider, agent, and provider_api_key', () => {
+    expect(REQUIRED_AGENT_PROVIDER_FIELDS).toContain('provider')
+    expect(REQUIRED_AGENT_PROVIDER_FIELDS).toContain('agent')
+    expect(REQUIRED_AGENT_PROVIDER_FIELDS).toContain('provider_api_key')
+  })
+
+  test('AGENT_PROVIDER_FIELDS contains provider and agent', () => {
+    expect(AGENT_PROVIDER_FIELDS).toContain('provider')
+    expect(AGENT_PROVIDER_FIELDS).toContain('agent')
+  })
+
+  test('PROVIDERS contains anthropic and openai', () => {
+    expect(PROVIDERS).toContain('anthropic')
+    expect(PROVIDERS).toContain('openai')
+  })
+
+  test('AGENTS contains claude, codex, and opencode', () => {
+    expect(AGENTS).toContain('claude')
+    expect(AGENTS).toContain('codex')
+    expect(AGENTS).toContain('opencode')
   })
 
   test('FIELDS_BY_NAMESPACE maps agent-provider to all fields', () => {
@@ -33,5 +54,27 @@ describe('coding-credentials types', () => {
 
   test('REQUIRED_BY_NAMESPACE maps agent-provider to required fields', () => {
     expect(REQUIRED_BY_NAMESPACE['agent-provider']).toEqual(REQUIRED_AGENT_PROVIDER_FIELDS)
+  })
+
+  describe('compatible', () => {
+    test('claude is compatible only with anthropic', () => {
+      expect(compatible('claude', 'anthropic')).toBe(true)
+      expect(compatible('claude', 'openai')).toBe(false)
+    })
+
+    test('codex is compatible only with openai', () => {
+      expect(compatible('codex', 'openai')).toBe(true)
+      expect(compatible('codex', 'anthropic')).toBe(false)
+    })
+
+    test('opencode is compatible with both providers', () => {
+      expect(compatible('opencode', 'anthropic')).toBe(true)
+      expect(compatible('opencode', 'openai')).toBe(true)
+    })
+
+    test('unknown agent/provider returns false', () => {
+      expect(compatible('bogus', 'anthropic')).toBe(false)
+      expect(compatible('claude', 'bogus')).toBe(false)
+    })
   })
 })

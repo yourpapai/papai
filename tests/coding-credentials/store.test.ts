@@ -45,23 +45,39 @@ describe('coding-credentials store', () => {
     const state = getCodingCredentialState(CTX, NS)
     expect(state.configured).toBe(false)
     expect(state.complete).toBe(false)
-    expect(state.missing).toEqual(['provider_api_key'])
+    expect(state.missing).toContain('provider_api_key')
+    expect(state.missing).toContain('provider')
+    expect(state.missing).toContain('agent')
     expect(getCodingCredentials(CTX, NS)).toBeNull()
   })
 
-  test('round-trips an encrypted api key and reports complete', () => {
-    updateCodingCredentials(CTX, NS, { provider_api_key: 'sk-ant-xyz' }, 'user-1')
+  test('round-trips an encrypted api key with provider and agent, reports complete', () => {
+    updateCodingCredentials(
+      CTX,
+      NS,
+      { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-ant-xyz' },
+      'user-1',
+    )
     const state = getCodingCredentialState(CTX, NS)
     expect(state.configured).toBe(true)
     expect(state.complete).toBe(true)
     expect(state.missing).toEqual([])
-    expect(getCodingCredentials(CTX, NS)).toEqual({ provider_api_key: 'sk-ant-xyz' })
+    expect(getCodingCredentials(CTX, NS)).toEqual({
+      provider: 'anthropic',
+      agent: 'claude',
+      provider_api_key: 'sk-ant-xyz',
+    })
   })
 
   test('merges fields and clears with empty string', () => {
-    updateCodingCredentials(CTX, NS, { provider_api_key: 'sk-1', provider_base_url: 'https://p.example' }, 'user-1')
+    updateCodingCredentials(
+      CTX,
+      NS,
+      { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-1', provider_base_url: 'https://p.example' },
+      'user-1',
+    )
     updateCodingCredentials(CTX, NS, { provider_base_url: '' }, 'user-1')
-    expect(getCodingCredentials(CTX, NS)).toEqual({ provider_api_key: 'sk-1' })
+    expect(getCodingCredentials(CTX, NS)).toEqual({ provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-1' })
   })
 
   test('clear removes the row', () => {
@@ -87,10 +103,19 @@ describe('coding-credentials store', () => {
   })
 
   test('forge namespace round-trips independently of agent-provider', () => {
-    updateCodingCredentials(CTX, 'agent-provider', { provider_api_key: 'sk-1' }, 'u')
+    updateCodingCredentials(
+      CTX,
+      'agent-provider',
+      { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-1' },
+      'u',
+    )
     updateCodingCredentials(CTX, 'forge', { forge_token: 'ghp_xyz' }, 'u')
     expect(getCodingCredentials(CTX, 'forge')).toEqual({ forge_token: 'ghp_xyz' })
-    expect(getCodingCredentials(CTX, 'agent-provider')).toEqual({ provider_api_key: 'sk-1' })
+    expect(getCodingCredentials(CTX, 'agent-provider')).toEqual({
+      provider: 'anthropic',
+      agent: 'claude',
+      provider_api_key: 'sk-1',
+    })
     expect(getCodingCredentialState(CTX, 'forge').complete).toBe(true)
   })
 })

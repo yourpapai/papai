@@ -12,16 +12,39 @@ import {
   updateCodingCredentials,
 } from '../../coding-credentials/store.js'
 import type { CodingCredentialConfig } from '../../coding-credentials/types.js'
-import { CODING_NAMESPACES, type CodingNamespace } from '../../coding-credentials/types.js'
+import {
+  AGENTS,
+  CODING_NAMESPACES,
+  PROVIDERS,
+  compatible,
+  isAgent,
+  type CodingNamespace,
+} from '../../coding-credentials/types.js'
 import { maskSensitiveValue } from '../../config.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
-type FieldMeta = { key: string; label: string; required: boolean; sensitive: boolean }
+type FieldMeta = {
+  key: string
+  label: string
+  required: boolean
+  sensitive: boolean
+  control?: 'select'
+  options?: readonly string[]
+}
 
 const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
   'agent-provider': [
-    { key: 'provider_api_key', label: 'Anthropic API Key', required: true, sensitive: true },
-    { key: 'provider_base_url', label: 'Anthropic Base URL (optional)', required: false, sensitive: false },
+    { key: 'agent', label: 'Coding agent', required: true, sensitive: false, control: 'select', options: AGENTS },
+    {
+      key: 'provider',
+      label: 'Model provider',
+      required: true,
+      sensitive: false,
+      control: 'select',
+      options: PROVIDERS,
+    },
+    { key: 'provider_api_key', label: 'API key', required: true, sensitive: true },
+    { key: 'provider_base_url', label: 'Base URL (optional)', required: false, sensitive: false },
   ],
   forge: [{ key: 'forge_token', label: 'Code-host token', required: true, sensitive: true }],
 }
@@ -52,7 +75,17 @@ const fieldResponse = (contextId: string, namespace: CodingNamespace): unknown =
   const fieldList = fields.map((field) => {
     const raw = (config as Record<string, string | undefined>)[field.key] ?? ''
     const hasValue = raw.length > 0
-    return { ...field, hasValue, value: hasValue && field.sensitive ? maskSensitiveValue(raw) : raw }
+    const entry: Record<string, unknown> = {
+      key: field.key,
+      label: field.label,
+      required: field.required,
+      sensitive: field.sensitive,
+      hasValue,
+      value: hasValue && field.sensitive ? maskSensitiveValue(raw) : raw,
+    }
+    if (field.control !== undefined) entry['control'] = field.control
+    if (field.options !== undefined) entry['options'] = field.options
+    return entry
   })
   return { namespace, ...state, fields: fieldList }
 }
@@ -76,6 +109,25 @@ const valuesToPersist = (
       return keepExistingSensitive ? [] : [[key, value]]
     }),
   ) as CodingCredentialConfig
+}
+
+const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig): Response | null => {
+  const existing = getCodingCredentials(contextId, 'agent-provider') ?? {}
+  const merged = { ...existing, ...toPersist }
+  const agentRaw = merged.agent?.trim()
+  const providerRaw = merged.provider?.trim()
+  if (
+    agentRaw !== undefined &&
+    agentRaw.length > 0 &&
+    providerRaw !== undefined &&
+    providerRaw.length > 0 &&
+    isAgent(agentRaw)
+  ) {
+    if (!compatible(agentRaw, providerRaw)) {
+      return settingsJson(422, { error: 'incompatible agent/provider' })
+    }
+  }
+  return null
 }
 
 export async function handleCodingCredentialsRoutes(req: Request, url: URL): Promise<Response> {
@@ -109,12 +161,14 @@ export async function handleCodingCredentialsRoutes(req: Request, url: URL): Pro
       return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
     }
 
-    updateCodingCredentials(
-      scope.scope.contextId,
-      namespace,
-      valuesToPersist(scope.scope.contextId, namespace, body.data.values),
-      auth.authed.principal.platformUserId,
-    )
+    const toPersist = valuesToPersist(scope.scope.contextId, namespace, body.data.values)
+
+    if (namespace === 'agent-provider') {
+      const incompatibleErr = checkCompatibility(scope.scope.contextId, toPersist)
+      if (incompatibleErr !== null) return incompatibleErr
+    }
+
+    updateCodingCredentials(scope.scope.contextId, namespace, toPersist, auth.authed.principal.platformUserId)
     return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
   }
 
