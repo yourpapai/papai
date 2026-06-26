@@ -238,4 +238,68 @@ describe('admin-fetchers', () => {
     expect(seenBody).toEqual({ kind: 'unset' })
     expect(result.activePreset).toBeNull()
   })
+
+  const releaseNotesPayload = {
+    version: '1.2.3',
+    body: 'Changes here',
+    broadcastAt: null,
+    counts: { dm: 5, group: 2 },
+  }
+
+  test('fetchReleaseNotes GETs and parses release notes', async () => {
+    const { fetchReleaseNotes } = await import('../../../client/settings/admin-fetchers.js')
+    let seenUrl = ''
+    let seenMethod = ''
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenMethod = methodOf(init)
+      return Promise.resolve(json(releaseNotesPayload))
+    })
+    const result = await fetchReleaseNotes()
+    expect(seenUrl).toBe('/settings/api/admin/release-notes')
+    expect(seenMethod).toBe('GET')
+    expect(result.version).toBe('1.2.3')
+    expect(result.counts.dm).toBe(5)
+  })
+
+  test('saveReleaseNotes POSTs action:save with body and CSRF header', async () => {
+    const { saveReleaseNotes } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-srn')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json(releaseNotesPayload))
+    })
+    const result = await saveReleaseNotes('New release notes text')
+    expect(seenUrl).toBe('/settings/api/admin/release-notes')
+    expect(seenCsrf).toBe('csrf-srn')
+    expect(seenMethod).toBe('POST')
+    expect(seenBody).toEqual({ action: 'save', body: 'New release notes text' })
+    expect(result.version).toBe('1.2.3')
+  })
+
+  test('broadcastReleaseNotes POSTs action:broadcast and returns parsed result', async () => {
+    const { broadcastReleaseNotes } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-brn')
+    const broadcastPayload = {
+      version: '1.2.3',
+      broadcast: { sent: 7, failed: 0, skipped: 1 },
+      counts: { dm: 5, group: 2 },
+    }
+    let seenBody: unknown
+    setMockFetch((_url, init) => {
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json(broadcastPayload))
+    })
+    const result = await broadcastReleaseNotes()
+    expect(seenBody).toEqual({ action: 'broadcast' })
+    expect(result.broadcast.sent).toBe(7)
+    expect(result.broadcast.skipped).toBe(1)
+  })
 })

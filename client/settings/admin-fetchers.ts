@@ -16,6 +16,12 @@ import {
 } from '../admin/plugin-config-fetcher-schemas.js'
 import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import {
+  ReleaseBroadcastResultSchema,
+  ReleaseNotesResponseSchema,
+  type ReleaseBroadcastResult,
+  type ReleaseNotesResponse,
+} from './fetcher-schemas-release.js'
 import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
 import {
   AddAdminUserResponseSchema,
@@ -200,3 +206,23 @@ export const applyToolDefaultPreset = (input: { preset: ToolPreset }): Promise<T
 
 export const unsetToolDefaults = (): Promise<ToolsResponse> =>
   writeJson('/settings/api/admin/tool-defaults', 'POST', { kind: 'unset' }, (b) => ToolsResponseSchema.parse(b))
+
+// --- Admin: release notes ---
+
+export const fetchReleaseNotes = (): Promise<ReleaseNotesResponse> =>
+  getJson('/settings/api/admin/release-notes', (b) => ReleaseNotesResponseSchema.parse(b))
+
+export const regenerateReleaseNotes = (): Promise<ReleaseNotesResponse> =>
+  writeJson('/settings/api/admin/release-notes', 'POST', { action: 'regenerate' }, (b) =>
+    ReleaseNotesResponseSchema.parse(b),
+  )
+
+export const saveReleaseNotes = (body: string): Promise<ReleaseNotesResponse> =>
+  writeJson('/settings/api/admin/release-notes', 'POST', { action: 'save', body }, (b) =>
+    ReleaseNotesResponseSchema.parse(b),
+  )
+
+export const broadcastReleaseNotes = (): Promise<ReleaseBroadcastResult> =>
+  writeJson('/settings/api/admin/release-notes', 'POST', { action: 'broadcast' }, (b) =>
+    ReleaseBroadcastResultSchema.parse(b),
+  )
