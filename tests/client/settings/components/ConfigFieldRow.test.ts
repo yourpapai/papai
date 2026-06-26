@@ -430,4 +430,30 @@ describe('ConfigFieldRow', () => {
     expect(saved).toBe(true)
     void unmount(component)
   })
+
+  test('Clear confirm for a required field warns about ineligibility', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'token',
+        storageKey: 'plugin:task-provider-youtrack:provider:token',
+        label: 'YouTrack Token',
+        required: true,
+        sensitive: false,
+        kind: 'provider-context',
+        hasValue: true,
+        value: 'tok',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-clear-token"]')!.click()
+    await drain()
+    const modal = target.querySelector('.modal')
+    expect(modal).not.toBeNull()
+    expect(modal!.textContent).toContain('ineligible')
+    void unmount(component)
+  })
 })

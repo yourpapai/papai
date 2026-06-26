@@ -162,7 +162,7 @@
   confirmLabel="Clear"
   onCancel={() => (pendingClear = false)}
   onConfirm={() => { pendingClear = false; void clearField() }}>
-  {#snippet body()}<p>Clear the stored value for <strong>{field.label}</strong>? The field will revert to its default.</p>{/snippet}
+  {#snippet body()}<p>Clear the stored value for <strong>{field.label}</strong>?{field.required ? ' This field is required — clearing it will make the plugin ineligible for this context.' : ' The field will revert to its default.'}</p>{/snippet}
 </Confirm>
 
 <style>
