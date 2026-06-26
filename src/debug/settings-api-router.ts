@@ -13,6 +13,7 @@ import { handleAdminSystemAccessRoutes } from './settings/admin/system-access-ro
 import { handleAdminToolDefaultsRoutes } from './settings/admin/tool-defaults-routes.js'
 import { handleByokRoutes } from './settings/byok-routes.js'
 import { handleCodingCredentialsRoutes } from './settings/coding-credentials-routes.js'
+import { handleCodingReposRoutes } from './settings/coding-repos-routes.js'
 import { handleConfigRoutes } from './settings/config-routes.js'
 import { handleContextTaskInstanceRoutes } from './settings/context-task-instance-routes.js'
 import { handleGroupRoutes } from './settings/group-routes.js'
@@ -68,6 +69,7 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   }
   if (url.pathname === '/settings/api/byok') return handleByokRoutes(req, url)
   if (url.pathname === '/settings/api/coding-credentials') return handleCodingCredentialsRoutes(req, url)
+  if (url.pathname === '/settings/api/coding-repos') return handleCodingReposRoutes(req, url)
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
   if (url.pathname === '/settings/api/context/task-instance') return handleContextTaskInstanceRoutes(req, url)
   if (url.pathname === '/settings/api/tools' || url.pathname === '/settings/api/tools/toggle') {
