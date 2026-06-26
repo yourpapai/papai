@@ -16,7 +16,9 @@ export const versionAnnouncements = sqliteTable('version_announcements', {
 export const announcementDeliveries = sqliteTable(
   'announcement_deliveries',
   {
-    version: text('version').notNull(),
+    version: text('version')
+      .notNull()
+      .references(() => versionAnnouncements.version),
     contextId: text('context_id').notNull(),
     contextType: text('context_type').notNull(),
     status: text('status').notNull(),
