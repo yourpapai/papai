@@ -37,7 +37,7 @@ const REQUIRED_GLOBAL_KEYS = ['llm_apikey', 'llm_baseurl', 'main_model'] as cons
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-const resolveGlobalConfig = (): EffectiveLlmConfigResult => {
+export const resolveGlobalConfig = (): EffectiveLlmConfigResult => {
   const missing = REQUIRED_GLOBAL_KEYS.filter((key) => getSystemConfig(key) === null)
   if (missing.length > 0) return { ok: false, type: 'missing', source: 'global', missing }
 
