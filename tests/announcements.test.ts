@@ -3,47 +3,24 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { Database } from 'bun:sqlite'
 import { describe, expect, test, beforeEach } from 'bun:test'
 
-import { drizzle } from 'drizzle-orm/bun-sqlite'
+import { eq } from 'drizzle-orm'
 
 import packageJson from '../package.json' with { type: 'json' }
 import type { AnnouncementsDeps } from '../src/announcements.js'
 import { announceNewVersion } from '../src/announcements.js'
+import { upsertAnnouncementDraft } from '../src/announcements/store.js'
 import type { ChatProvider } from '../src/chat/types.js'
-import { runMigrations } from '../src/db/migrate.js'
-import { migration001Initial } from '../src/db/migrations/001_initial.js'
-import { migration002ConversationHistory } from '../src/db/migrations/002_conversation_history.js'
-import { migration003MultiuserSupport } from '../src/db/migrations/003_multiuser_support.js'
-import { migration004KaneoWorkspace } from '../src/db/migrations/004_kaneo_workspace.js'
-import { migration005RenameConfigKeys } from '../src/db/migrations/005_rename_config_keys.js'
-import { migration006VersionAnnouncements } from '../src/db/migrations/006_version_announcements.js'
-import { migration007PlatformUserId } from '../src/db/migrations/007_platform_user_id.js'
-import { migration040PlatformInstances } from '../src/db/migrations/040_platform_instances.js'
-import { migration041UsersPlatformInstanceIndex } from '../src/db/migrations/041_users_platform_instance_index.js'
-import { migration058OpenDmAccess } from '../src/db/migrations/058_open_dm_access.js'
 import * as schema from '../src/db/schema.js'
+import { versionAnnouncements } from '../src/db/schema.js'
 import { extractChangelogSection } from './helpers/extract-changelog-section.js'
-import { createMockChat, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
+import { createMockChat, getTestDb, mockLogger, seedTestPlatformInstance, setupTestDb } from './utils/test-helpers.js'
 
 const ADMIN_USER_ID = 'admin123'
 const PLATFORM_INSTANCE_ID = 'telegram-default'
 
 type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unknown }
-
-const MIGRATIONS = [
-  migration001Initial,
-  migration002ConversationHistory,
-  migration003MultiuserSupport,
-  migration004KaneoWorkspace,
-  migration005RenameConfigKeys,
-  migration006VersionAnnouncements,
-  migration007PlatformUserId,
-  migration040PlatformInstances,
-  migration041UsersPlatformInstanceIndex,
-  migration058OpenDmAccess,
-] as const
 
 const VERSION: string = packageJson.version
 
@@ -116,10 +93,6 @@ describe('extractChangelogSection', () => {
 // ---------------------------------------------------------------------------
 
 describe('announceNewVersion', () => {
-  // --- Test database setup with Drizzle ---
-  let testDb: ReturnType<typeof drizzle<typeof schema>>
-  let testSqlite: Database
-
   // --- Mock ChatProvider for testing ---
   let sentMessages: Array<{ platformInstanceId: string; userId: string; text: string }>
   let sendMessageImpl: (platformInstanceId: string, userId: string, text: string) => Promise<void>
@@ -130,7 +103,7 @@ describe('announceNewVersion', () => {
   let changelogProvider: (() => Promise<string>) | null
   let announcementDeps: AnnouncementsDeps
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset mutable state to defaults
     sentMessages = []
     sendMessageImpl = (platformInstanceId: string, userId: string, text: string): Promise<void> => {
@@ -142,6 +115,8 @@ describe('announceNewVersion', () => {
     // Register mocks
     mockLogger()
 
+    await setupTestDb()
+
     announcementDeps = {
       readChangelogFile: (): Promise<string> => {
         if (changelogProvider === null) {
@@ -149,16 +124,23 @@ describe('announceNewVersion', () => {
         }
         return changelogProvider()
       },
+      humanizeChangelog: (): Promise<string | null> => Promise.resolve(null),
+      persistDraft: upsertAnnouncementDraft,
+      isVersionAnnounced: (version): boolean => {
+        const row = getTestDb()
+          .select()
+          .from(versionAnnouncements)
+          .where(eq(versionAnnouncements.version, version))
+          .get()
+        return row !== undefined
+      },
     }
 
-    // Setup test database
-    testSqlite = new Database(':memory:')
-    testDb = drizzle(testSqlite, { schema })
-    setTestDrizzleDb(testDb)
-    runMigrations(testSqlite, MIGRATIONS)
+    // Seed platform instance before inserting the user (foreign key)
+    seedTestPlatformInstance({ id: PLATFORM_INSTANCE_ID })
 
     // Add admin user to the database
-    testDb
+    getTestDb()
       .insert(schema.users)
       .values({ platformUserId: ADMIN_USER_ID, platformInstanceId: PLATFORM_INSTANCE_ID, addedBy: ADMIN_USER_ID })
       .run()
@@ -171,8 +153,8 @@ describe('announceNewVersion', () => {
 
   test('sends announcement only to admin user', async () => {
     // Insert test users with kaneo_apikey config
-    testDb.insert(schema.userConfig).values({ userId: '101', key: 'kaneo_apikey', value: 'key1' }).run()
-    testDb.insert(schema.userConfig).values({ userId: '102', key: 'kaneo_apikey', value: 'key2' }).run()
+    getTestDb().insert(schema.userConfig).values({ userId: '101', key: 'kaneo_apikey', value: 'key1' }).run()
+    getTestDb().insert(schema.userConfig).values({ userId: '102', key: 'kaneo_apikey', value: 'key2' }).run()
 
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
@@ -191,7 +173,7 @@ describe('announceNewVersion', () => {
     await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
     await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
-    // Only one message should be sent (to admin) on first call
+    // Only one message should be sent (to admin) on first call; second call is skipped
     expect(sentMessages).toHaveLength(1)
     expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
   })
@@ -238,47 +220,41 @@ describe('announceNewVersion', () => {
 
     await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
-    // No messages sent due to failure
+    // No messages sent due to failure; draft is still persisted for retry via settings UI
     expect(sentMessages).toHaveLength(0)
   })
 
-  test('retries announcement after send failure', async () => {
-    const sendResponses: Array<(platformInstanceId: string, userId: string, text: string) => Promise<void>> = [
-      () => Promise.reject(new Error('API error')),
-      (platformInstanceId, userId, text) => {
-        sentMessages.push({ platformInstanceId, userId, text })
-        return Promise.resolve()
-      },
-    ]
-    sendMessageImpl = (platformInstanceId, userId, text): Promise<void> =>
-      sendResponses.shift()!(platformInstanceId, userId, text)
+  test('does not retry after send failure once draft is persisted', async () => {
+    let callCount = 0
+    sendMessageImpl = (_platformInstanceId: string, _userId: string, _text: string): Promise<void> => {
+      callCount++
+      return Promise.reject(new Error('API error'))
+    }
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
+    // First call: send fails, but draft is persisted
     await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    // Second call: version already in DB (draft persisted), so skipped entirely
     await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
-    expect(sentMessages).toHaveLength(1)
-    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
+    expect(callCount).toBe(1)
+    expect(sentMessages).toHaveLength(0)
   })
 
-  test('retries announcement when router instance is unknown', async () => {
+  test('skips when router instance is unknown', async () => {
     const routerChat = { ...mockChat, getInstance: (_id: string): unknown => undefined } as RouterLikeChatProvider
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
+    // First call: draft persisted, but getInstance returns undefined so send is skipped
     await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
     expect(sentMessages).toHaveLength(0)
 
-    mockChat = createMockChat({
-      sendMessage: (platformInstanceId, target, text): Promise<void> =>
-        sendMessageImpl(platformInstanceId, target.contextId, text),
-    })
+    // Second call: version already in DB, skipped
     await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
-
-    expect(sentMessages).toHaveLength(1)
-    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
+    expect(sentMessages).toHaveLength(0)
   })
 
-  test('retries announcement when routed send is refused', async () => {
+  test('skips second attempt when routed send is refused', async () => {
     let attempts = 0
     const routerChat = {
       ...mockChat,
@@ -290,10 +266,12 @@ describe('announceNewVersion', () => {
     } as RouterLikeChatProvider
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
+    // First call: draft persisted, send refused (returns false)
     await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    // Second call: version already in DB, skipped — no second send attempt
     await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
-    expect(attempts).toBe(2)
+    expect(attempts).toBe(1)
     expect(sentMessages).toHaveLength(0)
   })
 })

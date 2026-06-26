@@ -6,6 +6,8 @@
 import { eq } from 'drizzle-orm'
 
 import packageJson from '../package.json' with { type: 'json' }
+import { humanizeChangelog as defaultHumanizeChangelog } from './announcements/humanize.js'
+import { upsertAnnouncementDraft as defaultUpsertDraft } from './announcements/store.js'
 import { readChangelogFile as defaultReadChangelogFile } from './changelog-reader.js'
 import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
@@ -16,10 +18,21 @@ import { extractChangelogSection } from './utils/changelog.js'
 
 export interface AnnouncementsDeps {
   readChangelogFile: () => Promise<string>
+  humanizeChangelog: (rawSection: string) => Promise<string | null>
+  persistDraft: (input: { version: string; rawBody: string; humanizedBody: string | null }) => void
+  isVersionAnnounced: (version: string) => boolean
+}
+
+function defaultIsVersionAnnounced(version: string): boolean {
+  const row = getDrizzleDb().select().from(versionAnnouncements).where(eq(versionAnnouncements.version, version)).get()
+  return row !== undefined
 }
 
 const defaultAnnouncementsDeps: AnnouncementsDeps = {
   readChangelogFile: defaultReadChangelogFile,
+  humanizeChangelog: (raw) => defaultHumanizeChangelog(raw),
+  persistDraft: defaultUpsertDraft,
+  isVersionAnnounced: defaultIsVersionAnnounced,
 }
 
 const log = logger.child({ scope: 'announcements' })
@@ -29,22 +42,6 @@ type RouterInstanceLookup = { getInstance: (id: string) => unknown }
 
 const hasRouterInstanceLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceLookup =>
   typeof Reflect.get(chat, 'getInstance') === 'function'
-
-function isVersionAnnounced(version: string): boolean {
-  const row = getDrizzleDb().select().from(versionAnnouncements).where(eq(versionAnnouncements.version, version)).get()
-  return row !== undefined
-}
-
-function markVersionAnnounced(version: string): boolean {
-  try {
-    getDrizzleDb().insert(versionAnnouncements).values({ version, announcedAt: new Date().toISOString() }).run()
-    log.info({ version }, 'Version marked as announced')
-    return true
-  } catch {
-    // Unique constraint violation - version already announced
-    return false
-  }
-}
 
 async function sendAnnouncementToAdmin(
   platformInstanceId: string,
@@ -59,12 +56,12 @@ async function sendAnnouncementToAdmin(
     }
     const result = await chat.sendMessage(platformInstanceId, dmTarget(adminUserId), markdown)
     if (result === false) return false
-    log.debug({ version: VERSION }, 'Announcement sent to admin')
+    log.debug({ version: VERSION }, 'Announcement review notice sent to admin')
     return true
   } catch (error) {
     log.warn(
       { version: VERSION, error: error instanceof Error ? error.message : String(error) },
-      'Failed to send announcement to admin',
+      'Failed to send announcement review notice to admin',
     )
     return false
   }
@@ -78,22 +75,27 @@ export async function announceNewVersion(
 ): Promise<void> {
   log.debug({ version: VERSION }, 'Checking if version announcement is needed')
 
-  const effectiveDeps = args.length === 0 ? defaultAnnouncementsDeps : args[0]
-  const changelogSection = await loadChangelogSection(effectiveDeps)
-  if (changelogSection === null) return
+  const deps = args.length === 0 ? defaultAnnouncementsDeps : args[0]
+  const rawSection = await loadChangelogSection(deps)
+  if (rawSection === null) return
 
-  if (isVersionAnnounced(VERSION)) {
+  if (deps.isVersionAnnounced(VERSION)) {
     log.debug({ version: VERSION }, 'Version already announced, skipping')
     return
   }
 
-  log.info({ version: VERSION }, 'Sending version announcement to admin')
+  log.info({ version: VERSION }, 'Humanizing changelog and notifying admin')
 
-  const message = `🆕 papai v${VERSION} has been released!\n\n${changelogSection}`
+  const humanized = await deps.humanizeChangelog(rawSection)
+  deps.persistDraft({ version: VERSION, rawBody: rawSection, humanizedBody: humanized })
+
+  const draftBody = humanized ?? rawSection
+  const message =
+    `🆕 papai v${VERSION} is ready to announce!\n\n${draftBody}\n\n` +
+    `_Review and broadcast to subscribers in Settings → Release notes._`
   const success = await sendAnnouncementToAdmin(platformInstanceId, adminUserId, message, chat)
-  if (success) markVersionAnnounced(VERSION)
 
-  log.info({ version: VERSION, success }, 'Version announcement complete')
+  log.info({ version: VERSION, success, humanized: humanized !== null }, 'Version announcement notice complete')
 }
 
 async function loadChangelogSection(deps: AnnouncementsDeps): Promise<string | null> {
