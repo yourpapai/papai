@@ -7,7 +7,6 @@ import { z } from 'zod'
 
 import type { GlobalStats, StatsWindow, SubjectStats } from '../../src/stats/types.js'
 import type {
-  AuthorizedGroupEntry,
   BillingDetail,
   BillingSubject,
   BillingWindow,
@@ -18,7 +17,6 @@ import type {
 } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
-  AuthorizedGroupEntrySchema,
   BillingDetailResponseSchema,
   BillingSubjectsResponseSchema,
   DeferredPromptSchema,
@@ -123,17 +121,4 @@ export const fetchRecentRequests = async (
   const body = await readBody(res)
   const parsed = RecentRequestsResponseSchema.safeParse(body)
   return parsed.success ? parsed.data.requests : []
-}
-
-export const fetchAdminGroups = async (): Promise<AuthorizedGroupEntry[]> => {
-  const res = await fetch('/auth/groups')
-  const body = await readBody(res)
-  requireOk(res, body)
-  return z.array(AuthorizedGroupEntrySchema).parse(body) as AuthorizedGroupEntry[]
-}
-
-export const revokeAdminGroup = async (groupId: string): Promise<void> => {
-  const res = await fetch(`/auth/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' })
-  const body = await readBody(res)
-  requireOk(res, body)
 }

@@ -431,12 +431,10 @@ describe('debug-server', () => {
     await cancelBody(res)
   })
 
-  test('GET /auth/groups returns JSON array', async () => {
+  test('GET /auth/groups returns 404 (route removed)', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/auth/groups`, { headers: authHeaders() })
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toBe('application/json')
-    const entries = assertArray(JSON.parse(await res.text()))
-    expect(entries).toBeArray()
+    expect(res.status).toBe(404)
+    await cancelBody(res)
   })
 
   test('POST /api/platform-instances without session cookie returns 401', async () => {

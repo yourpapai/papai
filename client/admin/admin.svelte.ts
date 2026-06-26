@@ -13,7 +13,6 @@ export const adminSections = [
   { id: 'memos', label: 'Memos' },
   { id: 'reminders', label: 'Reminders' },
   { id: 'identities', label: 'Identities' },
-  { id: 'groups', label: 'Groups' },
   { id: 'instances', label: 'Instances' },
 ] as const
 

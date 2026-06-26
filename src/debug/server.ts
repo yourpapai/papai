@@ -5,7 +5,6 @@
 
 import path from 'node:path'
 
-import { removeAuthorizedGroup } from '../authorized-groups.js'
 import { handleMattermostActionRequest, isMattermostActionPath } from '../chat/mattermost/action-callbacks.js'
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listAllIdentityMappings } from '../identity/mapping.js'
@@ -18,13 +17,7 @@ import { logBuffer, logBufferStream } from './log-buffer.js'
 import { redactLogEntry } from './log-redaction.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
-import {
-  handleAuthGroups,
-  handleDeferred,
-  handleIdentity,
-  handleMemos,
-  handleRecurring,
-} from './server-route-support.js'
+import { handleDeferred, handleIdentity, handleMemos, handleRecurring } from './server-route-support.js'
 import { isSettingsPath, routeSettingsPaths } from './settings-router.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
@@ -173,12 +166,6 @@ function routeProtectedPaths(req: Request, url: URL): Response | Promise<Respons
   if (url.pathname === '/deferred') return handleDeferred(url)
   if (url.pathname === '/memos') return handleMemos(url)
   if (url.pathname === '/identity') return handleIdentity(url)
-  if (url.pathname === '/auth/groups') return handleAuthGroups()
-  if (url.pathname.startsWith('/auth/groups/')) {
-    const groupId = decodeURIComponent(url.pathname.slice('/auth/groups/'.length))
-    if (req.method === 'DELETE') return jsonResponse({ removed: removeAuthorizedGroup(groupId) })
-    return new Response('Method not allowed', { status: 405 })
-  }
   if (url.pathname === '/mcp/status') {
     if (req.method === 'GET') return handleMcpStatus()
     return new Response('Method not allowed', { status: 405 })

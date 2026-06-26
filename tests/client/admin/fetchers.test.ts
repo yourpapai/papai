@@ -14,7 +14,6 @@ import {
   deletePlatformInstance,
   deleteTaskInstance,
   fetchAdmins,
-  fetchAdminGroups,
   fetchAdminIdentity,
   fetchAdminIdentityMappings,
   fetchDeferredPrompts,
@@ -336,24 +335,6 @@ describe('fetchRecentRequests', () => {
     installFetch(200, { unexpected: 'shape' })
     const result = await fetchRecentRequests('user-A')
     expect(result).toHaveLength(0)
-  })
-})
-
-describe('fetchAdminGroups', () => {
-  test('GETs /auth/groups', async () => {
-    installFetch(200, [{ group_id: 'group-1', added_by: 'admin', added_at: '2026-05-21T00:00:00.000Z' }])
-
-    const result = await fetchAdminGroups()
-    const firstGroup = expectDefined(result[0], 'missing group')
-
-    expect(firstCaptured().url).toBe('/auth/groups')
-    expect(firstGroup.group_id).toBe('group-1')
-  })
-
-  test('rejects malformed group payloads', async () => {
-    installFetch(200, [{ group_id: 'group-1' }])
-
-    await expect(fetchAdminGroups()).rejects.toThrow()
   })
 })
 

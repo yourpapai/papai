@@ -13,7 +13,6 @@
   import AdminTopBar from './components/AdminTopBar.svelte'
   import { useScrollSpy } from './scrollspy.js'
   import BillingSection from './sections/BillingSection.svelte'
-  import GroupsSection from './sections/GroupsSection.svelte'
   import IdentitiesSection from './sections/IdentitiesSection.svelte'
   import InstancesSection from './sections/InstancesSection.svelte'
   import MemosSection from './sections/MemosSection.svelte'
@@ -21,7 +20,7 @@
   import RemindersSection from './sections/RemindersSection.svelte'
   import StatsSection from './sections/StatsSection.svelte'
 
-  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances']
+  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'instances']
 
   onMount(() => {
     void refreshAll()
@@ -55,7 +54,6 @@
         <MemosSection />
         <RemindersSection />
         <IdentitiesSection />
-        <GroupsSection />
         <InstancesSection />
       </main>
     </div>

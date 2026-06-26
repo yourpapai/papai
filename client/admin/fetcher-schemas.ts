@@ -244,12 +244,6 @@ export const IdentityMappingEntrySchema = z.object({
   confidence: z.number().nullable(),
 })
 
-export const AuthorizedGroupEntrySchema = z.object({
-  group_id: z.string(),
-  added_by: z.string(),
-  added_at: z.string(),
-})
-
 export const RecentRequestRowSchema = z.object({
   ts: z.number(),
   modelLabel: z.string(),

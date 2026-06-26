@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { listAuthorizedGroups } from '../authorized-groups.js'
 import { listScheduledPrompts } from '../deferred-prompts/scheduled.js'
 import { getIdentityMapping } from '../identity/mapping.js'
 import { listMemos } from '../memos.js'
@@ -57,8 +56,4 @@ export function handleIdentity(url: URL): Response {
     return new Response('Not found', { status: 404 })
   }
   return jsonResponse(mapping)
-}
-
-export function handleAuthGroups(): Response {
-  return jsonResponse(listAuthorizedGroups())
 }

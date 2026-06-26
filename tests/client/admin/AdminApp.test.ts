@@ -10,7 +10,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import AdminApp from '../../../client/admin/AdminApp.svelte'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
-const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances'] as const
+const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'instances'] as const
 
 function mountAdminApp(): ReturnType<typeof mount> {
   document.body.innerHTML = '<div id="root"></div>'
@@ -39,7 +39,7 @@ afterEach(() => {
 })
 
 describe('AdminApp.svelte', () => {
-  test('renders all eight section anchor ids', async () => {
+  test('renders all seven section anchor ids', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
@@ -51,13 +51,13 @@ describe('AdminApp.svelte', () => {
     void unmount(component)
   })
 
-  test('renders eight navigation items', async () => {
+  test('renders seven navigation items', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
 
     const navLinks = Array.from(document.querySelectorAll('.admin-sidebar__link'))
-    expect(navLinks).toHaveLength(8)
+    expect(navLinks).toHaveLength(7)
 
     void unmount(component)
   })
