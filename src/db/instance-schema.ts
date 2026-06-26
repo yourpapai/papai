@@ -31,9 +31,7 @@ export const contextSettings = sqliteTable(
   'context_settings',
   {
     contextId: text('context_id').primaryKey(),
-    taskInstanceId: text('task_instance_id')
-      .notNull()
-      .references(() => taskInstances.id, { onDelete: 'cascade' }),
+    taskInstanceId: text('task_instance_id').references(() => taskInstances.id, { onDelete: 'cascade' }),
     platformInstanceId: text('platform_instance_id')
       .notNull()
       .references(() => platformInstances.id, { onDelete: 'cascade' }),

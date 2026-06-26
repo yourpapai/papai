@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import {
+  ensureContextPlatformInstance,
   getContextSettings,
   listContextsByPlatformInstance,
   listContextsByTaskInstance,
@@ -91,6 +92,35 @@ describe('context-store', () => {
 
   test('get returns null for unknown context', () => {
     expect(getContextSettings('missing')).toBeNull()
+  })
+
+  test('ensureContextPlatformInstance seeds a platform-only row with null task instance', () => {
+    ensureContextPlatformInstance('u1', 'tg-default')
+    expect(getContextSettings('u1')).toEqual({
+      contextId: 'u1',
+      taskInstanceId: null,
+      platformInstanceId: 'tg-default',
+    })
+  })
+
+  test('ensureContextPlatformInstance is idempotent', () => {
+    ensureContextPlatformInstance('u1', 'tg-default')
+    ensureContextPlatformInstance('u1', 'tg-default')
+    expect(getContextSettings('u1')).toEqual({
+      contextId: 'u1',
+      taskInstanceId: null,
+      platformInstanceId: 'tg-default',
+    })
+  })
+
+  test('ensureContextPlatformInstance does not clobber an existing task assignment', () => {
+    setContextSettings({ contextId: 'u1', taskInstanceId: 'kaneo-default', platformInstanceId: 'tg-default' })
+    ensureContextPlatformInstance('u1', 'tg-default')
+    expect(getContextSettings('u1')).toEqual({
+      contextId: 'u1',
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'tg-default',
+    })
   })
 
   test('listContextsByTaskInstance returns matching contexts only', () => {

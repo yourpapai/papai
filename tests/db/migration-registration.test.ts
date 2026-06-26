@@ -23,8 +23,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('061_coding_session_credentials is the last migration', () => {
+  test('062_nullable_context_task_instance is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('061_coding_session_credentials')
+    expect(lastMigration.id).toBe('062_nullable_context_task_instance')
   })
 })

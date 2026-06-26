@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { setConfigValue } from '../../src/config.js'
-import { setContextSettings } from '../../src/instances/context-store.js'
+import { ensureContextPlatformInstance, setContextSettings } from '../../src/instances/context-store.js'
 import { deleteTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import {
   validateTaskInstanceConfigResult,
@@ -115,6 +115,14 @@ describe('TaskProviderResolver', () => {
     const resolver = makeResolver()
 
     expect(await resolver.resolve('ctx-missing')).toBeNull()
+    expect(created).toEqual([])
+  })
+
+  test('returns null when the context row has a null task instance (seeded, pre-/config)', async () => {
+    ensureContextPlatformInstance('ctx-1', 'telegram-default')
+    const resolver = makeResolver()
+
+    expect(await resolver.resolve('ctx-1')).toBeNull()
     expect(created).toEqual([])
   })
 

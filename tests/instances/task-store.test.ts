@@ -83,6 +83,10 @@ describe('task-store', () => {
     expect(getTaskInstance('nope')).toBeNull()
   })
 
+  test('get returns null for a null id (unassigned context)', () => {
+    expect(getTaskInstance(null)).toBeNull()
+  })
+
   test('insert + get round-trips a contributed provider type', () => {
     insertTaskInstance({
       id: 'demo-1',

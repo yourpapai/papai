@@ -69,7 +69,8 @@ export const insertTaskInstance = (input: InsertTaskInstanceInput): void => {
   log.info({ id: input.id, type: input.type, status: input.status }, 'task instance inserted')
 }
 
-export const getTaskInstance = (id: string): TaskInstance | null => {
+export const getTaskInstance = (id: string | null): TaskInstance | null => {
+  if (id === null) return null
   const row = getDrizzleDb().select().from(taskInstances).where(eq(taskInstances.id, id)).get()
   return row === undefined ? null : rowToInstance(row)
 }

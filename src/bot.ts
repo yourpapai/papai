@@ -18,6 +18,8 @@ import { supportsFileReplies } from './chat/capabilities.js'
 import { userManagesAuthorizedGroupLive } from './chat/group-admin-live.js'
 import { routeInteraction } from './chat/interaction-router.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
+import { willQueueAuthorizedMessage } from './chat/queue-policy.js'
+import { maybeSeedContextAssignment } from './chat/seed-context-assignment.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
@@ -172,6 +174,7 @@ async function handleMessage(
     return
   }
   if (shouldIgnoreGroupMessage(msg)) return
+  maybeSeedContextAssignment(auth, msg.platformInstanceId)
   const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
   const steerText = buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId)
@@ -203,12 +206,6 @@ async function handleMessage(
     reply,
     (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),
   )
-}
-function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationResult): boolean {
-  if (!auth.allowed) return false
-  if (msg.contextType !== 'group') return true
-  if (msg.commandMatch !== undefined) return true
-  return msg.isMentioned || msg.isReplyToBot === true
 }
 function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, storageContextId: string): void {
   if (msg.contextType !== 'group' || msg.fileCandidates === undefined || msg.fileCandidates.length === 0) return

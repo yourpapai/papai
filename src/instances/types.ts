@@ -39,7 +39,8 @@ export type InstanceDecodeResult<T> = Readonly<{
 
 export interface ContextSettings {
   contextId: string
-  taskInstanceId: string
+  /** Null when the context has a platform assignment but no task provider yet (e.g. seeded on first message, pre-`/config`). */
+  taskInstanceId: string | null
   platformInstanceId: string
 }
 

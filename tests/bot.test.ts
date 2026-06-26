@@ -37,7 +37,7 @@ import { listManageableGroups } from '../src/group-settings/access.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../src/group-settings/registry.js'
 import { addGroupMember } from '../src/groups.js'
 import { addAdmin } from '../src/instances/admin-store.js'
-import { setContextSettings } from '../src/instances/context-store.js'
+import { getContextSettings, setContextSettings } from '../src/instances/context-store.js'
 import { setOpenDmAccess } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
@@ -581,6 +581,43 @@ describe('Bot Authorization Gate (setupBot)', () => {
       const { reply, textCalls } = createMockReply()
       await messageHandler!({ ...createDmMessage('unknown-user'), text: 'hello' }, reply)
       expect(textCalls).toHaveLength(0)
+    })
+  })
+
+  describe('seeds context_settings on first authorized message', () => {
+    test('seeds a platform-only row (null task instance) at the config context', async () => {
+      // Authorized but never went through /config — no context_settings row yet.
+      addUser('seed-user', ADMIN_ID)
+      const messageHandler = getMessageHandler()
+      const { reply } = createMockReply()
+      await messageHandler!({ ...createDmMessage('seed-user'), text: 'hello' }, reply)
+
+      const settings = getContextSettings(scopedDm('seed-user'))
+      expect(settings).not.toBeNull()
+      expect(settings?.taskInstanceId).toBeNull()
+      expect(settings?.platformInstanceId).toBe('test-instance')
+    })
+
+    test('does not clobber an existing task assignment', async () => {
+      addUser('seed-user', ADMIN_ID)
+      const configContextId = scopedDm('seed-user')
+      insertTaskInstance({
+        id: 'bot-kaneo',
+        type: 'kaneo',
+        config: { baseUrl: 'https://kaneo.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: configContextId,
+        taskInstanceId: 'bot-kaneo',
+        platformInstanceId: 'test-instance',
+      })
+      const messageHandler = getMessageHandler()
+      const { reply } = createMockReply()
+
+      await messageHandler!({ ...createDmMessage('seed-user'), text: 'hello' }, reply)
+
+      expect(getContextSettings(configContextId)?.taskInstanceId).toBe('bot-kaneo')
     })
   })
 

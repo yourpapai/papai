@@ -6,7 +6,7 @@
 import { getStorageContextId } from '../deferred-prompts/proactive-llm-helpers.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { logger } from '../logger.js'
-import { getConfigContextIdFromStorageContextId } from './scoped-context.js'
+import { getConfigContextIdFromStorageContextId, parseScopedContextId } from './scoped-context.js'
 import type { DeferredDeliveryTarget } from './types.js'
 
 const log = logger.child({ scope: 'chat:delivery-routing' })
@@ -24,12 +24,15 @@ export function resolveDeliveryPlatformInstanceId(target: DeferredDeliveryTarget
   const storageContextId = getStorageContextId(target)
   const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
   const settings = getDeliveryContextSettings(configContextId, storageContextId)
-  if (settings === null) {
-    log.warn(
-      { contextId: target.contextId, contextType: target.contextType, storageContextId, configContextId },
-      'Cannot route proactive chat delivery: context has no platform instance assignment',
-    )
-    return null
-  }
-  return settings.platformInstanceId
+  if (settings !== null) return settings.platformInstanceId
+  // New users who only ever chatted never get a context_settings row (those are
+  // written solely by the settings UI / legacy repair). The platform instance is
+  // still encoded in the scoped storage context id, so recover it from there.
+  const scoped = parseScopedContextId(storageContextId)
+  if (scoped !== null) return scoped.platformInstanceId
+  log.warn(
+    { contextId: target.contextId, contextType: target.contextType, storageContextId, configContextId },
+    'Cannot route proactive chat delivery: context has no platform instance assignment',
+  )
+  return null
 }

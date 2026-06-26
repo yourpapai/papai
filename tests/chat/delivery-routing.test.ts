@@ -90,7 +90,40 @@ describe('resolveDeliveryPlatformInstanceId', () => {
     expect(resolveDeliveryPlatformInstanceId(target)).toBe('telegram-secondary')
   })
 
-  test('returns null when the delivery context has no assignment', () => {
+  test('falls back to the scoped storage context platform instance when no context_settings row exists', () => {
+    const scopedContextId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '255434093',
+    })
+    const target = {
+      ...dmTarget('255434093'),
+      storageContextId: scopedContextId,
+    } as const satisfies DeferredDeliveryTarget
+
+    expect(resolveDeliveryPlatformInstanceId(target)).toBe('telegram-default')
+  })
+
+  test('falls back to the main scoped platform instance for a threaded group with no context_settings row', () => {
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const target = {
+      contextId: '-1001',
+      storageContextId: scopedThreadContextId,
+      contextType: 'group',
+      threadId: '42',
+      audience: 'shared',
+      mentionUserIds: [],
+      createdByUserId: 'user-1',
+      createdByUsername: null,
+    } as const satisfies DeferredDeliveryTarget
+
+    expect(resolveDeliveryPlatformInstanceId(target)).toBe('mattermost-default')
+  })
+
+  test('returns null when the delivery context has no assignment and is not scoped', () => {
     expect(resolveDeliveryPlatformInstanceId(dmTarget('missing-user'))).toBeNull()
   })
 })

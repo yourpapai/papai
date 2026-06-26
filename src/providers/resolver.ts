@@ -132,6 +132,10 @@ export class TaskProviderResolver {
       log.warn({ contextId }, 'Cannot resolve task provider: context has no task assignment')
       return null
     }
+    if (settings.taskInstanceId === null) {
+      log.warn({ contextId }, 'Cannot resolve task provider: context has no task assignment')
+      return null
+    }
 
     const instance = this.deps.getTaskInstance(settings.taskInstanceId)
     if (instance === null) {

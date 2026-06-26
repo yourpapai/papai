@@ -44,6 +44,18 @@ export const setContextSettings = (input: ContextSettings): void => {
   )
 }
 
+// Seeds a platform-only assignment (task instance left null) the first time a context
+// is seen, so new users are visible in admin/settings surfaces before they run /config.
+// ON CONFLICT DO NOTHING never clobbers an existing row (incl. a real task assignment),
+// and a null task instance does not change tool/provider resolution, so no cache invalidation.
+export const ensureContextPlatformInstance = (contextId: string, platformInstanceId: string): void => {
+  getDrizzleDb()
+    .insert(contextSettings)
+    .values({ contextId, taskInstanceId: null, platformInstanceId })
+    .onConflictDoNothing({ target: contextSettings.contextId })
+    .run()
+}
+
 export const getContextSettings = (contextId: string): ContextSettings | null => {
   const row = getDrizzleDb().select().from(contextSettings).where(eq(contextSettings.contextId, contextId)).get()
   return row === undefined ? null : rowToSettings(row)

@@ -20,7 +20,7 @@ export type MemberOutcome = 'created' | 'exists' | 'skipped' | 'failed'
 
 export interface MembershipDeps {
   resolveProvider(configId: string): Promise<TaskProvider | null>
-  getContextSettings(contextId: string): { taskInstanceId: string; platformInstanceId: string } | null
+  getContextSettings(contextId: string): { taskInstanceId: string | null; platformInstanceId: string } | null
   /** Resolves a display label for a user. Returns null when the chat router cannot resolve it (best-effort). */
   resolveUserLabel(userId: string, groupContextId: string, platformInstanceId: string): Promise<string | null>
   /** Decrypt an encrypted password value. Defaults to `decryptInstanceConfig`. Overridable for tests. */
