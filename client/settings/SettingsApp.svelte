@@ -28,6 +28,7 @@
   import GroupProviderSection from './sections/GroupProviderSection.svelte'
   import GuestModeSection from './sections/GuestModeSection.svelte'
   import KaneoAccessSection from './sections/KaneoAccessSection.svelte'
+  import ReleaseSubscriptionSection from './sections/ReleaseSubscriptionSection.svelte'
   import AdminInstancesSection from './sections/admin/AdminInstancesSection.svelte'
   import AdminSystemSection from './sections/admin/AdminSystemSection.svelte'
   import AdminByokSection from './sections/admin/AdminByokSection.svelte'
@@ -191,10 +192,12 @@
             <ProfileSection contextId={ctx} />
             <TaskProviderSection contextId={ctx} />
             <ToolsSection contextId={ctx} />
+            <ReleaseSubscriptionSection scope="personal" contextId={ctx} />
             {#if isGroup}
               <MembersSection contextId={ctx} />
               <GroupProviderSection contextId={ctx} />
               <GuestModeSection contextId={ctx} />
+              <ReleaseSubscriptionSection scope="group" contextId={ctx} />
               <KaneoAccessSection contextId={ctx} />
             {/if}
           </div>
