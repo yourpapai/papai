@@ -48,7 +48,7 @@ const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
       options: PROVIDERS,
     },
     { key: 'provider_api_key', label: 'API key', required: true, sensitive: true },
-    { key: 'provider_base_url', label: 'Base URL (optional)', required: false, sensitive: false },
+    { key: 'provider_base_url', label: 'Base URL', required: false, sensitive: false },
   ],
   forge: [
     { key: 'kind', label: 'Code host', required: true, sensitive: false, control: 'select', options: FORGE_KINDS },

@@ -22,7 +22,7 @@ import {
   startSessionSchema,
 } from './schemas.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { buildProjectSpec, sessionIdOf } from './tools.js'
+import { buildSessionProjectSpec, sessionIdOf } from './tools.js'
 
 const DEFAULT_AGENT = 'claude-code-acp'
 const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
@@ -54,22 +54,16 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
           message: 'Set up your AI provider key in settings → Coding sessions before starting a session.',
         }
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
-      const forge = runtimeContext.codingSecrets.resolveForge()
-      const providerHost = runtimeContext.codingSecrets.resolveProviderHost()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
       const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
-      const projectSpec = buildProjectSpec(repo, resolvedAgent)
+      const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets)
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         agent,
         contextId: runtimeContext.storageContextId,
         prompt,
         secrets,
         ...(forgeToken === null ? {} : { forgeToken }),
-        projectSpec: {
-          ...projectSpec,
-          ...(forge === null ? {} : { forge }),
-          ...(providerHost === null ? {} : { providerHost }),
-        },
+        projectSpec,
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
@@ -229,19 +223,13 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
           message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
         }
       const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
-      const forge = runtimeContext.codingSecrets.resolveForge()
-      const providerHost = runtimeContext.codingSecrets.resolveProviderHost()
-      const projectSpec = buildProjectSpec(repo, resolvedAgent)
+      const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets)
       const result = await callMagi(httpFetch, cfg, 'POST', '/reviews', {
         prNumber,
         contextId: runtimeContext.storageContextId,
         secrets,
         forgeToken,
-        projectSpec: {
-          ...projectSpec,
-          ...(forge === null ? {} : { forge }),
-          ...(providerHost === null ? {} : { providerHost }),
-        },
+        projectSpec,
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')

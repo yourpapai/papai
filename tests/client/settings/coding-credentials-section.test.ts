@@ -35,7 +35,7 @@ const configuredPayload = {
     },
     {
       key: 'provider_base_url',
-      label: 'Anthropic Base URL (optional)',
+      label: 'Anthropic Base URL',
       required: false,
       sensitive: false,
       hasValue: false,
@@ -60,7 +60,7 @@ const unconfiguredPayload = {
     },
     {
       key: 'provider_base_url',
-      label: 'Anthropic Base URL (optional)',
+      label: 'Anthropic Base URL',
       required: false,
       sensitive: false,
       hasValue: false,
@@ -105,7 +105,7 @@ const withSelectsPayload = {
     },
     {
       key: 'provider_base_url',
-      label: 'Base URL (optional)',
+      label: 'Base URL',
       required: false,
       sensitive: false,
       hasValue: false,

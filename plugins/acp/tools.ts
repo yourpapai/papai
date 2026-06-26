@@ -61,6 +61,21 @@ export function buildProjectSpec(
   }
 }
 
+export function buildSessionProjectSpec(
+  repo: RepoEntry,
+  agent: string,
+  codingSecrets: RuntimeContext['codingSecrets'],
+): Record<string, unknown> {
+  const base = buildProjectSpec(repo, agent)
+  const forge = codingSecrets.resolveForge()
+  const providerHost = codingSecrets.resolveProviderHost()
+  return {
+    ...base,
+    ...(forge === null ? {} : { forge }),
+    ...(providerHost === null ? {} : { providerHost }),
+  }
+}
+
 export function getTool(name: string, description: string, path: string, httpFetch: HttpFetch | undefined): Tool {
   return {
     name,
