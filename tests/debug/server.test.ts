@@ -398,6 +398,15 @@ describe('debug-server', () => {
     expect(body).toContain('userId')
   })
 
+  test('non-GET /admin/subjects/:id/recent-requests returns 405', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/admin/subjects/test-subject/recent-requests`, {
+      method: 'POST',
+      headers: authHeaders(),
+    })
+    expect(res.status).toBe(405)
+    await cancelBody(res)
+  })
+
   test('GET /memos returns JSON array for valid userId', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/memos?userId=test-user`, { headers: authHeaders() })
     expect(res.status).toBe(200)

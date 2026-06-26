@@ -140,7 +140,8 @@ const handleAdminIdentityMappings = (): Response => jsonResponse(listAllIdentity
 
 function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> | null {
   if (url.pathname.startsWith('/admin/subjects/') && url.pathname.endsWith('/recent-requests')) {
-    return handleAdminRecentRequests(url)
+    if (req.method === 'GET') return handleAdminRecentRequests(url)
+    return new Response('Method not allowed', { status: 405 })
   }
   if (url.pathname === '/admin/identity/mappings') {
     if (req.method === 'GET') return handleAdminIdentityMappings()
