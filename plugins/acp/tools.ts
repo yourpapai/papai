@@ -23,6 +23,7 @@ export type RuntimeContext = {
     resolveForgeToken(): string | null
     resolveAgent(): string | null
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
+    resolveProviderHost(): string | null
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]

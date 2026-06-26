@@ -60,6 +60,21 @@ export function deriveApiBaseUrl(kind: string, instanceUrl: string | undefined):
   throw new Error(`unknown forge kind: ${kind}`)
 }
 
+export function deriveProviderHost(provider: string, baseUrl: string | undefined): string | null {
+  const base = baseUrl?.trim()
+  if (base !== undefined && base.length > 0) {
+    try {
+      return new URL(base).host
+    } catch {
+      return null
+    }
+  }
+  if (provider === 'anthropic') return 'api.anthropic.com'
+  if (provider === 'openai') return 'api.openai.com'
+  // openai-compatible without a base URL — host cannot be determined
+  return null
+}
+
 export type CodingCredentialConfig = Partial<Record<AgentProviderField | ForgeField, string>>
 
 export type CodingCredentialState = {

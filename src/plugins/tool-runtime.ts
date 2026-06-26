@@ -10,6 +10,7 @@ import {
   resolveForge,
   resolveForgeToken,
   resolveAgent,
+  resolveProviderHost,
   configContextOf,
 } from '../coding-credentials/resolve-agent-secrets.js'
 import { getRepoByName, listRepos } from '../coding-repos/store.js'
@@ -179,6 +180,10 @@ export function buildCodingSecretsFacade(
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
       return resolveForge(storageContextId)
+    },
+    resolveProviderHost(): string | null {
+      if (!hasPermission) deny(pluginId, 'coding.secrets')
+      return resolveProviderHost(storageContextId)
     },
   })
 }

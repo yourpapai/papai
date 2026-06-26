@@ -5,7 +5,7 @@
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getCodingCredentials } from './store.js'
-import { deriveApiBaseUrl, forgeMagiKind, isProvider, type Provider } from './types.js'
+import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'
 
 export function configContextOf(storageContextId: string): string {
   return getConfigContextIdFromStorageContextId(storageContextId)
@@ -55,6 +55,20 @@ export function resolveForgeToken(storageContextId: string): string | null {
   const creds = getCodingCredentials(configContextOf(storageContextId), 'forge')
   const token = creds?.forge_token?.trim()
   return token === undefined || token.length === 0 ? null : token
+}
+
+/**
+ * Resolve the acting context's provider host from the agent-provider vault.
+ * Returns the base URL host when a custom base URL is set; otherwise the well-known
+ * host for the provider (anthropic → api.anthropic.com, openai → api.openai.com).
+ * Returns null when no vault is stored or when the host cannot be determined
+ * (e.g. openai-compatible without a base URL, or a malformed base URL).
+ */
+export function resolveProviderHost(storageContextId: string): string | null {
+  const creds = getCodingCredentials(configContextOf(storageContextId), 'agent-provider')
+  if (creds === null) return null
+  const provider = creds.provider?.trim() ?? 'anthropic'
+  return deriveProviderHost(provider, creds.provider_base_url)
 }
 
 /**

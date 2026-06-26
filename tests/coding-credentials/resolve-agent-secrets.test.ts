@@ -11,6 +11,7 @@ import {
   resolveAgentSecrets,
   resolveForge,
   resolveForgeToken,
+  resolveProviderHost,
 } from '../../src/coding-credentials/resolve-agent-secrets.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -154,4 +155,68 @@ test('resolveForge defaults to github SaaS for a legacy token-only vault', () =>
 test('resolveForge returns github kind and apiBaseUrl for a typed github vault', () => {
   updateCodingCredentials(STORAGE_CTX, 'forge', { kind: 'github', forge_token: 'ghp_1' }, 'user-9')
   expect(resolveForge(STORAGE_CTX)).toEqual({ kind: 'github', apiBaseUrl: 'https://api.github.com' })
+})
+
+test('resolveProviderHost returns null when no credentials stored', () => {
+  expect(resolveProviderHost(STORAGE_CTX)).toBeNull()
+})
+
+test('resolveProviderHost returns api.anthropic.com for anthropic provider', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-ant-1' },
+    'user-9',
+  )
+  expect(resolveProviderHost(STORAGE_CTX)).toBe('api.anthropic.com')
+})
+
+test('resolveProviderHost returns api.openai.com for openai provider', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { provider: 'openai', agent: 'codex', provider_api_key: 'sk-o' },
+    'user-9',
+  )
+  expect(resolveProviderHost(STORAGE_CTX)).toBe('api.openai.com')
+})
+
+test('resolveProviderHost returns the host from provider_base_url when set', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    {
+      provider: 'openai-compatible',
+      agent: 'opencode',
+      provider_api_key: 'sk-c',
+      provider_base_url: 'https://llm.corp.com/v1',
+    },
+    'user-9',
+  )
+  expect(resolveProviderHost(STORAGE_CTX)).toBe('llm.corp.com')
+})
+
+test('resolveProviderHost returns host from base URL even for anthropic with a custom base', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    {
+      provider: 'anthropic',
+      agent: 'claude',
+      provider_api_key: 'sk-ant-1',
+      provider_base_url: 'https://proxy.example/v1',
+    },
+    'user-9',
+  )
+  expect(resolveProviderHost(STORAGE_CTX)).toBe('proxy.example')
+})
+
+test('resolveProviderHost returns null for openai-compatible without a base URL', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { provider: 'openai-compatible', agent: 'opencode', provider_api_key: 'sk-c' },
+    'user-9',
+  )
+  expect(resolveProviderHost(STORAGE_CTX)).toBeNull()
 })

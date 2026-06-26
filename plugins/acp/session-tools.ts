@@ -55,6 +55,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         }
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
       const forge = runtimeContext.codingSecrets.resolveForge()
+      const providerHost = runtimeContext.codingSecrets.resolveProviderHost()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
       const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
       const projectSpec = buildProjectSpec(repo, resolvedAgent)
@@ -64,7 +65,11 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         prompt,
         secrets,
         ...(forgeToken === null ? {} : { forgeToken }),
-        projectSpec: { ...projectSpec, ...(forge === null ? {} : { forge }) },
+        projectSpec: {
+          ...projectSpec,
+          ...(forge === null ? {} : { forge }),
+          ...(providerHost === null ? {} : { providerHost }),
+        },
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
@@ -225,13 +230,18 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
         }
       const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
       const forge = runtimeContext.codingSecrets.resolveForge()
+      const providerHost = runtimeContext.codingSecrets.resolveProviderHost()
       const projectSpec = buildProjectSpec(repo, resolvedAgent)
       const result = await callMagi(httpFetch, cfg, 'POST', '/reviews', {
         prNumber,
         contextId: runtimeContext.storageContextId,
         secrets,
         forgeToken,
-        projectSpec: { ...projectSpec, ...(forge === null ? {} : { forge }) },
+        projectSpec: {
+          ...projectSpec,
+          ...(forge === null ? {} : { forge }),
+          ...(providerHost === null ? {} : { providerHost }),
+        },
       })
       const id = sessionIdOf(result)
       if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')

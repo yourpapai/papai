@@ -104,6 +104,7 @@ export function runtimeCtx(
       resolveForgeToken: () => 'ghp-test',
       resolveAgent: () => null,
       resolveForge: () => null,
+      resolveProviderHost: () => null,
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
   } as PluginToolRuntimeContext
@@ -147,6 +148,7 @@ export function runtimeCtxWithKv(
       resolveForgeToken: () => 'ghp-test',
       resolveAgent: () => null,
       resolveForge: () => null,
+      resolveProviderHost: () => null,
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
   } as PluginToolRuntimeContext

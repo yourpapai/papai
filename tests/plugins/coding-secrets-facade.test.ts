@@ -90,3 +90,30 @@ test('resolveForge throws without the coding.secrets permission', () => {
   const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
   expect(() => facade.resolveForge()).toThrow("does not have 'coding.secrets' permission")
 })
+
+test('resolveProviderHost returns api.anthropic.com for anthropic provider', () => {
+  updateCodingCredentials(STORAGE_CTX, 'agent-provider', { provider: 'anthropic', provider_api_key: 'sk-1' }, 'user-3')
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveProviderHost()).toBe('api.anthropic.com')
+})
+
+test('resolveProviderHost returns null when no credentials stored', () => {
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveProviderHost()).toBeNull()
+})
+
+test('resolveProviderHost returns host from base URL for openai-compatible', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { provider: 'openai-compatible', provider_api_key: 'sk-c', provider_base_url: 'https://llm.corp.com/v1' },
+    'user-3',
+  )
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  expect(facade.resolveProviderHost()).toBe('llm.corp.com')
+})
+
+test('resolveProviderHost throws without the coding.secrets permission', () => {
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
+  expect(() => facade.resolveProviderHost()).toThrow("does not have 'coding.secrets' permission")
+})

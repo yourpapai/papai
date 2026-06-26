@@ -121,6 +121,7 @@ describe('acp start_session tool', () => {
           kind: 'gitlab',
           apiBaseUrl: 'https://gl.corp.com/api/v4',
         }),
+        resolveProviderHost: (): null => null,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithForge, options())
@@ -146,9 +147,44 @@ describe('acp start_session tool', () => {
         resolveForgeToken: (): string => 'ghp-test',
         resolveAgent: (): string => 'codex',
         resolveForge: (): null => null,
+        resolveProviderHost: (): null => null,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithCodex, options())
     expect(asRecord(asRecord(capturedBody)['projectSpec'])['agent']).toBe('codex')
+  })
+
+  test('projectSpec includes providerHost when resolveProviderHost returns a value', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 's-4', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const ctxWithProviderHost = {
+      ...runtimeCtxWithKv(store),
+      codingSecrets: {
+        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+        resolveForgeToken: (): string => 'ghp-test',
+        resolveAgent: (): null => null,
+        resolveForge: (): null => null,
+        resolveProviderHost: (): string => 'llm.corp.com',
+      },
+    }
+    await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithProviderHost, options())
+    expect(asRecord(asRecord(capturedBody)['projectSpec'])['providerHost']).toBe('llm.corp.com')
+  })
+
+  test('projectSpec omits providerHost when resolveProviderHost returns null', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 's-5', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, runtimeCtxWithKv(store), options())
+    expect(Object.keys(asRecord(asRecord(capturedBody)['projectSpec']))).not.toContain('providerHost')
   })
 })

@@ -44,6 +44,11 @@ function bodyString(init: RequestInit | undefined): string {
   return typeof b === 'string' ? b : ''
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === 'object' && value !== null) return Object.fromEntries(Object.entries(value))
+  return {}
+}
+
 describe('acp review_pr tool', () => {
   test('injects contextId, POSTs /reviews with projectSpec, records kv', async () => {
     let capturedUrl = ''
@@ -94,12 +99,36 @@ describe('acp review_pr tool', () => {
           kind: 'github',
           apiBaseUrl: 'https://api.github.com',
         }),
+        resolveProviderHost: (): null => null,
       },
     }
     await tools.get('review_pr')!.execute({ project: 'demo', prNumber: 7 }, ctxWithForge, options())
     expect(capturedBody).toMatchObject({
       projectSpec: { forge: { kind: 'github', apiBaseUrl: 'https://api.github.com' } },
     })
+  })
+
+  test('projectSpec includes providerHost when resolveProviderHost returns a value', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 'r-ph', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const ctxWithProviderHost = {
+      ...runtimeCtxWithKv(store),
+      codingSecrets: {
+        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+        resolveForgeToken: (): string => 'ghp-test',
+        resolveAgent: (): null => null,
+        resolveForge: (): null => null,
+        resolveProviderHost: (): string => 'api.openai.com',
+      },
+    }
+    await tools.get('review_pr')!.execute({ project: 'demo', prNumber: 7 }, ctxWithProviderHost, options())
+    const spec = asRecord(asRecord(capturedBody)['projectSpec'])
+    expect(spec['providerHost']).toBe('api.openai.com')
   })
 
   test('unknown project returns not_found without calling httpFetch', async () => {
