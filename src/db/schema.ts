@@ -22,6 +22,7 @@ export const users = sqliteTable(
     addedBy: text('added_by').notNull(),
     blockedAt: text('blocked_at'),
     kaneoWorkspaceId: text('kaneo_workspace_id'),
+    announceSubscribed: integer('announce_subscribed', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => [
     primaryKey({ columns: [table.platformInstanceId, table.platformUserId] }),
@@ -77,10 +78,7 @@ export const memoryFacts = sqliteTable(
 )
 export { memoryProfiles, memoryRecords, memoryExtractionState } from './long-term-memory-schema.js'
 export type { MemoryProfileRow, MemoryRecordRow, MemoryExtractionStateRow } from './long-term-memory-schema.js'
-export const versionAnnouncements = sqliteTable('version_announcements', {
-  version: text('version').primaryKey(),
-  announcedAt: text('announced_at').notNull(),
-})
+export { versionAnnouncements, announcementDeliveries } from './announcement-schema.js'
 export const groupMembers = sqliteTable(
   'group_members',
   {
@@ -106,6 +104,7 @@ export const authorizedGroups = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
     guestMode: integer('guest_mode', { mode: 'boolean' }).notNull().default(false),
+    announceSubscribed: integer('announce_subscribed', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => [index('idx_authorized_groups_added_by').on(table.addedBy)],
 )
