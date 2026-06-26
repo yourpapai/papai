@@ -60,7 +60,6 @@ describe('acp review_pr tool', () => {
       .execute({ project: 'demo', prNumber: 42 }, runtimeCtxWithKv(store), options())
     expect(capturedUrl).toBe('http://magi:8787/reviews')
     expect(capturedBody).toEqual({
-      project: 'demo',
       prNumber: 42,
       contextId: 'ctx-1',
       secrets: { ANTHROPIC_API_KEY: 'sk-test' },

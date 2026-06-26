@@ -32,7 +32,6 @@ describe('acp start_session tool', () => {
       .get('start_session')!
       .execute({ project: 'demo', prompt: 'do it' }, runtimeCtxWithKv(store), options())
     expect(capturedBody).toEqual({
-      project: 'demo',
       agent: 'claude-code-acp',
       contextId: 'ctx-1',
       prompt: 'do it',

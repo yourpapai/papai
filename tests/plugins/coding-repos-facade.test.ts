@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
+import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { upsertRepo } from '../../src/coding-repos/store.js'
 import { buildCodingReposFacade } from '../../src/plugins/tool-runtime.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -63,4 +64,31 @@ test('list throws without the coding.secrets permission', () => {
 test('get throws without the coding.secrets permission', () => {
   const facade = buildCodingReposFacade('acp', STORAGE_CTX, false)
   expect(() => facade.get('demo')).toThrow("does not have 'coding.secrets' permission")
+})
+
+test('list and get resolve repos stored at the config-context when called with a thread-scoped storage context id', () => {
+  const threadContextId = toScopedThreadContextId({
+    platformInstanceId: 'pi-test',
+    nativeContextId: 'group-7',
+    threadId: 'thread-3',
+  })
+  const configContextId = getConfigContextIdFromStorageContextId(threadContextId)
+  upsertRepo(
+    configContextId,
+    {
+      name: 'thread-repo',
+      repoUrl: 'https://github.com/acme/thread-repo.git',
+      baseBranch: 'main',
+      permissionPreset: 'cautious',
+    },
+    'user-3',
+  )
+  const facade = buildCodingReposFacade('acp', threadContextId, true)
+  expect(facade.list()).toEqual([{ name: 'thread-repo', baseBranch: 'main' }])
+  expect(facade.get('thread-repo')).toEqual({
+    name: 'thread-repo',
+    repoUrl: 'https://github.com/acme/thread-repo.git',
+    baseBranch: 'main',
+    permissionPreset: 'cautious',
+  })
 })

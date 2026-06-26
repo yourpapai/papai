@@ -8,13 +8,12 @@ import {
   answerPermissionTool,
   cancelSessionTool,
   finishSessionTool,
-  getTool,
-  listProjectsTool,
   listSessionsTool,
   reviewPrTool,
   sessionStatusTool,
   startSessionTool,
-} from './tools.js'
+} from './session-tools.js'
+import { getTool, listProjectsTool } from './tools.js'
 import type { Tool } from './tools.js'
 
 // Local structural plugin-context types: plugins cannot static-import src/ or zod

@@ -5,7 +5,7 @@
 
 import { expect, mock, test } from 'bun:test'
 
-import { finishSessionTool, reviewPrTool, startSessionTool } from '../../../plugins/acp/tools.js'
+import { finishSessionTool, reviewPrTool, startSessionTool } from '../../../plugins/acp/session-tools.js'
 
 type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
 

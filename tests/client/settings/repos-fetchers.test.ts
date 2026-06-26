@@ -109,4 +109,12 @@ describe('repos fetchers', () => {
     const csrfHeader = new Headers(lastRequest().init.headers).get('X-Settings-CSRF')
     expect(csrfHeader).toBe('csrf-xyz')
   })
+
+  test('deleteRepo attaches the CSRF header on DELETE', async () => {
+    setCsrfToken('csrf-del')
+    installFetch({ ok: true, contextId: 'pi:telegram:ctx:u1' })
+    await deleteRepo({ contextId: 'pi:telegram:ctx:u1', repoId: 'r1' })
+    const csrfHeader = new Headers(lastRequest().init.headers).get('X-Settings-CSRF')
+    expect(csrfHeader).toBe('csrf-del')
+  })
 })
