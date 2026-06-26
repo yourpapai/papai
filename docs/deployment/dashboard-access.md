@@ -43,14 +43,15 @@ Run the bot behind oauth2-proxy / Authelia / authentik / Cloudflare Access. The 
 
 **The operator surfaces are not gated by `DEBUG_SERVER`.** The following paths remain reachable whenever the debug server process is running, regardless of the `DEBUG_SERVER` flag:
 
-- `/admin` and its sub-routes (`/admin/llm`, `/admin/system`, `/admin/plugin-config`, etc.)
+- `/admin` (read-only dashboard: Overview, Billing, Stats, Memos, Reminders, Identities)
 - `/billing/*`
 - `/stats/*`
-- Instance API routes (`/api/platform-instances`, `/api/task-instances`, `/api/admins`)
 
-Authorization for these routes is the **dashboard session cookie** (obtained via the `/dashboard` sign-in flow), not `DEBUG_SERVER`. This is intentional: operators need to manage LLM credentials and task/platform instances in production environments where exposing the raw SSE/log streams would be a privacy risk.
+Admin controls (LLM credentials, platform/task instances, plugin config, groups) are managed exclusively through the settings admin section (`/settings/api/admin/*`, super-admin gated via the settings session cookie).
 
-> **Tip:** If you want to run only the operator surfaces without the live-observability streams, start the process with `DEBUG_SERVER=false` (or omit the variable). The sign-in flow, `/admin`, `/billing`, `/stats`, and instance routes will all work normally.
+Authorization for the `/admin` dashboard and billing/stats routes is the **dashboard session cookie** (obtained via the `/dashboard` sign-in flow), not `DEBUG_SERVER`. This is intentional: operators need production observability without exposing the raw SSE/log streams.
+
+> **Tip:** If you want to run only the operator surfaces without the live-observability streams, start the process with `DEBUG_SERVER=false` (or omit the variable). The sign-in flow, `/admin`, `/billing`, and `/stats` routes will all work normally.
 
 ## Sign-in flow
 
