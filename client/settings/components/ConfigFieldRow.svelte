@@ -36,6 +36,16 @@
   // directly — otherwise there is no Replace button and no way to enter a first value.
   const editorOpen = $derived(!field.sensitive || replacing || !field.hasValue)
 
+  // Confirm-dialog copy for clearing. Only plugin/provider config makes a plugin ineligible;
+  // a required preference/ai-output field simply reverts to its default.
+  const clearWarning = $derived(
+    field.required
+      ? field.kind === 'plugin-context' || field.kind === 'provider-context'
+        ? ' This field is required — clearing it will make the plugin ineligible for this context.'
+        : ' This field is required — clearing it reverts it to the default.'
+      : ' The field will revert to its default.',
+  )
+
   $effect(() => {
     // Re-sync local edit state when the field prop changes (parent re-fetch / context switch).
     const sensitive = field.sensitive
@@ -63,6 +73,7 @@
   }
 
   async function clearField(): Promise<void> {
+    if (saving) return
     error = null
     saving = true
     try {
@@ -104,7 +115,7 @@
         onChange={(v) => void saveEnum(v)}
         testidPrefix={`cfg-seg-${field.key}`} />
       {#if field.hasValue}
-        <Btn variant="ghost" size="sm" testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
+        <Btn variant="ghost" size="sm" disabled={saving} testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
@@ -124,7 +135,7 @@
         </Btn>
       {/if}
       {#if field.hasValue}
-        <Btn variant="ghost" size="sm" testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
+        <Btn variant="ghost" size="sm" disabled={saving} testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
@@ -162,7 +173,7 @@
   confirmLabel="Clear"
   onCancel={() => (pendingClear = false)}
   onConfirm={() => { pendingClear = false; void clearField() }}>
-  {#snippet body()}<p>Clear the stored value for <strong>{field.label}</strong>?{field.required ? ' This field is required — clearing it will make the plugin ineligible for this context.' : ' The field will revert to its default.'}</p>{/snippet}
+  {#snippet body()}<p>Clear the stored value for <strong>{field.label}</strong>?{clearWarning}</p>{/snippet}
 </Confirm>
 
 <style>

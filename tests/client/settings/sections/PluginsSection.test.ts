@@ -125,6 +125,7 @@ const trackConfigMock = (url: string, init: RequestInit): Promise<Response> => {
 afterEach(() => {
   capturedToggleBody = ''
   capturedDisabledToggleBody = ''
+  capturedPluginConfigBody = ''
   configPatchRequests.length = 0
   restoreFetch()
   setCsrfToken('')

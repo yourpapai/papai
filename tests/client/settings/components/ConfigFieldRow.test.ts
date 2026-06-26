@@ -456,4 +456,31 @@ describe('ConfigFieldRow', () => {
     expect(modal!.textContent).toContain('ineligible')
     void unmount(component)
   })
+
+  test('Clear confirm for a required non-plugin field does not mention plugin ineligibility', async () => {
+    setCsrfToken('c')
+    setMockFetch(() => Promise.resolve(json({ ok: true, contextId: 'user:1' })))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: true,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => {},
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-clear-timezone"]')!.click()
+    await drain()
+    const modal = target.querySelector('.modal')
+    expect(modal).not.toBeNull()
+    expect(modal!.textContent).toContain('required')
+    expect(modal!.textContent).not.toContain('plugin')
+    void unmount(component)
+  })
 })
