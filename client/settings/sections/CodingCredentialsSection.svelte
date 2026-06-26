@@ -114,7 +114,20 @@
     status = null
     savingKey = field.key
     try {
-      await patchCodingCredentials({ contextId, values: { [field.key]: value } })
+      let values: Record<string, string> = { [field.key]: value }
+      // When the agent changes, check whether the current provider is still compatible.
+      // If not, reset it to the first compatible option and patch both fields atomically
+      // so the merged server-side state is always valid (avoids the 422 deadlock).
+      if (field.key === 'agent') {
+        const compatible = compatibleProviders(value, fields.find((f) => f.key === 'provider')?.options ?? [])
+        const currentProvider = drafts['provider'] ?? ''
+        if (compatible.length > 0 && !compatible.includes(currentProvider)) {
+          const resetProvider = compatible[0]!
+          updateDraft('provider', resetProvider)
+          values = { agent: value, provider: resetProvider }
+        }
+      }
+      await patchCodingCredentials({ contextId, values })
       await load(contextId)
       status = `${field.label} saved.`
     } catch (err) {
@@ -150,7 +163,7 @@
     {/if}
     {#if !currentData.complete}
       <p class="placeholder">
-        Coding sessions need your Anthropic API key. Enter it below — it is encrypted and used only to run your sessions.
+        Coding sessions need your model-provider API key. Enter it below — it is encrypted and used only to run your sessions.
       </p>
     {/if}
 

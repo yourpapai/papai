@@ -115,6 +115,7 @@ const withSelectsPayload = {
 }
 
 let capturedPatchBody = ''
+const capturedPatchBodies: string[] = []
 
 const routeCodingMock = (_url: string, init?: RequestInit): Promise<Response> => {
   if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
@@ -132,8 +133,18 @@ const routeSelectsMock = (_url: string, init?: RequestInit): Promise<Response> =
   return Promise.resolve(json(withSelectsPayload))
 }
 
+// Records every PATCH body to capturedPatchBodies; GET returns withSelectsPayload.
+const routeAtomicMock = (_url: string, init?: RequestInit): Promise<Response> => {
+  if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
+    capturedPatchBodies.push(typeof init?.body === 'string' ? init.body : '')
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(withSelectsPayload))
+}
+
 afterEach(() => {
   capturedPatchBody = ''
+  capturedPatchBodies.length = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -290,6 +301,48 @@ describe('CodingCredentialsSection', () => {
 
     const body: unknown = JSON.parse(capturedPatchBody)
     expect(body).toMatchObject({ values: { agent: 'codex' } })
+    void unmount(component)
+  })
+
+  test('switching agent to an incompatible-provider agent patches both agent and provider atomically', async () => {
+    // Starting from claude+anthropic, switching to codex must PATCH {agent:'codex', provider:'openai'} together
+    // to avoid the 422 deadlock (merged state {codex,anthropic} is invalid server-side)
+    setCsrfToken('csrf-t')
+    setMockFetch(routeAtomicMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    // Confirm initial state: agent=claude, provider=anthropic
+    const agentSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-agent"]')!
+    expect(agentSelect.value).toBe('claude')
+
+    // Change agent to codex (incompatible with anthropic)
+    agentSelect.value = 'codex'
+    agentSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    await drain()
+
+    // Must have issued exactly one PATCH with both agent and provider in the same body
+    expect(capturedPatchBodies.length).toBeGreaterThanOrEqual(1)
+    expect(JSON.parse(capturedPatchBodies[0]!)).toMatchObject({ values: { agent: 'codex', provider: 'openai' } })
+
+    void unmount(component)
+  })
+
+  test('not-configured placeholder is provider-neutral, does not mention Anthropic', async () => {
+    setMockFetch(() => Promise.resolve(json({ ...unconfiguredPayload, complete: false })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    expect(target.querySelector('.placeholder')).not.toBeNull()
+    expect(String(target.querySelector('.placeholder')?.textContent).toLowerCase()).not.toContain('anthropic')
+
     void unmount(component)
   })
 })
