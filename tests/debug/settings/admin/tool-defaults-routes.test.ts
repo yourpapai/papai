@@ -19,6 +19,7 @@ const ToolsResponseSchema = z.object({
   contextId: z.string(),
   domains: z.array(z.unknown()),
   activePreset: z.string().nullable(),
+  hasStoredDefaults: z.boolean(),
 })
 
 describe('settings admin tool-defaults routes', () => {
@@ -48,6 +49,7 @@ describe('settings admin tool-defaults routes', () => {
     expect(body.contextId).toBe(adminToolDefaultsContextId('pi-1'))
     expect(Array.isArray(body.domains)).toBe(true)
     expect(body.activePreset).toBeNull()
+    expect(body.hasStoredDefaults).toBe(false)
   })
 
   test('POST preset read-only → 200, getAdminToolDefaults non-null, detectActivePreset === read-only', async () => {
@@ -64,10 +66,29 @@ describe('settings admin tool-defaults routes', () => {
     expect(res.status).toBe(200)
     const body = ToolsResponseSchema.parse(await res.json())
     expect(body.activePreset).toBe('read-only')
+    expect(body.hasStoredDefaults).toBe(true)
     const defaults = getAdminToolDefaults('pi-1')
     expect(defaults).not.toBeNull()
     const prefs = getToolPrefs(adminToolDefaultsContextId('pi-1'))
     expect(detectActivePreset(prefs)).toBe('read-only')
+  })
+
+  test('POST domain deny → hasStoredDefaults: true even when activePreset is null (custom override)', async () => {
+    const url = new URL('https://x/settings/api/admin/tool-defaults')
+    const res = await handleAdminToolDefaultsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'domain', domain: 'web', permission: 'deny' }),
+      }),
+      url,
+      '/settings/api/admin/tool-defaults',
+    )
+    expect(res.status).toBe(200)
+    const body = ToolsResponseSchema.parse(await res.json())
+    // activePreset is null (custom, non-named preset state), but storage was written
+    expect(body.activePreset).toBeNull()
+    expect(body.hasStoredDefaults).toBe(true)
   })
 
   test('POST domain deny → 200, admin prefs reflect it', async () => {
@@ -175,6 +196,7 @@ describe('settings admin tool-defaults routes', () => {
     const body = ToolsResponseSchema.parse(await res.json())
     expect(body.contextId).toBe(ctx)
     expect(body.activePreset).toBeNull()
+    expect(body.hasStoredDefaults).toBe(false)
     expect(hasStoredToolPrefs(ctx)).toBe(false)
   })
 

@@ -47,6 +47,7 @@
     setToolPermissionFn?: (input: SetToolPermissionInput) => Promise<ToolsResponse>
     applyToolPresetFn?: (input: { preset: ToolPreset; contextId: string }) => Promise<ToolsResponse>
     clearPresetFn?: () => Promise<ToolsResponse>
+    hasStoredDefaults?: boolean
   }
 
   let {
@@ -58,6 +59,7 @@
     setToolPermissionFn = setToolPermission,
     applyToolPresetFn = applyToolPreset,
     clearPresetFn = undefined,
+    hasStoredDefaults = false,
   }: Props = $props()
 
   let domains: ToolDomainView[] = $state([])
@@ -65,6 +67,7 @@
   let error: string | null = $state(null)
   let loading = $state(false)
   let activePreset: ToolPreset | null = $state(null)
+  let storedDefaults = $state(hasStoredDefaults)
   let pendingPreset: ToolPreset | null = $state(null)
   let pendingClear = $state(false)
 
@@ -98,6 +101,7 @@
       const res = await fetchToolsFn(id)
       domains = res.domains
       activePreset = res.activePreset
+      storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -112,6 +116,7 @@
       const res = await setToolPermissionFn({ kind: 'domain', domain, permission, contextId })
       domains = res.domains
       activePreset = res.activePreset
+      storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -123,6 +128,7 @@
       const res = await setToolPermissionFn({ kind: 'tool', tool, permission, contextId })
       domains = res.domains
       activePreset = res.activePreset
+      storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -142,6 +148,7 @@
       const res = await applyToolPresetFn({ preset, contextId })
       domains = res.domains
       activePreset = res.activePreset
+      storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -155,6 +162,7 @@
       const res = await clearPresetFn()
       domains = res.domains
       activePreset = res.activePreset
+      storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -205,7 +213,7 @@
     </div>
   {/if}
 
-  {#if clearPresetFn !== undefined && activePreset !== null && !pendingClear}
+  {#if clearPresetFn !== undefined && storedDefaults && !pendingClear}
     <div class="settings-tools__clear-row">
       <Btn variant="ghost" size="sm" testid="tool-defaults-clear" onClick={() => (pendingClear = true)}>
         {#snippet children()}Clear admin defaults{/snippet}

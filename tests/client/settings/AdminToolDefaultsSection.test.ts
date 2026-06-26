@@ -22,6 +22,7 @@ const drain = async (): Promise<void> => {
 const toolsPayload = {
   contextId: '__admin_tool_defaults__:pi-1',
   activePreset: null,
+  hasStoredDefaults: false,
   domains: [
     {
       domain: 'task',
@@ -38,6 +39,7 @@ let capturedClearBody: unknown = null
 const toolsPayloadWithPreset = {
   contextId: '__admin_tool_defaults__:pi-1',
   activePreset: 'read-only',
+  hasStoredDefaults: true,
   domains: [
     {
       domain: 'task',
@@ -47,9 +49,24 @@ const toolsPayloadWithPreset = {
   ],
 }
 
+// Custom stored defaults: activePreset is null (no named preset matched), but storage IS written
+const toolsPayloadCustomDefaults = {
+  contextId: '__admin_tool_defaults__:pi-1',
+  activePreset: null,
+  hasStoredDefaults: true,
+  domains: [
+    {
+      domain: 'task',
+      summary: 'deny',
+      tools: [{ name: 'create_task', permission: 'deny', risk: 'write' }],
+    },
+  ],
+}
+
 const clearedToolsPayload = {
   contextId: '__admin_tool_defaults__:pi-1',
   activePreset: null,
+  hasStoredDefaults: false,
   domains: [
     {
       domain: 'task',
@@ -141,7 +158,17 @@ describe('AdminToolDefaultsSection', () => {
     void unmount(component)
   })
 
-  test('Clear admin defaults button is NOT visible when activePreset is null', async () => {
+  test('Clear admin defaults button is visible when hasStoredDefaults is true even if activePreset is null', async () => {
+    setMockFetch(() => Promise.resolve(json(toolsPayloadCustomDefaults)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminToolDefaultsSection, { target })
+    await drain()
+    expect(target.querySelector('[data-testid="tool-defaults-clear"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('Clear admin defaults button is NOT visible when hasStoredDefaults is false', async () => {
     setMockFetch(() => Promise.resolve(json(toolsPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!

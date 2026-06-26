@@ -31,6 +31,7 @@ export const ToolsResponseSchema = z.object({
   contextId: z.string(),
   domains: z.array(ToolDomainSchema),
   activePreset: ToolPresetSchema.nullable().default(null),
+  hasStoredDefaults: z.boolean().optional().default(false),
 })
 
 export type ToolsResponse = z.infer<typeof ToolsResponseSchema>

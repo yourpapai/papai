@@ -34,12 +34,14 @@ const ToggleBodySchema = z.discriminatedUnion('kind', [
 
 function view(contextId: string): Response {
   const prefs = getToolPrefs(contextId)
+  const stored = hasStoredToolPrefs(contextId)
   // When no row exists, the admin default is unconfigured — report null, not 'allow-all'.
-  const activePreset = hasStoredToolPrefs(contextId) ? detectActivePreset(prefs) : null
+  const activePreset = stored ? detectActivePreset(prefs) : null
   return settingsJson(200, {
     contextId,
     domains: buildDomainView(CATALOG_NAMES, prefs),
     activePreset,
+    hasStoredDefaults: stored,
   })
 }
 
