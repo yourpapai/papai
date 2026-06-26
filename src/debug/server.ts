@@ -18,7 +18,6 @@ import { logBuffer, logBufferStream } from './log-buffer.js'
 import { redactLogEntry } from './log-redaction.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
-import { handleAdminPluginConfigGet, handleAdminPluginConfigPost } from './plugin-config-routes.js'
 import {
   handleAuthGroups,
   handleDeferred,
@@ -159,11 +158,6 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
   }
   if (url.pathname.startsWith('/admin/subjects/') && url.pathname.endsWith('/recent-requests')) {
     return handleAdminRecentRequests(url)
-  }
-  if (url.pathname === '/admin/plugin-config') {
-    if (req.method === 'GET') return handleAdminPluginConfigGet()
-    if (req.method === 'POST') return handleAdminPluginConfigPost(req)
-    return new Response('Method not allowed', { status: 405 })
   }
   if (url.pathname === '/admin/identity/mappings') {
     if (req.method === 'GET') return handleAdminIdentityMappings()

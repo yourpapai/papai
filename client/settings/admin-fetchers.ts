@@ -10,12 +10,12 @@ import {
   type AdminFeatureFlagState,
   type AdminFeatureFlagsSnapshot,
 } from '../admin/feature-flags-fetcher-schemas.js'
+import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
+import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
   AdminPluginConfigSnapshotSchema,
   SubmitAdminPluginConfigResponseSchema,
-} from '../admin/plugin-config-fetcher-schemas.js'
-import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
-import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+} from './fetcher-schemas-plugin-config.js'
 import {
   ReleaseBroadcastResultSchema,
   ReleaseNotesResponseSchema,
