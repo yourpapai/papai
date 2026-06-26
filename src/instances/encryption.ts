@@ -23,19 +23,6 @@ export const decryptInstanceConfig = (encoded: string): InstanceConfig => decryp
 /** True when a config key name looks secret-bearing (token, key, secret, password, cookie). */
 export const isSecretKeyName = (key: string): boolean => SECRET_KEY_PATTERN.test(key)
 
-export const unknownProviderSensitiveKeys = (config: InstanceConfig): ReadonlySet<string> =>
-  new Set(Object.keys(config))
-
-export const providerSensitiveKeys = (
-  config: InstanceConfig,
-  fields: readonly { readonly key: string; readonly storageKey?: string; readonly sensitive: boolean }[] | undefined,
-): ReadonlySet<string> => {
-  if (fields === undefined) return unknownProviderSensitiveKeys(config)
-  const declared = fields.filter((field) => field.sensitive).map((field) => field.storageKey ?? field.key)
-  const secretLike = Object.keys(config).filter((key) => isSecretKeyName(key))
-  return new Set([...declared, ...secretLike])
-}
-
 export const maskConfig = (
   plain: InstanceConfig,
   sensitiveKeys?: ReadonlySet<string>,

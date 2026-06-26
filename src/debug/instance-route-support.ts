@@ -4,17 +4,11 @@
 // See LICENSE in the project root for details.
 
 import pLimit from 'p-limit'
-import { z } from 'zod'
 
 import { configFingerprint, errorMessage } from '../chat/router-helpers.js'
 import type { ChatRouter } from '../chat/router.js'
 import { listPlatformInstances, listPlatformInstancesSafe } from '../instances/platform-store.js'
-import type {
-  InstanceConfig,
-  InstanceDecodeFailure,
-  InstanceDecodeResult,
-  PlatformInstance,
-} from '../instances/types.js'
+import type { InstanceDecodeFailure, InstanceDecodeResult, PlatformInstance } from '../instances/types.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { jsonResponse } from './json-response.js'
 
@@ -65,74 +59,6 @@ export type ApplyInstancesResult = Readonly<{
 const listDesiredPlatformInstances = (deps: InstanceApiDeps): InstanceDecodeResult<PlatformInstance> => {
   if (deps.listPlatformInstancesSafe !== undefined) return deps.listPlatformInstancesSafe()
   return { instances: deps.listPlatformInstances(), failures: [] }
-}
-
-const INSTANCE_API_PREFIXES = [
-  '/api/admins',
-  '/api/platform-provider-types',
-  '/api/platform-instances',
-  '/api/task-instances',
-  '/api/task-provider-types',
-] as const
-
-export const instanceConfigSchema: z.ZodType<InstanceConfig> = z.record(z.string(), z.string())
-
-export const platformInstanceSchema = z.object({
-  id: z.string().min(1),
-  type: z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk']),
-  config: instanceConfigSchema,
-})
-
-export const taskInstanceSchema = z.object({
-  id: z.string().min(1),
-  type: z.string().min(1),
-  config: instanceConfigSchema,
-})
-
-export const statusSchema = z.object({ status: z.enum(['pending', 'active', 'stopped']) })
-
-export const instancePatchSchema = z
-  .object({
-    config: instanceConfigSchema.optional(),
-    status: z.enum(['pending', 'active', 'stopped']).optional(),
-  })
-  .refine(
-    (value) => {
-      if (value.config !== undefined) return true
-      return value.status !== undefined
-    },
-    {
-      message: 'at least one of config or status is required',
-    },
-  )
-
-export const adminSchema = z.object({
-  userId: z.string().min(1),
-  platformInstanceId: z.string().min(1).optional(),
-})
-
-export const textResponse = (body: string, status: number): Response => new Response(body, { status })
-
-export const validationError = (error: z.ZodError): Response =>
-  jsonResponse({ error: 'invalid_request', issues: error.issues }, { status: 400 })
-
-export const instanceExistsError = (id: string): Response =>
-  jsonResponse({ error: 'instance_exists', id }, { status: 409 })
-
-const isSqliteConstraintError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) return false
-  const candidate = error as Error & { readonly code?: string }
-  return candidate.code === 'SQLITE_CONSTRAINT' || error.message.includes('UNIQUE constraint failed')
-}
-
-export const insertOrConflict = (id: string, insert: () => void): Response | null => {
-  try {
-    insert()
-    return null
-  } catch (error) {
-    if (isSqliteConstraintError(error)) return instanceExistsError(id)
-    throw error
-  }
 }
 
 const failedPatch = (id: string, action: ApplyFailureAction, error: unknown): ApplyResultPatch => ({
@@ -259,31 +185,9 @@ const reconcilePlatformInstances = async (deps: InstanceApiDeps): Promise<Respon
 export const applyPlatformInstances = (deps: InstanceApiDeps): Promise<Response> =>
   instanceApplyLock(reconcilePlatformInstances, deps)
 
-/** Production deps shared by the operator-API apply route and the settings-admin apply route. */
+/** Production deps shared by the settings-admin apply route. */
 export const defaultInstanceApiDeps: InstanceApiDeps = {
   getRuntimeChatRouter,
   listPlatformInstances,
   listPlatformInstancesSafe,
 }
-
-const parseJson = async (req: Request): Promise<unknown> => {
-  try {
-    return await req.json()
-  } catch {
-    return undefined
-  }
-}
-
-export const parseBody = async <T>(req: Request, schema: z.ZodType<T>): Promise<T | Response> => {
-  const result = schema.safeParse(await parseJson(req))
-  return result.success ? result.data : validationError(result.error)
-}
-
-export const splitPath = (url: URL): readonly string[] =>
-  url.pathname
-    .split('/')
-    .filter((part) => part !== '')
-    .map((part) => decodeURIComponent(part))
-
-export const isInstanceApiPath = (pathname: string): boolean =>
-  INSTANCE_API_PREFIXES.some((prefix) => [pathname === prefix, pathname.startsWith(`${prefix}/`)].includes(true))

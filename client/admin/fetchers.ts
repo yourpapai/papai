@@ -29,8 +29,6 @@ import {
   type RecentRequestRow,
 } from './fetcher-schemas.js'
 
-export * from './instance-fetchers.js'
-
 export type FetchBillingSubjectsResult = {
   readonly window: BillingWindow
   readonly subjects: BillingSubject[]

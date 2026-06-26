@@ -10,7 +10,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import AdminApp from '../../../client/admin/AdminApp.svelte'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
-const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'instances'] as const
+const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities'] as const
 
 function mountAdminApp(): ReturnType<typeof mount> {
   document.body.innerHTML = '<div id="root"></div>'
@@ -26,10 +26,7 @@ const drain = async (): Promise<void> => {
 }
 
 const installFetch = (): void => {
-  setMockFetch((url) => {
-    if (url === '/api/platform-instances' || url === '/api/task-instances' || url === '/api/admins') {
-      return Promise.resolve(Response.json([]))
-    }
+  setMockFetch(() => {
     return Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } }))
   })
 }
@@ -39,7 +36,7 @@ afterEach(() => {
 })
 
 describe('AdminApp.svelte', () => {
-  test('renders all seven section anchor ids', async () => {
+  test('renders all six section anchor ids', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
@@ -51,13 +48,13 @@ describe('AdminApp.svelte', () => {
     void unmount(component)
   })
 
-  test('renders seven navigation items', async () => {
+  test('renders six navigation items', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
 
     const navLinks = Array.from(document.querySelectorAll('.admin-sidebar__link'))
-    expect(navLinks).toHaveLength(7)
+    expect(navLinks).toHaveLength(6)
 
     void unmount(component)
   })
@@ -82,13 +79,14 @@ describe('AdminApp.svelte', () => {
     void unmount(component)
   })
 
-  test('instances section is the last section in the DOM', async () => {
+  test('identities section is the last section in the DOM', async () => {
     installFetch()
     const component = mountAdminApp()
     await drain()
 
-    const instances = document.querySelector('#instances')
-    expect(instances).not.toBeNull()
+    const sections = Array.from(document.querySelectorAll('section[id]'))
+    const sectionIdsInDom = sections.map((el) => el.id)
+    expect(sectionIdsInDom).toEqual(['overview', 'billing', 'stats', 'memos', 'reminders', 'identities'])
 
     void unmount(component)
   })

@@ -201,8 +201,6 @@ export const SubjectStatsSchema = z.object({
   }),
 })
 
-export * from './instance-fetcher-schemas.js'
-
 export const RecurringTaskSchema = z.object({
   id: z.string(),
   userId: z.string(),

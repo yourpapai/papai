@@ -22,7 +22,6 @@
     { id: 'memos', label: 'Memos' },
     { id: 'reminders', label: 'Reminders' },
     { id: 'identities', label: 'Identities' },
-    { id: 'instances', label: 'Instances' },
   ]
 
   interface Props {

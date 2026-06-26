@@ -12,7 +12,6 @@ import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
 import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
-import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { redactLogEntry } from './log-redaction.js'
 import { handleMcpStatus } from './mcp-routes.js'
@@ -211,9 +210,6 @@ async function routeRequest(req: Request, options: WebServerRouteOptions = route
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
   }
-
-  const instanceApiResponse = await handleInstanceApiRoute(req, url)
-  if (instanceApiResponse !== null) return instanceApiResponse
 
   const protectedResponse = routeProtectedPaths(req, url)
   if (protectedResponse !== null) return protectedResponse

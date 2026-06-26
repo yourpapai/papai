@@ -5,15 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  AdminInstanceViewSchema,
-  ApplyInstancesResultSchema,
-  InstanceConfigViewSchema,
-  PlatformInstanceViewSchema,
-  RecentRequestRowSchema,
-  RecentRequestsResponseSchema,
-  TaskInstanceViewSchema,
-} from '../../../client/admin/fetcher-schemas.js'
+import { RecentRequestRowSchema, RecentRequestsResponseSchema } from '../../../client/admin/fetcher-schemas.js'
 
 const expectDefined = <T>(value: T | undefined | null, message: string): NonNullable<T> => {
   expect(value, message).not.toBeUndefined()
@@ -72,90 +64,5 @@ describe('RecentRequestsResponseSchema', () => {
   test('rejects a response missing subjectId', () => {
     const result = RecentRequestsResponseSchema.safeParse({ limit: 25, requests: [] })
     expect(result.success).toBe(false)
-  })
-})
-
-describe('instance API schemas', () => {
-  const platformInstance = {
-    id: 'telegram-main',
-    type: 'telegram',
-    config: { TELEGRAM_BOT_TOKEN: '***' },
-    status: 'active',
-    createdAt: '2026-05-24T00:00:00.000Z',
-  }
-
-  test('accepts valid platform instance views', () => {
-    const parsed = PlatformInstanceViewSchema.parse(platformInstance)
-    expect(parsed.id).toBe('telegram-main')
-  })
-
-  test('accepts valid task instance views', () => {
-    const result = TaskInstanceViewSchema.safeParse({
-      id: 'kaneo-main',
-      type: 'kaneo',
-      config: { KANEO_INTERNAL_URL: 'https://kaneo.example' },
-      status: 'pending',
-      createdAt: '2026-05-24T00:00:00.000Z',
-      referencingContextIds: ['ctx-1', 'ctx-2'],
-      referencingContextCount: 2,
-      unresolvedReason: null,
-    })
-    expect(result.success).toBe(true)
-  })
-
-  test('accepts admin records with optional createdAt', () => {
-    expect(AdminInstanceViewSchema.safeParse({ userId: 'user-1', platformInstanceId: 'telegram-main' }).success).toBe(
-      true,
-    )
-    expect(
-      AdminInstanceViewSchema.safeParse({
-        userId: 'user-1',
-        platformInstanceId: 'telegram-main',
-        createdAt: '2026-05-24T00:00:00.000Z',
-      }).success,
-    ).toBe(true)
-  })
-
-  test('accepts apply result payloads', () => {
-    const parsed = ApplyInstancesResultSchema.parse({
-      applied: 2,
-      started: ['telegram-main'],
-      stopped: [],
-      removed: ['discord-old'],
-      recreated: ['mattermost-main'],
-      unchanged: ['telegram-secondary'],
-      failed: [{ id: 'telegram-bad', action: 'remove', error: 'failed to remove' }],
-    })
-
-    expect(parsed.applied).toBe(2)
-    expect(parsed.failed[0]?.action).toBe('remove')
-  })
-
-  test('rejects stop as a failed action (never emitted by server)', () => {
-    expect(
-      ApplyInstancesResultSchema.safeParse({
-        applied: 1,
-        started: [],
-        stopped: [],
-        removed: [],
-        recreated: [],
-        unchanged: [],
-        failed: [{ id: 'telegram-bad', action: 'stop', error: 'should be rejected' }],
-      }).success,
-    ).toBe(false)
-  })
-
-  test('rejects unknown platform and status enums; task type is open string', () => {
-    expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, type: 'slack' }).success).toBe(false)
-    // TaskInstanceViewSchema.type is now open (string) — any string is valid
-    expect(
-      TaskInstanceViewSchema.safeParse({ ...platformInstance, type: 'jira', unresolvedReason: null }).success,
-    ).toBe(true)
-    expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, status: 'running' }).success).toBe(false)
-  })
-
-  test('rejects non-string config values', () => {
-    expect(InstanceConfigViewSchema.safeParse({ token: 123 }).success).toBe(false)
-    expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, config: { token: 123 } }).success).toBe(false)
   })
 })

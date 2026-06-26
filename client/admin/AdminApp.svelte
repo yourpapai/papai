@@ -14,13 +14,12 @@
   import { useScrollSpy } from './scrollspy.js'
   import BillingSection from './sections/BillingSection.svelte'
   import IdentitiesSection from './sections/IdentitiesSection.svelte'
-  import InstancesSection from './sections/InstancesSection.svelte'
   import MemosSection from './sections/MemosSection.svelte'
   import OverviewSection from './sections/OverviewSection.svelte'
   import RemindersSection from './sections/RemindersSection.svelte'
   import StatsSection from './sections/StatsSection.svelte'
 
-  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'instances']
+  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities']
 
   onMount(() => {
     void refreshAll()
@@ -54,7 +53,6 @@
         <MemosSection />
         <RemindersSection />
         <IdentitiesSection />
-        <InstancesSection />
       </main>
     </div>
   {/snippet}

@@ -13,7 +13,6 @@ export const adminSections = [
   { id: 'memos', label: 'Memos' },
   { id: 'reminders', label: 'Reminders' },
   { id: 'identities', label: 'Identities' },
-  { id: 'instances', label: 'Instances' },
 ] as const
 
 export type AdminSectionId = (typeof adminSections)[number]['id']

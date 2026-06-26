@@ -9,38 +9,9 @@ import { z } from 'zod'
 
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ManagedChatInstanceSnapshot } from '../../src/chat/router.js'
-import { applyPlatformInstances, platformInstanceSchema } from '../../src/debug/instance-route-support.js'
+import { applyPlatformInstances } from '../../src/debug/instance-route-support.js'
 import type { InstanceApiDeps } from '../../src/debug/instance-route-support.js'
 import type { InstanceDecodeResult, PlatformInstance } from '../../src/instances/types.js'
-
-describe('platformInstanceSchema', () => {
-  test('accepts kontur-talk type', () => {
-    const result = platformInstanceSchema.safeParse({
-      id: 'kontur-talk-default',
-      type: 'kontur-talk',
-      config: { jwtToken: 'test-token' },
-    })
-    expect(result.success).toBe(true)
-  })
-
-  test('accepts telegram type', () => {
-    const result = platformInstanceSchema.safeParse({
-      id: 'telegram-default',
-      type: 'telegram',
-      config: { token: 'test-token' },
-    })
-    expect(result.success).toBe(true)
-  })
-
-  test('rejects unknown type', () => {
-    const result = platformInstanceSchema.safeParse({
-      id: 'test-default',
-      type: 'unknown',
-      config: {},
-    })
-    expect(result.success).toBe(false)
-  })
-})
 
 const applyBodySchema = z.object({
   removed: z.array(z.string()),

@@ -39,12 +39,13 @@ describe('admin.svelte', () => {
     expect(adminState.currentSection).toBe('billing')
   })
 
-  test('instances is the last section (system section removed)', () => {
+  test('identities is the last section (instances and system sections removed)', () => {
     const ids = adminSections.map((section) => section.id)
-    expect(ids).toContain('instances')
+    expect(ids).toContain('identities')
     expect(ids).not.toContain('system')
     expect(ids).not.toContain('plugin-config')
-    expect(ids[ids.length - 1]).toBe('instances')
+    expect(ids).not.toContain('instances')
+    expect(ids[ids.length - 1]).toBe('identities')
   })
 
   test('setWindow writes to adminGlobals.window', () => {
@@ -81,7 +82,7 @@ describe('admin.svelte', () => {
     syncSectionFromLocation()
     // Result depends on whatever location.hash is at this point; just verify it
     // returns a valid AdminSectionId (not undefined / not throwing).
-    const validIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances']
+    const validIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups']
     expect(validIds).toContain(adminState.currentSection)
   })
 })
