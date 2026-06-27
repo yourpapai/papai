@@ -51,7 +51,8 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       if (secrets === null)
         return {
           error: 'not_configured',
-          message: 'Set up your AI provider key in settings → Coding sessions before starting a session.',
+          message:
+            "You haven't set up your coding credentials. DM me and open settings → Coding sessions to configure your AI provider key (and code host).",
         }
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
@@ -214,13 +215,15 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
       if (secrets === null)
         return {
           error: 'not_configured',
-          message: 'Set up your AI provider key in settings → Coding sessions before starting a review.',
+          message:
+            "You haven't set up your coding credentials. DM me and open settings → Coding sessions to configure your AI provider key (and code host).",
         }
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
       if (forgeToken === null)
         return {
           error: 'not_configured',
-          message: 'Connect a code host in settings → Coding sessions before pushing or opening a PR.',
+          message:
+            "You haven't connected your code host. DM me and open settings → Coding sessions to add your code host token.",
         }
       const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
       const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets)

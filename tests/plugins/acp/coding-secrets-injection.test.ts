@@ -96,6 +96,19 @@ test('start_session refuses when no credentials are configured', async () => {
   expect(httpFetch).not.toHaveBeenCalled()
 })
 
+test('start_session not_configured message tells the acting user to set up their own credentials', async () => {
+  const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
+  const tool = startSessionTool(httpFetch)
+  const res = await tool.execute(
+    { project: 'demo', prompt: 'hi' },
+    ctx((): null => null),
+    {},
+  )
+  const msg = String(asRecord(res)['message'])
+  expect(msg).toContain("You haven't set up your coding credentials")
+  expect(msg).toContain('settings')
+})
+
 test('start_session includes resolved secrets in the POST body', async () => {
   let capturedInit: RequestInit | undefined
   const httpFetch: HttpFetch = (_url, init) => {
@@ -123,6 +136,35 @@ test('review_pr refuses when no credentials are configured', async () => {
   )
   expect(asRecord(res)['error']).toBe('not_configured')
   expect(httpFetch).not.toHaveBeenCalled()
+})
+
+test('review_pr not_configured message (missing secrets) tells the acting user to set up their own credentials', async () => {
+  const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
+  const tool = reviewPrTool(httpFetch)
+  const res = await tool.execute(
+    { project: 'demo', prNumber: 42 },
+    ctx((): null => null),
+    {},
+  )
+  const msg = String(asRecord(res)['message'])
+  expect(msg).toContain("You haven't set up your coding credentials")
+  expect(msg).toContain('settings')
+})
+
+test('review_pr not_configured message (missing forge token) mentions code host', async () => {
+  const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
+  const tool = reviewPrTool(httpFetch)
+  const res = await tool.execute(
+    { project: 'demo', prNumber: 42 },
+    ctx(
+      (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-1' }),
+      (): null => null,
+    ),
+    {},
+  )
+  expect(asRecord(res)['error']).toBe('not_configured')
+  const msg = String(asRecord(res)['message'])
+  expect(msg.toLowerCase()).toContain('code host')
 })
 
 test('review_pr includes resolved secrets in the POST body', async () => {
