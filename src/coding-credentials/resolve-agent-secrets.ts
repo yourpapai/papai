@@ -3,12 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
+import { getConfigContextIdFromStorageContextId, parseScopedContextId } from '../chat/scoped-context.js'
+import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
 import { getCodingCredentials } from './store.js'
 import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'
 
 export function configContextOf(storageContextId: string): string {
   return getConfigContextIdFromStorageContextId(storageContextId)
+}
+
+/** When the platform instance forces a shared key, returns the admin context that holds it; else null. */
+function sharedKeyContext(storageContextId: string): string | null {
+  const pi = parseScopedContextId(storageContextId)?.platformInstanceId
+  if (pi === undefined) return null
+  return resolveCodingGuardrails(pi).forceSharedKey ? adminCodingGuardrailsContextId(pi) : null
 }
 
 const PROVIDER_ENV: Record<Provider, { key: string; base: string }> = {
@@ -25,7 +33,10 @@ const PROVIDER_ENV: Record<Provider, { key: string; base: string }> = {
  * key is stored.
  */
 export function resolveAgentSecrets(storageContextId: string): Record<string, string> | null {
-  const creds = getCodingCredentials(configContextOf(storageContextId), 'agent-provider')
+  const creds = getCodingCredentials(
+    sharedKeyContext(storageContextId) ?? configContextOf(storageContextId),
+    'agent-provider',
+  )
   const apiKey = creds?.provider_api_key?.trim()
   if (apiKey === undefined || apiKey.length === 0) return null
   const provider = creds?.provider?.trim() ?? 'anthropic'
@@ -65,7 +76,10 @@ export function resolveForgeToken(storageContextId: string): string | null {
  * (e.g. openai-compatible without a base URL, or a malformed base URL).
  */
 export function resolveProviderHost(storageContextId: string): string | null {
-  const creds = getCodingCredentials(configContextOf(storageContextId), 'agent-provider')
+  const creds = getCodingCredentials(
+    sharedKeyContext(storageContextId) ?? configContextOf(storageContextId),
+    'agent-provider',
+  )
   if (creds === null) return null
   const provider = creds.provider?.trim() ?? 'anthropic'
   return deriveProviderHost(provider, creds.provider_base_url)

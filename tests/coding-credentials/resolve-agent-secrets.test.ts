@@ -5,7 +5,12 @@
 
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
-import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  toScopedContextId,
+  toScopedThreadContextId,
+} from '../../src/chat/scoped-context.js'
+import { adminCodingGuardrailsContextId, setCodingGuardrails } from '../../src/coding-credentials/guardrails.js'
 import {
   resolveAgent,
   resolveAgentSecrets,
@@ -234,4 +239,143 @@ test('resolveProviderHost returns null when provider_base_url is malformed (pars
     'user-9',
   )
   expect(resolveProviderHost(STORAGE_CTX)).toBeNull()
+})
+
+// force-shared-key tests
+
+const PI_1 = 'pi-1'
+const SCOPED_STORAGE_CTX = toScopedContextId({ platformInstanceId: PI_1, nativeContextId: 'group-42' })
+const ADMIN_CTX = adminCodingGuardrailsContextId(PI_1)
+const USER_CTX = getConfigContextIdFromStorageContextId(SCOPED_STORAGE_CTX)
+
+test('forceSharedKey:true — resolveAgentSecrets returns the shared (admin) key, not the user key', () => {
+  setCodingGuardrails(PI_1, {
+    allowedAgents: ['claude', 'codex', 'opencode'],
+    whoMayUse: 'members',
+    forceSharedKey: true,
+  })
+  updateCodingCredentials(
+    ADMIN_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-shared' },
+    'admin',
+  )
+  updateCodingCredentials(
+    USER_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-user' },
+    'user-9',
+  )
+  expect(resolveAgentSecrets(SCOPED_STORAGE_CTX)).toEqual({ ANTHROPIC_API_KEY: 'sk-shared' })
+})
+
+test('forceSharedKey:true — resolveProviderHost returns the shared (admin) host, not the user host', () => {
+  setCodingGuardrails(PI_1, {
+    allowedAgents: ['claude', 'codex', 'opencode'],
+    whoMayUse: 'members',
+    forceSharedKey: true,
+  })
+  updateCodingCredentials(
+    ADMIN_CTX,
+    'agent-provider',
+    {
+      provider: 'anthropic',
+      agent: 'claude',
+      provider_api_key: 'sk-shared',
+      provider_base_url: 'https://shared.proxy.example',
+    },
+    'admin',
+  )
+  updateCodingCredentials(
+    USER_CTX,
+    'agent-provider',
+    {
+      provider: 'anthropic',
+      agent: 'claude',
+      provider_api_key: 'sk-user',
+      provider_base_url: 'https://user.proxy.example',
+    },
+    'user-9',
+  )
+  expect(resolveProviderHost(SCOPED_STORAGE_CTX)).toBe('shared.proxy.example')
+})
+
+test('forceSharedKey:true — resolveForgeToken still returns the user token (forge stays per-identity)', () => {
+  setCodingGuardrails(PI_1, {
+    allowedAgents: ['claude', 'codex', 'opencode'],
+    whoMayUse: 'members',
+    forceSharedKey: true,
+  })
+  updateCodingCredentials(ADMIN_CTX, 'forge', { forge_token: 'ghp-admin-token' }, 'admin')
+  updateCodingCredentials(USER_CTX, 'forge', { forge_token: 'ghp-user-token' }, 'user-9')
+  expect(resolveForgeToken(SCOPED_STORAGE_CTX)).toBe('ghp-user-token')
+})
+
+test('forceSharedKey:false — resolveAgentSecrets returns the user key unchanged', () => {
+  setCodingGuardrails(PI_1, {
+    allowedAgents: ['claude', 'codex', 'opencode'],
+    whoMayUse: 'members',
+    forceSharedKey: false,
+  })
+  updateCodingCredentials(
+    ADMIN_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-shared' },
+    'admin',
+  )
+  updateCodingCredentials(
+    USER_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-user' },
+    'user-9',
+  )
+  expect(resolveAgentSecrets(SCOPED_STORAGE_CTX)).toEqual({ ANTHROPIC_API_KEY: 'sk-user' })
+})
+
+test('forceSharedKey:false — resolveProviderHost returns the user host unchanged', () => {
+  setCodingGuardrails(PI_1, {
+    allowedAgents: ['claude', 'codex', 'opencode'],
+    whoMayUse: 'members',
+    forceSharedKey: false,
+  })
+  updateCodingCredentials(
+    ADMIN_CTX,
+    'agent-provider',
+    {
+      provider: 'anthropic',
+      agent: 'claude',
+      provider_api_key: 'sk-shared',
+      provider_base_url: 'https://shared.proxy.example',
+    },
+    'admin',
+  )
+  updateCodingCredentials(
+    USER_CTX,
+    'agent-provider',
+    {
+      provider: 'anthropic',
+      agent: 'claude',
+      provider_api_key: 'sk-user',
+      provider_base_url: 'https://user.proxy.example',
+    },
+    'user-9',
+  )
+  expect(resolveProviderHost(SCOPED_STORAGE_CTX)).toBe('user.proxy.example')
+})
+
+test('non-scoped/legacy context id — sharedKeyContext returns null and resolveAgentSecrets uses the user context', () => {
+  // STORAGE_CTX is 'pi:telegram:ctx:user-9' which parseScopedContextId returns null for
+  setCodingGuardrails('telegram', {
+    allowedAgents: ['claude', 'codex', 'opencode'],
+    whoMayUse: 'members',
+    forceSharedKey: true,
+  })
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-legacy-user' },
+    'user-9',
+  )
+  // should NOT use the shared key; legacy context falls back to configContextOf
+  expect(resolveAgentSecrets(STORAGE_CTX)).toEqual({ ANTHROPIC_API_KEY: 'sk-legacy-user' })
 })
