@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { RepoEntry, RuntimeContext } from '../../../plugins/acp/tools.js'
-import { buildProjectSpec, buildSessionProjectSpec } from '../../../plugins/acp/tools.js'
+import { buildProjectSpec, buildSessionProjectSpec, canDeriveForge } from '../../../plugins/acp/tools.js'
 
 type CodingSecrets = RuntimeContext['codingSecrets']
 
@@ -72,5 +72,23 @@ describe('buildSessionProjectSpec', () => {
     expect(result['forge']).toEqual(forge)
     expect(result['providerHost']).toBe('api.openai.com')
     expect(result['agent']).toBe('codex')
+  })
+})
+
+describe('canDeriveForge', () => {
+  test('true for github.com (SaaS)', () => {
+    expect(canDeriveForge('https://github.com/acme/demo.git')).toBe(true)
+  })
+
+  test('true for gitlab.com (SaaS)', () => {
+    expect(canDeriveForge('https://gitlab.com/acme/demo.git')).toBe(true)
+  })
+
+  test('false for a self-hosted host', () => {
+    expect(canDeriveForge('https://gl.corp.com/acme/demo.git')).toBe(false)
+  })
+
+  test('false for an invalid url', () => {
+    expect(canDeriveForge('git@github.com:acme/demo.git')).toBe(false)
   })
 })

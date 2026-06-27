@@ -42,6 +42,17 @@ export function sessionIdOf(result: unknown): string | null {
   return typeof id === 'string' && id.length > 0 ? id : null
 }
 
+// magi auto-derives a forge for these SaaS hosts; any other host needs an
+// explicit Code host config or magi rejects the session at intake.
+export function canDeriveForge(repoUrl: string): boolean {
+  try {
+    const host = new URL(repoUrl).host
+    return host === 'github.com' || host === 'gitlab.com'
+  } catch {
+    return false
+  }
+}
+
 export function buildProjectSpec(
   repo: RepoEntry,
   agent: string,

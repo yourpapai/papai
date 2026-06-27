@@ -22,7 +22,7 @@ import {
   startSessionSchema,
 } from './schemas.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { buildSessionProjectSpec, sessionIdOf } from './tools.js'
+import { buildSessionProjectSpec, canDeriveForge, sessionIdOf } from './tools.js'
 
 const DEFAULT_AGENT = 'claude-code-acp'
 const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
@@ -57,6 +57,12 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
       const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
+      if (runtimeContext.codingSecrets.resolveForge() === null && !canDeriveForge(repo.repoUrl))
+        return {
+          error: 'not_configured',
+          message:
+            'This repository is on a self-hosted code host. Open settings → Coding sessions and set your Code host (kind, instance URL, and token) before starting a session.',
+        }
       const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets)
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         agent,

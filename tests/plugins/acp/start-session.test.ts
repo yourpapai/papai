@@ -103,6 +103,64 @@ describe('acp start_session tool', () => {
     expect(httpFetch).not.toHaveBeenCalled()
   })
 
+  test('self-hosted repo without a configured forge returns not_configured without calling httpFetch', async () => {
+    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const selfHostedRepos = {
+      list: (): { name: string; baseBranch: string }[] => [{ name: 'demo', baseBranch: 'main' }],
+      get: (_name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } => ({
+        name: 'demo',
+        repoUrl: 'https://gl.corp.com/acme/demo.git',
+        baseBranch: 'main',
+        permissionPreset: 'cautious',
+      }),
+    }
+    const result = await tools
+      .get('start_session')!
+      .execute({ project: 'demo', prompt: 'do it' }, runtimeCtxWithKv(store, undefined, selfHostedRepos), options())
+    expect(asRecord(result)['error']).toBe('not_configured')
+    expect(httpFetch).not.toHaveBeenCalled()
+  })
+
+  test('self-hosted repo WITH a configured forge proceeds to POST /sessions', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 's-sh', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const selfHostedRepos = {
+      list: (): { name: string; baseBranch: string }[] => [{ name: 'demo', baseBranch: 'main' }],
+      get: (_name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } => ({
+        name: 'demo',
+        repoUrl: 'https://gl.corp.com/acme/demo.git',
+        baseBranch: 'main',
+        permissionPreset: 'cautious',
+      }),
+    }
+    const ctx = {
+      ...runtimeCtxWithKv(store, undefined, selfHostedRepos),
+      codingSecrets: {
+        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+        resolveForgeToken: (): string => 'glpat-test',
+        resolveAgent: (): null => null,
+        resolveForge: (): { kind: 'gitlab'; apiBaseUrl: string } => ({
+          kind: 'gitlab',
+          apiBaseUrl: 'https://gl.corp.com/api/v4',
+        }),
+        resolveProviderHost: (): null => null,
+      },
+    }
+    const result = await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctx, options())
+    expect(asRecord(asRecord(capturedBody)['projectSpec'])['forge']).toEqual({
+      kind: 'gitlab',
+      apiBaseUrl: 'https://gl.corp.com/api/v4',
+    })
+    expect(result).toEqual({ id: 's-sh', status: 'queued' })
+  })
+
   test('projectSpec includes forge when resolveForge returns a value', async () => {
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (_url, init) => {
