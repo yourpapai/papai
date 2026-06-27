@@ -9,8 +9,9 @@ import type { StagedFileDownloadFn } from './attachments/types.js'
 import { getCachedTools, setCachedTools } from './cache.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { askPermissionViaChat } from './chat/permission-prompt.js'
-import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
+import { getConfigContextIdFromStorageContextId, parseScopedContextId } from './chat/scoped-context.js'
 import type { ActorRole, ReplyFn } from './chat/types.js'
+import { resolveCodingGuardrails } from './coding-credentials/guardrails.js'
 import { buildMessagesWithMemory } from './conversation.js'
 import { resolveTimezone } from './llm-orchestrator-config.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
@@ -31,6 +32,32 @@ import {
 import type { AskPermissionFn } from './tools/permission-gate.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:tools' })
+
+// ---------------------------------------------------------------------------
+// Who-may-use filter: gates acp state-changing tools per operator guardrails
+// ---------------------------------------------------------------------------
+
+const ACP_SESSION_ACTION_TOOLS = new Set([
+  'plugin_acp__start_session',
+  'plugin_acp__review_pr',
+  'plugin_acp__finish_session',
+  'plugin_acp__cancel_session',
+  'plugin_acp__answer_permission',
+])
+
+/**
+ * Drops ACP session-action tools for actors not on the who-may-use allowlist.
+ * Returns `tools` reference-identical when `whoMayUse === 'members'` (the default).
+ */
+export function applyWhoMayUseFilter(tools: ToolSet, whoMayUse: 'members' | string[], chatUserId: string): ToolSet {
+  if (whoMayUse === 'members') return tools
+  if (whoMayUse.includes(chatUserId)) return tools
+  const out: ToolSet = {}
+  for (const [name, t] of Object.entries(tools)) {
+    if (t !== undefined && !ACP_SESSION_ACTION_TOOLS.has(name)) out[name] = t
+  }
+  return out
+}
 
 const isToolSet = (value: unknown): value is ToolSet =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -197,15 +224,21 @@ const buildFullToolSet = async (
     actorRole === 'guest'
       ? applyGuestReadOnlyFilter(descriptors)
       : applyToolPreferences(descriptors, contextId, askPermission)
+  const pi = parseScopedContextId(contextId)?.platformInstanceId
+  const gatedTools =
+    pi === undefined ? prefTools : applyWhoMayUseFilter(prefTools, resolveCodingGuardrails(pi).whoMayUse, chatUserId)
   const { tools: disclosedTools, disclosure } = applyCompactionAndDisclosure(
-    prefTools,
+    gatedTools,
     contextId,
     chatUserId,
     contextType,
     userText,
     deps,
   )
-  log.debug({ contextId, toolCount: Object.keys(disclosedTools).length }, 'Prepared tool set for LLM invocation')
+  log.debug(
+    { contextId, toolCount: Object.keys(disclosedTools).length, gated: gatedTools !== prefTools },
+    'Prepared tool set for LLM invocation',
+  )
   return { tools: disclosedTools, enabledToolNames: new Set(Object.keys(disclosedTools)), disclosure }
 }
 
