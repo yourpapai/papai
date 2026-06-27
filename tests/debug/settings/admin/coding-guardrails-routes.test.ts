@@ -136,4 +136,35 @@ describe('settings admin coding-guardrails routes', () => {
     )
     expect(res.status).toBe(405)
   })
+
+  test('unauthenticated request returns 401', async () => {
+    const url = new URL('https://x/settings/api/admin/coding-guardrails')
+    const res = await handleAdminCodingGuardrailsRoutes(new Request(url), url, url.pathname)
+    expect(res.status).toBe(401)
+  })
+
+  test('non-admin POST is rejected with 403', async () => {
+    const url = new URL('https://x/settings/api/admin/coding-guardrails')
+    const req = new Request(url, {
+      method: 'POST',
+      headers: { ...authHeaders(userSession, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'shared-key-clear' }),
+    })
+    const res = await handleAdminCodingGuardrailsRoutes(req, url, url.pathname)
+    expect(res.status).toBe(403)
+  })
+
+  test('POST with an invalid body returns 422', async () => {
+    const url = new URL('https://x/settings/api/admin/coding-guardrails')
+    const req = new Request(url, {
+      method: 'POST',
+      headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'policy',
+        guardrails: { allowedAgents: 'not-an-array', whoMayUse: 'members', forceSharedKey: false },
+      }),
+    })
+    const res = await handleAdminCodingGuardrailsRoutes(req, url, url.pathname)
+    expect(res.status).toBe(422)
+  })
 })
