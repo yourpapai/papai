@@ -10,6 +10,8 @@ import { buildCodingSecretsFacade } from '../../src/plugins/tool-runtime.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const STORAGE_CTX = 'pi:telegram:ctx:user-3'
+// STORAGE_CTX is not parseable (non-standard format) → identityContext returns configContextOf(STORAGE_CTX) = STORAGE_CTX
+const CHAT_USER_ID = 'user-3'
 
 beforeEach(async () => {
   mockLogger()
@@ -22,45 +24,47 @@ afterEach(() => {
 
 test('resolve returns mapped secrets when configured', () => {
   updateCodingCredentials(STORAGE_CTX, 'agent-provider', { provider_api_key: 'sk-1' }, 'user-3')
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolve()).toEqual({ ANTHROPIC_API_KEY: 'sk-1' })
 })
 
 test('resolve returns null when not configured', () => {
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolve()).toBeNull()
 })
 
 test('resolve throws without the coding.secrets permission', () => {
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID)
   expect(() => facade.resolve()).toThrow("does not have 'coding.secrets' permission")
 })
 
 test('resolveForgeToken via facade; denied without permission', () => {
   updateCodingCredentials(STORAGE_CTX, 'forge', { forge_token: 'ghp_1' }, 'user-3')
-  expect(buildCodingSecretsFacade('acp', STORAGE_CTX, true).resolveForgeToken()).toBe('ghp_1')
-  expect(() => buildCodingSecretsFacade('acp', STORAGE_CTX, false).resolveForgeToken()).toThrow("'coding.secrets'")
+  expect(buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID).resolveForgeToken()).toBe('ghp_1')
+  expect(() => buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID).resolveForgeToken()).toThrow(
+    "'coding.secrets'",
+  )
 })
 
 test('resolveAgent returns stored agent when set', () => {
   updateCodingCredentials(STORAGE_CTX, 'agent-provider', { agent: 'codex', provider_api_key: 'sk-1' }, 'user-3')
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveAgent()).toBe('codex')
 })
 
 test('resolveAgent returns null when agent not set', () => {
   updateCodingCredentials(STORAGE_CTX, 'agent-provider', { provider_api_key: 'sk-1' }, 'user-3')
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveAgent()).toBeNull()
 })
 
 test('resolveAgent returns null when no credentials stored', () => {
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveAgent()).toBeNull()
 })
 
 test('resolveAgent throws without the coding.secrets permission', () => {
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID)
   expect(() => facade.resolveAgent()).toThrow("does not have 'coding.secrets' permission")
 })
 
@@ -71,34 +75,34 @@ test('resolveForge returns typed forge for a gitlab-self-hosted vault', () => {
     { kind: 'gitlab-self-hosted', instance_url: 'https://gl.corp.com', forge_token: 'glpat-1' },
     'user-3',
   )
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveForge()).toEqual({ kind: 'gitlab', apiBaseUrl: 'https://gl.corp.com/api/v4' })
 })
 
 test('resolveForge returns github SaaS defaults for a legacy token-only vault', () => {
   updateCodingCredentials(STORAGE_CTX, 'forge', { forge_token: 'ghp_legacy' }, 'user-3')
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveForge()).toEqual({ kind: 'github', apiBaseUrl: 'https://api.github.com' })
 })
 
 test('resolveForge returns null when no forge vault stored', () => {
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveForge()).toBeNull()
 })
 
 test('resolveForge throws without the coding.secrets permission', () => {
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID)
   expect(() => facade.resolveForge()).toThrow("does not have 'coding.secrets' permission")
 })
 
 test('resolveProviderHost returns api.anthropic.com for anthropic provider', () => {
   updateCodingCredentials(STORAGE_CTX, 'agent-provider', { provider: 'anthropic', provider_api_key: 'sk-1' }, 'user-3')
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveProviderHost()).toBe('api.anthropic.com')
 })
 
 test('resolveProviderHost returns null when no credentials stored', () => {
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveProviderHost()).toBeNull()
 })
 
@@ -109,11 +113,11 @@ test('resolveProviderHost returns host from base URL for openai-compatible', () 
     { provider: 'openai-compatible', provider_api_key: 'sk-c', provider_base_url: 'https://llm.corp.com/v1' },
     'user-3',
   )
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
   expect(facade.resolveProviderHost()).toBe('llm.corp.com')
 })
 
 test('resolveProviderHost throws without the coding.secrets permission', () => {
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false)
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID)
   expect(() => facade.resolveProviderHost()).toThrow("does not have 'coding.secrets' permission")
 })

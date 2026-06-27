@@ -163,27 +163,28 @@ export function buildCodingSecretsFacade(
   pluginId: string,
   storageContextId: string,
   hasPermission: boolean,
+  chatUserId: string,
 ): PluginToolRuntimeContext['codingSecrets'] {
   return Object.freeze({
     resolve(): Record<string, string> | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveAgentSecrets(storageContextId)
+      return resolveAgentSecrets(storageContextId, chatUserId)
     },
     resolveForgeToken(): string | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveForgeToken(storageContextId)
+      return resolveForgeToken(storageContextId, chatUserId)
     },
     resolveAgent(): string | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveAgent(storageContextId)
+      return resolveAgent(storageContextId, chatUserId)
     },
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveForge(storageContextId)
+      return resolveForge(storageContextId, chatUserId)
     },
     resolveProviderHost(): string | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveProviderHost(storageContextId)
+      return resolveProviderHost(storageContextId, chatUserId)
     },
   })
 }
@@ -284,7 +285,12 @@ export function buildPluginToolRuntimeContext(
     ...(identity === undefined ? {} : { identity }),
     rateLimit: buildRateLimit(pluginId),
     attachments: buildAttachmentsFacade(pluginId, runtime.storageContextId, permissions.has('attachments.read')),
-    codingSecrets: buildCodingSecretsFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
+    codingSecrets: buildCodingSecretsFacade(
+      pluginId,
+      runtime.storageContextId,
+      permissions.has('coding.secrets'),
+      runtime.chatUserId,
+    ),
     codingRepos: buildCodingReposFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
   })
 }

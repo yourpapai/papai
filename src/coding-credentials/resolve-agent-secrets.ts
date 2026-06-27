@@ -3,7 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getConfigContextIdFromStorageContextId, parseScopedContextId } from '../chat/scoped-context.js'
+import { getGroupCodingIdentity } from '../authorized-groups.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  parseScopedContextId,
+  toScopedContextId,
+} from '../chat/scoped-context.js'
 import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
 import { getCodingCredentials } from './store.js'
 import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'
@@ -19,6 +24,27 @@ function sharedKeyContext(storageContextId: string): string | null {
   return resolveCodingGuardrails(pi).forceSharedKey ? adminCodingGuardrailsContextId(pi) : null
 }
 
+/**
+ * The context whose vault holds the acting identity's creds for this session.
+ *
+ * For a DM, configContextOf(dmCtx) === toScopedContextId({pi, nativeContextId: chatUserId}),
+ * and getGroupCodingIdentity(dmCtx) returns 'initiator' (no authorized_groups row), so the
+ * result is byte-identical to today's behavior.
+ */
+export function identityContext(storageContextId: string, chatUserId: string): string {
+  const pi = parseScopedContextId(storageContextId)?.platformInstanceId
+  // Legacy/non-scoped context id → unchanged behavior
+  if (pi === undefined) return configContextOf(storageContextId)
+  const groupCtx = configContextOf(storageContextId)
+  const policy = getGroupCodingIdentity(groupCtx)
+  if (policy === 'shared') return groupCtx
+  if (policy.startsWith('designated:')) {
+    return toScopedContextId({ platformInstanceId: pi, nativeContextId: policy.slice('designated:'.length) })
+  }
+  // 'initiator' (default) — and the default for DMs / non-group contexts, which yields the user's own context
+  return toScopedContextId({ platformInstanceId: pi, nativeContextId: chatUserId })
+}
+
 const PROVIDER_ENV: Record<Provider, { key: string; base: string }> = {
   anthropic: { key: 'ANTHROPIC_API_KEY', base: 'ANTHROPIC_BASE_URL' },
   openai: { key: 'OPENAI_API_KEY', base: 'OPENAI_BASE_URL' },
@@ -26,15 +52,17 @@ const PROVIDER_ENV: Record<Provider, { key: string; base: string }> = {
 }
 
 /**
- * Resolve the acting context's agent-provider credentials and map them to the
+ * Resolve the acting identity's agent-provider credentials and map them to the
  * env-name-keyed secrets the magi request expects. The mapping is provider-aware:
  * anthropic → ANTHROPIC_API_KEY, openai → OPENAI_API_KEY. Defaults to anthropic
  * when the provider field is absent (backward-compat). Returns null when no api
  * key is stored.
+ *
+ * For provider key resolution, 5a's force-shared-key wins over the identity context.
  */
-export function resolveAgentSecrets(storageContextId: string): Record<string, string> | null {
+export function resolveAgentSecrets(storageContextId: string, chatUserId: string): Record<string, string> | null {
   const creds = getCodingCredentials(
-    sharedKeyContext(storageContextId) ?? configContextOf(storageContextId),
+    sharedKeyContext(storageContextId) ?? identityContext(storageContextId, chatUserId),
     'agent-provider',
   )
   const apiKey = creds?.provider_api_key?.trim()
@@ -49,35 +77,37 @@ export function resolveAgentSecrets(storageContextId: string): Record<string, st
 }
 
 /**
- * Resolve the acting context's configured coding agent name.
+ * Resolve the acting identity's configured coding agent name.
  * Returns null when the agent field is absent or empty.
  */
-export function resolveAgent(storageContextId: string): string | null {
-  const creds = getCodingCredentials(configContextOf(storageContextId), 'agent-provider')
+export function resolveAgent(storageContextId: string, chatUserId: string): string | null {
+  const creds = getCodingCredentials(identityContext(storageContextId, chatUserId), 'agent-provider')
   const agent = creds?.agent?.trim()
   return agent === undefined || agent.length === 0 ? null : agent
 }
 
 /**
- * Resolve the acting context's forge (code-host) token.
+ * Resolve the acting identity's forge (code-host) token.
  * Returns null when no token is stored.
  */
-export function resolveForgeToken(storageContextId: string): string | null {
-  const creds = getCodingCredentials(configContextOf(storageContextId), 'forge')
+export function resolveForgeToken(storageContextId: string, chatUserId: string): string | null {
+  const creds = getCodingCredentials(identityContext(storageContextId, chatUserId), 'forge')
   const token = creds?.forge_token?.trim()
   return token === undefined || token.length === 0 ? null : token
 }
 
 /**
- * Resolve the acting context's provider host from the agent-provider vault.
+ * Resolve the acting identity's provider host from the agent-provider vault.
  * Returns the base URL host when a custom base URL is set; otherwise the well-known
  * host for the provider (anthropic → api.anthropic.com, openai → api.openai.com).
  * Returns null when no vault is stored or when the host cannot be determined
  * (e.g. openai-compatible without a base URL, or a malformed base URL).
+ *
+ * For provider host resolution, 5a's force-shared-key wins over the identity context.
  */
-export function resolveProviderHost(storageContextId: string): string | null {
+export function resolveProviderHost(storageContextId: string, chatUserId: string): string | null {
   const creds = getCodingCredentials(
-    sharedKeyContext(storageContextId) ?? configContextOf(storageContextId),
+    sharedKeyContext(storageContextId) ?? identityContext(storageContextId, chatUserId),
     'agent-provider',
   )
   if (creds === null) return null
@@ -86,12 +116,15 @@ export function resolveProviderHost(storageContextId: string): string | null {
 }
 
 /**
- * Resolve the acting context's typed forge connection (kind + apiBaseUrl).
+ * Resolve the acting identity's typed forge connection (kind + apiBaseUrl).
  * Legacy token-only vaults (no kind stored) default to github SaaS.
  * Returns null when no forge vault is stored or when the kind cannot be derived.
  */
-export function resolveForge(storageContextId: string): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null {
-  const creds = getCodingCredentials(configContextOf(storageContextId), 'forge')
+export function resolveForge(
+  storageContextId: string,
+  chatUserId: string,
+): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null {
+  const creds = getCodingCredentials(identityContext(storageContextId, chatUserId), 'forge')
   if (creds === null) return null
   const kind = creds.kind?.trim()
   // Legacy vaults stored before kind was required; default to github SaaS.

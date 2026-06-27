@@ -77,6 +77,15 @@ export function isGuestModeEnabled(groupId: string): boolean {
   return row?.guestMode === true
 }
 
+export function getGroupCodingIdentity(groupId: string): string {
+  const row = getDrizzleDb()
+    .select({ codingIdentity: authorizedGroups.codingIdentity })
+    .from(authorizedGroups)
+    .where(eq(authorizedGroups.groupId, groupId))
+    .get()
+  return row?.codingIdentity ?? 'initiator'
+}
+
 export function setGuestMode(groupId: string, enabled: boolean): void {
   getDrizzleDb().update(authorizedGroups).set({ guestMode: enabled }).where(eq(authorizedGroups.groupId, groupId)).run()
   log.info({ groupId, enabled }, 'guest mode updated')

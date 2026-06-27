@@ -75,6 +75,7 @@ import { migration061CodingSessionCredentials } from './migrations/061_coding_se
 import { migration062NullableContextTaskInstance } from './migrations/062_nullable_context_task_instance.js'
 import { migration063ReleaseAnnouncements } from './migrations/063_release_announcements.js'
 import { migration064CodingSessionRepos } from './migrations/064_coding_session_repos.js'
+import { migration065CodingIdentity } from './migrations/065_coding_identity.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -174,6 +175,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration062NullableContextTaskInstance,
   migration063ReleaseAnnouncements,
   migration064CodingSessionRepos,
+  migration065CodingIdentity,
 ]
 
 export const initDb = (): void => {
