@@ -7,7 +7,12 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { getGroupAnnounceSubscribed, setGroupAnnounceSubscribed } from '../../announcements/store.js'
-import { getGroupCodingIdentity, isGuestModeEnabled, setGroupCodingIdentity, setGuestMode } from '../../authorized-groups.js'
+import {
+  getGroupCodingIdentity,
+  isGuestModeEnabled,
+  setGroupCodingIdentity,
+  setGuestMode,
+} from '../../authorized-groups.js'
 import { getDrizzleDb } from '../../db/drizzle.js'
 import { taskInstances } from '../../db/instance-schema.js'
 import { addGroupMember, isGroupMember, listGroupMembers, removeGroupMember } from '../../groups.js'

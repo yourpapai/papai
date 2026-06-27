@@ -270,9 +270,8 @@ export const patchGroupGuestMode = (input: { enabled: boolean; contextId: string
   writeJson('/settings/api/group/guest-mode', 'PATCH', input, (b) => b)
 
 export const fetchGroupCodingIdentity = (contextId: string): Promise<GroupCodingIdentityResponse> =>
-  getJson(
-    `/settings/api/group/coding-identity?${ctxQuery(contextId)}`,
-    (b) => GroupCodingIdentityResponseSchema.parse(b),
+  getJson(`/settings/api/group/coding-identity?${ctxQuery(contextId)}`, (b) =>
+    GroupCodingIdentityResponseSchema.parse(b),
   )
 
 export const patchGroupCodingIdentity = (input: { identity: string; contextId: string }): Promise<unknown> =>
