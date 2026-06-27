@@ -16,6 +16,7 @@ import {
   BootstrapSchema,
   CodingCredentialsResponseSchema,
   ConfigResponseSchema,
+  GroupCodingIdentityResponseSchema,
   GroupGuestModeResponseSchema,
   GroupMembersResponseSchema,
   GroupTaskInstanceResponseSchema,
@@ -29,6 +30,7 @@ import {
   type CodingCredentialsResponse,
   type ConfigResponse,
   type ContextTaskInstanceResponse,
+  type GroupCodingIdentityResponse,
   type GroupGuestModeResponse,
   type GroupMembersResponse,
   type GroupTaskInstanceResponse,
@@ -266,6 +268,15 @@ export const fetchGroupGuestMode = (contextId: string): Promise<GroupGuestModeRe
 
 export const patchGroupGuestMode = (input: { enabled: boolean; contextId: string }): Promise<unknown> =>
   writeJson('/settings/api/group/guest-mode', 'PATCH', input, (b) => b)
+
+export const fetchGroupCodingIdentity = (contextId: string): Promise<GroupCodingIdentityResponse> =>
+  getJson(
+    `/settings/api/group/coding-identity?${ctxQuery(contextId)}`,
+    (b) => GroupCodingIdentityResponseSchema.parse(b),
+  )
+
+export const patchGroupCodingIdentity = (input: { identity: string; contextId: string }): Promise<unknown> =>
+  writeJson('/settings/api/group/coding-identity', 'PATCH', input, (b) => b)
 
 export const fetchContextTaskInstance = (contextId: string): Promise<ContextTaskInstanceResponse> =>
   getJson(`/settings/api/context/task-instance?${ctxQuery(contextId)}`, (b) => GroupTaskInstanceResponseSchema.parse(b))

@@ -27,6 +27,7 @@
   import IdentitySection from './sections/IdentitySection.svelte'
   import MembersSection from './sections/MembersSection.svelte'
   import GroupProviderSection from './sections/GroupProviderSection.svelte'
+  import CodingIdentitySection from './sections/CodingIdentitySection.svelte'
   import GuestModeSection from './sections/GuestModeSection.svelte'
   import KaneoAccessSection from './sections/KaneoAccessSection.svelte'
   import ReleaseSubscriptionSection from './sections/ReleaseSubscriptionSection.svelte'
@@ -96,6 +97,7 @@
                 { id: 'members', label: 'Members' },
                 { id: 'group-provider', label: 'Group provider' },
                 { id: 'guest-mode', label: 'Guest mode' },
+                { id: 'coding-identity', label: 'Session identity' },
                 { id: 'kaneo-access', label: 'My Kaneo access' },
               ]
             : []),
@@ -201,6 +203,7 @@
               <MembersSection contextId={ctx} />
               <GroupProviderSection contextId={ctx} />
               <GuestModeSection contextId={ctx} />
+              <CodingIdentitySection contextId={ctx} />
               <ReleaseSubscriptionSection scope="group" contextId={ctx} />
               <KaneoAccessSection contextId={ctx} />
             {/if}

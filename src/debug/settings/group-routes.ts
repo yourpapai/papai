@@ -7,10 +7,10 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { getGroupAnnounceSubscribed, setGroupAnnounceSubscribed } from '../../announcements/store.js'
-import { isGuestModeEnabled, setGuestMode } from '../../authorized-groups.js'
+import { getGroupCodingIdentity, isGuestModeEnabled, setGroupCodingIdentity, setGuestMode } from '../../authorized-groups.js'
 import { getDrizzleDb } from '../../db/drizzle.js'
 import { taskInstances } from '../../db/instance-schema.js'
-import { addGroupMember, listGroupMembers, removeGroupMember } from '../../groups.js'
+import { addGroupMember, isGroupMember, listGroupMembers, removeGroupMember } from '../../groups.js'
 import { getContextSettings, setContextSettings } from '../../instances/context-store.js'
 import { listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
@@ -58,6 +58,9 @@ function handleMembersGet(authed: AuthenticatedSettingsRequest, url: URL): Respo
 const MemberBodySchema = z.object({ userId: z.string().min(1), contextId: z.string().min(1) })
 const GuestModeBodySchema = z.object({ enabled: z.boolean(), contextId: z.string().min(1) })
 const ReleaseSubBodySchema = z.object({ enabled: z.boolean(), contextId: z.string().min(1) })
+const CodingIdentityBodySchema = z.object({ identity: z.string().min(1), contextId: z.string().min(1) })
+
+const VALID_PLAIN_IDENTITIES = new Set(['initiator', 'shared'])
 
 async function handleMembersWrite(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   const csrf = requireCsrf(req, authed)
@@ -126,6 +129,40 @@ async function handleReleaseSubPatch(req: Request, authed: AuthenticatedSettings
   setGroupAnnounceSubscribed(outcome.group.contextId, body.data.enabled)
   log.info({ contextId: outcome.group.contextId, enabled: body.data.enabled }, 'group release subscription updated')
   return settingsJson(200, { ok: true, contextId: outcome.group.contextId, enabled: body.data.enabled })
+}
+
+function handleCodingIdentityGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
+  const outcome = requireGroup(authed, 'read', url.searchParams.get('contextId'))
+  if (!outcome.ok) return outcome.response
+  return settingsJson(200, {
+    contextId: outcome.group.contextId,
+    identity: getGroupCodingIdentity(outcome.group.contextId),
+  })
+}
+
+async function handleCodingIdentityPatch(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
+  const csrf = requireCsrf(req, authed)
+  if (csrf !== null) return csrf
+  const parsed = await parseJsonBody(req)
+  if (!parsed.ok) return parsed.response
+  const body = CodingIdentityBodySchema.safeParse(parsed.value)
+  if (!body.success) return settingsJson(422, { error: 'invalid request' })
+  const outcome = requireGroup(authed, 'write', body.data.contextId)
+  if (!outcome.ok) return outcome.response
+  const { identity } = body.data
+  const groupId = outcome.group.contextId
+  if (!VALID_PLAIN_IDENTITIES.has(identity)) {
+    if (!identity.startsWith('designated:')) {
+      return settingsJson(422, { error: 'invalid identity' })
+    }
+    const userId = identity.slice('designated:'.length)
+    if (!isGroupMember(groupId, userId)) {
+      return settingsJson(422, { error: 'designated user is not a group member' })
+    }
+  }
+  setGroupCodingIdentity(groupId, identity)
+  log.info({ contextId: groupId, identity }, 'Settings group coding identity updated')
+  return settingsJson(200, { ok: true, contextId: groupId, identity })
 }
 
 function handleTaskInstanceGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
@@ -201,6 +238,11 @@ export function handleGroupRoutes(req: Request, url: URL, pathname: string): Pro
   if (pathname === '/settings/api/group/release-subscription') {
     if (req.method === 'GET') return Promise.resolve(handleReleaseSubGet(auth.authed, url))
     if (req.method === 'PATCH') return handleReleaseSubPatch(req, auth.authed)
+    return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
+  }
+  if (pathname === '/settings/api/group/coding-identity') {
+    if (req.method === 'GET') return Promise.resolve(handleCodingIdentityGet(auth.authed, url))
+    if (req.method === 'PATCH') return handleCodingIdentityPatch(req, auth.authed)
     return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
   }
   return Promise.resolve(settingsJson(404, { error: 'not found' }))

@@ -186,7 +186,6 @@ export type ProvisionResult = z.infer<typeof ProvisionResultSchema>
 export const GroupMemberSchema = z.object({ user_id: z.string(), added_by: z.string(), added_at: z.string() })
 export const GroupMembersResponseSchema = z.object({ contextId: z.string(), members: z.array(GroupMemberSchema) })
 export type GroupMembersResponse = z.infer<typeof GroupMembersResponseSchema>
-
 export const TaskInstanceOptionSchema = z.object({ id: z.string(), type: z.string(), status: z.string() })
 export const GroupTaskInstanceResponseSchema = z.object({
   contextId: z.string(),
@@ -200,6 +199,8 @@ export type GroupTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponse
 export type ContextTaskInstanceResponse = z.infer<typeof GroupTaskInstanceResponseSchema>
 export const GroupGuestModeResponseSchema = z.object({ contextId: z.string(), enabled: z.boolean() })
 export type GroupGuestModeResponse = z.infer<typeof GroupGuestModeResponseSchema>
+export const GroupCodingIdentityResponseSchema = z.object({ contextId: z.string(), identity: z.string() })
+export type GroupCodingIdentityResponse = z.infer<typeof GroupCodingIdentityResponseSchema>
 
 // --- Admin (lenient: store-shaped rows rendered generically) ---
 
@@ -291,7 +292,6 @@ export type AdminRosterResponse = z.infer<typeof AdminRosterResponseSchema>
 
 export const PluginApprovalResultSchema = z.object({ ok: z.boolean(), state: z.string().nullable() })
 export type PluginApprovalResult = z.infer<typeof PluginApprovalResultSchema>
-
 export const AnnounceResultSchema = z.object({
   totalUsers: z.number(),
   successCount: z.number(),

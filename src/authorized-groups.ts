@@ -91,6 +91,15 @@ export function setGuestMode(groupId: string, enabled: boolean): void {
   log.info({ groupId, enabled }, 'guest mode updated')
 }
 
+export function setGroupCodingIdentity(groupId: string, identity: string): void {
+  getDrizzleDb()
+    .update(authorizedGroups)
+    .set({ codingIdentity: identity })
+    .where(eq(authorizedGroups.groupId, groupId))
+    .run()
+  log.info({ groupId, identity }, 'coding identity updated')
+}
+
 export function listAuthorizedGroups(): Array<{
   group_id: string
   added_by: string
