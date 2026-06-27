@@ -418,6 +418,31 @@ test("group initiator (default policy): resolveAgentSecrets returns the acting u
   expect(resolveAgentSecrets(GROUP_THREAD_CTX, 'alice')).toEqual({ ANTHROPIC_API_KEY: 'sk-ALICE' })
 })
 
+test('group initiator: two users in the same thread each resolve their OWN creds (isolation)', () => {
+  addAuthorizedGroup(GROUP_CTX, 'admin')
+  updateCodingCredentials(
+    GROUP_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-GROUP' },
+    'admin',
+  )
+  updateCodingCredentials(
+    ALICE_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-ALICE' },
+    'alice',
+  )
+  updateCodingCredentials(
+    BOB_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-BOB' },
+    'bob',
+  )
+  // Same thread context, different acting users → each gets their own, neither gets the group's.
+  expect(resolveAgentSecrets(GROUP_THREAD_CTX, 'alice')).toEqual({ ANTHROPIC_API_KEY: 'sk-ALICE' })
+  expect(resolveAgentSecrets(GROUP_THREAD_CTX, 'bob')).toEqual({ ANTHROPIC_API_KEY: 'sk-BOB' })
+})
+
 test("group initiator: resolveForgeToken returns the acting user's token", () => {
   addAuthorizedGroup(GROUP_CTX, 'admin')
   updateCodingCredentials(GROUP_CTX, 'forge', { forge_token: 'ghp-GROUP' }, 'admin')
