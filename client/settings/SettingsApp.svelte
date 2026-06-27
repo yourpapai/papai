@@ -41,6 +41,7 @@
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
   import AdminReleaseNotesSection from './sections/admin/AdminReleaseNotesSection.svelte'
   import AdminFeatureFlagsSection from './sections/admin/AdminFeatureFlagsSection.svelte'
+  import AdminCodingGuardrailsSection from './sections/admin/AdminCodingGuardrailsSection.svelte'
   import AdminToolDefaultsSection from './sections/admin/AdminToolDefaultsSection.svelte'
 
   type SidebarItem = SidebarGroup['items'][number]
@@ -58,6 +59,7 @@
         { id: 'plugin-config', label: 'Plugin config' },
         { id: 'users', label: 'Users' },
         { id: 'tool-defaults', label: 'Tool defaults' },
+        { id: 'coding-guardrails', label: 'Coding guardrails' },
         { id: 'groups', label: 'Groups' },
         { id: 'announce', label: 'Announce' },
         { id: 'release-notes', label: 'Release notes' },
@@ -238,6 +240,7 @@
                 <AdminPluginsConfigSection />
                 <AdminUsersSection />
                 <AdminToolDefaultsSection />
+                <AdminCodingGuardrailsSection />
                 <AdminGroupsSection />
                 <AdminAnnounceSection />
                 <AdminReleaseNotesSection />

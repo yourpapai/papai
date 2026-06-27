@@ -12,6 +12,10 @@ import {
 } from '../admin/feature-flags-fetcher-schemas.js'
 import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import {
+  AdminCodingGuardrailsResponseSchema,
+  type AdminCodingGuardrailsResponse,
+} from './fetcher-schemas-coding-guardrails.js'
 import { ApplyInstancesResultSchema, type ApplyInstancesResult } from './fetcher-schemas-instances.js'
 import {
   AdminPluginConfigSnapshotSchema,
@@ -230,3 +234,11 @@ export const broadcastReleaseNotes = (): Promise<ReleaseBroadcastResult> =>
   writeJson('/settings/api/admin/release-notes', 'POST', { action: 'broadcast' }, (b) =>
     ReleaseBroadcastResultSchema.parse(b),
   )
+
+// --- Admin: coding guardrails ---
+
+export const fetchAdminCodingGuardrails = (): Promise<AdminCodingGuardrailsResponse> =>
+  getJson('/settings/api/admin/coding-guardrails', (b) => AdminCodingGuardrailsResponseSchema.parse(b))
+
+export const postAdminCodingGuardrails = (body: unknown): Promise<AdminCodingGuardrailsResponse> =>
+  writeJson('/settings/api/admin/coding-guardrails', 'POST', body, (b) => AdminCodingGuardrailsResponseSchema.parse(b))

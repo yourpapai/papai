@@ -74,7 +74,6 @@ export type AdminByokContext = z.infer<typeof AdminByokContextSchema>
 export type AdminByokResponse = z.infer<typeof AdminByokResponseSchema>
 
 // --- Coding credentials ---
-
 export const CodingCredentialFieldSchema = StoredConfigValueSchema
 export const CodingCredentialsResponseSchema = z.object({
   namespace: z.string(),
@@ -84,6 +83,7 @@ export const CodingCredentialsResponseSchema = z.object({
   unreadable: z.literal(true).optional(),
   error: z.string().optional(),
   fields: z.array(CodingCredentialFieldSchema),
+  allowedAgents: z.array(z.string()).optional(),
 })
 export type CodingCredentialField = z.infer<typeof CodingCredentialFieldSchema>
 export type CodingCredentialsResponse = z.infer<typeof CodingCredentialsResponseSchema>

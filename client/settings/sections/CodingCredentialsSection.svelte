@@ -54,6 +54,10 @@
 
   function selectOptionsFor(field: CodingCredentialField): string[] {
     const opts = field.options ?? []
+    if (field.key === 'agent') {
+      const allowed = currentData?.allowedAgents
+      return allowed !== undefined && allowed.length > 0 ? opts.filter((o) => allowed.includes(o)) : opts
+    }
     if (field.key === 'provider' && currentAgent.length > 0) {
       return compatibleProviders(currentAgent, opts)
     }

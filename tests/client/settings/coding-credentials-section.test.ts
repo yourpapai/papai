@@ -447,4 +447,22 @@ describe('CodingCredentialsSection', () => {
     expect(label!.textContent).not.toContain('*')
     void unmount(component)
   })
+
+  test('agent select only shows allowed agents when allowedAgents is restricted', async () => {
+    const restrictedPayload = { ...withSelectsPayload, allowedAgents: ['claude'] }
+    setMockFetch(() => Promise.resolve(json(restrictedPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const agentSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-agent"]')
+    expect(agentSelect).not.toBeNull()
+    const options = Array.from(agentSelect!.options).map((o) => o.value)
+    expect(options).toContain('claude')
+    expect(options).not.toContain('codex')
+    expect(options).not.toContain('opencode')
+    void unmount(component)
+  })
 })

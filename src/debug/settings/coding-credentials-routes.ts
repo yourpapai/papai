@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { resolveCodingGuardrails } from '../../coding-credentials/guardrails.js'
 import {
   clearCodingCredentials,
   getCodingCredentialState,
@@ -25,6 +26,7 @@ import {
   type CodingNamespace,
 } from '../../coding-credentials/types.js'
 import { maskSensitiveValue } from '../../config.js'
+import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
 type FieldMeta = {
@@ -76,7 +78,7 @@ const ClearBodySchema = z
   .strict()
 const PatchBodySchema = z.union([ClearBodySchema, SaveBodySchema])
 
-const fieldResponse = (contextId: string, namespace: CodingNamespace): unknown => {
+const fieldResponse = (contextId: string, namespace: CodingNamespace): Record<string, unknown> => {
   const fields = FIELDS_META[namespace]
   const state = getCodingCredentialState(contextId, namespace)
   const config = getCodingCredentials(contextId, namespace) ?? {}
@@ -167,52 +169,58 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
   return null
 }
 
-export async function handleCodingCredentialsRoutes(req: Request, url: URL): Promise<Response> {
-  const auth = authenticate(req)
-  if (!auth.ok) return auth.response
-
-  if (req.method === 'GET') {
-    const namespace = parseNamespace(url.searchParams.get('namespace'))
-    if (namespace === null) return settingsJson(400, { error: 'unknown namespace' })
-    const scope = resolveContextScope(auth.authed.principal, 'read', url.searchParams.get('contextId') ?? undefined)
-    if (!scope.ok) return scope.response
-    return settingsJson(200, fieldResponse(scope.scope.contextId, namespace))
+function handleGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
+  const namespace = parseNamespace(url.searchParams.get('namespace'))
+  if (namespace === null) return settingsJson(400, { error: 'unknown namespace' })
+  const scope = resolveContextScope(authed.principal, 'read', url.searchParams.get('contextId') ?? undefined)
+  if (!scope.ok) return scope.response
+  const fields = fieldResponse(scope.scope.contextId, namespace)
+  if (namespace === 'agent-provider') {
+    const allowedAgents = resolveCodingGuardrails(authed.principal.platformInstanceId).allowedAgents
+    return settingsJson(200, { ...fields, allowedAgents })
   }
+  return settingsJson(200, fields)
+}
 
-  if (req.method === 'PATCH') {
-    const csrf = requireCsrf(req, auth.authed)
-    if (csrf !== null) return csrf
-    const parsed = await parseJsonBody(req)
-    if (!parsed.ok) return parsed.response
-    const body = PatchBodySchema.safeParse(parsed.value)
-    if (!body.success) return settingsJson(422, { error: 'invalid request' })
+async function handlePatch(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
+  const csrf = requireCsrf(req, authed)
+  if (csrf !== null) return csrf
+  const parsed = await parseJsonBody(req)
+  if (!parsed.ok) return parsed.response
+  const body = PatchBodySchema.safeParse(parsed.value)
+  if (!body.success) return settingsJson(422, { error: 'invalid request' })
 
-    const namespace = parseNamespace('namespace' in body.data ? body.data.namespace : undefined)
-    if (namespace === null) return settingsJson(400, { error: 'unknown namespace' })
+  const namespace = parseNamespace('namespace' in body.data ? body.data.namespace : undefined)
+  if (namespace === null) return settingsJson(400, { error: 'unknown namespace' })
 
-    const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
-    if (!scope.ok) return scope.response
+  const scope = resolveContextScope(authed.principal, 'write', body.data.contextId)
+  if (!scope.ok) return scope.response
 
-    if ('clear' in body.data) {
-      clearCodingCredentials(scope.scope.contextId, namespace, auth.authed.principal.platformUserId)
-      return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
-    }
-
-    const toPersist = valuesToPersist(scope.scope.contextId, namespace, body.data.values)
-
-    if (namespace === 'agent-provider') {
-      const incompatibleErr = checkCompatibility(scope.scope.contextId, toPersist)
-      if (incompatibleErr !== null) return incompatibleErr
-    }
-
-    if (namespace === 'forge') {
-      const forgeErr = checkForgeKind(scope.scope.contextId, toPersist)
-      if (forgeErr !== null) return forgeErr
-    }
-
-    updateCodingCredentials(scope.scope.contextId, namespace, toPersist, auth.authed.principal.platformUserId)
+  if ('clear' in body.data) {
+    clearCodingCredentials(scope.scope.contextId, namespace, authed.principal.platformUserId)
     return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
   }
 
-  return settingsJson(405, { error: 'method not allowed' })
+  const toPersist = valuesToPersist(scope.scope.contextId, namespace, body.data.values)
+
+  if (namespace === 'agent-provider') {
+    const incompatibleErr = checkCompatibility(scope.scope.contextId, toPersist)
+    if (incompatibleErr !== null) return incompatibleErr
+  }
+
+  if (namespace === 'forge') {
+    const forgeErr = checkForgeKind(scope.scope.contextId, toPersist)
+    if (forgeErr !== null) return forgeErr
+  }
+
+  updateCodingCredentials(scope.scope.contextId, namespace, toPersist, authed.principal.platformUserId)
+  return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
+}
+
+export function handleCodingCredentialsRoutes(req: Request, url: URL): Promise<Response> {
+  const auth = authenticate(req)
+  if (!auth.ok) return Promise.resolve(auth.response)
+  if (req.method === 'GET') return Promise.resolve(handleGet(auth.authed, url))
+  if (req.method === 'PATCH') return handlePatch(req, auth.authed)
+  return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
 }
