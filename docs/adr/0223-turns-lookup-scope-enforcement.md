@@ -22,15 +22,21 @@ context plus genuinely context-free system events. The SSE event path enforces t
 `onEvent` (`src/debug/state-collector.ts`) by dropping every event that fails
 `isVisibleToAdmin(scope, adminVisibility)`.
 
-The REST route `GET /turns/:id` (`handleTurnLookup`, `src/debug/server.ts`) bypassed that
-filter: it returned `findTurnById(turnId)` for any turn in the global `recentTurns` /
-`inFlightTurns` buffers, regardless of scope. A returned `Turn` carries cross-tenant
-`scope` identity (`userId`/`groupId`/`threadId`) and free-text `error` /
-`toolCalls[].failureReason` — the same free-text fields `redactLogEntry` drops elsewhere.
-Turn IDs for foreign scopes are harvestable by the same operator because `/logs` preserves
-`turnId` through redaction. The route requires an authenticated operator session, so the
-exposure is bounded to a trusted principal and excludes message bodies/tool args/results;
-severity is medium, but it is a genuine breach of the stated invariant.
+The REST route `GET /turns/:id` (`handleTurnLookup`, `src/debug/server.ts`) returned
+`findTurnById(turnId)` for any turn in the `recentTurns` / `inFlightTurns` buffers with
+**no scope check of its own**, unlike the SSE path. A returned `Turn` carries `scope`
+identity (`userId`/`groupId`/`threadId`) and free-text `error` / `toolCalls[].failureReason`
+— the same free-text fields `redactLogEntry` drops elsewhere.
+
+**Severity: low — a missing defense-in-depth check, not an active leak.** The buffers the
+route reads from are populated **only** via `handleTurnAssembly`, which `onEvent`
+(`state-collector.ts`) calls _after_ its `isVisibleToAdmin` gate — so foreign-scope turns
+never enter `recentTurns` / `inFlightTurns` in the first place. In the current code
+`/turns/:id` therefore could not actually return a turn outside the admin's own contexts;
+the buffer holds only visible turns by construction. The defect is that the REST egress
+relied on an invariant maintained by a different module instead of enforcing visibility
+itself — fragile if any future code path populates those buffers without going through the
+gated `onEvent`.
 
 ## Decision
 
@@ -41,15 +47,15 @@ confirming existence) when the turn is absent or not visible. The two egress poi
 enforce the same contract.
 
 We intentionally do **not** redact the free-text `error`/`failureReason` for _owned_ turns:
-the operator is authorized to see their own context, so the scope check alone closes the
-leak. Scope-filtering `/logs` is tracked separately (logs are already redacted; only the
-`turnId` is exposed).
+the operator is authorized to see their own context, so the scope check alone is sufficient.
 
 ## Consequences
 
 ### Positive
 
-- `GET /turns/:id` no longer exposes cross-tenant turn identity or free-text errors.
+- `GET /turns/:id` now enforces visibility itself rather than relying on an upstream
+  population invariant — robust against any future path that fills the turn buffers
+  outside the gated `onEvent`.
 - REST and SSE egress now share one visibility rule via one wrapper (no logic duplication).
 
 ### Negative / Risks
