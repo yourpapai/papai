@@ -39,7 +39,7 @@ Run the bot behind oauth2-proxy / Authelia / authentik / Cloudflare Access. The 
 - `/events` (SSE stream)
 - `/logs`, `/logs/stats`
 - `/dashboard` (redirect alias to `/debug`)
-- `/turns/*` (turn lookup)
+- `/turns/*` (turn lookup — additionally **scope-filtered**: only turns in the operator's own contexts are returned; a turn in any other user/group context returns `404`, matching the SSE event filter)
 
 **The operator surfaces are not gated by `DEBUG_SERVER`.** The following paths remain reachable whenever the debug server process is running, regardless of the `DEBUG_SERVER` flag:
 
