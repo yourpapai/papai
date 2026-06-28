@@ -7,7 +7,7 @@ import { getSessionSnapshots } from '../cache-snapshots.js'
 import { getPollerSnapshot } from '../deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../message-cache/cache.js'
 import { getSchedulerSnapshot } from '../scheduler.js'
-import { subscribe, unsubscribe, type DebugEvent, type Scope } from './event-bus.js'
+import { subscribe, unsubscribe, type DebugEvent } from './event-bus.js'
 import { recentLlm, pushTrace, handleLlmTraceEvent, type LlmTrace } from './llm-trace-collector.js'
 import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembly } from './turn-assembly.js'
 import type { Turn } from './turn-assembly.js'
@@ -75,11 +75,14 @@ export type AdminVisibility = {
   groupIds: ReadonlySet<string>
 }
 
-export function isVisibleToAdmin(scope: Scope | null | undefined, vis: AdminVisibility): boolean {
+export function isVisibleToAdmin(
+  scope: { kind?: string; userId?: string; groupId?: string } | null | undefined,
+  vis: AdminVisibility,
+): boolean {
   if (scope === null || scope === undefined || typeof scope.kind !== 'string') return false
   if (scope.kind === 'global') return true
   if (scope.kind === 'user') return scope.userId === vis.adminUserId
-  if (scope.kind === 'group') return vis.groupIds.has(scope.groupId)
+  if (scope.kind === 'group') return scope.groupId !== undefined && vis.groupIds.has(scope.groupId)
   return false
 }
 
@@ -87,16 +90,9 @@ export function isVisibleToAdmin(scope: Scope | null | undefined, vis: AdminVisi
  * Visibility check for a persisted turn's scope against the process's current admin.
  * Closes over the module-private `adminVisibility` so REST handlers can enforce the
  * same contract as the SSE path without importing mutable module state.
- *
- * Mirrors `isVisibleToAdmin` but accepts `Turn['scope']` (Zod-inferred, looser than the
- * event-bus `Scope` union) to avoid an unsafe narrowing assertion.
  */
 export function isScopeVisibleToCurrentAdmin(scope: Turn['scope'] | null | undefined): boolean {
-  if (scope === null || scope === undefined || typeof scope.kind !== 'string') return false
-  if (scope.kind === 'global') return true
-  if (scope.kind === 'user') return scope.userId === adminVisibility.adminUserId
-  if (scope.kind === 'group') return adminVisibility.groupIds.has(scope.groupId ?? '')
-  return false
+  return isVisibleToAdmin(scope, adminVisibility)
 }
 
 export function addClient(controller: ReadableStreamDefaultController): void {
