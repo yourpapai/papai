@@ -30,12 +30,19 @@ import { flushMicrotasks, mockLogger, resetSystemConfigCacheForTesting, setupTes
 // Track generateText calls
 type GenerateTextResult = {
   text: string
+  finishReason?: string
   toolCalls: unknown[]
   toolResults: unknown[]
   steps: unknown[] | undefined
   response: { messages: ModelMessage[] }
 }
-type GenerateTextCall = { model: string; system: string; messages: ModelMessage[]; tools: unknown }
+type GenerateTextCall = {
+  model: string
+  system: string
+  messages: ModelMessage[]
+  tools: unknown
+  stopWhen?: unknown
+}
 type BuildModelCall = { apiKey: string; baseURL: string; modelId: string }
 
 // Helper defined outside test blocks — no-conditional-in-test requires predicate helpers at module scope
@@ -129,7 +136,7 @@ describe('dispatchExecution', () => {
     void mock.module('ai', () => ({
       generateText: (args: GenerateTextCall): Promise<GenerateTextResult> => generateTextImpl(args),
       tool: (opts: unknown): unknown => opts,
-      stepCountIs: (_n: number): unknown => undefined,
+      stepCountIs: (n: number): unknown => ({ __stopAfterSteps: n }),
     }))
     void mock.module('../../src/llm-model-builder.js', () => ({
       buildChatModel: (apiKey: string, baseUrl: string, modelId: string): string => {
@@ -175,6 +182,29 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.tools).toHaveProperty('get_current_time')
       // Should not have task-related tools in lightweight mode
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_task')
+    })
+
+    test('passes a multi-step stopWhen so a get_current_time call is not truncated', async () => {
+      setupUserConfig()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
+      expect(generateTextCalls[0]!.stopWhen).toBeDefined()
+    })
+
+    test('does not deliver the assistant preamble when the turn ends on a pending tool call', async () => {
+      setupUserConfig()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: 'Let me first check the current date and time to give you an accurate reminder.',
+          finishReason: 'tool-calls',
+          toolCalls: [{ toolName: 'get_current_time', input: {} }],
+          toolResults: [],
+          steps: [{}],
+          response: { messages: [] },
+        })
+      }
+      const delivered = await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
+      expect(delivered).not.toContain('check the current date and time')
     })
 
     test('uses minimal system prompt', async () => {
@@ -299,6 +329,12 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.tools).toHaveProperty('get_current_time')
       // Should not have task-related tools in context mode
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_task')
+    })
+
+    test('passes a multi-step stopWhen so a get_current_time call is not truncated', async () => {
+      setupUserConfig()
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
+      expect(generateTextCalls[0]!.stopWhen).toBeDefined()
     })
 
     test('uses minimal system prompt', async () => {

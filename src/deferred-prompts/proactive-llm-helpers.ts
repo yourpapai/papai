@@ -42,9 +42,41 @@ export type BuildProviderFn = (contextId: string) => Promise<TaskProvider | null
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-export const resultTextOrDone = (text: string | undefined): string => {
-  if (text === undefined) return 'Done.'
-  return text
+/** Minimal view of an LLM result needed to decide the user-facing delivery text. */
+export type DeliveryResultLike = Readonly<{
+  text: string | undefined
+  finishReason?: string
+  steps?: readonly unknown[]
+}>
+
+/**
+ * Decide the text to deliver for a fired deferred prompt.
+ *
+ * A `tool-calls` finish reason means the turn was cut off mid-tool-step (e.g. the model
+ * emitted a "let me check the time" preamble and called get_current_time, but the step
+ * budget stopped the turn before it produced the real reply). In that case the only text
+ * is a preamble, never the answer — drop it instead of leaking it to the user.
+ */
+export const finalizeDeliveryText = (result: DeliveryResultLike): string => {
+  if (result.finishReason === 'tool-calls') return 'Done.'
+  if (result.text === undefined || result.text === '') return 'Done.'
+  return result.text
+}
+
+/**
+ * Resolve the user-facing delivery text and log the turn's completion shape. Warns when the
+ * turn ended on a pending tool call, because a delivered reminder that stopped mid-tool-step
+ * is provably incomplete (its text is a preamble, dropped by finalizeDeliveryText).
+ */
+export const finalizeAndLog = (result: DeliveryResultLike, userId: string, mode: ExecutionMetadata['mode']): string => {
+  const stepCount = Array.isArray(result.steps) ? result.steps.length : undefined
+  const meta = { userId, mode, finishReason: result.finishReason, stepCount }
+  if (result.finishReason === 'tool-calls') {
+    log.warn(meta, 'Proactive delivery ended on a pending tool call; dropping incomplete preamble text')
+  } else {
+    log.debug(meta, 'Proactive delivery finalized')
+  }
+  return finalizeDeliveryText(result)
 }
 
 export const modelIdForLightweight = (smallModel: string | null, mainModel: string): string => {

@@ -18,12 +18,12 @@ import {
   buildFullSystemPrompt,
   buildMetadataMessages,
   buildMinimalSystemPrompt,
+  finalizeAndLog,
   getStorageContextId,
   modelIdForLightweight,
   persistContextResponse,
   persistLightweightResponse,
   persistProactiveResults,
-  resultTextOrDone,
   resolveFullProvider,
   type BuildProviderFn,
   type ProactiveLlmDispatchArgs,
@@ -124,12 +124,13 @@ async function invokeLightweight(
     system: buildMinimalSystemPrompt(type),
     messages,
     tools: makeMinimalTools(createdByUserId),
+    stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
 
   const assistantMessages = result.response.messages
   persistLightweightResponse(createdByUserId, storageContextId, configContextId, config.mainModel, assistantMessages)
-  return resultTextOrDone(result.text)
+  return finalizeAndLog(result, createdByUserId, 'lightweight')
 }
 
 async function invokeWithContext(
@@ -164,6 +165,7 @@ async function invokeWithContext(
     system: buildMinimalSystemPrompt(type),
     messages,
     tools: makeMinimalTools(createdByUserId),
+    stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
 
@@ -175,7 +177,7 @@ async function invokeWithContext(
     config.mainModel,
     result.response.messages,
   )
-  return resultTextOrDone(result.text)
+  return finalizeAndLog(result, createdByUserId, 'context')
 }
 
 async function prepareFullGenerationInput(
@@ -244,7 +246,7 @@ async function runFullGeneration(
     previousHistory,
     config.mainModel,
   )
-  return resultTextOrDone(result.text)
+  return finalizeAndLog(result, createdByUserId, 'full')
 }
 
 async function invokeFull(

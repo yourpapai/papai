@@ -12,11 +12,11 @@ import * as conversationModule from '../../src/conversation.js'
 import {
   buildMetadataMessages,
   buildMinimalSystemPrompt,
+  finalizeDeliveryText,
   getStorageContextId,
   modelIdForLightweight,
   persistContextResponse,
   persistProactiveResults,
-  resultTextOrDone,
   timezoneOrUtc,
   toolCallCount,
   wrapPrompt,
@@ -64,13 +64,25 @@ describe('proactive-llm-helpers', () => {
   })
 
   test('resolves fallback values without fallback expressions at call sites', () => {
-    const missingText: string | undefined = undefined
-    expect(resultTextOrDone(missingText)).toBe('Done.')
-    expect(resultTextOrDone('Ready')).toBe('Ready')
+    expect(finalizeDeliveryText({ text: undefined, finishReason: 'stop' })).toBe('Done.')
+    expect(finalizeDeliveryText({ text: 'Ready', finishReason: 'stop' })).toBe('Ready')
     expect(modelIdForLightweight(null, 'main-model')).toBe('main-model')
     expect(modelIdForLightweight('small-model', 'main-model')).toBe('small-model')
     expect(timezoneOrUtc(null)).toBe('UTC')
     expect(timezoneOrUtc('Europe/Berlin')).toBe('Europe/Berlin')
+  })
+
+  test('drops incomplete text when the turn ended on a pending tool call', () => {
+    expect(
+      finalizeDeliveryText({
+        text: 'Let me first check the current date and time to give you an accurate reminder.',
+        finishReason: 'tool-calls',
+      }),
+    ).toBe('Done.')
+  })
+
+  test('treats empty text as the Done fallback', () => {
+    expect(finalizeDeliveryText({ text: '', finishReason: 'stop' })).toBe('Done.')
   })
 
   test('counts top-level tool calls defensively', () => {
