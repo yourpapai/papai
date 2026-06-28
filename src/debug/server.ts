@@ -18,7 +18,7 @@ import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
 import { handleDeferred, handleIdentity, handleMemos, handleRecurring } from './server-route-support.js'
 import { isSettingsPath, routeSettingsPaths } from './settings-router.js'
-import { addClient, init, removeClient, findTurnById } from './state-collector.js'
+import { addClient, init, removeClient, findTurnById, isScopeVisibleToCurrentAdmin } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
 
 const log = logger.child({ scope: 'debug-server' })
@@ -129,7 +129,10 @@ function handleTurnLookup(url: URL): Response {
   const turnId = url.pathname.slice('/turns/'.length)
   if (turnId !== '') {
     const turn = findTurnById(turnId)
-    if (turn !== undefined) {
+    // Enforce the same visibility contract as the SSE path: a turn outside the
+    // operator's own contexts must not be reachable by REST id lookup. Return 404
+    // (not 403) so the route does not confirm the existence of a foreign turn.
+    if (turn !== undefined && isScopeVisibleToCurrentAdmin(turn.scope)) {
       return jsonResponse(turn)
     }
   }

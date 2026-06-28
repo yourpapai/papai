@@ -13,6 +13,8 @@ import { mintSession } from '../../src/dashboard-auth/index.js'
 import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { logBuffer, logBufferStream } from '../../src/debug/log-buffer.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
+import { recentTurns } from '../../src/debug/state-collector.js'
+import type { Turn } from '../../src/debug/turn-assembly.js'
 import { getLogLevel, logMultistream } from '../../src/logger.js'
 import { getTestDb, restoreFetch, setupTestDb } from '../utils/test-helpers.js'
 
@@ -359,6 +361,41 @@ describe('debug-server', () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/turns/nonexistent`, { headers: authHeaders() })
     expect(res.status).toBe(404)
     await cancelBody(res)
+  })
+
+  test('GET /turns/:id returns 200 for a turn in the admin own user scope', async () => {
+    const ownedTurn: Turn = {
+      turnId: 'turn-owned',
+      scope: { kind: 'user', userId: 'test-admin' },
+      startedAt: 1,
+      status: 'ok',
+      incomingMessageCount: 1,
+      toolCalls: [],
+    }
+    recentTurns.push(ownedTurn)
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/turns/turn-owned`, { headers: authHeaders() })
+    expect(res.status).toBe(200)
+    const body: unknown = JSON.parse(await res.text())
+    expect(assertLogEntryKey(body, 'turnId')).toBe('turn-owned')
+  })
+
+  test('GET /turns/:id returns 404 for a turn in another user scope (no cross-tenant leak)', async () => {
+    const foreignTurn: Turn = {
+      turnId: 'turn-foreign',
+      scope: { kind: 'user', userId: 'someone-else' },
+      startedAt: 1,
+      status: 'error',
+      incomingMessageCount: 1,
+      toolCalls: [],
+      error: 'sensitive error text that must not leak',
+    }
+    recentTurns.push(foreignTurn)
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/turns/turn-foreign`, { headers: authHeaders() })
+    expect(res.status).toBe(404)
+    const text = await res.text()
+    expect(text).not.toContain('sensitive error text')
   })
 
   test('GET /recurring returns 400 when userId is missing', async () => {
