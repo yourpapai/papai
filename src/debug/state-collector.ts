@@ -10,6 +10,7 @@ import { getSchedulerSnapshot } from '../scheduler.js'
 import { subscribe, unsubscribe, type DebugEvent, type Scope } from './event-bus.js'
 import { recentLlm, pushTrace, handleLlmTraceEvent, type LlmTrace } from './llm-trace-collector.js'
 import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembly } from './turn-assembly.js'
+import type { Turn } from './turn-assembly.js'
 
 export { recentTurns, recentNotifications, recentToolFailures } from './turn-assembly.js'
 export { inFlightTurns, resetTurnBuffers, findTurnById } from './turn-assembly.js'
@@ -79,6 +80,22 @@ export function isVisibleToAdmin(scope: Scope | null | undefined, vis: AdminVisi
   if (scope.kind === 'global') return true
   if (scope.kind === 'user') return scope.userId === vis.adminUserId
   if (scope.kind === 'group') return vis.groupIds.has(scope.groupId)
+  return false
+}
+
+/**
+ * Visibility check for a persisted turn's scope against the process's current admin.
+ * Closes over the module-private `adminVisibility` so REST handlers can enforce the
+ * same contract as the SSE path without importing mutable module state.
+ *
+ * Mirrors `isVisibleToAdmin` but accepts `Turn['scope']` (Zod-inferred, looser than the
+ * event-bus `Scope` union) to avoid an unsafe narrowing assertion.
+ */
+export function isScopeVisibleToCurrentAdmin(scope: Turn['scope'] | null | undefined): boolean {
+  if (scope === null || scope === undefined || typeof scope.kind !== 'string') return false
+  if (scope.kind === 'global') return true
+  if (scope.kind === 'user') return scope.userId === adminVisibility.adminUserId
+  if (scope.kind === 'group') return adminVisibility.groupIds.has(scope.groupId ?? '')
   return false
 }
 
