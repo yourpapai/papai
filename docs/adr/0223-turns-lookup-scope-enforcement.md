@@ -26,7 +26,7 @@ The REST route `GET /turns/:id` (`handleTurnLookup`, `src/debug/server.ts`) retu
 `findTurnById(turnId)` for any turn in the `recentTurns` / `inFlightTurns` buffers with
 **no scope check of its own**, unlike the SSE path. A returned `Turn` carries `scope`
 identity (`userId`/`groupId`/`threadId`) and free-text `error` / `toolCalls[].failureReason`
-— the same free-text fields `redactLogEntry` drops elsewhere.
+— free-text fields that were also dropped by log redaction (removed in ADR-0224).
 
 **Severity: low — a missing defense-in-depth check, not an active leak.** The buffers the
 route reads from are populated **only** via `handleTurnAssembly`, which `onEvent`
@@ -65,4 +65,5 @@ the operator is authorized to see their own context, so the scope check alone is
 
 ## Related Decisions
 
-- ADR-0197: Debug Observability Fixes (the `isVisibleToAdmin` invariant and egress redaction).
+- ADR-0197: Debug Observability Fixes (the `isVisibleToAdmin` invariant; its egress redaction was removed in ADR-0224).
+- ADR-0224: Remove Debug Log Redaction (turn scope-enforcement here is independent and retained).

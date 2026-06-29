@@ -26,7 +26,7 @@ const readJsonArray = async (res: Response): Promise<unknown[]> => {
 const pick = (obj: unknown, key: string): unknown =>
   typeof obj === 'object' && obj !== null ? Reflect.get(obj, key) : undefined
 
-describe('/logs redaction', () => {
+describe('/logs content (unredacted)', () => {
   let cookie: string
 
   beforeAll(async () => {
@@ -42,7 +42,7 @@ describe('/logs redaction', () => {
     logBuffer.push({
       level: 30,
       time: '2026-06-15T00:00:00.000Z',
-      msg: 'Message received from user',
+      msg: 'searchTasks called',
       userText: 'top secret',
       scope: 'bot',
       messageLength: 10,
@@ -56,7 +56,7 @@ describe('/logs redaction', () => {
     delete process.env['DEBUG_PORT']
   })
 
-  test('does not return sensitive fields', async () => {
+  test('returns full fields and the verbatim msg', async () => {
     const res = await fetch(`http://127.0.0.1:${TEST_PORT}/logs`, {
       headers: { Cookie: cookie },
     })
@@ -64,8 +64,8 @@ describe('/logs redaction', () => {
     const body = await readJsonArray(res)
     expect(body).toHaveLength(1)
     const entry = body[0]
-    expect(entry).not.toHaveProperty('userText')
+    expect(pick(entry, 'userText')).toBe('top secret')
     expect(pick(entry, 'messageLength')).toBe(10)
-    expect(pick(entry, 'msg')).toBe('Message received from user')
+    expect(pick(entry, 'msg')).toBe('searchTasks called')
   })
 })

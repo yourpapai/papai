@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { emitGlobal } from './event-bus.js'
-import { redactLogEntry } from './log-redaction.js'
 
 export type LogEntry = {
   level: number
@@ -60,7 +59,7 @@ export class LogRingBuffer {
       this.buffer[this.head] = entry
       this.head = (this.head + 1) % this.capacity
     }
-    emitGlobal('log:entry', redactLogEntry(entry) as Record<string, unknown>)
+    emitGlobal('log:entry', entry as Record<string, unknown>)
   }
 
   entries(): LogEntry[] {
