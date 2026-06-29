@@ -31,10 +31,15 @@ export function getUserAnnounceSubscribed(platformInstanceId: string, platformUs
 }
 
 export function setUserAnnounceSubscribed(platformInstanceId: string, platformUserId: string, enabled: boolean): void {
+  // Upsert, not update: operators authorized via the admin store may have no `users`
+  // row, and a bare UPDATE would silently no-op, dropping the subscription.
   getDrizzleDb()
-    .update(users)
-    .set({ announceSubscribed: enabled })
-    .where(and(eq(users.platformInstanceId, platformInstanceId), eq(users.platformUserId, platformUserId)))
+    .insert(users)
+    .values({ platformUserId, platformInstanceId, addedBy: 'announce-subscription', announceSubscribed: enabled })
+    .onConflictDoUpdate({
+      target: [users.platformInstanceId, users.platformUserId],
+      set: { announceSubscribed: enabled },
+    })
     .run()
   log.info({ platformInstanceId, enabled }, 'user announce subscription updated')
 }

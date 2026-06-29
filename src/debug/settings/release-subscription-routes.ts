@@ -29,11 +29,11 @@ async function handlePatch(req: Request, authed: AuthenticatedSettingsRequest): 
   const body = BodySchema.safeParse(parsed.value)
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
   setUserAnnounceSubscribed(authed.principal.platformInstanceId, authed.principal.platformUserId, body.data.enabled)
-  log.info(
-    { platformInstanceId: authed.principal.platformInstanceId, enabled: body.data.enabled },
-    'release subscription updated',
-  )
-  return settingsJson(200, { ok: true, enabled: body.data.enabled })
+  // Read back the persisted value rather than echoing the request, so the response
+  // reflects the actual stored state.
+  const enabled = getUserAnnounceSubscribed(authed.principal.platformInstanceId, authed.principal.platformUserId)
+  log.info({ platformInstanceId: authed.principal.platformInstanceId, enabled }, 'release subscription updated')
+  return settingsJson(200, { ok: true, enabled })
 }
 
 export function handleReleaseSubscriptionRoutes(req: Request, _url: URL): Promise<Response> {

@@ -12,6 +12,7 @@ import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { handleGroupRoutes } from '../../../src/debug/settings/group-routes.js'
 import { handleReleaseSubscriptionRoutes } from '../../../src/debug/settings/release-subscription-routes.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
+import { addAdmin } from '../../../src/instances/admin-store.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
@@ -72,6 +73,28 @@ describe('release-subscription routes', () => {
     expect(PersonalPatchSchema.parse(await patch.json()).enabled).toBe(true)
 
     const get1 = await handleReleaseSubscriptionRoutes(new Request(url, { headers: authHeaders(session) }), url)
+    expect(PersonalGetSchema.parse(await get1.json()).enabled).toBe(true)
+  })
+
+  test('personal PATCH persists for an admin with no users row', async () => {
+    // Admins are authorized via the admin store and may have no `users` row;
+    // the subscription must still persist instead of silently no-opping.
+    addAdmin('admin-no-row', 'pi-1')
+    const adminSession = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'admin-no-row' })
+    const url = new URL(`https://x${PERSONAL}`)
+
+    const patch = await handleReleaseSubscriptionRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+      url,
+    )
+    expect(patch.status).toBe(200)
+    expect(PersonalPatchSchema.parse(await patch.json()).enabled).toBe(true)
+
+    const get1 = await handleReleaseSubscriptionRoutes(new Request(url, { headers: authHeaders(adminSession) }), url)
     expect(PersonalGetSchema.parse(await get1.json()).enabled).toBe(true)
   })
 

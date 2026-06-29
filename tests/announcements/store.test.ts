@@ -48,6 +48,16 @@ describe('announcement subscription store', () => {
     expect(getUserAnnounceSubscribed(PID, 'u1')).toBe(false)
   })
 
+  test('subscribing persists when the operator has no provisioned users row (admin)', () => {
+    // Admins are authorized via the admin store and may have no `users` row.
+    // Toggling their subscription must still persist, not silently no-op.
+    expect(getUserAnnounceSubscribed(PID, 'admin-no-row')).toBe(false)
+    setUserAnnounceSubscribed(PID, 'admin-no-row', true)
+    expect(getUserAnnounceSubscribed(PID, 'admin-no-row')).toBe(true)
+    setUserAnnounceSubscribed(PID, 'admin-no-row', false)
+    expect(getUserAnnounceSubscribed(PID, 'admin-no-row')).toBe(false)
+  })
+
   test('group subscription defaults off and toggles', () => {
     expect(getGroupAnnounceSubscribed('g1')).toBe(false)
     setGroupAnnounceSubscribed('g1', true)
