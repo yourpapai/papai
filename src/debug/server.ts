@@ -13,7 +13,6 @@ import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
 import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
-import { redactLogEntry } from './log-redaction.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
 import { handleDeferred, handleIdentity, handleMemos, handleRecurring } from './server-route-support.js'
@@ -99,7 +98,7 @@ function handleLogs(url: URL): Response {
     before: searchParam(url.searchParams.get('before')),
   })
 
-  return jsonResponse(results.map(redactLogEntry))
+  return jsonResponse(results)
 }
 
 export type WebServerRouteOptions = Readonly<{ debugEnabled: boolean; mattermostActionSecretForTest?: string }>
