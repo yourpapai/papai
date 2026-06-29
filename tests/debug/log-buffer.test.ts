@@ -264,8 +264,8 @@ describe('SSE emission', () => {
   })
 })
 
-describe('log:entry emit redaction', () => {
-  test('redacts sensitive fields in the broadcast payload but keeps them in the buffer', () => {
+describe('log:entry emit (unredacted)', () => {
+  test('emits the full entry verbatim and keeps it in the buffer', () => {
     const buf = new LogRingBuffer(10)
     const events: DebugEvent[] = []
     const listener = (e: DebugEvent): void => {
@@ -275,7 +275,7 @@ describe('log:entry emit redaction', () => {
     try {
       buf.push(
         makeEntry({
-          msg: 'Message received from user',
+          msg: 'searchTasks called',
           userText: 'secret',
           scope: 'bot',
           messageLength: 6,
@@ -286,9 +286,10 @@ describe('log:entry emit redaction', () => {
     }
 
     expect(events).toHaveLength(1)
-    expect(events[0]!.data).not.toHaveProperty('userText')
+    expect(events[0]!.data['userText']).toBe('secret')
+    expect(events[0]!.data['msg']).toBe('searchTasks called')
     expect(events[0]!.data['messageLength']).toBe(6)
-    // Buffer retains the full entry
+    // Buffer still retains the full entry
     expect(buf.entries()[0]).toHaveProperty('userText', 'secret')
   })
 })
