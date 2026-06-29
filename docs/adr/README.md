@@ -225,6 +225,8 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0220](0220-config-unset-registry-gated-clear.md)                                                    | Config Unset — Registry-Gated Clear                                                                           | 2026-06-25 | Implemented                                                 |             |
 | [0221](0221-phase-1-agent-credential-vault-per-session-secret-channel.md)                            | Phase 1 — Agent-Credential Vault and Per-Session Secret Channel                                               | 2026-06-25 | Implemented                                                 |             |
 | [0222](0222-phase-2-per-user-forge-identity.md)                                                      | Phase 2 — Per-User Forge Identity                                                                             | 2026-06-25 | Implemented                                                 |             |
+| [0223](0223-turns-lookup-scope-enforcement.md)                                                       | `/turns/:id` Scope Enforcement                                                                                | 2026-06-28 | Implemented                                                 |             |
+| [0224](0224-remove-debug-log-redaction.md)                                                           | Remove Debug Log Redaction                                                                                    | 2026-06-29 | Implemented                                                 |             |
 
 ## ADR Status Legend
 

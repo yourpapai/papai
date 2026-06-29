@@ -7,6 +7,8 @@ See LICENSE in the project root for details.
 
 # Admin & Debug Dashboard Fixes — Verification + Spec
 
+> **Superseded (2026-06-29):** Log redaction (`redactLogEntry` / `log-redaction.ts`) was removed in **ADR-0224**. Sections below that describe `[redacted]` log content or the `ALLOWED_FIELDS` allowlist no longer reflect the code; logs are now returned unredacted to the authenticated admin. Turn/SSE scope filtering (`isVisibleToAdmin`) is unchanged.
+
 Status: implemented (issues 1–4 and 6; issue 5 per the recorded decision)
 Date: 2026-06-18
 Scope: `client/admin/`, `client/debug/`, `src/debug/`, `src/stats/`, `src/usage/`
