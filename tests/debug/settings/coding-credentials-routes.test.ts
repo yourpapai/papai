@@ -534,6 +534,18 @@ describe('coding-credentials routes', () => {
     expect(res.status).toBe(200)
   })
 
+  test('PATCH accepts model at max length (200 chars)', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { agent: 'claude', provider: 'anthropic', provider_api_key: 'k', model: 'x'.repeat(200) },
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+  })
+
   test('PATCH rejects over-long model with 422', async () => {
     const url = new URL('https://x/settings/api/coding-credentials')
     const res = await handleCodingCredentialsRoutes(
