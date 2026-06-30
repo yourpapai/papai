@@ -8,15 +8,16 @@ papai is a chat bot that manages tasks via LLM tool-calling: a user sends natura
 
 Detailed reference moved out of this file to keep it short. Read the relevant doc before working in that area.
 
-| Topic                 | Doc                                                                            | Covers                                                                                                                |
-| --------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| Project & behaviors   | [`docs/architecture/behaviors.md`](docs/architecture/behaviors.md)             | runtime model + every non-obvious behavior (scope model, guest mode, mid-run steering, live status, announcements, …) |
-| Commands & TDD hooks  | [`docs/architecture/commands.md`](docs/architecture/commands.md)               | non-obvious `bun` script semantics; the Write/Edit TDD hook pipeline and write protections                            |
-| Environment variables | [`docs/architecture/environment.md`](docs/architecture/environment.md)         | startup/required vars, central + BYOK LLM creds, bootstrap, S3, dashboard, runtime config keys                        |
-| Architecture          | [`docs/architecture/overview.md`](docs/architecture/overview.md)               | request flow, module map, debug/settings server surfaces, `/stats/*` anonymity contract                               |
-| ACP coding sessions   | [`docs/architecture/coding-sessions.md`](docs/architecture/coding-sessions.md) | `plugins/acp/` + magi, agent/provider picker, forge connections, operator/group guardrails                            |
-| Plugin system         | [`docs/architecture/plugins.md`](docs/architecture/plugins.md)                 | layout, lifecycle, storage, context facade, permissions, attachment transformers                                      |
-| Tools                 | [`docs/architecture/tools.md`](docs/architecture/tools.md)                     | capability/context gating, `tool_prefs` permissions, presets, compaction/disclosure, memory bridge                    |
+| Topic                 | Doc                                                                                        | Covers                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Project & behaviors   | [`docs/architecture/behaviors.md`](docs/architecture/behaviors.md)                         | runtime model + every non-obvious behavior (scope model, guest mode, mid-run steering, live status, announcements, …) |
+| Commands & TDD hooks  | [`docs/architecture/commands.md`](docs/architecture/commands.md)                           | non-obvious `bun` script semantics; the Write/Edit TDD hook pipeline and write protections                            |
+| Environment variables | [`docs/architecture/environment.md`](docs/architecture/environment.md)                     | startup/required vars, central + BYOK LLM creds, bootstrap, S3, dashboard, runtime config keys                        |
+| Architecture          | [`docs/architecture/overview.md`](docs/architecture/overview.md)                           | request flow, module map, debug/settings server surfaces, `/stats/*` anonymity contract                               |
+| ACP coding sessions   | [`docs/architecture/coding-sessions.md`](docs/architecture/coding-sessions.md)             | `plugins/acp/` + magi, agent/provider picker, forge connections, operator/group guardrails                            |
+| Storybook screenshots | [`docs/architecture/storybook-screenshots.md`](docs/architecture/storybook-screenshots.md) | agent visual-feedback loop: generate specs, shoot stories, read PNGs                                                  |
+| Plugin system         | [`docs/architecture/plugins.md`](docs/architecture/plugins.md)                             | layout, lifecycle, storage, context facade, permissions, attachment transformers                                      |
+| Tools                 | [`docs/architecture/tools.md`](docs/architecture/tools.md)                                 | capability/context gating, `tool_prefs` permissions, presets, compaction/disclosure, memory bridge                    |
 
 ### Path-scoped `CLAUDE.md` files (read when working under that path)
 
