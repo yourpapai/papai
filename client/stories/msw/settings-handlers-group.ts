@@ -127,6 +127,8 @@ export const codingIdentityHandlers: HandlerFamily = {
       await delay(NEVER_RESOLVE_MS)
       return HttpResponse.json(codingIdentityEmpty)
     }),
+    // members must resolve, else the section's Promise.all rejects and renders an error instead of loading
+    http.get('/settings/api/group/members', () => HttpResponse.json(groupMembersPopulated)),
   ],
 }
 
