@@ -7,6 +7,7 @@ import type { HttpHandler } from 'msw'
 
 import { adminState } from '../../admin/admin.svelte.js'
 import { adminGlobals, refreshGlobals } from '../../admin/global-stats.svelte.js'
+import { settingsSession } from '../../settings/session.svelte.js'
 import { scenarios } from '../msw/scenarios.js'
 import { sseStub } from '../stubs/sse.js'
 
@@ -20,6 +21,26 @@ export function resolveScenario(name: string): readonly HttpHandler[] {
   return scenarioMap[name] ?? []
 }
 
+export function resetSettingsSession(): void {
+  settingsSession.status = 'loading'
+  settingsSession.display = ''
+  settingsSession.isBotAdmin = false
+  settingsSession.isSuperAdmin = false
+  settingsSession.contexts = []
+  settingsSession.activeContextId = ''
+}
+
+// Personal, non-admin "ready" shell: status ready + a single personal context.
+// Advanced + Admin zones stay hidden (isGroup=false, isBotAdmin=false).
+function applyReadySettingsSession(): void {
+  settingsSession.status = 'ready'
+  settingsSession.display = 'Alice'
+  settingsSession.isBotAdmin = false
+  settingsSession.isSuperAdmin = false
+  settingsSession.contexts = [{ kind: 'personal', contextId: 'ctx-personal-1', label: 'Alice (personal)' }]
+  settingsSession.activeContextId = 'ctx-personal-1'
+}
+
 export function resetAllSingletons(): void {
   adminState.currentSection = 'overview'
   adminState.lastRefreshedAt = null
@@ -27,6 +48,7 @@ export function resetAllSingletons(): void {
   adminGlobals.loading = false
   adminGlobals.data = null
   adminGlobals.fetchedAt = null
+  resetSettingsSession()
 }
 
 // Runs before each story renders: resets rune singletons, clears any SSE
@@ -50,6 +72,7 @@ export async function fixturesLoader(context: LoaderContext): Promise<Record<str
     if (handlers.length > 0) worker.use(...handlers)
 
     if (context.parameters['refreshGlobals'] === true) await refreshGlobals()
+    if (context.parameters['settingsReady'] === true) applyReadySettingsSession()
 
     const seed = context.parameters['sseSeed']
     if (Array.isArray(seed)) sseStub.seed(seed)

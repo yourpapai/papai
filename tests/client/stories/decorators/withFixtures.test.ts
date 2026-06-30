@@ -7,7 +7,12 @@ import { describe, expect, test } from 'bun:test'
 
 import { adminState } from '../../../../client/admin/admin.svelte.js'
 import { adminGlobals } from '../../../../client/admin/global-stats.svelte.js'
-import { resetAllSingletons, resolveScenario } from '../../../../client/stories/decorators/withFixtures.js'
+import { settingsSession } from '../../../../client/settings/session.svelte.js'
+import {
+  resetAllSingletons,
+  resetSettingsSession,
+  resolveScenario,
+} from '../../../../client/stories/decorators/withFixtures.js'
 
 describe('withFixtures', () => {
   test('resolveScenario returns a matching handler bundle for a known name', () => {
@@ -16,6 +21,25 @@ describe('withFixtures', () => {
 
   test('resolveScenario returns an empty bundle for an unknown name', () => {
     expect(resolveScenario('does-not-exist')).toEqual([])
+  })
+
+  test('resetSettingsSession restores settingsSession to baseline', () => {
+    settingsSession.status = 'ready'
+    settingsSession.display = 'x'
+    settingsSession.isBotAdmin = true
+    settingsSession.isSuperAdmin = true
+    settingsSession.contexts = [{ kind: 'personal', contextId: 'ctx-1', label: 'test' }]
+    settingsSession.activeContextId = 'ctx-1'
+
+    resetSettingsSession()
+
+    const status: string = settingsSession.status
+    expect(status).toBe('loading')
+    expect(settingsSession.display).toBe('')
+    expect(settingsSession.isBotAdmin).toBe(false)
+    expect(settingsSession.isSuperAdmin).toBe(false)
+    expect(settingsSession.contexts).toEqual([])
+    expect(settingsSession.activeContextId).toBe('')
   })
 
   test('resetAllSingletons restores admin rune singletons to defaults', () => {

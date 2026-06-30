@@ -20,6 +20,11 @@ describe('msw scenarios', () => {
     'instances-populated',
     'instances-empty',
     'instances-error',
+    'settings-repos-populated',
+    'settings-byok-secret-set',
+    'settings-kaneo-populated',
+    'settings-admin-users-populated',
+    'settings-shell-ready',
   ])('%s resolves to a non-empty handler bundle', (name) => {
     expect(scenarios[name].length).toBeGreaterThan(0)
   })

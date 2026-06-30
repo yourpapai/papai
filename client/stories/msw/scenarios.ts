@@ -12,6 +12,13 @@ import {
   pluginConfigHandlers,
   statsHandlers,
 } from './handlers.js'
+import {
+  adminUsersHandlers,
+  byokHandlers,
+  kaneoHandlers,
+  reposHandlers,
+  shellReadyHandlers,
+} from './settings-handlers.js'
 
 export const scenarios = {
   'admin-populated': [
@@ -48,6 +55,24 @@ export const scenarios = {
   'instances-populated': [...instancesHandlers.populated],
   'instances-empty': [...instancesHandlers.empty],
   'instances-error': [...instancesHandlers.error],
+  'settings-repos-populated': [...reposHandlers.populated],
+  'settings-repos-empty': [...reposHandlers.empty],
+  'settings-repos-error': [...reposHandlers.error],
+  'settings-repos-loading': [...reposHandlers.loading],
+  'settings-byok-secret-set': [...byokHandlers.secretSet],
+  'settings-byok-missing': [...byokHandlers.missing],
+  'settings-byok-disabled': [...byokHandlers.disabled],
+  'settings-byok-error': [...byokHandlers.error],
+  'settings-byok-loading': [...byokHandlers.loading],
+  'settings-kaneo-populated': [...kaneoHandlers.populated],
+  'settings-kaneo-not-provisioned': [...kaneoHandlers.notProvisioned],
+  'settings-kaneo-error': [...kaneoHandlers.error],
+  'settings-kaneo-loading': [...kaneoHandlers.loading],
+  'settings-admin-users-populated': [...adminUsersHandlers.populated],
+  'settings-admin-users-empty': [...adminUsersHandlers.empty],
+  'settings-admin-users-error': [...adminUsersHandlers.error],
+  'settings-admin-users-loading': [...adminUsersHandlers.loading],
+  'settings-shell-ready': [...shellReadyHandlers],
 } satisfies Record<string, readonly HttpHandler[]>
 
 export type ScenarioName = keyof typeof scenarios
