@@ -13,7 +13,7 @@
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import type { CodingCredentialField, CodingCredentialsResponse } from '../fetcher-schemas.js'
-  import { fetchCodingCredentials, patchCodingCredentials } from '../fetchers.js'
+  import { fetchCodingCredentials, fetchCodingModels, patchCodingCredentials } from '../fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
 
   // Client-side compatibility map (mirrors src/coding-credentials/types.ts `compatible`)
@@ -31,6 +31,7 @@
   let { contextId }: Props = $props()
 
   let data: CodingCredentialsResponse | null = $state(null)
+  let modelOptions: { value: string; label: string }[] = $state([])
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
@@ -128,6 +129,7 @@
       if (compatible.length > 0 && !compatible.includes(currentProvider)) {
         updateDraft('provider', compatible[0]!)
       }
+      updateDraft('model', '')
     }
   }
 
@@ -172,6 +174,25 @@
     const id = contextId
     untrack(() => {
       void load(id)
+    })
+  })
+
+  $effect(() => {
+    const id = contextId
+    const agent = currentAgent
+    const hasKey = fields.find((f) => f.key === 'provider_api_key')?.hasValue === true
+    untrack(() => {
+      if (!hasKey || agent.length === 0) {
+        modelOptions = []
+        return
+      }
+      void fetchCodingModels(id, agent)
+        .then((r) => {
+          if (id === contextId) modelOptions = r.ok ? r.models : []
+        })
+        .catch(() => {
+          if (id === contextId) modelOptions = []
+        })
     })
   })
 
@@ -227,6 +248,26 @@
                       <option value={opt}>{opt}</option>
                     {/each}
                   </select>
+                {/snippet}
+              </Field>
+            </div>
+          {:else if field.control === 'combobox'}
+            <div class="settings-field__editor">
+              <Field label="Value">
+                {#snippet children()}
+                  <input
+                    list={`coding-models-${field.key}`}
+                    data-testid={`coding-combobox-${field.key}`}
+                    value={drafts[field.key] ?? ''}
+                    placeholder="model id (leave blank for the agent default)"
+                    disabled={saving || loading}
+                    oninput={(e) => updateDraft(field.key, (e.currentTarget as HTMLInputElement).value)}
+                    class="coding-select" />
+                  <datalist id={`coding-models-${field.key}`}>
+                    {#each modelOptions as opt (opt.value)}
+                      <option value={opt.value}>{opt.label}</option>
+                    {/each}
+                  </datalist>
                 {/snippet}
               </Field>
             </div>

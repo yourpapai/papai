@@ -13,6 +13,7 @@ import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-
 import { handleAdminSystemAccessRoutes } from './settings/admin/system-access-routes.js'
 import { handleAdminToolDefaultsRoutes } from './settings/admin/tool-defaults-routes.js'
 import { handleByokRoutes } from './settings/byok-routes.js'
+import { handleCodingCredentialsModelsRoute } from './settings/coding-credentials-models-route.js'
 import { handleCodingCredentialsRoutes } from './settings/coding-credentials-routes.js'
 import { handleCodingReposRoutes } from './settings/coding-repos-routes.js'
 import { handleConfigRoutes } from './settings/config-routes.js'
@@ -70,6 +71,7 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
     if (adminResult !== null) return adminResult
   }
   if (url.pathname === '/settings/api/byok') return handleByokRoutes(req, url)
+  if (url.pathname === '/settings/api/coding-credentials/models') return handleCodingCredentialsModelsRoute(req, url)
   if (url.pathname === '/settings/api/coding-credentials') return handleCodingCredentialsRoutes(req, url)
   if (url.pathname === '/settings/api/coding-repos') return handleCodingReposRoutes(req, url)
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
