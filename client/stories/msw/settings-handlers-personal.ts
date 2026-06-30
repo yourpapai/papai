@@ -207,6 +207,21 @@ const configPopulated = {
       kind: 'preference',
       control: 'text',
     },
+    {
+      key: 'ai_output_detail_level',
+      label: 'Output detail level',
+      required: false,
+      sensitive: false,
+      hasValue: true,
+      value: 'standard',
+      storageKey: 'ai_output_detail_level',
+      kind: 'ai-output',
+      control: 'select',
+      options: [
+        { value: 'standard', label: 'Standard' },
+        { value: 'raw', label: 'Raw' },
+      ],
+    },
   ],
 }
 
