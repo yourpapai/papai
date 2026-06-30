@@ -13,6 +13,12 @@ import {
   statsHandlers,
 } from './handlers.js'
 import {
+  codingIdentityHandlers,
+  groupMembersHandlers,
+  groupProviderHandlers,
+  guestModeHandlers,
+} from './settings-handlers-group.js'
+import {
   codingCredentialsHandlers,
   configHandlers,
   identityHandlers,
@@ -110,6 +116,22 @@ export const scenarios = {
   'settings-release-empty': [...releaseSubscriptionHandlers.empty],
   'settings-release-error': [...releaseSubscriptionHandlers.error],
   'settings-release-loading': [...releaseSubscriptionHandlers.loading],
+  'settings-members-populated': [...groupMembersHandlers.populated],
+  'settings-members-empty': [...groupMembersHandlers.empty],
+  'settings-members-error': [...groupMembersHandlers.error],
+  'settings-members-loading': [...groupMembersHandlers.loading],
+  'settings-guest-mode-populated': [...guestModeHandlers.populated],
+  'settings-guest-mode-empty': [...guestModeHandlers.empty],
+  'settings-guest-mode-error': [...guestModeHandlers.error],
+  'settings-guest-mode-loading': [...guestModeHandlers.loading],
+  'settings-group-provider-populated': [...groupProviderHandlers.populated],
+  'settings-group-provider-empty': [...groupProviderHandlers.empty],
+  'settings-group-provider-error': [...groupProviderHandlers.error],
+  'settings-group-provider-loading': [...groupProviderHandlers.loading],
+  'settings-coding-identity-populated': [...codingIdentityHandlers.populated],
+  'settings-coding-identity-empty': [...codingIdentityHandlers.empty],
+  'settings-coding-identity-error': [...codingIdentityHandlers.error],
+  'settings-coding-identity-loading': [...codingIdentityHandlers.loading],
 } satisfies Record<string, readonly HttpHandler[]>
 
 export type ScenarioName = keyof typeof scenarios
