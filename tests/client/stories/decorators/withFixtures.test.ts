@@ -60,6 +60,23 @@ describe('withFixtures', () => {
     expect(settingsSession.activeContextId).toBe('ctx-group-1')
   })
 
+  test('applyReadySettingsSession(admin) sets a personal context with both admin flags true', () => {
+    resetSettingsSession()
+
+    applyReadySettingsSession('admin')
+
+    const status: string = settingsSession.status
+    expect(status).toBe('ready')
+    expect(settingsSession.display).toBe('Alice')
+    expect(settingsSession.isBotAdmin).toBe(true)
+    expect(settingsSession.isSuperAdmin).toBe(true)
+    expect(settingsSession.contexts).toHaveLength(1)
+    const ctx = settingsSession.contexts[0]
+    expect(ctx?.kind).toBe('personal')
+    expect(ctx?.contextId).toBe('ctx-personal-1')
+    expect(settingsSession.activeContextId).toBe('ctx-personal-1')
+  })
+
   test('resetAllSingletons restores admin rune singletons to defaults', () => {
     adminState.currentSection = 'billing'
     adminState.lastRefreshedAt = 123

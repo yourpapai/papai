@@ -19,3 +19,6 @@
 
 <!-- Group, non-admin, Advanced collapsed: sidebar + group-only sections (Members, Group provider, Guest mode, Session identity, My Kaneo access). -->
 <Story name="Group ready" parameters={{ fixtures: 'settings-shell-group-ready', settingsReady: 'group' }} />
+
+<!-- Personal context with both admin flags: full Admin zone (bot-admin + super-admin sections). -->
+<Story name="Admin ready" parameters={{ fixtures: 'settings-shell-admin-ready', settingsReady: 'admin' }} />

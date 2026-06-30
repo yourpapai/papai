@@ -30,13 +30,13 @@ export function resetSettingsSession(): void {
   settingsSession.activeContextId = ''
 }
 
-// Non-admin "ready" shell for personal or group mode.
-// Advanced + Admin zones stay hidden (isBotAdmin=false).
-export function applyReadySettingsSession(mode: 'personal' | 'group' = 'personal'): void {
+// Ready shell for personal, group, or admin mode.
+// Admin mode sets both isBotAdmin and isSuperAdmin to expose the full Admin zone.
+export function applyReadySettingsSession(mode: 'personal' | 'group' | 'admin' = 'personal'): void {
   settingsSession.status = 'ready'
   settingsSession.display = 'Alice'
-  settingsSession.isBotAdmin = false
-  settingsSession.isSuperAdmin = false
+  settingsSession.isBotAdmin = mode === 'admin'
+  settingsSession.isSuperAdmin = mode === 'admin'
   const ctx =
     mode === 'group'
       ? { kind: 'group' as const, contextId: 'ctx-group-1', label: 'Acme team' }
@@ -79,6 +79,7 @@ export async function fixturesLoader(context: LoaderContext): Promise<Record<str
     const ready = context.parameters['settingsReady']
     if (ready === true || ready === 'personal') applyReadySettingsSession('personal')
     else if (ready === 'group') applyReadySettingsSession('group')
+    else if (ready === 'admin') applyReadySettingsSession('admin')
 
     const seed = context.parameters['sseSeed']
     if (Array.isArray(seed)) sseStub.seed(seed)
