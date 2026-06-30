@@ -129,3 +129,26 @@ export const codingIdentityHandlers: HandlerFamily = {
     }),
   ],
 }
+
+// --- Group release subscription (GET /settings/api/group/release-subscription) ---
+// Schema: GroupReleaseSubscriptionResponseSchema = { contextId: string, enabled: boolean }
+
+export const groupReleaseHandlers: HandlerFamily = {
+  populated: [
+    http.get('/settings/api/group/release-subscription', () =>
+      HttpResponse.json({ contextId: 'ctx-group-1', enabled: true }),
+    ),
+  ],
+  empty: [
+    http.get('/settings/api/group/release-subscription', () =>
+      HttpResponse.json({ contextId: 'ctx-group-1', enabled: false }),
+    ),
+  ],
+  error: [http.get('/settings/api/group/release-subscription', boom)],
+  loading: [
+    http.get('/settings/api/group/release-subscription', async () => {
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json({ contextId: 'ctx-group-1', enabled: false })
+    }),
+  ],
+}

@@ -9,6 +9,7 @@ import { adminState } from '../../../../client/admin/admin.svelte.js'
 import { adminGlobals } from '../../../../client/admin/global-stats.svelte.js'
 import { settingsSession } from '../../../../client/settings/session.svelte.js'
 import {
+  applyReadySettingsSession,
   resetAllSingletons,
   resetSettingsSession,
   resolveScenario,
@@ -40,6 +41,23 @@ describe('withFixtures', () => {
     expect(settingsSession.isSuperAdmin).toBe(false)
     expect(settingsSession.contexts).toEqual([])
     expect(settingsSession.activeContextId).toBe('')
+  })
+
+  test('applyReadySettingsSession(group) sets a group context on settingsSession', () => {
+    resetSettingsSession()
+
+    applyReadySettingsSession('group')
+
+    const status: string = settingsSession.status
+    expect(status).toBe('ready')
+    expect(settingsSession.display).toBe('Alice')
+    expect(settingsSession.isBotAdmin).toBe(false)
+    expect(settingsSession.isSuperAdmin).toBe(false)
+    expect(settingsSession.contexts).toHaveLength(1)
+    const ctx = settingsSession.contexts[0]
+    expect(ctx?.kind).toBe('group')
+    expect(ctx?.contextId).toBe('ctx-group-1')
+    expect(settingsSession.activeContextId).toBe('ctx-group-1')
   })
 
   test('resetAllSingletons restores admin rune singletons to defaults', () => {

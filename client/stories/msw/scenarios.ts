@@ -16,6 +16,7 @@ import {
   codingIdentityHandlers,
   groupMembersHandlers,
   groupProviderHandlers,
+  groupReleaseHandlers,
   guestModeHandlers,
 } from './settings-handlers-group.js'
 import {
@@ -88,6 +89,15 @@ export const scenarios = {
   'settings-admin-users-error': [...adminUsersHandlers.error],
   'settings-admin-users-loading': [...adminUsersHandlers.loading],
   'settings-shell-ready': [...shellReadyHandlers],
+  'settings-shell-group-ready': [
+    ...shellReadyHandlers,
+    ...groupMembersHandlers.populated,
+    ...groupProviderHandlers.populated,
+    ...guestModeHandlers.populated,
+    ...codingIdentityHandlers.populated,
+    ...groupReleaseHandlers.populated,
+    ...kaneoHandlers.populated,
+  ],
   'settings-config-populated': [...configHandlers.populated],
   'settings-config-empty': [...configHandlers.empty],
   'settings-config-error': [...configHandlers.error],

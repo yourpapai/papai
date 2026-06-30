@@ -30,15 +30,19 @@ export function resetSettingsSession(): void {
   settingsSession.activeContextId = ''
 }
 
-// Personal, non-admin "ready" shell: status ready + a single personal context.
-// Advanced + Admin zones stay hidden (isGroup=false, isBotAdmin=false).
-function applyReadySettingsSession(): void {
+// Non-admin "ready" shell for personal or group mode.
+// Advanced + Admin zones stay hidden (isBotAdmin=false).
+export function applyReadySettingsSession(mode: 'personal' | 'group' = 'personal'): void {
   settingsSession.status = 'ready'
   settingsSession.display = 'Alice'
   settingsSession.isBotAdmin = false
   settingsSession.isSuperAdmin = false
-  settingsSession.contexts = [{ kind: 'personal', contextId: 'ctx-personal-1', label: 'Alice (personal)' }]
-  settingsSession.activeContextId = 'ctx-personal-1'
+  const ctx =
+    mode === 'group'
+      ? { kind: 'group' as const, contextId: 'ctx-group-1', label: 'Acme team' }
+      : { kind: 'personal' as const, contextId: 'ctx-personal-1', label: 'Alice (personal)' }
+  settingsSession.contexts = [ctx]
+  settingsSession.activeContextId = ctx.contextId
 }
 
 export function resetAllSingletons(): void {
@@ -72,7 +76,9 @@ export async function fixturesLoader(context: LoaderContext): Promise<Record<str
     if (handlers.length > 0) worker.use(...handlers)
 
     if (context.parameters['refreshGlobals'] === true) await refreshGlobals()
-    if (context.parameters['settingsReady'] === true) applyReadySettingsSession()
+    const ready = context.parameters['settingsReady']
+    if (ready === true || ready === 'personal') applyReadySettingsSession('personal')
+    else if (ready === 'group') applyReadySettingsSession('group')
 
     const seed = context.parameters['sseSeed']
     if (Array.isArray(seed)) sseStub.seed(seed)

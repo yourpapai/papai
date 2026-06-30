@@ -16,3 +16,6 @@
 
 <!-- Personal, non-admin, Advanced collapsed: sidebar + top bar + the always-on sections. -->
 <Story name="Personal ready" parameters={{ fixtures: 'settings-shell-ready', settingsReady: true }} />
+
+<!-- Group, non-admin, Advanced collapsed: sidebar + group-only sections (Members, Group provider, Guest mode, Session identity, My Kaneo access). -->
+<Story name="Group ready" parameters={{ fixtures: 'settings-shell-group-ready', settingsReady: 'group' }} />

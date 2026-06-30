@@ -11,5 +11,10 @@ test.describe('settings/SettingsApp', () => {
     await switchStory(sharedPage, 'settings-settingsapp--personal-ready')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Group ready', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-settingsapp--group-ready')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
