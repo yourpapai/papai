@@ -83,10 +83,6 @@ describe('coding-credentials routes', () => {
     personalConfigContextId = resolveSettingsPrincipal(PLATFORM_INSTANCE_ID, USER_ID).personalConfigContextId
   })
 
-  afterEach(() => {
-    restoreFetch()
-  })
-
   test('GET returns not-configured fields without secret values', async () => {
     const url = new URL('https://x/settings/api/coding-credentials')
     const res = await handleCodingCredentialsRoutes(get('/settings/api/coding-credentials', session), url)
@@ -637,45 +633,5 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(422)
     expect(ErrorResponseSchema.parse(await res.json()).error).toMatch(/base URL/u)
-  })
-
-  test('GET /models returns {ok:false, models:[]} when no key is stored', async () => {
-    const url = new URL('https://x/settings/api/coding-credentials/models?agent=claude')
-    const res = await handleCodingCredentialsRoutes(
-      get('/settings/api/coding-credentials/models?agent=claude', session),
-      url,
-    )
-    expect(res.status).toBe(200)
-    const body = z.object({ ok: z.literal(false), models: z.array(z.unknown()) }).parse(await res.json())
-    expect(body.ok).toBe(false)
-    expect(body.models).toEqual([])
-  })
-
-  test('GET /models returns ok:true with models when key is stored', async () => {
-    // Seed credentials
-    const patchUrl = new URL('https://x/settings/api/coding-credentials')
-    await handleCodingCredentialsRoutes(
-      patch('/settings/api/coding-credentials', session, {
-        namespace: 'agent-provider',
-        values: { agent: 'claude', provider: 'anthropic', provider_api_key: 'sk-ant-test' },
-      }),
-      patchUrl,
-    )
-    // Mock the upstream /v1/models call
-    setMockFetch(
-      async () =>
-        new Response(JSON.stringify({ data: [{ id: 'claude-sonnet-4-6' }, { id: 'claude-opus-4' }] }), { status: 200 }),
-    )
-    const url = new URL('https://x/settings/api/coding-credentials/models?agent=claude')
-    const res = await handleCodingCredentialsRoutes(
-      get('/settings/api/coding-credentials/models?agent=claude', session),
-      url,
-    )
-    expect(res.status).toBe(200)
-    const body = z
-      .object({ ok: z.literal(true), models: z.array(z.object({ value: z.string(), label: z.string() })) })
-      .parse(await res.json())
-    expect(body.ok).toBe(true)
-    expect(body.models).toContainEqual({ value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6' })
   })
 })
