@@ -8,7 +8,12 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 
 import { resolveDeliveryPlatformInstanceId } from '../chat/delivery-routing.js'
-import { getConfigContextIdFromStorageContextId, isScopedThreadContextId } from '../chat/scoped-context.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  getNativeContextId,
+  isScopedThreadContextId,
+  parseScopedContextId,
+} from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
 import { logger } from '../logger.js'
@@ -49,19 +54,26 @@ const tokensMatch = (provided: string, expected: string): boolean => {
  * bare context id cannot be disambiguated from a DM user id. `threadId` is
  * ignored for DM targets. `storageContextId` is always set so the platform
  * instance resolves correctly regardless of the addressing fields.
+ *
+ * The platform-scoped `storageContextId` (e.g. `pi:<inst>:ctx:<user>` for a DM,
+ * `pi:<inst>:ctx:<channel>:thread:<thread>` for a group thread) encodes the
+ * native ids, so both the DM `contextId` and the group's channel id + thread id
+ * are decoded out of it. Callers (e.g. magi's milestone notifier) only know the
+ * scoped id; they need not pass a separate native id or `threadId`. A
+ * caller-supplied `threadId` still takes precedence when present.
  */
 export const buildNotifyTarget = (body: NotifyBody): DeferredDeliveryTarget => {
   const storageContextId = body.contextId
   const isGroup =
     body.contextType === undefined ? isScopedThreadContextId(storageContextId) : body.contextType === 'group'
   if (!isGroup) {
-    return { ...dmTarget(storageContextId), storageContextId }
+    return { ...dmTarget(getNativeContextId(storageContextId)), storageContextId }
   }
-  const groupId = getConfigContextIdFromStorageContextId(storageContextId)
+  const groupId = getNativeContextId(getConfigContextIdFromStorageContextId(storageContextId))
   return {
     contextId: groupId,
     contextType: 'group',
-    threadId: body.threadId ?? null,
+    threadId: body.threadId ?? parseScopedContextId(storageContextId)?.threadId ?? null,
     audience: 'shared',
     mentionUserIds: [],
     // service-posted notification: no originating user

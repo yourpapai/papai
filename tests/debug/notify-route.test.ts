@@ -6,9 +6,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { ChatRouter } from '../../src/chat/router.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
-import { handleNotifyRoute } from '../../src/debug/notify-route.js'
+import { buildNotifyTarget, handleNotifyRoute } from '../../src/debug/notify-route.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
@@ -130,5 +131,32 @@ describe('handleNotifyRoute', () => {
     setRuntimeChatRouter(throwingRouter)
     const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'user-1', markdown: 'x' }))
     expect(res.status).toBe(502)
+  })
+})
+
+describe('buildNotifyTarget', () => {
+  test('decodes a scoped DM context to the native user id', () => {
+    const scoped = toScopedContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: '6q9cpoqy4tb35gozuo1darzgra',
+    })
+    const target = buildNotifyTarget({ contextId: scoped, markdown: 'hi' })
+    expect(target.contextType).toBe('dm')
+    expect(target.contextId).toBe('6q9cpoqy4tb35gozuo1darzgra')
+    expect(target.createdByUserId).toBe('6q9cpoqy4tb35gozuo1darzgra')
+    expect(target.storageContextId).toBe(scoped)
+  })
+
+  test('routes a scoped group-thread context into its thread on the native channel', () => {
+    const scoped = toScopedThreadContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: 'channel-26-char-identifier',
+      threadId: 'root-post-26-char-ident-id',
+    })
+    const target = buildNotifyTarget({ contextId: scoped, markdown: 'hi' })
+    expect(target.contextType).toBe('group')
+    expect(target.contextId).toBe('channel-26-char-identifier')
+    expect(target.threadId).toBe('root-post-26-char-ident-id')
+    expect(target.storageContextId).toBe(scoped)
   })
 })
