@@ -30,9 +30,13 @@ PNG, and read it back in-session to assess and iterate on the UI.
 
         bun shoot -g ToolsSection
 
-4.  Read the PNGs under `.storybook-shots/` (mirrors the story tree), e.g.:
+4.  Read the baseline PNGs under `.storybook-shots/` (mirrors the story tree —
+    one stable file per story, named `<story-id>-<n>.png`), e.g.:
 
-    .storybook-shots/test-results/settings-sections-ToolsSec-e98c2-ions-ToolsSection-Populated-chromium/settings-sections-ToolsSection-Populated-1-actual.png
+        .storybook-shots/settings/sections/ToolsSection.spec.ts/settings-sections-ToolsSection-Populated-1.png
+
+    (Ignore the sibling `.storybook-shots/test-results/` dir — those `…-actual.png`
+    files are transient per-run artifacts, not the stable render.)
 
 5.  Edit the component, then re-run `bun shoot -g <name>`. HMR + the
     `reuseExistingServer` Playwright `webServer` keep re-shoots fast.
