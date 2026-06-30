@@ -593,6 +593,34 @@ test('resolveModel returns null when no credentials stored', () => {
   expect(resolveModel(STORAGE_CTX, 'user-9')).toBeNull()
 })
 
+test('emits CLAUDE_CODE_OAUTH_TOKEN (and nothing else) for anthropic oauth-subscription', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    {
+      provider: 'anthropic',
+      agent: 'claude',
+      auth_method: 'oauth-subscription',
+      provider_api_key: 'sk-ant-oat01-xyz',
+      provider_base_url: 'https://ignored.example',
+    },
+    'user-9',
+  )
+  expect(resolveAgentSecrets(STORAGE_CTX, 'user-9')).toEqual({
+    CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-xyz',
+  })
+})
+
+test('api-key auth_method keeps the ANTHROPIC_API_KEY mapping', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', auth_method: 'api-key', provider_api_key: 'sk-ant-1' },
+    'user-9',
+  )
+  expect(resolveAgentSecrets(STORAGE_CTX, 'user-9')).toEqual({ ANTHROPIC_API_KEY: 'sk-ant-1' })
+})
+
 test('forceSharedKey:true — resolveModel returns the user model, not the shared (admin) model', () => {
   addAuthorizedGroup(GROUP_CTX, 'admin')
   setCodingGuardrails(PI_GROUP, {
