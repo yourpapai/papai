@@ -15,11 +15,13 @@ import {
 import type { CodingCredentialConfig } from '../../coding-credentials/types.js'
 import {
   AGENTS,
+  AUTH_METHODS,
   CODING_NAMESPACES,
   FORGE_KINDS,
   PROVIDERS,
   compatible,
   isAgent,
+  isAuthMethod,
   isForgeKind,
   isProvider,
   needsInstanceUrl,
@@ -55,6 +57,14 @@ const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
       sensitive: false,
       control: 'select',
       options: PROVIDERS,
+    },
+    {
+      key: 'auth_method',
+      label: 'Auth method',
+      required: false,
+      sensitive: false,
+      control: 'select',
+      options: AUTH_METHODS,
     },
     {
       key: 'provider_api_key',
@@ -201,32 +211,33 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
     agentRaw.length > 0 &&
     providerRaw !== undefined &&
     providerRaw.length > 0 &&
-    isAgent(agentRaw)
+    isAgent(agentRaw) &&
+    !compatible(agentRaw, providerRaw)
   ) {
-    if (!compatible(agentRaw, providerRaw)) {
-      return settingsJson(422, { error: 'incompatible agent/provider' })
-    }
+    return settingsJson(422, { error: 'incompatible agent/provider' })
   }
-  if (providerRaw === 'openai-compatible') {
-    const baseUrl = merged.provider_base_url?.trim() ?? ''
-    if (baseUrl.length === 0) {
-      return settingsJson(422, {
-        error: 'openai-compatible requires a base URL',
-      })
-    }
+  if (providerRaw === 'openai-compatible' && (merged.provider_base_url?.trim() ?? '').length === 0) {
+    return settingsJson(422, { error: 'openai-compatible requires a base URL' })
   }
   const modelRaw = merged.model?.trim()
   if (modelRaw !== undefined && modelRaw.length > 0) {
-    if (modelRaw.length > 200) {
-      return settingsJson(422, { error: 'model too long (max 200)' })
-    }
-    if (
-      Array.from(modelRaw).some((ch) => {
-        const cp = ch.codePointAt(0) ?? 0
-        return cp < 0x20 || cp === 0x7f
-      })
-    ) {
-      return settingsJson(422, { error: 'model contains control characters' })
+    if (modelRaw.length > 200) return settingsJson(422, { error: 'model too long (max 200)' })
+    const hasCtrl = Array.from(modelRaw).some((ch) => {
+      const cp = ch.codePointAt(0) ?? 0
+      return cp < 0x20 || cp === 0x7f
+    })
+    if (hasCtrl) return settingsJson(422, { error: 'model contains control characters' })
+  }
+  const methodRaw = merged.auth_method?.trim()
+  if (methodRaw !== undefined && methodRaw.length > 0) {
+    if (!isAuthMethod(methodRaw)) return settingsJson(422, { error: `unknown auth method: ${methodRaw}` })
+    if (methodRaw === 'oauth-subscription') {
+      if (providerRaw !== undefined && providerRaw.length > 0 && providerRaw !== 'anthropic') {
+        return settingsJson(422, { error: 'oauth-subscription requires the anthropic provider' })
+      }
+      if ((merged.provider_base_url?.trim() ?? '').length > 0) {
+        return settingsJson(422, { error: 'oauth-subscription does not use a base URL' })
+      }
     }
   }
   return null
