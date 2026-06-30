@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
-import { CodingModelsResponseSchema, type CodingModelsResponse } from './fetcher-schemas-coding-models.js'
 import {
   KaneoCredentialsSchema,
   KaneoRevealSchema,
@@ -155,11 +154,6 @@ export const patchCodingCredentials = (input: {
   namespace?: string
   values: Record<string, string>
 }): Promise<unknown> => writeJson('/settings/api/coding-credentials', 'PATCH', input, (b) => b)
-
-export const fetchCodingModels = (contextId: string, agent: string): Promise<CodingModelsResponse> =>
-  getJson(`/settings/api/coding-credentials/models?${ctxQuery(contextId)}&agent=${encodeURIComponent(agent)}`, (b) =>
-    CodingModelsResponseSchema.parse(b),
-  )
 
 // --- Tools ---
 
