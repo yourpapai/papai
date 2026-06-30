@@ -134,7 +134,6 @@ const withOpenAiCompatiblePayload = {
 }
 
 let capturedPatchBody = ''
-const capturedPatchBodies: string[] = []
 
 const routeCodingMock = (_url: string, init?: RequestInit): Promise<Response> => {
   if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
@@ -152,18 +151,8 @@ const routeSelectsMock = (_url: string, init?: RequestInit): Promise<Response> =
   return Promise.resolve(json(withSelectsPayload))
 }
 
-// Records every PATCH body to capturedPatchBodies; GET returns withSelectsPayload.
-const routeAtomicMock = (_url: string, init?: RequestInit): Promise<Response> => {
-  if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
-    capturedPatchBodies.push(typeof init?.body === 'string' ? init.body : '')
-    return Promise.resolve(json({ ok: true }))
-  }
-  return Promise.resolve(json(withSelectsPayload))
-}
-
 afterEach(() => {
   capturedPatchBody = ''
-  capturedPatchBodies.length = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -206,7 +195,7 @@ describe('CodingCredentialsSection', () => {
     void unmount(component)
   })
 
-  test('saves a value by PATCHing the single field', async () => {
+  test('saves the section by PATCHing the whole record in one request', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(routeCodingMock)
     document.body.innerHTML = '<div id="root"></div>'
@@ -218,10 +207,10 @@ describe('CodingCredentialsSection', () => {
     input.value = 'sk-ant-test'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     flushSync()
-    target.querySelector<HTMLButtonElement>('[data-testid="coding-save-provider_api_key"]')!.click()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
     await drain()
 
-    expect(JSON.parse(capturedPatchBody)).toEqual({
+    expect(JSON.parse(capturedPatchBody)).toMatchObject({
       contextId: 'pi:telegram:ctx:u1',
       values: { provider_api_key: 'sk-ant-test' },
     })
@@ -303,7 +292,7 @@ describe('CodingCredentialsSection', () => {
     void unmount(component)
   })
 
-  test('saves select field by PATCHing on change', async () => {
+  test('changing a select does not PATCH on its own (whole-record save model)', async () => {
     setCsrfToken('csrf-t')
     setMockFetch(routeSelectsMock)
     document.body.innerHTML = '<div id="root"></div>'
@@ -318,36 +307,67 @@ describe('CodingCredentialsSection', () => {
     flushSync()
     await drain()
 
-    const body: unknown = JSON.parse(capturedPatchBody)
-    expect(body).toMatchObject({ values: { agent: 'codex' } })
+    expect(capturedPatchBody).toBe('')
     void unmount(component)
   })
 
-  test('switching agent to an incompatible-provider agent patches both agent and provider atomically', async () => {
-    // Starting from claude+anthropic, switching to codex must PATCH {agent:'codex', provider:'openai'} together
-    // to avoid the 422 deadlock (merged state {codex,anthropic} is invalid server-side)
+  test('switching agent resets the provider draft to a compatible option (no invalid merged state)', async () => {
+    // Starting from claude+anthropic, switching to codex resets provider to a codex-compatible
+    // value in the draft, so a subsequent whole-record save never sends {codex, anthropic}.
     setCsrfToken('csrf-t')
-    setMockFetch(routeAtomicMock)
+    setMockFetch(routeSelectsMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
 
     await drain()
 
-    // Confirm initial state: agent=claude, provider=anthropic
     const agentSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-agent"]')!
     expect(agentSelect.value).toBe('claude')
-
-    // Change agent to codex (incompatible with anthropic)
     agentSelect.value = 'codex'
     agentSelect.dispatchEvent(new Event('change', { bubbles: true }))
     flushSync()
     await drain()
 
-    // Must have issued exactly one PATCH with both agent and provider in the same body
-    expect(capturedPatchBodies.length).toBeGreaterThanOrEqual(1)
-    expect(JSON.parse(capturedPatchBodies[0]!)).toMatchObject({ values: { agent: 'codex', provider: 'openai' } })
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')!
+    expect(providerSelect.value).toBe('openai')
+    void unmount(component)
+  })
 
+  test('saves agent + provider + base URL together for openai-compatible (no 422 deadlock)', async () => {
+    // Selecting openai-compatible and entering the base URL then saving once must send a
+    // complete, valid record — previously selecting openai-compatible first 422'd because
+    // the base URL was not yet present in the merged server state.
+    setCsrfToken('csrf-t')
+    setMockFetch(routeSelectsMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const agentSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-agent"]')!
+    agentSelect.value = 'opencode'
+    agentSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')!
+    providerSelect.value = 'openai-compatible'
+    providerSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    const baseUrl = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_base_url"]')!
+    baseUrl.value = 'https://llm.corp.com/v1'
+    baseUrl.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const parsed: unknown = JSON.parse(capturedPatchBody)
+    expect(parsed).toMatchObject({
+      values: { agent: 'opencode', provider: 'openai-compatible', provider_base_url: 'https://llm.corp.com/v1' },
+    })
+    // The masked, untouched API key must not be re-sent.
+    expect(parsed).not.toHaveProperty('values.provider_api_key')
     void unmount(component)
   })
 

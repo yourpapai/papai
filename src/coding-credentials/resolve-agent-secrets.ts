@@ -127,10 +127,16 @@ export function resolveForge(
   const creds = getCodingCredentials(identityContext(storageContextId, chatUserId), 'forge')
   if (creds === null) return null
   const kind = creds.kind?.trim()
-  // Legacy vaults stored before kind was required; default to github SaaS.
-  const uiKind = kind === undefined || kind.length === 0 ? 'github' : kind
+  const instanceUrl = creds.instance_url?.trim()
+  if (kind === undefined || kind.length === 0) {
+    // A vault carrying an instance_url but no kind is an inconsistent partial save:
+    // refuse rather than silently mis-deriving GitHub SaaS and ignoring instance_url.
+    if (instanceUrl !== undefined && instanceUrl.length > 0) return null
+    // Legacy token-only vaults stored before kind was required; default to github SaaS.
+    return { kind: 'github', apiBaseUrl: deriveApiBaseUrl('github', undefined) }
+  }
   try {
-    return { kind: forgeMagiKind(uiKind), apiBaseUrl: deriveApiBaseUrl(uiKind, creds.instance_url?.trim()) }
+    return { kind: forgeMagiKind(kind), apiBaseUrl: deriveApiBaseUrl(kind, instanceUrl) }
   } catch {
     return null
   }

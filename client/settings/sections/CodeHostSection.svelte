@@ -30,7 +30,7 @@
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
-  let savingKey: string | null = $state(null)
+  let saving = $state(false)
   let drafts: Record<string, string> = $state({})
   let replacing: Record<string, boolean> = $state({})
   let loadedContextId: string | null = $state(null)
@@ -45,7 +45,15 @@
   const showInstanceUrl = $derived(needsInstanceUrl(currentKind))
 
   function initialDrafts(nextFields: CodingCredentialField[]): Record<string, string> {
-    return Object.fromEntries(nextFields.map((f) => [f.key, f.sensitive && f.hasValue ? '' : f.value]))
+    return Object.fromEntries(
+      nextFields.map((f) => {
+        if (f.sensitive && f.hasValue) return [f.key, '']
+        // Default an empty select to its first option so the persisted value matches
+        // what the dropdown visibly shows (an empty <select> renders the first option).
+        if (f.control === 'select' && (f.value ?? '') === '') return [f.key, f.options?.[0] ?? '']
+        return [f.key, f.value]
+      }),
+    )
   }
   function displaySecret(value: string): string {
     return value.includes('*') ? maskSecret(value) : '••••••••'
@@ -82,41 +90,40 @@
   function editorOpen(field: CodingCredentialField): boolean {
     return !field.sensitive || replacing[field.key] === true || !field.hasValue
   }
-  async function save(field: CodingCredentialField): Promise<void> {
-    if (loading || loadedContextId !== contextId) return
-    error = null
-    status = null
-    savingKey = field.key
-    try {
-      await patchCodingCredentials({ contextId, namespace: 'forge', values: { [field.key]: drafts[field.key] ?? '' } })
-      await load(contextId)
-      status = `${field.label} saved.`
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    } finally {
-      savingKey = null
-    }
-  }
-  async function saveSelect(field: CodingCredentialField, value: string): Promise<void> {
-    updateDraft(field.key, value)
-    if (loading || loadedContextId !== contextId) return
-    error = null
-    status = null
-    savingKey = field.key
-    try {
-      await patchCodingCredentials({ contextId, namespace: 'forge', values: { [field.key]: value } })
-      await load(contextId)
-      status = `${field.label} saved.`
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    } finally {
-      savingKey = null
-    }
-  }
 
   function shouldShowField(field: CodingCredentialField): boolean {
     if (field.key === 'instance_url') return showInstanceUrl
     return true
+  }
+
+  // Whole-record save: a forge connection is kind + instance_url + token validated
+  // together server-side, so persist them in one PATCH. Saving fields individually
+  // (e.g. kind before instance_url) hits the route's cross-field 422 and silently
+  // drops the field, which previously left kind empty → mis-derived GitHub SaaS.
+  function collectValues(): Record<string, string> {
+    const values: Record<string, string> = {}
+    for (const field of fields) {
+      if (!shouldShowField(field)) continue
+      // Preserve an untouched secret: omit it so the server keeps the stored value.
+      if (field.sensitive && field.hasValue && replacing[field.key] !== true) continue
+      values[field.key] = drafts[field.key] ?? ''
+    }
+    return values
+  }
+  async function saveAll(): Promise<void> {
+    if (loading || saving || loadedContextId !== contextId) return
+    error = null
+    status = null
+    saving = true
+    try {
+      await patchCodingCredentials({ contextId, namespace: 'forge', values: collectValues() })
+      await load(contextId)
+      status = 'Code host saved.'
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      saving = false
+    }
   }
 
   $effect(() => {
@@ -164,8 +171,8 @@
                     <select
                       data-testid={`coding-select-${field.key}`}
                       value={drafts[field.key] ?? ''}
-                      disabled={savingKey === field.key || loading}
-                      onchange={(e) => void saveSelect(field, (e.currentTarget as HTMLSelectElement).value)}
+                      disabled={saving || loading}
+                      onchange={(e) => updateDraft(field.key, (e.currentTarget as HTMLSelectElement).value)}
                       class="coding-select">
                       {#each field.options ?? [] as opt (opt)}
                         <option value={opt}>{opt}</option>
@@ -186,14 +193,6 @@
                       testid={`coding-input-${field.key}`} />
                   {/snippet}
                 </Field>
-                <Btn
-                  variant="primary"
-                  size="sm"
-                  testid={`coding-save-${field.key}`}
-                  disabled={savingKey === field.key || loading}
-                  onClick={() => void save(field)}>
-                  {#snippet children()}{savingKey === field.key ? 'Saving…' : 'Save'}{/snippet}
-                </Btn>
                 {#if field.sensitive && field.hasValue}
                   <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
                     {#snippet children()}Cancel{/snippet}
@@ -204,6 +203,17 @@
           </div>
         {/if}
       {/each}
+
+      <div class="settings-field__actions">
+        <Btn
+          variant="primary"
+          size="sm"
+          testid="code-host-save"
+          disabled={saving || loading}
+          onClick={() => void saveAll()}>
+          {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
+        </Btn>
+      </div>
     </div>
   {/if}
 </section>
@@ -240,6 +250,10 @@
   .settings-field__editor :global(.ui-field) {
     flex: 1;
     min-width: 200px;
+  }
+  .settings-field__actions {
+    display: flex;
+    justify-content: flex-end;
   }
   .coding-select {
     width: 100%;

@@ -170,6 +170,20 @@ test('resolveForge returns github kind and apiBaseUrl for a typed github vault',
   expect(resolveForge(STORAGE_CTX, 'user-9')).toEqual({ kind: 'github', apiBaseUrl: 'https://api.github.com' })
 })
 
+test('resolveForge returns null for a partial self-hosted vault (instance_url present, kind missing)', () => {
+  // A vault carrying an instance_url but no kind is an inconsistent partial save
+  // (e.g. the UI persisted instance_url + token but the kind never saved). Refuse
+  // rather than silently mis-deriving GitHub SaaS and ignoring the instance_url —
+  // that previously pushed a GitLab PAT at api.github.com and 401'd.
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'forge',
+    { instance_url: 'https://gl.corp.com', forge_token: 'glpat-1' },
+    'user-9',
+  )
+  expect(resolveForge(STORAGE_CTX, 'user-9')).toBeNull()
+})
+
 test('resolveProviderHost returns null when no credentials stored', () => {
   expect(resolveProviderHost(STORAGE_CTX, 'user-9')).toBeNull()
 })
