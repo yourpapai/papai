@@ -17,6 +17,8 @@
     "scripts/behavior-audit/tune-embedding.ts!",
     "scripts/behavior-audit/reset.ts!",
     "scripts/behavior-audit/migrate-trust.ts!",
+    "playwright.config.ts!",
+    "strybk.config.ts!",
     // First-party plugin entry points are loaded dynamically by the plugin loader,
     // so they have no static importer; declare them as entries.
     "plugins/*/index.ts!",
@@ -49,7 +51,9 @@
   // msw is the dev-only mock layer dependency consumed exclusively by the
   // Storybook story harness under client/stories/** (ignored below); it never
   // ships in a production bundle.
-  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw"],
+  // @crvy/strybk is imported by strybk.config.ts but knip-bun cannot resolve the
+  // package even though it is listed in devDependencies (runtime CLI config consumer).
+  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw", "@crvy/strybk"],
 
   "ignoreIssues": {
     // applyVisibility is unused; turn-assembly re-exports are consumed only by .svelte files.
@@ -174,6 +178,9 @@
     "plugins/audio-transcribe/transcription.ts": ["files"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
+    // strybk.config.ts default export is consumed by the crvy-strybk CLI at
+    // runtime via --config; no static importer exists.
+    "strybk.config.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
@@ -187,5 +194,5 @@
   // client/stories/** is the dev-only Storybook mock + story harness: it is reachable only through
   // Storybook's dev entries and .svelte stories (which knip cannot parse), and is excluded from
   // production bundles by design, so production-mode analysis correctly cannot trace it.
-  "ignore": ["src/db/migrations/**", "client/stories/**"],
+  "ignore": ["src/db/migrations/**", "client/stories/**", "tests/visual/**"],
 }
