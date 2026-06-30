@@ -13,7 +13,7 @@
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import type { CodingCredentialField, CodingCredentialsResponse } from '../fetcher-schemas.js'
-  import { fetchCodingCredentials, patchCodingCredentials } from '../fetchers.js'
+  import { fetchCodingCredentials, fetchCodingModels, patchCodingCredentials } from '../fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
 
   // Client-side compatibility map (mirrors src/coding-credentials/types.ts `compatible`)
@@ -38,6 +38,7 @@
   let drafts: Record<string, string> = $state({})
   let replacing: Record<string, boolean> = $state({})
   let loadedContextId: string | null = $state(null)
+  let modelOptions: { value: string; label: string }[] = $state([])
 
   const currentData = $derived(loadedContextId === contextId ? data : null)
   const fields = $derived(currentData?.fields ?? [])
@@ -51,6 +52,20 @@
   const providerField = $derived(fields.find((f) => f.key === 'provider'))
   const currentProvider = $derived(drafts['provider'] ?? providerField?.value ?? '')
   const isOpenAiCompatible = $derived(currentProvider === 'openai-compatible')
+
+  const authMethodField = $derived(fields.find((f) => f.key === 'auth_method'))
+  const currentAuthMethod = $derived(drafts['auth_method'] ?? authMethodField?.value ?? 'api-key')
+  const isOauthSubscription = $derived(currentAuthMethod === 'oauth-subscription')
+
+  function fieldHidden(field: CodingCredentialField): boolean {
+    if (field.key === 'provider_base_url' && isOauthSubscription) return true
+    if (field.key === 'auth_method' && currentProvider !== 'anthropic') return true
+    return false
+  }
+  function labelFor(field: CodingCredentialField): string {
+    if (field.key === 'provider_api_key' && isOauthSubscription) return 'OAuth token'
+    return field.label
+  }
 
   function selectOptionsFor(field: CodingCredentialField): string[] {
     const opts = field.options ?? []
@@ -114,6 +129,7 @@
       if (compatible.length > 0 && !compatible.includes(currentProvider)) {
         updateDraft('provider', compatible[0]!)
       }
+      updateDraft('model', '')
     }
   }
 
@@ -151,6 +167,25 @@
       void load(id)
     })
   })
+
+  $effect(() => {
+    const id = contextId
+    const agent = currentAgent
+    const hasKey = fields.find((f) => f.key === 'provider_api_key')?.hasValue === true
+    untrack(() => {
+      if (!hasKey || agent.length === 0) {
+        modelOptions = []
+        return
+      }
+      void fetchCodingModels(id, agent)
+        .then((r) => {
+          if (id === contextId) modelOptions = r.ok ? r.models : []
+        })
+        .catch(() => {
+          if (id === contextId) modelOptions = []
+        })
+    })
+  })
 </script>
 
 <section id="coding-credentials" class="settings-section">
@@ -177,10 +212,11 @@
 
     <div class="settings-byok-fields">
       {#each fields as field (field.key)}
+        {#if !fieldHidden(field)}
         {@const effectiveRequired = field.required || (field.key === 'provider_base_url' && isOpenAiCompatible)}
         <div class="settings-field" data-testid={`coding-row-${field.key}`}>
           <div class="settings-field__head">
-            <span class="t-label settings-field__label">{field.label}{effectiveRequired ? ' *' : ''}</span>
+            <span class="t-label settings-field__label">{labelFor(field)}{effectiveRequired ? ' *' : ''}</span>
             {#if field.sensitive && field.hasValue && !editorOpen(field)}
               <Secret value={displaySecret(field.value)} />
               <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
@@ -205,6 +241,26 @@
                 {/snippet}
               </Field>
             </div>
+          {:else if field.control === 'combobox'}
+            <div class="settings-field__editor">
+              <Field label="Value">
+                {#snippet children()}
+                  <input
+                    list={`coding-models-${field.key}`}
+                    data-testid={`coding-combobox-${field.key}`}
+                    value={drafts[field.key] ?? ''}
+                    placeholder="model id (leave blank for the agent default)"
+                    disabled={saving || loading}
+                    oninput={(e) => updateDraft(field.key, (e.currentTarget as HTMLInputElement).value)}
+                    class="coding-select" />
+                  <datalist id={`coding-models-${field.key}`}>
+                    {#each modelOptions as opt (opt.value)}
+                      <option value={opt.value}>{opt.label}</option>
+                    {/each}
+                  </datalist>
+                {/snippet}
+              </Field>
+            </div>
           {:else if editorOpen(field)}
             <div class="settings-field__editor">
               <Field label={field.sensitive ? 'New value' : 'Value'}>
@@ -212,11 +268,13 @@
                   <Input
                     type={field.sensitive ? 'password' : 'text'}
                     value={drafts[field.key] ?? ''}
-                    placeholder={field.sensitive
-                      ? 'enter a new value'
-                      : field.key === 'provider_base_url' && isOpenAiCompatible
-                        ? 'https://your-llm-endpoint/v1 (required)'
-                        : ''}
+                    placeholder={field.key === 'provider_api_key' && isOauthSubscription
+                      ? 'sk-ant-oat01-… (run `claude setup-token`)'
+                      : field.sensitive
+                        ? 'enter a new value'
+                        : field.key === 'provider_base_url' && isOpenAiCompatible
+                          ? 'https://your-llm-endpoint/v1 (required)'
+                          : ''}
                     onInput={(value) => updateDraft(field.key, value)}
                     testid={`coding-input-${field.key}`} />
                 {/snippet}
@@ -229,6 +287,7 @@
             </div>
           {/if}
         </div>
+        {/if}
       {/each}
 
       <div class="settings-field__actions">

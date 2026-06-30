@@ -485,4 +485,59 @@ describe('CodingCredentialsSection', () => {
     expect(options).not.toContain('opencode')
     void unmount(component)
   })
+
+  const oauthPayload = {
+    namespace: 'agent-provider',
+    configured: true,
+    complete: true,
+    missing: [],
+    fields: [
+      {
+        key: 'agent',
+        label: 'Coding agent',
+        required: true,
+        sensitive: false,
+        hasValue: true,
+        value: 'claude',
+        control: 'select',
+        options: ['claude', 'codex', 'opencode'],
+      },
+      {
+        key: 'provider',
+        label: 'Model provider',
+        required: true,
+        sensitive: false,
+        hasValue: true,
+        value: 'anthropic',
+        control: 'select',
+        options: ['anthropic', 'openai', 'openai-compatible'],
+      },
+      {
+        key: 'auth_method',
+        label: 'Auth method',
+        required: false,
+        sensitive: false,
+        hasValue: true,
+        value: 'oauth-subscription',
+        control: 'select',
+        options: ['api-key', 'oauth-subscription'],
+      },
+      { key: 'provider_api_key', label: 'API key', required: true, sensitive: true, hasValue: true, value: '****' },
+      { key: 'provider_base_url', label: 'Base URL', required: false, sensitive: false, hasValue: false, value: '' },
+    ],
+  }
+
+  test('oauth-subscription relabels the secret to OAuth token and hides the base URL', async () => {
+    setCsrfToken('t')
+    setMockFetch(() => Promise.resolve(json(oauthPayload)))
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    const cmp = mount(CodingCredentialsSection, { target, props: { contextId: 'ctx-1' } })
+    await drain()
+    expect(target.textContent).toContain('OAuth token')
+    expect(target.querySelector('[data-testid="coding-row-provider_base_url"]')).toBeNull()
+    void unmount(cmp)
+    target.remove()
+    restoreFetch()
+  })
 })
