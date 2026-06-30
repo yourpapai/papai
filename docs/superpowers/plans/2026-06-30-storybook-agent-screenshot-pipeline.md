@@ -195,7 +195,8 @@ export default defineConfig({
   webServer: {
     command: 'bun storybook',
     url: `${STORYBOOK_URL}/index.json`,
-    reuseExistingServer: true, // warm loop: reuse a Storybook already running
+    // warm loop: reuse a Storybook already running
+    reuseExistingServer: true,
     timeout: 120_000,
   },
 })
