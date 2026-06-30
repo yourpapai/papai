@@ -124,7 +124,59 @@ const typedForgePayloadSelfHosted = {
   ],
 }
 
+// Unconfigured typed forge: kind select present (empty value), instance_url + token empty.
+const typedForgeUnconfigured = {
+  namespace: 'forge',
+  configured: false,
+  complete: false,
+  missing: ['kind', 'forge_token'],
+  fields: [
+    {
+      key: 'kind',
+      label: 'Code host',
+      required: true,
+      sensitive: false,
+      hasValue: false,
+      value: '',
+      control: 'select' as const,
+      options: ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted'],
+    },
+    {
+      key: 'instance_url',
+      label: 'Instance URL (enterprise / self-hosted)',
+      required: false,
+      sensitive: false,
+      hasValue: false,
+      value: '',
+    },
+    {
+      key: 'forge_token',
+      label: 'Access token',
+      required: true,
+      sensitive: true,
+      hasValue: false,
+      value: '',
+    },
+  ],
+}
+
 let capturedPatchBody = ''
+
+const routeCodeHostMockUnconfigured = (_url: string, init?: RequestInit): Promise<Response> => {
+  if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
+    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(typedForgeUnconfigured))
+}
+
+const routeCodeHostMockSelfHosted = (_url: string, init?: RequestInit): Promise<Response> => {
+  if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
+    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(typedForgePayloadSelfHosted))
+}
 
 const routeCodeHostMock = (_url: string, init?: RequestInit): Promise<Response> => {
   if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
@@ -132,14 +184,6 @@ const routeCodeHostMock = (_url: string, init?: RequestInit): Promise<Response> 
     return Promise.resolve(json({ ok: true }))
   }
   return Promise.resolve(json(unconfiguredPayload))
-}
-
-const routeCodeHostMockTyped = (_url: string, init?: RequestInit): Promise<Response> => {
-  if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
-    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
-    return Promise.resolve(json({ ok: true }))
-  }
-  return Promise.resolve(json(typedForgePayloadSaas))
 }
 
 afterEach(() => {
@@ -199,7 +243,7 @@ describe('CodeHostSection', () => {
     input.value = 'ghp_secret'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     flushSync()
-    target.querySelector<HTMLButtonElement>('[data-testid="coding-save-forge_token"]')!.click()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
     await drain()
 
     expect(JSON.parse(capturedPatchBody)).toMatchObject({
@@ -271,9 +315,9 @@ describe('CodeHostSection', () => {
     void unmount(component)
   })
 
-  test('saving a select issues per-field PATCH with the selected value', async () => {
+  test('changing the kind select does not PATCH on its own (whole-record save model)', async () => {
     setCsrfToken('csrf-t')
-    setMockFetch(routeCodeHostMockTyped)
+    setMockFetch(routeCodeHostMockUnconfigured)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
@@ -281,15 +325,68 @@ describe('CodeHostSection', () => {
     await drain()
 
     const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-kind"]')!
-    select.value = 'gitlab'
+    select.value = 'gitlab-self-hosted'
     select.dispatchEvent(new Event('change', { bubbles: true }))
+    await drain()
+
+    // Selecting a kind must NOT auto-save — that is what produced the 422 deadlock
+    // (kind needs instance_url present, which is entered afterwards).
+    expect(capturedPatchBody).toBe('')
+    void unmount(component)
+  })
+
+  test('saving a self-hosted forge persists kind + instance_url + token in one PATCH', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeCodeHostMockUnconfigured)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-kind"]')!
+    select.value = 'gitlab-self-hosted'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    await drain()
+
+    const instance = target.querySelector<HTMLInputElement>('[data-testid="coding-input-instance_url"]')!
+    instance.value = 'https://gl.corp.com'
+    instance.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    const token = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    token.value = 'glpat-1'
+    token.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
     await drain()
 
     expect(JSON.parse(capturedPatchBody)).toMatchObject({
       namespace: 'forge',
       contextId: 'pi:telegram:ctx:u1',
-      values: { kind: 'gitlab' },
+      values: { kind: 'gitlab-self-hosted', instance_url: 'https://gl.corp.com', forge_token: 'glpat-1' },
     })
+    void unmount(component)
+  })
+
+  test('saving a configured forge omits the untouched masked token', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeCodeHostMockSelfHosted)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    // Token is configured (masked, Replace shown) and not being replaced; saving must
+    // not send it (server preserves the existing secret).
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+
+    const parsed: unknown = JSON.parse(capturedPatchBody)
+    expect(parsed).toMatchObject({ values: { kind: 'gitlab-self-hosted', instance_url: 'https://gitlab.corp.com' } })
+    expect(parsed).not.toHaveProperty('values.forge_token')
     void unmount(component)
   })
 })
