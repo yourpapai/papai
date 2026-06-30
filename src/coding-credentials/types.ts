@@ -9,6 +9,13 @@ export type CodingNamespace = (typeof CODING_NAMESPACES)[number]
 export const PROVIDERS = ['anthropic', 'openai', 'openai-compatible'] as const
 export type Provider = (typeof PROVIDERS)[number]
 
+export const AUTH_METHODS = ['api-key', 'oauth-subscription'] as const
+export type AuthMethod = (typeof AUTH_METHODS)[number]
+
+export function isAuthMethod(value: string): value is AuthMethod {
+  return (AUTH_METHODS as readonly string[]).includes(value)
+}
+
 export const AGENTS = ['claude', 'codex', 'opencode'] as const
 export type Agent = (typeof AGENTS)[number]
 
@@ -27,7 +34,14 @@ export function compatible(agent: string, provider: string): boolean {
   return false
 }
 
-export const AGENT_PROVIDER_FIELDS = ['agent', 'provider', 'provider_api_key', 'provider_base_url', 'model'] as const
+export const AGENT_PROVIDER_FIELDS = [
+  'agent',
+  'provider',
+  'auth_method',
+  'provider_api_key',
+  'provider_base_url',
+  'model',
+] as const
 export const REQUIRED_AGENT_PROVIDER_FIELDS = ['agent', 'provider', 'provider_api_key'] as const
 export type AgentProviderField = (typeof AGENT_PROVIDER_FIELDS)[number]
 

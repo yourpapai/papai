@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   AGENT_PROVIDER_FIELDS,
   AGENTS,
+  AUTH_METHODS,
   CODING_NAMESPACES,
   FIELDS_BY_NAMESPACE,
   FORGE_KINDS,
@@ -17,6 +18,7 @@ import {
   compatible,
   deriveApiBaseUrl,
   forgeMagiKind,
+  isAuthMethod,
 } from '../../src/coding-credentials/types.js'
 
 describe('coding-credentials types', () => {
@@ -106,6 +108,20 @@ describe('coding-credentials types', () => {
     test('gitlab-self-hosted maps to gitlab', () => {
       expect(forgeMagiKind('gitlab-self-hosted')).toBe('gitlab')
     })
+  })
+
+  test('AUTH_METHODS lists api-key and oauth-subscription', () => {
+    expect(AUTH_METHODS).toEqual(['api-key', 'oauth-subscription'])
+  })
+
+  test('auth_method is an optional agent-provider field (not required)', () => {
+    expect(AGENT_PROVIDER_FIELDS).toContain('auth_method')
+    expect(REQUIRED_AGENT_PROVIDER_FIELDS).not.toContain('auth_method')
+  })
+
+  test('isAuthMethod narrows known methods', () => {
+    expect(isAuthMethod('oauth-subscription')).toBe(true)
+    expect(isAuthMethod('nope')).toBe(false)
   })
 
   describe('compatible', () => {
