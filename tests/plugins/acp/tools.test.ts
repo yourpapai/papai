@@ -17,6 +17,7 @@ function makeCodingSecrets(overrides?: Partial<CodingSecrets>): CodingSecrets {
     resolveAgent: () => null,
     resolveForge: () => null,
     resolveProviderHost: () => null,
+    resolveModel: () => null,
     ...overrides,
   }
 }
@@ -72,6 +73,16 @@ describe('buildSessionProjectSpec', () => {
     expect(result['forge']).toEqual(forge)
     expect(result['providerHost']).toBe('api.openai.com')
     expect(result['agent']).toBe('codex')
+  })
+
+  test('includes model when resolveModel returns a value', () => {
+    const secrets = makeCodingSecrets({ resolveModel: () => 'opus' })
+    expect(buildSessionProjectSpec(demoRepo, 'claude', secrets)['model']).toBe('opus')
+  })
+
+  test('omits model when resolveModel returns null', () => {
+    const secrets = makeCodingSecrets({ resolveModel: () => null })
+    expect('model' in buildSessionProjectSpec(demoRepo, 'claude', secrets)).toBe(false)
   })
 })
 

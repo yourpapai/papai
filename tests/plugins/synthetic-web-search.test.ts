@@ -113,6 +113,7 @@ function createMockRuntimeContext(
       resolveAgent: () => null,
       resolveForge: () => null,
       resolveProviderHost: () => null,
+      resolveModel: () => null,
     },
     codingRepos: { list: () => [], get: () => null },
   } as PluginToolRuntimeContext

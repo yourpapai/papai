@@ -151,6 +151,7 @@ describe('acp start_session tool', () => {
           apiBaseUrl: 'https://gl.corp.com/api/v4',
         }),
         resolveProviderHost: (): null => null,
+        resolveModel: (): null => null,
       },
     }
     const result = await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctx, options())
@@ -180,6 +181,7 @@ describe('acp start_session tool', () => {
           apiBaseUrl: 'https://gl.corp.com/api/v4',
         }),
         resolveProviderHost: (): null => null,
+        resolveModel: (): null => null,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithForge, options())
@@ -206,6 +208,7 @@ describe('acp start_session tool', () => {
         resolveAgent: (): string => 'codex',
         resolveForge: (): null => null,
         resolveProviderHost: (): null => null,
+        resolveModel: (): null => null,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithCodex, options())
@@ -228,6 +231,7 @@ describe('acp start_session tool', () => {
         resolveAgent: (): null => null,
         resolveForge: (): null => null,
         resolveProviderHost: (): string => 'llm.corp.com',
+        resolveModel: (): null => null,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithProviderHost, options())

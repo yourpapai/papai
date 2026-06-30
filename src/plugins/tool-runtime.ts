@@ -10,6 +10,7 @@ import {
   resolveForge,
   resolveForgeToken,
   resolveAgent,
+  resolveModel,
   resolveProviderHost,
   configContextOf,
 } from '../coding-credentials/resolve-agent-secrets.js'
@@ -165,27 +166,20 @@ export function buildCodingSecretsFacade(
   hasPermission: boolean,
   chatUserId: string,
 ): PluginToolRuntimeContext['codingSecrets'] {
+  // Gate each resolver behind the coding.secrets permission check.
+  const gate =
+    <T>(fn: () => T): (() => T) =>
+    (): T => {
+      if (!hasPermission) deny(pluginId, 'coding.secrets')
+      return fn()
+    }
   return Object.freeze({
-    resolve(): Record<string, string> | null {
-      if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveAgentSecrets(storageContextId, chatUserId)
-    },
-    resolveForgeToken(): string | null {
-      if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveForgeToken(storageContextId, chatUserId)
-    },
-    resolveAgent(): string | null {
-      if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveAgent(storageContextId, chatUserId)
-    },
-    resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null {
-      if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveForge(storageContextId, chatUserId)
-    },
-    resolveProviderHost(): string | null {
-      if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return resolveProviderHost(storageContextId, chatUserId)
-    },
+    resolve: gate(() => resolveAgentSecrets(storageContextId, chatUserId)),
+    resolveForgeToken: gate(() => resolveForgeToken(storageContextId, chatUserId)),
+    resolveAgent: gate(() => resolveAgent(storageContextId, chatUserId)),
+    resolveForge: gate(() => resolveForge(storageContextId, chatUserId)),
+    resolveProviderHost: gate(() => resolveProviderHost(storageContextId, chatUserId)),
+    resolveModel: gate(() => resolveModel(storageContextId, chatUserId)),
   })
 }
 

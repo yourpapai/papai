@@ -27,7 +27,7 @@ export function compatible(agent: string, provider: string): boolean {
   return false
 }
 
-export const AGENT_PROVIDER_FIELDS = ['agent', 'provider', 'provider_api_key', 'provider_base_url'] as const
+export const AGENT_PROVIDER_FIELDS = ['agent', 'provider', 'provider_api_key', 'provider_base_url', 'model'] as const
 export const REQUIRED_AGENT_PROVIDER_FIELDS = ['agent', 'provider', 'provider_api_key'] as const
 export type AgentProviderField = (typeof AGENT_PROVIDER_FIELDS)[number]
 

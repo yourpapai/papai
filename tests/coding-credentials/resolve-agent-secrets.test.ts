@@ -19,6 +19,7 @@ import {
   resolveAgentSecrets,
   resolveForge,
   resolveForgeToken,
+  resolveModel,
   resolveProviderHost,
 } from '../../src/coding-credentials/resolve-agent-secrets.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
@@ -561,4 +562,33 @@ test('forceSharedKey:true + initiator policy: provider key from admin, forge fro
   expect(resolveAgentSecrets(GROUP_THREAD_CTX, 'alice')).toEqual({ ANTHROPIC_API_KEY: 'sk-ADMIN-SHARED' })
   // resolveForgeToken uses identityContext (alice) → ghp-ALICE
   expect(resolveForgeToken(GROUP_THREAD_CTX, 'alice')).toBe('ghp-ALICE')
+})
+
+test('resolveModel returns the stored model from the identity context', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { agent: 'claude', provider_api_key: 'sk-1', model: 'claude-sonnet-4-6' },
+    'user-9',
+  )
+  expect(resolveModel(STORAGE_CTX, 'user-9')).toBe('claude-sonnet-4-6')
+})
+
+test('resolveModel returns null when model is absent', () => {
+  updateCodingCredentials(STORAGE_CTX, 'agent-provider', { agent: 'claude', provider_api_key: 'sk-1' }, 'user-9')
+  expect(resolveModel(STORAGE_CTX, 'user-9')).toBeNull()
+})
+
+test('resolveModel returns null when model is blank', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'agent-provider',
+    { agent: 'claude', provider_api_key: 'sk-1', model: '   ' },
+    'user-9',
+  )
+  expect(resolveModel(STORAGE_CTX, 'user-9')).toBeNull()
+})
+
+test('resolveModel returns null when no credentials stored', () => {
+  expect(resolveModel(STORAGE_CTX, 'user-9')).toBeNull()
 })

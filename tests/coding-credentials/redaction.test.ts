@@ -142,6 +142,7 @@ describe('coding-credentials redaction — not-configured reference', () => {
           resolveAgent: (): null => null,
           resolveForge: (): null => null,
           resolveProviderHost: (): null => null,
+          resolveModel: (): null => null,
         },
         codingRepos: {
           list: (): { name: string; baseBranch: string }[] => [{ name: 'demo', baseBranch: 'main' }],

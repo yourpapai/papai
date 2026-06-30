@@ -100,6 +100,7 @@ describe('acp review_pr tool', () => {
           apiBaseUrl: 'https://api.github.com',
         }),
         resolveProviderHost: (): null => null,
+        resolveModel: (): null => null,
       },
     }
     await tools.get('review_pr')!.execute({ project: 'demo', prNumber: 7 }, ctxWithForge, options())
@@ -124,6 +125,7 @@ describe('acp review_pr tool', () => {
         resolveAgent: (): null => null,
         resolveForge: (): null => null,
         resolveProviderHost: (): string => 'api.openai.com',
+        resolveModel: (): null => null,
       },
     }
     await tools.get('review_pr')!.execute({ project: 'demo', prNumber: 7 }, ctxWithProviderHost, options())

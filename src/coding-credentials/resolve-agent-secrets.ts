@@ -87,6 +87,17 @@ export function resolveAgent(storageContextId: string, chatUserId: string): stri
 }
 
 /**
+ * Resolve the acting identity's configured model. Like resolveAgent, this reads
+ * the identity context only (a user's model is their preference; an operator-forced
+ * shared key does not override it). Returns null when absent or empty.
+ */
+export function resolveModel(storageContextId: string, chatUserId: string): string | null {
+  const creds = getCodingCredentials(identityContext(storageContextId, chatUserId), 'agent-provider')
+  const model = creds?.model?.trim()
+  return model === undefined || model.length === 0 ? null : model
+}
+
+/**
  * Resolve the acting identity's forge (code-host) token.
  * Returns null when no token is stored.
  */

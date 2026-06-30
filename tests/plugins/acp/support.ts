@@ -105,6 +105,7 @@ export function runtimeCtx(
       resolveAgent: () => null,
       resolveForge: () => null,
       resolveProviderHost: () => null,
+      resolveModel: () => null,
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
   } as PluginToolRuntimeContext
@@ -149,6 +150,7 @@ export function runtimeCtxWithKv(
       resolveAgent: () => null,
       resolveForge: () => null,
       resolveProviderHost: () => null,
+      resolveModel: () => null,
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
   } as PluginToolRuntimeContext

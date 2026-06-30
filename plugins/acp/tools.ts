@@ -24,6 +24,7 @@ export type RuntimeContext = {
     resolveAgent(): string | null
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
     resolveProviderHost(): string | null
+    resolveModel(): string | null
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
@@ -80,10 +81,12 @@ export function buildSessionProjectSpec(
   const base = buildProjectSpec(repo, agent)
   const forge = codingSecrets.resolveForge()
   const providerHost = codingSecrets.resolveProviderHost()
+  const model = codingSecrets.resolveModel()
   return {
     ...base,
     ...(forge === null ? {} : { forge }),
     ...(providerHost === null ? {} : { providerHost }),
+    ...(model === null ? {} : { model }),
   }
 }
 
