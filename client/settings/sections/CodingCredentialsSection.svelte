@@ -51,6 +51,9 @@
   // Track current provider draft to surface base-URL-required hint for openai-compatible
   const providerField = $derived(fields.find((f) => f.key === 'provider'))
   const currentProvider = $derived(drafts['provider'] ?? providerField?.value ?? '')
+  // Saved (server-side) provider — draft may differ before a Save. Model list is only
+  // valid for the stored provider; clear it when the user has switched but not saved.
+  const storedProvider = $derived(providerField?.value ?? '')
   const isOpenAiCompatible = $derived(currentProvider === 'openai-compatible')
 
   const authMethodField = $derived(fields.find((f) => f.key === 'auth_method'))
@@ -181,8 +184,12 @@
     const id = contextId
     const agent = currentAgent
     const hasKey = fields.find((f) => f.key === 'provider_api_key')?.hasValue === true
+    const providerDraft = currentProvider
+    const savedProvider = storedProvider
     untrack(() => {
-      if (!hasKey || agent.length === 0) {
+      // Clear stale suggestions when the provider draft differs from the saved value
+      // (the model list belongs to the stored provider, not the unsaved draft).
+      if (!hasKey || agent.length === 0 || providerDraft !== savedProvider) {
         modelOptions = []
         return
       }
@@ -265,7 +272,7 @@
                     class="coding-select" />
                   <datalist id={`coding-models-${field.key}`}>
                     {#each modelOptions as opt (opt.value)}
-                      <option value={opt.value}>{opt.label}</option>
+                      <option value={opt.value}></option>
                     {/each}
                   </datalist>
                 {/snippet}
