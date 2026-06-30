@@ -47,11 +47,16 @@ describe('fetchProviderModels', () => {
   })
 
   it('rejects a redirect (no following to a private address)', async () => {
-    setMockFetch(() =>
-      Promise.resolve(new Response(null, { status: 301, headers: { location: 'http://169.254.169.254/' } })),
-    )
-    // redirect:'error' causes the runtime to reject; with the mock the 301 fails res.ok → throws
+    let capturedInit: RequestInit | undefined
+    setMockFetch((_url, init) => {
+      capturedInit = init
+      return Promise.resolve(new Response(null, { status: 301, headers: { location: 'http://169.254.169.254/' } }))
+    })
+    // redirect:'error' causes the runtime to reject on a real network; with the mock the
+    // 301 fails res.ok → throws. Either way the function must not succeed.
     await expect(fetchProviderModels('openai', undefined, 'k', 'codex')).rejects.toThrow()
+    // Pin the flag so removing redirect:'error' from production code breaks this test.
+    expect(capturedInit?.redirect).toBe('error')
   })
 
   it('strips trailing /v1 from an anthropic gateway base URL (avoids /v1/v1/models)', async () => {
