@@ -7,6 +7,7 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 
 import { z } from 'zod'
 
+import { isAuthorizedGroup } from '../authorized-groups.js'
 import { resolveDeliveryPlatformInstanceId } from '../chat/delivery-routing.js'
 import {
   getConfigContextIdFromStorageContextId,
@@ -61,11 +62,20 @@ const tokensMatch = (provided: string, expected: string): boolean => {
  * are decoded out of it. Callers (e.g. magi's milestone notifier) only know the
  * scoped id; they need not pass a separate native id or `threadId`. A
  * caller-supplied `threadId` still takes precedence when present.
+ *
+ * A thread-stripped group context id is shape-indistinguishable from a DM, so a
+ * caller that already stripped the thread (e.g. an older session) would be
+ * misrouted to `/channels/direct`. `isKnownGroup` lets the caller pass the
+ * verdict from the authorized-group registry so such a context routes to its
+ * channel (no thread available) instead of a DM. An explicit `contextType`
+ * always wins; a thread-scoped id is always a group regardless of this hint.
  */
-export const buildNotifyTarget = (body: NotifyBody): DeferredDeliveryTarget => {
+export const buildNotifyTarget = (body: NotifyBody, isKnownGroup = false): DeferredDeliveryTarget => {
   const storageContextId = body.contextId
   const isGroup =
-    body.contextType === undefined ? isScopedThreadContextId(storageContextId) : body.contextType === 'group'
+    body.contextType === undefined
+      ? isScopedThreadContextId(storageContextId) || isKnownGroup
+      : body.contextType === 'group'
   if (!isGroup) {
     return { ...dmTarget(getNativeContextId(storageContextId)), storageContextId }
   }
@@ -140,7 +150,7 @@ export const handleNotifyRoute = async (req: Request): Promise<Response> => {
   const chat = getRuntimeChatRouter()
   if (chat === null) return jsonResponse({ error: 'chat router not running' }, { status: 422 })
 
-  const target = buildNotifyTarget(parsed.data)
+  const target = buildNotifyTarget(parsed.data, isAuthorizedGroup(parsed.data.contextId))
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
   if (platformInstanceId === null) return jsonResponse({ error: 'context not deliverable' }, { status: 404 })
 

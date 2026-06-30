@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { addAuthorizedGroup } from '../../src/authorized-groups.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
@@ -125,6 +126,21 @@ describe('handleNotifyRoute', () => {
     expect(res.status).toBe(401)
   })
 
+  test('routes a thread-less authorized-group context to the group channel, not a DM', async () => {
+    const scoped = toScopedContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: 'channel-26-char-identifier',
+    })
+    addAuthorizedGroup(scoped, 'admin-user')
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: scoped, markdown: 'done' }))
+    expect(res.status).toBe(200)
+    expect(router.sent[0]?.target.contextType).toBe('group')
+    expect(router.sent[0]?.target.contextId).toBe('channel-26-char-identifier')
+    expect(router.sent[0]?.platformInstanceId).toBe('mattermost-default')
+  })
+
   test('returns 502 when delivery throws', async () => {
     const throwingRouter = new RecordingRouter()
     throwingRouter.sendMessage = (): Promise<boolean> => Promise.reject(new Error('network down'))
@@ -158,5 +174,29 @@ describe('buildNotifyTarget', () => {
     expect(target.contextId).toBe('channel-26-char-identifier')
     expect(target.threadId).toBe('root-post-26-char-ident-id')
     expect(target.storageContextId).toBe(scoped)
+  })
+
+  test('routes a thread-less context known to be a group to the native channel, not a DM', () => {
+    // magi can echo back a thread-stripped group context id; without the thread it
+    // is indistinguishable from a DM by shape alone, so the known-group hint decides.
+    const scoped = toScopedContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: 'channel-26-char-identifier',
+    })
+    const target = buildNotifyTarget({ contextId: scoped, markdown: 'hi' }, true)
+    expect(target.contextType).toBe('group')
+    expect(target.contextId).toBe('channel-26-char-identifier')
+    expect(target.threadId).toBeNull()
+    expect(target.storageContextId).toBe(scoped)
+  })
+
+  test('treats a thread-less context that is not a known group as a DM', () => {
+    const scoped = toScopedContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: '6q9cpoqy4tb35gozuo1darzgra',
+    })
+    const target = buildNotifyTarget({ contextId: scoped, markdown: 'hi' }, false)
+    expect(target.contextType).toBe('dm')
+    expect(target.contextId).toBe('6q9cpoqy4tb35gozuo1darzgra')
   })
 })
