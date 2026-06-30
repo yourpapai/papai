@@ -25,7 +25,7 @@ const FieldSchema = z.object({
   sensitive: z.boolean(),
   hasValue: z.boolean(),
   value: z.string(),
-  control: z.enum(['select']).optional(),
+  control: z.enum(['select', 'combobox']).optional(),
   options: z.array(z.string()).optional(),
 })
 
@@ -89,7 +89,13 @@ describe('coding-credentials routes', () => {
     expect(res.status).toBe(200)
     const body = GetResponseSchema.parse(await res.json())
     expect(body.configured).toBe(false)
-    expect(body.fields.map((f) => f.key)).toEqual(['agent', 'provider', 'provider_api_key', 'provider_base_url'])
+    expect(body.fields.map((f) => f.key)).toEqual([
+      'agent',
+      'provider',
+      'provider_api_key',
+      'provider_base_url',
+      'model',
+    ])
     for (const field of body.fields) {
       expect(field.value).toBe('')
     }
@@ -292,7 +298,13 @@ describe('coding-credentials routes', () => {
     )
     expect(dflt.status).toBe(200)
     const dfltBody = GetResponseSchema.parse(await dflt.json())
-    expect(dfltBody.fields.map((f) => f.key)).toEqual(['agent', 'provider', 'provider_api_key', 'provider_base_url'])
+    expect(dfltBody.fields.map((f) => f.key)).toEqual([
+      'agent',
+      'provider',
+      'provider_api_key',
+      'provider_base_url',
+      'model',
+    ])
   })
 
   test('unknown namespace is rejected', async () => {
@@ -485,6 +497,74 @@ describe('coding-credentials routes', () => {
       url,
     )
     expect(ok.status).toBe(200)
+  })
+
+  test('GET returns model field with control combobox', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(get('/settings/api/coding-credentials', session), url)
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    const modelField = body.fields.find((f) => f.key === 'model')
+    expect(modelField).toBeDefined()
+    expect(modelField?.control).toBe('combobox')
+    expect(modelField?.required).toBe(false)
+  })
+
+  test('PATCH accepts a valid model value', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { agent: 'claude', provider: 'anthropic', provider_api_key: 'k', model: 'claude-sonnet-4-6' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+  })
+
+  test('PATCH accepts absent model (optional field)', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { agent: 'claude', provider: 'anthropic', provider_api_key: 'k' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+  })
+
+  test('PATCH rejects over-long model with 422', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: {
+          agent: 'claude',
+          provider: 'anthropic',
+          provider_api_key: 'k',
+          model: 'x'.repeat(201),
+        },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toContain('model')
+  })
+
+  test('PATCH rejects model with control characters with 422', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { agent: 'claude', provider: 'anthropic', provider_api_key: 'k', model: 'a\nb' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toContain('model')
   })
 
   test('forge PATCH token-only (no kind) with github defaults is allowed', async () => {

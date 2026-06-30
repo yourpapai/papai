@@ -34,13 +34,20 @@ type FieldMeta = {
   label: string
   required: boolean
   sensitive: boolean
-  control?: 'select'
+  control?: 'select' | 'combobox'
   options?: readonly string[]
 }
 
 const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
   'agent-provider': [
-    { key: 'agent', label: 'Coding agent', required: true, sensitive: false, control: 'select', options: AGENTS },
+    {
+      key: 'agent',
+      label: 'Coding agent',
+      required: true,
+      sensitive: false,
+      control: 'select',
+      options: AGENTS,
+    },
     {
       key: 'provider',
       label: 'Model provider',
@@ -49,13 +56,47 @@ const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
       control: 'select',
       options: PROVIDERS,
     },
-    { key: 'provider_api_key', label: 'API key', required: true, sensitive: true },
-    { key: 'provider_base_url', label: 'Base URL', required: false, sensitive: false },
+    {
+      key: 'provider_api_key',
+      label: 'API key',
+      required: true,
+      sensitive: true,
+    },
+    {
+      key: 'provider_base_url',
+      label: 'Base URL',
+      required: false,
+      sensitive: false,
+    },
+    {
+      key: 'model',
+      label: 'Model',
+      required: false,
+      sensitive: false,
+      control: 'combobox',
+    },
   ],
   forge: [
-    { key: 'kind', label: 'Code host', required: true, sensitive: false, control: 'select', options: FORGE_KINDS },
-    { key: 'instance_url', label: 'Instance URL (enterprise / self-hosted)', required: false, sensitive: false },
-    { key: 'forge_token', label: 'Access token', required: true, sensitive: true },
+    {
+      key: 'kind',
+      label: 'Code host',
+      required: true,
+      sensitive: false,
+      control: 'select',
+      options: FORGE_KINDS,
+    },
+    {
+      key: 'instance_url',
+      label: 'Instance URL (enterprise / self-hosted)',
+      required: false,
+      sensitive: false,
+    },
+    {
+      key: 'forge_token',
+      label: 'Access token',
+      required: true,
+      sensitive: true,
+    },
   ],
 }
 
@@ -74,7 +115,11 @@ const SaveBodySchema = z
   })
   .strict()
 const ClearBodySchema = z
-  .object({ contextId: z.string().optional(), namespace: z.string().optional(), clear: z.literal(true) })
+  .object({
+    contextId: z.string().optional(),
+    namespace: z.string().optional(),
+    clear: z.literal(true),
+  })
   .strict()
 const PatchBodySchema = z.union([ClearBodySchema, SaveBodySchema])
 
@@ -132,7 +177,9 @@ const checkForgeKind = (contextId: string, toPersist: CodingCredentialConfig): R
   if (needsInstanceUrl(kindRaw)) {
     const instanceUrl = merged.instance_url?.trim() ?? ''
     if (instanceUrl.length === 0 || !instanceUrl.startsWith('https://')) {
-      return settingsJson(422, { error: 'instance_url must be an https URL for self-hosted forge kinds' })
+      return settingsJson(422, {
+        error: 'instance_url must be an https URL for self-hosted forge kinds',
+      })
     }
   }
   return null
@@ -163,7 +210,23 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
   if (providerRaw === 'openai-compatible') {
     const baseUrl = merged.provider_base_url?.trim() ?? ''
     if (baseUrl.length === 0) {
-      return settingsJson(422, { error: 'openai-compatible requires a base URL' })
+      return settingsJson(422, {
+        error: 'openai-compatible requires a base URL',
+      })
+    }
+  }
+  const modelRaw = merged.model?.trim()
+  if (modelRaw !== undefined && modelRaw.length > 0) {
+    if (modelRaw.length > 200) {
+      return settingsJson(422, { error: 'model too long (max 200)' })
+    }
+    if (
+      Array.from(modelRaw).some((ch) => {
+        const cp = ch.codePointAt(0) ?? 0
+        return cp < 0x20 || cp === 0x7f
+      })
+    ) {
+      return settingsJson(422, { error: 'model contains control characters' })
     }
   }
   return null

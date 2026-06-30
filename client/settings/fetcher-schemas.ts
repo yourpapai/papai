@@ -31,7 +31,7 @@ const StoredConfigValueSchema = z.object({
   sensitive: z.boolean(),
   hasValue: z.boolean(),
   value: z.string(),
-  control: z.enum(['text', 'select']).optional(),
+  control: z.enum(['text', 'select', 'combobox']).optional(),
   options: z.array(z.string()).optional(),
 })
 export const ConfigFieldSchema = StoredConfigValueSchema.extend({
