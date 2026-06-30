@@ -50,6 +50,13 @@ public/
 # Storybook static build
 storybook-static/
 
+# Storybook screenshot pipeline (baselines + run artifacts are not committed;
+# only the generated specs under tests/visual/ are version-controlled)
+.storybook-shots/
+playwright-report/
+crvy-rprtr.html
+crvy-rprtr-*.json
+
 # Review loop state
 .review-loop/
 
