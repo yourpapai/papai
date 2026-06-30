@@ -592,3 +592,27 @@ test('resolveModel returns null when model is blank', () => {
 test('resolveModel returns null when no credentials stored', () => {
   expect(resolveModel(STORAGE_CTX, 'user-9')).toBeNull()
 })
+
+test('forceSharedKey:true — resolveModel returns the user model, not the shared (admin) model', () => {
+  addAuthorizedGroup(GROUP_CTX, 'admin')
+  setCodingGuardrails(PI_GROUP, {
+    allowedAgents: ['claude', 'codex', 'opencode'],
+    whoMayUse: 'members',
+    forceSharedKey: true,
+  })
+  const adminCtx = adminCodingGuardrailsContextId(PI_GROUP)
+  updateCodingCredentials(
+    adminCtx,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-ADMIN-SHARED', model: 'admin-model' },
+    'admin',
+  )
+  updateCodingCredentials(
+    ALICE_CTX,
+    'agent-provider',
+    { provider: 'anthropic', agent: 'claude', provider_api_key: 'sk-ALICE', model: 'alice-model' },
+    'alice',
+  )
+  // resolveModel is identity-context only — forceSharedKey does NOT override it
+  expect(resolveModel(GROUP_THREAD_CTX, 'alice')).toBe('alice-model')
+})
