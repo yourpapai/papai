@@ -141,6 +141,15 @@
       if (field.sensitive && field.hasValue && replacing[field.key] !== true) continue
       values[field.key] = drafts[field.key] ?? ''
     }
+    // Submit-time invariants: a hidden field must not carry stale state that the
+    // server's merged-state validation would reject (a 422 with no visible field to fix).
+    const provider = drafts['provider'] ?? ''
+    if (provider !== 'anthropic' && values['auth_method'] === 'oauth-subscription') {
+      values['auth_method'] = 'api-key' // oauth-subscription is anthropic-only
+    }
+    if (values['auth_method'] === 'oauth-subscription') {
+      values['provider_base_url'] = '' // oauth uses no base URL; clear any stored one
+    }
     return values
   }
   async function saveAll(): Promise<void> {

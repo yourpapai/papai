@@ -133,6 +133,95 @@ const withOpenAiCompatiblePayload = {
   ],
 }
 
+const baseUrlStoredPayload = {
+  namespace: 'agent-provider',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'agent',
+      label: 'Coding agent',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'claude',
+      control: 'select',
+      options: ['claude', 'codex', 'opencode'],
+    },
+    {
+      key: 'provider',
+      label: 'Model provider',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'anthropic',
+      control: 'select',
+      options: ['anthropic', 'openai', 'openai-compatible'],
+    },
+    {
+      key: 'auth_method',
+      label: 'Auth method',
+      required: false,
+      sensitive: false,
+      hasValue: true,
+      value: 'api-key',
+      control: 'select',
+      options: ['api-key', 'oauth-subscription'],
+    },
+    { key: 'provider_api_key', label: 'API key', required: true, sensitive: true, hasValue: true, value: '****' },
+    {
+      key: 'provider_base_url',
+      label: 'Base URL',
+      required: false,
+      sensitive: false,
+      hasValue: true,
+      value: 'https://stored.example',
+    },
+  ],
+}
+
+const oauthOpenCodePayload = {
+  namespace: 'agent-provider',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'agent',
+      label: 'Coding agent',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'opencode',
+      control: 'select',
+      options: ['claude', 'codex', 'opencode'],
+    },
+    {
+      key: 'provider',
+      label: 'Model provider',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'anthropic',
+      control: 'select',
+      options: ['anthropic', 'openai', 'openai-compatible'],
+    },
+    {
+      key: 'auth_method',
+      label: 'Auth method',
+      required: false,
+      sensitive: false,
+      hasValue: true,
+      value: 'oauth-subscription',
+      control: 'select',
+      options: ['api-key', 'oauth-subscription'],
+    },
+    { key: 'provider_api_key', label: 'API key', required: true, sensitive: true, hasValue: true, value: '****' },
+    { key: 'provider_base_url', label: 'Base URL', required: false, sensitive: false, hasValue: false, value: '' },
+  ],
+}
+
 let capturedPatchBody = ''
 
 const routeCodingMock = (_url: string, init?: RequestInit): Promise<Response> => {
@@ -149,6 +238,22 @@ const routeSelectsMock = (_url: string, init?: RequestInit): Promise<Response> =
     return Promise.resolve(json({ ok: true }))
   }
   return Promise.resolve(json(withSelectsPayload))
+}
+
+const routeBaseUrlStoredMock = (_url: string, init?: RequestInit): Promise<Response> => {
+  if ((init?.method ?? 'GET').toUpperCase() === 'PATCH') {
+    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(baseUrlStoredPayload))
+}
+
+const routeOauthOpenCodeMock = (_url: string, init?: RequestInit): Promise<Response> => {
+  if ((init?.method ?? 'GET').toUpperCase() === 'PATCH') {
+    capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(oauthOpenCodePayload))
 }
 
 afterEach(() => {
@@ -539,5 +644,41 @@ describe('CodingCredentialsSection', () => {
     void unmount(cmp)
     target.remove()
     restoreFetch()
+  })
+
+  test('collectValues clears provider_base_url when auth_method switches to oauth-subscription', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeBaseUrlStoredMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const authSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-auth_method"]')!
+    authSelect.value = 'oauth-subscription'
+    authSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+    expect(JSON.parse(capturedPatchBody)).toMatchObject({
+      values: { auth_method: 'oauth-subscription', provider_base_url: '' },
+    })
+    void unmount(component)
+  })
+
+  test('collectValues resets auth_method to api-key when provider switches away from anthropic', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeOauthOpenCodeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')!
+    providerSelect.value = 'openai'
+    providerSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+    expect(JSON.parse(capturedPatchBody)).toMatchObject({ values: { auth_method: 'api-key' } })
+    void unmount(component)
   })
 })

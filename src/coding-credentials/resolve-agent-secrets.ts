@@ -69,7 +69,8 @@ export function resolveAgentSecrets(storageContextId: string, chatUserId: string
   if (apiKey === undefined || apiKey.length === 0) return null
   const provider = creds?.provider?.trim() ?? 'anthropic'
   if (!isProvider(provider)) return null
-  const method = creds?.auth_method?.trim() ?? 'api-key'
+  const methodRaw = creds?.auth_method?.trim() ?? ''
+  const method = methodRaw === '' ? 'api-key' : methodRaw
   if (provider === 'anthropic' && method === 'oauth-subscription') {
     return { CLAUDE_CODE_OAUTH_TOKEN: apiKey }
   }
