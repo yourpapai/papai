@@ -26,6 +26,7 @@ const reposSample = [
     repoUrl: 'https://github.com/org/my-project.git',
     baseBranch: 'main',
     permissionPreset: 'cautious',
+    additionalEgressDomains: ['pypi.org'],
   },
   {
     repoId: 'repo_def456',

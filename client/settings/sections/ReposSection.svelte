@@ -30,6 +30,16 @@
   let addUrl = $state('')
   let addBranch = $state('')
   let addPreset = $state('cautious')
+  let addEgress = $state('')
+
+  const parseEgress = (raw: string): string[] => {
+    const seen = new Set<string>()
+    for (const part of raw.split(/[\n,]/u)) {
+      const host = part.trim().toLowerCase()
+      if (host.length > 0) seen.add(host)
+    }
+    return [...seen]
+  }
 
   async function load(id: string): Promise<void> {
     error = null
@@ -55,11 +65,13 @@
         repoUrl: addUrl,
         baseBranch: addBranch,
         permissionPreset: addPreset,
+        additionalEgressDomains: parseEgress(addEgress),
       })
       addName = ''
       addUrl = ''
       addBranch = ''
       addPreset = 'cautious'
+      addEgress = ''
       await load(contextId)
       status = 'Repository added.'
     } catch (err) {
@@ -108,7 +120,10 @@
           <div class="settings-repos__info">
             <span class="settings-repos__name">{repo.name}</span>
             <span class="settings-repos__url">{repo.repoUrl}</span>
-            <span class="settings-repos__meta">{repo.baseBranch} · {repo.permissionPreset}</span>
+            <span class="settings-repos__meta"
+              >{repo.baseBranch} · {repo.permissionPreset}{repo.additionalEgressDomains.length > 0
+                ? ` · egress: ${repo.additionalEgressDomains.join(', ')}`
+                : ''}</span>
           </div>
           <Btn
             variant="ghost"
@@ -156,6 +171,18 @@
             <option value="cautious">cautious</option>
             <option value="readonly">readonly</option>
           </select>
+        </Field>
+        <Field label="Additional egress domains">
+          <textarea
+            class="settings-repos__egress-input"
+            data-testid="repos-add-egress"
+            value={addEgress}
+            oninput={(e) => (addEgress = (e.target as HTMLTextAreaElement).value)}
+            placeholder="pypi.org, files.pythonhosted.org"></textarea>
+          <p class="settings-repos__egress-help">
+            Extra domains this project's sessions may reach, added to the defaults. One per line or comma-separated. A
+            domain may still be blocked if your operator's egress policy doesn't include it.
+          </p>
         </Field>
         <Btn
           variant="primary"
@@ -239,5 +266,21 @@
     border: 1px solid var(--border);
     background: var(--bg);
     color: var(--fg1);
+  }
+  .settings-repos__egress-input {
+    width: 100%;
+    min-height: 52px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg1);
+    resize: vertical;
+  }
+  .settings-repos__egress-help {
+    font-size: 11px;
+    color: var(--fg3);
+    margin: 4px 0 0;
   }
 </style>

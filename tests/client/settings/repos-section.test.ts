@@ -178,4 +178,34 @@ describe('ReposSection', () => {
     expect(capturedDeleteUrl).toContain('contextId=pi%3Atelegram%3Actx%3Au1')
     void unmount(component)
   })
+
+  test('add form parses newline/comma domains and POSTs additionalEgressDomains', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ReposSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const set = (testid: string, value: string): void => {
+      const el = target.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-testid="${testid}"]`)!
+      el.value = value
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    set('repos-add-name', 'my-project')
+    set('repos-add-url', 'https://github.com/acme/my-project.git')
+    set('repos-add-branch', 'main')
+    set('repos-add-egress', 'pypi.org, files.pythonhosted.org\nnpm.pkg.dev')
+
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="repos-add-submit"]')!.click()
+    await drain()
+
+    const parsed: unknown = JSON.parse(capturedPostBody)
+    expect(parsed).toMatchObject({
+      additionalEgressDomains: ['pypi.org', 'files.pythonhosted.org', 'npm.pkg.dev'],
+    })
+    void unmount(component)
+  })
 })
