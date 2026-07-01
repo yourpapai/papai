@@ -35,6 +35,7 @@ describe('codingSessionRepos schema', () => {
       repoUrl: 'https://github.com/acme/my-repo.git',
       baseBranch: 'main',
       permissionPreset: 'cautious',
+      additionalEgressDomains: '[]',
       updatedAt: 1710000000000,
       updatedBy: 'user-1',
     })

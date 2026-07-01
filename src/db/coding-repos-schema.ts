@@ -14,6 +14,7 @@ export const codingSessionRepos = sqliteTable(
     repoUrl: text('repo_url').notNull(),
     baseBranch: text('base_branch').notNull(),
     permissionPreset: text('permission_preset').notNull(),
+    additionalEgressDomains: text('additional_egress_domains').notNull().default('[]'),
     updatedAt: integer('updated_at').notNull(),
     updatedBy: text('updated_by').notNull(),
   },
