@@ -8,8 +8,14 @@ import { describe, expect, test } from 'bun:test'
 import { tool, type ModelMessage, type ToolSet } from 'ai'
 import { z } from 'zod'
 
-import { detectToolFailure, selectReadOnlyTools } from '../../src/completion/verified-completion.js'
+import {
+  buildVerifiedCompletion,
+  detectToolFailure,
+  selectReadOnlyTools,
+} from '../../src/completion/verified-completion.js'
+import type { VerifierDeps, VerifierPrompt } from '../../src/completion/verified-completion.js'
 import type { ToolFailureResult } from '../../src/tool-failure.js'
+import { mockLogger } from '../utils/test-helpers.js'
 
 const stub = (): ToolSet[string] =>
   tool({ description: '', inputSchema: z.object({}), execute: () => Promise.resolve(null) })
@@ -78,5 +84,69 @@ describe('detectToolFailure', () => {
       },
     ]
     expect(detectToolFailure(messages)).toBe(false)
+  })
+})
+
+describe('buildVerifiedCompletion', () => {
+  const okDeps = (text: string | undefined, capture?: (p: VerifierPrompt) => void): VerifierDeps => ({
+    readOnlyToolset: undefined,
+    invokeVerifier: (prompt: VerifierPrompt): Promise<{ text: string | undefined }> => {
+      capture?.(prompt)
+      return Promise.resolve({ text })
+    },
+  })
+
+  test('confirmed: passes through the verifier text', async () => {
+    mockLogger()
+    const result = await buildVerifiedCompletion(
+      { history: [], finishReason: 'stop', hadToolFailure: false },
+      okDeps('Created task TK-42.'),
+    )
+    expect(result).toEqual({ text: 'Created task TK-42.', verdict: 'confirmed' })
+  })
+
+  test('truncated: verdict is truncated and the prompt tells the model to invite "continue"', async () => {
+    mockLogger()
+    let seen: VerifierPrompt | undefined
+    const result = await buildVerifiedCompletion(
+      { history: [], finishReason: 'tool-calls', hadToolFailure: false },
+      okDeps('Reached the step limit; say continue to resume.', (p) => {
+        seen = p
+      }),
+    )
+    expect(result.verdict).toBe('truncated')
+    expect(seen?.system).toContain('continue')
+  })
+
+  test('partial: a tool failure yields the partial verdict', async () => {
+    mockLogger()
+    const result = await buildVerifiedCompletion(
+      { history: [], finishReason: 'stop', hadToolFailure: true },
+      okDeps('The update failed.'),
+    )
+    expect(result.verdict).toBe('partial')
+  })
+
+  test('unconfirmed: neutral message when the verifier throws', async () => {
+    mockLogger()
+    const deps: VerifierDeps = {
+      readOnlyToolset: undefined,
+      invokeVerifier: (): Promise<{ text: string | undefined }> => {
+        throw new Error('network')
+      },
+    }
+    const result = await buildVerifiedCompletion({ history: [], finishReason: 'stop', hadToolFailure: false }, deps)
+    expect(result.verdict).toBe('unconfirmed')
+    expect(result.text).toContain('could not confirm')
+  })
+
+  test('unconfirmed: neutral message when the verifier returns empty text', async () => {
+    mockLogger()
+    const result = await buildVerifiedCompletion(
+      { history: [], finishReason: 'stop', hadToolFailure: false },
+      okDeps(''),
+    )
+    expect(result.verdict).toBe('unconfirmed')
+    expect(result.text).toContain('could not confirm')
   })
 })
