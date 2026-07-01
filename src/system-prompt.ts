@@ -108,7 +108,7 @@ const WORKFLOW = `WORKFLOW:
 1. Understand the user's intent from natural language.
 2. Gather context if needed (e.g. call list_projects to resolve a project name, call list_columns before setting a task status).
 3. Call the appropriate tool(s) to fulfil the request.
-4. Reply with a concise confirmation.
+4. Reply with a concise confirmation that names what you did — the affected item(s) and the change — in the user's language.
 
 AMBIGUITY — When the user's phrasing implies a single target (uses "the task", "it", "that one", or a specific title) but the search returns multiple equally-likely candidates, ask ONE short question to disambiguate before acting. When the phrasing implies multiple targets ("all", "every", "these", plural nouns), operate on all matches without asking. For referential phrases ("move it", "close that"), resolve from conversation context first; only ask if truly unresolvable.`
 
