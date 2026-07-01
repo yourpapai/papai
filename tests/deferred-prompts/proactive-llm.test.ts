@@ -192,16 +192,28 @@ describe('dispatchExecution', () => {
 
     test('does not deliver the assistant preamble when the turn ends on a pending tool call', async () => {
       setupUserConfig()
-      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
-        generateTextCalls.push(args)
-        return Promise.resolve({
+      const responseQueue: GenerateTextResult[] = [
+        {
           text: 'Let me first check the current date and time to give you an accurate reminder.',
           finishReason: 'tool-calls',
           toolCalls: [{ toolName: 'get_current_time', input: {} }],
           toolResults: [],
           steps: [{}],
           response: { messages: [] },
-        })
+        },
+        // Second call is the verifier — returns a neutral completion summary
+        {
+          text: 'The action reached the step limit before completing.',
+          finishReason: 'stop',
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          response: { messages: [] },
+        },
+      ]
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve(responseQueue.shift()!)
       }
       const delivered = await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
       expect(delivered).not.toContain('check the current date and time')

@@ -12,6 +12,7 @@ import * as conversationModule from '../../src/conversation.js'
 import {
   buildMetadataMessages,
   buildMinimalSystemPrompt,
+  finalizeAndLog,
   finalizeDeliveryText,
   getStorageContextId,
   modelIdForLightweight,
@@ -24,6 +25,7 @@ import {
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import * as historyModule from '../../src/history.js'
 import * as memoryRunnerModule from '../../src/long-term-memory/runner.js'
+import { mockLogger } from '../utils/test-helpers.js'
 
 const dmTarget: DeferredDeliveryTarget = {
   contextId: 'user-1',
@@ -160,5 +162,30 @@ describe('proactive-llm-helpers', () => {
       contextType: 'dm',
       history: [...history, ...assistantMessages],
     })
+  })
+})
+
+describe('finalizeAndLog verification', () => {
+  test('empty text + verification → verified text', async () => {
+    mockLogger()
+    const text = await finalizeAndLog(
+      { text: '', finishReason: 'stop', response: { messages: [] } },
+      'user-1',
+      'full',
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: 'Reminder delivered.' }),
+        },
+      },
+    )
+    expect(text).toBe('Reminder delivered.')
+  })
+
+  test('no verification arg → legacy Done. fallback preserved', async () => {
+    mockLogger()
+    const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1', 'lightweight')
+    expect(text).toBe('Done.')
   })
 })

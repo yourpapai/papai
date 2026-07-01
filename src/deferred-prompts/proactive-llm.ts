@@ -6,7 +6,6 @@
 import { generateText, stepCountIs, type LanguageModel, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
-import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
@@ -18,7 +17,9 @@ import {
   buildFullSystemPrompt,
   buildMetadataMessages,
   buildMinimalSystemPrompt,
+  buildProactiveVerification,
   finalizeAndLog,
+  getConfigContextId,
   getStorageContextId,
   modelIdForLightweight,
   persistContextResponse,
@@ -26,6 +27,7 @@ import {
   persistProactiveResults,
   resolveFullProvider,
   type BuildProviderFn,
+  type FullGenerationInput,
   type ProactiveLlmDispatchArgs,
   wrapPrompt,
 } from './proactive-llm-helpers.js'
@@ -56,12 +58,6 @@ const defaultProactiveLlmDeps: ProactiveLlmDeps = {
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string; smallModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
 export type { BuildProviderFn }
-type FullGenerationInput = Readonly<{
-  storageContextId: string
-  tools: Awaited<ReturnType<typeof buildFullToolSet>>['tools']
-  systemPrompt: string
-  messages: ModelMessage[]
-}>
 
 function getLlmConfig(configContextId: string): LlmConfig | string {
   const resolved = resolveEffectiveLlmConfig(configContextId)
@@ -92,13 +88,7 @@ function getLlmConfig(configContextId: string): LlmConfig | string {
   }
 }
 
-const getConfigContextId = (execCtx: DeferredExecutionContext): string =>
-  getConfigContextIdFromStorageContextId(getStorageContextId(execCtx.deliveryTarget))
-
-const resolveDeps = (deps: ProactiveLlmDeps | undefined): ProactiveLlmDeps => {
-  if (deps === undefined) return defaultProactiveLlmDeps
-  return deps
-}
+const resolveDeps = (deps: ProactiveLlmDeps | undefined): ProactiveLlmDeps => deps ?? defaultProactiveLlmDeps
 
 async function invokeLightweight(
   execCtx: DeferredExecutionContext,
@@ -119,18 +109,24 @@ async function invokeLightweight(
   const messages: ModelMessage[] = [...buildMetadataMessages(metadata), { role: 'user', content: wrapPrompt(prompt) }]
 
   log.debug({ userId: createdByUserId, modelId, mode: 'lightweight' }, 'Calling generateText')
+  const tools = makeMinimalTools(createdByUserId)
   const result = await deps.generateText({
     model,
     system: buildMinimalSystemPrompt(type),
     messages,
-    tools: makeMinimalTools(createdByUserId),
+    tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
 
   const assistantMessages = result.response.messages
   persistLightweightResponse(createdByUserId, storageContextId, configContextId, config.mainModel, assistantMessages)
-  return finalizeAndLog(result, createdByUserId, 'lightweight')
+  return finalizeAndLog(
+    result,
+    createdByUserId,
+    'lightweight',
+    buildProactiveVerification(deps, model, tools, [...messages, ...result.response.messages]),
+  )
 }
 
 async function invokeWithContext(
@@ -152,19 +148,15 @@ async function invokeWithContext(
   const messages = buildContextMessages(storageContextId, deliveryTarget.contextType, history, metadata, prompt)
 
   log.debug(
-    {
-      userId: createdByUserId,
-      mainModel: config.mainModel,
-      historyLength: history.length,
-      mode: 'context',
-    },
+    { userId: createdByUserId, mainModel: config.mainModel, historyLength: history.length, mode: 'context' },
     'generateText',
   )
+  const tools = makeMinimalTools(createdByUserId)
   const result = await deps.generateText({
     model,
     system: buildMinimalSystemPrompt(type),
     messages,
-    tools: makeMinimalTools(createdByUserId),
+    tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
@@ -177,7 +169,12 @@ async function invokeWithContext(
     config.mainModel,
     result.response.messages,
   )
-  return finalizeAndLog(result, createdByUserId, 'context')
+  return finalizeAndLog(
+    result,
+    createdByUserId,
+    'context',
+    buildProactiveVerification(deps, model, tools, [...messages, ...result.response.messages]),
+  )
 }
 
 async function prepareFullGenerationInput(
@@ -246,7 +243,12 @@ async function runFullGeneration(
     previousHistory,
     config.mainModel,
   )
-  return finalizeAndLog(result, createdByUserId, 'full')
+  return finalizeAndLog(
+    result,
+    createdByUserId,
+    'full',
+    buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...result.response.messages]),
+  )
 }
 
 async function invokeFull(
@@ -260,7 +262,7 @@ async function invokeFull(
 ): Promise<string> {
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
-  const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
+  const configContextId = getConfigContextId(execCtx)
   log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
   const config = getLlmConfig(configContextId)
   if (typeof config === 'string') return config

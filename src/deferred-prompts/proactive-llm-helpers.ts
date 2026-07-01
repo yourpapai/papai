@@ -3,10 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ModelMessage } from 'ai'
+import type { generateText, stepCountIs, LanguageModel, ModelMessage, ToolSet } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
+import {
+  buildVerifiedCompletion,
+  detectToolFailure,
+  selectReadOnlyTools,
+  VERIFIER_MAX_STEPS,
+} from '../completion/verified-completion.js'
+import type { VerifierDeps, VerifierPrompt } from '../completion/verified-completion.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { logger } from '../logger.js'
@@ -18,6 +26,30 @@ import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prom
 import type { ExecutionMetadata } from './types.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
+
+export const buildProactiveVerification = (
+  deps: { generateText: typeof generateText; stepCountIs: typeof stepCountIs },
+  model: LanguageModel,
+  tools: ToolSet,
+  history: readonly ModelMessage[],
+): { verifier: VerifierDeps; history: readonly ModelMessage[] } => {
+  const readOnlyToolset = selectReadOnlyTools(tools)
+  const verifier: VerifierDeps = {
+    readOnlyToolset,
+    invokeVerifier: async ({ system, messages }: VerifierPrompt) => {
+      const res = await deps.generateText({
+        model,
+        system,
+        messages,
+        tools: readOnlyToolset ?? {},
+        stopWhen: deps.stepCountIs(VERIFIER_MAX_STEPS),
+        timeout: 1_200_000,
+      })
+      return { text: res.text, finishReason: res.finishReason }
+    },
+  }
+  return { verifier, history }
+}
 
 export type ProactiveLlmDispatchBaseArgs<TBuildProvider> = readonly [
   DeferredExecutionContextLike,
@@ -38,6 +70,16 @@ type DeferredExecutionContextLike = Readonly<{
 }>
 
 export type BuildProviderFn = (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
+
+export const getConfigContextId = (execCtx: DeferredExecutionContextLike): string =>
+  getConfigContextIdFromStorageContextId(getStorageContextId(execCtx.deliveryTarget))
+
+export type FullGenerationInput = Readonly<{
+  storageContextId: string
+  tools: ToolSet
+  systemPrompt: string
+  messages: ModelMessage[]
+}>
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -67,14 +109,36 @@ export const finalizeDeliveryText = (result: DeliveryResultLike): string => {
  * Resolve the user-facing delivery text and log the turn's completion shape. Warns when the
  * turn ended on a pending tool call, because a delivered reminder that stopped mid-tool-step
  * is provably incomplete (its text is a preamble, dropped by finalizeDeliveryText).
+ *
+ * When a `verification` arg is provided and the result looks risky (empty text, pending
+ * tool call, or a tool failure), runs a verify-and-report pass before returning.
  */
-export const finalizeAndLog = (result: DeliveryResultLike, userId: string, mode: ExecutionMetadata['mode']): string => {
+export const finalizeAndLog = async (
+  result: DeliveryResultLike & { response?: { messages: readonly ModelMessage[] } },
+  userId: string,
+  mode: ExecutionMetadata['mode'],
+  verification?: { verifier: VerifierDeps; history: readonly ModelMessage[] },
+): Promise<string> => {
   const stepCount = Array.isArray(result.steps) ? result.steps.length : undefined
   const meta = { userId, mode, finishReason: result.finishReason, stepCount }
   if (result.finishReason === 'tool-calls') {
     log.warn(meta, 'Proactive delivery ended on a pending tool call; dropping incomplete preamble text')
   } else {
     log.debug(meta, 'Proactive delivery finalized')
+  }
+
+  if (verification !== undefined) {
+    const messages = result.response?.messages ?? []
+    const hadToolFailure = detectToolFailure(messages)
+    const isRisky =
+      result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
+    if (isRisky) {
+      const verified = await buildVerifiedCompletion(
+        { history: verification.history, finishReason: result.finishReason, hadToolFailure },
+        verification.verifier,
+      )
+      return verified.text
+    }
   }
   return finalizeDeliveryText(result)
 }
