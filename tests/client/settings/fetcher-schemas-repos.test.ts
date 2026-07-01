@@ -43,4 +43,27 @@ describe('fetcher-schemas-repos', () => {
   test('RepoRecordSchema rejects missing required fields', () => {
     expect(() => RepoRecordSchema.parse({ repoId: 'r1' })).toThrow()
   })
+
+  test('RepoRecordSchema parses additionalEgressDomains', () => {
+    const result = RepoRecordSchema.parse({
+      repoId: 'r1',
+      name: 'demo',
+      repoUrl: 'https://github.com/acme/demo.git',
+      baseBranch: 'main',
+      permissionPreset: 'cautious',
+      additionalEgressDomains: ['pypi.org'],
+    })
+    expect(result.additionalEgressDomains).toEqual(['pypi.org'])
+  })
+
+  test('RepoRecordSchema defaults additionalEgressDomains to [] when absent', () => {
+    const result = RepoRecordSchema.parse({
+      repoId: 'r1',
+      name: 'demo',
+      repoUrl: 'https://github.com/acme/demo.git',
+      baseBranch: 'main',
+      permissionPreset: 'cautious',
+    })
+    expect(result.additionalEgressDomains).toEqual([])
+  })
 })

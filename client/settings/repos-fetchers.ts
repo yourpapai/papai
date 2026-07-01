@@ -22,6 +22,7 @@ export const addRepo = (input: {
   repoUrl: string
   baseBranch: string
   permissionPreset: string
+  additionalEgressDomains?: string[]
 }): Promise<unknown> => writeJson('/settings/api/coding-repos', 'POST', input, (b) => b)
 
 export const deleteRepo = (input: { contextId: string; repoId: string }): Promise<unknown> =>
