@@ -72,4 +72,62 @@ describe('coding-repos store', () => {
     )
     expect(listRepos('pi:telegram:ctx:u2')).toEqual([])
   })
+
+  test('round-trips additionalEgressDomains, normalized', () => {
+    upsertRepo(
+      CTX,
+      {
+        name: 'demo',
+        repoUrl: 'https://github.com/a/b.git',
+        baseBranch: 'main',
+        permissionPreset: 'cautious',
+        additionalEgressDomains: [' Example.com ', 'example.com', 'npm.pkg.dev', ''],
+      },
+      'u1',
+    )
+    const repo = listRepos(CTX)[0]
+    expect(repo?.additionalEgressDomains).toEqual(['example.com', 'npm.pkg.dev'])
+  })
+
+  test('defaults additionalEgressDomains to [] when omitted', () => {
+    upsertRepo(
+      CTX,
+      { name: 'demo', repoUrl: 'https://github.com/a/b.git', baseBranch: 'main', permissionPreset: 'cautious' },
+      'u1',
+    )
+    expect(listRepos(CTX)[0]?.additionalEgressDomains).toEqual([])
+  })
+
+  test('rejects a non-bare-host egress domain', () => {
+    expect(() =>
+      upsertRepo(
+        CTX,
+        {
+          name: 'demo',
+          repoUrl: 'https://github.com/a/b.git',
+          baseBranch: 'main',
+          permissionPreset: 'cautious',
+          additionalEgressDomains: ['https://evil.com/path'],
+        },
+        'u1',
+      ),
+    ).toThrow()
+  })
+
+  test('rejects more than 20 egress domains', () => {
+    const many = Array.from({ length: 21 }, (_v, i) => `h${i}.example.com`)
+    expect(() =>
+      upsertRepo(
+        CTX,
+        {
+          name: 'demo',
+          repoUrl: 'https://github.com/a/b.git',
+          baseBranch: 'main',
+          permissionPreset: 'cautious',
+          additionalEgressDomains: many,
+        },
+        'u1',
+      ),
+    ).toThrow()
+  })
 })

@@ -11,8 +11,10 @@ export interface RepoInput {
   repoUrl: string
   baseBranch: string
   permissionPreset: RepoPreset
+  additionalEgressDomains?: string[]
 }
 
-export interface RepoRecord extends RepoInput {
+export interface RepoRecord extends Omit<RepoInput, 'additionalEgressDomains'> {
   repoId: string
+  additionalEgressDomains: string[]
 }

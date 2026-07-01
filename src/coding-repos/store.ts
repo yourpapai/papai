@@ -18,10 +18,35 @@ const now = (): number => Date.now()
 
 const isRepoPreset = (value: string): value is RepoPreset => (REPO_PRESETS as readonly string[]).includes(value)
 
+const EGRESS_MAX = 20
+const EGRESS_HOST_MAXLEN = 253
+const isBareHost = (h: string): boolean => /^[a-z0-9._-]+(:[0-9]+)?$/iu.test(h)
+
+function normalizeEgress(domains: string[]): string[] {
+  const cleaned = domains.map((d) => d.trim().toLowerCase()).filter((d) => d.length > 0)
+  return [...new Set(cleaned)]
+}
+
+function parseEgress(raw: string | null | undefined): string[] {
+  if (typeof raw !== 'string' || raw.length === 0) return []
+  try {
+    const v: unknown = JSON.parse(raw)
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 function assertValid(input: RepoInput): void {
   if (!/^https:\/\//u.test(input.repoUrl)) throw new Error('repo_url must be https')
   if (!isRepoPreset(input.permissionPreset)) throw new Error('invalid permission preset')
   if (input.name.trim().length === 0) throw new Error('name is required')
+  const domains = input.additionalEgressDomains ?? []
+  if (domains.length > EGRESS_MAX) throw new Error(`too many egress domains (max ${EGRESS_MAX})`)
+  for (const d of domains) {
+    if (d.length > EGRESS_HOST_MAXLEN) throw new Error(`egress domain too long: ${d}`)
+    if (!isBareHost(d)) throw new Error(`invalid egress domain: ${d}`)
+  }
 }
 
 const rowToRecord = (r: {
@@ -30,6 +55,7 @@ const rowToRecord = (r: {
   repoUrl: string
   baseBranch: string
   permissionPreset: string
+  additionalEgressDomains: string
 }): RepoRecord => {
   const preset = isRepoPreset(r.permissionPreset) ? r.permissionPreset : 'readonly'
   return {
@@ -38,6 +64,7 @@ const rowToRecord = (r: {
     repoUrl: r.repoUrl,
     baseBranch: r.baseBranch,
     permissionPreset: preset,
+    additionalEgressDomains: parseEgress(r.additionalEgressDomains),
   }
 }
 
@@ -60,7 +87,9 @@ export function getRepoByName(contextId: string, name: string): RepoRecord | nul
 }
 
 export function upsertRepo(contextId: string, input: RepoInput, updatedBy: string): string {
-  assertValid(input)
+  const additionalEgressDomains = normalizeEgress(input.additionalEgressDomains ?? [])
+  assertValid({ ...input, additionalEgressDomains })
+  const egressJson = JSON.stringify(additionalEgressDomains)
   // Find the existing repo by name (unique per context) to get its repoId for upsert
   const existing = getDrizzleDb()
     .select()
@@ -77,6 +106,7 @@ export function upsertRepo(contextId: string, input: RepoInput, updatedBy: strin
       repoUrl: input.repoUrl,
       baseBranch: input.baseBranch,
       permissionPreset: input.permissionPreset,
+      additionalEgressDomains: egressJson,
       updatedAt: now(),
       updatedBy,
     })
@@ -87,6 +117,7 @@ export function upsertRepo(contextId: string, input: RepoInput, updatedBy: strin
         repoUrl: input.repoUrl,
         baseBranch: input.baseBranch,
         permissionPreset: input.permissionPreset,
+        additionalEgressDomains: egressJson,
         updatedAt: now(),
         updatedBy,
       },
