@@ -23,6 +23,7 @@ const PostBodySchema = z
     repoUrl: z.string(),
     baseBranch: z.string(),
     permissionPreset: z.enum(REPO_PRESETS),
+    additionalEgressDomains: z.array(z.string()).max(20).optional(),
   })
   .strict()
 
@@ -44,6 +45,7 @@ async function handlePost(req: Request, auth: AuthOutcome & { ok: true }): Promi
         repoUrl: body.data.repoUrl,
         baseBranch: body.data.baseBranch,
         permissionPreset: body.data.permissionPreset,
+        additionalEgressDomains: body.data.additionalEgressDomains ?? [],
       },
       auth.authed.principal.platformUserId,
     )

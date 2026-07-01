@@ -22,6 +22,7 @@ const RepoItemSchema = z.object({
   repoUrl: z.string(),
   baseBranch: z.string(),
   permissionPreset: z.enum(['autonomous', 'cautious', 'readonly']),
+  additionalEgressDomains: z.array(z.string()).optional(),
 })
 
 const GetResponseSchema = z.object({
@@ -237,6 +238,41 @@ describe('coding-repos routes', () => {
     const url = new URL('https://x/settings/api/coding-repos')
     const res = await handleCodingReposRoutes(new Request(url, { method: 'PATCH', headers: authHeaders(session) }), url)
     expect(res.status).toBe(405)
+  })
+
+  test('POST accepts additionalEgressDomains and GET returns them', async () => {
+    const postUrl = new URL('https://x/settings/api/coding-repos')
+    const postRes = await handleCodingReposRoutes(
+      post('/settings/api/coding-repos', session, {
+        name: 'egress-repo',
+        repoUrl: 'https://github.com/acme/egress.git',
+        baseBranch: 'main',
+        permissionPreset: 'cautious',
+        additionalEgressDomains: ['pypi.org', 'files.pythonhosted.org'],
+      }),
+      postUrl,
+    )
+    expect(postRes.status).toBe(200)
+
+    const getUrl = new URL('https://x/settings/api/coding-repos')
+    const getRes = await handleCodingReposRoutes(get('/settings/api/coding-repos', session), getUrl)
+    const getBody = GetResponseSchema.parse(await getRes.json())
+    expect(getBody.repos[0]?.additionalEgressDomains).toEqual(['pypi.org', 'files.pythonhosted.org'])
+  })
+
+  test('POST rejects an invalid egress domain with 422', async () => {
+    const url = new URL('https://x/settings/api/coding-repos')
+    const res = await handleCodingReposRoutes(
+      post('/settings/api/coding-repos', session, {
+        name: 'bad-egress',
+        repoUrl: 'https://github.com/acme/repo.git',
+        baseBranch: 'main',
+        permissionPreset: 'cautious',
+        additionalEgressDomains: ['http://evil.com/x'],
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
   })
 
   test('GET with explicit contextId returns that context repos', async () => {
