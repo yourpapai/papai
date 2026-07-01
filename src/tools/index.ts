@@ -98,26 +98,31 @@ function buildPluginMcpDescriptors(pluginIds: readonly string[], contextId: stri
 
 async function buildPluginAndMcpTools(
   provider: TaskProvider,
-  contextId: string,
+  sharedContextId: string,
+  storageContextId: string,
   chatUserId: string,
   wrappedBuiltins: ToolSet,
 ): Promise<{ pluginTools: ToolSet; extraMcpTools: ToolSet }> {
-  const activePlugins = getPluginsForContext(contextId)
+  const activePlugins = getPluginsForContext(sharedContextId)
   if (activePlugins.length === 0) return { pluginTools: {}, extraMcpTools: {} }
 
   const activePluginIds = activePlugins
     .map((p) => p.manifest.id)
     .filter((id) => contributionRegistry.getContributions(id) !== undefined)
+  // Plugin eligibility and MCP descriptors are group-scoped (shared context id), but
+  // the per-tool runtime receives the raw thread-scoped storage context id so plugins
+  // route/deliver to the originating thread. `buildPluginToolRuntimeContext` re-derives
+  // the group context for the KV of `storageScope: 'group'` plugins.
   const pluginTools = buildPluginToolSet(activePluginIds, new Set(Object.keys(wrappedBuiltins)), {
     provider,
-    storageContextId: contextId,
+    storageContextId,
     chatUserId,
   })
 
   const extraMcpTools: ToolSet = {}
   const mcpPluginIds = activePlugins.filter((p) => p.manifest.mcp !== undefined).map((p) => p.manifest.id)
   if (mcpPluginIds.length > 0) {
-    const descriptors = buildPluginMcpDescriptors(mcpPluginIds, contextId)
+    const descriptors = buildPluginMcpDescriptors(mcpPluginIds, sharedContextId)
     try {
       const pluginMcpTools = await buildPluginMcpToolSet(mcpPluginIds, descriptors, adaptMcpPool())
       Object.assign(extraMcpTools, pluginMcpTools)
@@ -130,20 +135,23 @@ async function buildPluginAndMcpTools(
 }
 
 async function buildProviderlessPluginAndMcpTools(
-  contextId: string,
+  sharedContextId: string,
+  storageContextId: string,
   chatUserId: string,
   wrappedBuiltins: ToolSet,
 ): Promise<{ pluginTools: ToolSet; extraMcpTools: ToolSet }> {
-  const activePlugins = getPluginsForContext(contextId)
+  const activePlugins = getPluginsForContext(sharedContextId)
   if (activePlugins.length === 0) return { pluginTools: {}, extraMcpTools: {} }
 
   const activePluginIds = activePlugins
     .map((p) => p.manifest.id)
     .filter((id) => contributionRegistry.getContributions(id) !== undefined)
   const providerlessPluginIds = filterProviderlessPluginIds(activePluginIds)
+  // See buildPluginAndMcpTools: eligibility/MCP use the group-shared context id; the
+  // runtime uses the raw thread-scoped storage context id.
   const pluginTools = buildPluginToolSet(providerlessPluginIds, new Set(Object.keys(wrappedBuiltins)), {
     provider: undefined,
-    storageContextId: contextId,
+    storageContextId,
     chatUserId,
   })
 
@@ -152,7 +160,7 @@ async function buildProviderlessPluginAndMcpTools(
     activePlugins.filter((p) => p.manifest.mcp !== undefined).map((p) => p.manifest.id),
   )
   if (mcpPluginIds.length > 0) {
-    const descriptors = buildPluginMcpDescriptors(mcpPluginIds, contextId)
+    const descriptors = buildPluginMcpDescriptors(mcpPluginIds, sharedContextId)
     try {
       const pluginMcpTools = await buildPluginMcpToolSet(mcpPluginIds, descriptors, adaptMcpPool())
       Object.assign(extraMcpTools, pluginMcpTools)
@@ -202,8 +210,8 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
   }
 
   let pluginTools: ToolSet = {}
-  if (sharedContextId !== undefined && chatUserId !== undefined) {
-    const result = await buildPluginAndMcpTools(provider, sharedContextId, chatUserId, wrappedBuiltins)
+  if (sharedContextId !== undefined && contextId !== undefined && chatUserId !== undefined) {
+    const result = await buildPluginAndMcpTools(provider, sharedContextId, contextId, chatUserId, wrappedBuiltins)
     pluginTools = result.pluginTools
     Object.assign(mcpTools, result.extraMcpTools)
   }
@@ -243,8 +251,8 @@ export async function buildProviderlessToolDescriptors(options: MakeToolsOptions
   }
 
   let pluginTools: ToolSet = {}
-  if (sharedContextId !== undefined && chatUserId !== undefined) {
-    const result = await buildProviderlessPluginAndMcpTools(sharedContextId, chatUserId, wrappedBuiltins)
+  if (sharedContextId !== undefined && contextId !== undefined && chatUserId !== undefined) {
+    const result = await buildProviderlessPluginAndMcpTools(sharedContextId, contextId, chatUserId, wrappedBuiltins)
     pluginTools = result.pluginTools
     Object.assign(mcpTools, result.extraMcpTools)
   }

@@ -83,12 +83,16 @@ function buildRuntimeAdminConfig(pluginId: string, manifest: PluginManifest): Pl
 
 function buildRuntimeContextConfig(
   pluginId: string,
-  contextId: string,
+  storageContextId: string,
   manifest: PluginManifest,
 ): PluginToolRuntimeContext['contextConfig'] {
   const contextKeys = new Set(
     manifest.configRequirements.filter((req) => req.scope === 'context').map((req) => req.key),
   )
+  // Context-scoped plugin config is written by the settings UI at the config-context id,
+  // so reads use the group config context even when the runtime carries a raw
+  // thread-scoped storage context id.
+  const contextId = getConfigContextIdFromStorageContextId(storageContextId)
   return Object.freeze({
     get(key: string): string | undefined {
       if (!contextKeys.has(key)) return undefined

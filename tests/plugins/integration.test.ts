@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ChatRouter } from '../../src/chat/router.js'
+import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfigValue, setPluginConfig } from '../../src/config.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
@@ -218,6 +219,47 @@ describe('plugin lifecycle integration', () => {
     })
     expect(toolsAfterDeactivate).not.toHaveProperty('plugin_lifecycle_plugin__echo_context')
     expect(buildSystemPrompt(provider, 'ctx-enabled')).not.toContain('INTEGRATION_PLUGIN_GUIDANCE')
+  })
+
+  test('passes the raw thread-scoped storage context id to plugin tools (not the stripped config id)', async () => {
+    // Regression: plugin tools were built with the group config context id, so a plugin
+    // that routes async work (e.g. acp coding sessions) lost the thread and its callbacks
+    // landed in the group channel instead of the originating thread.
+    const provider = createMockProvider()
+    const rootDir = createTempPlugin({ pluginId: 'thread-plugin', source: workingPluginSource, manifestPatch: {} })
+    const plugin = discoverSinglePlugin(rootDir)
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
+    pluginRegistry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: provider.capabilities, chatCapabilities: new Set() },
+    ])
+    await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
+
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: 'channel-1',
+      threadId: 'root-post-1',
+    })
+    const configContextId = getConfigContextIdFromStorageContextId(threadContextId)
+    // Plugin eligibility is group-scoped: enabling for the config context must expose the
+    // tool in a sibling thread of that group.
+    setPluginEnabledForContext(plugin.manifest.id, configContextId, true)
+
+    const tools = await makeTools(provider, {
+      storageContextId: threadContextId,
+      chatUserId: 'user-1',
+      contextType: 'group',
+    })
+
+    expect(tools).toHaveProperty('plugin_thread_plugin__echo_context')
+    await expect(
+      getToolExecutor(tools['plugin_thread_plugin__echo_context'])({}, { toolCallId: 'call-1' }),
+    ).resolves.toEqual({
+      pluginId: 'thread-plugin',
+      storageContextId: threadContextId,
+      chatUserId: 'user-1',
+    })
   })
 
   test('requires reapproval when a discovered manifest hash changes', () => {

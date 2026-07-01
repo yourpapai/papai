@@ -21,6 +21,7 @@
     "promptFragments": ["acp-hint"]
   },
   "permissions": ["http", "storage", "commands", "coding.secrets"],
+  "storageScope": "group",
   "providerAllowedHostsFromConfig": ["magi_base_url"],
   "defaultEnabled": false,
   "configRequirements": [
