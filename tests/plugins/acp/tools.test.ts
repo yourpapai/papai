@@ -86,6 +86,18 @@ describe('buildSessionProjectSpec', () => {
   })
 })
 
+describe('buildProjectSpec', () => {
+  test('includes additionalEgressDomains when non-empty', () => {
+    const spec = buildProjectSpec({ ...demoRepo, additionalEgressDomains: ['pypi.org'] }, 'claude')
+    expect(spec).toMatchObject({ additionalEgressDomains: ['pypi.org'] })
+  })
+
+  test('omits additionalEgressDomains when empty', () => {
+    const spec = buildProjectSpec({ ...demoRepo, additionalEgressDomains: [] }, 'claude')
+    expect('additionalEgressDomains' in spec).toBe(false)
+  })
+})
+
 describe('canDeriveForge', () => {
   test('true for github.com (SaaS)', () => {
     expect(canDeriveForge('https://github.com/acme/demo.git')).toBe(true)

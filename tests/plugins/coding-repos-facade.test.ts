@@ -48,6 +48,7 @@ test('get returns the full repo record when found', () => {
     repoUrl: 'https://github.com/acme/demo.git',
     baseBranch: 'main',
     permissionPreset: 'cautious',
+    additionalEgressDomains: [],
   })
 })
 
@@ -59,6 +60,22 @@ test('get returns null when repo not found', () => {
 test('list throws without the coding.secrets permission', () => {
   const facade = buildCodingReposFacade('acp', STORAGE_CTX, false)
   expect(() => facade.list()).toThrow("does not have 'coding.secrets' permission")
+})
+
+test('get() surfaces additionalEgressDomains', () => {
+  upsertRepo(
+    STORAGE_CTX,
+    {
+      name: 'egress-demo',
+      repoUrl: 'https://github.com/a/b.git',
+      baseBranch: 'main',
+      permissionPreset: 'cautious',
+      additionalEgressDomains: ['pypi.org'],
+    },
+    'user-3',
+  )
+  const facade = buildCodingReposFacade('acp', STORAGE_CTX, true)
+  expect(facade.get('egress-demo')?.additionalEgressDomains).toEqual(['pypi.org'])
 })
 
 test('get throws without the coding.secrets permission', () => {
@@ -90,5 +107,6 @@ test('list and get resolve repos stored at the config-context when called with a
     repoUrl: 'https://github.com/acme/thread-repo.git',
     baseBranch: 'main',
     permissionPreset: 'cautious',
+    additionalEgressDomains: [],
   })
 })

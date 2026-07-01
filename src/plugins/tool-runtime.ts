@@ -19,7 +19,7 @@ import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildIdentityFacade } from './identity-facade.js'
 import { consumePluginQuota } from './rate-limit.js'
-import type { PluginScheduledJobRuntimeContext } from './runtime-types.js'
+import type { CodingRepoEntry, PluginScheduledJobRuntimeContext } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
   PluginAttachmentFacade,
@@ -194,12 +194,18 @@ export function buildCodingReposFacade(
       const contextId = configContextOf(storageContextId)
       return listRepos(contextId).map((r) => ({ name: r.name, baseBranch: r.baseBranch }))
     },
-    get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null {
+    get(name: string): CodingRepoEntry | null {
       if (!hasPermission) deny(pluginId, 'coding.secrets')
       const contextId = configContextOf(storageContextId)
       const r = getRepoByName(contextId, name)
       if (r === null) return null
-      return { name: r.name, repoUrl: r.repoUrl, baseBranch: r.baseBranch, permissionPreset: r.permissionPreset }
+      return {
+        name: r.name,
+        repoUrl: r.repoUrl,
+        baseBranch: r.baseBranch,
+        permissionPreset: r.permissionPreset,
+        additionalEgressDomains: r.additionalEgressDomains,
+      }
     },
   })
 }

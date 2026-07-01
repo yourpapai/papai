@@ -28,13 +28,25 @@ export type RuntimeContext = {
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
-    get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
+    get(name: string): {
+      name: string
+      repoUrl: string
+      baseBranch: string
+      permissionPreset: string
+      additionalEgressDomains?: string[]
+    } | null
   }
 }
 type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
 export type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
 
-export type RepoEntry = { name: string; repoUrl: string; baseBranch: string; permissionPreset: string }
+export type RepoEntry = {
+  name: string
+  repoUrl: string
+  baseBranch: string
+  permissionPreset: string
+  additionalEgressDomains?: string[]
+}
 
 export function sessionIdOf(result: unknown): string | null {
   if (typeof result !== 'object' || result === null) return null
@@ -63,13 +75,16 @@ export function buildProjectSpec(
   baseBranch: string
   permissionPreset: string
   agent: string
+  additionalEgressDomains?: string[]
 } {
+  const extra = repo.additionalEgressDomains ?? []
   return {
     name: repo.name,
     repoUrl: repo.repoUrl,
     baseBranch: repo.baseBranch,
     permissionPreset: repo.permissionPreset,
     agent,
+    ...(extra.length > 0 ? { additionalEgressDomains: extra } : {}),
   }
 }
 

@@ -29,6 +29,15 @@ export type PluginContextConfig = {
   get(key: string): string | undefined
 }
 
+/** Repo record surfaced to plugins via the `codingRepos` facade. */
+export type CodingRepoEntry = {
+  name: string
+  repoUrl: string
+  baseBranch: string
+  permissionPreset: string
+  additionalEgressDomains?: string[]
+}
+
 export type PluginToolRuntimeContext = {
   pluginId: string
   storageContextId: string
@@ -54,7 +63,7 @@ export type PluginToolRuntimeContext = {
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
-    get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
+    get(name: string): CodingRepoEntry | null
   }
 }
 
