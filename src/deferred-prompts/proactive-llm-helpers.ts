@@ -122,7 +122,7 @@ export const finalizeAndLog = async (
   const stepCount = Array.isArray(result.steps) ? result.steps.length : undefined
   const meta = { userId, mode, finishReason: result.finishReason, stepCount }
   if (result.finishReason === 'tool-calls') {
-    log.warn(meta, 'Proactive delivery ended on a pending tool call; dropping incomplete preamble text')
+    log.warn(meta, 'Proactive delivery ended on a pending tool call (step cap reached); verifying before delivery')
   } else {
     log.debug(meta, 'Proactive delivery finalized')
   }
