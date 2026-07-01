@@ -8,11 +8,19 @@ import type { ModelMessage } from 'ai'
 
 import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { ReplyFn } from './chat/types.js'
+import {
+  buildVerifiedCompletion,
+  detectToolFailure,
+  selectReadOnlyTools,
+  VERIFIER_MAX_STEPS,
+} from './completion/verified-completion.js'
+import type { VerifierDeps, VerifierPrompt } from './completion/verified-completion.js'
 import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
 import { createLiveStatusReporter } from './live-status/reporter.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
+import { emitLlmError, logProcessMessage } from './llm-orchestrator-logging.js'
 import type { InvokeModelArgs } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
@@ -163,45 +171,7 @@ export async function handleOrchestratorMessageError(
   await reply.text(getUserMessage(appError))
 }
 
-export const emitLlmError = (
-  contextId: string,
-  chatUserId: string,
-  contextType: 'dm' | 'group',
-  mainModel: string,
-  startTime: number,
-  messageCount: number,
-  error: unknown,
-  turnId?: string,
-): void => {
-  emitUser(
-    'llm:error',
-    contextId,
-    {
-      error: error instanceof Error ? error.message : String(error),
-      model: mainModel,
-      chatUserId,
-      contextType,
-      durationMs: Date.now() - startTime,
-      messageCount,
-    },
-    turnId,
-  )
-}
-
-export const logProcessMessage = (
-  contextId: string,
-  configContextId: string | undefined,
-  chatUserId: string,
-  userText: string,
-  attachmentIds: readonly string[],
-  turnId: string,
-): void => {
-  log.debug(
-    { contextId, configContextId, chatUserId, userText, newAttachmentIds: attachmentIds, turnId },
-    'processMessage called',
-  )
-  log.info({ contextId, chatUserId, messageLength: userText.length, turnId }, 'Message received from user')
-}
+export { emitLlmError, logProcessMessage }
 
 type HandleLlmTurnErrorArgs = {
   reply: ReplyFn
@@ -244,8 +214,23 @@ export const sendLlmResponse = async (
     response: { messages: ModelMessage[] }
   },
   progressReporter: AiProgressReporter | undefined,
+  verification?: { verifier: VerifierDeps; history: readonly ModelMessage[] },
 ): Promise<void> => {
-  const textToFormat = result.text !== undefined && result.text !== '' ? result.text : 'Done.'
+  const hadToolFailure = detectToolFailure(result.response.messages)
+  const isRisky =
+    result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
+
+  let textToFormat: string
+  if (isRisky && verification !== undefined) {
+    const verified = await buildVerifiedCompletion(
+      { history: verification.history, finishReason: result.finishReason, hadToolFailure },
+      verification.verifier,
+    )
+    textToFormat = verified.text
+  } else {
+    textToFormat = result.text !== undefined && result.text !== '' ? result.text : 'Done.'
+  }
+
   const responseLength = result.text === undefined ? 0 : result.text.length
   const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length
   const meta = { contextId, responseLength, toolCalls: toolCallCount, finishReason: result.finishReason }
@@ -290,7 +275,23 @@ export const invokeWithLiveStatus = async (
     progressReporter.reasoning(result.reasoningText, result.reasoning)
     persistFactsFromResults(invokeArgs.contextId, result)
     await liveStatus.dismiss()
-    await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter)
+    const readOnlyToolset = selectReadOnlyTools(invokeArgs.tools)
+    const verifier: VerifierDeps = {
+      readOnlyToolset,
+      invokeVerifier: async ({ system, messages }: VerifierPrompt) => {
+        const res = await invokeArgs.deps.generateText({
+          model: invokeArgs.model,
+          system,
+          messages,
+          tools: readOnlyToolset ?? {},
+          stopWhen: invokeArgs.deps.stepCountIs(VERIFIER_MAX_STEPS),
+          timeout: 1_200_000,
+        })
+        return { text: res.text, finishReason: res.finishReason }
+      },
+    }
+    const history: ModelMessage[] = [...invokeArgs.messages, ...result.response.messages]
+    await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter, { verifier, history })
     return result
   } finally {
     await liveStatus.dismiss()
