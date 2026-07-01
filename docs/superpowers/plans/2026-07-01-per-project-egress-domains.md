@@ -15,7 +15,7 @@ See LICENSE in the project root for details.
 
 **Tech Stack:** Bun, TypeScript (strict, `.js` import paths), Zod v4, Drizzle (SQLite), Svelte 5 (runes), `bun:test`. Spec: `docs/superpowers/specs/2026-07-01-per-project-egress-domains-design.md`.
 
-**Two repos:** Tasks 1–7 land in **papai** (`/Users/ki/Projects/yourpapai/papai`). Tasks 8–9 land in **magi** (`/Users/ki/Projects/yourpapai/magi`) as a companion commit. Task 10 is docs (papai).
+**Two repos:** Tasks 1–7 land in **papai** (`/Users/ki/Projects/yourpapai/papai`), with docs in Task 7. Tasks 8–9 land in **magi** (`/Users/ki/Projects/yourpapai/magi`) as a companion commit.
 
 ---
 
