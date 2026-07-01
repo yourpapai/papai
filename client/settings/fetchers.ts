@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
-import { CodingModelsResponseSchema, type CodingModelsResponse } from './fetcher-schemas-coding-models.js'
 import {
   KaneoCredentialsSchema,
   KaneoRevealSchema,
@@ -15,7 +14,6 @@ import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetc
 import {
   ByokResponseSchema,
   BootstrapSchema,
-  CodingCredentialsResponseSchema,
   ConfigResponseSchema,
   GroupCodingIdentityResponseSchema,
   GroupGuestModeResponseSchema,
@@ -28,7 +26,6 @@ import {
   ProvisionResultSchema,
   type ByokResponse,
   type BootstrapData,
-  type CodingCredentialsResponse,
   type ConfigResponse,
   type ContextTaskInstanceResponse,
   type GroupCodingIdentityResponse,
@@ -138,27 +135,6 @@ export const toggleByok = (input: { contextId: string; enabled: boolean }): Prom
     'PATCH',
     { contextId: input.contextId, action: input.enabled ? 'enable' : 'disable' },
     (b) => b,
-  )
-
-// --- Coding credentials ---
-
-export const fetchCodingCredentials = (
-  contextId: string,
-  namespace = 'agent-provider',
-): Promise<CodingCredentialsResponse> =>
-  getJson(`/settings/api/coding-credentials?${ctxQuery(contextId)}&namespace=${encodeURIComponent(namespace)}`, (b) =>
-    CodingCredentialsResponseSchema.parse(b),
-  )
-
-export const patchCodingCredentials = (input: {
-  contextId: string
-  namespace?: string
-  values: Record<string, string>
-}): Promise<unknown> => writeJson('/settings/api/coding-credentials', 'PATCH', input, (b) => b)
-
-export const fetchCodingModels = (contextId: string, agent: string): Promise<CodingModelsResponse> =>
-  getJson(`/settings/api/coding-credentials/models?${ctxQuery(contextId)}&agent=${encodeURIComponent(agent)}`, (b) =>
-    CodingModelsResponseSchema.parse(b),
   )
 
 // --- Tools ---

@@ -137,6 +137,7 @@
     "client/settings/fetcher-schemas.ts": ["types"],
     "client/settings/fetcher-schemas-tools.ts": ["types"],
     "client/settings/fetchers.ts": ["exports"],
+    "client/settings/coding-credentials-fetchers.ts": ["exports"],
     "client/settings/admin-fetchers.ts": ["exports"],
     "client/settings/release-fetchers.ts": ["exports"],
     "client/settings/repos-fetchers.ts": ["exports"],

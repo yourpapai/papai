@@ -5,7 +5,12 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { fetchCodingCredentials, patchCodingCredentials, setCsrfToken } from '../../../client/settings/fetchers.js'
+import {
+  clearCodingCredentials,
+  fetchCodingCredentials,
+  patchCodingCredentials,
+} from '../../../client/settings/coding-credentials-fetchers.js'
+import { setCsrfToken } from '../../../client/settings/fetchers.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type CapturedFetchCall = Readonly<{ url: string; init: RequestInit }>
@@ -99,5 +104,23 @@ describe('coding credentials fetchers', () => {
       values: { forge_token: 'ghp_1' },
     })
     expect(parseBody(lastRequest().init.body)).toMatchObject({ namespace: 'forge' })
+  })
+
+  test('clearCodingCredentials PATCHes clear:true for the default namespace', async () => {
+    installFetch({ ok: true })
+    await clearCodingCredentials({ contextId: 'pi:telegram:ctx:u1' })
+    expect(methodOf(captured[0]!.init)).toBe('PATCH')
+    expect(captured[0]?.url).toBe('/settings/api/coding-credentials')
+    expect(parseBody(captured[0]?.init.body)).toEqual({ contextId: 'pi:telegram:ctx:u1', clear: true })
+  })
+
+  test('clearCodingCredentials includes namespace for forge', async () => {
+    installFetch({ ok: true })
+    await clearCodingCredentials({ contextId: 'pi:telegram:ctx:u1', namespace: 'forge' })
+    expect(parseBody(lastRequest().init.body)).toEqual({
+      contextId: 'pi:telegram:ctx:u1',
+      namespace: 'forge',
+      clear: true,
+    })
   })
 })

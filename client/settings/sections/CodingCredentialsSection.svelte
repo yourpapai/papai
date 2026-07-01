@@ -6,6 +6,7 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
+  import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
@@ -13,7 +14,12 @@
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import type { CodingCredentialField, CodingCredentialsResponse } from '../fetcher-schemas.js'
-  import { fetchCodingCredentials, fetchCodingModels, patchCodingCredentials } from '../fetchers.js'
+  import {
+    clearCodingCredentials,
+    fetchCodingCredentials,
+    fetchCodingModels,
+    patchCodingCredentials,
+  } from '../coding-credentials-fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
 
   // Client-side compatibility map (mirrors src/coding-credentials/types.ts `compatible`)
@@ -173,6 +179,25 @@
     }
   }
 
+  let pendingClear = $state(false)
+  let clearing = $state(false)
+
+  async function clearAll(): Promise<void> {
+    if (loading || saving || clearing || loadedContextId !== contextId) return
+    error = null
+    status = null
+    clearing = true
+    try {
+      await clearCodingCredentials({ contextId })
+      await load(contextId)
+      status = 'AI provider credentials cleared.'
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      clearing = false
+    }
+  }
+
   $effect(() => {
     const id = contextId
     untrack(() => {
@@ -308,17 +333,40 @@
       {/each}
 
       <div class="settings-field__actions">
+        {#if currentData.configured}
+          <Btn
+            variant="ghost"
+            size="sm"
+            testid="coding-credentials-clear"
+            disabled={saving || loading || clearing}
+            onClick={() => (pendingClear = true)}>
+            {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
+          </Btn>
+        {/if}
         <Btn
           variant="primary"
           size="sm"
           testid="coding-credentials-save"
-          disabled={saving || loading}
+          disabled={saving || loading || clearing}
           onClick={() => void saveAll()}>
           {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
         </Btn>
       </div>
     </div>
   {/if}
+
+  <Confirm
+    open={pendingClear}
+    title="Clear AI provider credentials"
+    danger
+    confirmLabel="Clear"
+    onCancel={() => (pendingClear = false)}
+    onConfirm={() => {
+      pendingClear = false
+      void clearAll()
+    }}>
+    {#snippet body()}<p>Remove the stored AI provider key, agent, and model for this context? This cannot be undone.</p>{/snippet}
+  </Confirm>
 </section>
 
 <style>
