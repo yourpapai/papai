@@ -23,8 +23,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('065_coding_identity is the last migration', () => {
+  test('066_coding_repos_egress is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('065_coding_identity')
+    expect(lastMigration.id).toBe('066_coding_repos_egress')
   })
 })
