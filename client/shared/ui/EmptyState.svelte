@@ -45,7 +45,7 @@
   }
   .ui-empty__hint {
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--fg2);
     max-width: 320px;
   }
   .ui-empty__action {

@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 import { createRawSnippet, mount, unmount } from 'svelte'
 import type { Snippet } from 'svelte'
@@ -32,5 +34,13 @@ describe('EmptyState.svelte', () => {
     const c = mount(EmptyState, { target, props: { title: 'Empty', action: snip('LOAD') } })
     expect(target.querySelector('.ui-empty__action')?.textContent).toContain('LOAD')
     void unmount(c)
+  })
+  test('hint uses the AA-passing --fg2 token', () => {
+    const src = readFileSync(
+      fileURLToPath(new URL('../../../../client/shared/ui/EmptyState.svelte', import.meta.url)),
+      'utf8',
+    )
+    const hintRule = src.slice(src.indexOf('.ui-empty__hint'))
+    expect(hintRule).toContain('color: var(--fg2)')
   })
 })
