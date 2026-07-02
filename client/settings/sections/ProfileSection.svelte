@@ -8,6 +8,7 @@
   import type { ConfigField } from '../fetcher-schemas.js'
   import { fetchConfig } from '../fetchers.js'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
 
@@ -43,18 +44,29 @@
 </script>
 
 <section id="profile" class="settings-section">
-  <PageHeader eyebrow="Personal" title="Profile">
+  <PageHeader
+    eyebrow="Personal"
+    title="Profile"
+    sub="Personal preferences for how the bot addresses and responds to you."
+  >
     {#snippet action()}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="profile-refresh" />
     {/snippet}
   </PageHeader>
 
   {#if error !== null}
-    <p class="status-error">{error}</p>
-  {:else if loading}
+    <ErrorState message={error} onRetry={() => void load(contextId)} />
+  {:else if loading && visible.length === 0}
     <p class="placeholder">Loading…</p>
   {:else if visible.length === 0}
-    <EmptyState title="No profile settings" hint="This context has no editable profile settings." />
+    <EmptyState
+      title="No profile settings"
+      hint="Personal preferences will appear here once this context has editable settings."
+    >
+      {#snippet action()}
+        <a href="#task-provider">Configure task provider →</a>
+      {/snippet}
+    </EmptyState>
   {:else}
     <div class="settings-field-list">
       {#each visible as field (field.key)}

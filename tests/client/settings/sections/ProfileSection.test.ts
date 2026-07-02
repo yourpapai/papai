@@ -80,7 +80,7 @@ describe('ProfileSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(ProfileSection, { target, props: { contextId: 'user:1' } })
     await drain()
-    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
     expect(target.querySelector('.ui-empty')).toBeNull()
     void unmount(component)
   })
