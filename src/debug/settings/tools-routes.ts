@@ -21,6 +21,7 @@ import {
   type ToolPrefs,
 } from '../../tools/tool-preferences.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
+import { activePluginSegmentMap, deriveToolGroup } from './tool-grouping.js'
 
 const log = logger.child({ scope: 'debug-server:settings-tools' })
 
@@ -65,6 +66,7 @@ function groupByDomain(names: readonly string[]): Map<ToolDomain, string[]> {
 
 export function buildDomainView(names: readonly string[], prefs: ToolPrefs): unknown[] {
   const grouped = groupByDomain(names)
+  const segmentMap = activePluginSegmentMap()
   return [...grouped.entries()]
     .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([domain, domainTools]) => ({
@@ -72,7 +74,13 @@ export function buildDomainView(names: readonly string[], prefs: ToolPrefs): unk
       summary: getDomainSummary(prefs, domain, domainTools),
       tools: [...domainTools].toSorted().map((name) => {
         const meta = getToolMetadata(name)
-        return { name, permission: resolveToolPermission(prefs, name), risk: meta?.risk ?? 'read' }
+        const group = deriveToolGroup(name, segmentMap)
+        return {
+          name,
+          permission: resolveToolPermission(prefs, name),
+          risk: meta?.risk ?? 'read',
+          ...(group === undefined ? {} : { group }),
+        }
       }),
     }))
 }
