@@ -41,6 +41,14 @@ describe('matchesScope', () => {
     expect(matchesScope('chat:telegram:*', 'chat:telegram:files')).toBe(true)
     expect(matchesScope('chat:telegram:*', 'chat:mattermost')).toBe(false)
   })
+  test('lone wildcard matches everything', () => {
+    expect(matchesScope('*', 'anything')).toBe(true)
+    expect(matchesScope('*', 'chat:telegram:files')).toBe(true)
+  })
+  test('empty pattern only matches empty scope', () => {
+    expect(matchesScope('', '')).toBe(true)
+    expect(matchesScope('', 'chat')).toBe(false)
+  })
 })
 
 describe('entryMatchesFilter', () => {
@@ -85,6 +93,11 @@ describe('flattenLogEntry', () => {
     expect(text).toContain('s')
     expect(text).toContain('example.com')
   })
+  test('excludes time and level from searchable text', () => {
+    const text = flattenLogEntry(entry({ level: 30, time: '2026-07-02T09:09:09.000Z', msg: 'x' }))
+    expect(text).not.toContain('2026-07-02T09:09:09')
+    expect(text).not.toContain('30')
+  })
 })
 
 describe('applyFilter', () => {
@@ -108,5 +121,11 @@ describe('parseLogFilter', () => {
   test('defaults: empty arrays, level 0, undefined turnId/q; ignores blank/NaN', () => {
     expect(parseLogFilter(new URLSearchParams(''))).toEqual({ include: [], exclude: [], level: 0 })
     expect(parseLogFilter(new URLSearchParams('level=notanumber&q=')).level).toBe(0)
+  })
+  test('drops empty-string include/exclude values', () => {
+    const p = new URLSearchParams('include=&include=chat&exclude=')
+    const f = parseLogFilter(p)
+    expect(f.include).toEqual(['chat'])
+    expect(f.exclude).toEqual([])
   })
 })

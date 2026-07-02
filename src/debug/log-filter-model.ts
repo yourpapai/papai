@@ -22,11 +22,15 @@ export type LogFilter = {
 
 /**
  * Match a scope pattern against a concrete scope string.
+ * - `*` (lone wildcard) → matches every scope.
  * - `chat:*` (wildcard) → prefix on ':' boundaries.
  * - `chat` (bare namespace, no ':' or '*') → prefix on ':' boundaries.
- * - anything else → exact match.
+ * - anything else → exact match. Note: a trailing colon (e.g. `chat:`) is
+ *   treated as an exact-match pattern, not a prefix; use `chat` or `chat:*`
+ *   to match a namespace and all its children.
  */
 export function matchesScope(pattern: string, scope: string): boolean {
+  if (pattern === '*') return true
   if (pattern === scope) return true
   if (pattern.endsWith(':*')) {
     const prefix = pattern.slice(0, -2)
@@ -40,7 +44,10 @@ export function matchesScope(pattern: string, scope: string): boolean {
 
 const STANDARD_FIELDS = new Set(['time', 'level', 'msg', 'scope'])
 
-/** Flatten an entry's msg, scope, and every metadata key/value into one searchable string. */
+/**
+ * Flatten an entry's msg, scope, and every metadata key/value into one searchable string.
+ * Assumes acyclic input (pino JSON entries are always acyclic).
+ */
 export function flattenLogEntry(entry: LogEntry): string {
   const parts: string[] = [entry.msg]
   if (entry.scope !== undefined) parts.push(entry.scope)
@@ -98,8 +105,8 @@ export function applyFilter(entries: readonly LogEntry[], filter: LogFilter): Lo
 /** Parse a LogFilter out of URL query params (repeated include/exclude supported). */
 export function parseLogFilter(params: URLSearchParams): LogFilter {
   const filter: LogFilter = {
-    include: params.getAll('include'),
-    exclude: params.getAll('exclude'),
+    include: params.getAll('include').filter((s) => s !== ''),
+    exclude: params.getAll('exclude').filter((s) => s !== ''),
     level: 0,
   }
   const levelRaw = params.get('level')
