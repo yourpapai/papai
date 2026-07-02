@@ -11,6 +11,7 @@ export const LogBufferStatsSchema = z.object({
   capacity: z.number(),
   oldest: z.string().nullable(),
   newest: z.string().nullable(),
+  matchingCount: z.number().optional(),
 })
 
 export type LogBufferStats = z.infer<typeof LogBufferStatsSchema>

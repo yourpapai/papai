@@ -13,6 +13,7 @@ import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
 import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
+import { parseLogFilter } from './log-filter-model.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
 import { handleDeferred, handleIdentity, handleMemos, handleRecurring } from './server-route-support.js'
@@ -89,22 +90,37 @@ function searchParam(value: string | null): string | undefined {
 }
 
 function handleLogs(url: URL): Response {
+  const filter = parseLogFilter(url.searchParams)
   const results = logBuffer.search({
-    level: parseIntParam(url.searchParams.get('level')),
-    scope: searchParam(url.searchParams.get('scope')),
-    turnId: searchParam(url.searchParams.get('turnId')),
-    q: searchParam(url.searchParams.get('q')),
+    ...filter,
     limit: parseIntParam(url.searchParams.get('limit')),
     before: searchParam(url.searchParams.get('before')),
   })
-
   return jsonResponse(results)
+}
+
+function handleLogScopes(): Response {
+  return jsonResponse(logBuffer.distinctScopes())
+}
+
+function handleLogStats(url: URL): Response {
+  const filter = parseLogFilter(url.searchParams)
+  return jsonResponse({ ...logBuffer.stats(), matchingCount: logBuffer.countMatching(filter) })
 }
 
 export type WebServerRouteOptions = Readonly<{ debugEnabled: boolean; mattermostActionSecretForTest?: string }>
 type WebServerStartOptions = Readonly<{ debugEnabled?: boolean; logLevel?: string }>
 const DEFAULT_ROUTE_OPTIONS: WebServerRouteOptions = { debugEnabled: true }
-const DEBUG_ONLY_PATHS = new Set(['/debug', '/debug.js', '/debug.css', '/events', '/logs', '/logs/stats', '/dashboard'])
+const DEBUG_ONLY_PATHS = new Set([
+  '/debug',
+  '/debug.js',
+  '/debug.css',
+  '/events',
+  '/logs',
+  '/logs/stats',
+  '/logs/scopes',
+  '/dashboard',
+])
 
 let server: ReturnType<typeof Bun.serve> | null = null
 let routeOptions: WebServerRouteOptions = DEFAULT_ROUTE_OPTIONS
@@ -160,9 +176,8 @@ const isDebugOnlyPath = (pathname: string): boolean => DEBUG_ONLY_PATHS.has(path
 function routeProtectedPaths(req: Request, url: URL): Response | Promise<Response> | null {
   if (url.pathname === '/events') return handleEvents(req)
   if (url.pathname === '/logs') return handleLogs(url)
-  if (url.pathname === '/logs/stats') {
-    return jsonResponse(logBuffer.stats())
-  }
+  if (url.pathname === '/logs/stats') return handleLogStats(url)
+  if (url.pathname === '/logs/scopes') return handleLogScopes()
   if (url.pathname.startsWith('/turns/')) return handleTurnLookup(url)
   if (url.pathname === '/recurring') return handleRecurring(url)
   if (url.pathname === '/deferred') return handleDeferred(url)
