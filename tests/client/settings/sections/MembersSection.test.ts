@@ -252,6 +252,17 @@ describe('MembersSection', () => {
     void unmount(component)
   })
 
+  test('Remove uses the danger button variant', async () => {
+    setMockFetch(() => Promise.resolve(json(membersPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const btn = target.querySelector<HTMLButtonElement>('[data-testid="member-remove-42"]')!
+    expect(btn.classList.contains('ui-btn--danger')).toBe(true)
+    void unmount(component)
+  })
+
   test('shows Loading placeholder before the first fetch resolves, not "No members"', async () => {
     let resolveFetch: (r: Response) => void = () => {}
     setMockFetch(

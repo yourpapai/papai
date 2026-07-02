@@ -132,7 +132,7 @@
     <div class="settings-table-wrap">
       {#snippet cell(row: MemberRow, col: { key: string; label: string })}
         {#if col.key === 'actions'}
-          <Btn variant="ghost" size="sm" testid={`member-remove-${row.user_id}`} onClick={() => requestRemove(row.user_id)}>
+          <Btn variant="danger" size="sm" testid={`member-remove-${row.user_id}`} onClick={() => requestRemove(row.user_id)}>
             {#snippet children()}Remove{/snippet}
           </Btn>
         {:else}
