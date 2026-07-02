@@ -214,6 +214,17 @@ describe('TaskProviderSection', () => {
     void unmount(component)
   })
 
+  test('a failed load shows ErrorState with a working retry', async () => {
+    setMockFetch(() => Promise.resolve(new Response('Internal Server Error', { status: 500 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('binding an instance PATCHes the context endpoint and re-fetches', async () => {
     setCsrfToken('c')
     const sink: { value: PatchRecord | null } = { value: null }
