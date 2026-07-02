@@ -43,6 +43,39 @@
 
   const presetResponse: ToolsResponse = { ...populated, activePreset: 'read-only', hasStoredDefaults: true }
 
+  const grouped: ToolsResponse = {
+    contextId: CONTEXT_ID,
+    activePreset: null,
+    hasStoredDefaults: false,
+    domains: [
+      {
+        domain: 'plugin',
+        summary: 'partial',
+        tools: [
+          { name: 'plugin_acp__start_session', permission: 'ask', risk: 'open-world', group: 'acp' },
+          { name: 'plugin_acp__list_sessions', permission: 'allow', risk: 'open-world', group: 'acp' },
+          {
+            name: 'plugin_audio_transcribe__transcribe',
+            permission: 'allow',
+            risk: 'open-world',
+            group: 'audio-transcribe',
+          },
+        ],
+      },
+      {
+        domain: 'mcp',
+        summary: 'ask',
+        tools: [{ name: 'mcp_search-server__fetch_page', permission: 'ask', risk: 'open-world', group: 'search-server' }],
+      },
+      {
+        domain: 'time',
+        summary: 'allow',
+        tools: [{ name: 'get_current_time', permission: 'allow', risk: 'read' }],
+      },
+    ],
+  }
+  const fetchGrouped = (): Promise<ToolsResponse> => Promise.resolve(grouped)
+
   // DI fixtures: each state is a fetchToolsFn returning the matching response.
   const fetchPopulated = (): Promise<ToolsResponse> => Promise.resolve(populated)
   const fetchEmpty = (): Promise<ToolsResponse> => Promise.resolve(emptyResponse)
@@ -62,6 +95,8 @@
 <Story name="Empty" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchEmpty }} />
 
 <Story name="Preset applied" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchPreset, hasStoredDefaults: true }} />
+
+<Story name="Grouped" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchGrouped }} />
 
 <Story name="Loading" args={{ contextId: CONTEXT_ID, fetchToolsFn: fetchNever }} />
 

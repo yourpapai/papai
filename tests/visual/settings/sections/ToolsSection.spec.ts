@@ -22,6 +22,11 @@ test.describe('settings/sections/ToolsSection', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
+  test('Grouped', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-toolssection--grouped')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
   test('Loading', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'settings-sections-toolssection--loading')
     await expect(sharedPage).toHaveScreenshot()

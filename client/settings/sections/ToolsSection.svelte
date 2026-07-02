@@ -20,6 +20,7 @@
     ToolsResponse,
   } from '../fetcher-schemas-tools.js'
   import { applyToolPreset, fetchTools, setToolPermission } from '../fetchers.js'
+  import { groupSummary, groupToolEntries } from '../lib/group-tools.js'
 
   const PERM_OPTIONS = [
     { value: 'allow', label: 'Allow' },
@@ -115,6 +116,19 @@
     const permission = nextDomainPermission(summary)
     try {
       const res = await setToolPermissionFn({ kind: 'domain', domain, permission, contextId })
+      domains = res.domains
+      activePreset = res.activePreset
+      storedDefaults = res.hasStoredDefaults
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  async function onSetGroupPermission(domain: string, group: string, summary: ToolDomainSummary): Promise<void> {
+    error = null
+    const permission = nextDomainPermission(summary)
+    try {
+      const res = await setToolPermissionFn({ kind: 'group', domain, group, permission, contextId })
       domains = res.domains
       activePreset = res.activePreset
       storedDefaults = res.hasStoredDefaults
@@ -259,19 +273,38 @@
           </div>
           {#if expanded[domain.domain]}
             <ul class="settings-tools__list">
-              {#each domain.tools as tool (tool.name)}
-                <li class="settings-tools__tool">
-                  <span class="settings-tools__name">{tool.name}</span>
-                  <Pill tone={riskTone(tool.risk)}>{#snippet children()}{tool.risk}{/snippet}</Pill>
-                  <div class="settings-tools__perm">
-                    <SegmentedControl
-                      options={PERM_OPTIONS}
-                      value={tool.permission}
-                      ariaLabel={`Permission for ${tool.name}`}
-                      onChange={(p) => void onSetToolPermission(tool.name, p as ToolPermission)}
-                      testidPrefix={`tool-perm-${tool.name}`} />
-                  </div>
-                </li>
+              {#each groupToolEntries(domain.tools) as toolGroup (toolGroup.group ?? '')}
+                {#if toolGroup.group !== null}
+                  {@const groupName = toolGroup.group}
+                  {@const summary = groupSummary(toolGroup.tools)}
+                  <li class="settings-tools__group-head" data-testid={`group-head-${groupName}`}>
+                    <span class="settings-tools__group-name">{groupName}</span>
+                    <Pill tone={summaryTone(summary)}>{#snippet children()}{summary}{/snippet}</Pill>
+                    <span class="settings-tools__group-toggle">
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        testid={`group-toggle-${groupName}`}
+                        onClick={() => void onSetGroupPermission(domain.domain, groupName, summary)}>
+                        {#snippet children()}{summary === 'deny' ? 'Allow all' : summary === 'ask' ? 'Deny all' : summary === 'allow' ? 'Ask all' : 'Allow all'}{/snippet}
+                      </Btn>
+                    </span>
+                  </li>
+                {/if}
+                {#each toolGroup.tools as tool (tool.name)}
+                  <li class="settings-tools__tool" class:settings-tools__tool--grouped={toolGroup.group !== null}>
+                    <span class="settings-tools__name">{tool.name}</span>
+                    <Pill tone={riskTone(tool.risk)}>{#snippet children()}{tool.risk}{/snippet}</Pill>
+                    <div class="settings-tools__perm">
+                      <SegmentedControl
+                        options={PERM_OPTIONS}
+                        value={tool.permission}
+                        ariaLabel={`Permission for ${tool.name}`}
+                        onChange={(p) => void onSetToolPermission(tool.name, p as ToolPermission)}
+                        testidPrefix={`tool-perm-${tool.name}`} />
+                    </div>
+                  </li>
+                {/each}
               {/each}
             </ul>
           {/if}
@@ -326,6 +359,24 @@
   }
   .settings-tools__domain-toggle {
     margin-left: auto;
+  }
+  .settings-tools__group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+  }
+  .settings-tools__group-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg2);
+  }
+  .settings-tools__group-toggle {
+    margin-left: auto;
+  }
+  .settings-tools__tool--grouped {
+    padding-left: 14px;
   }
   .settings-tools__perm { margin-left: auto; }
   .settings-tools__presets {
