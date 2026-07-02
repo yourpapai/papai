@@ -82,7 +82,7 @@ describe('search', () => {
     buf.push(makeEntry({ level: 30, msg: 'info' }))
     buf.push(makeEntry({ level: 50, msg: 'error' }))
 
-    const results = buf.search({ level: 30 })
+    const results = buf.search({ include: [], exclude: [], level: 30 })
     expect(results).toHaveLength(2)
     expect(results[0]!.msg).toBe('info')
     expect(results[1]!.msg).toBe('error')
@@ -93,7 +93,7 @@ describe('search', () => {
     buf.push(makeEntry({ scope: 'bot', msg: 'bot msg' }))
     buf.push(makeEntry({ scope: 'llm-orch', msg: 'llm msg' }))
 
-    const results = buf.search({ scope: 'llm-orch' })
+    const results = buf.search({ include: ['llm-orch'], exclude: [], level: 0 })
     expect(results).toHaveLength(1)
     expect(results[0]!.msg).toBe('llm msg')
   })
@@ -103,7 +103,7 @@ describe('search', () => {
     buf.push(makeEntry({ msg: 'Calling generateText' }))
     buf.push(makeEntry({ msg: 'Task created' }))
 
-    const results = buf.search({ q: 'generatetext' })
+    const results = buf.search({ include: [], exclude: [], level: 0, q: 'generatetext' })
     expect(results).toHaveLength(1)
     expect(results[0]!.msg).toBe('Calling generateText')
   })
@@ -114,7 +114,7 @@ describe('search', () => {
     buf.push(makeEntry({ level: 30, scope: 'llm-orch', msg: 'calling generateText' }))
     buf.push(makeEntry({ level: 50, scope: 'llm-orch', msg: 'error in generateText' }))
 
-    const results = buf.search({ level: 40, scope: 'llm-orch' })
+    const results = buf.search({ include: ['llm-orch'], exclude: [], level: 40 })
     expect(results).toHaveLength(1)
     expect(results[0]!.msg).toBe('error in generateText')
   })
@@ -125,7 +125,7 @@ describe('search', () => {
     buf.push(makeEntry({ msg: 'msg-b', turnId: 'turn-2' }))
     buf.push(makeEntry({ msg: 'msg-c', turnId: 'turn-1' }))
 
-    const results = buf.search({ turnId: 'turn-1' })
+    const results = buf.search({ include: [], exclude: [], level: 0, turnId: 'turn-1' })
     expect(results).toHaveLength(2)
     expect(results[0]!.msg).toBe('msg-a')
     expect(results[1]!.msg).toBe('msg-c')
@@ -137,7 +137,7 @@ describe('search', () => {
     buf.push(makeEntry({ level: 50, msg: 'error-a', turnId: 'turn-1' }))
     buf.push(makeEntry({ level: 50, msg: 'error-b', turnId: 'turn-2' }))
 
-    const results = buf.search({ level: 40, turnId: 'turn-1' })
+    const results = buf.search({ include: [], exclude: [], level: 40, turnId: 'turn-1' })
     expect(results).toHaveLength(1)
     expect(results[0]!.msg).toBe('error-a')
   })
@@ -148,7 +148,7 @@ describe('search', () => {
       buf.push(makeEntry({ msg: `msg-${i}` }))
     }
 
-    const results = buf.search({ limit: 2 })
+    const results = buf.search({ include: [], exclude: [], level: 0, limit: 2 })
     expect(results).toHaveLength(2)
     expect(results[0]!.msg).toBe('msg-3')
     expect(results[1]!.msg).toBe('msg-4')
@@ -160,13 +160,13 @@ describe('search', () => {
       buf.push(makeEntry({ msg: `msg-${i}` }))
     }
 
-    const results = buf.search({})
+    const results = buf.search({ include: [], exclude: [], level: 0 })
     expect(results).toHaveLength(100)
   })
 
   test('returns empty array on empty buffer', () => {
     const buf = new LogRingBuffer(10)
-    expect(buf.search({})).toEqual([])
+    expect(buf.search({ include: [], exclude: [], level: 0 })).toEqual([])
   })
 
   test('before cursor returns the newest entries strictly older than the cursor', () => {
@@ -176,7 +176,7 @@ describe('search', () => {
     buf.push(makeEntry({ time: '2026-03-28T10:00:02.000Z', msg: 'c' }))
     buf.push(makeEntry({ time: '2026-03-28T10:00:03.000Z', msg: 'd' }))
 
-    const results = buf.search({ before: '2026-03-28T10:00:02.000Z' })
+    const results = buf.search({ include: [], exclude: [], level: 0, before: '2026-03-28T10:00:02.000Z' })
     expect(results.map((e) => e.msg)).toEqual(['a', 'b'])
   })
 
@@ -186,7 +186,7 @@ describe('search', () => {
       buf.push(makeEntry({ time: `2026-03-28T10:00:0${i}.000Z`, msg: `m${i}` }))
     }
     // newest 2 strictly older than m5's time → m3, m4
-    const page = buf.search({ before: '2026-03-28T10:00:05.000Z', limit: 2 })
+    const page = buf.search({ include: [], exclude: [], level: 0, before: '2026-03-28T10:00:05.000Z', limit: 2 })
     expect(page.map((e) => e.msg)).toEqual(['m3', 'm4'])
   })
 })
@@ -291,5 +291,49 @@ describe('log:entry emit (unredacted)', () => {
     expect(events[0]!.data['messageLength']).toBe(6)
     // Buffer still retains the full entry
     expect(buf.entries()[0]).toHaveProperty('userText', 'secret')
+  })
+})
+
+describe('LogRingBuffer filtering', () => {
+  const at = (t: string, o: Partial<LogEntry> = {}): LogEntry => ({ level: 30, time: t, msg: 'm', ...o })
+
+  test('search applies include/exclude and paging', () => {
+    const buf = new LogRingBuffer(10)
+    buf.push(at('2026-07-02T00:00:01.000Z', { scope: 'chat:telegram' }))
+    buf.push(at('2026-07-02T00:00:02.000Z', { scope: 'chat:mattermost' }))
+    buf.push(at('2026-07-02T00:00:03.000Z', { scope: 'tool:x' }))
+
+    const chat = buf.search({ include: ['chat'], exclude: [], level: 0, limit: 100 })
+    expect(chat.map((e) => e.scope)).toEqual(['chat:telegram', 'chat:mattermost'])
+
+    const excluded = buf.search({ include: ['chat'], exclude: ['chat:telegram'], level: 0, limit: 100 })
+    expect(excluded.map((e) => e.scope)).toEqual(['chat:mattermost'])
+  })
+
+  test('search before-cursor pages backward over filtered results', () => {
+    const buf = new LogRingBuffer(10)
+    buf.push(at('2026-07-02T00:00:01.000Z', { scope: 'a' }))
+    buf.push(at('2026-07-02T00:00:02.000Z', { scope: 'a' }))
+    const page = buf.search({ include: [], exclude: [], level: 0, before: '2026-07-02T00:00:02.000Z', limit: 100 })
+    expect(page.map((e) => e.time)).toEqual(['2026-07-02T00:00:01.000Z'])
+  })
+
+  test('countMatching ignores paging', () => {
+    const buf = new LogRingBuffer(10)
+    buf.push(at('2026-07-02T00:00:01.000Z', { scope: 'a' }))
+    buf.push(at('2026-07-02T00:00:02.000Z', { scope: 'b' }))
+    expect(buf.countMatching({ include: ['a'], exclude: [], level: 0 })).toBe(1)
+  })
+
+  test('distinctScopes returns sorted scope + counts, skips scope-less', () => {
+    const buf = new LogRingBuffer(10)
+    buf.push(at('t1', { scope: 'b' }))
+    buf.push(at('t2', { scope: 'a' }))
+    buf.push(at('t3', { scope: 'a' }))
+    buf.push(at('t4'))
+    expect(buf.distinctScopes()).toEqual([
+      { scope: 'a', count: 2 },
+      { scope: 'b', count: 1 },
+    ])
   })
 })

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { emitGlobal } from './event-bus.js'
+import { applyFilter, type LogFilter } from './log-filter-model.js'
 
 export type LogEntry = {
   level: number
@@ -14,11 +15,7 @@ export type LogEntry = {
   [key: string]: unknown
 }
 
-type SearchParams = {
-  level?: number
-  scope?: string
-  turnId?: string
-  q?: string
+type SearchParams = LogFilter & {
   limit?: number
   /** Cursor for backward paging: return only entries with `time` strictly less than this ISO timestamp. */
   before?: string
@@ -68,25 +65,26 @@ export class LogRingBuffer {
   }
 
   search(params: SearchParams): LogEntry[] {
-    let results = this.entries()
-    if (params.level !== undefined) {
-      results = results.filter((e) => e.level >= params.level!)
-    }
-    if (params.scope !== undefined) {
-      results = results.filter((e) => e.scope === params.scope)
-    }
-    if (params.turnId !== undefined) {
-      results = results.filter((e) => e.turnId === params.turnId)
-    }
-    if (params.q !== undefined) {
-      const lower = params.q.toLowerCase()
-      results = results.filter((e) => e.msg.toLowerCase().includes(lower))
-    }
+    let results = applyFilter(this.entries(), params)
     if (params.before !== undefined) {
       results = results.filter((e) => e.time < params.before!)
     }
     const limit = params.limit ?? 100
     return results.slice(-limit)
+  }
+
+  countMatching(filter: LogFilter): number {
+    return applyFilter(this.entries(), filter).length
+  }
+
+  distinctScopes(): Array<{ scope: string; count: number }> {
+    const counts = new Map<string, number>()
+    for (const e of this.entries()) {
+      if (e.scope !== undefined) counts.set(e.scope, (counts.get(e.scope) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([scope, count]) => ({ scope, count }))
+      .sort((a, b) => a.scope.localeCompare(b.scope))
   }
 
   stats(): BufferStats {
