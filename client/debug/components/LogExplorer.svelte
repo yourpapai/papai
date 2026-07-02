@@ -32,13 +32,24 @@
 
   // Surface how bounded the in-memory buffer is, and whether older records exist.
   $effect(() => {
-    void untrack(async () => {
-      bufferStats = await fetchLogStats(dashboard.activeLogFilter)
+    const filter = dashboard.activeLogFilter
+    void (async () => {
+      bufferStats = await fetchLogStats(filter)
+    })()
+  })
+
+  // Reset paging flags when the filter identity changes so stale state doesn't
+  // suppress the "load older" button under a new filter.
+  $effect(() => {
+    void dashboard.activeLogFilter
+    untrack(() => {
+      reachedStart = false
+      loadingOlder = false
     })
   })
 
   const moreOlderAvailable = $derived(
-    !reachedStart && bufferStats !== null && dashboard.logs.length < bufferStats.count,
+    !reachedStart && bufferStats !== null && dashboard.logs.length < (bufferStats.matchingCount ?? bufferStats.count),
   )
 
   // Page backward through the in-memory buffer: the browser only bootstraps the
