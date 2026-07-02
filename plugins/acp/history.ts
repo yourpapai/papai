@@ -6,8 +6,6 @@
 type KvStore = {
   get(key: string): string | undefined
   set(key: string, value: string): void
-  delete(key: string): void
-  list(prefix?: string): Array<{ key: string; value: string }>
 }
 
 export type SessionRecord = {
@@ -70,14 +68,4 @@ export function readRecord(kv: KvStore, sessionId: string): SessionRecord | null
   } catch {
     return null
   }
-}
-
-export function listRecords(kv: KvStore): Array<{ id: string; record: SessionRecord }> {
-  const out: Array<{ id: string; record: SessionRecord }> = []
-  for (const row of kv.list(KEY_PREFIX)) {
-    const id = row.key.slice(KEY_PREFIX.length)
-    const record = readRecord(kv, id)
-    if (record !== null) out.push({ id, record })
-  }
-  return out
 }
