@@ -263,6 +263,31 @@ describe('MembersSection', () => {
     void unmount(component)
   })
 
+  test('renders the display label as primary with the raw id as secondary', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          contextId: 'group:7',
+          members: [
+            { user_id: '42', added_by: '1', added_at: '2026-05-01', user_label: 'Ann (@ann)', added_by_label: 'Admin' },
+            { user_id: '43', added_by: '1', added_at: '2026-05-01', user_label: null, added_by_label: 'Admin' },
+          ],
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.textContent).toContain('Ann (@ann)')
+    expect(target.textContent).toContain('42')
+    expect(target.textContent).toContain('Admin')
+    expect(target.textContent).toContain('43')
+    const headers = [...target.querySelectorAll('.ui-datatable__th')].map((h) => h.textContent?.trim())
+    expect(headers).toContain('Member')
+    void unmount(component)
+  })
+
   test('shows Loading placeholder before the first fetch resolves, not "No members"', async () => {
     let resolveFetch: (r: Response) => void = () => {}
     setMockFetch(

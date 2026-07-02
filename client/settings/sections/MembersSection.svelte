@@ -92,14 +92,22 @@
     user_id: string
     added_by: string
     added_at: string
+    user_label: string | null
+    added_by_label: string | null
   }
 
   const memberRows = $derived<MemberRow[]>(
-    members.map((m) => ({ user_id: m.user_id, added_by: m.added_by, added_at: formatDateTime(m.added_at) })),
+    members.map((m) => ({
+      user_id: m.user_id,
+      added_by: m.added_by,
+      added_at: formatDateTime(m.added_at),
+      user_label: m.user_label ?? null,
+      added_by_label: m.added_by_label ?? null,
+    })),
   )
 
   const memberColumns = [
-    { key: 'user_id' as const, label: 'User ID' },
+    { key: 'user_id' as const, label: 'Member' },
     { key: 'added_by' as const, label: 'Added by' },
     { key: 'added_at' as const, label: 'Added at' },
     { key: 'actions' as const, label: '', align: 'right' as const },
@@ -135,6 +143,13 @@
           <Btn variant="danger" size="sm" testid={`member-remove-${row.user_id}`} onClick={() => requestRemove(row.user_id)}>
             {#snippet children()}Remove{/snippet}
           </Btn>
+        {:else if col.key === 'user_id'}
+          <span class="member-cell">
+            <span>{row.user_label ?? row.user_id}</span>
+            {#if row.user_label !== null}<span class="member-cell__raw">{row.user_id}</span>{/if}
+          </span>
+        {:else if col.key === 'added_by'}
+          {row.added_by_label ?? row.added_by}
         {:else}
           {String(row[col.key as keyof MemberRow] ?? '')}
         {/if}
@@ -170,5 +185,14 @@
   .members-add :global(.ui-field) {
     flex: 1;
     min-width: 220px;
+  }
+  .member-cell {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 1.3;
+  }
+  .member-cell__raw {
+    color: var(--fg3);
+    font-size: 11px;
   }
 </style>
