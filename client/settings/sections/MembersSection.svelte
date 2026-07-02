@@ -34,11 +34,13 @@
     error = null
     loading = true
     try {
-      members = (await fetchGroupMembers(id)).members
+      const result = await fetchGroupMembers(id)
+      if (id !== contextId) return
+      members = result.members
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) error = err instanceof Error ? err.message : String(err)
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
@@ -47,11 +49,12 @@
     error = null
     const userId = newUserId.trim()
     if (userId === '') return
+    const ctx = contextId
     adding = true
     try {
-      await addGroupMember({ userId, contextId })
+      await addGroupMember({ userId, contextId: ctx })
       newUserId = ''
-      await load(contextId)
+      await load(ctx)
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -67,11 +70,12 @@
   async function confirmRemove(): Promise<void> {
     const target = pendingRemove
     if (target === null || removing) return
+    const ctx = contextId
     removeError = null
     removing = true
     let ok = false
     try {
-      await removeGroupMember({ userId: target.userId, contextId })
+      await removeGroupMember({ userId: target.userId, contextId: ctx })
       ok = true
     } catch (err) {
       removeError = err instanceof Error ? err.message : String(err)
@@ -80,7 +84,7 @@
     }
     if (ok) {
       pendingRemove = null
-      await load(contextId)
+      await load(ctx)
     }
   }
 
