@@ -218,15 +218,6 @@ describe('makeTools preference filtering', () => {
 
     expectParentThreadCachesCleared(parentCacheKeys, threadCacheKeys, otherCacheKey)
   })
-
-  test('clears cached parent and thread toolsets when parent reduction-flags config changes', () => {
-    const { parentContextId, parentCacheKeys, threadCacheKeys, otherCacheKey } =
-      seedParentThreadAndUnrelatedToolCaches()
-
-    setConfigValue(parentContextId, 'tool_context_flags', '{}')
-
-    expectParentThreadCachesCleared(parentCacheKeys, threadCacheKeys, otherCacheKey)
-  })
 })
 
 function fakeTool(name: string): ToolSet[string] {

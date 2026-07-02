@@ -19,7 +19,6 @@ export interface CompactionContext {
   storageContextId: string
   /** Latest user message text, used to make summaries query-aware. */
   userIntent: string
-  enabled: boolean
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

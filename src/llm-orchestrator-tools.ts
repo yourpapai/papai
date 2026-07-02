@@ -20,9 +20,7 @@ import type { TaskProvider } from './providers/types.js'
 import { applyResultCompaction } from './tools/compaction/wrap-compaction.js'
 import { getToolRetriever } from './tools/disclosure/embedding-tool-retriever.js'
 import type { DisclosureSession } from './tools/disclosure/registry.js'
-import { LexicalToolRetriever } from './tools/disclosure/tool-retriever.js'
 import { maybeApplyDisclosure } from './tools/disclosure/wire.js'
-import { resolveReductionFlags } from './tools/feature-flags.js'
 import {
   applyGuestReadOnlyFilter,
   applyToolPreferences,
@@ -67,7 +65,6 @@ const isToolSet = (value: unknown): value is ToolSet =>
 export interface PrepareLlmInvocationDeps {
   buildToolDescriptors: typeof buildToolDescriptors
   buildProviderlessToolDescriptors: typeof buildProviderlessToolDescriptors
-  resolveReductionFlags: typeof resolveReductionFlags
   applyResultCompaction: typeof applyResultCompaction
 }
 
@@ -75,7 +72,6 @@ export interface PrepareLlmInvocationDeps {
 const defaultDeps = (): PrepareLlmInvocationDeps => ({
   buildToolDescriptors,
   buildProviderlessToolDescriptors,
-  resolveReductionFlags,
   applyResultCompaction,
 })
 
@@ -175,23 +171,17 @@ const applyCompactionAndDisclosure = (
   deps: PrepareLlmInvocationDeps,
 ): { tools: ToolSet; disclosure: DisclosureSession | undefined } => {
   // NOTE(forward-safety): meta-tools below (expand_result, search_tools, load_tool) run
-  // POST guest-filter; if compaction/disclosure flags are enabled for guests, re-review.
-  const flags = deps.resolveReductionFlags(contextId)
+  // POST guest-filter; if this surface should differ for guests, re-review.
   const compacted = deps.applyResultCompaction(prefTools, {
     storageContextId: contextId,
     userIntent: userText,
-    enabled: flags.resultCompaction,
   })
-  const retriever = flags.semanticToolRetrieval
-    ? getToolRetriever(getConfigContextIdFromStorageContextId(contextId), {
-        storageContextId: contextId,
-        contextType,
-        chatUserId,
-      })
-    : new LexicalToolRetriever()
-  const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(compacted, contextId, retriever, {
-    enabled: flags.progressiveDisclosure,
+  const retriever = getToolRetriever(getConfigContextIdFromStorageContextId(contextId), {
+    storageContextId: contextId,
+    contextType,
+    chatUserId,
   })
+  const { tools: disclosedTools, disclosure } = maybeApplyDisclosure(compacted, contextId, retriever)
   return { tools: disclosedTools, disclosure }
 }
 

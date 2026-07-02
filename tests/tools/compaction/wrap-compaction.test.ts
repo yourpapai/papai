@@ -33,20 +33,8 @@ describe('applyResultCompaction', () => {
     summarizerDeps.summarize.mockImplementation(() => Promise.resolve({ summary: 'SUMMARY' }))
   })
 
-  const ctx = { storageContextId: 'ctx-1', userIntent: 'find things', enabled: true }
+  const ctx = { storageContextId: 'ctx-1', userIntent: 'find things' }
   const big = { rows: Array.from({ length: 2000 }, (_, i) => ({ i, v: 'xxxxxxxxxx' })) }
-
-  it('returns the same toolset reference when disabled (no wrapping)', () => {
-    const tools = { t: toolReturning({ ok: 1 }) }
-    const out = applyResultCompaction(tools, { storageContextId: 'c', userIntent: 'x', enabled: false }, summarizerDeps)
-    expect(out).toBe(tools)
-  })
-
-  it('passes through unchanged when disabled', async () => {
-    const wrapped = applyResultCompaction({ t: toolReturning(big) }, { ...ctx, enabled: false }, summarizerDeps)
-    const out = await getToolExecutor(wrapped['t']!)({})
-    expect(isCompactedEnvelope(out)).toBe(false)
-  })
 
   it('does not compact small results', async () => {
     const wrapped = applyResultCompaction({ t: toolReturning({ ok: 1 }) }, ctx, summarizerDeps)

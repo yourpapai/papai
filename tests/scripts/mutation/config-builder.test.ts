@@ -65,11 +65,11 @@ describe('buildPairedConfig', () => {
     // which blocks tests/client/** from being discovered in the Stryker sandbox.
     const cfg = buildPairedConfig({
       base: BASE,
-      srcFile: 'client/admin/feature-flags-fetcher-schemas.ts',
-      testFiles: ['tests/client/admin/feature-flags-fetcher-schemas.test.ts'],
-      reportPath: 'reports/paired/feature-flags.json',
+      srcFile: 'client/settings/admin-fetchers.ts',
+      testFiles: ['tests/client/settings/admin-fetchers.test.ts'],
+      reportPath: 'reports/paired/admin-fetchers.json',
     })
-    expect(cfg.bun.testFiles).toEqual(['./tests/client/admin/feature-flags-fetcher-schemas.test.ts'])
+    expect(cfg.bun.testFiles).toEqual(['./tests/client/settings/admin-fetchers.test.ts'])
   })
 
   test('does not double-prefix testFiles that already start with ./', () => {
@@ -157,9 +157,9 @@ describe('buildPairedConfig', () => {
     // the sandbox bunfig; --path-ignore-patterns '' on the CLI overrides it.
     const cfg = buildPairedConfig({
       base: BASE,
-      srcFile: 'client/admin/feature-flags-fetcher-schemas.ts',
-      testFiles: ['tests/client/admin/feature-flags-fetcher-schemas.test.ts'],
-      reportPath: 'reports/paired/feature-flags.json',
+      srcFile: 'client/settings/admin-fetchers.ts',
+      testFiles: ['tests/client/settings/admin-fetchers.test.ts'],
+      reportPath: 'reports/paired/admin-fetchers.json',
     })
     expect(cfg.bun.bunArgs).toContain('--path-ignore-patterns')
     expect(cfg.bun.bunArgs).toContain('')
@@ -168,9 +168,9 @@ describe('buildPairedConfig', () => {
   test('does not add bunArg for server-side tests not under tests/client/', () => {
     const cfg = buildPairedConfig({
       base: BASE,
-      srcFile: 'src/tools/feature-flags.ts',
-      testFiles: ['tests/tools/feature-flags.test.ts'],
-      reportPath: 'reports/paired/feature-flags.json',
+      srcFile: 'src/tools/compaction/wrap-compaction.ts',
+      testFiles: ['tests/tools/compaction/wrap-compaction.test.ts'],
+      reportPath: 'reports/paired/wrap-compaction.json',
     })
     expect(cfg.bun.bunArgs).toBeUndefined()
   })

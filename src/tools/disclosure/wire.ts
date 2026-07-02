@@ -21,9 +21,7 @@ export function maybeApplyDisclosure(
   tools: ToolSet,
   contextId: string,
   retriever: ToolRetriever,
-  opts: { enabled: boolean },
-): { tools: ToolSet; disclosure: DisclosureSession | undefined } {
-  if (!opts.enabled) return { tools, disclosure: undefined }
+): { tools: ToolSet; disclosure: DisclosureSession } {
   // Pre-populate meta-tool keys so that the session's allNames snapshot includes them.
   const withMeta: ToolSet = { ...tools, search_tools: makePlaceholder(), load_tool: makePlaceholder() }
   const session = createDisclosureSession(withMeta, CORE_TOOL_NAMES)

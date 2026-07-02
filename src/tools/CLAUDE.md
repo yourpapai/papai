@@ -43,21 +43,20 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
   settings-UI presets (`applyPreset`/`detectActivePreset`, keyed by `ToolRisk` from
   `tool-metadata.ts`); pruning of redundant overrides is computed against the same
   override→domain→risk→allow baseline so it stays symmetric with resolution.
-- **Result compaction is not part of `makeTools()`.** It is a per-turn wrap applied in
-  `prepareLlmInvocation` (`src/llm-orchestrator-tools.ts`) after `applyToolPreferences`,
-  gated by `resolveReductionFlags(contextId).resultCompaction` (`src/tools/feature-flags.ts`,
-  reserved `tool_context_flags` config key, default OFF, `TOOL_CONTEXT_REDUCTION_DISABLED`
-  kill switch). `applyResultCompaction` (`src/tools/compaction/wrap-compaction.ts`) wraps each
-  executable tool: successful results over `COMPACTION_THRESHOLD_BYTES` are stored in the
-  per-context TTL/LRU result store and replaced by a `CompactedEnvelope` (SMALL_MODEL summary
+- **Result compaction is not part of `makeTools()`.** It is a per-turn wrap applied
+  unconditionally in `prepareLlmInvocation` (`src/llm-orchestrator-tools.ts`) after
+  `applyToolPreferences`. `applyResultCompaction` (`src/tools/compaction/wrap-compaction.ts`)
+  wraps each executable tool: successful results over `COMPACTION_THRESHOLD_BYTES` are stored in
+  the per-context TTL/LRU result store and replaced by a `CompactedEnvelope` (SMALL_MODEL summary
   or truncation preview + handle). The companion `expand_result` tool (registered in
-  `provider-independent-tools-builder.ts` only when the flag is ON and `mode` is `normal`) pages the stored raw
-  result and is itself never wrapped. Flag OFF returns the toolset reference unchanged.
+  `provider-independent-tools-builder.ts` whenever `mode` is `normal` — proactive runs skip
+  compaction, so the pager is not offered there) pages the stored raw result and is itself never
+  wrapped.
 - **Progressive disclosure is also not part of `makeTools()`.** `maybeApplyDisclosure`
-  (`src/tools/disclosure/wire.ts`) runs in `buildFullToolSet` after `applyResultCompaction`,
-  gated by `resolveReductionFlags(contextId).progressiveDisclosure`. When ON it copies the
-  toolset, injects `search_tools` (ranked schema-less briefs via a `ToolRetriever` — embedding
-  with lexical fallback when `semanticToolRetrieval` is ON, else lexical) and `load_tool`
+  (`src/tools/disclosure/wire.ts`) runs unconditionally in `buildFullToolSet` after
+  `applyResultCompaction`. It copies the toolset, injects `search_tools` (ranked schema-less
+  briefs via an embedding `ToolRetriever` from `getToolRetriever`, which falls back to lexical
+  ranking internally when embeddings are unavailable or no LLM config resolves) and `load_tool`
   (batch activation), both bound to one turn-scoped `DisclosureSession` (`registry.ts`, never
   cached). `invokeModel` attaches `createDisclosurePrepareStep` (`prepare-step.ts`) so per-step
   `activeTools` = core ∪ meta ∪ loaded, intersected with registered names; after
@@ -66,7 +65,7 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
   on top of the compacted set so they are never compaction-wrapped; ask/deny preferences were
   already applied, so a loaded tool keeps its `ask` wrapper. Debug events
   (`disclosure:search`/`disclosure:load`/`disclosure:fallback`) carry counts/lengths only —
-  never query text or tool schemas. Flag OFF returns the toolset reference unchanged.
+  never query text or tool schemas.
 
 `MakeToolsOptions` controls tool exposure:
 

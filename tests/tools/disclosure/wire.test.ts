@@ -15,16 +15,9 @@ import { maybeApplyDisclosure } from '../../../src/tools/disclosure/wire.js'
 const d = (): ToolSet[string] => tool({ description: 'x', inputSchema: z.object({}), execute: () => ({}) })
 
 describe('maybeApplyDisclosure', () => {
-  it('is a pass-through when enabled is false', () => {
+  it('adds meta tools and a session', () => {
     const tools: ToolSet = { get_current_time: d(), list_tasks: d() }
-    const out = maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever(), { enabled: false })
-    expect(out.tools).toBe(tools)
-    expect(out.disclosure).toBeUndefined()
-  })
-
-  it('adds meta tools and a session when enabled is true', () => {
-    const tools: ToolSet = { get_current_time: d(), list_tasks: d() }
-    const out = maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever(), { enabled: true })
+    const out = maybeApplyDisclosure(tools, 'ctx-1', new LexicalToolRetriever())
     expect(out.tools['search_tools']).toBeDefined()
     expect(out.tools['load_tool']).toBeDefined()
     assert.ok(out.disclosure !== undefined)

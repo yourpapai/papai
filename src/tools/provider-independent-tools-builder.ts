@@ -16,7 +16,6 @@ import { makeExpandResultTool } from './compaction/expand-result.js'
 import { makeCreateRecurringTaskTool } from './create-recurring-task.js'
 import { addDeferredPromptTools } from './deferred-tools-builder.js'
 import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
-import { resolveReductionFlags } from './feature-flags.js'
 import { makeFetchChatLinkTool } from './fetch-chat-link.js'
 import { makeGetCurrentTimeTool } from './get-current-time.js'
 import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructionTool } from './instructions.js'
@@ -109,7 +108,7 @@ export function addProviderIndependentTools(tools: ToolSet, options: AddProvider
 
   tools['get_current_time'] = makeGetCurrentTimeTool(storageOwnerId)
   // Proactive runs never apply result compaction, so the pager must not be offered there.
-  if (contextId !== undefined && mode === 'normal' && resolveReductionFlags(contextId).resultCompaction) {
+  if (contextId !== undefined && mode === 'normal') {
     tools['expand_result'] = makeExpandResultTool(contextId)
   }
   if (contextId !== undefined && isS3Configured()) {

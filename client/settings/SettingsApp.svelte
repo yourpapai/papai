@@ -41,7 +41,6 @@
   import AdminPluginsConfigSection from './sections/admin/AdminPluginsConfigSection.svelte'
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
   import AdminReleaseNotesSection from './sections/admin/AdminReleaseNotesSection.svelte'
-  import AdminFeatureFlagsSection from './sections/admin/AdminFeatureFlagsSection.svelte'
   import AdminCodingGuardrailsSection from './sections/admin/AdminCodingGuardrailsSection.svelte'
   import AdminToolDefaultsSection from './sections/admin/AdminToolDefaultsSection.svelte'
 
@@ -71,7 +70,6 @@
       items.push(
         { id: 'admins', label: 'Admins' },
         { id: 'plugin-approval', label: 'Plugin approval' },
-        { id: 'feature-flags', label: 'Feature flags' },
       )
     }
     return items
@@ -251,7 +249,6 @@
               {#if settingsSession.isSuperAdmin}
                 <AdminAdminsSection />
                 <AdminPluginsApprovalSection catalogContextId={ctx} />
-                <AdminFeatureFlagsSection />
               {/if}
             </div>
           {/if}

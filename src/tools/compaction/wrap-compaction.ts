@@ -79,7 +79,6 @@ async function compact(
 }
 
 export function applyResultCompaction(tools: ToolSet, ctx: CompactionContext, deps?: WrapCompactionDeps): ToolSet {
-  if (!ctx.enabled) return tools
   const resolvedDeps = deps ?? buildTurnDeps(ctx.storageContextId)
   const out: ToolSet = {}
   for (const [name, t] of Object.entries(tools)) {

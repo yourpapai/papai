@@ -135,43 +135,6 @@ export const adminPluginConfigHandlers: HandlerFamily = {
   ],
 }
 
-// --- Admin: feature flags (GET /settings/api/admin/feature-flags) ---
-// AdminFeatureFlagsSnapshotSchema: { killSwitchEngaged, contexts: Array<{ contextId, kind, label, platformInstanceLabel, flags: { result_compaction, progressive_disclosure, semantic_tool_retrieval } }> }
-
-const adminFeatureFlagsPopulated = {
-  killSwitchEngaged: false,
-  contexts: [
-    {
-      contextId: 'tg:12345',
-      kind: 'user',
-      label: 'Alice',
-      platformInstanceLabel: 'Telegram Main',
-      flags: { result_compaction: true, progressive_disclosure: false, semantic_tool_retrieval: true },
-    },
-    {
-      contextId: 'tg:-100987654321',
-      kind: 'group',
-      label: 'Dev Team',
-      platformInstanceLabel: 'Telegram Main',
-      flags: { result_compaction: false, progressive_disclosure: true, semantic_tool_retrieval: false },
-    },
-  ],
-}
-
-export const adminFeatureFlagsHandlers: HandlerFamily = {
-  populated: [http.get('/settings/api/admin/feature-flags', () => HttpResponse.json(adminFeatureFlagsPopulated))],
-  empty: [
-    http.get('/settings/api/admin/feature-flags', () => HttpResponse.json({ killSwitchEngaged: false, contexts: [] })),
-  ],
-  error: [http.get('/settings/api/admin/feature-flags', boom)],
-  loading: [
-    http.get('/settings/api/admin/feature-flags', async () => {
-      await delay(NEVER_RESOLVE_MS)
-      return HttpResponse.json({ killSwitchEngaged: false, contexts: [] })
-    }),
-  ],
-}
-
 // --- Admin: tool defaults (GET /settings/api/admin/tool-defaults) ---
 // ToolsResponseSchema: { contextId, domains: Array<{ domain, summary, tools: Array<{ name, permission, risk }> }>, activePreset, hasStoredDefaults }
 

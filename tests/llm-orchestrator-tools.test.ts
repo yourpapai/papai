@@ -226,7 +226,8 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
     expect(result.enabledToolNames instanceof Set).toBe(true)
     expect(result.enabledToolNames.has('create_task')).toBe(true)
     expect(result.enabledToolNames.has('save_memo')).toBe(true)
-    expect(Object.keys(result.tools).toSorted()).toEqual(['create_task', 'save_memo'])
+    // Progressive disclosure injects the search_tools/load_tool meta-tools on every turn.
+    expect(Object.keys(result.tools).toSorted()).toEqual(['create_task', 'load_tool', 'save_memo', 'search_tools'])
   })
 
   test('uses providerless descriptors when provider is null', async () => {
@@ -334,8 +335,10 @@ describe('buildFullToolSet / guest actorRole branch', () => {
       actorRole: 'guest',
     })
 
-    // Only the read-risk tool survives the guest filter.
-    expect(Object.keys(result.tools).sort()).toEqual(['list_tasks'])
+    // Only the read-risk tool survives the guest filter; disclosure meta-tools are then
+    // injected on top (bounded to the already-filtered surface — load_tool cannot reach
+    // create_task/web_fetch since they are no longer registered in the session).
+    expect(Object.keys(result.tools).sort()).toEqual(['list_tasks', 'load_tool', 'search_tools'])
     expect(result.enabledToolNames.has('list_tasks')).toBe(true)
     expect(result.enabledToolNames.has('create_task')).toBe(false)
     expect(result.enabledToolNames.has('web_fetch')).toBe(false)

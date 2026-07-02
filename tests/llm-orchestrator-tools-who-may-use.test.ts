@@ -26,7 +26,6 @@ import {
   type PrepareLlmInvocationDeps,
 } from '../src/llm-orchestrator-tools.js'
 import type { CompactionContext } from '../src/tools/compaction/types.js'
-import type { ReductionFlags } from '../src/tools/feature-flags.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 // ---------------------------------------------------------------------------
@@ -36,17 +35,10 @@ import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 const stub = (): ToolSet[string] =>
   tool({ description: '', inputSchema: z.object({}), execute: () => Promise.resolve(null) })
 
-const flags = (): ReductionFlags => ({
-  progressiveDisclosure: false,
-  resultCompaction: false,
-  semanticToolRetrieval: false,
-})
-
 /** A PrepareLlmInvocationDeps that returns a fixed tool set and is otherwise pass-through. */
 const makeDeps = (toolSet: ToolSet): PrepareLlmInvocationDeps => ({
   buildToolDescriptors: (): Promise<ToolSet> => Promise.resolve(toolSet),
   buildProviderlessToolDescriptors: (): Promise<ToolSet> => Promise.resolve(toolSet),
-  resolveReductionFlags: (): ReductionFlags => flags(),
   applyResultCompaction: (tools: ToolSet, _ctx: CompactionContext): ToolSet => tools,
 })
 

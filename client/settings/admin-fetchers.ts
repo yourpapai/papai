@@ -3,13 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import {
-  AdminFeatureFlagRowSchema,
-  AdminFeatureFlagsSnapshotSchema,
-  type AdminFeatureFlagRow,
-  type AdminFeatureFlagState,
-  type AdminFeatureFlagsSnapshot,
-} from '../admin/feature-flags-fetcher-schemas.js'
 import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
@@ -183,17 +176,6 @@ export const patchAdminPluginConfig = (input: {
 
 export const unsetAdminPluginConfig = (input: { pluginId: string; key: string }): Promise<unknown> =>
   writeJson('/settings/api/admin/plugin-config', 'PATCH', { action: 'unset', ...input }, (b) => b)
-
-// --- Admin: feature flags ---
-
-export const fetchAdminFeatureFlags = (): Promise<AdminFeatureFlagsSnapshot> =>
-  getJson('/settings/api/admin/feature-flags', (b) => AdminFeatureFlagsSnapshotSchema.parse(b))
-
-export const saveAdminFeatureFlags = (input: {
-  contextId: string
-  flags: AdminFeatureFlagState
-}): Promise<AdminFeatureFlagRow> =>
-  writeJson('/settings/api/admin/feature-flags', 'PATCH', input, (b) => AdminFeatureFlagRowSchema.parse(b))
 
 // Admin tool defaults: POST for all toggle kinds (domain/tool/preset), mirroring the user-facing /tools route.
 

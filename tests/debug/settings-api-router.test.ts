@@ -57,13 +57,4 @@ describe('routeSettingsApi', () => {
     expect(res).not.toBeNull()
     expect(res?.status).toBe(401)
   })
-
-  test('routes /settings/api/admin/feature-flags (401 without a session)', async () => {
-    const res = await routeSettingsApi(
-      new Request('https://x/settings/api/admin/feature-flags'),
-      new URL('https://x/settings/api/admin/feature-flags'),
-    )
-    expect(res).not.toBeNull()
-    expect(res?.status).toBe(401)
-  })
 })

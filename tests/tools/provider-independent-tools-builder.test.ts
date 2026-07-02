@@ -7,12 +7,8 @@ import { beforeEach, describe, expect, it } from 'bun:test'
 
 import type { ToolSet } from 'ai'
 
-import { setCachedConfig } from '../../src/cache.js'
-import { REDUCTION_FLAGS_CONFIG_KEY } from '../../src/tools/feature-flags.js'
 import { addProviderIndependentTools } from '../../src/tools/provider-independent-tools-builder.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
-
-const COMPACTION_ON = JSON.stringify({ result_compaction: true })
 
 // Unique context per test: the in-memory config cache outlives individual tests.
 const optsFor = (
@@ -32,24 +28,15 @@ describe('expand_result registration', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    delete process.env['TOOL_CONTEXT_REDUCTION_DISABLED']
   })
 
-  it('omits expand_result when compaction flag is OFF', () => {
-    const tools: ToolSet = {}
-    addProviderIndependentTools(tools, optsFor('pitb-off'))
-    expect(tools['expand_result']).toBeUndefined()
-  })
-
-  it('adds expand_result when compaction flag is ON', () => {
-    setCachedConfig('pitb-on', REDUCTION_FLAGS_CONFIG_KEY, COMPACTION_ON)
+  it('adds expand_result in normal mode', () => {
     const tools: ToolSet = {}
     addProviderIndependentTools(tools, optsFor('pitb-on'))
     expect(tools['expand_result']).toBeDefined()
   })
 
-  it('omits expand_result in proactive mode even when compaction flag is ON', () => {
-    setCachedConfig('pitb-proactive', REDUCTION_FLAGS_CONFIG_KEY, COMPACTION_ON)
+  it('omits expand_result in proactive mode', () => {
     const tools: ToolSet = {}
     addProviderIndependentTools(tools, optsFor('pitb-proactive', 'proactive'))
     expect(tools['expand_result']).toBeUndefined()
@@ -60,7 +47,6 @@ describe('search_memory registration', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    delete process.env['TOOL_CONTEXT_REDUCTION_DISABLED']
   })
 
   it('registers search_memory in normal mode for a group context', () => {

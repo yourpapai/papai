@@ -15,7 +15,6 @@ import {
 import {
   adminAdminsHandlers,
   adminByokHandlers,
-  adminFeatureFlagsHandlers,
   adminGroupsHandlers,
   adminPluginConfigHandlers,
   adminSystemHandlers,
@@ -58,7 +57,6 @@ describe('admin settings msw handlers', () => {
   assertHandlerFamily('adminGroupsHandlers', adminGroupsHandlers, '/settings/api/admin/groups')
   assertHandlerFamily('adminAdminsHandlers', adminAdminsHandlers, '/settings/api/admin/admins')
   assertHandlerFamily('adminPluginConfigHandlers', adminPluginConfigHandlers, '/settings/api/admin/plugin-config')
-  assertHandlerFamily('adminFeatureFlagsHandlers', adminFeatureFlagsHandlers, '/settings/api/admin/feature-flags')
   assertHandlerFamily('adminToolDefaultsHandlers', adminToolDefaultsHandlers, '/settings/api/admin/tool-defaults')
   assertHandlerFamily('adminReleaseNotesHandlers', adminReleaseNotesHandlers, '/settings/api/admin/release-notes')
   assertHandlerFamily(
