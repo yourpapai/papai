@@ -146,8 +146,8 @@
     "client/settings/session.svelte.ts": ["exports"],
     "client/settings/lib/mask-secret.ts": ["exports"],
     "client/settings/lib/truncate-middle.ts": ["exports"],
-    // group-tools exports are consumed only by ToolsSection.svelte (added in a
-    // follow-up task), which knip can't parse. Permanent, not temporary.
+    // group-tools is consumed only by ToolsSection.svelte, which knip can't parse.
+    // Permanent, not temporary.
     "client/settings/lib/group-tools.ts": ["files", "exports"],
     "client/shared/fetcher-helpers.ts": ["exports"],
     "client/shared/helpers.ts": ["exports"],
