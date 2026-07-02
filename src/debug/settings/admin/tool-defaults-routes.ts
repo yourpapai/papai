@@ -6,6 +6,8 @@
 import { z } from 'zod'
 
 import { logger } from '../../../logger.js'
+import { namespacedToolName } from '../../../plugins/contribution-names.js'
+import { contributionRegistry } from '../../../plugins/contributions.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { adminToolDefaultsContextId } from '../../../tools/admin-tool-defaults.js'
 import { getToolMetadata, isToolDomain, TOOL_METADATA } from '../../../tools/tool-metadata.js'
@@ -18,16 +20,38 @@ import {
   setToolPrefs,
 } from '../../../tools/tool-preferences.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
+import { resolveGroupTools } from '../tool-grouping.js'
 import { buildDomainView, setDomainPermission, setToolPermission } from '../tools-routes.js'
 import { requireAdmin } from './admin-guard.js'
 
 const log = logger.child({ scope: 'debug-server:settings-admin-tool-defaults' })
 
-const CATALOG_NAMES: readonly string[] = Object.keys(TOOL_METADATA)
+/**
+ * Catalog: static builtin metadata keys + native tool names of all active
+ * plugins (context-agnostic — admin defaults have no live context to gate
+ * against). MCP-sourced names are inherently not enumerable here: they
+ * require per-context config and credentials; admin defaults govern them via
+ * the mcp/plugin domain rows and the open-world risk tier.
+ */
+function catalogNames(): string[] {
+  const names = new Set<string>(Object.keys(TOOL_METADATA))
+  for (const pluginId of contributionRegistry.getActivePluginIds()) {
+    const contributions = contributionRegistry.getContributions(pluginId)
+    if (contributions === undefined) continue
+    for (const pluginTool of contributions.tools) names.add(namespacedToolName(pluginId, pluginTool.name))
+  }
+  return [...names]
+}
 
 const ToggleBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('domain'), permission: z.enum(['allow', 'ask', 'deny']), domain: z.string() }),
   z.object({ kind: z.literal('tool'), permission: z.enum(['allow', 'ask', 'deny']), tool: z.string() }),
+  z.object({
+    kind: z.literal('group'),
+    permission: z.enum(['allow', 'ask', 'deny']),
+    domain: z.string(),
+    group: z.string(),
+  }),
   z.object({ kind: z.literal('preset'), preset: z.enum(['allow-all', 'non-destructive', 'read-only']) }),
   z.object({ kind: z.literal('unset') }),
 ])
@@ -39,7 +63,7 @@ function view(contextId: string): Response {
   const activePreset = stored ? detectActivePreset(prefs) : null
   return settingsJson(200, {
     contextId,
-    domains: buildDomainView(CATALOG_NAMES, prefs),
+    domains: buildDomainView(catalogNames(), prefs),
     activePreset,
     hasStoredDefaults: stored,
   })
@@ -75,6 +99,13 @@ async function handlePost(req: Request, authed: AuthenticatedSettingsRequest): P
     // catalog membership only — admin defaults are provider-agnostic (no live context to gate against)
     if (getToolMetadata(body.data.tool) === undefined) return settingsJson(422, { error: 'unknown tool' })
     setToolPrefs(ctx, setToolPermission(prefs, body.data.tool, body.data.permission))
+  } else if (body.data.kind === 'group') {
+    if (!isToolDomain(body.data.domain)) return settingsJson(422, { error: 'unknown tool domain' })
+    const groupTools = resolveGroupTools(catalogNames(), body.data.domain, body.data.group)
+    if (groupTools.length === 0) return settingsJson(422, { error: 'unknown tool group' })
+    let next = prefs
+    for (const name of groupTools) next = setToolPermission(next, name, body.data.permission)
+    setToolPrefs(ctx, next)
   } else {
     setToolPrefs(ctx, applyPreset(body.data.preset))
   }
