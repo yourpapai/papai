@@ -3,30 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ChatRouter } from '../../chat/router.js'
 import { parseScopedContextId } from '../../chat/scoped-context.js'
-import { resolveSourceProviderName } from '../../chat/source-instance.js'
 import { getGroupUserObservationLabels } from '../../group-settings/registry.js'
 import { getPlatformInstance } from '../../instances/platform-store.js'
+import { logger } from '../../logger.js'
 import { getRuntimeChatRouter } from '../chat-router-runtime.js'
 import { resolveMemberLabels } from './member-labels.js'
+
+const log = logger.child({ scope: 'debug-server:member-enrichment' })
 
 export type BareMember = { user_id: string; added_by: string; added_at: string }
 export type EnrichedMember = BareMember & { user_label: string | null; added_by_label: string | null }
 
-function tryResolveSourceProviderName(router: ChatRouter, platformInstanceId: string): string | null {
-  try {
-    return resolveSourceProviderName(router, platformInstanceId)
-  } catch {
-    return null
-  }
-}
-
-/** Resolve the persisted provider name for a platform instance, preferring the live router. */
+/** Resolve the persisted provider name for a platform instance. */
 function resolveProviderName(platformInstanceId: string): string | null {
-  const router = getRuntimeChatRouter()
-  const live = router === null ? null : tryResolveSourceProviderName(router, platformInstanceId)
-  return live ?? getPlatformInstance(platformInstanceId)?.type ?? null
+  return getPlatformInstance(platformInstanceId)?.type ?? null
 }
 
 /** Best-effort display-label enrichment. Never throws — falls back to raw ids on any failure. */
@@ -50,7 +41,11 @@ export async function enrichMembers(contextId: string, members: BareMember[]): P
       user_label: labels.get(m.user_id) ?? null,
       added_by_label: labels.get(m.added_by) ?? null,
     }))
-  } catch {
+  } catch (err) {
+    log.warn(
+      { contextId, err: err instanceof Error ? err.message : String(err) },
+      'member label enrichment failed; returning raw ids',
+    )
     return bare()
   }
 }
