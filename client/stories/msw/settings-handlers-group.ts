@@ -17,13 +17,19 @@ export interface HandlerFamily {
 }
 
 // --- Group members (GET /settings/api/group/members) ---
-// Schema: GroupMembersResponseSchema = { contextId: string, members: Array<{ user_id, added_by, added_at }> }
+// Schema: GroupMembersResponseSchema = { contextId: string, members: Array<{ user_id, added_by, added_at, user_label: string|null, added_by_label: string|null }> }
 
 const groupMembersPopulated = {
   contextId: 'ctx-group-1',
   members: [
-    { user_id: 'u1', added_by: 'admin', added_at: '2026-05-01T00:00:00Z' },
-    { user_id: 'u2', added_by: 'u1', added_at: '2026-05-02T00:00:00Z' },
+    {
+      user_id: 'u1',
+      added_by: 'admin',
+      added_at: '2026-05-01T00:00:00Z',
+      user_label: 'Alice (@alice)',
+      added_by_label: 'Admin',
+    },
+    { user_id: 'u2', added_by: 'u1', added_at: '2026-05-02T00:00:00Z', user_label: null, added_by_label: null },
   ],
 }
 
