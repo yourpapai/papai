@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { HttpFetch } from './client.js'
+import { continueSessionTool } from './continue-tool.js'
 import {
   answerPermissionTool,
   cancelSessionTool,
@@ -113,6 +114,7 @@ const factory = (): { activate(ctx: unknown): void } => ({
     ctx.registerTool(cancelSessionTool(ctx.httpFetch))
     ctx.registerTool(answerPermissionTool(ctx.httpFetch))
     ctx.registerTool(reviewPrTool(ctx.httpFetch))
+    ctx.registerTool(continueSessionTool(ctx.httpFetch))
     ctx.registerFragment({ name: 'acp-hint', content: ACP_PROMPT_FRAGMENT })
     ctx.registerCommand({
       name: 'acp',

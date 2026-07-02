@@ -61,3 +61,15 @@ export const reviewPrSchema = {
   required: ['project', 'prNumber'],
   additionalProperties: false,
 } as const
+
+export const continueSessionSchema = {
+  type: 'object',
+  properties: {
+    sessionId: { type: 'string', description: 'A prior session id to continue.' },
+    prNumber: { type: 'integer', description: 'A prior PR/MR number to continue (with project).' },
+    project: { type: 'string', description: 'Project name (required when using prNumber).' },
+    prompt: { type: 'string', description: 'What to do next on the existing branch/PR.' },
+  },
+  required: ['prompt'],
+  additionalProperties: false,
+} as const
