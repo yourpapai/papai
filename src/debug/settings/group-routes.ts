@@ -22,6 +22,7 @@ import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { requireScope } from '../../settings/scope-guard.js'
 import { isBoundInstanceProvisionable } from './context-task-instance-routes.js'
+import { enrichMembers } from './member-enrichment.js'
 import { resolveSettingsUserId } from './resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
 
@@ -54,10 +55,12 @@ function requireGroup(
   return { ok: true, group: { contextId: result.contextId } }
 }
 
-function handleMembersGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
+async function handleMembersGet(authed: AuthenticatedSettingsRequest, url: URL): Promise<Response> {
   const outcome = requireGroup(authed, 'read', url.searchParams.get('contextId'))
   if (!outcome.ok) return outcome.response
-  return settingsJson(200, { contextId: outcome.group.contextId, members: listGroupMembers(outcome.group.contextId) })
+  const contextId = outcome.group.contextId
+  const members = await enrichMembers(contextId, listGroupMembers(contextId))
+  return settingsJson(200, { contextId, members })
 }
 
 const MemberBodySchema = z.object({ userId: z.string().min(1), contextId: z.string().min(1) })
@@ -226,7 +229,7 @@ export function handleGroupRoutes(req: Request, url: URL, pathname: string): Pro
   if (!auth.ok) return Promise.resolve(auth.response)
 
   if (pathname === '/settings/api/group/members') {
-    if (req.method === 'GET') return Promise.resolve(handleMembersGet(auth.authed, url))
+    if (req.method === 'GET') return handleMembersGet(auth.authed, url)
     if (req.method === 'POST' || req.method === 'DELETE') return handleMembersWrite(req, auth.authed)
     return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
   }

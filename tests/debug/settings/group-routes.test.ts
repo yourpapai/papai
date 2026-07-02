@@ -25,6 +25,18 @@ const MembersDetailSchema = z.object({
   contextId: z.string(),
   members: z.array(z.object({ user_id: z.string(), added_by: z.string(), added_at: z.string() })),
 })
+const MembersLabelSchema = z.object({
+  contextId: z.string(),
+  members: z.array(
+    z.object({
+      user_id: z.string(),
+      added_by: z.string(),
+      added_at: z.string(),
+      user_label: z.string().nullable(),
+      added_by_label: z.string().nullable(),
+    }),
+  ),
+})
 const TaskInstanceGetSchema = z.object({
   contextId: z.string(),
   taskInstanceId: z.string().nullable(),
@@ -37,6 +49,15 @@ const mockResolveUserId = mock((username: string, _context?: unknown) => {
   return Promise.resolve<string | null>(/^\d+$/u.test(username) ? username : `resolved-${username}`)
 })
 
+const mockResolveUserLabel = mock((userId: string, _context?: unknown) =>
+  Promise.resolve<string | null>(userId === 'member-1' ? 'Member One (@m1)' : null),
+)
+
+/** Live-label resolver used by the "enriches user_label" test — kept out of the test body so the
+ *  linter's no-conditional-in-test rule doesn't flag the branch. */
+const resolveLuckyLabel = (userId: string, _context?: unknown): Promise<string | null> =>
+  Promise.resolve(userId === '777' ? 'Lucky (@lucky)' : null)
+
 class MockChatRouter extends ChatRouter {
   constructor() {
     super(() => {
@@ -46,6 +67,10 @@ class MockChatRouter extends ChatRouter {
 
   override resolveUserId(username: string, context?: unknown): Promise<string | null> {
     return mockResolveUserId(username, context)
+  }
+
+  override resolveUserLabel(userId: string, context?: unknown): Promise<string | null> {
+    return mockResolveUserLabel(userId, context)
   }
 }
 
@@ -79,6 +104,7 @@ describe('settings group routes', () => {
     addUser({ userId: 'u-1', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
     session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-1' })
     mockResolveUserId.mockClear()
+    mockResolveUserLabel.mockClear()
     setRuntimeChatRouter(new MockChatRouter())
   })
 
@@ -374,5 +400,54 @@ describe('settings group routes', () => {
     expect(res.status).toBe(422)
     await expect(res.json()).resolves.toEqual({ error: 'unreadable task instance' })
     expect(getContextSettings(contextId)).toBeNull()
+  })
+
+  test('members GET enriches user_label via the live resolver', async () => {
+    const contextId = seedManageableGroup()
+    mockResolveUserLabel.mockImplementation(resolveLuckyLabel)
+    const postUrl = new URL('https://x/settings/api/group/members')
+    await handleGroupRoutes(
+      new Request(postUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '777', contextId }),
+      }),
+      postUrl,
+      '/settings/api/group/members',
+    )
+    const getUrl = new URL(`https://x/settings/api/group/members?contextId=${encodeURIComponent(contextId)}`)
+    const res = await handleGroupRoutes(
+      new Request(getUrl, { headers: authHeaders(session) }),
+      getUrl,
+      '/settings/api/group/members',
+    )
+    expect(res.status).toBe(200)
+    const body = MembersLabelSchema.parse(await res.json())
+    const row = body.members.find((m) => m.user_id === '777')!
+    expect(row.user_label).toBe('Lucky (@lucky)')
+  })
+
+  test('members GET returns 200 with null labels when the chat router is absent', async () => {
+    const contextId = seedManageableGroup()
+    const postUrl = new URL('https://x/settings/api/group/members')
+    await handleGroupRoutes(
+      new Request(postUrl, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: '777', contextId }),
+      }),
+      postUrl,
+      '/settings/api/group/members',
+    )
+    clearRuntimeChatRouter()
+    const getUrl = new URL(`https://x/settings/api/group/members?contextId=${encodeURIComponent(contextId)}`)
+    const res = await handleGroupRoutes(
+      new Request(getUrl, { headers: authHeaders(session) }),
+      getUrl,
+      '/settings/api/group/members',
+    )
+    expect(res.status).toBe(200)
+    const body = MembersLabelSchema.parse(await res.json())
+    expect(body.members.every((m) => m.user_label === null)).toBe(true)
   })
 })
