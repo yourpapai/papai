@@ -154,4 +154,24 @@ describe('MembersSection', () => {
     expect(input?.placeholder).toBe('123456789 or @username')
     void unmount(component)
   })
+
+  test('shows Loading placeholder before the first fetch resolves, not "No members"', async () => {
+    let resolveFetch: (r: Response) => void = () => {}
+    setMockFetch(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    flushSync()
+    expect(target.textContent).toContain('Loading…')
+    expect(target.textContent).not.toContain('No members')
+    resolveFetch(json({ contextId: 'group:7', members: [] }))
+    await drain()
+    expect(target.textContent).toContain('No members')
+    void unmount(component)
+  })
 })

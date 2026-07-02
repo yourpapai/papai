@@ -101,18 +101,22 @@
     </Btn>
   </form>
 
-  <div class="settings-table-wrap">
-    {#snippet cell(row: MemberRow, col: { key: string; label: string })}
-      {#if col.key === 'actions'}
-        <Btn variant="ghost" size="sm" testid={`member-remove-${row.user_id}`} onClick={() => void remove(row.user_id)}>
-          {#snippet children()}Remove{/snippet}
-        </Btn>
-      {:else}
-        {String(row[col.key as keyof MemberRow] ?? '')}
-      {/if}
-    {/snippet}
-    <DataTable columns={memberColumns} rows={memberRows} {cell} rowKey="user_id">
-      {#snippet empty()}No members{/snippet}
-    </DataTable>
-  </div>
+  {#if loading && members.length === 0}
+    <p class="placeholder">Loading…</p>
+  {:else}
+    <div class="settings-table-wrap">
+      {#snippet cell(row: MemberRow, col: { key: string; label: string })}
+        {#if col.key === 'actions'}
+          <Btn variant="ghost" size="sm" testid={`member-remove-${row.user_id}`} onClick={() => void remove(row.user_id)}>
+            {#snippet children()}Remove{/snippet}
+          </Btn>
+        {:else}
+          {String(row[col.key as keyof MemberRow] ?? '')}
+        {/if}
+      {/snippet}
+      <DataTable columns={memberColumns} rows={memberRows} {cell} rowKey="user_id">
+        {#snippet empty()}No members{/snippet}
+      </DataTable>
+    </div>
+  {/if}
 </section>
