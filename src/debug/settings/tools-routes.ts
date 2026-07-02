@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { safeBuildProvider } from '../../commands/context-tool-resolution.js'
 import { logger } from '../../logger.js'
+import { buildProviderlessToolDescriptors, buildToolDescriptors, type MakeToolsOptions } from '../../tools/index.js'
 import { getToolMetadata, isToolDomain, type ToolDomain } from '../../tools/tool-metadata.js'
 import {
   applyPreset,
@@ -19,25 +20,35 @@ import {
   type Permission,
   type ToolPrefs,
 } from '../../tools/tool-preferences.js'
-import { buildTools } from '../../tools/tools-builder.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-tools' })
 
-/** Computed, capability+context-gated tool names for a context. */
+/**
+ * Computed tool names for a context, mirroring the runtime surface exactly:
+ * builtins + user MCP tools + plugin tools + plugin-declared MCP tools, with
+ * runtime capability/eligibility/collision rules. MCP connections are pooled
+ * and best-effort — a downed server degrades to "tools absent", never an error.
+ */
 async function availableToolNames(
   contextId: string,
   actorUserId: string,
   contextType: 'dm' | 'group',
 ): Promise<string[]> {
   const provider = await safeBuildProvider(contextId)
-  if (provider === null) return []
   // NOTE: `chatParticipantResolver` is intentionally omitted here — the settings-UI
   // tool surface has no live ChatRouter-bound resolver available outside a chat turn,
   // so `resolve_chat_participant` is absent from the displayed tool list even when it
   // would be exposed during a real group turn. This is a known display-only discrepancy.
-  const tools = buildTools(provider, actorUserId, contextId, 'normal', contextType)
-  return Object.keys(tools).filter((name) => getToolMetadata(name) !== undefined)
+  const options: MakeToolsOptions = {
+    storageContextId: contextId,
+    chatUserId: actorUserId,
+    mode: 'normal',
+    contextType,
+  }
+  const toolset =
+    provider === null ? await buildProviderlessToolDescriptors(options) : await buildToolDescriptors(provider, options)
+  return Object.keys(toolset).filter((name) => getToolMetadata(name) !== undefined)
 }
 
 function groupByDomain(names: readonly string[]): Map<ToolDomain, string[]> {

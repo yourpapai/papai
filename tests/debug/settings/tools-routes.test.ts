@@ -56,12 +56,15 @@ describe('settings tools routes', () => {
     personalContextId = toScopedContextId({ platformInstanceId: PLATFORM_INSTANCE_ID, nativeContextId: USER_ID })
   })
 
-  test('GET returns three-state domains (empty when no provider configured)', async () => {
+  test('GET returns the providerless tool surface when no provider is configured', async () => {
     const url = new URL('https://x/settings/api/tools')
     const res = await handleToolsRoutes(new Request(url, { headers: authHeaders(session) }), url, '/settings/api/tools')
     expect(res.status).toBe(200)
     const body = DomainsResponseSchema.parse(await res.json())
-    expect(Array.isArray(body.domains)).toBe(true)
+    // Providerless builtins (e.g. get_current_time in the 'time' domain, memos) are now listed.
+    const domainNames = body.domains.map((d) => d.domain)
+    expect(domainNames).toContain('time')
+    expect(domainNames).toContain('memo')
   })
 
   test('GET returns permission=allow by default for unset tools', async () => {
@@ -149,10 +152,7 @@ describe('settings tools routes', () => {
     expect(Array.isArray(body.domains)).toBe(true)
   })
 
-  test('toggle sets tool permission to deny for known tool', async () => {
-    // Use a known-always-available tool name directly in prefs (no provider needed for prefs)
-    // The route rejects tool writes for tools not in the computed available set (provider-gated),
-    // so this test verifies the 422 path when provider is absent.
+  test('toggle sets tool permission to deny for a providerless builtin', async () => {
     const url = new URL('https://x/settings/api/tools/toggle')
     const res = await handleToolsRoutes(
       new Request(url, {
@@ -163,7 +163,23 @@ describe('settings tools routes', () => {
       url,
       '/settings/api/tools/toggle',
     )
-    // Without a provider, the tool is not in the available set → 422
+    expect(res.status).toBe(200)
+    const updatedPrefs = getToolPrefs(personalContextId)
+    expect(updatedPrefs.toolOverrides['get_current_time']).toBe('deny')
+  })
+
+  test('toggle still rejects a tool not exposed in this context with 422', async () => {
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        // create_task requires a task provider, which this context does not have
+        body: JSON.stringify({ kind: 'tool', tool: 'create_task', permission: 'deny' }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
     expect(res.status).toBe(422)
   })
 
