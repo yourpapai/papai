@@ -49,3 +49,16 @@ test('MembersSection — add button hover', async ({ sharedPage }) => {
   await sharedPage.getByTestId('member-add').hover()
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('MembersSection — remove confirmation open', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-memberssection--populated')
+  await sharedPage.setViewportSize({ width: 1280, height: 720 })
+  await sharedPage.getByTestId('member-remove-u1').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('MembersSection — loading is distinct from empty', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-memberssection--loading')
+  await sharedPage.setViewportSize({ width: 1280, height: 720 })
+  await expect(sharedPage).toHaveScreenshot()
+})
