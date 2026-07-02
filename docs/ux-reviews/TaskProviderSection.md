@@ -66,7 +66,7 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 - **Source:** `client/settings/sections/TaskProviderSection.svelte:126`
   (`options={instanceData.available.map((o) => ({ value: o.id, label: \`${o.id} (${o.type} ·
   ${o.status})\` }))}`) — the `available`entries carry no human-friendly name field to fall back
-  to, per the`ContextTaskInstanceResponse` shape consumed here.
+to, per the`ContextTaskInstanceResponse` shape consumed here.
 - **Suggested fix:** surface a human-readable instance name (or a short ordinal like "Instance
   1") ahead of/instead of the raw id, reserving the id for a secondary/monospace detail.
 
