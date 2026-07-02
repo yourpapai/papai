@@ -5,7 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { buildLogsUrl, collectScopes, parseLogsArray } from '../../../client/debug/log-bootstrap.js'
+import { buildLogsUrl, collectScopes, fetchScopes, parseLogsArray } from '../../../client/debug/log-bootstrap.js'
+import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 describe('buildLogsUrl', () => {
   test('defaults to a bounded initial page', () => {
@@ -46,5 +47,23 @@ describe('collectScopes', () => {
     expect(scopes.has('x')).toBe(true)
     expect(scopes.has('y')).toBe(true)
     expect(scopes.size).toBe(2)
+  })
+})
+
+describe('log-bootstrap filtering', () => {
+  test('buildLogsUrl includes filter params', () => {
+    const url = buildLogsUrl({ limit: 200, filter: { include: ['chat'], exclude: [], level: 30 } })
+    expect(url).toContain('limit=200')
+    expect(url).toContain('include=chat')
+    expect(url).toContain('level=30')
+  })
+
+  test('fetchScopes returns parsed rows', async () => {
+    setMockFetch(() => Promise.resolve(new Response(JSON.stringify([{ scope: 'bot', count: 3 }]))))
+    try {
+      expect(await fetchScopes()).toEqual([{ scope: 'bot', count: 3 }])
+    } finally {
+      restoreFetch()
+    }
   })
 })

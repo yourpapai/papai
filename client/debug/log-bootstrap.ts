@@ -7,6 +7,7 @@ import { safeParseLogBufferStats } from '../../src/debug/log-stats-schema.js'
 import type { LogBufferStats } from '../../src/debug/log-stats-schema.js'
 import type { LogEntry } from '../../src/debug/schemas.js'
 import { parseLogEntry } from '../../src/debug/schemas.js'
+import { filterToParams, type LogFilter } from './log-filter-url.js'
 
 export type { LogBufferStats } from '../../src/debug/log-stats-schema.js'
 
@@ -33,9 +34,9 @@ export function collectScopes(logs: readonly LogEntry[]): Set<string> {
 const INITIAL_LIMIT = 500
 const OLDER_PAGE_LIMIT = 200
 
-/** Build a `/logs` URL. `limit` bounds the page size; `before` (ISO time) pages backward through the buffer. */
-export function buildLogsUrl(params: { limit?: number; before?: string }): string {
-  const search = new URLSearchParams()
+/** Build a `/logs` URL. `limit` bounds the page size; `before` pages backward; `filter` scopes the query server-side. */
+export function buildLogsUrl(params: { limit?: number; before?: string; filter?: LogFilter }): string {
+  const search = params.filter ? filterToParams(params.filter) : new URLSearchParams()
   search.set('limit', String(params.limit ?? INITIAL_LIMIT))
   if (params.before !== undefined) search.set('before', params.before)
   return `/logs?${search.toString()}`
@@ -49,21 +50,49 @@ async function fetchLogsArray(urlPath: string): Promise<unknown[]> {
   return body as unknown[]
 }
 
-export function fetchInitialLogs(limit: number = INITIAL_LIMIT): Promise<unknown[]> {
-  return fetchLogsArray(buildLogsUrl({ limit }))
+export function fetchInitialLogs(filter?: LogFilter, limit: number = INITIAL_LIMIT): Promise<unknown[]> {
+  return fetchLogsArray(buildLogsUrl({ limit, filter }))
 }
 
 /** Fetch the page of buffered entries immediately older than `before` (the oldest currently-loaded timestamp). */
-export function fetchOlderLogs(before: string, limit: number = OLDER_PAGE_LIMIT): Promise<unknown[]> {
-  return fetchLogsArray(buildLogsUrl({ limit, before }))
+export function fetchOlderLogs(
+  before: string,
+  filter?: LogFilter,
+  limit: number = OLDER_PAGE_LIMIT,
+): Promise<unknown[]> {
+  return fetchLogsArray(buildLogsUrl({ limit, before, filter }))
 }
 
-export async function fetchLogStats(): Promise<LogBufferStats | null> {
+export async function fetchLogStats(filter?: LogFilter): Promise<LogBufferStats | null> {
   try {
-    const res = await fetch('/logs/stats')
+    const params = filter ? filterToParams(filter) : new URLSearchParams()
+    const res = await fetch(`/logs/stats?${params.toString()}`)
     if (!res.ok) return null
     return safeParseLogBufferStats(await res.json())
   } catch {
     return null
+  }
+}
+
+export type ScopeCount = { scope: string; count: number }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isScopeCount(r: unknown): r is ScopeCount {
+  if (!isRecord(r)) return false
+  return typeof r['scope'] === 'string' && typeof r['count'] === 'number'
+}
+
+export async function fetchScopes(): Promise<ScopeCount[]> {
+  try {
+    const res = await fetch('/logs/scopes')
+    if (!res.ok) return []
+    const body: unknown = await res.json()
+    if (!Array.isArray(body)) return []
+    return body.filter((r): r is ScopeCount => isScopeCount(r))
+  } catch {
+    return []
   }
 }
