@@ -137,6 +137,7 @@
     "client/admin/scrollspy.ts": ["exports"],
     // Settings client: .svelte components consume these, but knip can't follow .svelte imports.
     "client/settings/fetcher-schemas.ts": ["types"],
+    "client/settings/fetcher-schemas-admin.ts": ["types"],
     "client/settings/fetcher-schemas-tools.ts": ["types"],
     "client/settings/fetchers.ts": ["exports"],
     "client/settings/coding-credentials-fetchers.ts": ["exports"],
