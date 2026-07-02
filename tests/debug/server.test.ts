@@ -267,7 +267,7 @@ describe('debug-server', () => {
   })
 
   test('GET /logs supports scope filter', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/logs?scope=debug-server`, { headers: authHeaders() })
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs?include=debug-server`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
