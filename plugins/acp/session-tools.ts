@@ -13,6 +13,7 @@ import {
   readMagiConfig,
 } from './client.js'
 import type { HttpFetch } from './client.js'
+import { deriveTitle, parsePrNumber, readRecord, writeRecord } from './history.js'
 import {
   answerPermissionSchema,
   finishSessionSchema,
@@ -27,6 +28,23 @@ import { buildSessionProjectSpec, canDeriveForge, sessionIdOf } from './tools.js
 const DEFAULT_AGENT = 'claude-code-acp'
 const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
 const DEFAULT_FINISH_MESSAGE = 'Apply changes from magi coding session'
+
+function recordStartedSession(runtimeContext: RuntimeContext, result: unknown, project: string, prompt: string): void {
+  const id = sessionIdOf(result)
+  if (id !== null)
+    writeRecord(runtimeContext.kv, id, { project, title: deriveTitle(prompt), createdAt: new Date().toISOString() })
+}
+
+function recordReviewSession(runtimeContext: RuntimeContext, result: unknown, project: string, prNumber: number): void {
+  const id = sessionIdOf(result)
+  if (id !== null)
+    writeRecord(runtimeContext.kv, id, {
+      project,
+      title: `review PR #${prNumber}`,
+      createdAt: new Date().toISOString(),
+      prNumber,
+    })
+}
 
 export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
@@ -72,10 +90,33 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         ...(forgeToken === null ? {} : { forgeToken }),
         projectSpec,
       })
-      const id = sessionIdOf(result)
-      if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
+      recordStartedSession(runtimeContext, result, project, prompt)
       return result
     },
+  }
+}
+
+// Merge the locally-known title/parentSessionId into a magi session row, and
+// refresh the local record's status/prUrl/prNumber from magi's latest view.
+function enrichSession(runtimeContext: RuntimeContext, s: unknown): unknown {
+  const sid = sessionIdOf(s)
+  if (sid === null) return s
+  const row = asObject(s)
+  const prUrl = optionalString(row, 'prUrl')
+  const prNumber = parsePrNumber(prUrl)
+  const record = readRecord(runtimeContext.kv, sid)
+  if (record !== null) {
+    writeRecord(runtimeContext.kv, sid, {
+      ...record,
+      status: optionalString(row, 'status') ?? record.status,
+      ...(prUrl === undefined ? {} : { prUrl }),
+      ...(prNumber === undefined ? {} : { prNumber }),
+    })
+  }
+  return {
+    ...row,
+    ...(record === null ? {} : { title: record.title, parentSessionId: record.parentSessionId }),
+    ...(prNumber === undefined ? {} : { prNumber }),
   }
 }
 
@@ -93,10 +134,12 @@ export function listSessionsTool(httpFetch: HttpFetch | undefined): Tool {
       const result = await callMagi(httpFetch, cfg, 'GET', `/sessions?filter=${encodeURIComponent(filter)}`)
       if (!Array.isArray(result)) return result
       const known = new Set(runtimeContext.kv.list('session:').map((row): string => row.key.slice('session:'.length)))
-      return result.filter((s): boolean => {
-        const id = sessionIdOf(s)
-        return id !== null && known.has(id)
-      })
+      return result
+        .filter((s): boolean => {
+          const sid = sessionIdOf(s)
+          return sid !== null && known.has(sid)
+        })
+        .map((s): unknown => enrichSession(runtimeContext, s))
     },
   }
 }
@@ -240,8 +283,7 @@ export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
         forgeToken,
         projectSpec,
       })
-      const id = sessionIdOf(result)
-      if (id !== null) runtimeContext.kv.set(`session:${id}`, '1')
+      recordReviewSession(runtimeContext, result, project, prNumber)
       return result
     },
   }

@@ -95,12 +95,15 @@ const ACP_PROMPT_FRAGMENT =
   'configured project, list_sessions/session_status to check progress, answer_permission(sessionId, ' +
   'decision) when the agent needs approval, finish_session(sessionId, action) to commit/push or open a ' +
   'PR, cancel_session to stop one, and review_pr(project, prNumber) to review an open PR. ' +
+  "Use continue_session(sessionId or prNumber, prompt) to keep working on a prior session's " +
+  'branch/PR — it updates the existing PR. ' +
   'Use list_projects/list_agents to discover what is configured. The user is notified when a session ' +
   'finishes or needs input.'
 
 const ACP_COMMAND_TEXT =
   'ACP coding sessions are available. Ask me in natural language, e.g. "start a session on demo to add a ' +
-  'health check", "what sessions are running?", or "review PR 42 on demo".'
+  'health check", "what sessions are running?", "review PR 42 on demo", or "continue PR 42 on demo and fix ' +
+  'the failing tests".'
 
 const factory = (): { activate(ctx: unknown): void } => ({
   activate(rawCtx: unknown): void {

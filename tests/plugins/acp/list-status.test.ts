@@ -5,9 +5,33 @@
 
 import { describe, expect, mock, test } from 'bun:test'
 
+import { writeRecord } from '../../../plugins/acp/history.js'
 import { activate, jsonResponse, options, runtimeCtx, runtimeCtxWithKv } from './support.js'
 
 type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === 'object' && value !== null) return Object.fromEntries(Object.entries(value))
+  return {}
+}
+
+function asRows(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.map((row: unknown): Record<string, unknown> => asRecord(row)) : []
+}
+
+function readStoredRecord(store: Map<string, string>, sessionId: string): Record<string, unknown> {
+  const raw = store.get(`session:${sessionId}`)
+  const parsed: unknown = raw === undefined ? {} : JSON.parse(raw)
+  return asRecord(parsed)
+}
+
+const doneListFetch: HttpFetch = (url) => {
+  if (url.includes('/sessions?filter=done'))
+    return Promise.resolve(
+      jsonResponse([{ id: 's-7', project: 'demo', status: 'done', prUrl: 'https://github.com/a/b/pull/12' }], 200),
+    )
+  return Promise.resolve(jsonResponse({ error: 'unexpected' }, 500))
+}
 
 describe('acp list_sessions tool', () => {
   test('filters to kv-known sessions only, default filter=active', async () => {
@@ -62,6 +86,19 @@ describe('acp list_sessions tool', () => {
     )
     expect(result).toEqual({ error: 'not_configured', message: 'magi base URL or token is not configured' })
     expect(httpFetch).not.toHaveBeenCalled()
+  })
+
+  test('merges local title and prNumber into magi rows', async () => {
+    const store = new Map<string, string>()
+    writeRecord(runtimeCtxWithKv(store).kv, 's-7', { project: 'demo', title: 'Add a health check', createdAt: 'x' })
+    const { tools } = activate(doneListFetch)
+    const result = await tools.get('list_sessions')!.execute({ filter: 'done' }, runtimeCtxWithKv(store), options())
+    const out = asRows(result)
+    expect(out).toHaveLength(1)
+    expect(out[0]!['title']).toBe('Add a health check')
+    expect(out[0]!['prNumber']).toBe(12)
+    const refreshed = readStoredRecord(store, 's-7')
+    expect(refreshed['prNumber']).toBe(12)
   })
 })
 

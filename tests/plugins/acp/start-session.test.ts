@@ -19,6 +19,12 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {}
 }
 
+function readStoredRecord(store: Map<string, string>, sessionId: string): Record<string, unknown> {
+  const raw = store.get(`session:${sessionId}`)
+  const parsed: unknown = raw === undefined ? {} : JSON.parse(raw)
+  return asRecord(parsed)
+}
+
 describe('acp start_session tool', () => {
   test('injects context, POSTs /sessions with projectSpec, records kv', async () => {
     let capturedBody: unknown = null
@@ -47,6 +53,18 @@ describe('acp start_session tool', () => {
     })
     expect(result).toEqual({ id: 's-1', status: 'queued' })
     expect(store.get('session:s-1')).toBeDefined()
+  })
+
+  test('start_session writes a rich history record', async () => {
+    const httpFetch: HttpFetch = () => Promise.resolve(jsonResponse({ id: 's-7', status: 'queued' }, 202))
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    await tools
+      .get('start_session')!
+      .execute({ project: 'demo', prompt: 'Add a health check\nmore detail' }, runtimeCtxWithKv(store), options())
+    const rec = readStoredRecord(store, 's-7')
+    expect(rec['project']).toBe('demo')
+    expect(rec['title']).toBe('Add a health check')
   })
 
   test('explicit agent forwarded', async () => {
