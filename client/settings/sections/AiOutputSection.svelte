@@ -83,7 +83,7 @@
 <style>
   .settings-field-list {
     display: grid;
-    gap: 12px;
+    gap: var(--gap-inline);
   }
   .ai-output-hint {
     color: var(--fg2);

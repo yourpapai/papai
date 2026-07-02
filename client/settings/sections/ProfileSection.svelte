@@ -79,7 +79,7 @@
 <style>
   .settings-field-list {
     display: grid;
-    gap: 12px;
+    gap: var(--gap-inline);
   }
 
   .settings-empty-link {

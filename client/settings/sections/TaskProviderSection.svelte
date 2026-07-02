@@ -179,7 +179,7 @@
 <style>
   .settings-field-list {
     display: grid;
-    gap: 12px;
+    gap: var(--gap-inline);
     margin-bottom: 16px;
   }
   .settings-provision {
