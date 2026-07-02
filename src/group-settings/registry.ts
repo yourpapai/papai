@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../db/schema.js'
@@ -195,4 +195,25 @@ export function upsertGroupUserObservation(input: UpsertGroupUserObservationInpu
     { provider: input.provider, contextId: input.contextId, userId: input.userId },
     'Group user observation upserted',
   )
+}
+
+/** Batch-read cached display labels for members of a group, keyed by userId. Missing ids are absent. */
+export function getGroupUserObservationLabels(
+  provider: string,
+  contextId: string,
+  userIds: readonly string[],
+): Map<string, string> {
+  if (userIds.length === 0) return new Map()
+  const rows = getDrizzleDb()
+    .select({ userId: groupUserObservations.userId, displayLabel: groupUserObservations.displayLabel })
+    .from(groupUserObservations)
+    .where(
+      and(
+        eq(groupUserObservations.provider, provider),
+        eq(groupUserObservations.contextId, contextId),
+        inArray(groupUserObservations.userId, [...userIds]),
+      ),
+    )
+    .all()
+  return new Map(rows.map((r) => [r.userId, r.displayLabel]))
 }
