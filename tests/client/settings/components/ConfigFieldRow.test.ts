@@ -483,4 +483,27 @@ describe('ConfigFieldRow', () => {
     expect(modal!.textContent).not.toContain('plugin')
     void unmount(component)
   })
+
+  test('the Clear button uses the outline variant', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const clear = target.querySelector<HTMLButtonElement>('[data-testid="cfg-clear-timezone"]')!
+    expect(clear.classList.contains('ui-btn--outline')).toBe(true)
+    expect(clear.classList.contains('ui-btn--ghost')).toBe(false)
+    void unmount(component)
+  })
 })

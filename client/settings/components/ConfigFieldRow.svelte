@@ -115,7 +115,7 @@
         onChange={(v) => void saveEnum(v)}
         testidPrefix={`cfg-seg-${field.key}`} />
       {#if field.hasValue}
-        <Btn variant="ghost" size="sm" disabled={saving} testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
+        <Btn variant="outline" size="sm" disabled={saving} testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
@@ -135,7 +135,7 @@
         </Btn>
       {/if}
       {#if field.hasValue}
-        <Btn variant="ghost" size="sm" disabled={saving} testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
+        <Btn variant="outline" size="sm" disabled={saving} testid={`cfg-clear-${field.key}`} onClick={() => (pendingClear = true)}>
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
@@ -179,25 +179,26 @@
 <style>
   .settings-field {
     display: grid;
-    gap: 8px;
-    padding: 12px;
+    gap: var(--gap-tight);
+    padding: var(--gap-inline);
     border: 1px solid var(--border);
     background: var(--surface);
   }
   .settings-field__head {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--gap-tight);
     flex-wrap: wrap;
   }
   .settings-field__label {
     color: var(--fg2);
     font-family: var(--font-mono);
     font-size: 12px;
+    margin-right: auto;
   }
   .settings-field__editor {
     display: flex;
-    gap: 8px;
+    gap: var(--gap-tight);
     flex-wrap: wrap;
   }
   .settings-field__editor :global(.ui-input) {
