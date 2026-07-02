@@ -18,3 +18,9 @@ test.describe('settings/sections/TaskProviderSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('TaskProvider — narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-taskprovidersection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
