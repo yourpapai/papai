@@ -9,6 +9,8 @@ import { getMessageCacheSnapshot } from '../message-cache/cache.js'
 import { getSchedulerSnapshot } from '../scheduler.js'
 import { subscribe, unsubscribe, type DebugEvent } from './event-bus.js'
 import { recentLlm, pushTrace, handleLlmTraceEvent, type LlmTrace } from './llm-trace-collector.js'
+import type { LogEntry } from './log-buffer.js'
+import { entryMatchesFilter, type LogFilter } from './log-filter-model.js'
 import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembly } from './turn-assembly.js'
 import type { Turn } from './turn-assembly.js'
 
@@ -20,7 +22,8 @@ export type { LlmTrace } from './llm-trace-collector.js'
 let adminUserId: string | null = null
 let adminVisibility: AdminVisibility = { adminUserId: '', groupIds: new Set() }
 
-const clients = new Set<ReadableStreamDefaultController>()
+const clients = new Map<ReadableStreamDefaultController, LogFilter>()
+const PASS_ALL: LogFilter = { include: [], exclude: [], level: 0 }
 const encoder = new TextEncoder()
 
 const HEARTBEAT_MS = 15000
@@ -28,7 +31,7 @@ const PING_FRAME = encoder.encode(': ping\n\n')
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
 function pingClients(): void {
-  for (const client of clients) {
+  for (const client of clients.keys()) {
     try {
       client.enqueue(PING_FRAME)
     } catch {
@@ -55,7 +58,7 @@ export function pingClientsForTest(): void {
 
 /** @public -- test seam: drain all SSE clients to restore a clean baseline. */
 export function resetClientsForTest(): void {
-  for (const client of [...clients]) removeClient(client)
+  for (const client of [...clients.keys()]) removeClient(client)
 }
 
 export const stats = {
@@ -95,8 +98,8 @@ export function isScopeVisibleToCurrentAdmin(scope: Turn['scope'] | null | undef
   return isVisibleToAdmin(scope, adminVisibility)
 }
 
-export function addClient(controller: ReadableStreamDefaultController): void {
-  clients.add(controller)
+export function addClient(controller: ReadableStreamDefaultController, filter: LogFilter = PASS_ALL): void {
+  clients.set(controller, filter)
 
   const initData: Record<string, unknown> = {
     sessions: adminUserId === null ? [] : getSessionSnapshots(adminUserId),
@@ -162,9 +165,14 @@ function onEvent(event: DebugEvent): void {
   broadcast(event)
 }
 
+function isLogEntry(data: Record<string, unknown>): data is LogEntry {
+  return typeof data['level'] === 'number' && typeof data['time'] === 'string' && typeof data['msg'] === 'string'
+}
+
 function broadcast(event: DebugEvent): void {
   const payload = formatSse(event)
-  for (const client of clients) {
+  for (const [client, filter] of clients) {
+    if (event.type === 'log:entry' && isLogEntry(event.data) && !entryMatchesFilter(event.data, filter)) continue
     try {
       client.enqueue(payload)
     } catch {

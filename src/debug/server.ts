@@ -55,11 +55,12 @@ function jsonResponse(body: unknown): Response {
 }
 
 function handleEvents(req: Request): Response {
+  const filter = parseLogFilter(new URL(req.url).searchParams)
   let ctrl: ReadableStreamDefaultController
   const stream = new ReadableStream({
     start(controller): void {
       ctrl = controller
-      addClient(controller)
+      addClient(controller, filter)
       controller.enqueue(new TextEncoder().encode('retry: 3000\n\n'))
       req.signal.addEventListener('abort', () => {
         removeClient(controller)
