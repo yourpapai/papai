@@ -16,8 +16,11 @@
   import TraceList from './components/TraceList.svelte'
   import TurnsPanel from './components/TurnsPanel.svelte'
 
+  import { untrack } from 'svelte'
+
   import type { DashboardState } from './dashboard-types.js'
-  import { fetchInitialLogs, parseLogsArray, collectScopes } from './log-bootstrap.js'
+  import { fetchInitialLogs, parseLogsArray, collectScopes, fetchScopes } from './log-bootstrap.js'
+  import { filterFromParams, filterToQuery } from './log-filter-url.js'
   import { setupEventSource } from './sse.js'
 
   interface Props {
@@ -26,27 +29,40 @@
 
   let { dashboard }: Props = $props()
 
+  // Seed the filter from the page URL once on mount.
   $effect(() => {
-    void (async () => {
+    dashboard.activeLogFilter = filterFromParams(new URLSearchParams(window.location.search))
+  })
+
+  // Refetch logs + reconnect SSE whenever the filter changes; keep the page URL in sync.
+  $effect(() => {
+    const query = filterToQuery(dashboard.activeLogFilter)
+    const next = query === '' ? window.location.pathname : `${window.location.pathname}?${query}`
+    window.history.replaceState(null, '', next)
+
+    void untrack(async () => {
       try {
-        const rawLogs = await fetchInitialLogs()
-        const parsed = parseLogsArray(rawLogs)
+        const parsed = parseLogsArray(await fetchInitialLogs(dashboard.activeLogFilter))
         dashboard.logs = parsed
-        const scopes = collectScopes(parsed)
-        for (const scope of scopes) dashboard.logScopes.add(scope)
+        dashboard.logScopeCounts = await fetchScopes()
+        for (const scope of collectScopes(parsed)) dashboard.logScopes.add(scope)
       } catch {
         // SSE will populate from live events.
       }
-    })()
-
-    const conn = setupEventSource(dashboard, (connected) => {
-      dashboard.connected = connected
     })
+
+    const conn = setupEventSource(
+      dashboard,
+      (connected) => {
+        dashboard.connected = connected
+      },
+      query,
+    )
     return () => conn.close()
   })
 
   function showLogsForTurn(turnId: string): void {
-    dashboard.activeLogFilter.turnId = turnId
+    dashboard.activeLogFilter = { ...dashboard.activeLogFilter, turnId }
     document.getElementById('log-explorer')?.scrollIntoView({ behavior: 'smooth' })
   }
 </script>

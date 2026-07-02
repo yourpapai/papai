@@ -145,12 +145,17 @@ export interface SseConnection {
   close(): void
 }
 
+export function eventsUrl(query: string): string {
+  return query === '' ? '/events' : `/events?${query}`
+}
+
 export function setupEventSource(
   state: DashboardState,
   onConnectionChange: (connected: boolean) => void,
+  query: string = '',
   handlers: Record<string, EventHandler> = buildHandlerMap(state),
 ): SseConnection {
-  const source = new EventSource('/events')
+  const source = new EventSource(eventsUrl(query))
 
   source.addEventListener('open', () => {
     onConnectionChange(true)

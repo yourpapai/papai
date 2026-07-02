@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { DashboardState } from '../../../client/debug/dashboard-types.js'
-import { buildHandlerMap } from '../../../client/debug/sse.js'
+import { buildHandlerMap, eventsUrl } from '../../../client/debug/sse.js'
 
 function freshState(): DashboardState {
   return {
@@ -30,6 +30,15 @@ function freshState(): DashboardState {
     logScopeCounts: [],
   }
 }
+
+describe('eventsUrl', () => {
+  test('appends filter query when present', () => {
+    expect(eventsUrl('include=chat&level=30')).toBe('/events?include=chat&level=30')
+  })
+  test('bare /events when query empty', () => {
+    expect(eventsUrl('')).toBe('/events')
+  })
+})
 
 describe('buildHandlerMap', () => {
   test('exposes handlers for known event types', () => {
