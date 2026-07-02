@@ -18,6 +18,7 @@ interface RenderConfirmOptions {
   cancelLabel: string | undefined
   confirmLabel: string | undefined
   danger?: boolean
+  busy?: boolean
 }
 
 function textSnippet(text: string): Snippet {
@@ -97,6 +98,7 @@ function renderConfirm(optionsInput: RenderConfirmOptions | undefined): {
       cancelLabel: options.cancelLabel,
       confirmLabel: options.confirmLabel,
       danger: options.danger,
+      busy: options.busy,
       body: textSnippet('Confirm Body'),
     },
   })
@@ -185,6 +187,26 @@ describe('Confirm.svelte', () => {
     const confirmButton = findBtnByText(target, 'Delete')
     expect(confirmButton).not.toBeNull()
     expect(confirmButton!.classList.contains('ui-btn--danger')).toBe(true)
+    void unmount(component)
+  })
+
+  test('busy disables both footer buttons', () => {
+    const { target, component } = renderConfirm({
+      ...defaultRenderConfirmOptions(),
+      busy: true,
+    })
+
+    const buttons = [...target.querySelectorAll<HTMLButtonElement>('.modal-footer .ui-btn')]
+    expect(buttons.length).toBe(2)
+    expect(buttons.every((b) => b.disabled)).toBe(true)
+    void unmount(component)
+  })
+
+  test('not busy leaves footer buttons enabled', () => {
+    const { target, component } = renderConfirm(defaultRenderConfirmOptions())
+
+    const buttons = [...target.querySelectorAll<HTMLButtonElement>('.modal-footer .ui-btn')]
+    expect(buttons.some((b) => b.disabled)).toBe(false)
     void unmount(component)
   })
 })

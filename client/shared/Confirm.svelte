@@ -17,15 +17,21 @@
     cancelLabel?: string
     confirmLabel?: string
     danger?: boolean
+    busy?: boolean
   }
-  let { open, title, onCancel, onConfirm, body, cancelLabel, confirmLabel, danger = false }: Props = $props()
+  let { open, title, onCancel, onConfirm, body, cancelLabel, confirmLabel, danger = false, busy = false }: Props =
+    $props()
   const resolvedCancelLabel = $derived(cancelLabel ?? 'Cancel')
   const resolvedConfirmLabel = $derived(confirmLabel ?? 'Confirm')
 </script>
 
-<Modal {open} {title} onClose={onCancel} {body} size="sm">
+<Modal {open} {title} onClose={busy ? () => {} : onCancel} {body} size="sm">
   {#snippet footer()}
-    <Btn variant="secondary" onClick={onCancel}>{#snippet children()}{resolvedCancelLabel}{/snippet}</Btn>
-    <Btn variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>{#snippet children()}{resolvedConfirmLabel}{/snippet}</Btn>
+    <Btn variant="secondary" disabled={busy} onClick={onCancel}>
+      {#snippet children()}{resolvedCancelLabel}{/snippet}
+    </Btn>
+    <Btn variant={danger ? 'danger' : 'primary'} disabled={busy} onClick={onConfirm}>
+      {#snippet children()}{busy ? 'Working…' : resolvedConfirmLabel}{/snippet}
+    </Btn>
   {/snippet}
 </Modal>
