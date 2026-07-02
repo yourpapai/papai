@@ -28,3 +28,24 @@ test.describe('settings/sections/MembersSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('MembersSection — populated, narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-memberssection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('MembersSection — add input focused', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-memberssection--populated')
+  await sharedPage.setViewportSize({ width: 1280, height: 720 })
+  await sharedPage.getByTestId('member-add-input').fill('@alice')
+  await sharedPage.getByTestId('member-add-input').focus()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('MembersSection — add button hover', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-memberssection--populated')
+  await sharedPage.setViewportSize({ width: 1280, height: 720 })
+  await sharedPage.getByTestId('member-add').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
