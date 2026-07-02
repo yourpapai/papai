@@ -180,4 +180,49 @@ describe('settings tools routes — plugin tools', () => {
     )
     expect(res.status).toBe(422)
   })
+
+  test('toggle kind:group sets overrides for every tool of the plugin', async () => {
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'group', domain: 'plugin', group: PLUGIN_ID, permission: 'ask' }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
+    expect(res.status).toBe(200)
+    const prefs = getToolPrefs(personalContextId)
+    expect(prefs.toolOverrides[NAMESPACED_ECHO]).toBe('ask')
+    expect(prefs.toolOverrides[NAMESPACED_PING]).toBe('ask')
+  })
+
+  test('toggle kind:group with an unknown group is 422', async () => {
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'group', domain: 'plugin', group: 'no-such-plugin', permission: 'ask' }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
+    expect(res.status).toBe(422)
+  })
+
+  test('toggle kind:group with an unknown domain is 422', async () => {
+    const url = new URL('https://x/settings/api/tools/toggle')
+    const res = await handleToolsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'group', domain: 'not-a-domain', group: PLUGIN_ID, permission: 'ask' }),
+      }),
+      url,
+      '/settings/api/tools/toggle',
+    )
+    expect(res.status).toBe(422)
+  })
 })

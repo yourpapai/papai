@@ -21,7 +21,7 @@ import {
   type ToolPrefs,
 } from '../../tools/tool-preferences.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
-import { activePluginSegmentMap, deriveToolGroup } from './tool-grouping.js'
+import { activePluginSegmentMap, deriveToolGroup, resolveGroupTools } from './tool-grouping.js'
 
 const log = logger.child({ scope: 'debug-server:settings-tools' })
 
@@ -135,6 +135,22 @@ export function setToolPermission(prefs: ToolPrefs, toolName: string, permission
   return { riskDefaults: prefs.riskDefaults ?? {}, domainDefaults: { ...prefs.domainDefaults }, toolOverrides }
 }
 
+/** Apply a bulk group toggle across every exposed tool of the group; null when the domain or group is unknown. */
+function applyGroupToggle(
+  prefs: ToolPrefs,
+  names: readonly string[],
+  domain: string,
+  group: string,
+  permission: Permission,
+): { prefs: ToolPrefs; tools: number } | null {
+  if (!isToolDomain(domain)) return null
+  const groupTools = resolveGroupTools(names, domain, group)
+  if (groupTools.length === 0) return null
+  let next = prefs
+  for (const name of groupTools) next = setToolPermission(next, name, permission)
+  return { prefs: next, tools: groupTools.length }
+}
+
 const ToggleBodySchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('domain'),
@@ -149,6 +165,13 @@ const ToggleBodySchema = z.discriminatedUnion('kind', [
     contextId: z.string().optional(),
   }),
   z.object({
+    kind: z.literal('group'),
+    permission: z.enum(['allow', 'ask', 'deny']),
+    domain: z.string(),
+    group: z.string(),
+    contextId: z.string().optional(),
+  }),
+  z.object({
     kind: z.literal('preset'),
     preset: z.enum(['allow-all', 'non-destructive', 'read-only']),
     contextId: z.string().optional(),
@@ -158,6 +181,43 @@ const ToggleBodySchema = z.discriminatedUnion('kind', [
     contextId: z.string().optional(),
   }),
 ])
+
+type ToggleBody = z.infer<typeof ToggleBodySchema>
+
+/** Applies one toggle request to `prefs` and persists it; returns the 422 response on a validation failure. */
+function applyToggle(data: ToggleBody, prefs: ToolPrefs, names: readonly string[], contextId: string): Response | null {
+  if (data.kind === 'unset') {
+    clearToolPrefs(contextId)
+    log.info({ contextId }, 'Tool prefs unset')
+    return null
+  }
+  if (data.kind === 'domain') {
+    if (!isToolDomain(data.domain)) return settingsJson(422, { error: 'unknown tool domain' })
+    setToolPrefs(contextId, setDomainPermission(prefs, data.domain, data.permission))
+    log.info({ contextId, domain: data.domain, permission: data.permission }, 'Settings tool domain permission set')
+    return null
+  }
+  if (data.kind === 'tool') {
+    const meta = getToolMetadata(data.tool)
+    if (meta === undefined || !names.includes(data.tool)) return settingsJson(422, { error: 'unknown tool' })
+    setToolPrefs(contextId, setToolPermission(prefs, data.tool, data.permission))
+    log.info({ contextId, tool: data.tool, permission: data.permission }, 'Settings tool permission set')
+    return null
+  }
+  if (data.kind === 'group') {
+    const result = applyGroupToggle(prefs, names, data.domain, data.group, data.permission)
+    if (result === null) return settingsJson(422, { error: 'unknown tool group' })
+    setToolPrefs(contextId, result.prefs)
+    log.info(
+      { contextId, domain: data.domain, group: data.group, tools: result.tools, permission: data.permission },
+      'Settings tool group permission set',
+    )
+    return null
+  }
+  setToolPrefs(contextId, applyPreset(data.preset))
+  log.info({ contextId, preset: data.preset }, 'Settings tool preset applied')
+  return null
+}
 
 async function handleToggle(req: Request): Promise<Response> {
   const auth = authenticate(req)
@@ -177,30 +237,8 @@ async function handleToggle(req: Request): Promise<Response> {
   const names = await availableToolNames(scope.scope.contextId, auth.authed.principal.platformUserId, contextType)
   const prefs = getToolPrefs(scope.scope.contextId)
 
-  if (body.data.kind === 'unset') {
-    clearToolPrefs(scope.scope.contextId)
-    log.info({ contextId: scope.scope.contextId }, 'Tool prefs unset')
-  } else if (body.data.kind === 'domain') {
-    const domain = body.data.domain
-    if (!isToolDomain(domain)) return settingsJson(422, { error: 'unknown tool domain' })
-    setToolPrefs(scope.scope.contextId, setDomainPermission(prefs, domain, body.data.permission))
-    log.info(
-      { contextId: scope.scope.contextId, domain, permission: body.data.permission },
-      'Settings tool domain permission set',
-    )
-  } else if (body.data.kind === 'tool') {
-    const toolName = body.data.tool
-    const meta = getToolMetadata(toolName)
-    if (meta === undefined || !names.includes(toolName)) return settingsJson(422, { error: 'unknown tool' })
-    setToolPrefs(scope.scope.contextId, setToolPermission(prefs, toolName, body.data.permission))
-    log.info(
-      { contextId: scope.scope.contextId, tool: toolName, permission: body.data.permission },
-      'Settings tool permission set',
-    )
-  } else {
-    setToolPrefs(scope.scope.contextId, applyPreset(body.data.preset))
-    log.info({ contextId: scope.scope.contextId, preset: body.data.preset }, 'Settings tool preset applied')
-  }
+  const errorResponse = applyToggle(body.data, prefs, names, scope.scope.contextId)
+  if (errorResponse !== null) return errorResponse
 
   const updated = getToolPrefs(scope.scope.contextId)
   return settingsJson(200, {

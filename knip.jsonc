@@ -91,11 +91,6 @@
     "src/chat/group-admin-live.ts": ["exports"],
     // clearBriefEmbeddingCachesForTesting is a test-only seam.
     "src/tools/disclosure/embedding-tool-retriever.ts": ["exports"],
-    // resolveGroupTools is wired into the `kind: 'group'` bulk-toggle route in a
-    // downstream task of the plugin/MCP tool permissions plan
-    // (docs/superpowers/plans/2026-07-02-plugin-mcp-tool-permissions.md); until then
-    // it is consumed only by its test. Remove when that route imports it.
-    "src/debug/settings/tool-grouping.ts": ["exports"],
     // Mattermost action context signing is created ahead of the action adapter integration.
     "src/chat/mattermost/action-signing.ts": ["files"],
     // Mattermost action callback route entry points are created ahead of the web server route wiring.
