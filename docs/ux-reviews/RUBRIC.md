@@ -17,6 +17,7 @@ excluded.
 - Is the most important element the most prominent?
 - Is the eyebrow / title / heading rhythm consistent with the rest of the app?
 - Is related content grouped, and unrelated content separated?
+- Does the type scale actually distinguish tiers (heading / label / body / meta), or does everything collapse to one flat weight and size?
 
 ## 2. Affordance & signifiers
 
@@ -53,3 +54,25 @@ excluded.
 - Does it reflow cleanly at the narrow (~640px) viewport?
 - Any overflow, clipping, or truncation of long values?
 - Does the layout look sparse or unbalanced when data is minimal?
+- Does it hold up with long / localized content (long display names, long error strings, wrapped labels) rather than only the short fixture values?
+
+## 8. Spacing, alignment & sizing
+
+Precision layer — measured against the spacing/size scale in the **source**, not eyeballed
+from pixels alone. Flag one-off values that drift from the shared scale.
+
+- Are gaps, margins, and padding consistent with sibling rows/sections, and drawn from the spacing tokens (`--gap-group` / `--gap-section` / `--gap-field` / `--gap-inline`) rather than arbitrary px?
+- Do elements share a clean alignment edge and baseline — labels, inputs, and buttons in a row lined up, no ragged left/right edges or optical misalignment?
+- Is whitespace balanced (even rhythm between controls), rather than cramped in one place and gappy in another?
+- Are control sizes — button/input heights, icon-button and tap targets, border-radius (`--radius`) — pulled from the shared size tokens instead of hardcoded, so siblings match?
+
+## 9. Interaction & micro-states
+
+The transient visual states across an interaction's lifecycle. (Dimension 2 asks whether a
+control _looks_ interactive at rest and dimension 4 whether states _exist_; this dimension
+checks the visual transitions **between** resting → hover → active → focus → disabled → busy.)
+
+- Do hover / active / pressed states give visible feedback that is distinct from the resting state?
+- Is keyboard focus visible — a real `:focus-visible` ring, not `outline: 0` with nothing replacing it (checked in source)?
+- Is a disabled control visibly disabled _and_ is the reason for it discoverable?
+- Is in-flight / async work signalled (button "Saving…", busy/spinner, pending vs optimistic), not a dead frozen control?

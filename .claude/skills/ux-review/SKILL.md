@@ -60,25 +60,40 @@ batch sweeps (this is per-section, human-triggered).
    })
    ```
 
-   Capture only the interaction states that apply (expanded group, focused input,
-   invalid/validation, primary-action hover) plus the ~640px narrow width. Desktop is the
-   default width.
+   Capture the states the rubric needs, only where they apply:
+   - **State stories** — populated / empty / error / loading (the generated set).
+   - **Interaction & micro-states (dim 9)** — hover and active on the primary action, focused
+     input, disabled control, invalid/validation, and any in-flight ("Saving…") frame. Use
+     Playwright `.hover()` / `.focus()` / `.click()`; note that programmatic `.focus()` does
+     **not** trigger `:focus-visible`, so confirm the keyboard focus ring from source, not the shot.
+   - **Spacing & sizing (dim 8)** — the default desktop width plus the ~640px narrow width; a
+     long-content variant (long name / long error string) if a story or arg supports it, to
+     expose spacing/alignment/overflow the short fixtures hide.
 
 3. **Read screenshots + source together.** Read the baseline PNGs under
    `.storybook-shots/**/<Section>.spec.ts/` with the Read tool, and read the component
-   source. Source is mandatory — it is what makes affordance and accessibility findings real
-   (semantic markup, `aria-*`, focus order, disabled reasoning) rather than guessed from pixels.
+   source. Source is mandatory — it is what makes the findings real rather than guessed from
+   pixels:
+   - affordance / accessibility — semantic markup, `aria-*`, focus order, disabled reasoning;
+   - **spacing, alignment & sizing (dim 8)** — read the actual gap/margin/padding/height/radius
+     values and check them against the shared spacing/size tokens; flag one-off px that drift
+     from sibling elements or the scale (a misaligned edge is often a hardcoded value in source);
+   - **interaction & micro-states (dim 9)** — confirm `:focus-visible`, hover, disabled, and
+     busy styling exist in the stylesheet rather than inferring them from a single frame.
 
-4. **Score against the rubric.** Walk all seven dimensions in `docs/ux-reviews/RUBRIC.md`;
-   assign each `pass` / `warn` / `fail` with one line of rationale.
+4. **Score against the rubric.** Walk every dimension in `docs/ux-reviews/RUBRIC.md` (visual
+   hierarchy, affordance, design-system consistency, feedback/state, content, accessibility,
+   responsive/layout, spacing/alignment/sizing, interaction/micro-states); assign each
+   `pass` / `warn` / `fail` with one line of rationale.
 
 5. **Write the findings doc.** Copy `docs/ux-reviews/_TEMPLATE.md` to
    `docs/ux-reviews/<Section>.md` and fill it in: the scorecard header, then severity-ranked
    findings (High → Low). Each finding carries dimension · severity · where-visible · source
    anchor (`file:line`) · one-line suggested fix. Nothing more — no edits, no change-plan.
 
-6. **Format and hand off.** `bunx prettier --write docs/ux-reviews/<Section>.md`, then report
-   the path to the user. Do not commit unless asked. Stop — implementation is a separate session.
+6. **Format and hand off.** `bun run format` (the repo formatter is `oxfmt`, not prettier),
+   then report the path to the user. Do not commit unless asked. Stop — implementation is a
+   separate session.
 
 ## Optional: cross-section consistency pass
 

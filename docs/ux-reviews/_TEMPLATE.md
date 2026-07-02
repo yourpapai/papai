@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 **Date:** YYYY-MM-DD
 **Reviewed:** `client/settings/sections/<Section>.svelte`
-**States captured:** Populated, Empty, Error, Loading, &lt;interaction states&gt; · desktop + ~640px
+**States captured:** Populated, Empty, Error, Loading, &lt;hover / active / focus / disabled / busy&gt;, &lt;long-content&gt; · desktop + ~640px
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
 
 > Report-only. This document contains no code changes and no change-plan. Each finding
@@ -26,6 +26,8 @@ See LICENSE in the project root for details.
 | 5. Content & language           | pass/warn/fail | …                    |
 | 6. Accessibility                | pass/warn/fail | …                    |
 | 7. Responsive / layout          | pass/warn/fail | …                    |
+| 8. Spacing, alignment & sizing  | pass/warn/fail | …                    |
+| 9. Interaction & micro-states   | pass/warn/fail | …                    |
 
 ## Findings
 
