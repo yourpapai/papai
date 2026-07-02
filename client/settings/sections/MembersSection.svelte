@@ -68,14 +68,18 @@
     if (target === null || removing) return
     removeError = null
     removing = true
+    let ok = false
     try {
       await removeGroupMember({ userId: target.userId, contextId })
-      pendingRemove = null
-      await load(contextId)
+      ok = true
     } catch (err) {
       removeError = err instanceof Error ? err.message : String(err)
     } finally {
       removing = false
+    }
+    if (ok) {
+      pendingRemove = null
+      await load(contextId)
     }
   }
 

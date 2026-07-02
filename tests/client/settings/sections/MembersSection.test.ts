@@ -119,7 +119,7 @@ describe('MembersSection', () => {
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="member-remove-42"]')!.click()
     await drain()
-    target.querySelector<HTMLButtonElement>('.modal-footer .ui-btn--danger')!.click()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(capturedDeleteBody).toBe(JSON.stringify({ userId: '42', contextId: 'group:7' }))
     void unmount(component)
