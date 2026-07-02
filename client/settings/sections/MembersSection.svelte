@@ -113,9 +113,9 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
+  {#if error !== null}<p class="status-error members-error">{error}</p>{/if}
 
-  <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void add() }}>
+  <form class="settings-form members-add" onsubmit={(event) => { event.preventDefault(); void add() }}>
     <Field label="User ID or @username" hint="For Telegram, you can use @username instead of numeric ID">
       {#snippet children()}
         <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="member-add-input" placeholder="123456789 or @username" />
@@ -161,3 +161,14 @@
     {/snippet}
   </Confirm>
 </section>
+
+<style>
+  .members-error {
+    margin: 0 0 var(--gap-field);
+  }
+  /* Keep the input growing and the button on the same baseline; hint wraps below the row. */
+  .members-add :global(.ui-field) {
+    flex: 1;
+    min-width: 220px;
+  }
+</style>
