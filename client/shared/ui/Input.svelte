@@ -54,7 +54,7 @@
     background: var(--raised);
     border: 1px solid var(--border);
     padding: 0 10px;
-    border-radius: 2px;
+    border-radius: var(--radius-control);
   }
   .ui-input__prefix {
     color: var(--fg3);

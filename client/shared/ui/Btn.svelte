@@ -51,7 +51,7 @@
     font-family: var(--font-mono);
     font-weight: 500;
     cursor: pointer;
-    border-radius: 2px;
+    border-radius: var(--radius-control);
     border: 1px solid transparent;
   }
   .ui-btn:disabled {

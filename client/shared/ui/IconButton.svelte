@@ -34,7 +34,7 @@
     height: 28px;
     background: transparent;
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-control);
     color: var(--text-muted);
     cursor: pointer;
     font-family: var(--font-mono);
