@@ -64,7 +64,7 @@
       hint="Personal preferences will appear here once this context has editable settings."
     >
       {#snippet action()}
-        <a href="#task-provider">Configure task provider →</a>
+        <a class="settings-empty-link" href="#task-provider">Configure task provider →</a>
       {/snippet}
     </EmptyState>
   {:else}
@@ -80,5 +80,15 @@
   .settings-field-list {
     display: grid;
     gap: 12px;
+  }
+
+  .settings-empty-link {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-decoration: none;
+  }
+  .settings-empty-link:hover {
+    text-decoration: underline;
   }
 </style>
