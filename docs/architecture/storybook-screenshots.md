@@ -68,3 +68,11 @@ If an MSW-backed story captures blank/loading, add
 
 `@crvy/rprtr` is wired in `playwright.config.ts`. Run `bunx crvy-rprtr` to open a
 side-by-side review UI. Drop the reporter line from the config to remove it.
+
+## Structured UX review
+
+To turn a screenshot into a scored, severity-ranked findings document, use the
+`ux-review` skill (`.claude/skills/ux-review/SKILL.md`). It captures the depth-B state set,
+reads screenshots alongside component source, scores against `docs/ux-reviews/RUBRIC.md`, and
+writes a report-only findings doc under `docs/ux-reviews/`. Trigger it with
+"UX review `<Section>`".
