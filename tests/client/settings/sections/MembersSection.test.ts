@@ -46,6 +46,13 @@ const postErrorMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(membersPayload))
 }
 
+const removeErrorMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/group/members') && init.method === 'DELETE') {
+    return Promise.resolve(new Response('nope', { status: 500 }))
+  }
+  return Promise.resolve(json(membersPayload))
+}
+
 let pendingAddPostCalls = 0
 let resolveAddPost: (r: Response) => void = () => {}
 
@@ -208,6 +215,22 @@ describe('MembersSection', () => {
     expect(pendingAddPostCalls).toBe(1)
     resolveAddPost(json({ ok: true, contextId: 'group:7' }))
     await drain()
+    void unmount(component)
+  })
+
+  test('a failed remove shows the error inside the still-open dialog', async () => {
+    setCsrfToken('c')
+    setMockFetch(removeErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="member-remove-42"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(document.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('[data-testid="member-remove-error"]')).not.toBeNull()
     void unmount(component)
   })
 
