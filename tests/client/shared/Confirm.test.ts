@@ -209,4 +209,33 @@ describe('Confirm.svelte', () => {
     expect(buttons.some((b) => b.disabled)).toBe(false)
     void unmount(component)
   })
+
+  test('busy shows a Working… label on the confirm button', () => {
+    const { target, component } = renderConfirm({
+      ...defaultRenderConfirmOptions(),
+      busy: true,
+    })
+
+    expect(findBtnByText(target, 'Working…')).not.toBeNull()
+    expect(findBtnByText(target, 'Confirm')).toBeNull()
+    void unmount(component)
+  })
+
+  test('busy blocks the backdrop from calling onCancel', () => {
+    let cancelled = 0
+    const { target, component } = renderConfirm({
+      ...defaultRenderConfirmOptions(),
+      busy: true,
+      onCancel: () => {
+        cancelled += 1
+      },
+    })
+
+    const backdrop = target.querySelector('.modal')
+    expect(backdrop).not.toBeNull()
+    backdrop!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(cancelled).toBe(0)
+    void unmount(component)
+  })
 })
