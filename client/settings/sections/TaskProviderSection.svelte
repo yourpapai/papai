@@ -7,6 +7,7 @@
   import { untrack } from 'svelte'
 
   import Btn from '../../shared/ui/Btn.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
@@ -108,8 +109,8 @@
   </PageHeader>
 
   {#if error !== null}
-    <p class="status-error">{error}</p>
-  {:else if loading}
+    <ErrorState message={error} onRetry={() => void load(contextId)} />
+  {:else if loading && instanceData === null}
     <p class="placeholder">Loading…</p>
   {:else}
     {#if instanceData !== null}
