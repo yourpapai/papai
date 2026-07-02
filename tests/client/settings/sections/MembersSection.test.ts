@@ -96,7 +96,7 @@ describe('MembersSection', () => {
     void unmount(component)
   })
 
-  test('removing a member sends a DELETE with userId + contextId', async () => {
+  test('clicking Remove does not delete until the confirmation is accepted', async () => {
     setCsrfToken('c')
     setMockFetch(capturePostMock)
     document.body.innerHTML = '<div id="root"></div>'
@@ -104,6 +104,22 @@ describe('MembersSection', () => {
     const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="member-remove-42"]')!.click()
+    await drain()
+    expect(capturedDeleteBody).toBeUndefined()
+    expect(document.querySelector('.modal')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('confirming the dialog sends a DELETE with userId + contextId', async () => {
+    setCsrfToken('c')
+    setMockFetch(capturePostMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="member-remove-42"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('.modal-footer .ui-btn--danger')!.click()
     await drain()
     expect(capturedDeleteBody).toBe(JSON.stringify({ userId: '42', contextId: 'group:7' }))
     void unmount(component)

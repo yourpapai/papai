@@ -6,6 +6,7 @@
 <script lang="ts">
   import { addGroupMember, fetchGroupMembers, removeGroupMember } from '../fetchers.js'
   import type { GroupMembersResponse } from '../fetcher-schemas.js'
+  import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
   import Field from '../../shared/ui/Field.svelte'
@@ -24,6 +25,9 @@
   let loading = $state(false)
   let newUserId = $state('')
   let adding = $state(false)
+  let pendingRemove = $state<{ userId: string; label: string } | null>(null)
+  let removing = $state(false)
+  let removeError = $state<string | null>(null)
 
   async function load(id: string): Promise<void> {
     error = null
@@ -54,13 +58,24 @@
     }
   }
 
-  async function remove(userId: string): Promise<void> {
-    error = null
+  function requestRemove(userId: string): void {
+    removeError = null
+    pendingRemove = { userId, label: userId }
+  }
+
+  async function confirmRemove(): Promise<void> {
+    const target = pendingRemove
+    if (target === null || removing) return
+    removeError = null
+    removing = true
     try {
-      await removeGroupMember({ userId, contextId })
+      await removeGroupMember({ userId: target.userId, contextId })
+      pendingRemove = null
       await load(contextId)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      removeError = err instanceof Error ? err.message : String(err)
+    } finally {
+      removing = false
     }
   }
 
@@ -112,7 +127,7 @@
     <div class="settings-table-wrap">
       {#snippet cell(row: MemberRow, col: { key: string; label: string })}
         {#if col.key === 'actions'}
-          <Btn variant="ghost" size="sm" testid={`member-remove-${row.user_id}`} onClick={() => void remove(row.user_id)}>
+          <Btn variant="ghost" size="sm" testid={`member-remove-${row.user_id}`} onClick={() => requestRemove(row.user_id)}>
             {#snippet children()}Remove{/snippet}
           </Btn>
         {:else}
@@ -124,4 +139,20 @@
       </DataTable>
     </div>
   {/if}
+
+  <Confirm
+    open={pendingRemove !== null}
+    title="Remove member"
+    danger
+    busy={removing}
+    confirmLabel="Remove"
+    onCancel={() => {
+      pendingRemove = null
+    }}
+    onConfirm={() => void confirmRemove()}>
+    {#snippet body()}
+      <p>Remove {pendingRemove?.label} from this group? They'll lose access to the bot here.</p>
+      {#if removeError !== null}<p class="status-error" data-testid="member-remove-error">{removeError}</p>{/if}
+    {/snippet}
+  </Confirm>
 </section>
