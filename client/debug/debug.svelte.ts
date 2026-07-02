@@ -22,5 +22,6 @@ export const dashboard = $state<DashboardState>({
   activeConfigEditors: new Set(),
   scopeFilter: 'all',
   selectedDetail: null satisfies SelectedDetail,
-  activeLogFilter: {},
+  activeLogFilter: { include: [], exclude: [], level: 0 },
+  logScopeCounts: [],
 })

@@ -26,7 +26,8 @@ function freshState(): DashboardState {
     activeConfigEditors: new Set(),
     scopeFilter: 'all',
     selectedDetail: null,
-    activeLogFilter: {},
+    activeLogFilter: { include: [], exclude: [], level: 0 },
+    logScopeCounts: [],
   }
 }
 

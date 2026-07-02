@@ -101,7 +101,8 @@ export function makeDashboardState(overrides: Partial<DashboardState> = {}): Das
     activeConfigEditors: new Set(),
     scopeFilter: 'all',
     selectedDetail: null,
-    activeLogFilter: {},
+    activeLogFilter: { include: [], exclude: [], level: 0 },
+    logScopeCounts: [],
     ...overrides,
   }
 }

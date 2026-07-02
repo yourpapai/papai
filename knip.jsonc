@@ -119,11 +119,11 @@
     "client/debug/auth.ts": ["exports"],
     "client/debug/handlers.ts": ["exports"],
     "client/debug/log-bootstrap.ts": ["exports"],
-    "client/debug/log-filter.ts": ["exports"],
     // pinOperatorFirst is consumed only by SessionsList.svelte, which knip can't parse.
     "client/debug/session-order.ts": ["exports"],
     "client/debug/sse.ts": ["exports"],
-    "client/debug/types.ts": ["types"],
+    // SessionDetail is a type used in tests and by .svelte components knip cannot parse.
+    "client/debug/types.ts": ["files", "types"],
     "client/admin/admin.svelte.ts": ["exports", "types"],
     "client/admin/global-stats.svelte.ts": ["types"],
     "client/admin/fetcher-schemas.ts": ["files", "exports"],

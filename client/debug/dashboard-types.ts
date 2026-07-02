@@ -40,6 +40,8 @@ import type {
   AdminLlmKeyState,
   AdminLlmSnapshot,
 } from '../shared/api-types.js'
+import type { ScopeCount } from './log-bootstrap.js'
+import type { LogFilter } from './log-filter-url.js'
 
 export type {
   Fact,
@@ -123,7 +125,8 @@ export interface DashboardState {
   activeConfigEditors: Set<string>
   scopeFilter: ScopeFilter
   selectedDetail: SelectedDetail
-  activeLogFilter: { turnId?: string }
+  activeLogFilter: LogFilter
+  logScopeCounts: ScopeCount[]
   /** Platform user id of the signed-in operator, used to pin their own session. */
   operatorUserId?: string
 }

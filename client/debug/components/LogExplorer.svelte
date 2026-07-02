@@ -8,8 +8,8 @@
   import Select from '../../shared/ui/Select.svelte'
   import Toolbar from '../../shared/ui/Toolbar.svelte'
   import { collectScopes, fetchLogStats, fetchOlderLogs, parseLogsArray, type LogBufferStats } from '../log-bootstrap.js'
-  import { filterLogsWithIndex, updateFuseIndex } from '../log-filter.js'
   import type { LogEntry, DashboardState } from '../dashboard-types.js'
+  import ScopeFilter from './ScopeFilter.svelte'
 
   interface Props {
     dashboard: DashboardState
@@ -18,9 +18,10 @@
 
   let { dashboard, onSelectLog }: Props = $props()
 
-  let levelFilter = $state('0')
-  let scopeFilter = $state('')
-  let searchQuery = $state('')
+  let levelFilter = $derived(String(dashboard.activeLogFilter.level))
+  let searchQuery = $derived(dashboard.activeLogFilter.q ?? '')
+
+  const filtered = $derived(dashboard.logs.map((entry, originalIndex) => ({ entry, originalIndex })))
 
   let autoScroll = $state(true)
   let entriesEl: HTMLDivElement | null = $state(null)
@@ -32,7 +33,7 @@
   // Surface how bounded the in-memory buffer is, and whether older records exist.
   $effect(() => {
     void untrack(async () => {
-      bufferStats = await fetchLogStats()
+      bufferStats = await fetchLogStats(dashboard.activeLogFilter)
     })
   })
 
@@ -50,14 +51,14 @@
     autoScroll = false
     const prevHeight = entriesEl?.scrollHeight ?? 0
     try {
-      const parsed = parseLogsArray(await fetchOlderLogs(before))
+      const parsed = parseLogsArray(await fetchOlderLogs(before, dashboard.activeLogFilter))
       if (parsed.length === 0) {
         reachedStart = true
         return
       }
       dashboard.logs.unshift(...parsed)
       for (const scope of collectScopes(parsed)) dashboard.logScopes.add(scope)
-      bufferStats = await fetchLogStats()
+      bufferStats = await fetchLogStats(dashboard.activeLogFilter)
       await tick()
       // Keep the viewport anchored on the same entry after prepending older rows.
       if (entriesEl !== null) entriesEl.scrollTop += entriesEl.scrollHeight - prevHeight
@@ -66,12 +67,21 @@
     }
   }
 
-  const sortedScopes = $derived([...dashboard.logScopes].sort())
+  function setLevel(v: string): void {
+    dashboard.activeLogFilter = { ...dashboard.activeLogFilter, level: Number(v) }
+  }
 
-  const fuseInstance = $derived(updateFuseIndex(dashboard.logs))
-  const filtered = $derived(
-    filterLogsWithIndex(dashboard.logs, Number(levelFilter), scopeFilter, searchQuery.trim(), fuseInstance, dashboard.activeLogFilter.turnId),
-  )
+  function setQuery(v: string): void {
+    dashboard.activeLogFilter = { ...dashboard.activeLogFilter, q: v === '' ? undefined : v }
+  }
+
+  function setScopes(include: string[], exclude: string[]): void {
+    dashboard.activeLogFilter = { ...dashboard.activeLogFilter, include, exclude }
+  }
+
+  function clearTurnFilter(): void {
+    dashboard.activeLogFilter = { ...dashboard.activeLogFilter, turnId: undefined }
+  }
 
   // Auto-scroll when new entries arrive
   $effect(() => {
@@ -91,10 +101,7 @@
   function clearLogs(): void {
     dashboard.logs.length = 0
     dashboard.logScopes.clear()
-  }
-
-  function clearTurnFilter(): void {
-    dashboard.activeLogFilter.turnId = undefined
+    dashboard.logScopeCounts = []
   }
 
   function jumpToBottom(): void {
@@ -117,12 +124,8 @@
             { value: '40', label: 'warn' },
             { value: '50', label: 'error' },
           ]}
-          onChange={(v) => (levelFilter = v)} />
-        <Select
-          value={scopeFilter}
-          options={[{ value: '', label: 'all scopes' }, ...sortedScopes.map((s) => ({ value: s, label: s }))]}
-          onChange={(v) => (scopeFilter = v)} />
-        <Input value={searchQuery} placeholder="search..." onInput={(v) => (searchQuery = v)} />
+          onChange={setLevel} />
+        <Input value={searchQuery} placeholder="search..." onInput={setQuery} />
         {#if dashboard.activeLogFilter.turnId !== undefined}
           <div class="log-turnid-badge">
             <span>turn:{dashboard.activeLogFilter.turnId.slice(0, 8)}</span>
@@ -133,6 +136,11 @@
       </Toolbar>
     {/snippet}
     {#snippet body()}
+      <ScopeFilter
+        scopes={dashboard.logScopeCounts}
+        include={dashboard.activeLogFilter.include}
+        exclude={dashboard.activeLogFilter.exclude}
+        onChange={setScopes} />
       <div id="log-entries" bind:this={entriesEl} onscroll={onScroll}>
         <div class="log-history">
           {#if reachedStart}
@@ -162,7 +170,7 @@
       </div>
       {#if bufferStats !== null}
         <span class="log-bufferstat">
-          showing {filtered.length} · {dashboard.logs.length} loaded of {bufferStats.count} buffered (cap {bufferStats.capacity})
+          showing {filtered.length} · {bufferStats.matchingCount ?? dashboard.logs.length} match filter of {bufferStats.count} buffered (cap {bufferStats.capacity})
         </span>
       {/if}
       {#if !autoScroll}
