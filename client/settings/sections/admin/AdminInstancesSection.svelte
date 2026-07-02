@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import type { AdminInstanceDecodeFailure, AdminInstanceRow, ProviderType } from '../../fetcher-schemas.js'
+  import type { AdminInstanceDecodeFailure, AdminInstanceRow, ProviderType } from '../../fetcher-schemas-admin.js'
   import {
     applyAdminPlatformInstances,
     createAdminPlatformInstance,

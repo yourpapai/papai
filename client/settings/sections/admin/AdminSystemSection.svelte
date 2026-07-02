@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import { fetchAdminSystem, submitAdminSystem } from '../../admin-fetchers.js'
-  import type { AdminSystemResponse } from '../../fetcher-schemas.js'
+  import type { AdminSystemResponse } from '../../fetcher-schemas-admin.js'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import SystemKvRow from '../../components/SystemKvRow.svelte'

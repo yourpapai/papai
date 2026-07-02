@@ -10,7 +10,7 @@
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Confirm from '../../../shared/Confirm.svelte'
   import { sendAnnounce } from '../../admin-fetchers.js'
-  import type { AnnounceResult } from '../../fetcher-schemas.js'
+  import type { AnnounceResult } from '../../fetcher-schemas-admin.js'
 
   let message = $state('')
   let error: string | null = $state(null)

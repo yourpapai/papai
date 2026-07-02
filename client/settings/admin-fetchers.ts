@@ -6,6 +6,28 @@
 import type { AdminPluginConfigSnapshot, SubmitAdminPluginConfigResponse } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
+  AddAdminUserResponseSchema,
+  AdminGroupsResponseSchema,
+  AdminInstancesResponseSchema,
+  AdminRosterResponseSchema,
+  AdminSystemResponseSchema,
+  AdminUsersResponseSchema,
+  AnnounceResultSchema,
+  OpenAccessResponseSchema,
+  PluginApprovalResultSchema,
+  ProviderTypesResponseSchema,
+  type AddAdminUserResponse,
+  type AdminGroupsResponse,
+  type AdminInstancesResponse,
+  type AdminRosterResponse,
+  type AdminSystemResponse,
+  type AdminUsersResponse,
+  type AnnounceResult,
+  type OpenAccessResponse,
+  type PluginApprovalResult,
+  type ProviderTypesResponse,
+} from './fetcher-schemas-admin.js'
+import {
   AdminCodingGuardrailsResponseSchema,
   type AdminCodingGuardrailsResponse,
 } from './fetcher-schemas-coding-guardrails.js'
@@ -21,30 +43,7 @@ import {
   type ReleaseNotesResponse,
 } from './fetcher-schemas-release.js'
 import { ToolsResponseSchema, type ToolPreset, type ToolsResponse } from './fetcher-schemas-tools.js'
-import {
-  AddAdminUserResponseSchema,
-  AdminByokResponseSchema,
-  AdminGroupsResponseSchema,
-  AdminInstancesResponseSchema,
-  AdminRosterResponseSchema,
-  AdminSystemResponseSchema,
-  AdminUsersResponseSchema,
-  AnnounceResultSchema,
-  OpenAccessResponseSchema,
-  PluginApprovalResultSchema,
-  ProviderTypesResponseSchema,
-  type AddAdminUserResponse,
-  type AdminByokResponse,
-  type AdminGroupsResponse,
-  type AdminInstancesResponse,
-  type AdminRosterResponse,
-  type AdminSystemResponse,
-  type AdminUsersResponse,
-  type AnnounceResult,
-  type OpenAccessResponse,
-  type PluginApprovalResult,
-  type ProviderTypesResponse,
-} from './fetcher-schemas.js'
+import { AdminByokResponseSchema, type AdminByokResponse } from './fetcher-schemas.js'
 import { getJson, settingsFetch, writeJson } from './fetchers.js'
 
 type AdminPluginConfigUpdateResult = SubmitAdminPluginConfigResponse

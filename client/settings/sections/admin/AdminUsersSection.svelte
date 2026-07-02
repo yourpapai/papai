@@ -12,7 +12,7 @@
     removeAdminUser,
     setUserBlocked,
   } from '../../admin-fetchers.js'
-  import type { AdminUserRow } from '../../fetcher-schemas.js'
+  import type { AdminUserRow } from '../../fetcher-schemas-admin.js'
   import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
   import Field from '../../../shared/ui/Field.svelte'

@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import { addRosterAdmin, fetchAdminRoster, removeRosterAdmin } from '../../admin-fetchers.js'
-  import type { AdminRosterRow } from '../../fetcher-schemas.js'
+  import type { AdminRosterRow } from '../../fetcher-schemas-admin.js'
   import Confirm from '../../../shared/Confirm.svelte'
   import Btn from '../../../shared/ui/Btn.svelte'
   import Field from '../../../shared/ui/Field.svelte'
