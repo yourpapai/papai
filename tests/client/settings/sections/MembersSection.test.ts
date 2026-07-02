@@ -46,9 +46,24 @@ const postErrorMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(membersPayload))
 }
 
+let pendingAddPostCalls = 0
+let resolveAddPost: (r: Response) => void = () => {}
+
+const pendingAddMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/group/members') && init.method === 'POST') {
+    pendingAddPostCalls += 1
+    return new Promise<Response>((resolve) => {
+      resolveAddPost = resolve
+    })
+  }
+  return Promise.resolve(json({ contextId: 'group:7', members: [] }))
+}
+
 afterEach(() => {
   capturedPostBody = undefined
   capturedDeleteBody = undefined
+  pendingAddPostCalls = 0
+  resolveAddPost = (): void => {}
   restoreFetch()
   setCsrfToken('')
 })
@@ -152,6 +167,31 @@ describe('MembersSection', () => {
     await drain()
     const input = target.querySelector<HTMLInputElement>('[data-testid="member-add-input"]')
     expect(input?.placeholder).toBe('123456789 or @username')
+    void unmount(component)
+  })
+
+  test('add disables the button and shows "Adding…" while in flight, and blocks double-submit', async () => {
+    setCsrfToken('c')
+    setMockFetch(pendingAddMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="member-add-input"]')!
+    input.value = '99'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    const btn = target.querySelector<HTMLButtonElement>('[data-testid="member-add"]')!
+    btn.click()
+    flushSync()
+    expect(btn.disabled).toBe(true)
+    expect(btn.textContent).toContain('Adding…')
+    // second click must not fire a second POST
+    btn.click()
+    flushSync()
+    expect(pendingAddPostCalls).toBe(1)
+    resolveAddPost(json({ ok: true, contextId: 'group:7' }))
+    await drain()
     void unmount(component)
   })
 

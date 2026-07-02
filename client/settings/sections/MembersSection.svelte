@@ -23,6 +23,7 @@
   let error: string | null = $state(null)
   let loading = $state(false)
   let newUserId = $state('')
+  let adding = $state(false)
 
   async function load(id: string): Promise<void> {
     error = null
@@ -37,15 +38,19 @@
   }
 
   async function add(): Promise<void> {
+    if (adding) return
     error = null
     const userId = newUserId.trim()
     if (userId === '') return
+    adding = true
     try {
       await addGroupMember({ userId, contextId })
       newUserId = ''
       await load(contextId)
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
+    } finally {
+      adding = false
     }
   }
 
@@ -96,8 +101,8 @@
         <Input value={newUserId} onInput={(v) => (newUserId = v)} testid="member-add-input" placeholder="123456789 or @username" />
       {/snippet}
     </Field>
-    <Btn variant="primary" type="submit" testid="member-add">
-      {#snippet children()}Add member{/snippet}
+    <Btn variant="primary" type="submit" disabled={adding} testid="member-add">
+      {#snippet children()}{adding ? 'Adding…' : 'Add member'}{/snippet}
     </Btn>
   </form>
 
