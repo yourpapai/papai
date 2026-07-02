@@ -38,3 +38,10 @@ test.describe('settings/sections/ToolsSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('Tools — grouped, expanded, narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-toolssection--grouped')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await sharedPage.getByText('tasks').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
