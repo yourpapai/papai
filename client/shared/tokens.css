@@ -45,7 +45,9 @@
   --gap-section: 40px;
   --gap-field: 20px;
   --gap-inline: 12px;
+  --gap-tight: 8px;
   --radius: 6px;
+  --radius-control: 2px;
   --radius-pill: 999px;
   --row-h: 44px;
 

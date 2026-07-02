@@ -33,7 +33,9 @@ describe('design tokens', () => {
       '--gap-section',
       '--gap-field',
       '--gap-inline',
+      '--gap-tight',
       '--radius',
+      '--radius-control',
       '--radius-pill',
       '--row-h',
     ]) {
