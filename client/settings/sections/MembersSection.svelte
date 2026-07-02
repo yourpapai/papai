@@ -6,6 +6,7 @@
 <script lang="ts">
   import { addGroupMember, fetchGroupMembers, removeGroupMember } from '../fetchers.js'
   import type { GroupMembersResponse } from '../fetcher-schemas.js'
+  import { formatDateTime } from '../../shared/helpers.js'
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
@@ -94,7 +95,7 @@
   }
 
   const memberRows = $derived<MemberRow[]>(
-    members.map((m) => ({ user_id: m.user_id, added_by: m.added_by, added_at: m.added_at })),
+    members.map((m) => ({ user_id: m.user_id, added_by: m.added_by, added_at: formatDateTime(m.added_at) })),
   )
 
   const memberColumns = [

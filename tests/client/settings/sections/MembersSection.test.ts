@@ -234,6 +234,24 @@ describe('MembersSection', () => {
     void unmount(component)
   })
 
+  test('formats added_at instead of showing a raw ISO timestamp', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          contextId: 'group:7',
+          members: [{ user_id: '42', added_by: '1', added_at: '2026-05-01T00:00:00Z' }],
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.textContent).toContain('2026-05-01 00:00')
+    expect(target.textContent).not.toContain('2026-05-01T00:00:00Z')
+    void unmount(component)
+  })
+
   test('shows Loading placeholder before the first fetch resolves, not "No members"', async () => {
     let resolveFetch: (r: Response) => void = () => {}
     setMockFetch(
