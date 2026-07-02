@@ -37,10 +37,13 @@ async function availableToolNames(
   contextType: 'dm' | 'group',
 ): Promise<string[]> {
   const provider = await safeBuildProvider(contextId)
-  // NOTE: `chatParticipantResolver` is intentionally omitted here — the settings-UI
-  // tool surface has no live ChatRouter-bound resolver available outside a chat turn,
-  // so `resolve_chat_participant` is absent from the displayed tool list even when it
-  // would be exposed during a real group turn. This is a known display-only discrepancy.
+  // NOTE: tools that require live-turn-only inputs are absent from the displayed list
+  // even when a real turn would expose them — a known display-only discrepancy. Two
+  // classes: `resolve_chat_participant` needs a ChatRouter-bound `chatParticipantResolver`
+  // (intentionally omitted; none exists outside a chat turn), and thread-gated builtins
+  // like `lookup_group_history` need a thread-scoped storage context id, while settings
+  // always operates on the config-context id. Such tools still obey domain/risk-tier
+  // prefs at runtime; only per-tool overrides can't be set from the UI.
   const options: MakeToolsOptions = {
     storageContextId: contextId,
     chatUserId: actorUserId,

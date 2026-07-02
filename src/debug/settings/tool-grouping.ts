@@ -15,6 +15,12 @@ const NAMESPACED_TOOL_RE = /^(plugin|mcp)_(.+?)__/u
  * Native plugin tools sanitize with '-' → '_' (`sanitizePluginId`), while
  * plugin-declared MCP tools sanitize via `sanitizeServerId` (kebab-case), so
  * both forms are registered.
+ *
+ * Reads `pluginRegistry` active state, while the admin tool-defaults catalog
+ * reads `contributionRegistry.getActivePluginIds()`. The plugin loader
+ * (`src/plugins/loader.ts`) toggles both registries in lockstep on
+ * activation/deactivation; if that ever changes, these two views of "active
+ * plugins" must be reconciled.
  */
 export function activePluginSegmentMap(): Map<string, string> {
   const map = new Map<string, string>()
