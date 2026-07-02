@@ -96,6 +96,17 @@ describe('applyWhoMayUseFilter (unit)', () => {
     expect(names).toContain('list_tasks')
   })
 
+  test('non-allowed user loses continue_session but keeps list_sessions', () => {
+    const tools: ToolSet = {
+      plugin_acp__continue_session: stub(),
+      plugin_acp__list_sessions: stub(),
+    }
+    const result = applyWhoMayUseFilter(tools, ['allowed-user'], 'other-user')
+    const names = Object.keys(result)
+    expect(names).not.toContain('plugin_acp__continue_session')
+    expect(names).toContain('plugin_acp__list_sessions')
+  })
+
   test('empty allowlist blocks everyone', () => {
     const tools = acpToolSet()
     const result = applyWhoMayUseFilter(tools, [], 'any-user')
