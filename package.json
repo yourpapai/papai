@@ -75,7 +75,6 @@
     "defuddle": "^0.18.1",
     "discord.js": "^14.26.4",
     "drizzle-orm": "^0.45.2",
-    "fuse.js": "^7.3.0",
     "grammy": "^1.43.0",
     "ipaddr.js": "^2.4.0",
     "linkedom": "^0.18.12",
