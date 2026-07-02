@@ -32,6 +32,24 @@ describe('ToolsResponseSchema', () => {
     expect(parsed.domains[0]!.tools[0]!.permission).toBe('allow')
     expect(parsed.domains[0]!.tools[0]!.risk).toBe('write')
   })
+
+  test('parses an optional group field on tool entries', () => {
+    const parsed = ToolsResponseSchema.parse({
+      contextId: 'user:1',
+      domains: [
+        {
+          domain: 'plugin',
+          summary: 'allow',
+          tools: [
+            { name: 'plugin_acp__start_session', permission: 'allow', risk: 'open-world', group: 'acp' },
+            { name: 'get_current_time', permission: 'allow', risk: 'read' },
+          ],
+        },
+      ],
+    })
+    expect(parsed.domains[0]!.tools[0]!.group).toBe('acp')
+    expect(parsed.domains[0]!.tools[1]!.group).toBeUndefined()
+  })
 })
 
 describe('ToolsResponseSchema activePreset', () => {

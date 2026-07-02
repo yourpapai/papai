@@ -19,7 +19,12 @@ export type ToolPreset = z.infer<typeof ToolPresetSchema>
 export const ToolDomainSummarySchema = z.enum(['allow', 'ask', 'deny', 'partial'])
 export type ToolDomainSummary = z.infer<typeof ToolDomainSummarySchema>
 
-export const ToolEntrySchema = z.object({ name: z.string(), permission: ToolPermissionSchema, risk: ToolRiskSchema })
+export const ToolEntrySchema = z.object({
+  name: z.string(),
+  permission: ToolPermissionSchema,
+  risk: ToolRiskSchema,
+  group: z.string().optional(),
+})
 
 export const ToolDomainSchema = z.object({
   domain: z.string(),

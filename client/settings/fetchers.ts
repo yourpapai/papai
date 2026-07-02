@@ -145,7 +145,8 @@ export const fetchTools = (contextId: string): Promise<ToolsResponse> =>
 export const setToolPermission = (
   input:
     | { kind: 'domain'; domain: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
-    | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
+    | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
+    | { kind: 'group'; domain: string; group: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
 ): Promise<ToolsResponse> => writeJson('/settings/api/tools/toggle', 'POST', input, (b) => ToolsResponseSchema.parse(b))
 
 export const applyToolPreset = (input: { preset: ToolPreset; contextId: string }): Promise<ToolsResponse> =>

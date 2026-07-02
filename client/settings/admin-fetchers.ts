@@ -203,7 +203,8 @@ export const fetchToolDefaults = (): Promise<ToolsResponse> =>
 export const setToolDefault = (
   input:
     | { kind: 'domain'; domain: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
-    | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
+    | { kind: 'tool'; tool: string; permission: 'allow' | 'ask' | 'deny'; contextId: string }
+    | { kind: 'group'; domain: string; group: string; permission: 'allow' | 'ask' | 'deny'; contextId: string },
 ): Promise<ToolsResponse> =>
   writeJson('/settings/api/admin/tool-defaults', 'POST', input, (b) => ToolsResponseSchema.parse(b))
 
