@@ -135,15 +135,14 @@ export function setToolPermission(prefs: ToolPrefs, toolName: string, permission
   return { riskDefaults: prefs.riskDefaults ?? {}, domainDefaults: { ...prefs.domainDefaults }, toolOverrides }
 }
 
-/** Apply a bulk group toggle across every exposed tool of the group; null when the domain or group is unknown. */
+/** Apply a bulk group toggle across every exposed tool of the group; null when the group matches no tools. */
 function applyGroupToggle(
   prefs: ToolPrefs,
   names: readonly string[],
-  domain: string,
+  domain: ToolDomain,
   group: string,
   permission: Permission,
 ): { prefs: ToolPrefs; tools: number } | null {
-  if (!isToolDomain(domain)) return null
   const groupTools = resolveGroupTools(names, domain, group)
   if (groupTools.length === 0) return null
   let next = prefs
@@ -205,6 +204,7 @@ function applyToggle(data: ToggleBody, prefs: ToolPrefs, names: readonly string[
     return null
   }
   if (data.kind === 'group') {
+    if (!isToolDomain(data.domain)) return settingsJson(422, { error: 'unknown tool domain' })
     const result = applyGroupToggle(prefs, names, data.domain, data.group, data.permission)
     if (result === null) return settingsJson(422, { error: 'unknown tool group' })
     setToolPrefs(contextId, result.prefs)

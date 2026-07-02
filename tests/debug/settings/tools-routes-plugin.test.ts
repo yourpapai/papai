@@ -210,6 +210,7 @@ describe('settings tools routes — plugin tools', () => {
       '/settings/api/tools/toggle',
     )
     expect(res.status).toBe(422)
+    expect(z.object({ error: z.string() }).parse(await res.json()).error).toBe('unknown tool group')
   })
 
   test('toggle kind:group with an unknown domain is 422', async () => {
@@ -224,5 +225,6 @@ describe('settings tools routes — plugin tools', () => {
       '/settings/api/tools/toggle',
     )
     expect(res.status).toBe(422)
+    expect(z.object({ error: z.string() }).parse(await res.json()).error).toBe('unknown tool domain')
   })
 })
