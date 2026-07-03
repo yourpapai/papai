@@ -28,3 +28,21 @@ test.describe('settings/sections/GroupProviderSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('GroupProviderSection — populated, narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-groupprovidersection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('GroupProviderSection — select focused', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-groupprovidersection--populated')
+  await sharedPage.getByTestId('group-task-instance').focus()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('GroupProviderSection — save hover', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-groupprovidersection--populated')
+  await sharedPage.getByTestId('group-task-instance-save').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
