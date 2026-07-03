@@ -14,6 +14,7 @@
   import Secret from '../../shared/ui/Secret.svelte'
   import Select from '../../shared/ui/Select.svelte'
   import SummaryList from '../../shared/ui/SummaryList.svelte'
+  import { formatFetchError } from '../../shared/format-error.js'
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
   import type { ConfigField, ContextTaskInstanceResponse, ProvisionResult } from '../fetcher-schemas.js'
   import { fetchConfig, fetchContextTaskInstance, patchContextTaskInstance, provisionKaneo } from '../fetchers.js'
@@ -25,15 +26,15 @@
   let { contextId }: Props = $props()
 
   let fields: ConfigField[] = $state([])
-  let error: string | null = $state(null)
+  let error: unknown = $state(null)
   let loading = $state(false)
   let provisioning = $state(false)
-  let provisionError: string | null = $state(null)
+  let provisionError: unknown = $state(null)
   let provisioned: ProvisionResult | null = $state(null)
 
   let instanceData: ContextTaskInstanceResponse | null = $state(null)
   let selectedInstanceId = $state('')
-  let bindError: string | null = $state(null)
+  let bindError: unknown = $state(null)
   let bindStatus: string | null = $state(null)
   let binding = $state(false)
 
@@ -52,7 +53,7 @@
           ? currentId
           : (instance.available[0]?.id ?? '')
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = err
     } finally {
       loading = false
     }
@@ -68,7 +69,7 @@
       bindStatus = 'Task instance bound.'
       await load(contextId)
     } catch (err) {
-      bindError = err instanceof Error ? err.message : String(err)
+      bindError = err
     } finally {
       binding = false
     }
@@ -82,7 +83,7 @@
       provisioned = await provisionKaneo(contextId)
       await load(contextId)
     } catch (err) {
-      provisionError = err instanceof Error ? err.message : String(err)
+      provisionError = err
     } finally {
       provisioning = false
     }
@@ -109,13 +110,13 @@
   </PageHeader>
 
   {#if error !== null}
-    <ErrorState message={error} onRetry={() => void load(contextId)} />
+    <ErrorState message={formatFetchError(error)} onRetry={() => void load(contextId)} />
   {:else if loading && instanceData === null}
     <p class="placeholder">Loading…</p>
   {:else}
     {#if instanceData !== null}
       <div class="settings-task-instance">
-        {#if bindError !== null}<p class="status-error">{bindError}</p>{/if}
+        {#if bindError !== null}<p class="status-error">{formatFetchError(bindError)}</p>{/if}
         {#if bindStatus !== null}<p class="status-success">{bindStatus}</p>{/if}
         {#if instanceData.available.length === 0}
           <p class="placeholder">No active task instances available. Ask an admin to create one.</p>
@@ -124,7 +125,7 @@
             <Field label="Task instance">
               <Select
                 value={selectedInstanceId}
-                options={instanceData.available.map((o) => ({ value: o.id, label: `${o.id} (${o.type} · ${o.status})` }))}
+                options={instanceData.available.map((o) => ({ value: o.id, label: `${o.name ?? o.id} (${o.type} · ${o.status})` }))}
                 onChange={(v) => (selectedInstanceId = v)}
                 testid="context-task-instance" />
             </Field>
@@ -157,7 +158,7 @@
         </Btn>
       </div>
       {#if provisionError !== null}
-        <p class="status-error">{provisionError}</p>
+        <p class="status-error">{formatFetchError(provisionError)}</p>
       {/if}
       {#if provisioned !== null}
         <div class="settings-provision__reveal" data-testid="provision-result">
