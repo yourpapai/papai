@@ -225,6 +225,29 @@ describe('TaskProviderSection', () => {
     void unmount(component)
   })
 
+  test('renders the friendly instance name in options, falling back to id when absent', async () => {
+    const namedInstancePayload = {
+      contextId: 'user:1',
+      taskInstanceId: 'kaneo-1',
+      available: [
+        { id: 'kaneo-1', type: 'kaneo', status: 'active', name: 'https://kaneo.example' },
+        { id: 'yt-default', type: 'youtrack', status: 'active' },
+      ],
+      canProvision: false,
+    }
+    setMockFetch(routeMock(namedInstancePayload, { contextId: 'user:1', fields: [] }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    const options = [...target.querySelectorAll('[data-testid="context-task-instance"] option')].map(
+      (o) => o.textContent,
+    )
+    expect(options).toContain('https://kaneo.example (kaneo · active)')
+    expect(options).toContain('yt-default (youtrack · active)')
+    void unmount(component)
+  })
+
   test('binding an instance PATCHes the context endpoint and re-fetches', async () => {
     setCsrfToken('c')
     const sink: { value: PatchRecord | null } = { value: null }

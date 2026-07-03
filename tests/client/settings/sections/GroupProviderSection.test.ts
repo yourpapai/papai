@@ -230,6 +230,27 @@ describe('GroupProviderSection', () => {
     void unmount(component)
   })
 
+  test('renders the friendly instance name in options, falling back to id when absent', async () => {
+    const namedPayload = {
+      contextId: 'group:7',
+      taskInstanceId: 'kaneo-a',
+      available: [
+        { id: 'kaneo-a', type: 'kaneo', status: 'active', name: 'https://kaneo.example' },
+        { id: 'kaneo-b', type: 'youtrack', status: 'active' },
+      ],
+      canProvision: false,
+    }
+    setMockFetch(() => Promise.resolve(json(namedPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const options = [...target.querySelectorAll('[data-testid="group-task-instance"] option')].map((o) => o.textContent)
+    expect(options).toContain('https://kaneo.example (kaneo · active)')
+    expect(options).toContain('kaneo-b (youtrack · active)')
+    void unmount(component)
+  })
+
   test('associates the Select with its Field label via aria-labelledby', async () => {
     setMockFetch(capturePatchMock)
     document.body.innerHTML = '<div id="root"></div>'
