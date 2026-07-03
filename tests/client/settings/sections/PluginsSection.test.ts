@@ -87,6 +87,13 @@ const capturePluginConfigMock = (url: string, init: RequestInit): Promise<Respon
   return Promise.resolve(json(pluginClearPayload))
 }
 
+const clearFailsMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url === '/settings/api/plugins/config' && init.method === 'PATCH') {
+    return Promise.resolve(new Response('Server Error', { status: 500 }))
+  }
+  return Promise.resolve(json(pluginClearPayload))
+}
+
 const inactivePayload = {
   contextId: 'user:1',
   plugins: [
@@ -337,6 +344,26 @@ describe('PluginsSection', () => {
       key: 'token',
       contextId: 'user:1',
     })
+    void unmount(component)
+  })
+
+  test('a failed clear-key confirm keeps the dialog open and shows an inline error', async () => {
+    setCsrfToken('c')
+    setMockFetch(clearFailsMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-clear-my-plugin-token"]')!.click()
+    await drain()
+    expect(target.querySelector('.modal')).not.toBeNull()
+
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 
