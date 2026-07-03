@@ -162,6 +162,23 @@ const typedForgeUnconfigured = {
 
 let capturedPatchBody = ''
 
+const clearErrorMock = (_url: string, init?: RequestInit): Promise<Response> => {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (_url.includes('/settings/api/coding-credentials') && method === 'PATCH') {
+    const body = typeof init?.body === 'string' ? init.body : ''
+    if (body.includes('"clear":true')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: 'clear failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(configuredPayload))
+}
+
 const routeCodeHostMockUnconfigured = (_url: string, init?: RequestInit): Promise<Response> => {
   if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
     capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
@@ -387,6 +404,22 @@ describe('CodeHostSection', () => {
     const parsed: unknown = JSON.parse(capturedPatchBody)
     expect(parsed).toMatchObject({ values: { kind: 'gitlab-self-hosted', instance_url: 'https://gitlab.corp.com' } })
     expect(parsed).not.toHaveProperty('values.forge_token')
+    void unmount(component)
+  })
+
+  test('a failed clear keeps the confirm dialog open with an inline error', async () => {
+    setCsrfToken('c')
+    setMockFetch(clearErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'ctx-1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-clear"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(document.querySelector('.modal')).not.toBeNull()
+    expect(document.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 })

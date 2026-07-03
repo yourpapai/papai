@@ -129,20 +129,26 @@
 
   let pendingClear = $state(false)
   let clearing = $state(false)
+  let clearError = $state<string | null>(null)
 
-  async function clearAll(): Promise<void> {
-    if (loading || saving || clearing || loadedContextId !== contextId) return
-    error = null
+  async function confirmClear(): Promise<void> {
+    if (clearing || loadedContextId !== contextId) return
+    clearError = null
     status = null
     clearing = true
+    let ok = false
     try {
       await clearCodingCredentials({ contextId, namespace: 'forge' })
-      await load(contextId)
-      status = 'Code host credentials cleared.'
+      ok = true
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      clearError = err instanceof Error ? err.message : String(err)
     } finally {
       clearing = false
+    }
+    if (ok) {
+      pendingClear = false
+      status = 'Code host credentials cleared.'
+      await load(contextId)
     }
   }
 
@@ -231,7 +237,10 @@
             size="sm"
             testid="code-host-clear"
             disabled={saving || loading || clearing}
-            onClick={() => (pendingClear = true)}>
+            onClick={() => {
+              pendingClear = true
+              clearError = null
+            }}>
             {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
           </Btn>
         {/if}
@@ -251,13 +260,14 @@
     open={pendingClear}
     title="Clear code host credentials"
     danger
+    busy={clearing}
     confirmLabel="Clear"
     onCancel={() => (pendingClear = false)}
-    onConfirm={() => {
-      pendingClear = false
-      void clearAll()
-    }}>
-    {#snippet body()}<p>Remove the stored code host connection and token for this context? This cannot be undone.</p>{/snippet}
+    onConfirm={() => void confirmClear()}>
+    {#snippet body()}
+      <p>Remove the stored code host connection and token for this context? This cannot be undone.</p>
+      {#if clearError !== null}<p class="status-error">{clearError}</p>{/if}
+    {/snippet}
   </Confirm>
 </section>
 
