@@ -224,6 +224,23 @@ const oauthOpenCodePayload = {
 
 let capturedPatchBody = ''
 
+const clearErrorMock = (_url: string, init?: RequestInit): Promise<Response> => {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (_url.includes('/settings/api/coding-credentials') && method === 'PATCH') {
+    const body = typeof init?.body === 'string' ? init.body : ''
+    if (body.includes('"clear":true')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: 'clear failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+    return Promise.resolve(json({ ok: true }))
+  }
+  return Promise.resolve(json(configuredPayload))
+}
+
 const routeCodingMock = (_url: string, init?: RequestInit): Promise<Response> => {
   if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH') {
     capturedPatchBody = typeof init?.body === 'string' ? init.body : ''
@@ -679,6 +696,22 @@ describe('CodingCredentialsSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
     await drain()
     expect(JSON.parse(capturedPatchBody)).toMatchObject({ values: { auth_method: 'api-key' } })
+    void unmount(component)
+  })
+
+  test('a failed clear keeps the confirm dialog open with an inline error', async () => {
+    setCsrfToken('c')
+    setMockFetch(clearErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'ctx-1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-clear"]')!.click()
+    await drain()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(document.querySelector('.modal')).not.toBeNull()
+    expect(document.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 })
