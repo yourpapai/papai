@@ -184,7 +184,12 @@ export const GroupMemberSchema = z.object({
 })
 export const GroupMembersResponseSchema = z.object({ contextId: z.string(), members: z.array(GroupMemberSchema) })
 export type GroupMembersResponse = z.infer<typeof GroupMembersResponseSchema>
-export const TaskInstanceOptionSchema = z.object({ id: z.string(), type: z.string(), status: z.string() })
+export const TaskInstanceOptionSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  status: z.string(),
+  name: z.string().optional(),
+})
 export const GroupTaskInstanceResponseSchema = z.object({
   contextId: z.string(),
   taskInstanceId: z.string().nullable(),

@@ -12,6 +12,7 @@ import {
   IdentityResponseSchema,
   McpResponseSchema,
   PluginsResponseSchema,
+  TaskInstanceOptionSchema,
 } from '../../../client/settings/fetcher-schemas.js'
 
 describe('fetcher-schemas', () => {
@@ -151,5 +152,12 @@ describe('fetcher-schemas', () => {
         available: [],
       }),
     ).toThrow()
+  })
+
+  test('TaskInstanceOptionSchema accepts an optional name', () => {
+    expect(TaskInstanceOptionSchema.parse({ id: 'i', type: 'kaneo', status: 'active' }).name).toBeUndefined()
+    expect(
+      TaskInstanceOptionSchema.parse({ id: 'i', type: 'kaneo', status: 'active', name: 'https://k.example' }).name,
+    ).toBe('https://k.example')
   })
 })
