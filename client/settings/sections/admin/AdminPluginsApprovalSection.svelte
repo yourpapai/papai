@@ -25,6 +25,8 @@
   let status: string | null = $state(null)
   let loading = $state(false)
   let pendingReject: string | null = $state(null)
+  let rejecting = $state(false)
+  let rejectError: string | null = $state(null)
 
   async function load(): Promise<void> {
     error = null
@@ -53,8 +55,25 @@
 
   async function confirmReject(): Promise<void> {
     const id = pendingReject
-    pendingReject = null
-    if (id !== null) await decide(id, 'reject')
+    if (id === null || rejecting) return
+    rejectError = null
+    rejecting = true
+    let successStatus: string | null = null
+    let ok = false
+    try {
+      const result = await setPluginApproval({ pluginId: id, action: 'reject' })
+      successStatus = `${id}: ${result.state ?? 'reject'}`
+      ok = true
+    } catch (err) {
+      rejectError = err instanceof Error ? err.message : String(err)
+    } finally {
+      rejecting = false
+    }
+    if (ok) {
+      pendingReject = null
+      await load()
+      status = successStatus
+    }
   }
 
   $effect(() => {
@@ -96,7 +115,14 @@
         <Btn variant="primary" size="sm" testid={`plugin-approve-${row.id}`} onClick={() => void decide(row.id, 'approve')}>
           {#snippet children()}Approve{/snippet}
         </Btn>
-        <Btn variant="danger" size="sm" testid={`plugin-reject-${row.id}`} onClick={() => (pendingReject = row.id)}>
+        <Btn
+          variant="danger"
+          size="sm"
+          testid={`plugin-reject-${row.id}`}
+          onClick={() => {
+            pendingReject = row.id
+            rejectError = null
+          }}>
           {#snippet children()}Reject{/snippet}
         </Btn>
       {/if}
@@ -115,9 +141,13 @@
     open={pendingReject !== null}
     title="Reject plugin"
     danger
+    busy={rejecting}
     confirmLabel="Reject"
     onCancel={() => (pendingReject = null)}
     onConfirm={() => void confirmReject()}>
-    {#snippet body()}<p>Reject plugin {pendingReject}? This will prevent it from activating.</p>{/snippet}
+    {#snippet body()}
+      <p>Reject plugin {pendingReject}? This will prevent it from activating.</p>
+      {#if rejectError !== null}<p class="status-error">{rejectError}</p>{/if}
+    {/snippet}
   </Confirm>
 </section>

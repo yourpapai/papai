@@ -114,6 +114,23 @@ describe('AdminPluginsApprovalSection', () => {
     void unmount(component)
   })
 
+  test('a failed rejection keeps the dialog open and shows an inline error', async () => {
+    setCsrfToken('c')
+    setMockFetch(approvalErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsApprovalSection, { target, props: { catalogContextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-reject-hello-world"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    await drain()
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('renders section header via PageHeader', async () => {
     setCsrfToken('c')
     setMockFetch(captureApprovalMock)
