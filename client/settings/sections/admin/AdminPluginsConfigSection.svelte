@@ -21,6 +21,8 @@
   let status: string | null = $state(null)
   let loading = $state(false)
   let pendingClear: { pluginId: string; key: string; required: boolean } | null = $state(null)
+  let clearing = $state(false)
+  let clearError = $state<string | null>(null)
 
   function draftKey(pluginId: string, key: string): string {
     return `${pluginId}::${key}`
@@ -55,15 +57,24 @@
     }
   }
 
-  async function clearConfig(pluginId: string, key: string): Promise<void> {
-    error = null
-    status = null
+  async function confirmClear(): Promise<void> {
+    const p = pendingClear
+    if (p === null || clearing) return
+    clearError = null
+    clearing = true
+    let ok = false
     try {
-      await unsetAdminPluginConfig({ pluginId, key })
-      await load()
-      status = `${pluginId} / ${key} cleared.`
+      await unsetAdminPluginConfig({ pluginId: p.pluginId, key: p.key })
+      ok = true
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      clearError = err instanceof Error ? err.message : String(err)
+    } finally {
+      clearing = false
+    }
+    if (ok) {
+      pendingClear = null
+      await load()
+      status = `${p.pluginId} / ${p.key} cleared.`
     }
   }
 
@@ -119,7 +130,10 @@
                     variant="ghost"
                     size="sm"
                     testid={`plugin-config-clear-${plugin.pluginId}-${keyState.key}`}
-                    onClick={() => (pendingClear = { pluginId: plugin.pluginId, key: keyState.key, required: keyState.required })}>
+                    onClick={() => {
+                      pendingClear = { pluginId: plugin.pluginId, key: keyState.key, required: keyState.required }
+                      clearError = null
+                    }}>
                     {#snippet children()}Clear{/snippet}
                   </Btn>
                 {/if}
@@ -139,15 +153,13 @@
     open={pendingClear !== null}
     title="Clear plugin config value"
     danger
+    busy={clearing}
     confirmLabel="Clear"
     onCancel={() => (pendingClear = null)}
-    onConfirm={() => {
-      const pending = pendingClear
-      pendingClear = null
-      if (pending !== null) void clearConfig(pending.pluginId, pending.key)
-    }}>
+    onConfirm={() => void confirmClear()}>
     {#snippet body()}
       <p>Clear the stored value for this field?{pendingClear?.required ? ' This field is required — clearing it will make the plugin ineligible for this context.' : ' The field will revert to its default (unset).'}</p>
+      {#if clearError !== null}<p class="status-error">{clearError}</p>{/if}
     {/snippet}
   </Confirm>
 </section>

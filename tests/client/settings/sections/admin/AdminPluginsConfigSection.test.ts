@@ -62,6 +62,13 @@ const captureUnsetMock = (url: string, init: RequestInit): Promise<Response> => 
   return Promise.resolve(json(snapshotPayload))
 }
 
+const clearFailsMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/plugin-config') && init.method === 'PATCH') {
+    return Promise.resolve(new Response('Server Error', { status: 500 }))
+  }
+  return Promise.resolve(json(snapshotPayload))
+}
+
 afterEach(() => {
   capturedPatchBody = undefined
   capturedClearBody = null
@@ -214,6 +221,26 @@ describe('AdminPluginsConfigSection', () => {
     await drain()
 
     expect(capturedClearBody).toEqual({ action: 'unset', pluginId: 'my-plugin', key: 'api_key' })
+    void unmount(component)
+  })
+
+  test('a failed clear confirm keeps the dialog open and shows an inline error', async () => {
+    setCsrfToken('c')
+    setMockFetch(clearFailsMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-config-clear-my-plugin-api_key"]')!.click()
+    await drain()
+    expect(target.querySelector('.modal')).not.toBeNull()
+
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 })
