@@ -67,9 +67,8 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-  .ui-btn--busy {
+  .ui-btn.ui-btn--busy {
     opacity: 0.6;
-    cursor: progress;
     pointer-events: none;
   }
   .ui-btn:focus-visible {
