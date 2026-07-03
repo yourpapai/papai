@@ -5,7 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { broadcastAnnouncement, type BroadcastDeps } from '../../src/announcements/broadcast.js'
+import { broadcastAnnouncement, groupTarget, type BroadcastDeps } from '../../src/announcements/broadcast.js'
+import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import { createMockChat } from '../utils/test-helpers.js'
 
 const chat = createMockChat()
@@ -82,6 +83,26 @@ describe('broadcastAnnouncement', () => {
       }),
     )
     expect(markedAt!).toBe('2026-06-26T00:00:00Z')
+  })
+
+  test('groupTarget decodes a scoped group id to the native channel id for delivery', () => {
+    // authorizedGroups.groupId is the scoped config context id; the delivery
+    // target's contextId must carry the NATIVE platform id (used verbatim as the
+    // Mattermost channel_id), while storageContextId keeps the scoped id for routing.
+    const scoped = toScopedContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: '6he4u1qdoido8yu5onbczzzupe',
+    })
+    const target = groupTarget(scoped)
+    expect(target.contextId).toBe('6he4u1qdoido8yu5onbczzzupe')
+    expect(target.storageContextId).toBe(scoped)
+    expect(target.contextType).toBe('group')
+  })
+
+  test('groupTarget leaves a legacy native group id unchanged', () => {
+    const target = groupTarget('123456')
+    expect(target.contextId).toBe('123456')
+    expect(target.storageContextId).toBe('123456')
   })
 
   test('empty subscriber lists return zero counts and still call markBroadcast', async () => {

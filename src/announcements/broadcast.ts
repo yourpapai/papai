@@ -5,6 +5,7 @@
 
 import pLimit from 'p-limit'
 
+import { getNativeContextId } from '../chat/scoped-context.js'
 import { dmTarget, type ChatProvider, type DeferredDeliveryTarget } from '../chat/types.js'
 import { sendProactiveMessage } from '../deferred-prompts/proactive-delivery.js'
 import { logger } from '../logger.js'
@@ -40,9 +41,17 @@ export interface BroadcastDeps {
   now: () => string
 }
 
-function groupTarget(groupId: string): DeferredDeliveryTarget {
+/**
+ * Build a group delivery target from a subscribed `groupId` (the scoped config
+ * context id, e.g. `pi:<instance>:ctx:<channel>`). `contextId` must carry the
+ * NATIVE platform id — adapters use it verbatim as the send target (Mattermost
+ * `channel_id`, Telegram `chat_id`) — while `storageContextId` keeps the scoped
+ * id so delivery routing can recover the platform instance. Passing the scoped
+ * id as `contextId` makes Mattermost POST to an invalid channel and fail 403.
+ */
+export function groupTarget(groupId: string): DeferredDeliveryTarget {
   return {
-    contextId: groupId,
+    contextId: getNativeContextId(groupId),
     contextType: 'group',
     threadId: null,
     audience: 'shared',
