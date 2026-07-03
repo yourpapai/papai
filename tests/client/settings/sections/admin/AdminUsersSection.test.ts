@@ -77,6 +77,13 @@ const postErrorMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(usersPayload))
 }
 
+const deleteErrorMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/users') && init.method === 'DELETE')
+    return Promise.resolve(new Response('Internal Server Error', { status: 500 }))
+  if (url.includes('/admin/open-access')) return Promise.resolve(json(openAccessOff))
+  return Promise.resolve(json(usersPayload))
+}
+
 const pendingPayload = {
   users: [
     {
@@ -498,6 +505,22 @@ describe('AdminUsersSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="user-block-42"]')!.click()
     await drain()
     expect(capturedBlockBody).toBe(JSON.stringify({ userId: '42', blocked: true }))
+    void unmount(component)
+  })
+
+  test('a failed remove keeps the confirm dialog open and shows an inline error', async () => {
+    setCsrfToken('c')
+    setMockFetch(deleteErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-remove-42"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 })

@@ -32,6 +32,8 @@
   let newUsername = $state('')
   let pendingRemoval: string | null = $state(null)
   let blocking: string | null = $state(null)
+  let removing = $state(false)
+  let removeError = $state<string | null>(null)
   const pendingRemovalLabel = $derived(pendingRemoval ?? '')
 
   async function load(): Promise<void> {
@@ -83,15 +85,24 @@
     }
   }
 
-  async function remove(userId: string): Promise<void> {
-    error = null
-    status = null
+  async function confirmRemove(): Promise<void> {
+    const userId = pendingRemoval
+    if (userId === null || removing) return
+    removeError = null
+    removing = true
+    let ok = false
     try {
       await removeAdminUser({ userId })
+      ok = true
+    } catch (err) {
+      removeError = err instanceof Error ? err.message : String(err)
+    } finally {
+      removing = false
+    }
+    if (ok) {
+      pendingRemoval = null
       await load()
       status = 'User removed.'
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
     }
   }
 
@@ -204,7 +215,10 @@
           size="sm"
           testid={`user-remove-${row.platform_user_id}`}
           disabled={blocking === row.platform_user_id}
-          onClick={() => (pendingRemoval = row.platform_user_id)}>
+          onClick={() => {
+            removeError = null
+            pendingRemoval = row.platform_user_id
+          }}>
           {#snippet children()}Remove{/snippet}
         </Btn>
       {:else if col.key === 'platform_user_id'}
@@ -234,14 +248,14 @@
     open={pendingRemoval !== null}
     title="Remove user"
     danger
+    busy={removing}
     confirmLabel="Remove"
     onCancel={() => (pendingRemoval = null)}
-    onConfirm={() => {
-      const id = pendingRemoval
-      pendingRemoval = null
-      if (id !== null) void remove(id)
-    }}>
-    {#snippet body()}<p>Remove user {pendingRemovalLabel}? This cannot be undone.</p>{/snippet}
+    onConfirm={() => void confirmRemove()}>
+    {#snippet body()}
+      <p>Remove user {pendingRemovalLabel}? This cannot be undone.</p>
+      {#if removeError !== null}<p class="status-error">{removeError}</p>{/if}
+    {/snippet}
   </Confirm>
 </section>
 
