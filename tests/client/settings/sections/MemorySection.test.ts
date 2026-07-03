@@ -165,6 +165,14 @@ const routeProfilePatchThenReloadFailure = (): ((url: string, init: RequestInit)
   }
 }
 
+const routeClearFailure =
+  (): ((url: string, init: RequestInit) => Promise<Response>) =>
+  (url): Promise<Response> => {
+    if (url === '/settings/api/memory/clear') return Promise.resolve(new Response('clear failed', { status: 500 }))
+    if (url.startsWith('/settings/api/memory?')) return Promise.resolve(json(memoryPayload))
+    return Promise.resolve(json({ ok: true }))
+  }
+
 afterEach(() => {
   restoreFetch()
   setCsrfToken('')
@@ -367,6 +375,25 @@ describe('MemorySection', () => {
     expect(write?.method).toBe('POST')
     expect(write?.body).toEqual({ contextId: 'user:1' })
     expect(calls.filter((call) => call.url.startsWith('/settings/api/memory?')).length).toBe(2)
+    void unmount(component)
+  })
+
+  test('clear memory dialog stays open with inline error when the clear request fails', async () => {
+    setCsrfToken('c')
+    setMockFetch(routeClearFailure())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="memory-clear"]')!.click()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 

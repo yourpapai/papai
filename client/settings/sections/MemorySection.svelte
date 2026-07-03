@@ -40,6 +40,8 @@
   let initialLoad = $state(true)
   let loadedContextId: string | null = $state(null)
   let pendingClear = $state(false)
+  let clearing = $state(false)
+  let clearError: string | null = $state(null)
 
   const currentMemory = $derived(loadedContextId === contextId ? memory : null)
   const activeRecords = $derived(currentMemory?.records.filter((record) => record.status === 'active') ?? [])
@@ -122,17 +124,23 @@
     }
   }
 
-  async function clearRecords(): Promise<void> {
-    error = null
+  async function confirmClear(): Promise<void> {
+    if (clearing) return
+    clearError = null
     status = null
-    mutating = true
+    clearing = true
+    let ok = false
     try {
       await clearMemory({ contextId })
-      await load(contextId)
+      ok = true
     } catch (err) {
-      error = messageFrom(err)
+      clearError = messageFrom(err)
     } finally {
-      mutating = false
+      clearing = false
+    }
+    if (ok) {
+      pendingClear = false
+      await load(contextId)
     }
   }
 
@@ -198,7 +206,15 @@
             onClick={() => void saveProfile()}>
             {#snippet children()}{savingProfile ? 'Saving…' : 'Save profile'}{/snippet}
           </Btn>
-          <Btn variant="danger" size="sm" disabled={mutating} testid="memory-clear" onClick={() => (pendingClear = true)}>
+          <Btn
+            variant="danger"
+            size="sm"
+            disabled={mutating || clearing}
+            testid="memory-clear"
+            onClick={() => {
+              pendingClear = true
+              clearError = null
+            }}>
             {#snippet children()}Clear memory{/snippet}
           </Btn>
         </div>
@@ -265,10 +281,14 @@
     open={pendingClear}
     title="Clear memory for this context"
     danger
+    busy={clearing}
     confirmLabel="Clear memory"
     onCancel={() => (pendingClear = false)}
-    onConfirm={() => { pendingClear = false; void clearRecords() }}>
-    {#snippet body()}<p>Clear the memory profile and all memory records for this context? This cannot be undone.</p>{/snippet}
+    onConfirm={() => void confirmClear()}>
+    {#snippet body()}
+      <p>Clear the memory profile and all memory records for this context? This cannot be undone.</p>
+      {#if clearError !== null}<p class="status-error">{clearError}</p>{/if}
+    {/snippet}
   </Confirm>
 </section>
 
