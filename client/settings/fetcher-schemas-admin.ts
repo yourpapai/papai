@@ -7,6 +7,8 @@
 
 import { z } from 'zod'
 
+import { StoredConfigValueSchema } from './fetcher-schemas-shared.js'
+
 export const AdminInstanceRowSchema = z
   .object({
     id: z.string(),
@@ -24,17 +26,6 @@ export const AdminInstancesResponseSchema = z.object({
 export type AdminInstanceDecodeFailure = z.infer<typeof InstanceDecodeFailureSchema>
 export type AdminInstanceRow = z.infer<typeof AdminInstanceRowSchema>
 export type AdminInstancesResponse = z.infer<typeof AdminInstancesResponseSchema>
-
-const StoredConfigValueSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  required: z.boolean(),
-  sensitive: z.boolean(),
-  hasValue: z.boolean(),
-  value: z.string(),
-  control: z.enum(['text', 'select', 'combobox']).optional(),
-  options: z.array(z.string()).optional(),
-})
 
 export const ProviderTypeFieldSchema = StoredConfigValueSchema.omit({ hasValue: true, value: true }).extend({
   storageKey: z.string().optional(),
