@@ -5,7 +5,11 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { errorMessageFrom, readBody, requireOk } from '../../../client/shared/fetcher-helpers.js'
+import { errorMessageFrom, FetchError, readBody, requireOk } from '../../../client/shared/fetcher-helpers.js'
+
+function assertIsFetchError(err: unknown): asserts err is FetchError {
+  if (!(err instanceof FetchError)) throw err
+}
 
 describe('fetcher-helpers', () => {
   test('errorMessageFrom extracts error string', () => {
@@ -36,5 +40,30 @@ describe('fetcher-helpers', () => {
   test('requireOk throws on non-ok (4xx)', () => {
     const res = new Response(null, { status: 400 })
     expect(() => requireOk(res, { error: 'bad request' })).toThrow('bad request')
+  })
+
+  test('requireOk throws a FetchError carrying the HTTP status', () => {
+    const res = new Response(null, { status: 404 })
+    try {
+      requireOk(res, { error: 'missing' })
+      throw new Error('expected requireOk to throw')
+    } catch (err) {
+      expect(err).toBeInstanceOf(FetchError)
+      assertIsFetchError(err)
+      expect(err.status).toBe(404)
+      expect(err.message).toBe('missing')
+    }
+  })
+
+  test('requireOk FetchError falls back to a status message when no body error', () => {
+    const res = new Response(null, { status: 503 })
+    try {
+      requireOk(res, null)
+      throw new Error('expected requireOk to throw')
+    } catch (err) {
+      assertIsFetchError(err)
+      expect(err.status).toBe(503)
+      expect(err.message).toBe('request failed with status 503')
+    }
   })
 })

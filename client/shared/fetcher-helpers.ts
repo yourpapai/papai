@@ -20,7 +20,16 @@ export const readBody = async (res: Response): Promise<unknown> => {
   }
 }
 
+export class FetchError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'FetchError'
+    this.status = status
+  }
+}
+
 export const requireOk = (res: Response, body: unknown): void => {
   if (res.ok) return
-  throw new Error(errorMessageFrom(body, `request failed with status ${res.status}`))
+  throw new FetchError(res.status, errorMessageFrom(body, `request failed with status ${res.status}`))
 }
