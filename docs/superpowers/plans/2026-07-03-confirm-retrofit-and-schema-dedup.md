@@ -139,6 +139,8 @@ async function CONFIRM_FN(): Promise<void> {
 
 Notes: `Confirm` already no-ops backdrop/Escape/× close while `busy`, so no extra cancel-guard is needed. Keep any `status`/success message the old action set — set it in the `if (ok)` block. If the old action function is now only called from the dialog, replace it in place; if it's shared, keep it and add the keep-open wrapper.
 
+**Guard note (settled in B1 review):** the confirm handler's entry guard should be just `BUSY` (plus any existing context/staleness check like `loadedContextId !== contextId`). Do NOT re-add a broad `loading || saving` guard — it's unnecessary because (a) the trigger button that opens the dialog is already `disabled` during in-flight ops, and (b) the `Confirm` modal is a full-viewport overlay that blocks all background interaction while open, so no new operation can start behind it. This matches MembersSection. BUT: **preserve whatever staleness/context guard the section's original action already had** (e.g. `loadedContextId !== contextId`) — don't drop those.
+
 ### Task B1 (reference): CodeHostSection — full worked example
 
 **Files:** Modify `client/settings/sections/CodeHostSection.svelte`; Test `tests/client/settings/code-host-section.test.ts`
