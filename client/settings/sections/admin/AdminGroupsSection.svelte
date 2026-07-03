@@ -22,6 +22,8 @@
   let newGroupId = $state('')
   let observed: ObservedGroup[] = $state([])
   let pendingRemoval: string | null = $state(null)
+  let removing = $state(false)
+  let removeError = $state<string | null>(null)
   const pendingRemovalLabel = $derived(pendingRemoval ?? '')
 
   async function load(): Promise<void> {
@@ -66,15 +68,24 @@
     }
   }
 
-  async function remove(groupId: string): Promise<void> {
-    error = null
-    status = null
+  async function confirmRemove(): Promise<void> {
+    const groupId = pendingRemoval
+    if (groupId === null || removing) return
+    removeError = null
+    removing = true
+    let ok = false
     try {
       await removeAdminGroup({ groupId })
+      ok = true
+    } catch (err) {
+      removeError = err instanceof Error ? err.message : String(err)
+    } finally {
+      removing = false
+    }
+    if (ok) {
+      pendingRemoval = null
       await load()
       status = 'Group removed.'
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
     }
   }
 
@@ -141,7 +152,14 @@
   <div class="settings-table-wrap">
     {#snippet cell(row: GroupRow, col: { key: string; label: string })}
       {#if col.key === 'actions'}
-        <Btn variant="danger" size="sm" testid={`group-remove-${row.group_id}`} onClick={() => (pendingRemoval = row.group_id)}>
+        <Btn
+          variant="danger"
+          size="sm"
+          testid={`group-remove-${row.group_id}`}
+          onClick={() => {
+            removeError = null
+            pendingRemoval = row.group_id
+          }}>
           {#snippet children()}Remove{/snippet}
         </Btn>
       {:else if col.key === 'group_id'}
@@ -164,9 +182,13 @@
     open={pendingRemoval !== null}
     title="Remove group"
     danger
+    busy={removing}
     confirmLabel="Remove"
     onCancel={() => (pendingRemoval = null)}
-    onConfirm={() => { const id = pendingRemoval; pendingRemoval = null; if (id !== null) void remove(id) }}>
-    {#snippet body()}<p>Remove group {pendingRemovalLabel}? This cannot be undone.</p>{/snippet}
+    onConfirm={() => void confirmRemove()}>
+    {#snippet body()}
+      <p>Remove group {pendingRemovalLabel}? This cannot be undone.</p>
+      {#if removeError !== null}<p class="status-error">{removeError}</p>{/if}
+    {/snippet}
   </Confirm>
 </section>

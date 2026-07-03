@@ -54,6 +54,12 @@ const postErrorMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(groupsPayload))
 }
 
+const deleteErrorMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/groups') && init.method === 'DELETE')
+    return Promise.resolve(new Response('Internal Server Error', { status: 500 }))
+  return Promise.resolve(json(groupsPayload))
+}
+
 let authorizeFlowDone = false
 
 const authorizeFlowMock = (url: string, init: RequestInit): Promise<Response> => {
@@ -186,6 +192,22 @@ describe('AdminGroupsSection', () => {
     await drain()
 
     expect(capturedPostBody).toBe(JSON.stringify({ groupId: 'pi:a:ctx:obs' }))
+    void unmount(component)
+  })
+
+  test('a failed remove keeps the confirm dialog open and shows an inline error', async () => {
+    setCsrfToken('c')
+    setMockFetch(deleteErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminGroupsSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="group-remove-g-1"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 })
