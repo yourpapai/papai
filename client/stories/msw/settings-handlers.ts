@@ -213,7 +213,7 @@ export const shellReadyHandlers: HttpHandler[] = [
     HttpResponse.json({
       contextId: 'ctx-personal-1',
       taskInstanceId: null,
-      available: [{ id: 'inst_abc', type: 'kaneo', status: 'active' }],
+      available: [{ id: 'inst_abc', type: 'kaneo', status: 'active', name: 'https://kaneo.example' }],
       canProvision: false,
     }),
   ),

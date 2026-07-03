@@ -81,7 +81,10 @@ export const guestModeHandlers: HandlerFamily = {
 const groupProviderPopulated = {
   contextId: 'ctx-group-1',
   taskInstanceId: 'inst_abc',
-  available: [{ id: 'inst_abc', type: 'kaneo', status: 'active' }],
+  available: [
+    { id: 'inst_abc', type: 'kaneo', status: 'active', name: 'https://kaneo.example' },
+    { id: 'inst_bare', type: 'youtrack', status: 'active' },
+  ],
   canProvision: false,
 }
 

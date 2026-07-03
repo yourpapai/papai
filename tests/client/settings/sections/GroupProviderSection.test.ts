@@ -142,6 +142,21 @@ describe('GroupProviderSection', () => {
     void unmount(component)
   })
 
+  test('shows a Loading placeholder while the initial fetch is pending', async () => {
+    setMockFetch(() => new Promise<Response>(() => {}))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    flushSync()
+    // let the $effect fire load(), which sets loading=true before its await
+    await Promise.resolve()
+    flushSync()
+    expect(target.querySelector('.placeholder')?.textContent).toContain('Loading')
+    expect(target.querySelector('[data-testid="group-task-instance"]')).toBeNull()
+    expect(target.querySelector('.ui-error')).toBeNull()
+    void unmount(component)
+  })
+
   test('a failed load shows an error state with a retry button and hides the form', async () => {
     setMockFetch(() =>
       Promise.resolve(
