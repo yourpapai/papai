@@ -32,6 +32,7 @@
 
   async function load(id: string): Promise<void> {
     loadError = null
+    actionError = null
     try {
       const result = scope === 'group' ? await fetchGroupReleaseSubscription(id) : await fetchReleaseSubscription()
       if (scope === 'group' && id !== contextId) return
@@ -58,6 +59,7 @@
 
   const idleLabel = $derived(enabled ? 'Unsubscribe' : 'Subscribe')
   const busyLabel = $derived(enabled ? 'Unsubscribing…' : 'Subscribing…')
+  const showToggle = $derived(enabled !== null && loadError === null)
 
   $effect(() => {
     void load(contextId)
@@ -67,7 +69,7 @@
 <section id="release-announcements-{scope}" class="settings-section">
   <PageHeader eyebrow={scope === 'group' ? 'Group' : 'Personal'} title="Release announcements">
     {#snippet action()}
-      {#if enabled !== null && loadError === null}
+      {#if showToggle}
         <Btn
           variant={enabled ? 'outline' : 'primary'}
           size="sm"
