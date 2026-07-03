@@ -258,6 +258,30 @@ const createDeleteMock = (onDelete: (url: string) => void) => {
   }
 }
 
+const createDeleteFailureMock = () => {
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const method = requestMethod(init)
+    if (method === 'DELETE') return Promise.resolve(new Response('Internal Server Error', { status: 500 }))
+    if (url.includes('/admin/platform-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'tg', type: 'telegram', status: 'active', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/task-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/platform-provider-types'))
+      return Promise.resolve(
+        json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+      )
+    if (url.includes('/admin/task-provider-types'))
+      return Promise.resolve(
+        json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] }),
+      )
+    return Promise.resolve(json({}))
+  }
+}
+
 const createApplyMock = (onApply: () => void) => {
   const applyResult = {
     applied: 1,
@@ -582,6 +606,22 @@ describe('AdminInstancesSection', () => {
     target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(deletedUrl).toContain('k')
+    void unmount(component)
+  })
+
+  test('a failed delete keeps the confirm dialog open with an inline error', async () => {
+    setCsrfToken('c')
+    setMockFetch(createDeleteFailureMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="platform-delete-tg"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
+    await drain()
+    expect(target.querySelector('.modal')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')).not.toBeNull()
     void unmount(component)
   })
 

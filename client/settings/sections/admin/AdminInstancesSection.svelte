@@ -48,6 +48,8 @@
 
   type PendingDelete = { kind: 'platform' | 'task'; id: string } | null
   let pendingDelete: PendingDelete = $state(null)
+  let deleting = $state(false)
+  let deleteError: string | null = $state(null)
 
   type PendingStop = { kind: 'platform' | 'task'; row: AdminInstanceRow } | null
   let pendingStop: PendingStop = $state(null)
@@ -179,20 +181,28 @@
   }
 
   async function confirmDelete(): Promise<void> {
-    const pending = pendingDelete
-    pendingDelete = null
-    if (pending === null) return
+    const p = pendingDelete
+    if (p === null || deleting) return
+    deleteError = null
     error = null
     status = null
+    deleting = true
+    let ok = false
     try {
-      if (pending.kind === 'platform') {
-        await deleteAdminPlatformInstance(pending.id)
+      if (p.kind === 'platform') {
+        await deleteAdminPlatformInstance(p.id)
       } else {
-        await deleteAdminTaskInstance(pending.id)
+        await deleteAdminTaskInstance(p.id)
       }
-      await load()
+      ok = true
     } catch (err) {
-      setErr(err)
+      deleteError = err instanceof Error ? err.message : String(err)
+    } finally {
+      deleting = false
+    }
+    if (ok) {
+      pendingDelete = null
+      await load()
     }
   }
 
@@ -292,7 +302,7 @@
         <Btn variant="outline" size="sm" testid={`platform-status-${row.id}`} onClick={() => (row.status === 'active' ? (pendingStop = { kind: 'platform', row: platforms.find((p) => p.id === row.id)! }) : void toggleStatus(platforms.find((p) => p.id === row.id)!))}>
           {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
         </Btn>
-        <Btn variant="danger" size="sm" testid={`platform-delete-${row.id}`} onClick={() => (pendingDelete = { kind: 'platform', id: row.id })}>
+        <Btn variant="danger" size="sm" testid={`platform-delete-${row.id}`} onClick={() => { deleteError = null; pendingDelete = { kind: 'platform', id: row.id } }}>
           {#snippet children()}Delete{/snippet}
         </Btn>
       {:else}
@@ -346,7 +356,7 @@
         <Btn variant="outline" size="sm" testid={`task-status-${row.id}`} onClick={() => (row.status === 'active' ? (pendingStop = { kind: 'task', row: tasks.find((t) => t.id === row.id)! }) : void toggleTaskStatus(tasks.find((t) => t.id === row.id)!))}>
           {#snippet children()}{row.status === 'active' ? 'Stop' : 'Start'}{/snippet}
         </Btn>
-        <Btn variant="danger" size="sm" testid={`task-delete-${row.id}`} onClick={() => (pendingDelete = { kind: 'task', id: row.id })}>
+        <Btn variant="danger" size="sm" testid={`task-delete-${row.id}`} onClick={() => { deleteError = null; pendingDelete = { kind: 'task', id: row.id } }}>
           {#snippet children()}Delete{/snippet}
         </Btn>
       {:else}
@@ -368,9 +378,13 @@
     title="Delete instance"
     danger
     confirmLabel="Delete"
+    busy={deleting}
     onCancel={() => (pendingDelete = null)}
     onConfirm={() => void confirmDelete()}>
-    {#snippet body()}<p>Delete {pendingDeleteLabel}? This cannot be undone.</p>{/snippet}
+    {#snippet body()}
+      <p>Delete {pendingDeleteLabel}? This cannot be undone.</p>
+      {#if deleteError !== null}<p class="status-error">{deleteError}</p>{/if}
+    {/snippet}
   </Confirm>
 
   <Confirm
