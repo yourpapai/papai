@@ -39,6 +39,25 @@ const patchErrorMock = (url: string, init: RequestInit): Promise<Response> => {
     : Promise.resolve(json(disabledPayload))
 }
 
+const neverResolves = (): Promise<Response> => new Promise<Response>(() => {})
+
+const getHangsMock = (): Promise<Response> => neverResolves()
+
+const patchHangsMock = (url: string, init: RequestInit): Promise<Response> => {
+  const isPatch = url.includes('/group/guest-mode') && init.method === 'PATCH'
+  return isPatch ? neverResolves() : Promise.resolve(json(disabledPayload))
+}
+
+const getFailsThenOkMock = (): ((url: string, init: RequestInit) => Promise<Response>) => {
+  let calls = 0
+  return () => {
+    calls += 1
+    return calls === 1
+      ? Promise.resolve(new Response('Server Error', { status: 500 }))
+      : Promise.resolve(json(disabledPayload))
+  }
+}
+
 afterEach(() => {
   capturedPatchBody = undefined
   restoreFetch()
@@ -97,13 +116,16 @@ describe('GuestModeSection', () => {
     void unmount(component)
   })
 
-  test('shows an error when the fetch fails', async () => {
+  test('renders ErrorState with a retry on load failure (no inline toggle error)', async () => {
     setMockFetch(() => Promise.resolve(new Response('Server Error', { status: 500 })))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
     await drain()
-    expect(target.querySelector('[data-testid="guest-mode-error"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    expect(target.querySelector('[role="alert"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="guest-mode-error"]')).toBeNull()
+    expect(target.querySelector('[data-testid="guest-mode-toggle"]')).toBeNull()
     void unmount(component)
   })
 
@@ -127,6 +149,73 @@ describe('GuestModeSection', () => {
     const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
     await drain()
     expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Guest mode')
+    void unmount(component)
+  })
+
+  test('renders an "Off" mute pill when guest mode is disabled', async () => {
+    setMockFetch(() => Promise.resolve(json(disabledPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const pill = target.querySelector('.ui-pill')!
+    expect(pill).not.toBeNull()
+    expect(pill.textContent?.trim()).toBe('Off')
+    expect(pill.className).toContain('ui-pill--mute')
+    void unmount(component)
+  })
+
+  test('renders an "On" warn pill when guest mode is enabled', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const pill = target.querySelector('.ui-pill')!
+    expect(pill.textContent?.trim()).toBe('On')
+    expect(pill.className).toContain('ui-pill--warn')
+    void unmount(component)
+  })
+
+  test('shows a Loading placeholder and hides the toggle before the first load resolves', async () => {
+    setMockFetch(getHangsMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.querySelector('.placeholder')?.textContent?.trim()).toBe('Loading…')
+    expect(target.querySelector('[data-testid="guest-mode-toggle"]')).toBeNull()
+    expect(target.querySelector('.ui-pill')).toBeNull()
+    void unmount(component)
+  })
+
+  test('shows an "Enabling…" busy label while the toggle PATCH is in flight', async () => {
+    setCsrfToken('csrf-tok')
+    setMockFetch(patchHangsMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const btn = target.querySelector<HTMLButtonElement>('[data-testid="guest-mode-toggle"]')!
+    expect(btn.textContent?.trim()).toBe('Enable guest mode')
+    btn.click()
+    await drain()
+    expect(btn.textContent?.trim()).toBe('Enabling…')
+    expect(btn.getAttribute('aria-busy')).toBe('true')
+    void unmount(component)
+  })
+
+  test('retry after a load failure re-fetches and renders the toggle', async () => {
+    setMockFetch(getFailsThenOkMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="error-retry"]')!.click()
+    await drain()
+    expect(target.querySelector('[data-testid="error-retry"]')).toBeNull()
+    const btn = target.querySelector<HTMLButtonElement>('[data-testid="guest-mode-toggle"]')!
+    expect(btn.textContent?.trim()).toBe('Enable guest mode')
     void unmount(component)
   })
 })

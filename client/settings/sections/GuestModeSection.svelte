@@ -4,8 +4,11 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { formatFetchError } from '../../shared/format-error.js'
   import Btn from '../../shared/ui/Btn.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Pill from '../../shared/ui/Pill.svelte'
   import { fetchGroupGuestMode, patchGroupGuestMode } from '../fetchers.js'
 
   interface Props {
@@ -17,11 +20,8 @@
   let enabled = $state<boolean | null>(null)
   let loading = $state(false)
   let mutating = $state(false)
-  let error: string | null = $state(null)
-
-  function messageFrom(err: unknown): string {
-    return err instanceof Error ? err.message : String(err)
-  }
+  let error = $state<unknown>(null)
+  let toggleError = $state<unknown>(null)
 
   async function load(id: string): Promise<void> {
     error = null
@@ -31,9 +31,7 @@
       if (id !== contextId) return
       enabled = result.enabled
     } catch (err) {
-      if (id === contextId) {
-        error = messageFrom(err)
-      }
+      if (id === contextId) error = err
     } finally {
       if (id === contextId) loading = false
     }
@@ -41,13 +39,13 @@
 
   async function toggle(): Promise<void> {
     if (enabled === null) return
-    error = null
+    toggleError = null
     mutating = true
     try {
       await patchGroupGuestMode({ contextId, enabled: !enabled })
       await load(contextId)
     } catch (err) {
-      error = messageFrom(err)
+      toggleError = err
     } finally {
       mutating = false
     }
@@ -61,27 +59,40 @@
 <section id="guest-mode" class="settings-section">
   <PageHeader eyebrow="Group" title="Guest mode">
     {#snippet action()}
-      <Btn
-        variant={enabled ? 'outline' : 'primary'}
-        size="sm"
-        disabled={enabled === null || loading || mutating}
-        testid="guest-mode-toggle"
-        onClick={() => void toggle()}>
-        {#snippet children()}{enabled ? 'Disable guest mode' : 'Enable guest mode'}{/snippet}
-      </Btn>
+      {#if enabled !== null}
+        <Pill tone={enabled ? 'warn' : 'mute'} dot={enabled}>{enabled ? 'On' : 'Off'}</Pill>
+        <Btn
+          variant="secondary"
+          size="sm"
+          busy={mutating}
+          disabled={loading || mutating}
+          testid="guest-mode-toggle"
+          onClick={() => void toggle()}>
+          {#snippet children()}
+            {mutating
+              ? enabled
+                ? 'Disabling…'
+                : 'Enabling…'
+              : enabled
+                ? 'Disable guest mode'
+                : 'Enable guest mode'}
+          {/snippet}
+        </Btn>
+      {/if}
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error" data-testid="guest-mode-error">{error}</p>{/if}
+  {#if toggleError !== null}
+    <p class="status-error" data-testid="guest-mode-error">{formatFetchError(toggleError)}</p>
+  {/if}
 
-  <p class="settings-section__caption">When on, anyone in this chat can use the bot, read-only. Members and admins are unaffected.</p>
+  {#if error !== null}
+    <ErrorState message={formatFetchError(error)} onRetry={() => void load(contextId)} />
+  {:else if loading && enabled === null}
+    <p class="placeholder">Loading…</p>
+  {:else}
+    <p class="t-help">
+      When on, anyone in this chat can use the bot, read-only. Members and admins are unaffected.
+    </p>
+  {/if}
 </section>
-
-<style>
-  .settings-section__caption {
-    margin: 0;
-    font-size: 12px;
-    color: var(--fg3);
-    line-height: 1.45;
-  }
-</style>
