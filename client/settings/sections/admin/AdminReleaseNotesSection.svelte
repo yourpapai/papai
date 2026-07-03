@@ -23,6 +23,8 @@
   let busy = $state(false)
   let confirming = $state(false)
   let lastBroadcast = $state<ReleaseBroadcastResult | null>(null)
+  let broadcasting = $state(false)
+  let broadcastError = $state<string | null>(null)
 
   function messageFrom(err: unknown): string {
     return err instanceof Error ? err.message : String(err)
@@ -68,20 +70,27 @@
   }
 
   async function confirmedBroadcast(): Promise<void> {
-    confirming = false
+    if (broadcasting) return
+    broadcastError = null
+    broadcasting = true
     lastBroadcast = null
-    error = null
-    busy = true
+    let ok = false
+    let result: ReleaseBroadcastResult | null = null
     try {
       if (body !== (data?.body ?? '') && body !== '') {
         data = await saveReleaseNotes(body)
       }
-      lastBroadcast = await broadcastReleaseNotes()
-      await load()
+      result = await broadcastReleaseNotes()
+      ok = true
     } catch (err) {
-      error = messageFrom(err)
+      broadcastError = messageFrom(err)
     } finally {
-      busy = false
+      broadcasting = false
+    }
+    if (ok) {
+      confirming = false
+      lastBroadcast = result
+      await load()
     }
   }
 
@@ -119,7 +128,10 @@
         size="sm"
         disabled={busy || body.trim() === ''}
         testid="release-notes-broadcast"
-        onClick={() => (confirming = true)}>
+        onClick={() => {
+          broadcastError = null
+          confirming = true
+        }}>
         {#snippet children()}Broadcast{/snippet}
       </Btn>
     </div>
@@ -136,8 +148,12 @@
   open={confirming}
   title="Broadcast release notes"
   danger
+  busy={broadcasting}
   confirmLabel="Send to subscribers"
   onCancel={() => (confirming = false)}
   onConfirm={() => void confirmedBroadcast()}>
-  {#snippet body()}<p>This sends the announcement to all opt-in subscribers. Continue?</p>{/snippet}
+  {#snippet body()}
+    <p>This sends the announcement to all opt-in subscribers. Continue?</p>
+    {#if broadcastError !== null}<p class="status-error">{broadcastError}</p>{/if}
+  {/snippet}
 </Confirm>
