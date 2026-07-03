@@ -160,4 +160,18 @@ describe('GroupProviderSection', () => {
     expect(target.querySelector('[data-testid="group-task-instance-save"]')?.classList.contains('ui-btn')).toBe(true)
     void unmount(component)
   })
+
+  test('associates the Select with its Field label via aria-labelledby', async () => {
+    setMockFetch(capturePatchMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
+    const labelledby = select.getAttribute('aria-labelledby')
+    expect(labelledby).toBeTruthy()
+    const label = target.querySelector(`#${labelledby}`)
+    expect(label?.textContent).toContain('Task instance')
+    void unmount(component)
+  })
 })

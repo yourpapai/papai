@@ -6,6 +6,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
 
+  import { getFieldLabelId } from './field-context.js'
+
   interface Props {
     value: string
     placeholder?: string
@@ -30,6 +32,8 @@
     rows = 3,
   }: Props = $props()
 
+  const labelId = getFieldLabelId()
+
   function handleInput(event: Event): void {
     const next = (event.target as HTMLInputElement | HTMLTextAreaElement).value
     onInput?.(next)
@@ -38,12 +42,20 @@
 
 <div class="ui-input" class:ui-input--multiline={multiline}>
   {#if multiline}
-    <textarea {placeholder} {value} {readonly} {rows} data-testid={testid} oninput={handleInput}></textarea>
+    <textarea
+      {placeholder}
+      {value}
+      {readonly}
+      {rows}
+      aria-labelledby={labelId}
+      data-testid={testid}
+      oninput={handleInput}
+    ></textarea>
   {:else}
     {#if prefix}
       <span class="ui-input__prefix">{@render prefix()}</span>
     {/if}
-    <input {type} {placeholder} {value} {readonly} data-testid={testid} oninput={handleInput} />
+    <input {type} {placeholder} {value} {readonly} aria-labelledby={labelId} data-testid={testid} oninput={handleInput} />
   {/if}
 </div>
 

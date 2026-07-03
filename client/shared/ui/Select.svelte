@@ -4,6 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { getFieldLabelId } from './field-context.js'
+
   interface Option {
     value: string
     label: string
@@ -18,13 +20,15 @@
 
   let { value, options, onChange, testid }: Props = $props()
 
+  const labelId = getFieldLabelId()
+
   function handleChange(event: Event): void {
     onChange?.((event.target as HTMLSelectElement).value)
   }
 </script>
 
 <div class="ui-select">
-  <select {value} onchange={handleChange} data-testid={testid}>
+  <select {value} onchange={handleChange} aria-labelledby={labelId} data-testid={testid}>
     {#each options as opt (opt.value)}
       <option value={opt.value}>{opt.label}</option>
     {/each}

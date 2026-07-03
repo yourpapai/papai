@@ -3,8 +3,14 @@
 <!-- Use of this software is governed by the Business Source License 1.1. -->
 <!-- See LICENSE in the project root for details. -->
 
+<script module lang="ts">
+  let seq = 0
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte'
+
+  import { setFieldLabelId } from './field-context.js'
 
   interface Props {
     label: string
@@ -14,10 +20,13 @@
   }
 
   let { label, children, required = false, hint }: Props = $props()
+
+  const labelId = `ui-field-${++seq}`
+  setFieldLabelId(labelId)
 </script>
 
 <div class="ui-field">
-  <span class="ui-field__label">
+  <span class="ui-field__label" id={labelId}>
     {label}{#if required}<span class="ui-field__req">*</span>{/if}
   </span>
   {@render children()}
