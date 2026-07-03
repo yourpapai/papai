@@ -5,6 +5,297 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.0] - 2026-07-03
+
+### Added
+
+- **coding-credentials:** Provider+agent fields, provider→env mapping, compatibility
+- **acp:** ResolveAgent capability; carry agent in projectSpec
+- **settings-ui:** Agent + provider selects in the AI provider section
+- **coding-credentials:** Typed forge connection fields + kind→apiBaseUrl
+- **acp:** ResolveForge + deriveApiBaseUrl; carry projectSpec.forge; fix forge complete-state test
+- **settings-ui:** Typed Code host connection (kind + instance URL)
+- **coding-credentials:** Openai-compatible provider + base-url-required validation
+- **acp:** ResolveProviderHost; carry projectSpec.providerHost
+- **settings-ui:** Openai-compatible provider option + base-url hint
+- **coding-credentials:** Operator guardrails admin config + section + agent filter
+- **coding-credentials:** Force-shared-key resolves the operator agent-provider key
+- **orchestrator:** Who-may-use gate on coding-session tools
+- **coding-credentials:** Group-session identity resolves the acting user's creds
+- **settings-ui:** Per-group coding-session identity policy
+- **acp:** Per-identity not_configured wording for group sessions
+- **acp:** Pre-flight self-hosted forge before starting a coding session
+- **debug:** Add isScopeVisibleToCurrentAdmin visibility wrapper
+- **debug:** Return unredacted logs from /logs route
+- **debug:** Emit unredacted log entries on the SSE stream
+- **storybook:** Add strybk config for spec generation
+- **storybook:** Add playwright config targeting storybook iframe
+- **storybook:** Generate visual specs from existing stories
+- **storybook:** Add ToolsSection stories and generated visual spec
+- **storybook:** Add ReposSection stories
+- **storybook:** Add ByokSection stories
+- **storybook:** Add KaneoAccessSection stories
+- **storybook:** Add AdminUsersSection stories
+- **storybook:** Add SettingsApp personal-ready shell story
+- **storybook:** Add ProfileSection stories
+- **storybook:** Add AiOutputSection stories
+- **storybook:** Add ReleaseSubscriptionSection stories
+- **storybook:** Add IdentitySection stories
+- **storybook:** Add TaskProviderSection stories
+- **storybook:** Add MemorySection stories
+- **storybook:** Add CodingCredentialsSection stories
+- **storybook:** Add CodeHostSection stories
+- **storybook:** Add McpSection stories
+- **storybook:** Add PluginsSection stories
+- **storybook:** Add MembersSection stories
+- **storybook:** Add GroupProviderSection stories
+- **storybook:** Add GuestModeSection stories
+- **storybook:** Add CodingIdentitySection stories
+- **storybook:** Add SettingsApp group-ready shell story
+- **storybook:** Add AdminInstancesSection stories
+- **storybook:** Add AdminSystemSection stories
+- **storybook:** Add AdminByokSection stories
+- **storybook:** Add AdminGroupsSection stories
+- **storybook:** Add AdminAdminsSection stories
+- **storybook:** Add AdminPluginsConfigSection stories
+- **storybook:** Add AdminPluginsApprovalSection stories
+- **storybook:** Add AdminFeatureFlagsSection stories
+- **storybook:** Add AdminToolDefaultsSection stories
+- **storybook:** Add AdminReleaseNotesSection stories
+- **storybook:** Add AdminCodingGuardrailsSection stories
+- **storybook:** Add AdminAnnounceSection stories
+- **storybook:** Add SettingsApp admin-ready shell story
+- **coding-sessions:** Add per-identity model to agent-provider vault + projectSpec
+- **settings:** Model field with combobox control + validation in coding credentials route
+- **coding-credentials:** Add auth_method discriminator field
+- **coding-credentials:** Emit CLAUDE_CODE_OAUTH_TOKEN for oauth-subscription
+- **settings:** Surface + validate auth_method in coding credentials route
+- **settings-ui:** OAuth-token field for Claude subscription auth
+- **settings:** /models provider proxy (SSRF-guarded) + model combobox UI
+- **settings:** Re-apply /models provider proxy (SSRF-guarded) + model combobox UI
+- **completion:** Read-only tool filter + tool-failure detection
+- **completion:** BuildVerifiedCompletion verify-and-report core
+- **orchestrator:** Route risky interactive turns through verify-and-report
+- **system-prompt:** Make the post-action confirmation name what was done
+- **proactive:** Route risky deferred deliveries through verify-and-report
+- **settings:** Let users clear coding AI-provider & code-host credentials
+- **coding-repos:** Add additional_egress_domains column + migration
+- **coding-repos:** Persist + validate additionalEgressDomains in store
+- **coding-repos:** Accept additionalEgressDomains at settings route
+- **acp:** Forward additionalEgressDomains in projectSpec
+- **settings-client:** Parse additionalEgressDomains in repos schema + fetcher
+- **settings-client:** Add per-project egress domains input
+- **acp:** Thin chat-scoped session history index
+- **acp:** Continue_session tool for follow-up requests
+- **acp:** Record history on start/review and enrich list_sessions
+- **acp:** Gate continue_session behind the whoMayUse guardrail
+- **settings:** Tool group derivation for plugin/MCP namespaced names
+- **settings:** Enumerate the runtime tool surface (plugins, MCP, providerless) in tools routes
+- **settings:** Per-plugin group field on tool entries; plugin tools togglable
+- **settings:** Kind:group bulk toggle; MCP tools listed and togglable
+- **settings:** Admin tool-defaults catalog includes native plugin tools; group kind
+- **settings-client:** Tool group field, group toggle fetchers, grouping lib
+- **settings-client:** Per-plugin/per-server sub-groups with bulk toggles in ToolsSection
+- **debug:** Shared LogFilter model with include/exclude + prefix matching
+- **debug:** Server-side /logs filtering, /logs/scopes, stats matchingCount
+- **debug:** Client filter URL helpers + filter-aware log bootstrap
+- **debug:** Filter live log:entry SSE events per-connection
+- **debug:** Scope filter picker + server-side LogExplorer, remove Fuse
+- **debug:** URL-encoded filter state with refetch + SSE reconnect
+- **skills:** Add report-only ux-review guided procedure
+- **tokens:** Add --gap-tight and --radius-control
+- **ui:** Add shared ErrorState component with retry
+- **settings:** Add busy prop to shared Confirm dialog
+- **group-settings:** Batch-read group member display labels
+- **settings:** Add hybrid member-label resolver
+- **settings:** Enrich group members GET with display labels
+- **settings:** Add nullable member label fields to schema
+- **settings:** Show member display names in MembersSection
+- **ui:** Add busy affordance and intrinsic focus ring to Btn
+
+### Changed
+
+- **acp:** Extract buildSessionProjectSpec (max-lines); fix base-url label
+- **debug:** Single-source visibility rule in isScopeVisibleToCurrentAdmin
+- **debug:** Delete unused log-redaction module
+- **acp:** Trim history index to consumed surface (drop listRecords)
+- **tools:** Remove tool-context-reduction feature flags, make behavior default
+- **settings:** Share StoredConfigValueSchema across schema modules
+- **settings:** Dedup release-subscription toggle gate, reset action error on load
+
+### Documentation
+
+- **coding-credentials:** Phase 4 decomposition design (4a/4b/4c)
+- **coding-credentials:** Phase 4a multi-provider + agent picker design
+- **coding-credentials:** Phase 4a multi-provider implementation plan
+- **coding-credentials:** Phase 4b typed forge connections design
+- **coding-credentials:** Phase 4b typed forge implementation plan
+- **coding-credentials:** Phase 4c derived egress design
+- **coding-credentials:** Lock 4c decisions (exclude repo host; split preset egress)
+- **coding-credentials:** 4c spec consistency (repo-host references)
+- **coding-credentials:** Phase 4c derived egress implementation plan
+- **coding-credentials:** Phase 5 guardrails + group identity design
+- **coding-credentials:** Phase 5a operator guardrails design
+- **coding-credentials:** Phase 5a operator guardrails implementation plan
+- **coding-credentials:** Phase 5b group-session identity design
+- **coding-credentials:** Phase 5b group-session identity implementation plan
+- **coding-credentials:** Phase 5c redaction hardening design
+- **coding-credentials:** Phase 5c redaction hardening implementation plan
+- **claude:** Split CLAUDE.md into topic files under docs/architecture
+- **plan:** /turns/:id scope enforcement implementation plan
+- **debug:** Document /turns/:id scope enforcement (ADR-0223)
+- **adr:** Correct ADR-0223 severity — defense-in-depth, not active leak
+- **spec:** Remove debug log redaction; auth+scope as privacy boundary
+- **plan:** Implementation plan for removing debug log redaction
+- **adr:** Record ADR-0224 removing debug log redaction
+- **adr:** Note ADR-0197 Decision 3 superseded by ADR-0224 in index
+- **spec:** Phase 1 design for read-only/exploration coding sessions
+- **spec:** Auto-commit+PR dirty sessions on auto-finish
+- **spec:** Storybook→agent screenshot feedback pipeline design
+- **plan:** Storybook→agent screenshot pipeline implementation plan
+- **storybook:** Document agent screenshot workflow
+- **storybook:** Point screenshot example at stable baseline path
+- **plan:** Settings story backfill implementation plan
+- **plan:** Fix garbled bullet in settings backfill plan
+- **coding-sessions:** Whole-record save + resolveForge partial-vault guard
+- **plan:** Full settings Storybook coverage plan
+- **coding-sessions:** Phase 4d design — model selection + codex base-URL fix
+- **plan:** Phase 4d model selection + codex base-URL fix implementation plan
+- **coding-sessions:** Document Phase 4d model selection + codex base-URL fix
+- **spec:** Verified completion message design (replace bare 'Done.')
+- **plan:** Verified completion message implementation plan
+- **coding-sessions:** Note per-user/group credential Clear buttons
+- **coding-sessions:** Spec for per-project additional egress domains
+- **coding-sessions:** Implementation plan for per-project egress domains
+- **coding-sessions:** Fix task numbering in egress plan header
+- **coding-sessions:** Document per-project additionalEgressDomains
+- **coding-sessions:** Spec for follow-up coding session requests
+- **coding-sessions:** Implementation plan for follow-up coding sessions
+- **coding-sessions:** Document follow-up coding sessions
+- **tools:** Spec for plugin and MCP tool permissions in settings UI
+- **tools:** Implementation plan for plugin/MCP tool permissions in settings UI
+- **tools:** Document plugin/MCP tool permission editing in the settings UI
+- **settings:** Document registry-lockstep assumption and thread-scoped display gaps
+- **spec:** Server-side scope filtering for debug log explorer
+- **plan:** Implementation plan for log explorer scope filtering
+- **specs:** AI UX review workflow design (guided, report-only)
+- **plans:** Implementation plan for AI UX review workflow
+- **ux-reviews:** Add seven-dimension UX review rubric
+- **ux-reviews:** Add findings-doc output template
+- **storybook:** Link screenshot pipeline to ux-review skill
+- **architecture:** Plugin/core separation design (two-tier ports & adapters)
+- **ux-reviews:** Dogfood ux-review skill on ToolsSection
+- **ux-reviews:** Dogfood ux-review skill on TaskProviderSection
+- **specs:** ProfileSection UX fixes design
+- **ux-review:** Expand rubric to 9 dimensions
+- **ux-reviews:** Re-review ProfileSection against 9-dim rubric
+- **plans:** ProfileSection UX fixes implementation plan
+- **ux-reviews:** Add MembersSection UX review report
+- **specs:** Add MembersSection UX fixes design
+- **plans:** Add MembersSection UX fixes implementation plan
+- **plans:** Add Confirm-retrofit + schema-dedup follow-up plan
+- **plans:** Record settled guard guidance for Confirm retrofit
+- **ux:** Review ReleaseSubscriptionSection + design spec for fixes
+- **plan:** Implementation plan for ReleaseSubscriptionSection UX fixes
+- **spec:** Design for GroupProviderSection UX fixes + shared primitives
+- **ux-review:** Add GroupProviderSection review + manual screenshot states
+
+### Fixed
+
+- **coding-credentials:** Reject unknown agent/provider values; cover render-alongside-selects
+- **settings-ui:** Atomic agent/provider switch; provider-neutral placeholder; cover projectSpec.agent
+- **deferred-prompts:** Stop reminder delivery leaking the model's time-check preamble
+- **debug:** Scope-filter GET /turns/:id to the operator's own contexts
+- **announce:** Upsert subscription so admins without a users row persist
+- **notify:** Decode scoped storage context id for delivery
+- **notify:** Route thread-less group context to channel, not DM
+- **storybook:** Satisfy no-inline-comments lint in playwright config
+- **storybook:** Make shoot:gen self-format and stamp headers for stable regeneration
+- **acp:** Persist forge/provider config as a whole record; guard partial vault
+- **storybook:** Mock members in coding-identity loading variant
+- **settings-ui:** Remove unplanned model-fetching code from B4 component
+- **settings:** Remove unplanned models tests from coding-credentials route test
+- **settings-ui:** Normalize hidden oauth fields at submit time to avoid invisible 422
+- **settings:** Harden /models proxy against redirect SSRF + anthropic /v1 base; cover opencode+anthropic
+- **plugins:** Pass raw thread-scoped storage context id to plugin tool runtime
+- **acp:** Declare continue_session in plugin manifest + guard test
+- **settings:** Distinct 422 messages for unknown group domain vs unknown group
+- **debug:** Treat lone * as match-all and drop empty scope patterns
+- **debug:** Refresh log buffer stats + paging on filter change
+- **ui:** Unify control radius on --radius-control (2px)
+- **ui:** Raise EmptyState hint contrast to AA (--fg2)
+- **settings:** Outline Clear, right-align field actions, tokenize gaps
+- **settings:** ProfileSection keep-fields-on-refresh, ErrorState, empty action, intro
+- **settings:** TaskProviderSection keep-data-on-refresh + ErrorState
+- **settings:** AiOutputSection keep-fields-on-refresh + ErrorState
+- **settings:** Distinguish MembersSection loading state from empty
+- **settings:** Signal in-flight add and block double-submit in MembersSection
+- **settings:** Confirm before removing a group member
+- **settings:** Reset removing flag before member-list reload
+- **settings:** Format MembersSection added_at via shared helper
+- **settings:** Make MembersSection Remove read as destructive
+- **settings:** Resolve member-label provider from platform store + log enrichment failures
+- **settings:** Guard MembersSection state against context switch mid-request
+- **settings:** Keep CodeHost clear dialog open with inline error
+- **settings:** Keep PluginsSection clear-key dialog open with inline error
+- **settings:** Keep MemorySection clear dialog open with inline error
+- **settings:** Keep CodingCredentials clear dialog open with inline error
+- **settings:** Keep admin instance-delete dialog open with inline error
+- **settings:** Keep admin instance-stop dialog open with inline error
+- **settings:** Keep admin-remove dialog open with inline error
+- **settings:** Keep admin user-remove dialog open with inline error
+- **settings:** Keep admin group-remove dialog open with inline error
+- **settings:** Keep admin plugin-config clear dialog open with inline error
+- **settings:** Keep admin plugin-reject dialog open with inline error
+- **settings:** Keep announce-confirm dialog open with inline error
+- **settings:** Keep release-notes broadcast dialog open with inline error
+- **ui:** Make Btn busy styling orthogonal to disabled, drop dead cursor
+- **settings:** Gate release-subscription toggle behind load state, add retry + busy feedback
+
+### Miscellaneous
+
+- **storybook:** Add playwright + crvy screenshot deps and ignore artifacts
+- **storybook:** Wire shoot scripts, bun-test isolation, knip
+- **proactive:** Correct stale 'dropping preamble' log to reflect verify-and-report
+- **knip:** Ignore tool-grouping pending tools-routes wiring
+- **knip:** Fix stale phrasing in group-tools ignore comment
+- **debug:** Drop unused fuse.js dep and orphaned fuse-search test
+- **knip:** Ignore .svelte-consumed types in fetcher-schemas-admin
+
+### Styling
+
+- **settings:** Format coding-identity fetcher + route import
+- **ux-reviews:** Oxfmt TaskProviderSection findings doc
+- **settings:** Design-system styling for ProfileSection empty-state link
+- **settings:** Tokenize settings-field-list gap to --gap-inline
+- **settings:** Space MembersSection error and align add row
+- **ui:** Raise IconButton resting contrast
+
+### Testing
+
+- **coding-credentials:** Cover deriveProviderHost parse-error→null branch
+- **coding-guardrails:** Cover 401/non-admin-POST/422 on the admin route
+- **coding-credentials:** Two-user same-thread credential isolation
+- **coding-credentials:** Redaction release-gate (ciphertext + no-log)
+- **coding-credentials:** Runtime log-spy gate — store never logs secrets
+- **storybook:** Add settings MSW handler families
+- **storybook:** Register settings scenarios and session reset
+- **storybook:** Personal settings handler families + scenarios
+- **storybook:** Group settings handler families + scenarios
+- **storybook:** Admin settings handler families + scenarios
+- **coding-sessions:** Cover model in projectSpec + resolveModel forceSharedKey invariant
+- **settings:** Cover model length boundary (200 chars accepted)
+- **settings:** Assert /models proxy passes redirect:error (regression guard)
+- **db:** Update last-migration guard to 066_coding_repos_egress
+- **debug:** Update /logs scope-filter test to include= param (API change)
+- **visual:** Add ErrorState story spec
+- **settings:** Consolidate ProfileSection tests into sections/
+- **settings:** Add TaskProviderSection load-error regression test
+- **settings:** Assert Confirm busy label and blocked close
+- **settings:** Cover MembersSection remove-error stays in dialog
+- **visual:** Add MembersSection confirm + loading states
+- **visual:** Give MembersSection fixture display labels
+- **settings:** Add release-subscription mutation stories, fixtures, and screenshots
 ## [6.5.1] - 2026-06-26
 
 ### Added
