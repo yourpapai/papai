@@ -68,6 +68,10 @@
     padding: 0 10px;
     border-radius: var(--radius-control);
   }
+  .ui-input:focus-within {
+    outline: 2px solid rgba(82, 224, 138, 0.4);
+    outline-offset: 1px;
+  }
   .ui-input__prefix {
     color: var(--fg3);
     font-family: var(--font-mono);

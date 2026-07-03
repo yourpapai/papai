@@ -49,6 +49,10 @@
     font-size: 12px;
     color: var(--fg);
   }
+  .ui-select:focus-within {
+    outline: 2px solid rgba(82, 224, 138, 0.4);
+    outline-offset: 1px;
+  }
   .ui-select select {
     background: transparent;
     border: 0;
