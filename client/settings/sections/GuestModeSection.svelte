@@ -25,6 +25,7 @@
 
   async function load(id: string): Promise<void> {
     error = null
+    toggleError = null
     loading = true
     try {
       const result = await fetchGroupGuestMode(id)
