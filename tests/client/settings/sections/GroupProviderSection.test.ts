@@ -14,8 +14,12 @@ import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 const json = (payload: unknown): Response =>
   new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
+// 30 microtask ticks (rather than a smaller round number) to reliably drain a
+// double network round-trip (save's PATCH followed by its post-save reload)
+// through the real Response/json() pipeline in happy-dom; empirically this
+// needs ~16 ticks, so 30 leaves comfortable headroom without being wall-clock-based.
 const drain = async (): Promise<void> => {
-  for (let i = 0; i < 10; i++) await Promise.resolve()
+  for (let i = 0; i < 30; i++) await Promise.resolve()
   flushSync()
 }
 
@@ -46,8 +50,20 @@ const patchErrorMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(payload))
 }
 
+let releasePendingPatch: (() => void) | undefined
+
+const pendingPatchMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/group/task-instance') && init.method === 'PATCH') {
+    return new Promise<Response>((resolve) => {
+      releasePendingPatch = (): void => resolve(json({ ok: true, contextId: 'group:7' }))
+    })
+  }
+  return Promise.resolve(json(payload))
+}
+
 afterEach(() => {
   capturedPatchBody = undefined
+  releasePendingPatch = undefined
   restoreFetch()
   setCsrfToken('')
 })
@@ -120,9 +136,47 @@ describe('GroupProviderSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
     await drain()
-    expect(target.textContent).toContain('No active task instances are available for this group.')
+    expect(target.textContent).toContain('No active task instances available. Ask an admin to create one.')
     expect(target.querySelector('[data-testid="group-task-instance"]')).toBeNull()
     expect(target.querySelector('[data-testid="group-task-instance-save"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed load shows an error state with a retry button and hides the form', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: 'nope' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="group-task-instance"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('disables and marks the Save button busy while saving', async () => {
+    setCsrfToken('c')
+    setMockFetch(pendingPatchMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="group-task-instance-save"]')!.click()
+    flushSync()
+    const btn = target.querySelector<HTMLButtonElement>('[data-testid="group-task-instance-save"]')!
+    expect(btn.disabled).toBe(true)
+    expect(btn.classList.contains('ui-btn--busy')).toBe(true)
+    expect(btn.textContent).toContain('Saving')
+    releasePendingPatch?.()
+    await drain()
+    expect(btn.disabled).toBe(false)
     void unmount(component)
   })
 

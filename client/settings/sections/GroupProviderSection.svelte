@@ -5,10 +5,12 @@
 
 <script lang="ts">
   import Btn from '../../shared/ui/Btn.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Select from '../../shared/ui/Select.svelte'
+  import { formatFetchError } from '../../shared/format-error.js'
   import { fetchGroupTaskInstance, patchGroupTaskInstance } from '../fetchers.js'
   import type { GroupTaskInstanceResponse } from '../fetcher-schemas.js'
 
@@ -20,12 +22,15 @@
 
   let data: GroupTaskInstanceResponse | null = $state(null)
   let selected = $state('')
-  let error: string | null = $state(null)
+  let loadError: unknown = $state(null)
+  let saveError: unknown = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
+  let saving = $state(false)
 
   async function load(id: string): Promise<void> {
-    error = null
+    loadError = null
+    saveError = null
     status = null
     loading = true
     try {
@@ -37,22 +42,25 @@
           ? currentId
           : (result.available[0]?.id ?? '')
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      loadError = err
     } finally {
       loading = false
     }
   }
 
   async function save(): Promise<void> {
-    error = null
+    saveError = null
     status = null
     if (selected === '') return
+    saving = true
     try {
       await patchGroupTaskInstance({ taskInstanceId: selected, contextId })
       await load(contextId)
       status = 'Task instance updated.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      saveError = err
+    } finally {
+      saving = false
     }
   }
 
@@ -68,22 +76,27 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
-
-  {#if data !== null}
+  {#if loadError !== null}
+    <ErrorState message={formatFetchError(loadError)} onRetry={() => void load(contextId)} />
+  {:else if loading && data === null}
+    <p class="placeholder">Loading…</p>
+  {:else if data !== null}
+    {#if status !== null}<p class="status-success">{status}</p>{/if}
+    {#if saveError !== null}<p class="status-error">{formatFetchError(saveError)}</p>{/if}
     {#if data.available.length === 0}
-      <p>No active task instances are available for this group.</p>
+      <p class="placeholder">No active task instances available. Ask an admin to create one.</p>
     {:else}
       <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void save() }}>
         <Field label="Task instance">
           <Select
             value={selected}
-            options={data.available.map((o) => ({ value: o.id, label: `${o.id} (${o.type} · ${o.status})` }))}
+            options={data.available.map((o) => ({ value: o.id, label: `${o.name ?? o.id} (${o.type} · ${o.status})` }))}
             onChange={(v) => (selected = v)}
             testid="group-task-instance" />
         </Field>
-        <Btn variant="primary" type="submit" testid="group-task-instance-save">{#snippet children()}Save{/snippet}</Btn>
+        <Btn variant="primary" type="submit" disabled={saving} busy={saving} testid="group-task-instance-save">
+          {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
+        </Btn>
       </form>
     {/if}
   {/if}

@@ -154,6 +154,8 @@
     "client/settings/lib/group-tools.ts": ["files", "exports"],
     "client/shared/fetcher-helpers.ts": ["exports"],
     "client/shared/helpers.ts": ["exports"],
+    // formatFetchError is consumed only by GroupProviderSection.svelte, which knip can't parse.
+    "client/shared/format-error.ts": ["exports"],
     "client/shared/api-types.ts": ["types"],
     "client/shared/ui/status-tone.ts": ["files", "exports"],
     // Plugin entry-point default exports are imported dynamically by the plugin
