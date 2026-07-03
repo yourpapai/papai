@@ -158,6 +158,8 @@
     "client/shared/format-error.ts": ["exports"],
     "client/shared/api-types.ts": ["types"],
     "client/shared/ui/status-tone.ts": ["files", "exports"],
+    // setFieldLabelId/getFieldLabelId are consumed only by Field/Input/Select .svelte, which knip can't parse.
+    "client/shared/ui/field-context.ts": ["exports"],
     // Plugin entry-point default exports are imported dynamically by the plugin
     // loader (by path), so knip sees no static importer. Each new plugin adds a line.
     "plugins/acp/index.ts": ["exports"],
