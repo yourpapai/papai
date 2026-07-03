@@ -90,4 +90,39 @@ describe('Btn.svelte', () => {
     expect(btn.innerHTML.indexOf('data-testid="icon"')).toBeLessThan(btn.innerHTML.indexOf('Save'))
     void unmount(component)
   })
+
+  test('applies ui-btn--busy class and aria-busy when busy', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Btn, { target, props: { children: textSnippet('x'), busy: true } })
+    const btn = target.querySelector<HTMLButtonElement>('.ui-btn')!
+    expect(btn.classList.contains('ui-btn--busy')).toBe(true)
+    expect(btn.getAttribute('aria-busy')).toBe('true')
+    void unmount(component)
+  })
+
+  test('does not invoke onClick while busy', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    let clicked = 0
+    const component = mount(Btn, {
+      target,
+      props: {
+        children: textSnippet('go'),
+        busy: true,
+        onClick: () => {
+          clicked += 1
+        },
+      },
+    })
+    target.querySelector<HTMLButtonElement>('.ui-btn')!.click()
+    expect(clicked).toBe(0)
+    void unmount(component)
+  })
+
+  test('Btn.svelte source contains a :focus-visible ring', async () => {
+    const url = new URL('../../../../client/shared/ui/Btn.svelte', import.meta.url)
+    const source = await Bun.file(url).text()
+    expect(source).toContain('.ui-btn:focus-visible')
+  })
 })

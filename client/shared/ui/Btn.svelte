@@ -17,6 +17,7 @@
     onClick?: () => void
     type?: 'button' | 'submit'
     disabled?: boolean
+    busy?: boolean
     testid?: string
   }
 
@@ -28,15 +29,23 @@
     onClick,
     type = 'button',
     disabled = false,
+    busy = false,
     testid,
   }: Props = $props()
+
+  function handleClick(): void {
+    if (busy) return
+    onClick?.()
+  }
 </script>
 
 <button
   class="ui-btn ui-btn--{variant} ui-btn--{size}"
+  class:ui-btn--busy={busy}
   {type}
   {disabled}
-  onclick={onClick}
+  aria-busy={busy}
+  onclick={handleClick}
   data-testid={testid}
 >
   {#if icon}<span class="ui-btn__icon">{@render icon()}</span>{/if}
@@ -57,6 +66,15 @@
   .ui-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  .ui-btn--busy {
+    opacity: 0.6;
+    cursor: progress;
+    pointer-events: none;
+  }
+  .ui-btn:focus-visible {
+    outline: 2px solid rgba(82, 224, 138, 0.4);
+    outline-offset: 1px;
   }
 
   .ui-btn--primary {
