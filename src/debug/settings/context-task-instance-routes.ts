@@ -33,10 +33,15 @@ export function isBoundInstanceProvisionable(taskInstanceId: string | null | und
 }
 
 /** Active task instances offered as binding targets; unreadable rows are excluded. */
-function listActiveTaskInstanceOptions(): { id: string; type: string; status: string }[] {
+function listActiveTaskInstanceOptions(): { id: string; type: string; status: string; name?: string }[] {
   return listTaskInstancesSafe()
     .instances.filter((taskInstance) => taskInstance.status === 'active')
-    .map((taskInstance) => ({ id: taskInstance.id, type: taskInstance.type, status: taskInstance.status }))
+    .map((taskInstance) => ({
+      id: taskInstance.id,
+      type: taskInstance.type,
+      status: taskInstance.status,
+      name: taskInstance.config['baseUrl'],
+    }))
 }
 
 function handleGet(req: Request, url: URL): Response {

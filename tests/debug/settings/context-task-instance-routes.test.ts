@@ -27,7 +27,7 @@ const ENDPOINT = 'https://x/settings/api/context/task-instance'
 const TaskInstanceGetSchema = z.object({
   contextId: z.string(),
   taskInstanceId: z.string().nullable(),
-  available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
+  available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string(), name: z.string().optional() })),
   canProvision: z.boolean(),
 })
 
@@ -209,6 +209,17 @@ describe('settings context task-instance routes', () => {
     )
     expect(res.status).toBe(200)
     expect(getContextSettings(groupContextId)?.taskInstanceId).toBe('yt-default')
+  })
+
+  test('GET surfaces config.baseUrl as the option name', async () => {
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { baseUrl: 'https://kaneo.example' }, status: 'active' })
+    insertTaskInstance({ id: 'bare', type: 'youtrack', config: {}, status: 'active' })
+    const url = getReq(session)
+    const res = await handleContextTaskInstanceRoutes(url, new URL(url.url))
+    const body = TaskInstanceGetSchema.parse(await res.json())
+    const byId = Object.fromEntries(body.available.map((a) => [a.id, a]))
+    expect(byId['kaneo-a']?.name).toBe('https://kaneo.example')
+    expect(byId['bare']?.name).toBeUndefined()
   })
 
   test('unsupported method is 405', async () => {

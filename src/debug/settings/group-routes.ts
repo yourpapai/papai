@@ -179,7 +179,12 @@ function handleTaskInstanceGet(authed: AuthenticatedSettingsRequest, url: URL): 
   const settings = getContextSettings(outcome.group.contextId)
   const available = listTaskInstancesSafe()
     .instances.filter((taskInstance) => taskInstance.status === 'active')
-    .map((taskInstance) => ({ id: taskInstance.id, type: taskInstance.type, status: taskInstance.status }))
+    .map((taskInstance) => ({
+      id: taskInstance.id,
+      type: taskInstance.type,
+      status: taskInstance.status,
+      name: taskInstance.config['baseUrl'],
+    }))
   return settingsJson(200, {
     contextId: outcome.group.contextId,
     taskInstanceId: settings?.taskInstanceId ?? null,
