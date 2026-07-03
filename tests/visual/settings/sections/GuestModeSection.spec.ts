@@ -28,3 +28,21 @@ test.describe('settings/sections/GuestModeSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('Disabled — narrow 640', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-guestmodesection--disabled')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Disabled — toggle hovered', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-guestmodesection--disabled')
+  await sharedPage.getByTestId('guest-mode-toggle').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Enabled — toggle hovered', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-guestmodesection--enabled')
+  await sharedPage.getByTestId('guest-mode-toggle').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
