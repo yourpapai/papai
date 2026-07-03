@@ -28,3 +28,33 @@ test.describe('settings/sections/ReleaseSubscriptionSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('Unsubscribed — primary button hover', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--unsubscribed')
+  await sharedPage.getByTestId('release-subscription-toggle').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Unsubscribed — primary button focus', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--unsubscribed')
+  await sharedPage.getByTestId('release-subscription-toggle').focus()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Subscribed — outline button hover', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--subscribed')
+  await sharedPage.getByTestId('release-subscription-toggle').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Subscribed — narrow viewport', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--subscribed')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Error — narrow viewport', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--error')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
