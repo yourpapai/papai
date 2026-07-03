@@ -40,6 +40,8 @@ import {
   memoryHandlers,
   pluginsHandlers,
   releaseSubscriptionHandlers,
+  releaseSubscriptionMutatingHandlers,
+  releaseSubscriptionMutationErrorHandlers,
 } from './settings-handlers-personal.js'
 import {
   adminUsersHandlers,
@@ -189,6 +191,8 @@ export const scenarios = {
   'settings-release-empty': [...releaseSubscriptionHandlers.empty],
   'settings-release-error': [...releaseSubscriptionHandlers.error],
   'settings-release-loading': [...releaseSubscriptionHandlers.loading],
+  'settings-release-mutating': [...releaseSubscriptionMutatingHandlers],
+  'settings-release-mutation-error': [...releaseSubscriptionMutationErrorHandlers],
   'settings-members-populated': [...groupMembersHandlers.populated],
   'settings-members-empty': [...groupMembersHandlers.empty],
   'settings-members-error': [...groupMembersHandlers.error],

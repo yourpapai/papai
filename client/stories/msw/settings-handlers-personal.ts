@@ -258,3 +258,18 @@ export const releaseSubscriptionHandlers: HandlerFamily = {
     }),
   ],
 }
+
+// Toggle-in-flight: GET resolves (so the toggle renders), PATCH never resolves.
+export const releaseSubscriptionMutatingHandlers: HttpHandler[] = [
+  http.get('/settings/api/release-subscription', () => HttpResponse.json(releaseSubscriptionEmpty)),
+  http.patch('/settings/api/release-subscription', async () => {
+    await delay(NEVER_RESOLVE_MS)
+    return HttpResponse.json({})
+  }),
+]
+
+// Toggle failure: GET resolves, PATCH returns 500.
+export const releaseSubscriptionMutationErrorHandlers: HttpHandler[] = [
+  http.get('/settings/api/release-subscription', () => HttpResponse.json(releaseSubscriptionEmpty)),
+  http.patch('/settings/api/release-subscription', boom),
+]

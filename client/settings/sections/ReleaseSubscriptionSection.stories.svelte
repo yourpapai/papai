@@ -25,3 +25,7 @@
 
 <Story name="Error" args={{ contextId: CONTEXT_ID, scope: 'personal' }} parameters={{ fixtures: 'settings-release-error' }} />
 <Story name="Loading" args={{ contextId: CONTEXT_ID, scope: 'personal' }} parameters={{ fixtures: 'settings-release-loading' }} />
+
+<Story name="Mutating" args={{ contextId: CONTEXT_ID, scope: 'personal' }} parameters={{ fixtures: 'settings-release-mutating' }} />
+
+<Story name="MutationError" args={{ contextId: CONTEXT_ID, scope: 'personal' }} parameters={{ fixtures: 'settings-release-mutation-error' }} />

@@ -58,3 +58,17 @@ test('Error — narrow viewport', async ({ sharedPage }) => {
   await sharedPage.setViewportSize({ width: 640, height: 900 })
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('Mutating — busy toggle', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--mutating')
+  await sharedPage.getByTestId('release-subscription-toggle').click()
+  await expect(sharedPage.getByTestId('release-subscription-toggle')).toHaveText('Subscribing…')
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('MutationError — inline alert', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--mutation-error')
+  await sharedPage.getByTestId('release-subscription-toggle').click()
+  await expect(sharedPage.getByTestId('release-subscription-error')).toBeVisible()
+  await expect(sharedPage).toHaveScreenshot()
+})
