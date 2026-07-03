@@ -24,6 +24,8 @@
 
   type PendingRemoval = { userId: string; platformInstanceId: string } | null
   let pendingRemoval: PendingRemoval = $state(null)
+  let removing = $state(false)
+  let removeError = $state<string | null>(null)
 
   async function load(): Promise<void> {
     error = null
@@ -55,15 +57,24 @@
     }
   }
 
-  async function remove(row: { userId: string; platformInstanceId: string }): Promise<void> {
-    error = null
-    status = null
+  async function confirmRemove(): Promise<void> {
+    const row = pendingRemoval
+    if (row === null || removing) return
+    removeError = null
+    removing = true
+    let ok = false
     try {
       await removeRosterAdmin({ userId: row.userId, platformInstanceId: row.platformInstanceId })
+      ok = true
+    } catch (err) {
+      removeError = err instanceof Error ? err.message : String(err)
+    } finally {
+      removing = false
+    }
+    if (ok) {
+      pendingRemoval = null
       await load()
       status = 'Admin removed.'
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
     }
   }
 
@@ -125,7 +136,7 @@
   <div class="settings-table-wrap">
     {#snippet cell(row: AdminRow, col: { key: string; label: string })}
       {#if col.key === 'actions'}
-        <Btn variant="danger" size="sm" testid={`admin-remove-${row.userId}`} onClick={() => (pendingRemoval = { userId: row.userId, platformInstanceId: row.platformInstanceId })}>
+        <Btn variant="danger" size="sm" testid={`admin-remove-${row.userId}`} onClick={() => { removeError = null; pendingRemoval = { userId: row.userId, platformInstanceId: row.platformInstanceId } }}>
           {#snippet children()}Remove{/snippet}
         </Btn>
       {:else if col.key === 'userId'}
@@ -148,9 +159,13 @@
     open={pendingRemoval !== null}
     title="Remove admin"
     danger
+    busy={removing}
     confirmLabel="Remove"
     onCancel={() => (pendingRemoval = null)}
-    onConfirm={() => { const row = pendingRemoval; pendingRemoval = null; if (row !== null) void remove(row) }}>
-    {#snippet body()}<p>Remove admin {pendingLabel}? This cannot be undone.</p>{/snippet}
+    onConfirm={() => void confirmRemove()}>
+    {#snippet body()}
+      <p>Remove admin {pendingLabel}? This cannot be undone.</p>
+      {#if removeError !== null}<p class="status-error">{removeError}</p>{/if}
+    {/snippet}
   </Confirm>
 </section>
