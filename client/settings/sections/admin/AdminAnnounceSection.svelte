@@ -13,42 +13,41 @@
   import type { AnnounceResult } from '../../fetcher-schemas-admin.js'
 
   let message = $state('')
-  let error: string | null = $state(null)
   let result: AnnounceResult | null = $state(null)
   let sending = $state(false)
   let confirming = $state(false)
-
-  async function send(): Promise<void> {
-    const text = message.trim()
-    if (text === '') return
-    error = null
-    result = null
-    sending = true
-    try {
-      result = await sendAnnounce({ message: text })
-      message = ''
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    } finally {
-      sending = false
-    }
-  }
+  let sendError = $state<string | null>(null)
 
   function requestSend(): void {
     if (message.trim() === '') return
+    sendError = null
     confirming = true
   }
 
   async function confirmedSend(): Promise<void> {
-    confirming = false
-    await send()
+    if (sending) return
+    const text = message.trim()
+    if (text === '') return
+    sendError = null
+    sending = true
+    let ok = false
+    try {
+      result = await sendAnnounce({ message: text })
+      ok = true
+    } catch (err) {
+      sendError = err instanceof Error ? err.message : String(err)
+    } finally {
+      sending = false
+    }
+    if (ok) {
+      confirming = false
+      message = ''
+    }
   }
 </script>
 
 <section id="announce" class="settings-section">
   <PageHeader eyebrow="Admin" title="Announce" />
-
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
 
   <form class="settings-form" onsubmit={(event) => { event.preventDefault(); requestSend() }}>
     <Field label="Message">
@@ -70,8 +69,12 @@
   open={confirming}
   title="Broadcast to all users"
   danger
+  busy={sending}
   confirmLabel="Send to everyone"
   onCancel={() => (confirming = false)}
   onConfirm={() => void confirmedSend()}>
-  {#snippet body()}<p>This sends the message to every user. Continue?</p>{/snippet}
+  {#snippet body()}
+    <p>This sends the message to every user. Continue?</p>
+    {#if sendError !== null}<p class="status-error">{sendError}</p>{/if}
+  {/snippet}
 </Confirm>

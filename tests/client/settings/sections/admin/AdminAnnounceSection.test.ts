@@ -105,7 +105,8 @@ describe('AdminAnnounceSection', () => {
     // confirm the dialog
     target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
-    const errorEl = target.querySelector<HTMLElement>('.status-error')!
+    expect(target.querySelector('.modal')).not.toBeNull()
+    const errorEl = target.querySelector<HTMLElement>('.modal .status-error')!
     expect(errorEl).not.toBeNull()
     expect(errorEl.textContent).toContain('server error')
     expect(target.querySelector<HTMLTextAreaElement>('[data-testid="announce-message"]')!.value).toBe('broadcast this')
