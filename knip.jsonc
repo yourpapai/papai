@@ -156,6 +156,8 @@
     // consumed only by the transcript viewer state/.svelte which knip can't parse.
     "client/transcript/fetcher-schemas.ts": ["files", "exports", "types"],
     "client/transcript/stitch.ts": ["files", "exports"],
+    "client/transcript/fetchers.ts": ["files", "exports"],
+    "client/transcript/sse.ts": ["files", "exports", "types"],
     "client/shared/fetcher-helpers.ts": ["exports"],
     "client/shared/helpers.ts": ["exports"],
     // formatFetchError is consumed only by GroupProviderSection.svelte, which knip can't parse.
