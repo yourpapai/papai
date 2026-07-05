@@ -44,8 +44,10 @@ async function resync(ctx: StreamCtx): Promise<void> {
     const { events: gap } = await fetchAllHistory(ctx.token, ctx.maxSeq)
     applyEvents(ctx, gap)
     if (ctx.data.status === 'error' || ctx.data.status === 'connecting') ctx.data.status = 'live'
-  } catch {
-    /* native EventSource keeps retrying; the next reconnect will trigger another resync */
+  } catch (err) {
+    // A token valid at history-load time can later be revoked; otherwise keep swallowing
+    // and let the next reconnect/resync try again.
+    if (err instanceof Error && err.message === 'not_found') ctx.data.status = 'invalid-token'
   } finally {
     ctx.resyncing = false
   }
@@ -56,13 +58,18 @@ function buildHandlers(ctx: StreamCtx): StreamHandlers {
     onEvent: (e) => {
       if (ctx.historyLoaded) applyEvents(ctx, [e])
       else ctx.buffer.push(e)
-      if (ctx.data.status !== 'finished' && ctx.data.status !== 'recording-disabled') ctx.data.status = 'live'
+      if (
+        ctx.data.status !== 'finished' &&
+        ctx.data.status !== 'recording-disabled' &&
+        ctx.data.status !== 'invalid-token'
+      )
+        ctx.data.status = 'live'
     },
     onEnd: () => {
       if (ctx.data.status !== 'recording-disabled') ctx.data.status = 'finished'
     },
     onError: () => {
-      if (ctx.data.status === 'finished') return
+      if (ctx.data.status === 'finished' || ctx.data.status === 'invalid-token') return
       ctx.data.status = 'error'
       if (ctx.historyLoaded) void resync(ctx)
     },

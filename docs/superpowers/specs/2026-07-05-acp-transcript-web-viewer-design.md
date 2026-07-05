@@ -354,3 +354,6 @@ TDD-first, per repo hooks.
 - Per-event redaction of secrets in the transcript.
 - Approve/deny from the viewer, gated behind real identity auth (would require
   abandoning the pure capability-URL model).
+- Richer `tool_call` rendering (diff/args) and a real `plan` checklist are
+  deferred — the v1 timeline shows tool name + status and renders plan/unknown
+  payloads as raw JSON.

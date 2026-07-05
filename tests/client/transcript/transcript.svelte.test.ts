@@ -89,6 +89,29 @@ describe('createTranscriptState', () => {
     expect(state.events.map((e) => e.seq)).toEqual([1])
   })
 
+  test('invalid token: history rejects not_found and a stream error also fires, status stays invalid-token (error-then-reject)', async () => {
+    let rejectHistory: ((err: Error) => void) | undefined
+    const historyPromise = new Promise<Response>((_resolve, reject) => {
+      rejectHistory = (err: Error): void => reject(err)
+    })
+    setMockFetch(() => historyPromise)
+    const state = createTranscriptState('tok')
+    const loaded = state.load()
+    sseStub.emit('error', {})
+    rejectHistory?.(new Error('not_found'))
+    await loaded
+    expect(state.status).toBe('invalid-token')
+  })
+
+  test('invalid token: history rejects not_found before a stream error fires, status stays invalid-token (reject-then-error)', async () => {
+    setMockFetch(() => Promise.reject(new Error('not_found')))
+    const state = createTranscriptState('tok')
+    await state.load()
+    expect(state.status).toBe('invalid-token')
+    sseStub.emit('error', {})
+    expect(state.status).toBe('invalid-token')
+  })
+
   test('reconnect: stream error after history loaded triggers resync backfill and recovers status to live', async () => {
     setMockFetch(
       sequentialHistoryMock(
