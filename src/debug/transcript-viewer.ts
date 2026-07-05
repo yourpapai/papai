@@ -37,3 +37,23 @@ export async function proxyTranscriptHistory(
     headers: { 'Content-Type': upstream.headers.get('content-type') ?? 'application/json' },
   })
 }
+
+export async function proxyTranscriptStream(
+  token: string,
+  cfg: ViewerMagiConfig,
+  clientSignal: AbortSignal,
+  fetchImpl: FetchImpl = fetch,
+): Promise<Response> {
+  const target = `${cfg.baseUrl}/t/${encodeURIComponent(token)}/stream`
+  const upstream = await fetchImpl(target, {
+    headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'text/event-stream' },
+    signal: clientSignal,
+  })
+  if (!upstream.ok || upstream.body === null) {
+    return new Response('upstream stream unavailable', { status: upstream.ok ? 502 : upstream.status })
+  }
+  return new Response(upstream.body, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+  })
+}
