@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 
 import {
   getViewerMagiConfig,
@@ -14,6 +16,28 @@ import {
 import type { ViewerMagiConfig } from '../../src/debug/transcript-viewer.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import { mockLogger, restoreFetch, setMockFetch, setupTestDb } from '../utils/test-helpers.js'
+
+const PUBLIC_DIR = path.resolve(import.meta.dir, '../../public')
+
+// Locally (and in CI's `check` job, which downloads the `build` job's
+// `public/` artifact) `bun build:client` may already have produced these
+// files, so we can't rely on ambient absence to exercise the missing-file
+// 404 path. Deterministically hide the real file for the duration of the
+// test, then restore it, so the assertion holds regardless of build state.
+async function withFileHidden(fileName: string, run: () => Promise<void>): Promise<void> {
+  const filePath = path.join(PUBLIC_DIR, fileName)
+  const hiddenPath = `${filePath}.test-hidden`
+  const existed = await fs
+    .access(filePath)
+    .then(() => true)
+    .catch(() => false)
+  if (existed) await fs.rename(filePath, hiddenPath)
+  try {
+    await run()
+  } finally {
+    if (existed) await fs.rename(hiddenPath, filePath)
+  }
+}
 
 describe('getViewerMagiConfig', () => {
   test('returns trimmed baseUrl and token when both configured', async () => {
@@ -198,30 +222,38 @@ describe('routeTranscriptPaths', () => {
     expect(response?.status).toBe(503)
   })
 
-  // public/transcript.{html,js,css} land in a later unit; until then the shell/asset
-  // routes must 404 cleanly on the missing file rather than let Bun.file 500 later.
+  // The shell/asset routes must 404 cleanly when public/transcript.{html,js,css}
+  // is missing (e.g. build:client hasn't run yet) rather than let Bun.file 500
+  // later. Hide the real file for the duration of the test so this holds even
+  // when a build already populated public/ (as CI's `check` job does).
   test('cleanly 404s the shell route for a bare /t/<token> while the file is missing', async () => {
-    const url = new URL('https://papai.example/t/tok_z')
-    const response = await routeTranscriptPaths(new Request(url), url)
+    await withFileHidden('transcript.html', async () => {
+      const url = new URL('https://papai.example/t/tok_z')
+      const response = await routeTranscriptPaths(new Request(url), url)
 
-    expect(response).not.toBeNull()
-    expect(response?.status).toBe(404)
+      expect(response).not.toBeNull()
+      expect(response?.status).toBe(404)
+    })
   })
 
   test('cleanly 404s the /t.js asset route while the file is missing', async () => {
-    const url = new URL('https://papai.example/t.js')
-    const response = await routeTranscriptPaths(new Request(url), url)
+    await withFileHidden('transcript.js', async () => {
+      const url = new URL('https://papai.example/t.js')
+      const response = await routeTranscriptPaths(new Request(url), url)
 
-    expect(response).not.toBeNull()
-    expect(response?.status).toBe(404)
+      expect(response).not.toBeNull()
+      expect(response?.status).toBe(404)
+    })
   })
 
   test('cleanly 404s the /t.css asset route while the file is missing', async () => {
-    const url = new URL('https://papai.example/t.css')
-    const response = await routeTranscriptPaths(new Request(url), url)
+    await withFileHidden('transcript.css', async () => {
+      const url = new URL('https://papai.example/t.css')
+      const response = await routeTranscriptPaths(new Request(url), url)
 
-    expect(response).not.toBeNull()
-    expect(response?.status).toBe(404)
+      expect(response).not.toBeNull()
+      expect(response?.status).toBe(404)
+    })
   })
 
   test('returns 404 for an empty token', async () => {
