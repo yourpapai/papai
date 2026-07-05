@@ -3,7 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import path from 'node:path'
+
 import { getPluginAdminConfig } from '../plugins/store.js'
+
+const PUBLIC_DIR = path.resolve(import.meta.dir, '../../public')
 
 export type ViewerMagiConfig = { baseUrl: string; token: string }
 
@@ -56,4 +60,36 @@ export async function proxyTranscriptStream(
     status: 200,
     headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
   })
+}
+
+function serveAsset(file: 'transcript.js' | 'transcript.css', contentType: string): Response {
+  return new Response(Bun.file(path.join(PUBLIC_DIR, file)), { headers: { 'Content-Type': contentType } })
+}
+
+function serveShell(): Response {
+  return new Response(Bun.file(path.join(PUBLIC_DIR, 'transcript.html')), {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  })
+}
+
+export async function routeTranscriptPaths(req: Request, url: URL): Promise<Response | null> {
+  if (url.pathname === '/t.js') return serveAsset('transcript.js', 'text/javascript')
+  if (url.pathname === '/t.css') return serveAsset('transcript.css', 'text/css')
+  if (!url.pathname.startsWith('/t/')) return null
+  const rest = url.pathname.slice('/t/'.length)
+  const slash = rest.indexOf('/')
+  const token = slash === -1 ? rest : rest.slice(0, slash)
+  const sub = slash === -1 ? '' : rest.slice(slash + 1)
+  if (token === '') return new Response('Not found', { status: 404 })
+  if (sub === '') return serveShell()
+  if (sub === 'stream' || sub === 'transcript') {
+    const cfg = getViewerMagiConfig()
+    if (cfg === null) return new Response('transcript viewer not configured', { status: 503 })
+    const response =
+      sub === 'stream'
+        ? await proxyTranscriptStream(token, cfg, req.signal)
+        : await proxyTranscriptHistory(url, token, cfg)
+    return response
+  }
+  return new Response('Not found', { status: 404 })
 }

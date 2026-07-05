@@ -9,6 +9,7 @@ import {
   getViewerMagiConfig,
   proxyTranscriptHistory,
   proxyTranscriptStream,
+  routeTranscriptPaths,
 } from '../../src/debug/transcript-viewer.js'
 import type { ViewerMagiConfig } from '../../src/debug/transcript-viewer.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
@@ -101,5 +102,73 @@ describe('proxyTranscriptStream', () => {
     const response = await proxyTranscriptStream('tok_z', cfg, clientSignal, fetchImpl)
 
     expect(response.status).toBe(404)
+  })
+})
+
+describe('routeTranscriptPaths', () => {
+  test('falls through null for a non-/t path', async () => {
+    const url = new URL('https://papai.example/settings')
+    const response = await routeTranscriptPaths(new Request(url), url)
+
+    expect(response).toBeNull()
+  })
+
+  test('returns 404 for an unknown /t/<token>/<sub> subpath', async () => {
+    await setupTestDb()
+    const url = new URL('https://papai.example/t/tok_z/bogus')
+    const response = await routeTranscriptPaths(new Request(url), url)
+
+    expect(response).not.toBeNull()
+    expect(response?.status).toBe(404)
+  })
+
+  test('returns 503 for /t/<token>/stream when magi is not configured', async () => {
+    await setupTestDb()
+    const url = new URL('https://papai.example/t/tok_z/stream')
+    const response = await routeTranscriptPaths(new Request(url), url)
+
+    expect(response).not.toBeNull()
+    expect(response?.status).toBe(503)
+  })
+
+  test('returns 503 for /t/<token>/transcript when magi is not configured', async () => {
+    await setupTestDb()
+    const url = new URL('https://papai.example/t/tok_z/transcript')
+    const response = await routeTranscriptPaths(new Request(url), url)
+
+    expect(response).not.toBeNull()
+    expect(response?.status).toBe(503)
+  })
+
+  test('serves the shell for a bare /t/<token>', async () => {
+    const url = new URL('https://papai.example/t/tok_z')
+    const response = await routeTranscriptPaths(new Request(url), url)
+
+    expect(response).not.toBeNull()
+    expect(response?.headers.get('content-type')).toBe('text/html; charset=utf-8')
+  })
+
+  test('serves the /t.js asset', async () => {
+    const url = new URL('https://papai.example/t.js')
+    const response = await routeTranscriptPaths(new Request(url), url)
+
+    expect(response).not.toBeNull()
+    expect(response?.headers.get('content-type')).toBe('text/javascript')
+  })
+
+  test('serves the /t.css asset', async () => {
+    const url = new URL('https://papai.example/t.css')
+    const response = await routeTranscriptPaths(new Request(url), url)
+
+    expect(response).not.toBeNull()
+    expect(response?.headers.get('content-type')).toBe('text/css')
+  })
+
+  test('returns 404 for an empty token', async () => {
+    const url = new URL('https://papai.example/t/')
+    const response = await routeTranscriptPaths(new Request(url), url)
+
+    expect(response).not.toBeNull()
+    expect(response?.status).toBe(404)
   })
 })
