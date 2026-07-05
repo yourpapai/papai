@@ -98,10 +98,6 @@
     // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
     "src/byok-llm/store.ts": ["files", "exports"],
     "src/byok-llm/types.ts": ["files", "types"],
-    // Transcript viewer proxy is created ahead of the debug server route wiring
-    // (ACP transcript web viewer plan, Unit B); mounted into src/debug/server.ts
-    // once the path dispatcher lands.
-    "src/debug/transcript-viewer.ts": ["files"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.

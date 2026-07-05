@@ -20,6 +20,7 @@ import { handleDeferred, handleIdentity, handleMemos, handleRecurring } from './
 import { isSettingsPath, routeSettingsPaths } from './settings-router.js'
 import { addClient, init, removeClient, findTurnById, isScopeVisibleToCurrentAdmin } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
+import { routeTranscriptPaths } from './transcript-viewer.js'
 
 const log = logger.child({ scope: 'debug-server' })
 
@@ -225,6 +226,9 @@ async function routeRequest(req: Request, options: WebServerRouteOptions = route
   if (!options.debugEnabled && isDebugOnlyPath(url.pathname)) return new Response('Not found', { status: 404 })
 
   if (url.pathname === '/api/notify') return handleNotifyRoute(req)
+
+  const transcriptResponse = await routeTranscriptPaths(req, url)
+  if (transcriptResponse !== null) return transcriptResponse
 
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
