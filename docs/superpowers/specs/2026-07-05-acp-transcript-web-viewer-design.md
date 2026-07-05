@@ -71,14 +71,19 @@ merge request the session opens.
 This papai spec depends on the following magi changes. They are **not** built
 here; they are the interface papai codes against.
 
-1. **`shareToken` in session-creation responses.** `POST /sessions` (and
-   `POST /sessions/:id/follow-up`, `POST /reviews`) return a crypto-random,
-   unguessable `shareToken: string`. Each session (including a follow-up child)
-   has its own token → its own transcript → its own link.
+1. **`shareToken` + `transcriptUrl` in session-creation responses.**
+   `POST /sessions` (and `POST /sessions/:id/follow-up`, `POST /reviews`) return a
+   crypto-random, unguessable `shareToken: string` **and** the full
+   `transcriptUrl: string` (`<papaiBase>/t/<token>`). magi is the single source of
+   truth for the URL format — it already needs papai's public base to embed the
+   link in the PR (item 2), so it returns the finished URL rather than making
+   papai rebuild it. papai relays `transcriptUrl` verbatim and needs no base
+   config of its own. Each session (including a follow-up child) has its own token
+   → its own transcript → its own link.
 
 2. **magi embeds the transcript URL in the PR.** When magi opens the PR it writes
-   `<papaiBase>/t/<token>` into the PR body/footer (e.g. "Watch this session:
-   …"). magi therefore needs papai's public viewer base as magi config
+   the same `transcriptUrl` into the PR body/footer (e.g. "Watch this session:
+   …"). magi derives it from its own config, papai's public viewer base
    (`MAGI_TRANSCRIPT_BASE_URL`).
 
 3. **Token-scoped read endpoints** mirroring the two session-id endpoints already
@@ -137,18 +142,18 @@ raw event wire format (magi→proxy→SPA).
 
 ### 1. acp plugin (`plugins/acp/`)
 
-- `start_session`, `continue_session`, and `review_pr` read `shareToken` from
-  magi's response and store it on the `SessionRecord` (`plugins/acp/history.ts`
-  gains `shareToken?: string` and derived `transcriptUrl?: string`).
-- The tool result gains `transcriptUrl` so the model naturally relays the live
-  link in its chat reply. The `/acp` prompt fragment (`plugins/acp/`) is updated
-  to instruct the agent to share the live link when a session starts.
-- `transcriptUrl` is built as `${TRANSCRIPT_PUBLIC_BASE_URL}/t/${shareToken}`.
-- **Back-compat:** an older magi that omits `shareToken` yields no
-  `transcriptUrl`; the tool result and prompt degrade gracefully (no link, no
-  error). No static bare-module imports (discovery rejects them) — the field is
-  read with a manual guard, consistent with the plugin's existing JSON-Schema
-  style.
+- `start_session`, `continue_session`, and `review_pr` read `shareToken` and
+  `transcriptUrl` from magi's response and store them on the `SessionRecord`
+  (`plugins/acp/history.ts` gains `shareToken?: string` and `transcriptUrl?:
+string`).
+- The tools already return magi's raw response object to the model, so
+  `transcriptUrl` reaches the model with no reshaping; the `/acp` prompt fragment
+  (`plugins/acp/`) is updated to instruct the agent to share the live link when a
+  session starts.
+- **Back-compat:** an older magi that omits the fields yields no `transcriptUrl`;
+  the tool result and prompt degrade gracefully (no link, no error). No static
+  bare-module imports (discovery rejects them) — the fields are read with a manual
+  guard, consistent with the plugin's existing JSON-Schema style.
 - `list_sessions` includes `transcriptUrl` per row when the local record has a
   token (no extra magi call — reuses the record it already merges).
 
@@ -183,14 +188,13 @@ timeout(30_000)`, `src/plugins/provider-runtime.ts`). It uses a dedicated
   paths — no user-controlled path segment beyond the opaque token, so no path
   traversal into other magi endpoints.
 
-**Credential wiring (integration point to nail down in the plan).** The magi
-base URL + token live today in **acp plugin admin config**
-(`plugins/acp/plugin.json` `configRequirements`, read by `readMagiConfig`). A
-core route must obtain them. The plan resolves one of: (a) read the acp plugin's
-admin config through the plugin config store from the core route, or (b) surface
-`magi_base_url` / `magi_token` (+ `TRANSCRIPT_PUBLIC_BASE_URL`) as a small shared
-config accessor both the plugin and the route consume. Preference: a single
-shared accessor, so the plugin and the proxy cannot drift.
+**Credential wiring (resolved).** The magi base URL + token live in **acp plugin
+admin config** (`plugins/acp/plugin.json` `configRequirements`, keys
+`magi_base_url` / `magi_token`, `scope: 'admin'`). The core proxy reads them
+directly with the existing plugin-agnostic accessor
+`getPluginAdminConfig('acp', key)` (`src/plugins/store.ts`) — the same store the
+plugin runtime's `adminConfig` facade delegates to, so the two cannot drift. No
+new config surface is added.
 
 ### 3. Viewer client (`client/transcript/`)
 
@@ -227,20 +231,22 @@ laptop sleep / network blips and any proxy max-lifetime cap.
 
 ### 4. Configuration
 
-- **`TRANSCRIPT_PUBLIC_BASE_URL`** (papai) — the public origin the viewer is
-  served from, used to build `transcriptUrl`. May reuse the existing public base
-  if the settings origin also fronts `/t/*`; otherwise a dedicated var. Resolved
-  in the plan.
-- **`MAGI_TRANSCRIPT_BASE_URL`** (magi) — the same base, on magi's side, so magi
-  can embed the URL in the PR. (magi-side; listed here for completeness.)
+- **papai** needs **no** new base-URL config. The proxy takes the token from the
+  inbound request path and reads magi's base URL + bearer from the acp plugin's
+  existing admin config (`magi_base_url` / `magi_token`, via
+  `getPluginAdminConfig('acp', …)`).
+- **`MAGI_TRANSCRIPT_BASE_URL`** (magi) — papai's public viewer origin, on magi's
+  side, so magi builds the `transcriptUrl` it returns to papai and embeds in the
+  PR. (magi-side; listed here for completeness.)
 
 ## Data flow (end to end)
 
 1. User asks for a change → LLM calls `start_session`.
 2. papai → magi `POST /sessions`. magi creates the session, mints `shareToken`,
    launches the run.
-3. magi's response carries `shareToken`. papai stores it on the `SessionRecord`
-   and returns `transcriptUrl` in the tool result.
+3. magi's response carries `shareToken` + `transcriptUrl`. papai stores both on
+   the `SessionRecord`; the tool returns magi's raw response, so `transcriptUrl`
+   reaches the model unmodified.
 4. The model replies in chat including the live link (prompt fragment nudges it).
 5. magi records transcript events (hub + file). When it opens the PR it embeds
    the same `transcriptUrl` in the PR body.
@@ -320,12 +326,13 @@ TDD-first, per repo hooks.
   - `plugins/acp/tools.ts`, `plugins/acp/continue-tool.ts`,
     `plugins/acp/session-tools.ts` — read token, return `transcriptUrl`.
   - `plugins/acp/` prompt fragment — nudge sharing the live link.
-  - `src/debug/server.ts` — mount `/t/*` before the auth gate; `handleClientFile`
-    for the `transcript` bundle.
-  - `scripts/build-client.ts` — `BUNDLES` entry for `transcript`.
-  - config wiring for `TRANSCRIPT_PUBLIC_BASE_URL`.
+  - `src/debug/server.ts` — mount the `/t.*` + `/t/*` public dispatcher before the
+    auth gate.
+  - `scripts/build-client.ts` — `BUNDLES` entry for `transcript`;
+    `scripts/check-bundle-isolation.ts` — add `public/transcript.js`.
 - **Docs:** `docs/architecture/coding-sessions.md` — a "Transcript viewer"
-  section; `docs/architecture/environment.md` — the new base-URL var.
+  section; `docs/architecture/environment.md` — note `MAGI_TRANSCRIPT_BASE_URL`
+  is a magi-side var (papai adds none).
 
 ## User stories
 
