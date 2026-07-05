@@ -10,12 +10,18 @@ import { mergeBySeq } from './stitch.js'
 
 export type ViewerStatus = 'connecting' | 'live' | 'finished' | 'recording-disabled' | 'invalid-token' | 'error'
 
+export interface TranscriptState {
+  readonly events: TranscriptEvent[]
+  readonly status: ViewerStatus
+  load(): Promise<void>
+}
+
 /**
  * Stitch order: open the live SSE stream first (buffering events until history
  * has loaded), page all history via fetchAllHistory, apply+merge (mergeBySeq)
  * history then flush the buffered live events on top.
  */
-export function createTranscriptState(token: string) {
+export function createTranscriptState(token: string): TranscriptState {
   let events = $state<TranscriptEvent[]>([])
   let status = $state<ViewerStatus>('connecting')
   const buffer: TranscriptEvent[] = []
@@ -28,8 +34,8 @@ export function createTranscriptState(token: string) {
   const start = (): { close(): void } =>
     openTranscriptStream(token, {
       onEvent: (e) => {
-        if (!historyLoaded) buffer.push(e)
-        else apply([e])
+        if (historyLoaded) apply([e])
+        else buffer.push(e)
         if (status === 'connecting') status = 'live'
       },
       onEnd: () => {
@@ -55,10 +61,10 @@ export function createTranscriptState(token: string) {
   }
 
   return {
-    get events() {
+    get events(): TranscriptEvent[] {
       return events
     },
-    get status() {
+    get status(): ViewerStatus {
       return status
     },
     load,
