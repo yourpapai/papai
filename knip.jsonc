@@ -128,6 +128,8 @@
     // SessionDetail is a type used in tests and by .svelte components knip cannot parse.
     "client/debug/types.ts": ["files", "types"],
     "client/admin/admin.svelte.ts": ["exports", "types"],
+    // Transcript viewer: only consumed by .svelte components knip can't parse.
+    "client/transcript/transcript.svelte.ts": ["files", "exports", "types"],
     "client/admin/global-stats.svelte.ts": ["types"],
     "client/admin/fetcher-schemas.ts": ["files", "exports"],
     "client/admin/fetchers.ts": ["files", "exports", "types"],
