@@ -30,4 +30,11 @@ describe('mergeBySeq', () => {
     const merged = mergeBySeq([ev(2), ev(1)], [ev(4), ev(3)])
     expect(merged.map((e) => e.seq)).toEqual([1, 2, 3, 4])
   })
+
+  test('history wins on seq collision even when live carries different content', () => {
+    const hist: TranscriptEvent = { seq: 1, ts: 'history-ts', type: 'update', payload: { from: 'history' } }
+    const live: TranscriptEvent = { seq: 1, ts: 'live-ts', type: 'result', payload: { from: 'live' } }
+    const merged = mergeBySeq([hist], [live])
+    expect(merged).toEqual([hist])
+  })
 })
