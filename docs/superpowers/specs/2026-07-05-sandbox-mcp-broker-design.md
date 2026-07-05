@@ -111,29 +111,32 @@ the core reason D beats a single smart gateway; see §7.1):
 | magi-main (host)       | the agent's _requests_ only (minimal peek) | no (resolves + hands down) | no — never the upstream |
 | worker (enclosure)     | the untrusted upstream                     | one scoped cred            | no — opaque streaming   |
 
-### 4.1 Transport selection (verified against `@agentclientprotocol/sdk@0.28.1`)
+### 4.1 Transport selection
 
 ACP defines four MCP transports; the agent advertises which it supports via
-`agentCapabilities.mcpCapabilities`. **magi selects at runtime** — and the choice only affects the
-_sandbox → magi-main_ hop; everything downstream (policy, cred resolution, worker enclosure, opaque
-upstream streaming) is identical on both accepted paths.
+`agentCapabilities.mcpCapabilities`. **magi selects at runtime.** As of 2026-07 **no ACP agent
+advertises the `acp` transport** (§12), so the stdio path is what ships. The choice only affects the
+_sandbox → magi-main_ hop — everything downstream (policy, cred resolution, worker enclosure, opaque
+upstream streaming) is identical across paths.
 
-- **Primary — `McpServerAcp` (MCP-over-ACP).** The client (magi) is the MCP-server endpoint; the
-  agent sends `mcp/connect` / `mcp/message` / `mcp/disconnect` as **agent→client** requests — the
-  _same_ routing family as `fs/*` and `session/request_permission`. magi handles `mcp/message`
-  directly and forwards to the worker. **On this path `mcp-tunnel` and the geofront `--mcp` socket
-  are unnecessary** — the existing ACP connection carries MCP. magi sees the inner `method` (good
-  for per-tool policy) and forwards `params`/results as opaque `unknown`. Marked **experimental**
-  in the SDK and gated behind the agent-advertised `mcpCapabilities.acp` flag.
-- **Fallback — `McpServerStdio`.** When the agent does not advertise `acp`, magi declares
-  `command: mcp-tunnel`; the tunnel + 2nd geofront socket (§5.1–5.2) carry MCP frames to magi-main.
-  Universally available (any agent supporting stdio MCP).
+- **Shipping path — `McpServerStdio`.** magi declares `command: mcp-tunnel` (or, for opencode, an
+  `mcp.local` entry in its native `OPENCODE_CONFIG_CONTENT`); the tunnel + 2nd geofront socket
+  (§5.1–5.2) carry MCP frames to magi-main. Supported by every current agent. **This is the design.**
+- **Future path — `McpServerAcp` (MCP-over-ACP).** The client (magi) becomes the MCP-server endpoint;
+  the agent sends `mcp/connect` / `mcp/message` / `mcp/disconnect` as **agent→client** requests (the
+  _same_ routing family as `fs/*` and `session/request_permission`), and **`mcp-tunnel` + the
+  geofront `--mcp` socket disappear**. **Not yet usable:** the transport is **`UNSTABLE`** in the SDK
+  and, as of 2026-07, **zero agents or clients advertise it** — even adapters whose SDK already
+  carries the type advertise only `http`/`sse` (§12). magi should detect `mcpCapabilities.acp` at
+  init and prefer this path per-agent _if it ever appears_, but the design does **not** depend on it.
+  Its design RFD motivates the transport with exactly our problem (sandboxing an ACP component), so
+  it is the natural long-term convergence — on no timeline we control.
 - **Rejected — `McpServerHttp` / `McpServerSse`.** These make the **agent** connect directly to the
   URL → require agent egress to the MCP server → violate **INV-2**. Not used.
 
 ## 5. Components
 
-### 5.1 `mcp-tunnel` (in the sandbox) — dumb tagged pipe · **fallback path only (§4.1)**
+### 5.1 `mcp-tunnel` (in the sandbox) — dumb tagged pipe · **the shipping transport (§4.1)**
 
 - Declared to the agent as a **stdio MCP server** via ACP `session/new` `mcpServers`
   (magi passes `[]` today — `magi/src/acp/client.ts:163`). The agent spawns one tunnel **instance
@@ -143,7 +146,7 @@ upstream streaming) is identical on both accepted paths.
   socket; stream replies back. **No credentials, no policy decisions, no MCP-semantic parsing**
   beyond frame boundaries. It lives in the untrusted sandbox, so it is deliberately valueless.
 
-### 5.2 geofront 2nd bridged channel — `--mcp <sock>` · **fallback path only (§4.1)**
+### 5.2 geofront 2nd bridged channel — `--mcp <sock>` · **the shipping transport (§4.1)**
 
 - Today geofront creates the ACP socket and bridges it to the agent's stdio:
   `geofront workspace up --acp <acp.sock>` (`magi/src/runtime/geofront/geofront-runtime.ts:218`).
@@ -191,8 +194,11 @@ upstream streaming) is identical on both accepted paths.
   (name, upstream URL/host, transport=http, required credential shape, default tool policy). The
   user selects from this catalog and supplies **only their own scoped credential**, stored in the
   **per-identity vault** (same pattern as `resolveForge` / `resolveAgentSecrets`; Phase 4b/5b).
-- **Per-tool gating (INV-5):** each catalog tool is allow/ask/deny-able per context via the existing
-  `tool_prefs` model; every brokered call is audited.
+- **Per-tool gating (INV-5):** each catalog tool is allow/ask/deny-able per context, but because
+  these are the _coding agent's_ tools (not papai's chat-LLM tools), the gate is enforced in
+  **magi-main's mediator** and configured through the settings UI (like the Phase-5a guardrails) —
+  it does **not** reuse papai's `tool_prefs` (which gates the orchestrator's own tools). Every
+  brokered call is audited.
 - **Settings UI:** a **Custom MCP** section that lists the operator catalog and lets the user
   enable + provide credentials, mirroring the existing "Code host" / "AI provider" sections
   (whole-record save, masked secrets, Clear button behind a `danger` confirm).
@@ -271,19 +277,19 @@ the motivation for the whole design.
 
 ## 9. Component ownership / build items
 
-| Item                                                    | Owner                          | Notes                                                                                                    |
-| ------------------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| MCP-over-ACP `mcp/message` handler (primary, §4.1)      | **magi**                       | Client-side handler in `buildClientApp`; gated on `mcpCapabilities.acp`.                                 |
-| ACP `mcpServers` declaration                            | **magi**                       | Replace `[]` in `session/new` / `session/load`; `McpServerAcp` (primary) or `McpServerStdio` (fallback). |
-| magi-main mediation (route/policy/cred-resolve)         | **magi**                       | Reuse identity/vault resolvers; converges both transports.                                               |
-| `--mcp <sock>` second bridged channel _(fallback only)_ | **geofront**                   | The only geofront change; needed only when the agent lacks `mcpCapabilities.acp`.                        |
-| `mcp-tunnel` dumb tagged pipe _(fallback only)_         | **magi** (staged into sandbox) | Only on the stdio path; relies on ACP stdio `mcpServers`.                                                |
-| Worker enclosure (dumb, netns, MCP-hosts allowlist)     | **magi** + **geofront**        | Reuse `proxy_container` egress; hardened outbound client.                                                |
-| Per-identity MCP credential vault                       | **papai**                      | Same pattern as forge / agent-provider vaults.                                                           |
-| Operator catalog + governance                           | **papai**                      | Vetted entries; tiered trust.                                                                            |
-| Settings-UI "Custom MCP" section                        | **papai**                      | Whole-record save, masked secrets, Clear + danger confirm.                                               |
-| `tool_prefs` gating for catalog tools + audit           | **papai**                      | Reuse existing three-state model.                                                                        |
-| Fail-closed upstream host allowlist                     | **magi**                       | Mirror `MAGI_ALLOWED_REPO_HOSTS` (empty ⇒ refuse).                                                       |
+| Item                                                | Owner                          | Notes                                                                                                                                   |
+| --------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `--mcp <sock>` second bridged channel               | **geofront**                   | The only geofront change; the shipping (stdio) transport.                                                                               |
+| `mcp-tunnel` dumb tagged pipe                       | **magi** (staged into sandbox) | Shipping transport; stdio MCP server the agent spawns.                                                                                  |
+| ACP `mcpServers` / opencode `mcp.local` declaration | **magi**                       | `McpServerStdio` via `session/new` (or opencode's native `OPENCODE_CONFIG_CONTENT`).                                                    |
+| magi-main mediation (route/policy/cred-resolve)     | **magi**                       | Terminates the MCP channel; reuse identity/vault resolvers.                                                                             |
+| Worker enclosure (dumb, netns, MCP-hosts allowlist) | **magi** + **geofront**        | Reuse `proxy_container` egress; hardened opaque outbound client.                                                                        |
+| Fail-closed upstream host allowlist                 | **magi**                       | Mirror `MAGI_ALLOWED_REPO_HOSTS` (empty ⇒ refuse).                                                                                      |
+| Per-tool gate (allow/ask/deny) + audit              | **magi** + **papai**           | Enforced in the magi-main mediator (**not** papai `tool_prefs`, which gates chat tools); configured via settings.                       |
+| Per-identity MCP credential vault                   | **papai**                      | Same pattern as forge / agent-provider vaults.                                                                                          |
+| Operator catalog + governance                       | **papai**                      | Vetted entries; tiered trust.                                                                                                           |
+| Settings-UI "Custom MCP" section                    | **papai**                      | Whole-record save, masked secrets, Clear + danger confirm.                                                                              |
+| MCP-over-ACP `mcp/message` handler                  | **magi**                       | **Future (§4.1)** — client-side handler in `buildClientApp`; drops the tunnel + socket for any agent that adopts `mcpCapabilities.acp`. |
 
 ## 10. Threats & mitigations
 
@@ -314,32 +320,39 @@ the motivation for the whole design.
 
 ## 12. Open questions — verification results (2026-07-05)
 
-Verified against the installed `@agentclientprotocol/sdk@0.28.1` (`dist/schema/types.gen.d.ts`)
-and `magi/src/acp/client.ts`.
+Verified against `@agentclientprotocol/sdk` (magi `0.28.1`, opencode `0.21.0`), the installed agent
+adapters, and the ACP repo changelog / RFDs (ecosystem research 2026-07-05).
 
-1. **ACP client-proxied MCP — ✅ RESOLVED (supported, experimental).** The SDK defines an
-   **`McpServerAcp`** transport plus `mcp/connect` / `mcp/message` / `mcp/disconnect` in the
-   **agent→client** request union (same routing family as `fs/*` and `request_permission`), and a
-   `withMcpServer(...)` builder. So magi **can** be the MCP-server endpoint over the existing ACP
-   channel — no `mcp-tunnel`, no 2nd socket. Caveats: marked **`@experimental` / UNSTABLE**, gated
-   behind the agent-advertised `mcpCapabilities.acp` flag. → Folded into §4.1 as the **primary**
-   path; stdio + tunnel + 2nd socket demoted to **fallback**.
-2. **Per-agent transport support — ✅ RESOLVED (runtime-discoverable).** The SDK exposes
-   `agentCapabilities.mcpCapabilities.{http, sse, acp}`; magi already reads `agentCapabilities` at
-   init. So transport is **selected at runtime**, not guessed per agent. `McpServerHttp`/`Sse` exist
-   but are **rejected** (agent-side egress → violates INV-2). The codex-stdio-vs-http worry is moot:
-   read the flag. **Per-agent `acp` support (partly verified):** **`opencode` — ✗ NO (today).**
-   Current opencode (v1.17.13 / `dev`) uses `@agentclientprotocol/sdk@0.21.0` — the **same package
-   family** as magi's `0.28.1`, just behind. Verified against unpkg: `0.21.0`'s `McpCapabilities`
-   has only `http`/`sse` and its `McpServer` union is `http | sse | stdio` — the `McpServerAcp`
-   transport, `mcpCapabilities.acp`, and `mcp/message` were introduced **after 0.21.0** (present in
-   `0.28.1`). So opencode's primary path is gated on a **version bump within the same package**
-   (`0.21.x → ~0.28.x`), **not** a package migration — a much smaller gap. It supports **stdio**
-   today, via ACP `mcpServers` (`McpServerStdio`) and via its native `mcp.local` config (magi already
-   emits `OPENCODE_CONFIG_CONTENT`). `claude-code-acp` / `codex-acp` `acp` support is **not yet
-   verified**. **Consequence:** the **stdio fallback is required for launch** (no agent is confirmed
-   on `acp` yet); `McpServerAcp` is a per-agent optimization that lights up as each agent's ACP SDK
-   reaches the version that carries it.
+1. **ACP client-proxied MCP (`McpServerAcp`) — ✅ EXISTS, ✗ UNADOPTED.** The transport is real:
+   `McpServerAcp` + `mcp/connect` / `mcp/message` / `mcp/disconnect` are **agent→client** requests
+   (same family as `fs/*` and `request_permission`) with a `withMcpServer(...)` builder, so magi
+   _could_ be the MCP-server endpoint over the existing ACP channel with **no tunnel/socket**. **But**
+   it is recent (ACP Rust crate `v0.13.0`, 2026-05-12; npm sdk `0.22.0`, 2026-05-18), **still marked
+   `UNSTABLE`** as of sdk `1.1.0` (2026-06-29, "may be removed or changed"), and **no agent/client
+   advertises it** (item 2). Its design RFD (`docs/rfds/mcp-over-acp.mdx`, Zed/nikomatsakis) motivates
+   it with **our exact problem** — sandboxing an ACP component ("host an ACP component that runs in a
+   WASM sandbox or on another machine") — so it is the natural long-term convergence, but the design
+   must not depend on it.
+2. **Per-agent `acp` support — ✗ NONE (as of 2026-07).** Every agent advertises only `http`/`sse`,
+   never `acp`:
+
+   | Agent                                                                                          | ACP SDK                                      | advertises `mcpCapabilities.acp`? |
+   | ---------------------------------------------------------------------------------------------- | -------------------------------------------- | --------------------------------- |
+   | claude adapter (`@agentclientprotocol/claude-agent-acp`, ex `@zed-industries/claude-code-acp`) | sdk `1.1.0` — type present                   | ✗ `{http, sse}` only              |
+   | `@zed-industries/codex-acp`                                                                    | Rust crate `=0.14.0` unstable — type present | ✗ `http` only                     |
+   | `opencode`                                                                                     | sdk `0.21.0` — predates the type             | ✗ stdio/http/sse                  |
+   | Gemini CLI (`--experimental-acp`)                                                              | sdk `0.16.1` — predates                      | ✗ stdio only                      |
+   | Zed (reference client, feature author)                                                         | crate `=1.0.1` unstable — type present       | ✗ zero code references            |
+
+   **Key point:** even adapters already on a type-carrying SDK (claude `1.1.0`, codex `0.14`, Zed
+   `1.0.1`) **choose not to advertise it** — so the barrier is upstream _adoption + stabilization_,
+   not a version bump. magi reads `mcpCapabilities` at init and selects transport at runtime;
+   `http`/`sse` remain **rejected** (agent egress → INV-2). **Consequence:** **stdio is the shipping
+   transport**; `McpServerAcp` is opportunistic future work on no timeline we control.
+   _Operational note:_ magi's `claudePreset` installs the **deprecated** `@zed-industries/claude-code-acp`;
+   it has been renamed to `@agentclientprotocol/claude-agent-acp` (now sdk `1.1.0`) — update the preset
+   independently of this design.
+
 3. **geofront enclosure-per-worker cost — ⏳ OPEN (empirical).** The credential-isolated worker
    enclosure is required on **every** transport (it is the egress/credential boundary, independent of
    tunnel/socket). Validate second-enclosure startup latency / resource use; consider lazy spawn on
