@@ -98,7 +98,9 @@ const ACP_PROMPT_FRAGMENT =
   "Use continue_session(sessionId or prNumber, prompt) to keep working on a prior session's " +
   'branch/PR — it updates the existing PR. ' +
   'Use list_projects/list_agents to discover what is configured. The user is notified when a session ' +
-  'finishes or needs input.'
+  'finishes or needs input. ' +
+  'When start_session/continue_session/review_pr returns a transcriptUrl, include that link in your reply ' +
+  'so the user can watch the session live in the browser and share it.'
 
 const ACP_COMMAND_TEXT =
   'ACP coding sessions are available. Ask me in natural language, e.g. "start a session on demo to add a ' +
