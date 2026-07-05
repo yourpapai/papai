@@ -63,6 +63,15 @@ const BUNDLES: BundleConfig[] = [
     baseCssPath: 'client/shared/base.css',
     localCssPath: 'client/settings/settings.css',
   },
+  {
+    entry: 'client/transcript/index.ts',
+    htmlSrc: 'client/transcript/transcript.html',
+    jsName: 'transcript.js',
+    htmlName: 'transcript.html',
+    cssName: 'transcript.css',
+    baseCssPath: 'client/shared/base.css',
+    localCssPath: 'client/transcript/transcript.css',
+  },
 ]
 
 async function bundleJS(config: BundleConfig, collectedCss: string[]): Promise<void> {
