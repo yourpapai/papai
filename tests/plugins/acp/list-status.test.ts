@@ -100,6 +100,31 @@ describe('acp list_sessions tool', () => {
     const refreshed = readStoredRecord(store, 's-7')
     expect(refreshed['prNumber']).toBe(12)
   })
+
+  test('includes transcriptUrl from the local record when present', async () => {
+    const store = new Map<string, string>()
+    writeRecord(runtimeCtxWithKv(store).kv, 's-7', {
+      project: 'demo',
+      title: 'Add a health check',
+      createdAt: 'x',
+      transcriptUrl: 'https://papai.example/t/tok_z',
+    })
+    const { tools } = activate(doneListFetch)
+    const result = await tools.get('list_sessions')!.execute({ filter: 'done' }, runtimeCtxWithKv(store), options())
+    const out = asRows(result)
+    expect(out).toHaveLength(1)
+    expect(out[0]!['transcriptUrl']).toBe('https://papai.example/t/tok_z')
+  })
+
+  test('omits transcriptUrl when the local record has none', async () => {
+    const store = new Map<string, string>()
+    writeRecord(runtimeCtxWithKv(store).kv, 's-7', { project: 'demo', title: 'Add a health check', createdAt: 'x' })
+    const { tools } = activate(doneListFetch)
+    const result = await tools.get('list_sessions')!.execute({ filter: 'done' }, runtimeCtxWithKv(store), options())
+    const out = asRows(result)
+    expect(out).toHaveLength(1)
+    expect(out[0]).not.toHaveProperty('transcriptUrl')
+  })
 })
 
 describe('acp session_status tool', () => {

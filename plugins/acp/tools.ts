@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { callMagi, NOT_CONFIGURED, readMagiConfig } from './client.js'
+import { asObject, callMagi, NOT_CONFIGURED, optionalString, readMagiConfig } from './client.js'
 import type { HttpFetch } from './client.js'
 import { emptySchema } from './schemas.js'
 
@@ -56,13 +56,12 @@ export function sessionIdOf(result: unknown): string | null {
 }
 
 export function shareFieldsOf(result: unknown): { shareToken?: string; transcriptUrl?: string } {
-  if (typeof result !== 'object' || result === null) return {}
-  const map: Map<string, unknown> = new Map(Object.entries(result))
-  const shareToken = map.get('shareToken')
-  const transcriptUrl = map.get('transcriptUrl')
+  const row = asObject(result)
+  const shareToken = optionalString(row, 'shareToken')
+  const transcriptUrl = optionalString(row, 'transcriptUrl')
   return {
-    ...(typeof shareToken === 'string' && shareToken.length > 0 ? { shareToken } : {}),
-    ...(typeof transcriptUrl === 'string' && transcriptUrl.length > 0 ? { transcriptUrl } : {}),
+    ...(shareToken === undefined ? {} : { shareToken }),
+    ...(transcriptUrl === undefined ? {} : { transcriptUrl }),
   }
 }
 
