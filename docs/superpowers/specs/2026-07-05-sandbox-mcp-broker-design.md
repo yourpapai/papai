@@ -1,0 +1,313 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
+# Sandbox MCP Broker — extending the coding agent without loosening isolation
+
+- **Status:** Proposed (design approved via brainstorming; not yet planned)
+- **Date:** 2026-07-05
+- **Scope:** `papai` (catalog + vault + `tool_prefs` + settings UI) · `magi` (mediation + worker + config generation) · `geofront` (2nd bridged channel + worker enclosure)
+- **Related:**
+  - `docs/architecture/coding-sessions.md` (ACP plugin, magi provisioning, Phase 4c derived egress, Phase 5a/5b guardrails/identity)
+  - `docs/superpowers/specs/2026-07-01-per-project-egress-domains-design.md`
+  - `docs/superpowers/specs/2026-06-27-phase-5a-operator-guardrails-design.md`
+  - geofront `docs/adr/ADR-0004-zero-trust-network-policy.md`, `ADR-0012-credential-lifecycle-and-redaction.md`, `ADR-0013-configurable-egress-policy.md`
+  - geofront `docs/specs/SPEC-0003/0004` (leliel transport/host-exec) — the rejected alternative A
+
+---
+
+## 1. Problem
+
+papai + acp-plugin + magi + geofront were built security-first: the coding agent runs in a
+zero-trust geofront sandbox with **deny-by-default egress** and **no secrets in the agent
+container**. That posture is correct, but it creates friction the moment a user wants to give
+the agent _more capability_ — specifically to connect a **custom MCP server** (a company Jira,
+Confluence, an internal API, a Figma endpoint) so the agent can do more inside a coding session.
+
+Today the only self-serve knob that adds capability is `additionalEgressDomains` (Phase 4c /
+per-project-egress). That knob is the wrong tool for MCP:
+
+- It punches a **two-way network hole** in the agent's egress (exfiltration + prompt-injection surface).
+- The MCP server bears **credentials**, which would then have to live **inside the sandbox** — violating the no-secrets invariant.
+- It offers **no per-tool gating** and no credential isolation.
+
+We need a way to let the agent _use_ credential-bearing MCP servers **without** the credential
+entering the sandbox and **without** widening the agent's egress.
+
+## 2. Invariants (the "security level" we must not loosen)
+
+Any capability path MUST preserve all five. These are extracted from the code and the geofront ADRs.
+
+1. **INV-1 — No secret in the sandbox.** No long-lived credential materializes in the agent
+   container. (geofront ADR-0012; magi stages host-side, `env_clear=true`, secrets never from transport.)
+2. **INV-2 — Deny-by-default egress.** The agent reaches only allowlisted HTTP(S)-CONNECT hosts;
+   no raw TCP/UDP/DNS; the ceiling is org-layer-only and intersection-only. (ADR-0004/0013.)
+3. **INV-3 — Runtime assumed compromised; tool output is untrusted.** Brokered results are a
+   prompt-injection / tool-poisoning surface even from a "trusted" server.
+4. **INV-4 — Policy is immutable from inside.** The agent cannot widen its own authority.
+5. **INV-5 — Per-tool gating + audit.** Every capability is allow/ask/deny-able per context and
+   leaves an audit trail. (papai `tool_prefs`; ADR-0009.)
+
+## 3. Requirements
+
+- **Trust model — tiered.** The operator publishes a **vetted catalog** of MCP capabilities; the
+  end user **selects + configures** (supplies their own scoped credential) within the operator's
+  ceiling. No arbitrary self-serve MCP.
+- **Capability types (first).** **Remote SaaS MCP servers** and **internal / self-hosted MCP
+  servers** — both are credential-bearing **HTTP** services. (Local CLIs and broader in-sandbox
+  powers are out of scope; see §11.)
+- **Prompt-injection posture — pragmatic.** Per-tool allow/ask/deny + audit + treat brokered
+  output as untrusted + honor MCP's confused-deputy / token-passthrough rules. Injection is an
+  acknowledged, managed residual — not solved here (§10).
+
+## 4. Design overview — "D: in-band MCP broker over the ACP-adjacent channel"
+
+The agent already delegates capabilities to magi over the ACP channel: magi (the ACP **client**)
+handles `fs/read_text_file`, `fs/write_text_file`, and `session/request_permission` on the agent's
+behalf. MCP tool-brokering is the same shape — _the agent asks, and magi (which holds the
+credential and the egress) answers._ We reuse that channel rather than giving the agent a new
+network peer.
+
+The broker is decomposed into **dumb, single-purpose pieces** so that **no component ever combines
+"faces an adversary" + "holds the secret" + "parses hostile output."**
+
+```
+[agent, in sandbox]
+   │  MCP over stdio (native MCP client → local stdio server)
+   ▼
+[mcp-tunnel, in sandbox]            dumb, tagged pipe; holds nothing, parses nothing
+   │  frames over the 2nd geofront-bridged unix socket  (--mcp <sock>)
+   ▼
+[magi-main, host]                  route by tag · per-tool policy · resolve cred from vault
+   │  opaque request + one scoped credential, over a host control socket
+   ▼
+[worker, own geofront enclosure]   dumb; netns + proxy egress restricted to MCP hosts; holds 1 cred
+   │  HTTPS with injected credential; response streamed OPAQUE
+   ▼
+[MCP server: SaaS or internal]
+   ▲
+   └── response streams back opaque the whole way ──▶ agent parses it (already-untrusted zone)
+```
+
+**Key moves:**
+
+- **The agent gains zero new network egress.** It reaches only `mcp-tunnel`, a child process over
+  stdio — not a network endpoint. INV-2 preserved _exactly_.
+- **The credential never enters the sandbox** and is never held by any agent-reachable component.
+  It lives in the worker, two hops away, none of which the agent can address. INV-1 preserved.
+- **magi never parses hostile upstream output** — the worker streams responses **opaque**; the
+  agent parses them in the already-untrusted sandbox. This is what keeps magi-main and the worker
+  _dumb_ and collapses the parser-RCE surface.
+
+**Surface decomposition** — no single component combines all three dangerous properties (this is
+the core reason D beats a single smart gateway; see §7.1):
+
+| component              | faces an adversary?                        | holds the secret?          | parses hostile output?  |
+| ---------------------- | ------------------------------------------ | -------------------------- | ----------------------- |
+| `mcp-tunnel` (sandbox) | yes — the agent                            | no                         | no                      |
+| magi-main (host)       | the agent's _requests_ only (minimal peek) | no (resolves + hands down) | no — never the upstream |
+| worker (enclosure)     | the untrusted upstream                     | one scoped cred            | no — opaque streaming   |
+
+## 5. Components
+
+### 5.1 `mcp-tunnel` (in the sandbox) — dumb tagged pipe
+
+- Declared to the agent as a **stdio MCP server** via ACP `session/new` `mcpServers`
+  (magi passes `[]` today — `magi/src/acp/client.ts:163`). The agent spawns one tunnel **instance
+  per declared server**; each is launched with a **server-id arg set by magi** (the agent cannot
+  spoof which server it is talking to).
+- Job: read MCP frames on its stdio (agent side), tag them with the server id, forward to the 2nd
+  socket; stream replies back. **No credentials, no policy decisions, no MCP-semantic parsing**
+  beyond frame boundaries. It lives in the untrusted sandbox, so it is deliberately valueless.
+
+### 5.2 geofront 2nd bridged channel — `--mcp <sock>`
+
+- Today geofront creates the ACP socket and bridges it to the agent's stdio:
+  `geofront workspace up --acp <acp.sock>` (`magi/src/runtime/geofront/geofront-runtime.ts:218`).
+- Add a **second flag** `--mcp <mcp.sock>`: geofront creates a second host-side unix socket and
+  bridges it to a second stream/fd inside the sandbox that `mcp-tunnel` connects to. **Only geofront
+  can wire a host socket across the isolation boundary** — this is the sole required geofront change.
+- magi-main connects to `<mcp.sock>` as a client, exactly as it already does for `<acp.sock>`.
+
+### 5.3 magi-main — privileged control point (mediation)
+
+- Terminates `<mcp.sock>`. For each framed request it: **routes** by server-id tag → **enforces
+  per-tool policy** (a minimal, strict, size-capped peek at the request to read the tool name;
+  input is from _our own_ agent, not the hostile upstream) → **resolves the MCP credential** from
+  the per-identity vault → hands the opaque request + the one credential to the worker.
+- Bound to magi-main (not the worker) because (a) geofront hands the socket to the `workspace up`
+  invoker, and (b) routing + policy + vault access are **privileged** operations the worker must not
+  have, and one shared channel may fan out to multiple workers.
+- magi-main is **not** a listening network service — it is the far end of a controlled pipe, so the
+  agent cannot probe/flood/exploit it as a peer.
+
+### 5.4 worker — dumb, unprivileged egress executor
+
+- Runs in its **own geofront enclosure** (reuse `proxy_container` + iptables + dnsmasq), with:
+  `[egress.policy.allowlist] domains = <session's MCP upstream hosts>, ports = [443]`.
+- Holds **only** the session's MCP credential(s) (handed at spawn) — **no vault, no DB, no
+  filesystem, dropped privileges**.
+- Does the **hardened outbound call**: fail-closed host allowlist + credential injected at the
+  **header** layer + **opaque response streaming** with size/time caps. Because the proxy performs
+  DNS resolution + the allowlist check, **DNS-rebinding is mitigated** (the worker never chooses the
+  final IP); an in-code IP-pin is belt-and-suspenders.
+- **Default granularity: one shared worker per session** (allowlist = union of the session's MCP
+  hosts). **Escalation: one worker per server** (own enclosure, one cred, one host) for
+  high-sensitivity credentials. Do **not** build the incoherent middle (per-server workers sharing a
+  netns). Dumbness is what makes a _shared_ worker safe: there is no parser to exploit, so the
+  co-located creds are not stealable via a hostile response.
+- **Lifecycle:** spun at session start (or lazily on first MCP use), torn down + creds shredded at
+  session end.
+
+### 5.5 papai — catalog, vault, gating, settings UI
+
+- **Catalog (governance, tiered trust):** the operator publishes vetted MCP server entries
+  (name, upstream URL/host, transport=http, required credential shape, default tool policy). The
+  user selects from this catalog and supplies **only their own scoped credential**, stored in the
+  **per-identity vault** (same pattern as `resolveForge` / `resolveAgentSecrets`; Phase 4b/5b).
+- **Per-tool gating (INV-5):** each catalog tool is allow/ask/deny-able per context via the existing
+  `tool_prefs` model; every brokered call is audited.
+- **Settings UI:** a **Custom MCP** section that lists the operator catalog and lets the user
+  enable + provide credentials, mirroring the existing "Code host" / "AI provider" sections
+  (whole-record save, masked secrets, Clear button behind a `danger` confirm).
+
+## 6. Data flow (one tool call)
+
+1. Operator publishes `jira` in the catalog. User enables it and supplies a scoped Jira token →
+   per-identity vault.
+2. Session start: magi resolves the user's `jira` token, spawns the **worker enclosure**
+   (allowlist = jira host, holds the token), and declares the server to the agent via ACP
+   `mcpServers: [{ name: "jira", command: "mcp-tunnel", args: ["--server", "jira"] }]`.
+3. geofront bridges `<mcp.sock>` alongside `<acp.sock>`.
+4. Agent calls a tool → `mcp-tunnel` tags the frame `jira` → forwards over `<mcp.sock>`.
+5. magi-main: check `tool_prefs` (allow/ask/deny) → resolve `jira` cred → dispatch opaque request +
+   cred to the worker.
+6. Worker: fail-closed allowlist check → HTTPS to jira with injected token → **stream response
+   opaque** (size/time capped). Audit-log metadata (tool, server, status, size, timing) — **not**
+   body content.
+7. Response streams back opaque: worker → magi-main → `<mcp.sock>` → `mcp-tunnel` → **agent parses**.
+8. Session end: worker + creds shredded.
+
+The agent never held the token, never had egress to jira, and could reach nothing beyond `mcp-tunnel`.
+
+## 7. Why D over the alternatives (threat-model-driven)
+
+geofront's founding axiom: **the agent is hostile; assume it is compromised.** The upstream MCP
+servers are the _secondary_ threat (operator-vetted catalog). The design optimizes against the
+_primary_ adversary — the agent.
+
+### 7.1 vs B — one MCP proxy app in a separate container with an isolated network
+
+B (a ToolHive / Docker-MCP-Gateway sidecar the agent talks to **directly over the network**) has real
+merits: off-the-shelf, keeps magi entirely out of the MCP path, natural per-server containers,
+handles stdio upstreams. But it loses on the axis that matters here:
+
+- **Egress fidelity.** B requires opening a hole in the agent's deny-by-default egress to reach the
+  sidecar — handing the adversary a live service to scan/flood/fuzz/exploit. D adds **no network
+  peer** (stdio to a dumb pipe).
+- **Credential proximity.** In B the credential-holder **is** the agent's network peer; any gateway
+  flaw exposes the creds. In D the credential is two non-addressable hops away.
+- **Surface concentration.** B puts _faces-agent + faces-upstream + holds-cred + parses-both_ in one
+  network-reachable box. D splits these across dumb pieces so **no component combines
+  adversary-facing + secret-holding + hostile-parsing** (see §4 table).
+
+B's advantages optimize against the _secondary_ threat (poisoned upstream) and developer effort — and
+D already neutralizes the upstream threat via the dumb, opaque, kernel-egress-contained worker. The
+price of D is putting magi-main in the data path; that is acceptable **only because magi-main stays
+dumb about payloads** (opaque streaming). If we could not keep it dumb, B would win.
+
+B is retained as the **fallback** if true per-MCP-server container isolation becomes a hard
+requirement, or if a stdio upstream MCP server must be supported.
+
+### 7.2 vs A — extend geofront's `leliel` host-exec broker
+
+`leliel` is a built-but-unwired Rust broker (host-exec of declared argv tools over `wss://`, secrets
+host-side). Its wire contract is **frozen** around single-exec argv semantics; an MCP server is a
+stateful JSON-RPC session. Forcing MCP through leliel means building an MCP frontend + upstream
+client inside leliel (different repo, different language, against a locked contract) — essentially
+rebuilding the worker inside leliel. leliel's genuine strength is **deterministic local CLIs**, which
+are out of scope. **A is the future path for local-CLI brokering (§11), not for MCP.**
+
+### 7.3 vs the strawman — direct egress allowlist for the MCP endpoint
+
+Rejected: loosens INV-1 (secret in sandbox), INV-2 (two-way egress), and INV-5 (no gating). This is
+the motivation for the whole design.
+
+## 8. Invariant preservation
+
+| Invariant                     | How D preserves it                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| INV-1 no secret in sandbox    | Credential lives in the worker; no agent-reachable component holds it.                                                   |
+| INV-2 deny-by-default egress  | Agent reaches only `mcp-tunnel` over stdio; **no new network egress**. Worker egress is a _separate_ geofront enclosure. |
+| INV-3 output untrusted        | Responses stream opaque; parsed in the sandbox; per-tool policy + audit; injection is a managed residual (§10).          |
+| INV-4 policy immutable inside | Catalog + `tool_prefs` + allowlists live host-side; `mcp-tunnel` and the sandbox cannot mutate them.                     |
+| INV-5 per-tool gating + audit | `tool_prefs` allow/ask/deny per context; every call audited (metadata only).                                             |
+
+## 9. Component ownership / build items
+
+| Item                                                | Owner                          | Notes                                                         |
+| --------------------------------------------------- | ------------------------------ | ------------------------------------------------------------- |
+| `--mcp <sock>` second bridged channel               | **geofront**                   | The _only_ geofront change. Mirrors `--acp`.                  |
+| `mcp-tunnel` dumb tagged pipe                       | **magi** (staged into sandbox) | Cross-agent; relies on ACP stdio `mcpServers`.                |
+| ACP `mcpServers` declaration                        | **magi**                       | Replace `[]` in `session/new` / `session/load`.               |
+| magi-main mediation (route/policy/cred-resolve)     | **magi**                       | New consumer of `<mcp.sock>`; reuse identity/vault resolvers. |
+| Worker enclosure (dumb, netns, MCP-hosts allowlist) | **magi** + **geofront**        | Reuse `proxy_container` egress; hardened outbound client.     |
+| Per-identity MCP credential vault                   | **papai**                      | Same pattern as forge / agent-provider vaults.                |
+| Operator catalog + governance                       | **papai**                      | Vetted entries; tiered trust.                                 |
+| Settings-UI "Custom MCP" section                    | **papai**                      | Whole-record save, masked secrets, Clear + danger confirm.    |
+| `tool_prefs` gating for catalog tools + audit       | **papai**                      | Reuse existing three-state model.                             |
+| Fail-closed upstream host allowlist                 | **magi**                       | Mirror `MAGI_ALLOWED_REPO_HOSTS` (empty ⇒ refuse).            |
+
+## 10. Threats & mitigations
+
+- **SSRF (worker outbound):** fail-closed host allowlist + kernel-enforced egress (own enclosure) +
+  proxy-side DNS resolution (anti-rebinding) + private/link-local range block + no/validated redirects.
+- **Parser exploit / DoS (untrusted upstream output):** magi and the worker **never parse** response
+  bodies — opaque streaming with size + time caps. Parsing happens in the already-contained sandbox.
+- **Request-parse surface (magi-main):** minimal, strict, size-capped read of the tool name only;
+  input is from our own agent. Prefer a method allowlist.
+- **Confused deputy / token passthrough (MCP spec):** the worker injects the **user's own scoped
+  credential**; it never forwards the agent's/coding token upstream. Use RFC-8693 token exchange
+  where the SaaS supports it.
+- **Prompt injection / tool poisoning (INV-3, residual):** _not solved._ Managed by per-tool
+  allow/ask/deny + audit + treating all brokered output as untrusted. Broker-side result inspection
+  (redaction / injection-scanning) is deliberately **out of scope** because it would require parsing
+  in a privileged component; it becomes an opt-in **parsing worker** later (§11).
+
+## 11. Out of scope / future work
+
+- **Broker-side result inspection** (redaction, secret-scanning, injection filtering) — requires a
+  _parsing_ worker in its own enclosure, enabled per high-risk server. Future opt-in.
+- **stdio / local-process upstream MCP servers** — would run a process to exploit; if needed, that
+  one server uses design **B** (its own container).
+- **Local CLIs / deterministic argv tools** — the future home for **leliel** (design A).
+- **Broader in-sandbox powers** (extra registries, local services) — separate concern.
+- **Per-server worker as default** — start shared-per-session; promote per-server-with-own-netns only
+  on demand.
+
+## 12. Open questions (verify before planning)
+
+1. **ACP client-proxied MCP.** ACP `mcpServers` are connected **agent-side** (stdio/http). Confirm
+   against the installed `@agentclientprotocol/sdk` whether a newer ACP can **proxy MCP `tools/call`
+   back to the client** the way it does `fs/*` and `request_permission`. If yes, `mcp-tunnel` + the
+   2nd socket may be **unnecessary** — magi registers an MCP handler in `buildClientApp` and brokers
+   over the _existing_ ACP channel. This is the cleanest possible variant; check it first.
+2. **Codex MCP transport.** codex `config.toml` `[mcp_servers]` was historically **stdio-only**;
+   confirm codex-acp's MCP support. If HTTP is unsupported, codex needs the stdio `mcp-tunnel` path
+   (claude/opencode may accept it uniformly regardless).
+3. **geofront enclosure-per-worker cost** — validate startup latency / resource use of a second
+   per-session geofront enclosure, and whether lazy spawn (first MCP use) is worth it.
+4. **Streamable-HTTP / SSR upstreams** — confirm the opaque proxy correctly streams SSE / chunked MCP
+   responses without buffering unbounded (size/time caps must apply to streams).
+
+## 13. Alternatives considered (summary)
+
+| Option                                                      | Verdict                                                                                                  |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **D** — dumb in-band broker over ACP-adjacent channel       | **Chosen.** Best fit vs the primary threat (hostile agent); reuses magi's existing capability-brokering. |
+| **B** — smart MCP-gateway sidecar, agent talks over network | Fallback if per-server container isolation or stdio upstreams are required.                              |
+| **A** — extend `leliel` host-exec broker to MCP             | Rejected for MCP (frozen argv contract, wrong repo/language); future path for local CLIs.                |
+| Direct `additionalEgressDomains` for the MCP endpoint       | Rejected — loosens INV-1/2/5.                                                                            |
