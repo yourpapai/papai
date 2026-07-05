@@ -13,7 +13,6 @@ import {
   readMagiConfig,
 } from './client.js'
 import type { HttpFetch } from './client.js'
-import { deriveTitle, parsePrNumber, readRecord, writeRecord } from './history.js'
 import {
   answerPermissionSchema,
   finishSessionSchema,
@@ -22,35 +21,13 @@ import {
   sessionIdSchema,
   startSessionSchema,
 } from './schemas.js'
+import { enrichSession, recordReviewSession, recordStartedSession } from './session-records.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { buildSessionProjectSpec, canDeriveForge, sessionIdOf, shareFieldsOf } from './tools.js'
+import { buildSessionProjectSpec, canDeriveForge, sessionIdOf } from './tools.js'
 
 const DEFAULT_AGENT = 'claude-code-acp'
 const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
 const DEFAULT_FINISH_MESSAGE = 'Apply changes from magi coding session'
-
-function recordStartedSession(runtimeContext: RuntimeContext, result: unknown, project: string, prompt: string): void {
-  const id = sessionIdOf(result)
-  if (id !== null)
-    writeRecord(runtimeContext.kv, id, {
-      project,
-      title: deriveTitle(prompt),
-      createdAt: new Date().toISOString(),
-      ...shareFieldsOf(result),
-    })
-}
-
-function recordReviewSession(runtimeContext: RuntimeContext, result: unknown, project: string, prNumber: number): void {
-  const id = sessionIdOf(result)
-  if (id !== null)
-    writeRecord(runtimeContext.kv, id, {
-      project,
-      title: `review PR #${prNumber}`,
-      createdAt: new Date().toISOString(),
-      prNumber,
-      ...shareFieldsOf(result),
-    })
-}
 
 export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
@@ -99,36 +76,6 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       recordStartedSession(runtimeContext, result, project, prompt)
       return result
     },
-  }
-}
-
-// Merge the locally-known title/parentSessionId into a magi session row, and
-// refresh the local record's status/prUrl/prNumber from magi's latest view.
-function enrichSession(runtimeContext: RuntimeContext, s: unknown): unknown {
-  const sid = sessionIdOf(s)
-  if (sid === null) return s
-  const row = asObject(s)
-  const prUrl = optionalString(row, 'prUrl')
-  const prNumber = parsePrNumber(prUrl)
-  const record = readRecord(runtimeContext.kv, sid)
-  if (record !== null) {
-    writeRecord(runtimeContext.kv, sid, {
-      ...record,
-      status: optionalString(row, 'status') ?? record.status,
-      ...(prUrl === undefined ? {} : { prUrl }),
-      ...(prNumber === undefined ? {} : { prNumber }),
-    })
-  }
-  return {
-    ...row,
-    ...(record === null
-      ? {}
-      : {
-          title: record.title,
-          parentSessionId: record.parentSessionId,
-          ...(record.transcriptUrl === undefined ? {} : { transcriptUrl: record.transcriptUrl }),
-        }),
-    ...(prNumber === undefined ? {} : { prNumber }),
   }
 }
 
