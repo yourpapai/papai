@@ -227,6 +227,7 @@ async function routeRequest(req: Request, options: WebServerRouteOptions = route
 
   if (url.pathname === '/api/notify') return handleNotifyRoute(req)
 
+  // Transcript trust domain: PUBLIC capability-token routes; must stay before the auth gate.
   const transcriptResponse = await routeTranscriptPaths(req, url)
   if (transcriptResponse !== null) return transcriptResponse
 

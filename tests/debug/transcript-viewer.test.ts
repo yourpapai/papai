@@ -13,7 +13,7 @@ import {
 } from '../../src/debug/transcript-viewer.js'
 import type { ViewerMagiConfig } from '../../src/debug/transcript-viewer.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
-import { setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, restoreFetch, setMockFetch, setupTestDb } from '../utils/test-helpers.js'
 
 describe('getViewerMagiConfig', () => {
   test('returns trimmed baseUrl and token when both configured', async () => {
@@ -43,7 +43,7 @@ describe('proxyTranscriptHistory', () => {
     }
 
     const url = new URL('https://papai.example/t/tok_z/transcript?after=5&limit=100&bogus=1')
-    const response = await proxyTranscriptHistory(url, 'tok_z', cfg, fetchImpl)
+    const response = await proxyTranscriptHistory(url, 'tok_z', cfg, new AbortController().signal, fetchImpl)
 
     expect(seen.url).toBe('https://magi.example/t/tok_z/transcript?after=5&limit=100')
     expect(seen.auth).toBe('Bearer sekret')
@@ -55,9 +55,35 @@ describe('proxyTranscriptHistory', () => {
     const fetchImpl = (): Promise<Response> => Promise.resolve(new Response('not found', { status: 404 }))
 
     const url = new URL('https://papai.example/t/tok_z/transcript')
-    const response = await proxyTranscriptHistory(url, 'tok_z', cfg, fetchImpl)
+    const response = await proxyTranscriptHistory(url, 'tok_z', cfg, new AbortController().signal, fetchImpl)
 
     expect(response.status).toBe(404)
+  })
+
+  test('returns 502 without throwing when the upstream fetch rejects', async () => {
+    mockLogger()
+    const fetchImpl = (): Promise<Response> => Promise.reject(new Error('DNS lookup failed'))
+
+    const url = new URL('https://papai.example/t/tok_z/transcript')
+    const response = await proxyTranscriptHistory(url, 'tok_z', cfg, new AbortController().signal, fetchImpl)
+
+    expect(response.status).toBe(502)
+  })
+
+  test('does not leak upstream Set-Cookie/X-Powered-By headers', async () => {
+    const fetchImpl = (): Promise<Response> =>
+      Promise.resolve(
+        new Response('{}', {
+          status: 200,
+          headers: { 'Set-Cookie': 'session=abc', 'X-Powered-By': 'Express', 'Content-Type': 'application/json' },
+        }),
+      )
+
+    const url = new URL('https://papai.example/t/tok_z/transcript')
+    const response = await proxyTranscriptHistory(url, 'tok_z', cfg, new AbortController().signal, fetchImpl)
+
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect(response.headers.get('x-powered-by')).toBeNull()
   })
 })
 
@@ -103,6 +129,38 @@ describe('proxyTranscriptStream', () => {
 
     expect(response.status).toBe(404)
   })
+
+  test('returns 502 without throwing when the upstream fetch rejects', async () => {
+    mockLogger()
+    const clientSignal = new AbortController().signal
+    const fetchImpl = (): Promise<Response> => Promise.reject(new Error('connection reset'))
+
+    const response = await proxyTranscriptStream('tok_z', cfg, clientSignal, fetchImpl)
+
+    expect(response.status).toBe(502)
+  })
+
+  test('does not leak upstream Set-Cookie/X-Powered-By headers', async () => {
+    const clientSignal = new AbortController().signal
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        controller.enqueue(new TextEncoder().encode('data: hello\n\n'))
+        controller.close()
+      },
+    })
+    const fetchImpl = (): Promise<Response> =>
+      Promise.resolve(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream', 'Set-Cookie': 'session=abc', 'X-Powered-By': 'Express' },
+        }),
+      )
+
+    const response = await proxyTranscriptStream('tok_z', cfg, clientSignal, fetchImpl)
+
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect(response.headers.get('x-powered-by')).toBeNull()
+  })
 })
 
 describe('routeTranscriptPaths', () => {
@@ -140,28 +198,30 @@ describe('routeTranscriptPaths', () => {
     expect(response?.status).toBe(503)
   })
 
-  test('serves the shell for a bare /t/<token>', async () => {
+  // public/transcript.{html,js,css} land in a later unit; until then the shell/asset
+  // routes must 404 cleanly on the missing file rather than let Bun.file 500 later.
+  test('cleanly 404s the shell route for a bare /t/<token> while the file is missing', async () => {
     const url = new URL('https://papai.example/t/tok_z')
     const response = await routeTranscriptPaths(new Request(url), url)
 
     expect(response).not.toBeNull()
-    expect(response?.headers.get('content-type')).toBe('text/html; charset=utf-8')
+    expect(response?.status).toBe(404)
   })
 
-  test('serves the /t.js asset', async () => {
+  test('cleanly 404s the /t.js asset route while the file is missing', async () => {
     const url = new URL('https://papai.example/t.js')
     const response = await routeTranscriptPaths(new Request(url), url)
 
     expect(response).not.toBeNull()
-    expect(response?.headers.get('content-type')).toBe('text/javascript')
+    expect(response?.status).toBe(404)
   })
 
-  test('serves the /t.css asset', async () => {
+  test('cleanly 404s the /t.css asset route while the file is missing', async () => {
     const url = new URL('https://papai.example/t.css')
     const response = await routeTranscriptPaths(new Request(url), url)
 
     expect(response).not.toBeNull()
-    expect(response?.headers.get('content-type')).toBe('text/css')
+    expect(response?.status).toBe(404)
   })
 
   test('returns 404 for an empty token', async () => {
@@ -170,5 +230,25 @@ describe('routeTranscriptPaths', () => {
 
     expect(response).not.toBeNull()
     expect(response?.status).toBe(404)
+  })
+
+  test('decodes a percent-encoded token exactly once before re-encoding upstream', async () => {
+    await setupTestDb()
+    setPluginAdminConfig('acp', 'magi_base_url', 'https://magi.example', 'test')
+    setPluginAdminConfig('acp', 'magi_token', 'sekret', 'test')
+    const seen = { url: '' }
+    setMockFetch((fetchUrl: string): Promise<Response> => {
+      seen.url = fetchUrl
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    })
+    try {
+      // "tok@z" percent-encoded once, as it would arrive in a real request path.
+      const url = new URL('https://papai.example/t/tok%40z/transcript')
+      await routeTranscriptPaths(new Request(url), url)
+    } finally {
+      restoreFetch()
+    }
+
+    expect(seen.url).toBe('https://magi.example/t/tok%40z/transcript')
   })
 })
