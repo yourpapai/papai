@@ -16,7 +16,7 @@
   "scripts": {
     "benchmark:tool-surface": "bun scripts/tool-surface-benchmark.ts",
     "build:client": "bun scripts/build-client.ts",
-    "storybook:prepare": "mkdir -p public && msw init public/ --no-save && cat client/shared/base.css client/shared/tokens.css client/admin/admin.css client/debug/debug.css > public/storybook-base.css",
+    "storybook:prepare": "mkdir -p public && msw init public/ --no-save && cat client/shared/base.css client/shared/tokens.css client/admin/admin.css client/debug/debug.css client/transcript/transcript.css > public/storybook-base.css",
     "storybook": "bun storybook:prepare && storybook dev -p 6006 --no-open",
     "build:storybook": "bun storybook:prepare && storybook build -o storybook-static",
     "shoot:gen": "crvy-strybk generate --config ./strybk.config.ts && bun run format >/dev/null && bun run license:headers >/dev/null",
