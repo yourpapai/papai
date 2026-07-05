@@ -328,9 +328,16 @@ and `magi/src/acp/client.ts`.
    `agentCapabilities.mcpCapabilities.{http, sse, acp}`; magi already reads `agentCapabilities` at
    init. So transport is **selected at runtime**, not guessed per agent. `McpServerHttp`/`Sse` exist
    but are **rejected** (agent-side egress → violates INV-2). The codex-stdio-vs-http worry is moot:
-   read the flag. **Remaining runtime check:** which of `claude-code-acp` / `codex-acp` / `opencode`
-   advertise `mcpCapabilities.acp` **today** — determines whether the primary path ships now or is
-   future. The `stdio` fallback is available regardless.
+   read the flag. **Per-agent `acp` support (partly verified):** **`opencode` — ✗ NO.** opencode
+   v0.14.7 pins `@zed-industries/agent-client-protocol@0.4.5` (a different, older package than
+   magi's `@agentclientprotocol/sdk@0.28.1`); its `McpCapabilities` has only `http`/`sse` and its
+   `McpServer` union is `http | sse | Stdio` — no `McpServerAcp`, no `mcp/message`. opencode's
+   primary path is **future** (needs an ACP-SDK migration, not a version bump). It does support
+   **stdio**, both via ACP `mcpServers` (`Stdio`) and via its native `mcp.local` config (magi already
+   emits `OPENCODE_CONFIG_CONTENT`). `claude-code-acp` / `codex-acp` `acp` support is **not yet
+   verified**. **Consequence:** the **stdio fallback is required for launch** (opencode needs it
+   today); `McpServerAcp` is a per-agent optimization that lights up as each agent adopts the newer
+   SDK.
 3. **geofront enclosure-per-worker cost — ⏳ OPEN (empirical).** The credential-isolated worker
    enclosure is required on **every** transport (it is the egress/credential boundary, independent of
    tunnel/socket). Validate second-enclosure startup latency / resource use; consider lazy spawn on
