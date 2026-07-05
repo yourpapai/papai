@@ -67,6 +67,19 @@ describe('acp start_session tool', () => {
     expect(rec['title']).toBe('Add a health check')
   })
 
+  test('records shareToken/transcriptUrl from the magi response', async () => {
+    const httpFetch: HttpFetch = () =>
+      Promise.resolve(
+        jsonResponse({ id: 'sess-9', shareToken: 'tok_z', transcriptUrl: 'https://papai.example/t/tok_z' }, 202),
+      )
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, runtimeCtxWithKv(store), options())
+    const rec = readStoredRecord(store, 'sess-9')
+    expect(rec['shareToken']).toBe('tok_z')
+    expect(rec['transcriptUrl']).toBe('https://papai.example/t/tok_z')
+  })
+
   test('explicit agent forwarded', async () => {
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (_url, init) => {

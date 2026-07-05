@@ -55,6 +55,17 @@ export function sessionIdOf(result: unknown): string | null {
   return typeof id === 'string' && id.length > 0 ? id : null
 }
 
+export function shareFieldsOf(result: unknown): { shareToken?: string; transcriptUrl?: string } {
+  if (typeof result !== 'object' || result === null) return {}
+  const map: Map<string, unknown> = new Map(Object.entries(result))
+  const shareToken = map.get('shareToken')
+  const transcriptUrl = map.get('transcriptUrl')
+  return {
+    ...(typeof shareToken === 'string' && shareToken.length > 0 ? { shareToken } : {}),
+    ...(typeof transcriptUrl === 'string' && transcriptUrl.length > 0 ? { transcriptUrl } : {}),
+  }
+}
+
 // magi auto-derives a forge for these SaaS hosts; any other host needs an
 // explicit Code host config or magi rejects the session at intake.
 export function canDeriveForge(repoUrl: string): boolean {

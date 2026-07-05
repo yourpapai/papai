@@ -17,7 +17,7 @@ import { deriveTitle, parsePrNumber, readRecord, writeRecord } from './history.j
 import type { SessionRecord } from './history.js'
 import { continueSessionSchema } from './schemas.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { sessionIdOf } from './tools.js'
+import { sessionIdOf, shareFieldsOf } from './tools.js'
 
 type AccessError = { error: string; message: string }
 type AccessOk = { secrets: Record<string, string>; forgeToken: string }
@@ -121,7 +121,11 @@ export function continueSessionTool(httpFetch: HttpFetch | undefined): Tool {
         forgeToken,
       })
       const childId = sessionIdOf(result)
-      if (childId !== null) writeRecord(runtimeContext.kv, childId, buildChildRecord(parentId, parentRecord, prompt))
+      if (childId !== null)
+        writeRecord(runtimeContext.kv, childId, {
+          ...buildChildRecord(parentId, parentRecord, prompt),
+          ...shareFieldsOf(result),
+        })
       return result
     },
   }

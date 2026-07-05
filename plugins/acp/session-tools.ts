@@ -23,7 +23,7 @@ import {
   startSessionSchema,
 } from './schemas.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { buildSessionProjectSpec, canDeriveForge, sessionIdOf } from './tools.js'
+import { buildSessionProjectSpec, canDeriveForge, sessionIdOf, shareFieldsOf } from './tools.js'
 
 const DEFAULT_AGENT = 'claude-code-acp'
 const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
@@ -32,7 +32,12 @@ const DEFAULT_FINISH_MESSAGE = 'Apply changes from magi coding session'
 function recordStartedSession(runtimeContext: RuntimeContext, result: unknown, project: string, prompt: string): void {
   const id = sessionIdOf(result)
   if (id !== null)
-    writeRecord(runtimeContext.kv, id, { project, title: deriveTitle(prompt), createdAt: new Date().toISOString() })
+    writeRecord(runtimeContext.kv, id, {
+      project,
+      title: deriveTitle(prompt),
+      createdAt: new Date().toISOString(),
+      ...shareFieldsOf(result),
+    })
 }
 
 function recordReviewSession(runtimeContext: RuntimeContext, result: unknown, project: string, prNumber: number): void {
@@ -43,6 +48,7 @@ function recordReviewSession(runtimeContext: RuntimeContext, result: unknown, pr
       title: `review PR #${prNumber}`,
       createdAt: new Date().toISOString(),
       prNumber,
+      ...shareFieldsOf(result),
     })
 }
 
@@ -115,7 +121,13 @@ function enrichSession(runtimeContext: RuntimeContext, s: unknown): unknown {
   }
   return {
     ...row,
-    ...(record === null ? {} : { title: record.title, parentSessionId: record.parentSessionId }),
+    ...(record === null
+      ? {}
+      : {
+          title: record.title,
+          parentSessionId: record.parentSessionId,
+          ...(record.transcriptUrl === undefined ? {} : { transcriptUrl: record.transcriptUrl }),
+        }),
     ...(prNumber === undefined ? {} : { prNumber }),
   }
 }
