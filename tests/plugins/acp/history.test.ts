@@ -61,4 +61,30 @@ describe('acp history index', () => {
     expect(deriveTitle('  Fix the build\nand more')).toBe('Fix the build')
     expect(deriveTitle('')).toBe('coding session')
   })
+
+  test('round-trips shareToken/transcriptUrl', () => {
+    const kv = fakeKv()
+    writeRecord(kv, 's2', {
+      project: 'demo',
+      title: 'add health check',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      shareToken: 'tok_abc',
+      transcriptUrl: 'https://papai.example/t/tok_abc',
+    })
+    const rec = readRecord(kv, 's2')
+    expect(rec).not.toBeNull()
+    expect(rec!.shareToken).toBe('tok_abc')
+    expect(rec!.transcriptUrl).toBe('https://papai.example/t/tok_abc')
+  })
+
+  test('non-string shareToken reads back as undefined', () => {
+    const kv = fakeKv()
+    kv.set(
+      'session:s3',
+      JSON.stringify({ project: 'demo', title: 'x', createdAt: '2026-07-01T00:00:00.000Z', shareToken: 42 }),
+    )
+    const rec = readRecord(kv, 's3')
+    expect(rec).not.toBeNull()
+    expect(rec!.shareToken).toBeUndefined()
+  })
 })

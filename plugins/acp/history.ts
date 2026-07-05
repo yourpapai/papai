@@ -16,6 +16,8 @@ export type SessionRecord = {
   prNumber?: number
   prUrl?: string
   status?: string
+  shareToken?: string
+  transcriptUrl?: string
 }
 
 const KEY_PREFIX = 'session:'
@@ -48,6 +50,8 @@ function toSessionRecord(parsed: object): SessionRecord | null {
   const prNumber = fields.get('prNumber')
   const prUrl = fields.get('prUrl')
   const status = fields.get('status')
+  const shareToken = fields.get('shareToken')
+  const transcriptUrl = fields.get('transcriptUrl')
   if (typeof project !== 'string' || typeof title !== 'string' || typeof createdAt !== 'string') return null
 
   const result: SessionRecord = { project, title, createdAt }
@@ -55,6 +59,8 @@ function toSessionRecord(parsed: object): SessionRecord | null {
   if (typeof prNumber === 'number') result.prNumber = prNumber
   if (typeof prUrl === 'string') result.prUrl = prUrl
   if (typeof status === 'string') result.status = status
+  if (typeof shareToken === 'string') result.shareToken = shareToken
+  if (typeof transcriptUrl === 'string') result.transcriptUrl = transcriptUrl
   return result
 }
 
