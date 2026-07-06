@@ -699,6 +699,32 @@ describe('CodingCredentialsSection', () => {
     void unmount(component)
   })
 
+  test('the whole-record Save is disabled until a field changes', async () => {
+    setMockFetch(() => Promise.resolve(json(withSelectsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!
+    expect(save.disabled).toBe(true)
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')!
+    providerSelect.value = 'openai'
+    providerSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    expect(save.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('a failed initial load renders ErrorState with a retry control', async () => {
+    setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    void unmount(component)
+  })
+
   test('a failed clear keeps the confirm dialog open with an inline error', async () => {
     setCsrfToken('c')
     setMockFetch(clearErrorMock)
