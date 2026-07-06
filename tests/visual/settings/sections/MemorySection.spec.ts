@@ -26,6 +26,16 @@ test.describe('settings/sections/MemorySection', () => {
     await switchStory(sharedPage, 'settings-sections-memorysection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Empty (capture on)', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-memorysection--empty-capture-on')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Provisional', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-memorysection--provisional')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 

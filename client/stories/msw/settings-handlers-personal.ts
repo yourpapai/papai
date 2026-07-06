@@ -101,6 +101,57 @@ export const memoryHandlers: HandlerFamily = {
   ],
 }
 
+const memoryEmptyCaptureOn = {
+  contextId: 'ctx-personal-1',
+  scopeType: 'personal',
+  enabled: true,
+  profile: '',
+  records: [],
+}
+
+const memoryProvisional = {
+  contextId: 'ctx-group-1',
+  scopeType: 'group',
+  enabled: true,
+  profile: 'Team prefers async standups.',
+  records: [
+    {
+      id: 'm1',
+      kind: 'fact',
+      content: 'Uses TypeScript across services',
+      summary: null,
+      tags: ['lang'],
+      confidence: 0.9,
+      status: 'active',
+      source: 'chat',
+      createdAt: '2026-05-01T00:00:00Z',
+      updatedAt: '2026-05-01T00:00:00Z',
+      lastSeenAt: '2026-06-01T00:00:00Z',
+    },
+    {
+      id: 'm2',
+      kind: 'preference',
+      content: 'Wants deploy notifications posted in the #ops thread',
+      summary: null,
+      tags: ['ops', 'notifications'],
+      confidence: 0.7,
+      status: 'provisional',
+      source: 'chat',
+      createdAt: '2026-06-10T00:00:00Z',
+      updatedAt: '2026-06-10T00:00:00Z',
+      lastSeenAt: '2026-06-20T00:00:00Z',
+    },
+  ],
+}
+
+export const memoryEmptyCaptureOnHandlers: HttpHandler[] = [
+  http.get('/settings/api/memory', () => HttpResponse.json(memoryEmptyCaptureOn)),
+]
+
+export const memoryProvisionalHandlers: HttpHandler[] = [
+  http.get('/settings/api/memory', () => HttpResponse.json(memoryProvisional)),
+]
+
 // --- MCP (GET /settings/api/mcp) ---
 
 const mcpPopulated = {
@@ -198,85 +249,4 @@ export const identityGatedHandlers: HttpHandler[] = [
   ),
 ]
 
-// --- Config (GET /settings/api/config) ---
-
-const configPopulated = {
-  contextId: 'ctx-personal-1',
-  fields: [
-    {
-      key: 'display_name',
-      label: 'Display name',
-      required: false,
-      sensitive: false,
-      hasValue: true,
-      value: 'Alice',
-      storageKey: 'display_name',
-      kind: 'preference',
-      control: 'text',
-    },
-    {
-      key: 'ai_output_detail_level',
-      label: 'Output detail level',
-      required: false,
-      sensitive: false,
-      hasValue: true,
-      value: 'standard',
-      storageKey: 'ai_output_detail_level',
-      kind: 'ai-output',
-      control: 'select',
-      options: [
-        { value: 'standard', label: 'Standard' },
-        { value: 'raw', label: 'Raw' },
-      ],
-    },
-  ],
-}
-
-const configEmpty = {
-  contextId: 'ctx-personal-1',
-  fields: [],
-}
-
-export const configHandlers: HandlerFamily = {
-  populated: [http.get('/settings/api/config', () => HttpResponse.json(configPopulated))],
-  empty: [http.get('/settings/api/config', () => HttpResponse.json(configEmpty))],
-  error: [http.get('/settings/api/config', boom)],
-  loading: [
-    http.get('/settings/api/config', async () => {
-      await delay(NEVER_RESOLVE_MS)
-      return HttpResponse.json(configEmpty)
-    }),
-  ],
-}
-
-// --- Release subscription (GET /settings/api/release-subscription) ---
-
-const releaseSubscriptionPopulated = { enabled: true }
-const releaseSubscriptionEmpty = { enabled: false }
-
-export const releaseSubscriptionHandlers: HandlerFamily = {
-  populated: [http.get('/settings/api/release-subscription', () => HttpResponse.json(releaseSubscriptionPopulated))],
-  empty: [http.get('/settings/api/release-subscription', () => HttpResponse.json(releaseSubscriptionEmpty))],
-  error: [http.get('/settings/api/release-subscription', boom)],
-  loading: [
-    http.get('/settings/api/release-subscription', async () => {
-      await delay(NEVER_RESOLVE_MS)
-      return HttpResponse.json(releaseSubscriptionEmpty)
-    }),
-  ],
-}
-
-// Toggle-in-flight: GET resolves (so the toggle renders), PATCH never resolves.
-export const releaseSubscriptionMutatingHandlers: HttpHandler[] = [
-  http.get('/settings/api/release-subscription', () => HttpResponse.json(releaseSubscriptionEmpty)),
-  http.patch('/settings/api/release-subscription', async () => {
-    await delay(NEVER_RESOLVE_MS)
-    return HttpResponse.json({})
-  }),
-]
-
-// Toggle failure: GET resolves, PATCH returns 500.
-export const releaseSubscriptionMutationErrorHandlers: HttpHandler[] = [
-  http.get('/settings/api/release-subscription', () => HttpResponse.json(releaseSubscriptionEmpty)),
-  http.patch('/settings/api/release-subscription', boom),
-]
+// Config and release-subscription handlers moved to ./settings-handlers-personal-2.js to keep this file under the line limit.

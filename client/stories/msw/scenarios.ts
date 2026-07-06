@@ -33,16 +33,20 @@ import {
   guestModeHandlers,
 } from './settings-handlers-group.js'
 import {
-  codingCredentialsHandlers,
   configHandlers,
-  identityGatedHandlers,
-  identityHandlers,
-  mcpHandlers,
-  memoryHandlers,
-  pluginsHandlers,
   releaseSubscriptionHandlers,
   releaseSubscriptionMutatingHandlers,
   releaseSubscriptionMutationErrorHandlers,
+} from './settings-handlers-personal-2.js'
+import {
+  codingCredentialsHandlers,
+  identityGatedHandlers,
+  identityHandlers,
+  mcpHandlers,
+  memoryEmptyCaptureOnHandlers,
+  memoryHandlers,
+  memoryProvisionalHandlers,
+  pluginsHandlers,
 } from './settings-handlers-personal.js'
 import {
   adminUsersHandlers,
@@ -176,6 +180,8 @@ export const scenarios = {
   'settings-memory-empty': [...memoryHandlers.empty],
   'settings-memory-error': [...memoryHandlers.error],
   'settings-memory-loading': [...memoryHandlers.loading],
+  'settings-memory-empty-capture-on': [...memoryEmptyCaptureOnHandlers],
+  'settings-memory-provisional': [...memoryProvisionalHandlers],
   'settings-mcp-populated': [...mcpHandlers.populated],
   'settings-mcp-empty': [...mcpHandlers.empty],
   'settings-mcp-error': [...mcpHandlers.error],

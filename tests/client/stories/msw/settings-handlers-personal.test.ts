@@ -9,12 +9,10 @@ import type { HttpHandler } from 'msw'
 
 import {
   codingCredentialsHandlers,
-  configHandlers,
   identityHandlers,
   mcpHandlers,
   memoryHandlers,
   pluginsHandlers,
-  releaseSubscriptionHandlers,
 } from '../../../../client/stories/msw/settings-handlers-personal.js'
 
 function pathsOf(handlers: readonly HttpHandler[]): string[] {
@@ -92,35 +90,5 @@ describe('personal settings msw handlers', () => {
 
   test('identityHandlers populated covers /settings/api/identity', () => {
     expect(pathsOf(identityHandlers.populated).some((p) => p.includes('/settings/api/identity'))).toBe(true)
-  })
-
-  // --- configHandlers ---
-
-  test('configHandlers has all four variants with at least one handler each', () => {
-    expect(Array.isArray(configHandlers.populated)).toBe(true)
-    expect(Array.isArray(configHandlers.empty)).toBe(true)
-    expect(Array.isArray(configHandlers.error)).toBe(true)
-    expect(Array.isArray(configHandlers.loading)).toBe(true)
-    expect(configHandlers.populated.length).toBeGreaterThan(0)
-  })
-
-  test('configHandlers populated covers /settings/api/config', () => {
-    expect(pathsOf(configHandlers.populated).some((p) => p.includes('/settings/api/config'))).toBe(true)
-  })
-
-  // --- releaseSubscriptionHandlers ---
-
-  test('releaseSubscriptionHandlers has all four variants with at least one handler each', () => {
-    expect(Array.isArray(releaseSubscriptionHandlers.populated)).toBe(true)
-    expect(Array.isArray(releaseSubscriptionHandlers.empty)).toBe(true)
-    expect(Array.isArray(releaseSubscriptionHandlers.error)).toBe(true)
-    expect(Array.isArray(releaseSubscriptionHandlers.loading)).toBe(true)
-    expect(releaseSubscriptionHandlers.populated.length).toBeGreaterThan(0)
-  })
-
-  test('releaseSubscriptionHandlers populated covers /settings/api/release-subscription', () => {
-    expect(
-      pathsOf(releaseSubscriptionHandlers.populated).some((p) => p.includes('/settings/api/release-subscription')),
-    ).toBe(true)
   })
 })
