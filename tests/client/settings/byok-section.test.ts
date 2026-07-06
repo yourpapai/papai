@@ -166,6 +166,20 @@ const makeToggleMock =
     return Promise.resolve(json(state.payload))
   }
 
+interface ReloadFailState {
+  getCount: number
+}
+
+const makeReloadFailsByokMock =
+  (state: ReloadFailState) =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url.includes('/settings/api/byok') && method === 'PATCH') return Promise.resolve(json({ ok: true }))
+    state.getCount++
+    if (state.getCount === 1) return Promise.resolve(json(enabledPayload))
+    return Promise.resolve(new Response('reload failed', { status: 500 }))
+  }
+
 afterEach(() => {
   capturedPatchBody = ''
   resetSession()
@@ -430,6 +444,25 @@ describe('ByokSection', () => {
     await drain()
     await drain()
     expect(target.querySelector('p[role="status"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a save whose reload fails shows the error and no success line', async () => {
+    setCsrfToken('c')
+    setMockFetch(makeReloadFailsByokMock({ getCount: 0 }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
+    input.value = 'gpt-next'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-save-main_model"]')!.click()
+    await drain()
+    await drain()
+    expect(target.querySelector('p[role="status"]')).toBeNull()
+    expect(target.querySelector('p.status-error[role="alert"]')).not.toBeNull()
     void unmount(component)
   })
 })

@@ -273,6 +273,28 @@ const routeOauthOpenCodeMock = (_url: string, init?: RequestInit): Promise<Respo
   return Promise.resolve(json(oauthOpenCodePayload))
 }
 
+const failingSaveMock = (url: string, init?: RequestInit): Promise<Response> => {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (url.includes('/settings/api/coding-credentials') && method === 'PATCH')
+    return Promise.resolve(new Response('save failed', { status: 500 }))
+  return Promise.resolve(json(withSelectsPayload))
+}
+
+interface ReloadFailState {
+  getCount: number
+}
+
+const makeReloadFailsCodingMock =
+  (state: ReloadFailState) =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url.includes('/settings/api/coding-credentials') && method === 'PATCH')
+      return Promise.resolve(json({ ok: true }))
+    state.getCount++
+    if (state.getCount === 1) return Promise.resolve(json(withSelectsPayload))
+    return Promise.resolve(new Response('reload failed', { status: 500 }))
+  }
+
 afterEach(() => {
   capturedPatchBody = ''
   restoreFetch()
@@ -738,6 +760,41 @@ describe('CodingCredentialsSection', () => {
     await drain()
     expect(document.querySelector('.modal')).not.toBeNull()
     expect(document.querySelector('.modal .status-error')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed save shows an inline error with role="alert"', async () => {
+    setCsrfToken('c')
+    setMockFetch(failingSaveMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')!
+    providerSelect.value = 'openai'
+    providerSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+    expect(target.querySelector('p.status-error[role="alert"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a save whose reload fails shows no success line', async () => {
+    setCsrfToken('c')
+    setMockFetch(makeReloadFailsCodingMock({ getCount: 0 }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const providerSelect = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')!
+    providerSelect.value = 'openai'
+    providerSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+    await drain()
+    expect(target.querySelector('p[role="status"]')).toBeNull()
     void unmount(component)
   })
 })

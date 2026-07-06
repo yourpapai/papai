@@ -72,20 +72,22 @@
     return value.includes('*') ? maskSecret(value) : '••••••••'
   }
 
-  async function load(id: string): Promise<void> {
+  async function load(id: string): Promise<boolean> {
     error = null
     status = null
     if (id !== loadedContextId) clearContextState()
     loading = true
     try {
       const next = await fetchByok(id)
-      if (id !== contextId) return
+      if (id !== contextId) return false
       data = next
       loadedContextId = id
       drafts = initialDrafts(next.fields)
       replacing = {}
+      return true
     } catch (err) {
       if (id === contextId) error = err instanceof Error ? err.message : String(err)
+      return false
     } finally {
       if (id === contextId) loading = false
     }
@@ -117,8 +119,8 @@
     savingKey = field.key
     try {
       await patchByok({ contextId, values: { [field.key]: drafts[field.key] ?? '' } })
-      await load(contextId)
-      status = `${field.label} saved.`
+      const ok = await load(contextId)
+      if (ok) status = `${field.label} saved.`
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {

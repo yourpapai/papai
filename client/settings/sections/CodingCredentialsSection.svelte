@@ -99,19 +99,21 @@
   function displaySecret(value: string): string {
     return value.includes('*') ? maskSecret(value) : '••••••••'
   }
-  async function load(id: string): Promise<void> {
+  async function load(id: string): Promise<boolean> {
     error = null
     status = null
     loading = true
     try {
       const next = await fetchCodingCredentials(id)
-      if (id !== contextId) return
+      if (id !== contextId) return false
       data = next
       loadedContextId = id
       drafts = initialDrafts(next.fields)
       replacing = {}
+      return true
     } catch (err) {
       if (id === contextId) error = err instanceof Error ? err.message : String(err)
+      return false
     } finally {
       if (id === contextId) loading = false
     }
@@ -175,8 +177,8 @@
     saving = true
     try {
       await patchCodingCredentials({ contextId, values: collectValues() })
-      await load(contextId)
-      status = 'AI provider saved.'
+      const ok = await load(contextId)
+      if (ok) status = 'AI provider saved.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -204,8 +206,8 @@
     }
     if (ok) {
       pendingClear = false
-      status = 'AI provider credentials cleared.'
-      await load(contextId)
+      const reloaded = await load(contextId)
+      if (reloaded) status = 'AI provider credentials cleared.'
     }
   }
 
