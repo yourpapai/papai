@@ -148,4 +148,16 @@ describe('CodingIdentitySection', () => {
     expect(JSON.parse(capturedPatchBody)).toMatchObject({ identity: 'shared', contextId: 'ctx-grp' })
     void unmount(component)
   })
+
+  test('the Policy label uses the shared t-label class', async () => {
+    setMockFetch(routeReadMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingIdentitySection, { target, props: { contextId: 'ctx-grp' } })
+    await drain()
+    const label = target.querySelector<HTMLLabelElement>('label[for="coding-identity-policy"]')!
+    expect(label).not.toBeNull()
+    expect(label.classList.contains('t-label')).toBe(true)
+    void unmount(component)
+  })
 })

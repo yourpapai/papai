@@ -107,7 +107,7 @@
   {#if error !== null}<p class="status-error" data-testid="coding-identity-error">{error}</p>{/if}
 
   <div class="coding-identity__controls">
-    <label class="settings-field__label" for="coding-identity-policy">Policy</label>
+    <label class="t-label" for="coding-identity-policy">Policy</label>
     <select
       id="coding-identity-policy"
       data-testid="coding-identity-policy"
@@ -120,7 +120,7 @@
     </select>
 
     {#if policyKind === 'designated'}
-      <label class="settings-field__label" for="coding-identity-member">Member</label>
+      <label class="t-label" for="coding-identity-member">Member</label>
       <select
         id="coding-identity-member"
         data-testid="coding-identity-member"
