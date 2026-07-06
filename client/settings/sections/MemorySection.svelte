@@ -239,7 +239,7 @@
             {/if}
           </div>
           <Btn
-            variant="ghost"
+            variant="outline"
             size="sm"
             disabled={mutating}
             testid={`memory-archive-${record.id}`}
