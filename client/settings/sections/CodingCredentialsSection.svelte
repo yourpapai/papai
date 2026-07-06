@@ -53,7 +53,7 @@
 
   // Whole-record save is meaningful only when at least one field's draft differs from its
   // stored value. A sensitive field's editor baseline is '' (untouched secret).
-  const formDirty = $derived(fields.some((f) => (drafts[f.key] ?? '') !== (f.sensitive ? '' : f.value)))
+  const formDirty = $derived(fields.filter((f) => !fieldHidden(f)).some((f) => (drafts[f.key] ?? '') !== (f.sensitive ? '' : f.value)))
 
   // Track current agent draft for filtering provider options
   const agentField = $derived(fields.find((f) => f.key === 'agent'))

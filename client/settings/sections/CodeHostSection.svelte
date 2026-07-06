@@ -42,7 +42,7 @@
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
 
   // Whole-record save is meaningful only when a field's draft differs from its stored value.
-  const formDirty = $derived(fields.some((f) => (drafts[f.key] ?? '') !== (f.sensitive ? '' : f.value)))
+  const formDirty = $derived(fields.filter(shouldShowField).some((f) => (drafts[f.key] ?? '') !== (f.sensitive ? '' : f.value)))
 
   // Compute whether instance_url field should be shown based on selected kind
   const kindField = $derived(fields.find((f) => f.key === 'kind'))
