@@ -451,7 +451,6 @@
   .settings-memory__tag {
     padding: 1px 6px;
     border: 1px solid var(--hair);
-    color: var(--fg2);
   }
 
   @media (max-width: 640px) {
