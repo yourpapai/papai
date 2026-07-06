@@ -45,6 +45,11 @@
   let clearError: string | null = $state(null)
 
   const currentMemory = $derived(loadedContextId === contextId ? memory : null)
+  const scopeSub = $derived(
+    currentMemory?.scopeType === 'group'
+      ? "Durable facts learned from this group's chats, shared across all threads."
+      : 'Durable facts the assistant learns from your chats to personalize replies.',
+  )
   const activeRecords = $derived(currentMemory?.records.filter((record) => record.status === 'active') ?? [])
   const pendingRecords = $derived(currentMemory?.records.filter((record) => record.status === 'provisional') ?? [])
 
@@ -169,16 +174,32 @@
 </script>
 
 <section id="memory" class="settings-section">
-  <PageHeader eyebrow={currentMemory?.scopeType === 'group' ? 'Group' : 'Personal'} title="Memory">
+  <PageHeader
+    eyebrow={currentMemory?.scopeType === 'group' ? 'Group' : 'Personal'}
+    title="Memory"
+    sub={scopeSub}>
     {#snippet action()}
-      <Btn
-        variant={currentMemory?.enabled ? 'outline' : 'primary'}
-        size="sm"
-        disabled={currentMemory === null || loading || togglingCapture}
-        testid="memory-capture-toggle"
-        onClick={() => void toggleCapture()}>
-        {#snippet children()}{currentMemory?.enabled ? 'Disable capture' : 'Enable capture'}{/snippet}
-      </Btn>
+      <div class="settings-memory__header-actions">
+        <Btn
+          variant="danger"
+          size="sm"
+          disabled={currentMemory === null || togglingCapture || clearing || archivingId !== null}
+          testid="memory-clear"
+          onClick={() => {
+            pendingClear = true
+            clearError = null
+          }}>
+          {#snippet children()}Clear memory{/snippet}
+        </Btn>
+        <Btn
+          variant={currentMemory?.enabled ? 'outline' : 'primary'}
+          size="sm"
+          disabled={currentMemory === null || loading || togglingCapture}
+          testid="memory-capture-toggle"
+          onClick={() => void toggleCapture()}>
+          {#snippet children()}{currentMemory?.enabled ? 'Disable capture' : 'Enable capture'}{/snippet}
+        </Btn>
+      </div>
     {/snippet}
   </PageHeader>
 
@@ -189,6 +210,10 @@
     <p class="placeholder">Loading…</p>
   {:else if currentMemory !== null}
     <div class="settings-memory">
+      <p class="settings-memory__note">
+        Disabling stops new capture. Existing memory is kept and still used — use Clear memory
+        to remove it.
+      </p>
       <div class="settings-memory__profile">
         <Field label="Pinned profile">
           <Input
@@ -206,17 +231,6 @@
             testid="memory-profile-save"
             onClick={() => void saveProfile()}>
             {#snippet children()}{savingProfile ? 'Saving…' : 'Save profile'}{/snippet}
-          </Btn>
-          <Btn
-            variant="danger"
-            size="sm"
-            disabled={togglingCapture || clearing || archivingId !== null}
-            testid="memory-clear"
-            onClick={() => {
-              pendingClear = true
-              clearError = null
-            }}>
-            {#snippet children()}Clear memory{/snippet}
           </Btn>
         </div>
       </div>
@@ -297,7 +311,18 @@
 <style>
   .settings-memory {
     display: grid;
-    gap: 14px;
+    gap: var(--gap-inline);
+  }
+
+  .settings-memory__header-actions {
+    display: flex;
+    gap: var(--gap-tight);
+  }
+
+  .settings-memory__note {
+    margin: 0;
+    font-size: 11px;
+    color: var(--fg2);
   }
 
   .settings-memory__profile {
