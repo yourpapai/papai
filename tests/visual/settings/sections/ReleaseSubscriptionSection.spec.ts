@@ -26,6 +26,16 @@ test.describe('settings/sections/ReleaseSubscriptionSection', () => {
     await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Mutating', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--mutating')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('MutationError', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--mutation-error')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 
