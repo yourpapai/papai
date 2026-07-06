@@ -41,26 +41,17 @@ test.describe('settings/sections/IdentitySection — manual', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Populated — long values', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-identitysection--populated')
-    await sharedPage.setViewportSize({ width: 1280, height: 720 })
-    await sharedPage
-      .getByTestId('identity-user-id')
-      .fill('user-account-9f3c2a1b-7e4d-4c6a-b2f1-000000000042-provider-scoped')
-    await expect(sharedPage).toHaveScreenshot()
-  })
-
-  test('Populated — Clear hover', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-identitysection--populated')
-    await sharedPage.setViewportSize({ width: 1280, height: 720 })
-    await sharedPage.getByTestId('identity-clear').hover()
-    await expect(sharedPage).toHaveScreenshot()
-  })
-
-  test('Empty — user-id focus-within', async ({ sharedPage }) => {
+  test('Empty — validation error', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'settings-sections-identitysection--empty')
     await sharedPage.setViewportSize({ width: 1280, height: 720 })
-    await sharedPage.getByTestId('identity-user-id').click()
+    await sharedPage.getByTestId('identity-save').click()
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Populated — clear confirm open', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-identitysection--populated')
+    await sharedPage.setViewportSize({ width: 1280, height: 720 })
+    await sharedPage.getByTestId('identity-clear').click()
     await expect(sharedPage).toHaveScreenshot()
   })
 })
