@@ -7,11 +7,13 @@
   import { untrack } from 'svelte'
 
   import Btn from '../../shared/ui/Btn.svelte'
-  import Field from '../../shared/ui/Field.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Pill from '../../shared/ui/Pill.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
+  import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
   import type { ByokField, ByokResponse } from '../fetcher-schemas.js'
   import { fetchByok, patchByok, toggleByok } from '../fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
@@ -36,6 +38,24 @@
   const fields = $derived(currentData?.fields ?? [])
   const missing = $derived(currentData?.missing ?? [])
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
+
+  type PillTone = 'accent' | 'warn' | 'danger' | 'mute'
+  interface PillState {
+    tone: PillTone
+    dot: boolean
+    text: string
+  }
+  const pillState = $derived.by((): PillState | null => {
+    if (currentData === null) return null
+    if (!currentData.enabled) return { tone: 'mute', dot: false, text: 'Central credentials' }
+    if (unreadableError !== null) return { tone: 'danger', dot: true, text: 'Unreadable' }
+    if (!currentData.complete) return { tone: 'warn', dot: true, text: 'Incomplete' }
+    return { tone: 'accent', dot: true, text: 'Active' }
+  })
+
+  function isDirty(field: ByokField): boolean {
+    return (drafts[field.key] ?? '') !== (field.sensitive ? '' : field.value)
+  }
 
   function initialDrafts(nextFields: ByokField[]): Record<string, string> {
     return Object.fromEntries(nextFields.map((field) => [field.key, field.sensitive && field.hasValue ? '' : field.value]))
@@ -140,6 +160,13 @@
 <section id="byok" class="settings-section">
   <PageHeader eyebrow="Personal" title="BYOK LLM">
     {#snippet action()}
+      {#if pillState !== null}
+        <span data-testid="byok-state">
+          <Pill tone={pillState.tone} dot={pillState.dot}>
+            {#snippet children()}{pillState.text}{/snippet}
+          </Pill>
+        </span>
+      {/if}
       {#if currentData !== null}
         <Btn
           variant={currentData.enabled ? 'outline' : 'primary'}
@@ -154,64 +181,62 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
+  {#if currentData !== null && error !== null}<p class="status-error" role="alert">{error}</p>{/if}
+  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
 
   {#if currentData === null && loading}
     <p class="placeholder">Loading…</p>
+  {:else if currentData === null && error !== null}
+    <ErrorState message={error} onRetry={() => void load(contextId)} />
   {:else if currentData !== null && !currentData.enabled}
     <p class="placeholder">
       Using the central LLM credentials. Turn on "Use my own credentials" to configure BYOK for this context.
     </p>
   {:else if currentData !== null}
     {#if unreadableError !== null}
-      <p class="status-error">Stored BYOK credentials are unreadable. Re-enter the values to repair this context.</p>
+      <p class="status-error" role="alert">Stored BYOK credentials are unreadable. Re-enter the values to repair this context.</p>
     {/if}
     {#if !currentData.complete && missing.length > 0}
-      <p class="status-error">Missing required fields: {missing.join(', ')}</p>
+      <p class="status-error" role="alert">Missing required fields: {missing.join(', ')}</p>
     {/if}
 
     <div class="settings-byok-fields">
       {#each fields as field (field.key)}
-        <div class="settings-field" data-testid={`byok-row-${field.key}`}>
-          <div class="settings-field__head">
-            <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
+        <SettingsFieldShell
+          label={field.label}
+          required={field.required}
+          editorOpen={editorOpen(field)}
+          testid={`byok-row-${field.key}`}>
+          {#snippet head()}
             {#if field.sensitive && field.hasValue && !editorOpen(field)}
               <Secret value={displaySecret(field.value)} />
               <Btn variant="secondary" size="sm" testid={`byok-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
                 {#snippet children()}Replace{/snippet}
               </Btn>
             {/if}
-          </div>
-
-          {#if editorOpen(field)}
-            <div class="settings-field__editor">
-              <Field label={field.sensitive ? 'New value' : 'Value'}>
-                {#snippet children()}
-                  <Input
-                    type={field.sensitive ? 'password' : 'text'}
-                    value={drafts[field.key] ?? ''}
-                    placeholder={field.sensitive ? 'enter a new value' : ''}
-                    onInput={(value) => updateDraft(field.key, value)}
-                    testid={`byok-input-${field.key}`} />
-                {/snippet}
-              </Field>
-              <Btn
-                variant="primary"
-                size="sm"
-                testid={`byok-save-${field.key}`}
-                disabled={savingKey === field.key || loading || toggling}
-                onClick={() => void save(field)}>
-                {#snippet children()}{savingKey === field.key ? 'Saving…' : 'Save'}{/snippet}
+          {/snippet}
+          {#snippet editor()}
+            <Input
+              type={field.sensitive ? 'password' : 'text'}
+              value={drafts[field.key] ?? ''}
+              placeholder={field.sensitive ? 'enter a new value' : ''}
+              onInput={(value) => updateDraft(field.key, value)}
+              testid={`byok-input-${field.key}`} />
+            <Btn
+              variant="primary"
+              size="sm"
+              testid={`byok-save-${field.key}`}
+              disabled={!isDirty(field) || savingKey === field.key || loading || toggling}
+              onClick={() => void save(field)}>
+              {#snippet children()}{savingKey === field.key ? 'Saving…' : 'Save'}{/snippet}
+            </Btn>
+            {#if field.sensitive && field.hasValue}
+              <Btn variant="ghost" size="sm" testid={`byok-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
+                {#snippet children()}Cancel{/snippet}
               </Btn>
-              {#if field.sensitive && field.hasValue}
-                <Btn variant="ghost" size="sm" testid={`byok-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
-                  {#snippet children()}Cancel{/snippet}
-                </Btn>
-              {/if}
-            </div>
-          {/if}
-        </div>
+            {/if}
+          {/snippet}
+        </SettingsFieldShell>
       {/each}
     </div>
   {/if}
@@ -220,34 +245,6 @@
 <style>
   .settings-byok-fields {
     display: grid;
-    gap: 12px;
-  }
-  .settings-field {
-    display: grid;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .settings-field__head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .settings-field__label {
-    color: var(--fg2);
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }
-  .settings-field__editor {
-    display: flex;
-    align-items: end;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .settings-field__editor :global(.ui-field) {
-    flex: 1;
-    min-width: 200px;
+    gap: var(--gap-inline);
   }
 </style>

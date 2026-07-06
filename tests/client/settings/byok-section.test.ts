@@ -339,4 +339,82 @@ describe('ByokSection', () => {
     expect(capturedPatchBody).toBe(JSON.stringify({ contextId: 'user:1', values: { main_model: 'gpt-next' } }))
     void unmount(component)
   })
+
+  test('shows a mute "Central credentials" state pill when disabled', async () => {
+    setMockFetch(() => Promise.resolve(json(disabledPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    const pill = target.querySelector('[data-testid="byok-state"]')
+    expect(pill).not.toBeNull()
+    expect(pill!.textContent).toContain('Central credentials')
+    void unmount(component)
+  })
+
+  test('shows an "Incomplete" state pill when required fields are missing', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="byok-state"]')!.textContent).toContain('Incomplete')
+    void unmount(component)
+  })
+
+  test('shows an "Active" state pill when enabled and complete', async () => {
+    setMockFetch(() => Promise.resolve(json(rawSecretPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="byok-state"]')!.textContent).toContain('Active')
+    void unmount(component)
+  })
+
+  test('a per-field Save is disabled until the value changes', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="byok-save-main_model"]')!
+    expect(save.disabled).toBe(true)
+    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
+    input.value = 'gpt-next'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(save.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('a failed initial load renders ErrorState with a retry control', async () => {
+    setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a save success line is announced via role="status"', async () => {
+    setCsrfToken('c')
+    setMockFetch(routeByokMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
+    input.value = 'gpt-next'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-save-main_model"]')!.click()
+    // two drains: save() awaits patchByok then load()
+    await drain()
+    await drain()
+    expect(target.querySelector('p[role="status"]')).not.toBeNull()
+    void unmount(component)
+  })
 })
