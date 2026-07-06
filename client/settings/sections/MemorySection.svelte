@@ -303,7 +303,8 @@
         <div class="settings-memory__pending" data-testid="memory-pending">
           <h3 class="settings-memory__pending-title">Pending (provisional)</h3>
           <p class="settings-memory__pending-hint">
-            Captured from conversation threads and awaiting promotion to shared memory.
+            Captured from individual threads. Facts seen across several threads are promoted to
+            shared group memory automatically — no action needed. Archive to discard.
           </p>
           <ul class="settings-memory__records">
             {#each pendingRecords as record (record.id)}
