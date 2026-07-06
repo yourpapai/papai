@@ -267,7 +267,26 @@
 
       {#if activeRecords.length === 0}
         <div data-testid="memory-empty">
-          <EmptyState title="No active memory records" hint="Captured memory records for this context will appear here." />
+          {#if currentMemory.enabled}
+            <EmptyState
+              title="No memory records yet"
+              hint="Facts the assistant learns from your chats will appear here." />
+          {:else}
+            <EmptyState
+              title="Capture is off"
+              hint="Enable capture to start recording facts from your conversations.">
+              {#snippet action()}
+                <Btn
+                  variant="primary"
+                  size="sm"
+                  disabled={currentMemory === null || loading || togglingCapture}
+                  testid="memory-empty-enable"
+                  onClick={() => void toggleCapture()}>
+                  {#snippet children()}Enable capture{/snippet}
+                </Btn>
+              {/snippet}
+            </EmptyState>
+          {/if}
         </div>
       {:else}
         <ul class="settings-memory__records">
