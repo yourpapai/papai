@@ -120,7 +120,7 @@ _sandbox → magi-main_ hop — everything downstream (policy, cred resolution, 
 upstream streaming) is identical across paths.
 
 - **Shipping path — `McpServerStdio`.** magi declares `command: mcp-tunnel` (or, for opencode, an
-  `mcp.local` entry in its native `OPENCODE_CONFIG_CONTENT`); the tunnel + 2nd geofront socket
+  `mcp.local` entry in its native `OPENCODE_CONFIG_CONTENT`); the tunnel + bind-mounted host socket
   (§5.1–5.2) carry MCP frames to magi-main. Supported by every current agent. **This is the design.**
 - **Future path — `McpServerAcp` (MCP-over-ACP).** The client (magi) becomes the MCP-server endpoint;
   the agent sends `mcp/connect` / `mcp/message` / `mcp/disconnect` as **agent→client** requests (the
