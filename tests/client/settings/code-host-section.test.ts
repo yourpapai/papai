@@ -12,7 +12,10 @@ import CodeHostSection from '../../../client/settings/sections/CodeHostSection.s
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const json = (payload: unknown): Response =>
-  new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
 
 const drain = async (): Promise<void> => {
   for (let i = 0; i < 10; i++) await Promise.resolve()
@@ -203,6 +206,21 @@ const routeCodeHostMock = (_url: string, init?: RequestInit): Promise<Response> 
   return Promise.resolve(json(unconfiguredPayload))
 }
 
+interface ReloadFailState {
+  getCount: number
+}
+
+const makeReloadFailsCodeHostMock =
+  (state: ReloadFailState) =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url.includes('/settings/api/coding-credentials') && method === 'PATCH')
+      return Promise.resolve(json({ ok: true }))
+    state.getCount++
+    if (state.getCount === 1) return Promise.resolve(json(typedForgePayloadSelfHosted))
+    return Promise.resolve(new Response('reload failed', { status: 500 }))
+  }
+
 afterEach(() => {
   capturedPatchBody = ''
   restoreFetch()
@@ -214,7 +232,10 @@ describe('CodeHostSection', () => {
     setMockFetch(() => Promise.resolve(json(unconfiguredPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -226,7 +247,10 @@ describe('CodeHostSection', () => {
     setMockFetch(() => Promise.resolve(json(unconfiguredPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -239,7 +263,10 @@ describe('CodeHostSection', () => {
     setMockFetch(() => Promise.resolve(json(configuredPayload)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -253,7 +280,10 @@ describe('CodeHostSection', () => {
     setMockFetch(routeCodeHostMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
     const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
@@ -275,7 +305,10 @@ describe('CodeHostSection', () => {
     setMockFetch(() => Promise.resolve(json(typedForgePayloadSaas)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -295,7 +328,10 @@ describe('CodeHostSection', () => {
     setMockFetch(() => Promise.resolve(json(typedForgePayloadSaas)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -308,7 +344,10 @@ describe('CodeHostSection', () => {
     setMockFetch(() => Promise.resolve(json(typedForgePayloadSelfHosted)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -321,7 +360,10 @@ describe('CodeHostSection', () => {
     setMockFetch(() => Promise.resolve(json(typedForgePayloadSaas)))
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -337,7 +379,10 @@ describe('CodeHostSection', () => {
     setMockFetch(routeCodeHostMockUnconfigured)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -357,7 +402,10 @@ describe('CodeHostSection', () => {
     setMockFetch(routeCodeHostMockUnconfigured)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
@@ -382,7 +430,11 @@ describe('CodeHostSection', () => {
     expect(JSON.parse(capturedPatchBody)).toMatchObject({
       namespace: 'forge',
       contextId: 'pi:telegram:ctx:u1',
-      values: { kind: 'gitlab-self-hosted', instance_url: 'https://gl.corp.com', forge_token: 'glpat-1' },
+      values: {
+        kind: 'gitlab-self-hosted',
+        instance_url: 'https://gl.corp.com',
+        forge_token: 'glpat-1',
+      },
     })
     void unmount(component)
   })
@@ -392,17 +444,30 @@ describe('CodeHostSection', () => {
     setMockFetch(routeCodeHostMockSelfHosted)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
 
     await drain()
 
-    // Token is configured (masked, Replace shown) and not being replaced; saving must
-    // not send it (server preserves the existing secret).
+    // Make a real change (edit the instance URL) so the whole-record Save is enabled;
+    // the untouched masked token must still be omitted from the PATCH.
+    const instance = target.querySelector<HTMLInputElement>('[data-testid="coding-input-instance_url"]')!
+    instance.value = 'https://gitlab.corp.com/edited'
+    instance.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+
     target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
     await drain()
 
     const parsed: unknown = JSON.parse(capturedPatchBody)
-    expect(parsed).toMatchObject({ values: { kind: 'gitlab-self-hosted', instance_url: 'https://gitlab.corp.com' } })
+    expect(parsed).toMatchObject({
+      values: {
+        kind: 'gitlab-self-hosted',
+        instance_url: 'https://gitlab.corp.com/edited',
+      },
+    })
     expect(parsed).not.toHaveProperty('values.forge_token')
     void unmount(component)
   })
@@ -412,7 +477,10 @@ describe('CodeHostSection', () => {
     setMockFetch(clearErrorMock)
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
-    const component = mount(CodeHostSection, { target, props: { contextId: 'ctx-1' } })
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'ctx-1' },
+    })
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="code-host-clear"]')!.click()
     await drain()
@@ -420,6 +488,96 @@ describe('CodeHostSection', () => {
     await drain()
     expect(document.querySelector('.modal')).not.toBeNull()
     expect(document.querySelector('.modal .status-error')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the whole-record Save is disabled until a field changes (configured host)', async () => {
+    setMockFetch(() => Promise.resolve(json(typedForgePayloadSelfHosted)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+    await drain()
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!
+    expect(save.disabled).toBe(true)
+    const instance = target.querySelector<HTMLInputElement>('[data-testid="coding-input-instance_url"]')!
+    instance.value = 'https://gitlab.corp.com/x'
+    instance.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(save.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('a failed initial load renders ErrorState with a retry control', async () => {
+    setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+    await drain()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a save success line is announced via role="status"', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(routeCodeHostMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-forge_token"]')!
+    input.value = 'ghp_secret'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    // two drains: saveAll() awaits patchCodingCredentials then load()
+    await drain()
+    await drain()
+    expect(target.querySelector('p[role="status"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('rows carry no redundant Field sub-label after the shell migration', async () => {
+    setMockFetch(() => Promise.resolve(json(typedForgePayloadSelfHosted)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+    await drain()
+    expect(target.querySelector('.ui-field__label')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a save whose reload fails shows no success line', async () => {
+    setCsrfToken('csrf-t')
+    const state = { getCount: 0 }
+    setMockFetch(makeReloadFailsCodeHostMock(state))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, {
+      target,
+      props: { contextId: 'pi:telegram:ctx:u1' },
+    })
+    await drain()
+    const instance = target.querySelector<HTMLInputElement>('[data-testid="coding-input-instance_url"]')!
+    instance.value = 'https://gitlab.corp.com/edited'
+    instance.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="code-host-save"]')!.click()
+    await drain()
+    await drain()
+    expect(target.querySelector('p[role="status"]')).toBeNull()
+    expect(target.querySelector('p.status-error[role="alert"]')).not.toBeNull()
     void unmount(component)
   })
 })

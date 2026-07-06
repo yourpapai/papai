@@ -8,11 +8,12 @@
 
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
-  import Field from '../../shared/ui/Field.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
+  import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
   import type { CodingCredentialField, CodingCredentialsResponse } from '../fetcher-schemas.js'
   import { clearCodingCredentials, fetchCodingCredentials, patchCodingCredentials } from '../coding-credentials-fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
@@ -40,6 +41,9 @@
   const fields = $derived(currentData?.fields ?? [])
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
 
+  // Whole-record save is meaningful only when a field's draft differs from its stored value.
+  const formDirty = $derived(fields.some((f) => (drafts[f.key] ?? '') !== (f.sensitive ? '' : f.value)))
+
   // Compute whether instance_url field should be shown based on selected kind
   const kindField = $derived(fields.find((f) => f.key === 'kind'))
   const currentKind = $derived(drafts['kind'] ?? kindField?.value ?? '')
@@ -59,19 +63,21 @@
   function displaySecret(value: string): string {
     return value.includes('*') ? maskSecret(value) : '••••••••'
   }
-  async function load(id: string): Promise<void> {
+  async function load(id: string): Promise<boolean> {
     error = null
     status = null
     loading = true
     try {
       const next = await fetchCodingCredentials(id, 'forge')
-      if (id !== contextId) return
+      if (id !== contextId) return false
       data = next
       loadedContextId = id
       drafts = initialDrafts(next.fields)
       replacing = {}
+      return true
     } catch (err) {
       if (id === contextId) error = err instanceof Error ? err.message : String(err)
+      return false
     } finally {
       if (id === contextId) loading = false
     }
@@ -118,8 +124,8 @@
     saving = true
     try {
       await patchCodingCredentials({ contextId, namespace: 'forge', values: collectValues() })
-      await load(contextId)
-      status = 'Code host saved.'
+      const ok = await load(contextId)
+      if (ok) status = 'Code host saved.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -147,8 +153,8 @@
     }
     if (ok) {
       pendingClear = false
-      status = 'Code host credentials cleared.'
-      await load(contextId)
+      const reloaded = await load(contextId)
+      if (reloaded) status = 'Code host credentials cleared.'
     }
   }
 
@@ -167,66 +173,61 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
+  {#if currentData !== null && error !== null}<p class="status-error" role="alert">{error}</p>{/if}
+  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
 
   {#if currentData === null && loading}
     <p class="placeholder">Loading…</p>
+  {:else if currentData === null && error !== null}
+    <ErrorState message={error} onRetry={() => void load(contextId)} />
   {:else if currentData !== null}
     {#if unreadableError !== null}
-      <p class="status-error">Stored credentials are unreadable. Re-enter your token to repair this context.</p>
+      <p class="status-error" role="alert">Stored credentials are unreadable. Re-enter your token to repair this context.</p>
     {/if}
 
     <div class="settings-byok-fields">
       {#each fields as field (field.key)}
         {#if shouldShowField(field)}
-          <div class="settings-field" data-testid={`coding-row-${field.key}`}>
-            <div class="settings-field__head">
-              <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
+          <SettingsFieldShell
+            label={field.label}
+            required={field.required}
+            editorOpen={editorOpen(field)}
+            testid={`coding-row-${field.key}`}>
+            {#snippet head()}
               {#if field.sensitive && field.hasValue && !editorOpen(field)}
                 <Secret value={displaySecret(field.value)} />
                 <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
                   {#snippet children()}Replace{/snippet}
                 </Btn>
               {/if}
-            </div>
-            {#if field.control === 'select'}
-              <div class="settings-field__editor">
-                <Field label="Value">
-                  {#snippet children()}
-                    <select
-                      data-testid={`coding-select-${field.key}`}
-                      value={drafts[field.key] ?? ''}
-                      disabled={saving || loading}
-                      onchange={(e) => updateDraft(field.key, (e.currentTarget as HTMLSelectElement).value)}
-                      class="coding-select">
-                      {#each field.options ?? [] as opt (opt)}
-                        <option value={opt}>{opt}</option>
-                      {/each}
-                    </select>
-                  {/snippet}
-                </Field>
-              </div>
-            {:else if editorOpen(field)}
-              <div class="settings-field__editor">
-                <Field label={field.sensitive ? 'New value' : 'Value'}>
-                  {#snippet children()}
-                    <Input
-                      type={field.sensitive ? 'password' : 'text'}
-                      value={drafts[field.key] ?? ''}
-                      placeholder={field.sensitive ? 'enter a new value' : ''}
-                      onInput={(value) => updateDraft(field.key, value)}
-                      testid={`coding-input-${field.key}`} />
-                  {/snippet}
-                </Field>
+            {/snippet}
+            {#snippet editor()}
+              {#if field.control === 'select'}
+                <select
+                  data-testid={`coding-select-${field.key}`}
+                  value={drafts[field.key] ?? ''}
+                  disabled={saving || loading}
+                  onchange={(e) => updateDraft(field.key, (e.currentTarget as HTMLSelectElement).value)}
+                  class="coding-select">
+                  {#each field.options ?? [] as opt (opt)}
+                    <option value={opt}>{opt}</option>
+                  {/each}
+                </select>
+              {:else}
+                <Input
+                  type={field.sensitive ? 'password' : 'text'}
+                  value={drafts[field.key] ?? ''}
+                  placeholder={field.sensitive ? 'enter a new value' : ''}
+                  onInput={(value) => updateDraft(field.key, value)}
+                  testid={`coding-input-${field.key}`} />
                 {#if field.sensitive && field.hasValue}
                   <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
                     {#snippet children()}Cancel{/snippet}
                   </Btn>
                 {/if}
-              </div>
-            {/if}
-          </div>
+              {/if}
+            {/snippet}
+          </SettingsFieldShell>
         {/if}
       {/each}
 
@@ -248,7 +249,7 @@
           variant="primary"
           size="sm"
           testid="code-host-save"
-          disabled={saving || loading || clearing}
+          disabled={!formDirty || saving || loading || clearing}
           onClick={() => void saveAll()}>
           {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
         </Btn>
@@ -274,42 +275,15 @@
 <style>
   .settings-byok-fields {
     display: grid;
-    gap: 12px;
-  }
-  .settings-field {
-    display: grid;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .settings-field__head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .settings-field__label {
-    color: var(--fg2);
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }
-  .settings-field__editor {
-    display: flex;
-    align-items: end;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .settings-field__editor :global(.ui-field) {
-    flex: 1;
-    min-width: 200px;
+    gap: var(--gap-inline);
   }
   .settings-field__actions {
     display: flex;
     justify-content: flex-end;
   }
   .coding-select {
-    width: 100%;
+    flex: 1;
+    min-width: 200px;
     padding: 6px 8px;
     border: 1px solid var(--border);
     background: var(--surface);
