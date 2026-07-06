@@ -370,11 +370,7 @@
   .settings-memory__tag {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
-  }
-
-  .settings-memory__seen {
-    color: var(--fg4);
+    color: var(--fg2);
   }
 
   .settings-memory__text {
@@ -392,7 +388,7 @@
   .settings-memory__tag {
     padding: 1px 6px;
     border: 1px solid var(--hair);
-    color: var(--fg4);
+    color: var(--fg2);
   }
 
   @media (max-width: 640px) {
