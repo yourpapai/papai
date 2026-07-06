@@ -289,11 +289,14 @@
           {/if}
         </div>
       {:else}
-        <ul class="settings-memory__records">
-          {#each activeRecords as record (record.id)}
-            {@render recordItem(record)}
-          {/each}
-        </ul>
+        <div class="settings-memory__active">
+          <h3 class="settings-memory__records-title">Active records</h3>
+          <ul class="settings-memory__records">
+            {#each activeRecords as record (record.id)}
+              {@render recordItem(record)}
+            {/each}
+          </ul>
+        </div>
       {/if}
 
       {#if pendingRecords.length > 0}
@@ -379,6 +382,17 @@
     margin: 0;
     font-size: 13px;
     color: var(--fg);
+  }
+
+  .settings-memory__records-title {
+    margin: 0;
+    font-size: 13px;
+    color: var(--fg);
+  }
+
+  .settings-memory__active {
+    display: grid;
+    gap: var(--gap-tight);
   }
 
   .settings-memory__pending-hint {
