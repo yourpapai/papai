@@ -70,6 +70,54 @@ describe('ConfigFieldRow', () => {
     void unmount(component)
   })
 
+  test('non-sensitive Save is disabled until the value changes', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: false,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: true,
+        value: 'UTC',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-timezone"]')!
+    expect(save.disabled).toBe(true)
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-timezone"]')!
+    input.value = 'Europe/Berlin'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(save.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('the required marker is an accent-colored .settings-field__req span', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'timezone',
+        storageKey: 'timezone',
+        label: 'Timezone',
+        required: true,
+        sensitive: false,
+        kind: 'preference',
+        hasValue: false,
+        value: '',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    expect(target.querySelector('.settings-field__req')!.textContent).toBe('*')
+    void unmount(component)
+  })
+
   test('a sensitive field with a value shows the masked placeholder and a replace control', () => {
     setMockFetch(() => Promise.resolve(json({})))
     const { component, target } = render({

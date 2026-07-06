@@ -14,6 +14,7 @@
   import Secret from '../../shared/ui/Secret.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
   import Confirm from '../../shared/Confirm.svelte'
+  import SettingsFieldShell from './SettingsFieldShell.svelte'
 
   interface Props {
     contextId: string
@@ -36,6 +37,11 @@
   // An unset secret (no stored value) has nothing to mask, so open the editor
   // directly — otherwise there is no Replace button and no way to enter a first value.
   const editorOpen = $derived(!field.sensitive || replacing || !field.hasValue)
+
+  // Save is meaningful only when the draft differs from the stored value. A sensitive
+  // field's editor baseline is '' (an untouched/absent secret), so Save stays disabled
+  // until the user types.
+  const dirty = $derived(draft !== (field.sensitive ? '' : field.value))
 
   const hintId = $derived(`cfg-hint-${field.key}`)
 
@@ -108,9 +114,8 @@
 </script>
 
 {#if isEnum}
-  <div class="settings-field" data-testid={`cfg-row-${field.key}`}>
-    <div class="settings-field__head">
-      <span class="t-label settings-field__label">{field.label}</span>
+  <SettingsFieldShell label={field.label} editorOpen={false} testid={`cfg-row-${field.key}`}>
+    {#snippet head()}
       <SegmentedControl
         options={field.options ?? []}
         value={current}
@@ -124,18 +129,19 @@
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
-    </div>
-    {#if error !== null}
-      <p class="status-error">{error}</p>
-    {/if}
-    {#if hint}
-      <p class="settings-field__hint" id={hintId}>{hint}</p>
-    {/if}
-  </div>
+    {/snippet}
+    {#snippet footer()}
+      {#if error !== null}
+        <p class="status-error">{error}</p>
+      {/if}
+      {#if hint}
+        <p class="settings-field__hint" id={hintId}>{hint}</p>
+      {/if}
+    {/snippet}
+  </SettingsFieldShell>
 {:else}
-  <div class="settings-field" data-testid={`cfg-row-${field.key}`}>
-    <div class="settings-field__head">
-      <span class="t-label settings-field__label">{field.label}{field.required ? ' *' : ''}</span>
+  <SettingsFieldShell label={field.label} required={field.required} editorOpen={editorOpen} testid={`cfg-row-${field.key}`}>
+    {#snippet head()}
       {#if field.sensitive && field.hasValue && !replacing}
         <Secret value={maskSecret(field.value)} />
         <Btn variant="secondary" size="sm" testid={`cfg-replace-${field.key}`} onClick={() => (replacing = true)}>
@@ -147,34 +153,32 @@
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
-    </div>
-
-    {#if editorOpen}
-      <div class="settings-field__editor">
-        <Input
-          type={field.sensitive ? 'password' : 'text'}
-          value={draft}
-          placeholder={field.sensitive ? 'enter a new value' : ''}
-          onInput={(v) => (draft = v)}
-          testid={`cfg-input-${field.key}`} />
-        <Btn variant="primary" size="sm" testid={`cfg-save-${field.key}`} disabled={saving} onClick={() => void save()}>
-          {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
+    {/snippet}
+    {#snippet editor()}
+      <Input
+        type={field.sensitive ? 'password' : 'text'}
+        value={draft}
+        placeholder={field.sensitive ? 'enter a new value' : ''}
+        onInput={(v) => (draft = v)}
+        testid={`cfg-input-${field.key}`} />
+      <Btn variant="primary" size="sm" testid={`cfg-save-${field.key}`} disabled={!dirty || saving} onClick={() => void save()}>
+        {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
+      </Btn>
+      {#if field.sensitive && field.hasValue}
+        <Btn variant="ghost" size="sm" testid={`cfg-cancel-${field.key}`} onClick={() => { replacing = false; draft = '' }}>
+          {#snippet children()}Cancel{/snippet}
         </Btn>
-        {#if field.sensitive && field.hasValue}
-          <Btn variant="ghost" size="sm" testid={`cfg-cancel-${field.key}`} onClick={() => { replacing = false; draft = '' }}>
-            {#snippet children()}Cancel{/snippet}
-          </Btn>
-        {/if}
-      </div>
-    {/if}
-
-    {#if error !== null}
-      <p class="status-error">{error}</p>
-    {/if}
-    {#if hint}
-      <p class="settings-field__hint" id={hintId}>{hint}</p>
-    {/if}
-  </div>
+      {/if}
+    {/snippet}
+    {#snippet footer()}
+      {#if error !== null}
+        <p class="status-error">{error}</p>
+      {/if}
+      {#if hint}
+        <p class="settings-field__hint" id={hintId}>{hint}</p>
+      {/if}
+    {/snippet}
+  </SettingsFieldShell>
 {/if}
 
 <Confirm
@@ -188,36 +192,8 @@
 </Confirm>
 
 <style>
-  .settings-field {
-    display: grid;
-    gap: var(--gap-tight);
-    padding: var(--gap-inline);
-    border: 1px solid var(--border);
-    background: var(--surface-1);
-  }
-  .settings-field__head {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-tight);
-    flex-wrap: wrap;
-  }
-  .settings-field__label {
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    margin-right: auto;
-  }
   .settings-field__hint {
     color: var(--text-muted);
     font-size: 12px;
-  }
-  .settings-field__editor {
-    display: flex;
-    gap: var(--gap-tight);
-    flex-wrap: wrap;
-  }
-  .settings-field__editor :global(.ui-input) {
-    flex: 1;
-    min-width: 200px;
   }
 </style>
