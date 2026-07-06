@@ -506,4 +506,102 @@ describe('ConfigFieldRow', () => {
     expect(clear.classList.contains('ui-btn--ghost')).toBe(false)
     void unmount(component)
   })
+
+  test('renders the hint paragraph with a stable id and wires aria-describedby when hint is provided', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      hint: 'Raw detail shows unredacted tool inputs/outputs and reasoning in chat.',
+      onSaved: () => undefined,
+    })
+    flushSync()
+    const hintEl = target.querySelector('#cfg-hint-ai_output_detail_level')
+    expect(hintEl).not.toBeNull()
+    expect(hintEl!.textContent).toContain('unredacted')
+    expect(target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')).toBe(
+      'cfg-hint-ai_output_detail_level',
+    )
+    void unmount(component)
+  })
+
+  test('omits the hint paragraph and aria-describedby when no hint is provided', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    expect(target.querySelector('#cfg-hint-ai_output_detail_level')).toBeNull()
+    expect(target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')).toBeNull()
+    void unmount(component)
+  })
+
+  test('disables the segmented control while an enum save is in flight', async () => {
+    setCsrfToken('c')
+    let release!: (r: Response) => void
+    setMockFetch(
+      () =>
+        new Promise<Response>((res) => {
+          release = res
+        }),
+    )
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'ai_output_detail_level',
+        storageKey: 'ai_output_detail_level',
+        label: 'Detail level',
+        required: false,
+        sensitive: false,
+        kind: 'ai-output',
+        control: 'select',
+        options: [
+          { value: 'sanitized', label: 'Standard' },
+          { value: 'raw', label: 'Raw' },
+        ],
+        hasValue: false,
+        value: 'sanitized',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!.click()
+    await drain()
+    const rawBtn = target.querySelector<HTMLButtonElement>('[data-testid="cfg-seg-ai_output_detail_level-raw"]')!
+    expect(rawBtn.disabled).toBe(true)
+    release(json({ ok: true, contextId: 'user:1' }))
+    await drain()
+    expect(rawBtn.disabled).toBe(false)
+    void unmount(component)
+  })
 })

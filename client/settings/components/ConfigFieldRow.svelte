@@ -19,9 +19,10 @@
     contextId: string
     field: ConfigField
     onSaved: () => void
+    hint?: string
   }
 
-  let { contextId, field, onSaved }: Props = $props()
+  let { contextId, field, onSaved, hint }: Props = $props()
 
   // Editing state. Sensitive fields start collapsed (masked); "Replace" opens an empty input.
   let replacing = $state(false)
@@ -35,6 +36,8 @@
   // An unset secret (no stored value) has nothing to mask, so open the editor
   // directly — otherwise there is no Replace button and no way to enter a first value.
   const editorOpen = $derived(!field.sensitive || replacing || !field.hasValue)
+
+  const hintId = $derived(`cfg-hint-${field.key}`)
 
   // Confirm-dialog copy for clearing. Only plugin/provider config makes a plugin ineligible;
   // a required preference/ai-output field simply reverts to its default.
@@ -112,6 +115,8 @@
         options={field.options ?? []}
         value={current}
         ariaLabel={field.label}
+        ariaDescribedBy={hint ? hintId : undefined}
+        disabled={saving}
         onChange={(v) => void saveEnum(v)}
         testidPrefix={`cfg-seg-${field.key}`} />
       {#if field.hasValue}
@@ -122,6 +127,9 @@
     </div>
     {#if error !== null}
       <p class="status-error">{error}</p>
+    {/if}
+    {#if hint}
+      <p class="settings-field__hint" id={hintId}>{hint}</p>
     {/if}
   </div>
 {:else}
@@ -163,6 +171,9 @@
     {#if error !== null}
       <p class="status-error">{error}</p>
     {/if}
+    {#if hint}
+      <p class="settings-field__hint" id={hintId}>{hint}</p>
+    {/if}
   </div>
 {/if}
 
@@ -182,7 +193,7 @@
     gap: var(--gap-tight);
     padding: var(--gap-inline);
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-1);
   }
   .settings-field__head {
     display: flex;
@@ -191,10 +202,14 @@
     flex-wrap: wrap;
   }
   .settings-field__label {
-    color: var(--fg2);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     margin-right: auto;
+  }
+  .settings-field__hint {
+    color: var(--text-muted);
+    font-size: 12px;
   }
   .settings-field__editor {
     display: flex;
