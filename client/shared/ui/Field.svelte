@@ -10,19 +10,28 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
 
-  import { setFieldLabelId } from './field-context.js'
+  import { setFieldError, setFieldLabelId } from './field-context.js'
 
   interface Props {
     label: string
     children: Snippet
     required?: boolean
     hint?: string
+    error?: string
   }
 
-  let { label, children, required = false, hint }: Props = $props()
+  let { label, children, required = false, hint, error }: Props = $props()
 
-  const labelId = `ui-field-${++seq}`
+  const uid = ++seq
+  const labelId = `ui-field-${uid}`
+  const errorId = `ui-field-err-${uid}`
   setFieldLabelId(labelId)
+  setFieldError({
+    errorId,
+    get invalid() {
+      return error !== undefined && error !== ''
+    },
+  })
 </script>
 
 <div class="ui-field">
@@ -30,7 +39,8 @@
     {label}{#if required}<span class="ui-field__req">*</span>{/if}
   </span>
   {@render children()}
-  {#if hint}<span class="ui-field__hint">{hint}</span>{/if}
+  {#if error}<span class="ui-field__error" id={errorId} role="alert">{error}</span>{:else if hint}<span
+      class="ui-field__hint">{hint}</span>{/if}
 </div>
 
 <style>
@@ -55,5 +65,9 @@
   .ui-field__hint {
     font-size: 10px;
     color: var(--fg4);
+  }
+  .ui-field__error {
+    font-size: 10px;
+    color: var(--danger);
   }
 </style>

@@ -16,3 +16,22 @@ export function setFieldLabelId(id: string): void {
 export function getFieldLabelId(): string | undefined {
   return getContext<string | undefined>(FIELD_LABEL_ID)
 }
+
+const FIELD_ERROR = Symbol('field-error')
+
+/** Reactive error state a Field publishes to its descendant control. */
+export interface FieldErrorContext {
+  errorId: string
+  /** Getter so the control tracks the Field's live `error` prop. */
+  readonly invalid: boolean
+}
+
+/** Called by Field during init to publish its error state to descendant controls. */
+export function setFieldError(ctx: FieldErrorContext): void {
+  setContext(FIELD_ERROR, ctx)
+}
+
+/** Called by Input/Select during init; returns the enclosing Field's error context, if any. */
+export function getFieldError(): FieldErrorContext | undefined {
+  return getContext<FieldErrorContext | undefined>(FIELD_ERROR)
+}

@@ -6,7 +6,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
 
-  import { getFieldLabelId } from './field-context.js'
+  import { getFieldError, getFieldLabelId } from './field-context.js'
 
   interface Props {
     value: string
@@ -33,6 +33,9 @@
   }: Props = $props()
 
   const labelId = getFieldLabelId()
+  const fieldError = getFieldError()
+  const invalid = $derived(fieldError?.invalid ?? false)
+  const describedBy = $derived(invalid ? fieldError?.errorId : undefined)
 
   function handleInput(event: Event): void {
     const next = (event.target as HTMLInputElement | HTMLTextAreaElement).value
@@ -40,7 +43,11 @@
   }
 </script>
 
-<div class="ui-input" class:ui-input--multiline={multiline}>
+<div
+  class="ui-input"
+  class:ui-input--multiline={multiline}
+  class:ui-input--invalid={invalid}
+>
   {#if multiline}
     <textarea
       {placeholder}
@@ -48,6 +55,8 @@
       {readonly}
       {rows}
       aria-labelledby={labelId}
+      aria-invalid={invalid ? 'true' : undefined}
+      aria-describedby={describedBy}
       data-testid={testid}
       oninput={handleInput}
     ></textarea>
@@ -55,7 +64,16 @@
     {#if prefix}
       <span class="ui-input__prefix">{@render prefix()}</span>
     {/if}
-    <input {type} {placeholder} {value} {readonly} aria-labelledby={labelId} data-testid={testid} oninput={handleInput} />
+    <input
+      {type}
+      {placeholder}
+      {value}
+      {readonly}
+      aria-labelledby={labelId}
+      aria-invalid={invalid ? 'true' : undefined}
+      aria-describedby={describedBy}
+      data-testid={testid}
+      oninput={handleInput} />
   {/if}
 </div>
 
@@ -71,6 +89,9 @@
   .ui-input:focus-within {
     outline: 2px solid rgba(82, 224, 138, 0.4);
     outline-offset: 1px;
+  }
+  .ui-input--invalid {
+    border-color: var(--danger);
   }
   .ui-input__prefix {
     color: var(--fg3);

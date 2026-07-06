@@ -7,6 +7,7 @@
   import { defineMeta } from '@storybook/addon-svelte-csf'
 
   import Field from './Field.svelte'
+  import Input from './Input.svelte'
 
   const { Story } = defineMeta({
     title: 'shared/ui/Field',
@@ -20,4 +21,8 @@
 
 <Story name="Required with hint" args={{ label: 'kaneo url', required: true, hint: 'https only' }}>
   {#snippet children()}<input placeholder="https://…" />{/snippet}
+</Story>
+
+<Story name="Invalid" args={{ label: 'user id', required: true, error: 'Provider user ID is required.' }}>
+  {#snippet children()}<Input value="" placeholder="e.g. 42" />{/snippet}
 </Story>

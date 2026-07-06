@@ -16,5 +16,10 @@ test.describe('shared/ui/Field', () => {
     await switchStory(sharedPage, 'shared-ui-field--required-with-hint')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Invalid', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-field--invalid')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
