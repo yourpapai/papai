@@ -648,3 +648,43 @@ Run: `bun run typecheck && bun run lint`
 Expected: both pass with no errors. (The per-task pre-commit hook already ran the staged `check.sh`; this is a broad confirmation across the whole tree.)
 
 - [ ] **Step 3: Done** — no code changes in this task; the branch now carries the four implementation commits.
+
+---
+
+## Implementation Notes (post-execution)
+
+Executed via subagent-driven development with per-task spec + code-quality review and a final
+whole-implementation review (verdict: READY TO SHIP — all 10 findings resolved, checks clean).
+
+**Commits (on `master`):**
+
+- `c1de7cd5` feat(ui): add error prop to shared Field/Input primitives
+- `f88db3c9` fix(settings): rework IdentitySection state model, feedback, and guidance
+- `0ba95157` test(settings): add IdentitySection gated (no-task-provider) story
+- `eddb38c6` fix(settings): style the gated empty-state link in IdentitySection
+- `88f78f69` test(visual): add IdentitySection validation + confirm interaction states
+
+**Corrections to this plan / the spec, discovered during execution:**
+
+- **A component unit test already existed** — `tests/client/settings/sections/IdentitySection.test.ts`
+  (the plan/spec wrongly assumed the section was visual-only). Its "422 / no task instance" case
+  was updated to assert the new gated `EmptyState` copy; the file is green (6 tests). Any future
+  behavioral change to this section must keep that file passing.
+- **`.storybook-shots/` is gitignored** — screenshot baselines are local artifacts and are NOT
+  committed. The `git add .storybook-shots/...` lines in the task Step-6/commit blocks above are
+  wrong and were dropped during execution.
+
+**Review-driven deviations from the plan's code (all improvements, verified):**
+
+- **`clearError` split from `saveError`** — a failed delete now keeps the `Confirm` modal open and
+  renders the error inside the modal body (matching `MembersSection`), instead of closing the modal
+  and showing a stray inline message.
+- **Post-save uses a silent `refresh()`** (not `load()`) — so a background refresh failure after a
+  successful save can't blank the form and hide the "Identity saved." confirmation.
+- **Stale-response guards** (`if (id !== contextId) return`) in `load()`/`refresh()` — mirrors
+  `MembersSection`/`CodingIdentitySection`; prevents a slow response for a previous context from
+  clobbering a newer one.
+- **`.settings-empty-link` scoped style** added to `IdentitySection.svelte` — Svelte styles are
+  component-scoped, so the gated link needed its own rule (couldn't inherit `ProfileSection`'s).
+- **Status a11y** — `role="alert"` on the error line, `role="status"` on the success line, and a
+  `save()` re-entrancy guard.

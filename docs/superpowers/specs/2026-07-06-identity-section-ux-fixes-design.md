@@ -136,8 +136,9 @@ section inline field validation for free.
 - **Visual spec** (`tests/visual/settings/sections/IdentitySection.spec.ts`): add manual states —
   gated, validation-error (inline), saving (busy Save), Clear-confirm-open, and danger-Clear at
   rest — at desktop + 640px where relevant.
-- **Behavioral tests:** none exist for this section today (visual-only); keep it visual-only
-  unless behavioral coverage is requested.
+- **Behavioral tests:** a component unit test already exists at
+  `tests/client/settings/sections/IdentitySection.test.ts` — its "no task instance (422)" case must
+  be updated to assert the new gated `EmptyState` copy, and the file must stay green.
 
 ## Non-goals
 
