@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import { flushSync, mount, unmount } from 'svelte'
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte'
 
 import SettingsFieldShell from '../../../../client/settings/components/SettingsFieldShell.svelte'
 
@@ -50,6 +50,35 @@ describe('SettingsFieldShell', () => {
     const { component, target } = render({ label: 'Key' })
     flushSync()
     expect(target.querySelector('.settings-field__editor')).toBeNull()
+    void unmount(component)
+  })
+
+  test('renders the editor snippet inside .settings-field__editor when editorOpen defaults to true', () => {
+    const editor = createRawSnippet(() => ({ render: (): string => `<span data-testid="ed">E</span>` }))
+    const { component, target } = render({ label: 'Key', editor })
+    flushSync()
+    const wrap = target.querySelector('.settings-field__editor')
+    expect(wrap).not.toBeNull()
+    expect(wrap!.querySelector('[data-testid="ed"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('does not render the editor snippet when editorOpen is false', () => {
+    const editor = createRawSnippet(() => ({ render: (): string => `<span data-testid="ed">E</span>` }))
+    const { component, target } = render({ label: 'Key', editor, editorOpen: false })
+    flushSync()
+    expect(target.querySelector('.settings-field__editor')).toBeNull()
+    expect(target.querySelector('[data-testid="ed"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('renders head and footer snippets in their slots', () => {
+    const head = createRawSnippet(() => ({ render: (): string => `<span data-testid="hd">H</span>` }))
+    const footer = createRawSnippet(() => ({ render: (): string => `<span data-testid="ft">F</span>` }))
+    const { component, target } = render({ label: 'Key', head, footer })
+    flushSync()
+    expect(target.querySelector('.settings-field__head [data-testid="hd"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="ft"]')).not.toBeNull()
     void unmount(component)
   })
 })
