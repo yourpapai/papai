@@ -5,6 +5,91 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.7.0] - 2026-07-06
+
+### Added
+
+- **client:** FetchError carries HTTP status from requireOk
+- **client:** FormatFetchError plain-language error mapper
+- **ui:** Associate Field label with Input/Select via context (aria-labelledby)
+- **ui:** Add keyboard focus-within ring to Input and Select
+- **settings:** Add optional name to TaskInstanceOptionSchema
+- **settings:** Expose instance baseUrl as option name in task-instance pickers
+- **acp:** Store shareToken/transcriptUrl on SessionRecord
+- **acp:** Capture magi share token/url on session records
+- **acp:** Prompt agent to share the transcript link
+- **debug:** Read acp magi config from core for transcript proxy
+- **debug:** Proxy historical transcript reads to magi
+- **debug:** Long-lived SSE proxy for live transcript tail
+- **debug:** Transcript viewer path dispatcher (assets, shell, proxy)
+- **debug:** Mount public /t transcript routes before auth gate
+- **client:** Register transcript viewer SPA bundle
+- **client:** Transcript event + history Zod schemas
+- **client:** Pure seq-ordered transcript stitch
+- **client:** Transcript history fetcher + SSE wrapper
+- **client:** Transcript viewer state + stitch orchestration
+- **client:** Render transcript timeline + status states
+- **client:** Self-heal transcript stream on disconnect + cover status transitions
+
+### Changed
+
+- **acp:** Extract session-record helpers to satisfy max-lines
+- **acp:** Reuse client helpers in shareFieldsOf + cover list_sessions transcriptUrl
+
+### Documentation
+
+- **plan:** Implementation plan for GroupProviderSection UX fixes
+- **guest-mode:** Design spec for GuestModeSection UX fixes
+- **ux-review:** GuestModeSection review + manual visual states
+- **guest-mode:** Implementation plan for GuestModeSection UX fixes
+- **coding-sessions:** Design spec for sandbox MCP broker (design D)
+- **coding-sessions:** Fold open-question verification into MCP broker spec
+- **coding-sessions:** Record opencode acp-capability verification
+- **coding-sessions:** Correct opencode acp finding (current version)
+- **acp:** Design spec for transcript web viewer + shareable links
+- **acp:** Magi returns transcriptUrl; drop papai base-url config from viewer spec
+- **coding-sessions:** Reframe McpServerAcp as future after adoption research
+- **acp:** Implementation plan for transcript web viewer + shareable links
+- **acp:** Document the transcript viewer + shareable links
+- **coding-sessions:** Resolve worker-isolation timing (ship code-enforced)
+- **coding-sessions:** Worker isolation = launch gate + reuse geofront
+- **ux-review:** IdentitySection review + manual state screenshots
+
+### Fixed
+
+- **settings:** GroupProvider loading/empty/error/busy states + friendly instance label
+- **settings:** TaskProvider friendly errors + instance label (sibling convergence)
+- **announcements:** Decode scoped group id to native channel id for broadcast
+- **settings:** Make guest-mode state legible + recoverable (UX review fixes)
+- **settings:** Reset toggleError on reload to prevent stale banner across context switch
+- **client:** Satisfy lint rules in transcript state store
+- **debug:** Make transcript-viewer missing-file tests build-state-independent
+- **client:** Keep invalid-token terminal so a bad link doesn't retry forever
+
+### Miscellaneous
+
+- **knip:** Ignore field-context.ts exports (svelte-only consumers)
+- **client:** Include transcript.css in storybook base stylesheet
+
+### Testing
+
+- **settings:** Friendly-label fixtures + deterministic GroupProvider loading-state test
+- **settings:** Assert friendly instance-name option label (name ?? id) in both sections
+- **client:** Pin history-wins-on-collision in stitch
+- **debug:** End-to-end transcript proxy against stub magi
+- **visual:** Add ReleaseSubscriptionSection mutating + error specs
+- **system-prompt:** Seed migrated DB so the workflow prompt test passes in CI
+
+### Ci
+
+- **security:** Pin GitHub Actions to commit SHAs + add Dependabot
+- **security:** Add 7-day cooldown to Dependabot config
+- **security:** Pass release.yml step outputs via env to fix --strict scan
+- **security:** Generate+upload SARIF and explain --strict parse failures
+
+### Harden
+
+- **debug:** Error handling, client-abort, asset guards for transcript proxy
 ## [6.6.0] - 2026-07-03
 
 ### Added
