@@ -249,4 +249,13 @@
   .identity-status {
     margin-top: var(--gap-inline);
   }
+  .settings-empty-link {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-decoration: none;
+  }
+  .settings-empty-link:hover {
+    text-decoration: underline;
+  }
 </style>
