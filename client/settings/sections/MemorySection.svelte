@@ -361,7 +361,7 @@
   .settings-memory__profile-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--gap-tight);
   }
 
   .settings-memory__records {
@@ -369,7 +369,7 @@
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 8px;
+    gap: var(--gap-tight);
   }
 
   .settings-memory__pending {
@@ -405,10 +405,10 @@
   .settings-memory__record {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
+    gap: var(--gap-inline);
     align-items: start;
     min-height: 76px;
-    padding: 10px 12px;
+    padding: 12px;
     border: 1px solid var(--border);
     background: var(--surface);
   }
