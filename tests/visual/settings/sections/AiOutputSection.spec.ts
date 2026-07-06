@@ -28,3 +28,23 @@ test.describe('settings/sections/AiOutputSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('Populated — narrow 640', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-aioutputsection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 700 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Populated — hover Raw segment', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-aioutputsection--populated')
+  await sharedPage.setViewportSize({ width: 1280, height: 400 })
+  await sharedPage.getByText('Raw', { exact: true }).hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Populated — hover Clear', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-aioutputsection--populated')
+  await sharedPage.setViewportSize({ width: 1280, height: 400 })
+  await sharedPage.getByText('Clear', { exact: true }).hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
