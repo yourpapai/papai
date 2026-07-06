@@ -117,6 +117,7 @@ export function continueSessionTool(httpFetch: HttpFetch | undefined): Tool {
 
       const result = await callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(parentId)}/follow-up`, {
         prompt,
+        contextId: runtimeContext.storageContextId,
         secrets,
         forgeToken,
       })

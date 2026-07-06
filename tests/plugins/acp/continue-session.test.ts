@@ -34,6 +34,25 @@ function alwaysOkFetch(): FetchFn {
   return (): Promise<Response> => Promise.resolve(jsonResponse({}, 200))
 }
 
+function readInitBody(init: RequestInit | undefined): Record<string, unknown> {
+  if (init === undefined || typeof init.body !== 'string') return {}
+  const parsed: unknown = JSON.parse(init.body)
+  return asRecord(parsed)
+}
+
+function capturingFollowUpFetch(
+  parentId: string,
+  childBody: unknown,
+  sink: { body: Record<string, unknown> },
+): FetchFn {
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    if (!url.endsWith(`/sessions/${parentId}/follow-up`))
+      return Promise.resolve(jsonResponse({ error: 'unexpected' }, 500))
+    sink.body = readInitBody(init)
+    return Promise.resolve(jsonResponse(childBody, 202))
+  }
+}
+
 function doneListThenFollowUpFetch(parentId: string, doneList: unknown[], childBody: unknown): FetchFn {
   return (url: string): Promise<Response> => {
     if (url.includes('/sessions?filter=done')) return Promise.resolve(jsonResponse(doneList, 200))
@@ -65,6 +84,17 @@ describe('acp continue_session tool', () => {
     const child = readStoredRecord(store, 'c1')
     expect(child['parentSessionId']).toBe('p1')
     expect(child['prUrl']).toBe('https://github.com/a/b/pull/5')
+  })
+
+  test('forwards the current thread contextId on the follow-up request', async () => {
+    const sink = { body: {} as Record<string, unknown> }
+    const httpFetch = capturingFollowUpFetch('p1', { id: 'c1', status: 'queued', parentSessionId: 'p1' }, sink)
+    const store = new Map<string, string>()
+    writeRecord(runtimeCtxWithKv(store).kv, 'p1', { project: 'demo', title: 't', createdAt: 'x' })
+    const { tools } = activate(httpFetch)
+    await tools.get('continue_session')!.execute({ sessionId: 'p1', prompt: 'go' }, runtimeCtxWithKv(store), options())
+    // storageContextId in the test runtime context is 'ctx-1' (the current thread).
+    expect(sink.body['contextId']).toBe('ctx-1')
   })
 
   test('refuses not_configured when the forge token is missing', async () => {
