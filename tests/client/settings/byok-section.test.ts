@@ -388,6 +388,21 @@ describe('ByokSection', () => {
     void unmount(component)
   })
 
+  test('a field input has an accessible name via aria-labelledby pointing at its label', async () => {
+    setMockFetch(() => Promise.resolve(json(enabledPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ByokSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="byok-input-main_model"]')!
+    const labelledBy = input.getAttribute('aria-labelledby')
+    expect(labelledBy).not.toBeNull()
+    const labelEl = target.querySelector(`#${labelledBy}`)
+    expect(labelEl).not.toBeNull()
+    expect(labelEl!.textContent).toContain('Main model')
+    void unmount(component)
+  })
+
   test('a failed initial load renders ErrorState with a retry control', async () => {
     setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
     document.body.innerHTML = '<div id="root"></div>'

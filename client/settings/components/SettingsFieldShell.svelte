@@ -3,8 +3,15 @@
 <!-- Use of this software is governed by the Business Source License 1.1. -->
 <!-- See LICENSE in the project root for details. -->
 
+<script module lang="ts">
+  // Per-instance sequence for a stable label id, mirroring Field.svelte.
+  let seq = 0
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte'
+
+  import { setFieldLabelId } from '../../shared/ui/field-context.js'
 
   interface Props {
     label: string
@@ -19,11 +26,17 @@
   }
 
   let { label, required = false, testid, editorOpen = true, head, editor, footer }: Props = $props()
+
+  // Publish the label element id so an Input rendered in the `editor` snippet gets an
+  // accessible name (aria-labelledby) — restoring what the old Field wrapper provided,
+  // now pointing at the real field name instead of a generic "Value"/"New value".
+  const labelId = `settings-field-${++seq}`
+  setFieldLabelId(labelId)
 </script>
 
 <div class="settings-field" data-testid={testid}>
   <div class="settings-field__head">
-    <span class="settings-field__label">{label}{#if required}<span class="settings-field__req">*</span>{/if}</span>
+    <span class="settings-field__label" id={labelId}>{label}{#if required}<span class="settings-field__req">*</span>{/if}</span>
     {@render head?.()}
   </div>
   {#if editor && editorOpen}
