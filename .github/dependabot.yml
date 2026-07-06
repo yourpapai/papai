@@ -7,6 +7,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait 7 days before proposing updates to newly published versions, so a
+    # freshly published (possibly malicious or unstable) release has time to be
+    # caught before it lands in a PR.
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns:
