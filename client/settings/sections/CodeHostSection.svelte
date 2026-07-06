@@ -201,10 +201,11 @@
                 </Btn>
               {/if}
             {/snippet}
-            {#snippet editor()}
+            {#snippet editor(labelId)}
               {#if field.control === 'select'}
                 <select
                   data-testid={`coding-select-${field.key}`}
+                  aria-labelledby={labelId}
                   value={drafts[field.key] ?? ''}
                   disabled={saving || loading}
                   onchange={(e) => updateDraft(field.key, (e.currentTarget as HTMLSelectElement).value)}

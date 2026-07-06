@@ -797,4 +797,19 @@ describe('CodingCredentialsSection', () => {
     expect(target.querySelector('p[role="status"]')).toBeNull()
     void unmount(component)
   })
+
+  test('the provider select has an accessible name via aria-labelledby', async () => {
+    setMockFetch(() => Promise.resolve(json(withSelectsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-provider"]')!
+    const labelledBy = select.getAttribute('aria-labelledby')
+    expect(labelledBy).not.toBeNull()
+    const labelEl = target.querySelector(`#${labelledBy}`)
+    expect(labelEl).not.toBeNull()
+    expect(labelEl!.textContent).toContain('Model provider')
+    void unmount(component)
+  })
 })

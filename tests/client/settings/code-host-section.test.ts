@@ -580,4 +580,19 @@ describe('CodeHostSection', () => {
     expect(target.querySelector('p.status-error[role="alert"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('the kind select has an accessible name via aria-labelledby', async () => {
+    setMockFetch(() => Promise.resolve(json(typedForgePayloadSelfHosted)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodeHostSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="coding-select-kind"]')!
+    const labelledBy = select.getAttribute('aria-labelledby')
+    expect(labelledBy).not.toBeNull()
+    const labelEl = target.querySelector(`#${labelledBy}`)
+    expect(labelEl).not.toBeNull()
+    expect(labelEl!.textContent).toContain('Code host')
+    void unmount(component)
+  })
 })

@@ -284,10 +284,11 @@
                 </Btn>
               {/if}
             {/snippet}
-            {#snippet editor()}
+            {#snippet editor(labelId)}
               {#if field.control === 'select'}
                 <select
                   data-testid={`coding-select-${field.key}`}
+                  aria-labelledby={labelId}
                   value={drafts[field.key] ?? ''}
                   disabled={saving || loading}
                   onchange={(e) => onSelectChange(field, (e.currentTarget as HTMLSelectElement).value)}
@@ -300,6 +301,7 @@
                 <input
                   list={`coding-models-${field.key}`}
                   data-testid={`coding-combobox-${field.key}`}
+                  aria-labelledby={labelId}
                   value={drafts[field.key] ?? ''}
                   placeholder="model id (leave blank for the agent default)"
                   disabled={saving || loading}

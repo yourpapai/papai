@@ -21,7 +21,7 @@
     // (masked-resting secret fields render `head` only). Defaults to true.
     editorOpen?: boolean
     head?: Snippet
-    editor?: Snippet
+    editor?: Snippet<[string]>
     footer?: Snippet
   }
 
@@ -40,7 +40,7 @@
     {@render head?.()}
   </div>
   {#if editor && editorOpen}
-    <div class="settings-field__editor">{@render editor()}</div>
+    <div class="settings-field__editor">{@render editor(labelId)}</div>
   {/if}
   {@render footer?.()}
 </div>
