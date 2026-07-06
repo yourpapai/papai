@@ -136,7 +136,18 @@ async function main(): Promise<void> {
         console.log('📄 Results saved to semgrep-results.sarif')
       }
     } else {
-      console.log('\n❌ Security scan failed to run')
+      console.log(`\n❌ Security scan failed to run (exit code ${exitCode})`)
+      if (exitCode === 3) {
+        // --strict escalates a partial-parse warning to a hard failure even when
+        // findings are 0. The usual trigger is a GitHub `${{ }}` expression
+        // interpolated straight into a workflow `run:` block: Semgrep parses the
+        // block as bash and `${{ }}` is not valid bash.
+        console.log('   Semgrep could not fully parse a file (see "Parsed lines: <100%" above).')
+        console.log('   Common cause: a `${{ }}` expression inlined into a workflow `run:` block.')
+        console.log('   Fix: move it into an `env:` value and reference the `$VAR` in shell.')
+        console.log('   Locate the file: re-run with `--verbose` and read the')
+        console.log('   "Partially analyzed due to parsing or internal Semgrep errors" section.')
+      }
     }
 
     process.exit(exitCode)

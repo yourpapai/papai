@@ -68,7 +68,7 @@ jobs:
       - name: Install dependencies
         run: bun install
       - name: Run security scan
-        run: bun security
+        run: bun security:ci
       - name: Upload SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
         if: always() && hashFiles('semgrep-results.sarif') != ''
