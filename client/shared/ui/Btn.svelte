@@ -72,8 +72,8 @@
     pointer-events: none;
   }
   .ui-btn:focus-visible {
-    outline: 2px solid rgba(82, 224, 138, 0.4);
-    outline-offset: 1px;
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
   }
 
   .ui-btn--primary {

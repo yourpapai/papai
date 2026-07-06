@@ -35,6 +35,10 @@
   --info-soft: rgba(108, 182, 255, 0.1);
   --success: var(--accent); /* fixes prior undefined --success ref in settings.css */
 
+  /* ---- focus ---- */
+  --focus-ring: 2px solid rgba(82, 224, 138, 0.4);
+  --focus-ring-offset: 1px;
+
   /* ---- type ---- */
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, Menlo, monospace;
 

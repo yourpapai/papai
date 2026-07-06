@@ -61,6 +61,10 @@
     height: 26px;
   }
   .ui-seg__opt:last-child { border-right: 0; }
+  .ui-seg__opt:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: -2px;
+  }
   .ui-seg__opt:hover { color: var(--text); background: var(--surface-hover); }
   .ui-seg__opt--on {
     background: var(--accent);

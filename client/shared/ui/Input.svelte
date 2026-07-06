@@ -87,8 +87,8 @@
     border-radius: var(--radius-control);
   }
   .ui-input:focus-within {
-    outline: 2px solid rgba(82, 224, 138, 0.4);
-    outline-offset: 1px;
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
   }
   .ui-input--invalid {
     border-color: var(--danger);

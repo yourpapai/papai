@@ -41,5 +41,9 @@
     font-size: 13px;
   }
   .ui-iconbtn:hover { color: var(--text); background: var(--surface-hover); }
+  .ui-iconbtn:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
   .ui-iconbtn--busy { opacity: 0.6; pointer-events: none; }
 </style>
