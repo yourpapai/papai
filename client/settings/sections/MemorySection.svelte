@@ -9,6 +9,7 @@
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
   import Field from '../../shared/ui/Field.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
@@ -203,12 +204,11 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
-
   {#if initialLoad && loading}
     <p class="placeholder">Loading…</p>
   {:else if currentMemory !== null}
+    {#if error !== null}<p class="status-error">{error}</p>{/if}
+    {#if status !== null}<p class="status-success">{status}</p>{/if}
     <div class="settings-memory">
       <p class="settings-memory__note">
         Disabling stops new capture. Existing memory is kept and still used — use Clear memory
@@ -310,6 +310,8 @@
         </div>
       {/if}
     </div>
+  {:else if error !== null}
+    <ErrorState message={error} onRetry={() => void load(contextId)} />
   {/if}
 
   <Confirm
