@@ -28,3 +28,32 @@ test.describe('settings/sections/MemorySection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test.describe('settings/sections/MemorySection — manual', () => {
+  test('Populated — narrow 640', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-memorysection--populated')
+    await sharedPage.setViewportSize({ width: 640, height: 900 })
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Populated — clear confirm open', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-memorysection--populated')
+    await sharedPage.setViewportSize({ width: 1280, height: 720 })
+    await sharedPage.getByTestId('memory-clear').click()
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Populated — clear button hover', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-memorysection--populated')
+    await sharedPage.setViewportSize({ width: 1280, height: 720 })
+    await sharedPage.getByTestId('memory-clear').hover()
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Populated — profile textarea focused', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-memorysection--populated')
+    await sharedPage.setViewportSize({ width: 1280, height: 720 })
+    await sharedPage.getByTestId('memory-profile').focus()
+    await expect(sharedPage).toHaveScreenshot()
+  })
+})
