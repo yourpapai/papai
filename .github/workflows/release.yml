@@ -57,9 +57,15 @@ jobs:
           echo "next=v$NEXT" >> "$GITHUB_OUTPUT"
           echo "Calculated next version: v$NEXT"
 
+      # ${{ }} expressions are hoisted into env: and referenced as $NEXT_VERSION in
+      # shell. Interpolating ${{ }} directly into a run: block is a script-injection
+      # risk (GitHub security hardening) and is unparseable bash, which trips the
+      # --strict semgrep security scan.
       - name: Update package.json version
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
         run: |
-          VERSION_NUM=$(echo "${{ steps.version.outputs.next }}" | sed 's/^v//')
+          VERSION_NUM=$(echo "$NEXT_VERSION" | sed 's/^v//')
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
@@ -68,25 +74,30 @@ jobs:
           "
 
       - name: Generate CHANGELOG.md
-        run: git-cliff --unreleased --tag "${{ steps.version.outputs.next }}" --prepend CHANGELOG.md
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
+        run: git-cliff --unreleased --tag "$NEXT_VERSION" --prepend CHANGELOG.md
 
       - name: Commit and tag
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
         run: |
           git add package.json CHANGELOG.md
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore(release): bump to ${{ steps.version.outputs.next }}"
+            git commit -m "chore(release): bump to $NEXT_VERSION"
             git push
-            git tag ${{ steps.version.outputs.next }}
-            git push origin ${{ steps.version.outputs.next }}
+            git tag "$NEXT_VERSION"
+            git push origin "$NEXT_VERSION"
           fi
 
       - name: Extract release notes
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
         run: |
           # Extract changelog section for this version
-          VERSION="${{ steps.version.outputs.next }}"
-          VERSION_NUM=$(echo "$VERSION" | sed 's/^v//')
+          VERSION_NUM=$(echo "$NEXT_VERSION" | sed 's/^v//')
 
           # Find the section for this version
           awk -v ver="## [$VERSION_NUM]" '
