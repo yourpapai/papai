@@ -45,8 +45,8 @@ test.describe('settings/sections/IdentitySection — manual', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
-  test('Empty — Clear hover', async ({ sharedPage }) => {
-    await switchStory(sharedPage, 'settings-sections-identitysection--empty')
+  test('Populated — Clear hover', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-identitysection--populated')
     await sharedPage.setViewportSize({ width: 1280, height: 720 })
     await sharedPage.getByTestId('identity-clear').hover()
     await expect(sharedPage).toHaveScreenshot()

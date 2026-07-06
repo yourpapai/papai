@@ -55,7 +55,8 @@ describe('IdentitySection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(IdentitySection, { target, props: { contextId: 'user:1' } })
     await drain()
-    expect(target.textContent).toContain('no task instance')
+    expect(target.textContent).toContain('No task provider configured')
+    expect(target.textContent).toContain('Configure task provider')
     expect(target.querySelector('[data-testid="identity-save"]')).toBeNull()
     void unmount(component)
   })
