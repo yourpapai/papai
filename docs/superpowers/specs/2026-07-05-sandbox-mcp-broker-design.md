@@ -84,7 +84,7 @@ The broker is decomposed into **dumb, single-purpose pieces** so that **no compo
 [magi-main, host]                  route by tag · per-tool policy · resolve cred from vault
    │  opaque request + one scoped credential, over a host control socket
    ▼
-[worker, unprivileged process]     dumb; CODE-enforced egress allowlist (kernel netns = future); holds session cred(s)
+[worker, own geofront enclosure]   dumb; KERNEL-enforced egress (netns+proxy) to MCP hosts; holds session cred(s)
    │  HTTPS with injected credential; response streamed OPAQUE
    ▼
 [MCP server: SaaS or internal]
@@ -172,34 +172,35 @@ upstream streaming) is identical across paths.
 
 ### 5.4 worker — dumb, unprivileged egress executor
 
-**Shipping posture (2026-07-06 decision, §12.3): code-enforced egress, no kernel netns yet.** The
-worker is a **separate unprivileged process** (privilege separation — _not_ folded into magi-main),
-but it **shares magi's network namespace**; egress is enforced **in code**, not by the kernel.
+**Shipping posture (2026-07-06 decision, §12.3): kernel-enforced egress via a geofront enclosure — a
+launch gate.** The worker runs in its **own geofront enclosure** (reuse `proxy_container` + iptables
 
-- Holds **only** the session's MCP credential(s) (handed at spawn) — **no vault, no DB, no
-  filesystem, dropped OS privileges**. A compromise yields _one cred + code-gated egress_, not magi's
-  authority or vault.
-- Does the **hardened outbound call** — and because there is no kernel boundary yet, this client is
-  the **sole egress boundary** and must be treated as load-bearing: **fail-closed host allowlist** +
-  **resolve → pin-IP → re-check private/link-local ranges** (anti-rebinding, now mandatory not
-  belt-and-suspenders) + **redirects disabled** + **TLS verification** + credential injected at the
-  **header** layer + **opaque response streaming** with size/time caps.
-- **Strictly dumb is now doubly critical:** opaque streaming (never parsing upstream output) removes
-  the main RCE vector that could bypass the in-code allowlist. If the worker ever needs to parse
-  responses, it must first move behind a kernel netns (below).
-- **Granularity: one shared worker per session** (allowlist = union of the session's MCP hosts).
-  Dumbness is what makes a _shared_ worker safe: no parser to exploit, so co-located creds are not
-  stealable via a hostile response.
-- **Lifecycle:** spun at session start (or lazily on first MCP use), torn down + creds shredded at
+- dnsmasq); egress is **kernel-enforced**, so even a fully-compromised worker cannot pivot beyond the
+  allowlist. An in-process / code-enforced-allowlist worker is permitted **only as a throwaway
+  integration spike** (test cred, mock upstream, no production) and must **never** touch a real
+  credential — kernel isolation is required before the broker goes live.
+
+* Runs in its own geofront enclosure with
+  `[egress.policy.allowlist] domains = <session's MCP upstream hosts>, ports = [443]`.
+* Holds **only** the session's MCP credential(s) (handed at spawn) — **no vault, no DB, no
+  filesystem, dropped OS privileges**. A compromise yields _one cred_, contained by the enclosure.
+* Does the **hardened outbound call**: fail-closed host allowlist + credential injected at the
+  **header** layer + **opaque response streaming** with size/time caps. Because the enclosure's proxy
+  performs DNS resolution + the allowlist check, **DNS-rebinding is kernel-mitigated** (the worker
+  never chooses the final IP); an in-code IP-pin is belt-and-suspenders.
+* **Dumbness stays required:** opaque streaming (never parsing upstream output) removes the parser-RCE
+  vector; the enclosure bounds whatever remains. (If a future feature must parse responses, it does so
+  _inside_ this enclosure — never in magi-main.)
+* **Granularity: one shared worker per session** (allowlist = union of the session's MCP hosts).
+  **Escalation: one worker per server** (own enclosure, one cred, one host) for high-sensitivity
+  credentials. Do **not** build the incoherent middle (per-server workers sharing a netns).
+* **Lifecycle:** spun at session start (or lazily on first MCP use), torn down + creds shredded at
   session end.
 
-**Accepted residual (until netns lands):** if the outbound path is compromised despite being dumb,
-the attacker sits in magi's network namespace and can SSRF internal hosts / cloud metadata. This is
-knowingly accepted to ship sooner (§12.3); it is bounded by the dumbness + hardened-client controls
-above. **Future hardening:** promote the worker into its **own geofront enclosure** (kernel-enforced
-egress via `proxy_container` + iptables + dnsmasq, per-server allowlist), which closes this residual.
-Note this is **orthogonal to `McpServerAcp`** — that future transport change does not touch the
-worker's outbound SSRF surface (§4.1, §12).
+This closes the outbound SSRF surface at the kernel boundary, consistent with geofront's
+assume-compromise posture: the worker is contained exactly like the agent, differing only in that it
+holds one scoped credential and its allowlist targets the MCP upstreams. (Independent of
+`McpServerAcp`, which changes only the sandbox→magi hop, not this surface — §4.1, §12.)
 
 ### 5.5 papai — catalog, vault, gating, settings UI
 
@@ -290,27 +291,27 @@ the motivation for the whole design.
 
 ## 9. Component ownership / build items
 
-| Item                                                         | Owner                          | Notes                                                                                                                                   |
-| ------------------------------------------------------------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `--mcp <sock>` second bridged channel                        | **geofront**                   | The only geofront change; the shipping (stdio) transport.                                                                               |
-| `mcp-tunnel` dumb tagged pipe                                | **magi** (staged into sandbox) | Shipping transport; stdio MCP server the agent spawns.                                                                                  |
-| ACP `mcpServers` / opencode `mcp.local` declaration          | **magi**                       | `McpServerStdio` via `session/new` (or opencode's native `OPENCODE_CONFIG_CONTENT`).                                                    |
-| magi-main mediation (route/policy/cred-resolve)              | **magi**                       | Terminates the MCP channel; reuse identity/vault resolvers.                                                                             |
-| Worker (dumb, unprivileged process, code-enforced allowlist) | **magi**                       | Shipping: separate process, shares magi netns, in-code SSRF defenses + opaque streaming.                                                |
-| Worker kernel-netns enclosure                                | **magi** + **geofront**        | **Future (§5.4/§12.3)** — reuse `proxy_container` egress to close the accepted SSRF residual.                                           |
-| Fail-closed upstream host allowlist                          | **magi**                       | Mirror `MAGI_ALLOWED_REPO_HOSTS` (empty ⇒ refuse).                                                                                      |
-| Per-tool gate (allow/ask/deny) + audit                       | **magi** + **papai**           | Enforced in the magi-main mediator (**not** papai `tool_prefs`, which gates chat tools); configured via settings.                       |
-| Per-identity MCP credential vault                            | **papai**                      | Same pattern as forge / agent-provider vaults.                                                                                          |
-| Operator catalog + governance                                | **papai**                      | Vetted entries; tiered trust.                                                                                                           |
-| Settings-UI "Custom MCP" section                             | **papai**                      | Whole-record save, masked secrets, Clear + danger confirm.                                                                              |
-| MCP-over-ACP `mcp/message` handler                           | **magi**                       | **Future (§4.1)** — client-side handler in `buildClientApp`; drops the tunnel + socket for any agent that adopts `mcpCapabilities.acp`. |
+| Item                                                       | Owner                          | Notes                                                                                                                                   |
+| ---------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `--mcp <sock>` second bridged channel                      | **geofront**                   | The only geofront change; the shipping (stdio) transport.                                                                               |
+| `mcp-tunnel` dumb tagged pipe                              | **magi** (staged into sandbox) | Shipping transport; stdio MCP server the agent spawns.                                                                                  |
+| ACP `mcpServers` / opencode `mcp.local` declaration        | **magi**                       | `McpServerStdio` via `session/new` (or opencode's native `OPENCODE_CONFIG_CONTENT`).                                                    |
+| magi-main mediation (route/policy/cred-resolve)            | **magi**                       | Terminates the MCP channel; reuse identity/vault resolvers.                                                                             |
+| Worker enclosure (dumb, kernel-netns, MCP-hosts allowlist) | **magi** + **geofront**        | **Launch gate** — own geofront `proxy_container` enclosure, kernel-enforced egress, hardened opaque outbound client.                    |
+| geofront non-agent workload + magi↔worker control channel  | **geofront** + **magi**        | Run the enclosure with entrypoint = proxy (not an ACP agent); bridge a control socket for request + cred.                               |
+| Fail-closed upstream host allowlist                        | **magi**                       | Mirror `MAGI_ALLOWED_REPO_HOSTS` (empty ⇒ refuse).                                                                                      |
+| Per-tool gate (allow/ask/deny) + audit                     | **magi** + **papai**           | Enforced in the magi-main mediator (**not** papai `tool_prefs`, which gates chat tools); configured via settings.                       |
+| Per-identity MCP credential vault                          | **papai**                      | Same pattern as forge / agent-provider vaults.                                                                                          |
+| Operator catalog + governance                              | **papai**                      | Vetted entries; tiered trust.                                                                                                           |
+| Settings-UI "Custom MCP" section                           | **papai**                      | Whole-record save, masked secrets, Clear + danger confirm.                                                                              |
+| MCP-over-ACP `mcp/message` handler                         | **magi**                       | **Future (§4.1)** — client-side handler in `buildClientApp`; drops the tunnel + socket for any agent that adopts `mcpCapabilities.acp`. |
 
 ## 10. Threats & mitigations
 
-- **SSRF (worker outbound):** **shipping = code-enforced only** — fail-closed host allowlist +
-  resolve→pin-IP→private/link-local re-check (anti-rebinding) + redirects disabled + TLS verify.
-  These are the **sole** egress boundary until the worker moves into a kernel netns (accepted
-  residual, §5.4/§12.3). **Future = kernel-enforced** egress via its own geofront enclosure.
+- **SSRF (worker outbound):** **kernel-enforced from launch** (§12.3) — the worker's own geofront
+  enclosure (iptables + resolving proxy + dnsmasq) restricts egress to the allowlisted MCP hosts, so
+  even a compromised worker cannot pivot. Defense-in-depth in code: fail-closed allowlist +
+  resolve→pin-IP→private/link-local re-check + redirects disabled + TLS verify.
 - **Parser exploit / DoS (untrusted upstream output):** magi and the worker **never parse** response
   bodies — opaque streaming with size + time caps. Parsing happens in the already-contained sandbox.
 - **Request-parse surface (magi-main):** minimal, strict, size-capped read of the tool name only;
@@ -369,15 +370,16 @@ adapters, and the ACP repo changelog / RFDs (ecosystem research 2026-07-05).
    it has been renamed to `@agentclientprotocol/claude-agent-acp` (now sdk `1.1.0`) — update the preset
    independently of this design.
 
-3. **Worker isolation timing — ✅ DECIDED (2026-07-06): ship code-enforced, defer kernel netns.**
-   The worker ships as a separate **unprivileged process sharing magi's netns**, with **code-enforced**
-   egress (hardened outbound client, §5.4) — _not_ a kernel-isolated geofront enclosure. This trades
-   a smaller launch scope for an **accepted SSRF residual** (a compromised outbound path could reach
-   magi's network position), knowingly bounded by keeping the worker **strictly dumb** (opaque
-   streaming) + the hardened client. **Kernel-netns hardening is deferred future work**, not a launch
-   gate. Explicitly noted: `McpServerAcp` does **not** address this (orthogonal — it changes only the
-   sandbox→magi hop). Remaining empirical item _for the future netns step_: geofront second-enclosure
-   startup/resource cost.
+3. **Worker isolation timing — ✅ DECIDED (2026-07-06): kernel-enforced from launch, reuse geofront.**
+   The worker ships in its **own geofront enclosure** (kernel-enforced egress via `proxy_container`) —
+   a **launch gate**, not deferred. An in-process / code-enforced worker is allowed only as a
+   non-production integration spike and must never hold a real credential. Rationale: preserves
+   geofront's assume-compromise posture (no code-only egress boundary in a credential-holding
+   component) and reuses proven, audited egress rather than hand-rolling isolation in magi.
+   **Launch-blocking empirical item (spike early in Phase 2):** geofront second-enclosure startup /
+   resource cost, whether geofront can run a **non-agent workload** (entrypoint = the dumb proxy, not
+   an ACP agent), and the **magi↔worker control channel** (how magi hands the enclosure the opaque
+   request + credential and reads the response — likely a bridged socket analogous to `--acp`).
 4. **Streamable-HTTP / SSE upstreams — ◑ CLARIFIED.** On the primary path magi receives structured
    `mcp/message` (sees `method`, forwards content opaque); the **worker→upstream** leg still needs
    streamable-HTTP / SSE handling with size + time caps and no unbounded buffering. magi never
