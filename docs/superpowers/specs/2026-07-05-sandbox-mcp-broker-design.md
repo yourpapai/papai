@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 - **Status:** Proposed (design approved via brainstorming; not yet planned)
 - **Date:** 2026-07-05
-- **Scope:** `papai` (catalog + vault + `tool_prefs` + settings UI) · `magi` (mediation + worker + config generation) · `geofront` (2nd bridged channel + worker enclosure)
+- **Scope:** `papai` (catalog + vault + `tool_prefs` + settings UI) · `magi` (mediation + worker + config generation) · `geofront` (bind-mounted MCP socket + worker enclosure)
 - **Related:**
   - `docs/architecture/coding-sessions.md` (ACP plugin, magi provisioning, Phase 4c derived egress, Phase 5a/5b guardrails/identity)
   - `docs/superpowers/specs/2026-07-01-per-project-egress-domains-design.md`
@@ -79,7 +79,7 @@ The broker is decomposed into **dumb, single-purpose pieces** so that **no compo
    │  MCP over stdio (native MCP client → local stdio server)
    ▼
 [mcp-tunnel, in sandbox]            dumb, tagged pipe; holds nothing, parses nothing
-   │  frames over the 2nd geofront-bridged unix socket  (--mcp <sock>)
+   │  frames over the bind-mounted host socket  (magi-main listens; tunnel dials — §5.2)
    ▼
 [magi-main, host]                  route by tag · per-tool policy · resolve cred from vault
    │  opaque request + one scoped credential, over a host control socket
@@ -139,21 +139,38 @@ upstream streaming) is identical across paths.
 ### 5.1 `mcp-tunnel` (in the sandbox) — dumb tagged pipe · **the shipping transport (§4.1)**
 
 - Declared to the agent as a **stdio MCP server** via ACP `session/new` `mcpServers`
-  (magi passes `[]` today — `magi/src/acp/client.ts:163`). The agent spawns one tunnel **instance
-  per declared server**; each is launched with a **server-id arg set by magi** (the agent cannot
-  spoof which server it is talking to).
-- Job: read MCP frames on its stdio (agent side), tag them with the server id, forward to the 2nd
-  socket; stream replies back. **No credentials, no policy decisions, no MCP-semantic parsing**
-  beyond frame boundaries. It lives in the untrusted sandbox, so it is deliberately valueless.
+  (magi passes `[]` today — `magi/src/acp/client.ts:163`) — or, for opencode, as an `mcp.local`
+  entry in its native `OPENCODE_CONFIG_CONTENT`. The agent spawns one tunnel **instance per declared
+  server**; each is launched with a **server-id arg set by magi**.
+- Job: read MCP frames on its stdio (agent side), tag them with the server id, and forward over the
+  **bind-mounted host socket** (§5.2) to magi-main; stream replies back. **No credentials, no policy
+  decisions, no MCP-semantic parsing** beyond frame boundaries. It lives in the untrusted sandbox, so
+  it is deliberately valueless.
+- **The server-id tag is routing, not authorization.** The mounted socket is reachable from inside
+  the sandbox, so a compromised agent could bypass the tunnel and set any tag. magi-main therefore
+  authorizes against the **session's enabled-server set** (which it knows independently), never the
+  client-supplied tag — spoofing a tag can at most reach a server already enabled for that session,
+  which the agent may use anyway.
 
-### 5.2 geofront 2nd bridged channel — `--mcp <sock>` · **the shipping transport (§4.1)**
+### 5.2 boundary crossing — bind-mounted host socket (Option X) · **the shipping transport (§4.1)**
 
-- Today geofront creates the ACP socket and bridges it to the agent's stdio:
-  `geofront workspace up --acp <acp.sock>` (`magi/src/runtime/geofront/geofront-runtime.ts:218`).
-- Add a **second flag** `--mcp <mcp.sock>`: geofront creates a second host-side unix socket and
-  bridges it to a second stream/fd inside the sandbox that `mcp-tunnel` connects to. **Only geofront
-  can wire a host socket across the isolation boundary** — this is the sole required geofront change.
-- magi-main connects to `<mcp.sock>` as a client, exactly as it already does for `<acp.sock>`.
+The agent **spawns** `mcp-tunnel` itself (ACP stdio MCP = the agent owns the child's stdio), so the
+tunnel needs its own path to magi across the container boundary. Because we control the tunnel's code
+and it can dial a socket, the mechanism is a **bind-mounted host unix socket** — deliberately _not_
+geofront's `--acp` exec-relay. (`--acp` relays the agent's _stdio_ because the third-party ACP agent
+speaks stdio and geofront launches it; neither is true here — the tunnel is our code and the agent,
+not geofront, launches it, so it can simply dial a socket.)
+
+- **magi-main creates and listens** on a per-session host unix socket (e.g. `mcp-<sessionId>.sock`)
+  **before** `workspace up`.
+- **geofront bind-mounts** that socket into the container at a fixed path (e.g. `/run/magi/mcp.sock`),
+  with permissions the non-root runtime uid can connect to. This is the **sole transport-related
+  geofront change** — the same bind-mount category geofront already uses for the workspace; it is
+  **not** network egress, so INV-2 is untouched.
+- The agent-spawned `mcp-tunnel` **dials** `/run/magi/mcp.sock`; magi-main accepts and demuxes by the
+  tunnel's server-id tag (routing only, §5.1).
+- Direction is inverted vs `--acp`: for ACP geofront creates the socket and magi _connects_; here magi
+  _listens_ and geofront _mounts_, because the tunnel — not geofront — is the dialer.
 
 ### 5.3 magi-main — privileged control point (mediation)
 
@@ -293,7 +310,7 @@ the motivation for the whole design.
 
 | Item                                                       | Owner                          | Notes                                                                                                                                   |
 | ---------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `--mcp <sock>` second bridged channel                      | **geofront**                   | The only geofront change; the shipping (stdio) transport.                                                                               |
+| Bind-mount magi's host socket into the sandbox             | **geofront**                   | Sole transport geofront change (Option X); magi-main listens, tunnel dials.                                                             |
 | `mcp-tunnel` dumb tagged pipe                              | **magi** (staged into sandbox) | Shipping transport; stdio MCP server the agent spawns.                                                                                  |
 | ACP `mcpServers` / opencode `mcp.local` declaration        | **magi**                       | `McpServerStdio` via `session/new` (or opencode's native `OPENCODE_CONFIG_CONTENT`).                                                    |
 | magi-main mediation (route/policy/cred-resolve)            | **magi**                       | Terminates the MCP channel; reuse identity/vault resolvers.                                                                             |
@@ -376,10 +393,12 @@ adapters, and the ACP repo changelog / RFDs (ecosystem research 2026-07-05).
    non-production integration spike and must never hold a real credential. Rationale: preserves
    geofront's assume-compromise posture (no code-only egress boundary in a credential-holding
    component) and reuses proven, audited egress rather than hand-rolling isolation in magi.
-   **Launch-blocking empirical item (spike early in Phase 2):** geofront second-enclosure startup /
-   resource cost, whether geofront can run a **non-agent workload** (entrypoint = the dumb proxy, not
-   an ACP agent), and the **magi↔worker control channel** (how magi hands the enclosure the opaque
-   request + credential and reads the response — likely a bridged socket analogous to `--acp`).
+   **Spike result (2026-07-06):** geofront **already supports a non-agent workload** — `AgentKind::Other`
+   accepts an arbitrary `entrypoint` and egress isolation (`proxy_container` / iptables) is orthogonal
+   to which binary runs (`crates/runtime-docker`). So the worker enclosure has **no geofront blocker**.
+   **Remaining launch-blocking items (Phase 2 spike):** second-enclosure startup / resource cost, and
+   the **magi↔worker control channel** (how magi hands the enclosure the opaque request + credential
+   and reads the response).
 4. **Streamable-HTTP / SSE upstreams — ◑ CLARIFIED.** On the primary path magi receives structured
    `mcp/message` (sees `method`, forwards content opaque); the **worker→upstream** leg still needs
    streamable-HTTP / SSE handling with size + time caps and no unbounded buffering. magi never
