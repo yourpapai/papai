@@ -14,10 +14,13 @@
     ariaLabel: string
     onChange: (value: string) => void
     testidPrefix?: string
+    disabled?: boolean
+    ariaDescribedBy?: string
   }
-  let { options, value, ariaLabel, onChange, testidPrefix }: Props = $props()
+  let { options, value, ariaLabel, onChange, testidPrefix, disabled = false, ariaDescribedBy }: Props = $props()
 
   function onKey(event: KeyboardEvent, index: number): void {
+    if (disabled) return
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
     event.preventDefault()
     const delta = event.key === 'ArrowRight' ? 1 : -1
@@ -25,7 +28,7 @@
   }
 </script>
 
-<div class="ui-seg" role="radiogroup" aria-label={ariaLabel}>
+<div class="ui-seg" role="radiogroup" aria-label={ariaLabel} aria-describedby={ariaDescribedBy}>
   {#each options as opt, i (opt.value)}
     <button
       type="button"
@@ -34,6 +37,7 @@
       tabindex={value === opt.value ? 0 : -1}
       class="ui-seg__opt"
       class:ui-seg__opt--on={value === opt.value}
+      {disabled}
       data-testid={testidPrefix ? `${testidPrefix}-${opt.value}` : undefined}
       onclick={() => onChange(opt.value)}
       onkeydown={(e) => onKey(e, i)}>
@@ -66,6 +70,10 @@
     outline-offset: -2px;
   }
   .ui-seg__opt:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
+  .ui-seg__opt:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
   .ui-seg__opt--on {
     background: var(--accent);
     color: var(--accent-fg);

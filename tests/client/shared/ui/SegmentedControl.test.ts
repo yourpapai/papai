@@ -146,3 +146,93 @@ test('a non-arrow key does not call onChange', () => {
   expect(calls).toBe(0)
   void unmount(c)
 })
+
+test('disabled options render the native disabled attribute', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: { options, value: 'ask', ariaLabel: 'Permission', onChange: () => {}, testidPrefix: 'perm', disabled: true },
+  })
+  flushSync()
+  expect(target.querySelector<HTMLButtonElement>('[data-testid="perm-allow"]')!.disabled).toBe(true)
+  void unmount(c)
+})
+
+test('clicking a disabled option does not call onChange', () => {
+  let calls = 0
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: {
+      options,
+      value: 'allow',
+      ariaLabel: 'Permission',
+      onChange: () => {
+        calls++
+      },
+      testidPrefix: 'perm',
+      disabled: true,
+    },
+  })
+  flushSync()
+  target.querySelector<HTMLButtonElement>('[data-testid="perm-deny"]')!.click()
+  expect(calls).toBe(0)
+  void unmount(c)
+})
+
+test('ArrowRight on a disabled control does not call onChange', () => {
+  let calls = 0
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: {
+      options,
+      value: 'allow',
+      ariaLabel: 'Permission',
+      onChange: () => {
+        calls++
+      },
+      testidPrefix: 'perm',
+      disabled: true,
+    },
+  })
+  flushSync()
+  const allow = target.querySelector<HTMLButtonElement>('[data-testid="perm-allow"]')!
+  allow.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+  expect(calls).toBe(0)
+  void unmount(c)
+})
+
+test('sets aria-describedby on the radiogroup when ariaDescribedBy is provided', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: {
+      options,
+      value: 'ask',
+      ariaLabel: 'Permission',
+      onChange: () => {},
+      testidPrefix: 'perm',
+      ariaDescribedBy: 'hint-1',
+    },
+  })
+  flushSync()
+  expect(target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')).toBe('hint-1')
+  void unmount(c)
+})
+
+test('omits aria-describedby when ariaDescribedBy is not provided', () => {
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.querySelector<HTMLElement>('#root')!
+  const c = mount(SegmentedControl, {
+    target,
+    props: { options, value: 'ask', ariaLabel: 'Permission', onChange: () => {}, testidPrefix: 'perm' },
+  })
+  flushSync()
+  expect(target.querySelector('[role="radiogroup"]')!.getAttribute('aria-describedby')).toBeNull()
+  void unmount(c)
+})
