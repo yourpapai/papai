@@ -25,3 +25,6 @@
 
 <Story name="Error" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-identity-error' }} />
 <Story name="Loading" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-identity-loading' }} />
+
+<!-- no task instance configured: gated empty state -->
+<Story name="Gated" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-identity-gated' }} />

@@ -35,6 +35,7 @@ import {
 import {
   codingCredentialsHandlers,
   configHandlers,
+  identityGatedHandlers,
   identityHandlers,
   mcpHandlers,
   memoryHandlers,
@@ -187,6 +188,7 @@ export const scenarios = {
   'settings-identity-empty': [...identityHandlers.empty],
   'settings-identity-error': [...identityHandlers.error],
   'settings-identity-loading': [...identityHandlers.loading],
+  'settings-identity-gated': [...identityGatedHandlers],
   'settings-release-populated': [...releaseSubscriptionHandlers.populated],
   'settings-release-empty': [...releaseSubscriptionHandlers.empty],
   'settings-release-error': [...releaseSubscriptionHandlers.error],

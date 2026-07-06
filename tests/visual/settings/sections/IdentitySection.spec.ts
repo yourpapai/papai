@@ -26,6 +26,11 @@ test.describe('settings/sections/IdentitySection', () => {
     await switchStory(sharedPage, 'settings-sections-identitysection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Gated', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-identitysection--gated')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
 

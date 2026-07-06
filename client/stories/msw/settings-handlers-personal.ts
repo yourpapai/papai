@@ -191,6 +191,13 @@ export const identityHandlers: HandlerFamily = {
   ],
 }
 
+// Gated: context has no task instance, so identity cannot be mapped (HTTP 422).
+export const identityGatedHandlers: HttpHandler[] = [
+  http.get('/settings/api/identity', () =>
+    HttpResponse.json({ error: 'no task instance configured for this context' }, { status: 422 }),
+  ),
+]
+
 // --- Config (GET /settings/api/config) ---
 
 const configPopulated = {
