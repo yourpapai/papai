@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # Keep the SHA-pinned GitHub Actions current. Dependabot bumps both the
+  # pinned commit SHA and the trailing `# vX.Y.Z` version comment, so pinning
+  # for supply-chain safety does not leave the actions stale.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: ci
