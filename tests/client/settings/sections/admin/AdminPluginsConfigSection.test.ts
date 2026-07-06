@@ -69,6 +69,20 @@ const clearFailsMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(snapshotPayload))
 }
 
+interface ReloadFailState {
+  getCount: number
+}
+
+const makeReloadFailsPluginMock =
+  (state: ReloadFailState) =>
+  (url: string, init: RequestInit): Promise<Response> => {
+    if (url.includes('/admin/plugin-config') && init.method === 'PATCH')
+      return Promise.resolve(json({ ok: true, pluginId: 'my-plugin', key: 'api_key', updatedAt: 1 }))
+    state.getCount++
+    if (state.getCount === 1) return Promise.resolve(json(snapshotPayload))
+    return Promise.resolve(new Response('reload failed', { status: 500 }))
+  }
+
 afterEach(() => {
   capturedPatchBody = undefined
   capturedClearBody = null
@@ -241,6 +255,69 @@ describe('AdminPluginsConfigSection', () => {
 
     expect(target.querySelector('.modal')).not.toBeNull()
     expect(target.querySelector('.modal .status-error')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('Save is disabled until the key input is non-empty', async () => {
+    setMockFetch(() => Promise.resolve(json(snapshotPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="plugin-config-save-my-plugin-api_key"]')!
+    expect(save.disabled).toBe(true)
+    const input = target.querySelector<HTMLInputElement>('[data-testid="plugin-config-input-my-plugin-api_key"]')!
+    input.value = 'x'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(save.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('the required badge still renders and there is no redundant Field sub-label', async () => {
+    setMockFetch(() => Promise.resolve(json(snapshotPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+    expect(target.querySelector('.badge-required')).not.toBeNull()
+    expect(target.querySelector('.ui-field__label')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a save error is announced via role="alert"', async () => {
+    setCsrfToken('c')
+    setMockFetch(patchErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="plugin-config-input-my-plugin-api_key"]')!
+    input.value = 'bad-value'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-config-save-my-plugin-api_key"]')!.click()
+    await drain()
+    expect(target.querySelector('p.status-error[role="alert"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a save whose reload fails shows no success line', async () => {
+    setCsrfToken('c')
+    const state = { getCount: 0 }
+    setMockFetch(makeReloadFailsPluginMock(state))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsConfigSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="plugin-config-input-my-plugin-api_key"]')!
+    input.value = 'new-secret'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-config-save-my-plugin-api_key"]')!.click()
+    await drain()
+    await drain()
+    expect(target.querySelector('p[role="status"]')).toBeNull()
     void unmount(component)
   })
 })

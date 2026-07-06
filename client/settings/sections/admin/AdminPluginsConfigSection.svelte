@@ -8,12 +8,12 @@
   import type { AdminPluginConfigEntry } from '../../fetcher-schemas.js'
   import Btn from '../../../shared/ui/Btn.svelte'
   import EmptyState from '../../../shared/ui/EmptyState.svelte'
-  import Field from '../../../shared/ui/Field.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Secret from '../../../shared/ui/Secret.svelte'
   import Confirm from '../../../shared/Confirm.svelte'
+  import SettingsFieldShell from '../../components/SettingsFieldShell.svelte'
 
   let plugins: AdminPluginConfigEntry[] = $state([])
   let drafts: Record<string, string> = $state({})
@@ -28,14 +28,16 @@
     return `${pluginId}::${key}`
   }
 
-  async function load(): Promise<void> {
+  async function load(): Promise<boolean> {
     error = null
     status = null
     loading = true
     try {
       plugins = (await fetchAdminPluginConfig()).plugins
+      return true
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
+      return false
     } finally {
       loading = false
     }
@@ -50,8 +52,8 @@
     try {
       await patchAdminPluginConfig({ pluginId, key, value })
       drafts[dk] = ''
-      await load()
-      status = `${pluginId} / ${key} updated.`
+      const ok = await load()
+      if (ok) status = `${pluginId} / ${key} updated.`
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -73,8 +75,8 @@
     }
     if (ok) {
       pendingClear = null
-      await load()
-      status = `${p.pluginId} / ${p.key} cleared.`
+      const reloaded = await load()
+      if (reloaded) status = `${p.pluginId} / ${p.key} cleared.`
     }
   }
 
@@ -90,56 +92,54 @@
     {/snippet}
   </PageHeader>
 
-  {#if error !== null}<p class="status-error">{error}</p>{/if}
-  {#if status !== null}<p class="status-success">{status}</p>{/if}
+  {#if error !== null}<p class="status-error" role="alert">{error}</p>{/if}
+  {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
 
   {#each plugins as plugin (plugin.pluginId)}
     <div class="plugin-block">
       <p class="plugin-block__id">{plugin.pluginId}</p>
       <div class="settings-field-list">
         {#each plugin.keys as keyState (keyState.key)}
-          <div
-            class="settings-field"
-            data-testid={`plugin-config-key-${plugin.pluginId}-${keyState.key}`}>
-            <div class="settings-field__head">
-              <span class="t-label settings-field__label">{keyState.label}</span>
+          <SettingsFieldShell
+            label={keyState.label}
+            testid={`plugin-config-key-${plugin.pluginId}-${keyState.key}`}>
+            {#snippet head()}
               {#if keyState.value !== null}
                 <Secret value={keyState.value} />
               {:else}
                 <span class="placeholder">unset</span>
               {/if}
               {#if keyState.required}<span class="badge-required">required</span>{/if}
-            </div>
-            <Field label="New value">
-              <div class="settings-field__editor-row">
-                <Input
-                  type={keyState.sensitive ? 'password' : 'text'}
-                  value={drafts[draftKey(plugin.pluginId, keyState.key)] ?? ''}
-                  placeholder="enter a new value"
-                  onInput={(v) => (drafts[draftKey(plugin.pluginId, keyState.key)] = v)}
-                  testid={`plugin-config-input-${plugin.pluginId}-${keyState.key}`} />
+            {/snippet}
+            {#snippet editor()}
+              <Input
+                type={keyState.sensitive ? 'password' : 'text'}
+                value={drafts[draftKey(plugin.pluginId, keyState.key)] ?? ''}
+                placeholder="enter a new value"
+                onInput={(v) => (drafts[draftKey(plugin.pluginId, keyState.key)] = v)}
+                testid={`plugin-config-input-${plugin.pluginId}-${keyState.key}`} />
+              <Btn
+                variant="primary"
+                size="sm"
+                testid={`plugin-config-save-${plugin.pluginId}-${keyState.key}`}
+                disabled={(drafts[draftKey(plugin.pluginId, keyState.key)] ?? '').trim() === ''}
+                onClick={() => void save(plugin.pluginId, keyState.key)}>
+                {#snippet children()}Save{/snippet}
+              </Btn>
+              {#if keyState.value !== null}
                 <Btn
-                  variant="primary"
+                  variant="ghost"
                   size="sm"
-                  testid={`plugin-config-save-${plugin.pluginId}-${keyState.key}`}
-                  onClick={() => void save(plugin.pluginId, keyState.key)}>
-                  {#snippet children()}Save{/snippet}
+                  testid={`plugin-config-clear-${plugin.pluginId}-${keyState.key}`}
+                  onClick={() => {
+                    pendingClear = { pluginId: plugin.pluginId, key: keyState.key, required: keyState.required }
+                    clearError = null
+                  }}>
+                  {#snippet children()}Clear{/snippet}
                 </Btn>
-                {#if keyState.value !== null}
-                  <Btn
-                    variant="ghost"
-                    size="sm"
-                    testid={`plugin-config-clear-${plugin.pluginId}-${keyState.key}`}
-                    onClick={() => {
-                      pendingClear = { pluginId: plugin.pluginId, key: keyState.key, required: keyState.required }
-                      clearError = null
-                    }}>
-                    {#snippet children()}Clear{/snippet}
-                  </Btn>
-                {/if}
-              </div>
-            </Field>
-          </div>
+              {/if}
+            {/snippet}
+          </SettingsFieldShell>
         {/each}
       </div>
     </div>
@@ -178,33 +178,11 @@
     display: grid;
     gap: 12px;
   }
-  .settings-field {
-    display: grid;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .settings-field__head {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
-  .settings-field__label {
-    color: var(--fg2);
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }
   .badge-required {
     font-size: 10px;
     color: var(--fg2);
     border: 1px solid var(--border);
     padding: 1px 4px;
     border-radius: 2px;
-  }
-  .settings-field__editor-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
   }
 </style>
