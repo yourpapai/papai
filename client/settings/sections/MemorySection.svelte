@@ -36,7 +36,8 @@
   let status: string | null = $state(null)
   let loading = $state(false)
   let savingProfile = $state(false)
-  let mutating = $state(false)
+  let togglingCapture = $state(false)
+  let archivingId: string | null = $state(null)
   let initialLoad = $state(true)
   let loadedContextId: string | null = $state(null)
   let pendingClear = $state(false)
@@ -99,14 +100,14 @@
     if (currentMemory === null) return
     error = null
     status = null
-    mutating = true
+    togglingCapture = true
     try {
       await setMemoryCapture({ contextId, enabled: !currentMemory.enabled })
       await load(contextId)
     } catch (err) {
       error = messageFrom(err)
     } finally {
-      mutating = false
+      togglingCapture = false
     }
   }
 
@@ -147,14 +148,14 @@
   async function archiveRecord(id: string): Promise<void> {
     error = null
     status = null
-    mutating = true
+    archivingId = id
     try {
       await archiveMemoryRecord(contextId, id)
       await load(contextId)
     } catch (err) {
       error = messageFrom(err)
     } finally {
-      mutating = false
+      archivingId = null
     }
   }
 
@@ -173,7 +174,7 @@
       <Btn
         variant={currentMemory?.enabled ? 'outline' : 'primary'}
         size="sm"
-        disabled={currentMemory === null || loading || mutating}
+        disabled={currentMemory === null || loading || togglingCapture}
         testid="memory-capture-toggle"
         onClick={() => void toggleCapture()}>
         {#snippet children()}{currentMemory?.enabled ? 'Disable capture' : 'Enable capture'}{/snippet}
@@ -209,7 +210,7 @@
           <Btn
             variant="danger"
             size="sm"
-            disabled={mutating || clearing}
+            disabled={togglingCapture || clearing || archivingId !== null}
             testid="memory-clear"
             onClick={() => {
               pendingClear = true
@@ -241,7 +242,8 @@
           <Btn
             variant="outline"
             size="sm"
-            disabled={mutating}
+            busy={archivingId === record.id}
+            disabled={archivingId !== null}
             testid={`memory-archive-${record.id}`}
             onClick={() => void archiveRecord(record.id)}>
             {#snippet children()}Archive{/snippet}
