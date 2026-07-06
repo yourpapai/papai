@@ -71,11 +71,14 @@
   {:else}
     <div class="settings-field-list">
       {#each visible as field (field.key)}
-        <ConfigFieldRow {contextId} {field} onSaved={() => void load(contextId)} />
+        <ConfigFieldRow
+          {contextId}
+          {field}
+          hint={field.key === 'ai_output_detail_level'
+            ? 'Raw detail shows unredacted tool inputs/outputs and reasoning in chat.'
+            : undefined}
+          onSaved={() => void load(contextId)} />
       {/each}
-      {#if visible.some((field) => field.key === 'ai_output_detail_level')}
-        <p class="ai-output-hint">Raw detail shows unredacted tool inputs/outputs and reasoning in chat.</p>
-      {/if}
     </div>
   {/if}
 </section>
@@ -84,9 +87,5 @@
   .settings-field-list {
     display: grid;
     gap: var(--gap-inline);
-  }
-  .ai-output-hint {
-    color: var(--fg2);
-    font-size: 12px;
   }
 </style>
