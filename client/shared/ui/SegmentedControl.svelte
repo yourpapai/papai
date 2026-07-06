@@ -46,26 +46,26 @@
   .ui-seg {
     display: inline-flex;
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-control);
     overflow: hidden;
   }
   .ui-seg__opt {
     background: var(--surface-2);
     border: 0;
     border-right: 1px solid var(--border);
-    color: var(--text-dim);
+    color: var(--text-muted);
     cursor: pointer;
     font-family: var(--font-mono);
     font-size: 11px;
-    padding: 4px 12px;
-    height: 26px;
+    padding: 0 10px;
+    height: 22px;
   }
   .ui-seg__opt:last-child { border-right: 0; }
   .ui-seg__opt:focus-visible {
     outline: var(--focus-ring);
     outline-offset: -2px;
   }
-  .ui-seg__opt:hover { color: var(--text); background: var(--surface-hover); }
+  .ui-seg__opt:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
   .ui-seg__opt--on {
     background: var(--accent);
     color: var(--accent-fg);
