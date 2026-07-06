@@ -39,7 +39,6 @@
   let savingProfile = $state(false)
   let togglingCapture = $state(false)
   let archivingId: string | null = $state(null)
-  let initialLoad = $state(true)
   let loadedContextId: string | null = $state(null)
   let pendingClear = $state(false)
   let clearing = $state(false)
@@ -88,13 +87,11 @@
       const next = await fetchMemory(id)
       if (id !== contextId) return false
       applyMemory(next)
-      initialLoad = false
       return true
     } catch (err) {
       if (id === contextId) {
         clearContextState()
         error = messageFrom(err)
-        initialLoad = false
       }
       return false
     } finally {
@@ -168,7 +165,6 @@
   $effect(() => {
     const id = contextId
     untrack(() => {
-      initialLoad = true
       void load(id)
     })
   })
@@ -204,7 +200,7 @@
     {/snippet}
   </PageHeader>
 
-  {#if initialLoad && loading}
+  {#if loading && currentMemory === null}
     <p class="placeholder">Loading…</p>
   {:else if currentMemory !== null}
     {#if error !== null}<p class="status-error">{error}</p>{/if}
