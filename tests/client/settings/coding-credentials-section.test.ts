@@ -133,6 +133,45 @@ const withOpenAiCompatiblePayload = {
   ],
 }
 
+const withComboboxPayload = {
+  namespace: 'agent-provider',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'agent',
+      label: 'Coding agent',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'claude',
+      control: 'select',
+      options: ['claude', 'codex', 'opencode'],
+    },
+    {
+      key: 'provider',
+      label: 'Model provider',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'anthropic',
+      control: 'select',
+      options: ['anthropic', 'openai', 'openai-compatible'],
+    },
+    {
+      key: 'model',
+      label: 'Model',
+      required: false,
+      sensitive: false,
+      hasValue: false,
+      value: '',
+      control: 'combobox',
+    },
+    { key: 'provider_api_key', label: 'API key', required: true, sensitive: true, hasValue: true, value: '****' },
+  ],
+}
+
 const baseUrlStoredPayload = {
   namespace: 'agent-provider',
   configured: true,
@@ -810,6 +849,22 @@ describe('CodingCredentialsSection', () => {
     const labelEl = target.querySelector(`#${labelledBy}`)
     expect(labelEl).not.toBeNull()
     expect(labelEl!.textContent).toContain('Model provider')
+    void unmount(component)
+  })
+
+  test('the model combobox has an accessible name via aria-labelledby', async () => {
+    setMockFetch(() => Promise.resolve(json(withComboboxPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const combobox = target.querySelector<HTMLInputElement>('[data-testid="coding-combobox-model"]')!
+    expect(combobox).not.toBeNull()
+    const labelledBy = combobox.getAttribute('aria-labelledby')
+    expect(labelledBy).not.toBeNull()
+    const labelEl = target.querySelector(`#${labelledBy}`)
+    expect(labelEl).not.toBeNull()
+    expect(labelEl!.textContent).toContain('Model')
     void unmount(component)
   })
 })
