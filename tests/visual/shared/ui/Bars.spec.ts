@@ -27,6 +27,21 @@ test.describe('shared/ui/Bars', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
+  test('Fixed empty edge', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-bars--fixed-empty-edge')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Fixed single bar', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-bars--fixed-single-bar')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Fixed flat', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-bars--fixed-flat')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
   test('fluid', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'shared-ui-bars--fluid')
     await expect(sharedPage).toHaveScreenshot()

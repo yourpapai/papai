@@ -22,19 +22,19 @@
 
 <Story name="Empty edge" args={{ data: [] }} />
 
-<Story name="empty-edge">
+<Story name="Fixed empty edge">
   <div style="padding: 20px; background: var(--bg);">
     <Bars data={[]} width={200} height={40} />
   </div>
 </Story>
 
-<Story name="single-bar">
+<Story name="Fixed single bar">
   <div style="padding: 20px; background: var(--bg);">
     <Bars data={[5]} width={200} height={40} />
   </div>
 </Story>
 
-<Story name="flat">
+<Story name="Fixed flat">
   <div style="padding: 20px; background: var(--bg);">
     <Bars data={[0, 0, 0, 0]} width={200} height={40} />
   </div>
