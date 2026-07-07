@@ -89,10 +89,10 @@
       applyMemory(next)
       return true
     } catch (err) {
-      if (id === contextId) {
-        clearContextState()
-        error = messageFrom(err)
-      }
+      // Keep any already-loaded data for this context on a reload failure so the form and
+      // records survive; the error surfaces inline. A first-load failure has nothing loaded
+      // (context switches already cleared above), so ErrorState still takes over then.
+      if (id === contextId) error = messageFrom(err)
       return false
     } finally {
       if (id === contextId) loading = false

@@ -443,7 +443,8 @@ describe('MemorySection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(MemorySection, { target, props: { contextId: 'user:1' } })
     await drain()
-    expect(target.querySelector('.status-error')).not.toBeNull()
+    // Never-loaded failure shows the full ErrorState (not an inline banner).
+    expect(target.querySelector('.ui-error')).not.toBeNull()
     expect(target.querySelector('[data-testid="memory-profile"]')).toBeNull()
     void unmount(component)
   })
