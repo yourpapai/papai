@@ -5,6 +5,138 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.7.1] - 2026-07-07
+
+### Added
+
+- **ui:** Add error prop to shared Field/Input primitives
+- **ui:** Add disabled and ariaDescribedBy props to SegmentedControl
+- **settings:** ConfigFieldRow hint prop, aria wiring, in-flight disable, brighter label
+- **settings:** Add presentational SettingsFieldShell component
+- **settings:** ByokSection state pill, ErrorState retry, aria roles, dirty-state, shell rows
+- **settings:** CodingCredentialsSection ErrorState retry, aria roles, dirty-state, shell rows
+- **settings:** CodeHostSection shell rows, ErrorState, roles, dirty-state, reload-safe save
+- **settings:** AdminPluginsConfigSection shell rows, roles, dirty-state, reload-safe save
+- **settings:** Accessible name for select/combobox via SettingsFieldShell label id
+- **acp:** Start_session accepts prNumber to adopt an existing PR
+- **storybook:** Render each story with its own app's global CSS
+- **ui:** Add disabled prop to shared Select
+
+### Changed
+
+- **settings:** Scope MemorySection busy state per-row and per-toggle
+- **ui:** Add --focus-ring token and adopt in shared controls
+- **settings:** Route ConfigFieldRow through SettingsFieldShell + dirty-state Save
+- **settings:** Scope whole-record formDirty to visible fields
+- **acp:** Remove review_pr tool in favor of start_session prNumber
+- Drop review_pr from ACP session-action guardrail set
+- **storybook:** Per-app static stylesheets instead of ?raw imports
+
+### Documentation
+
+- **ux:** Design spec for IdentitySection UX fixes
+- **ux:** Implementation plan for IdentitySection UX fixes
+- **ux:** Record IdentitySection execution notes + correct testing claim
+- **coding-sessions:** Resolve boundary crossing to Option X (bind-mount)
+- **mcp-broker:** Phase 1 (transport plumbing) implementation plan
+- **ux:** Add MemorySection UX review + visual interaction states
+- **ux:** Add MemorySection UX fixes design spec
+- **ux:** Add MemorySection UX fixes implementation plan
+- **settings:** Clarify MemorySection provisional promotion is automatic
+- **spec:** Clarify sandbox-mcp shipping path uses a bind-mounted host socket
+- **ux-review:** Add AiOutputSection review + interaction screenshot states
+- **spec:** Design for AiOutputSection UX review fixes
+- **plan:** Implementation plan for AiOutputSection UX fixes
+- **spec:** ByokSection UX fixes via shared settings-field shell
+- **ux-review:** ByokSection findings + depth-B shot states
+- **plan:** ByokSection fixes via shared settings-field shell
+- **spec:** Field-shell consolidation follow-ups
+- **plan:** Field-shell consolidation follow-ups
+- **spec:** Settings-field shell polish (a11y, dirty-visibility, label cleanup)
+- **plan:** Settings-field shell polish
+- **spec:** Storybook per-app CSS fidelity
+- **plan:** Storybook per-app CSS fidelity
+- Note storybook per-app CSS mechanism pivot (?raw → per-app link)
+- **spec:** CodingIdentitySection UX fixes design
+- CodingIdentitySection UX review report + fix implementation plan
+- **plan:** Correct CodingIdentity test drain ticks, Response.clone(), client-test command
+- **spec:** Settings-section robustness sweep design
+- **plan:** Settings-section robustness sweep — 3 workstream plans (A/B/C)
+- **mcp-broker:** Phase 1 docker-boundary transport verification
+- **coding-sessions:** Record Option X same-kernel deployment constraint
+- **mcp-broker:** Phase 2 (credential-holding worker enclosure) plan
+- **coding-sessions:** Document the Phase 1-2 sandbox MCP broker
+- **mcp-broker:** Phase 2 verification (worker-bundle integrated check + Linux E2E handoff)
+- **mcp-broker:** Phase 3A (per-session config + credential vault) plan
+- **mcp-section:** Spec for McpSection UX-review fixes
+- **mcp-section:** Implementation plan for McpSection UX-review fixes
+- **mcp-section:** UX review report + visual specs for captured states
+
+### Fixed
+
+- **settings:** Rework IdentitySection state model, feedback, and guidance
+- **settings:** Style the gated empty-state link in IdentitySection
+- **acp:** Send current-thread contextId on follow-up requests
+- **settings:** Raise MemorySection record meta contrast off --fg4/--fg3
+- **settings:** Make MemorySection Archive an outline button
+- **settings:** Move MemorySection Clear to header, add capture copy
+- **settings:** Make MemorySection empty state capture-aware with CTA
+- **settings:** Render MemorySection load failure via ErrorState + retry
+- **settings:** Label MemorySection active records list
+- **settings:** Show MemorySection spinner during retry, drop initialLoad
+- **ui:** Raise SegmentedControl contrast and align height/radius to sm controls
+- **settings:** Render AiOutput hint inside the field card via ConfigFieldRow
+- **settings:** Restore input accessible name via SettingsFieldShell label id
+- **settings:** Suppress save success line when the post-save reload fails (Byok, Coding)
+- **settings:** CodingIdentitySection labels use shared t-label class
+- **storybook:** Await stylesheet load before render so screenshots capture styled
+- **storybook:** Rename colliding Bars story names to unique ids
+- **settings:** Align CodingIdentitySection with sibling pattern
+- **settings:** Guard CodingIdentity load against stale contextId; consolidate tests
+- **settings:** Lock CodingIdentity Selects during save
+- **settings:** Lock GroupProvider Select during save
+- **settings:** Lock TaskProvider Select during bind
+- **settings:** Add creating flag and lock AdminInstances create Selects
+- **settings:** Lock AdminInstances create buttons + split per-form flags
+- **settings:** Guard GroupProvider load against stale contextId
+- **settings:** Guard AiOutput load against stale contextId
+- **settings:** Guard KaneoAccess load against stale contextId
+- **settings:** Guard Mcp load against stale contextId
+- **settings:** Guard Plugins load against stale contextId
+- **settings:** Guard Profile load against stale contextId
+- **settings:** Guard Repos load against stale contextId
+- **settings:** Guard TaskProvider load against stale contextId
+- **settings:** Guard Tools load against stale contextId
+- **settings:** Guard ReleaseSubscription personal-scope load against stale contextId
+- **settings:** Guard AdminPluginsApproval load against stale catalogContextId
+- **settings:** CodingIdentity refresh failure keeps form, not full ErrorState
+- **settings:** GroupProvider refresh failure keeps form, not full ErrorState
+- **settings:** TaskProvider refresh failure keeps form, not full ErrorState
+- **settings:** GuestMode refresh failure keeps toggle, not full ErrorState
+- **settings:** ReleaseSubscription refresh failure keeps toggle, not full ErrorState
+- **settings:** MemorySection reload failure keeps loaded data, not full ErrorState
+
+### Styling
+
+- **settings:** Align MemorySection spacing to shared tokens
+- **settings:** Drop redundant MemorySection tag color declaration
+
+### Testing
+
+- **settings:** Add IdentitySection gated (no-task-provider) story
+- **visual:** Add IdentitySection validation + confirm interaction states
+- **visual:** Add MemorySection provisional + capture-on-empty stories
+- **visual:** Repoint stale ToolsSection grouped test to an existing domain
+- **settings:** Cover SettingsFieldShell snippet slots + editorOpen gating
+- **visual:** SettingsFieldShell story + re-baseline settings-field rows
+- **settings:** Cover combobox aria-labelledby in CodingCredentialsSection
+- **settings:** Realistic CodingIdentity Populated fixture + visual states
+- **settings:** Move raceState reset into afterEach; document race harness
+- **settings:** Assert inline reload-error banner renders in refresh-failure tests
+
+### Ci
+
+- Bump the github-actions group across 1 directory with 8 updates
 ## [6.7.0] - 2026-07-06
 
 ### Added
