@@ -106,11 +106,14 @@
 <section id="coding-identity" class="settings-section">
   <PageHeader eyebrow="Group" title="Coding session identity" />
 
-  {#if loadError !== null}
+  {#if loadError !== null && !loaded}
     <ErrorState message={formatFetchError(loadError)} onRetry={() => void load(contextId)} />
   {:else if loading && !loaded}
     <p class="placeholder">Loading…</p>
   {:else}
+    {#if loadError !== null}
+      <p class="status-error" role="alert" data-testid="coding-identity-load-error">{formatFetchError(loadError)}</p>
+    {/if}
     {#if status !== null}<p class="status-success">{status}</p>{/if}
     {#if saveError !== null}
       <p class="status-error" role="alert" data-testid="coding-identity-error">{formatFetchError(saveError)}</p>

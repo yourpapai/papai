@@ -239,4 +239,27 @@ describe('CodingIdentitySection', () => {
     expect(sel.disabled).toBe(true)
     void unmount(component)
   })
+
+  test('a failed post-save reload keeps the form + success, no full ErrorState takeover', async () => {
+    setCsrfToken('t')
+    setMockFetch(
+      route({
+        identitySeq: [identity('shared'), json({ error: 'boom' }, 500)],
+        members: membersPayload([ALICE]),
+      }),
+    )
+    const { target, component } = render()
+    await drain()
+    submitForm(target)
+    await drain()
+    // No full-section ErrorState.
+    expect(target.querySelector('.ui-error')).toBeNull()
+    // Form survives.
+    expect(target.querySelector('[data-testid="coding-identity-policy"]')).not.toBeNull()
+    // Inline banner.
+    expect(target.querySelector('[data-testid="coding-identity-load-error"]')).not.toBeNull()
+    // Success survives.
+    expect(target.querySelector('.status-success')?.textContent).toContain('Saved.')
+    void unmount(component)
+  })
 })
