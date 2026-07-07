@@ -5,7 +5,7 @@
 
 import { expect, mock, test } from 'bun:test'
 
-import { finishSessionTool, reviewPrTool, startSessionTool } from '../../../plugins/acp/session-tools.js'
+import { finishSessionTool, startSessionTool } from '../../../plugins/acp/session-tools.js'
 
 type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -126,67 +126,6 @@ test('start_session includes resolved secrets in the POST body', async () => {
   expect(asRecord(parsedBody(capturedInit))['secrets']).toEqual({ ANTHROPIC_API_KEY: 'sk-1' })
 })
 
-// --- review_pr ---
-
-test('review_pr refuses when no credentials are configured', async () => {
-  const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-  const tool = reviewPrTool(httpFetch)
-  const res = await tool.execute(
-    { project: 'demo', prNumber: 42 },
-    ctx((): null => null),
-    {},
-  )
-  expect(asRecord(res)['error']).toBe('not_configured')
-  expect(httpFetch).not.toHaveBeenCalled()
-})
-
-test('review_pr not_configured message (missing secrets) tells the acting user to set up their own credentials', async () => {
-  const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-  const tool = reviewPrTool(httpFetch)
-  const res = await tool.execute(
-    { project: 'demo', prNumber: 42 },
-    ctx((): null => null),
-    {},
-  )
-  const msg = String(asRecord(res)['message'])
-  expect(msg).toContain("You haven't set up your coding credentials")
-  expect(msg).toContain('settings')
-})
-
-test('review_pr not_configured message (missing forge token) mentions code host', async () => {
-  const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-  const tool = reviewPrTool(httpFetch)
-  const res = await tool.execute(
-    { project: 'demo', prNumber: 42 },
-    ctx(
-      (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-1' }),
-      (): null => null,
-    ),
-    {},
-  )
-  expect(asRecord(res)['error']).toBe('not_configured')
-  const msg = String(asRecord(res)['message'])
-  expect(msg.toLowerCase()).toContain('code host')
-})
-
-test('review_pr includes resolved secrets in the POST body', async () => {
-  let capturedInit: RequestInit | undefined
-  const httpFetch: HttpFetch = (_url, init) => {
-    capturedInit = init
-    return Promise.resolve(jsonResponse({ id: 'r1', status: 'queued' }, 202))
-  }
-  const tool = reviewPrTool(httpFetch)
-  await tool.execute(
-    { project: 'demo', prNumber: 42 },
-    ctx(
-      (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-2' }),
-      (): string => 'ghp_forge',
-    ),
-    {},
-  )
-  expect(asRecord(parsedBody(capturedInit))['secrets']).toEqual({ ANTHROPIC_API_KEY: 'sk-2' })
-})
-
 // --- start_session forge token (optional injection) ---
 
 test('start_session includes forgeToken in body when present', async () => {
@@ -252,41 +191,6 @@ test('finish_session includes forgeToken in body when present', async () => {
   const tool = finishSessionTool(httpFetch)
   await tool.execute(
     { sessionId: 'sess-1', action: 'push' },
-    ctx(
-      (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-1' }),
-      (): string => 'ghp_forge',
-    ),
-    {},
-  )
-  expect(asRecord(parsedBody(capturedInit))['forgeToken']).toBe('ghp_forge')
-})
-
-// --- review_pr forge pre-flight + inject ---
-
-test('review_pr refuses when no forge token', async () => {
-  const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-  const tool = reviewPrTool(httpFetch)
-  const res = await tool.execute(
-    { project: 'demo', prNumber: 42 },
-    ctx(
-      (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-1' }),
-      (): null => null,
-    ),
-    {},
-  )
-  expect(asRecord(res)['error']).toBe('not_configured')
-  expect(httpFetch).not.toHaveBeenCalled()
-})
-
-test('review_pr includes forgeToken in body when present', async () => {
-  let capturedInit: RequestInit | undefined
-  const httpFetch: HttpFetch = (_url, init) => {
-    capturedInit = init
-    return Promise.resolve(jsonResponse({ id: 'r2', status: 'queued' }, 202))
-  }
-  const tool = reviewPrTool(httpFetch)
-  await tool.execute(
-    { project: 'demo', prNumber: 42 },
     ctx(
       (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-1' }),
       (): string => 'ghp_forge',

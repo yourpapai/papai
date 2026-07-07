@@ -13,7 +13,6 @@
       "finish_session",
       "cancel_session",
       "answer_permission",
-      "review_pr",
       "continue_session",
       "list_projects",
       "list_agents"

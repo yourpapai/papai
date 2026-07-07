@@ -3,11 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, mock, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 
 import type { AuthorizationResult } from '../../../src/chat/authorization-types.js'
 import type { IncomingMessage, ReplyFn } from '../../../src/chat/types.js'
-import { activate, jsonResponse, options, runtimeCtxWithKv } from './support.js'
+import { activate, jsonResponse } from './support.js'
 
 type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -38,172 +38,6 @@ function stubReply(replies: string[]): ReplyFn {
     buttons: (): Promise<undefined> => Promise.resolve(undefined),
   }
 }
-
-function bodyString(init: RequestInit | undefined): string {
-  const b = init?.body
-  return typeof b === 'string' ? b : ''
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value === 'object' && value !== null) return Object.fromEntries(Object.entries(value))
-  return {}
-}
-
-describe('acp review_pr tool', () => {
-  test('injects contextId, POSTs /reviews with projectSpec, records kv', async () => {
-    let capturedUrl = ''
-    let capturedBody: unknown = null
-    const httpFetch: HttpFetch = (url, init) => {
-      capturedUrl = url
-      capturedBody = JSON.parse(bodyString(init))
-      return Promise.resolve(jsonResponse({ id: 'r-1', status: 'queued' }, 202))
-    }
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const result = await tools
-      .get('review_pr')!
-      .execute({ project: 'demo', prNumber: 42 }, runtimeCtxWithKv(store), options())
-    expect(capturedUrl).toBe('http://magi:8787/reviews')
-    expect(capturedBody).toEqual({
-      prNumber: 42,
-      contextId: 'ctx-1',
-      secrets: { ANTHROPIC_API_KEY: 'sk-test' },
-      forgeToken: 'ghp-test',
-      projectSpec: {
-        name: 'demo',
-        repoUrl: 'https://github.com/acme/demo.git',
-        baseBranch: 'main',
-        permissionPreset: 'cautious',
-        agent: 'claude',
-      },
-    })
-    expect(result).toEqual({ id: 'r-1', status: 'queued' })
-    expect(store.get('session:r-1')).toBeDefined()
-  })
-
-  test('projectSpec includes forge when resolveForge returns a value', async () => {
-    let capturedBody: unknown = null
-    const httpFetch: HttpFetch = (_url, init) => {
-      capturedBody = JSON.parse(bodyString(init))
-      return Promise.resolve(jsonResponse({ id: 'r-forge', status: 'queued' }, 202))
-    }
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const ctxWithForge = {
-      ...runtimeCtxWithKv(store),
-      codingSecrets: {
-        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
-        resolveForgeToken: (): string => 'ghp-test',
-        resolveAgent: (): null => null,
-        resolveForge: (): { kind: 'github'; apiBaseUrl: string } => ({
-          kind: 'github',
-          apiBaseUrl: 'https://api.github.com',
-        }),
-        resolveProviderHost: (): null => null,
-        resolveModel: (): null => null,
-      },
-    }
-    await tools.get('review_pr')!.execute({ project: 'demo', prNumber: 7 }, ctxWithForge, options())
-    expect(capturedBody).toMatchObject({
-      projectSpec: { forge: { kind: 'github', apiBaseUrl: 'https://api.github.com' } },
-    })
-  })
-
-  test('projectSpec includes providerHost when resolveProviderHost returns a value', async () => {
-    let capturedBody: unknown = null
-    const httpFetch: HttpFetch = (_url, init) => {
-      capturedBody = JSON.parse(bodyString(init))
-      return Promise.resolve(jsonResponse({ id: 'r-ph', status: 'queued' }, 202))
-    }
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const ctxWithProviderHost = {
-      ...runtimeCtxWithKv(store),
-      codingSecrets: {
-        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
-        resolveForgeToken: (): string => 'ghp-test',
-        resolveAgent: (): null => null,
-        resolveForge: (): null => null,
-        resolveProviderHost: (): string => 'api.openai.com',
-        resolveModel: (): null => null,
-      },
-    }
-    await tools.get('review_pr')!.execute({ project: 'demo', prNumber: 7 }, ctxWithProviderHost, options())
-    const spec = asRecord(asRecord(capturedBody)['projectSpec'])
-    expect(spec['providerHost']).toBe('api.openai.com')
-  })
-
-  test('unknown project returns not_found without calling httpFetch', async () => {
-    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const emptyCodingRepos = {
-      list: (): { name: string; baseBranch: string }[] => [],
-      get: (_name: string): null => null,
-    }
-    const result = await tools
-      .get('review_pr')!
-      .execute({ project: 'unknown', prNumber: 42 }, runtimeCtxWithKv(store, undefined, emptyCodingRepos), options())
-    expect(result).toEqual({
-      error: 'not_found',
-      message: 'No repository named "unknown". Add it in settings → Repositories.',
-    })
-    expect(httpFetch).not.toHaveBeenCalled()
-  })
-
-  test('missing project returns invalid_input without calling httpFetch', async () => {
-    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const result = await tools.get('review_pr')!.execute({ prNumber: 42 }, runtimeCtxWithKv(store), options())
-    expect(result).toEqual({ error: 'invalid_input', message: 'project and a positive prNumber are required' })
-    expect(httpFetch).not.toHaveBeenCalled()
-  })
-
-  test('prNumber=0 returns invalid_input without calling httpFetch', async () => {
-    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const result = await tools
-      .get('review_pr')!
-      .execute({ project: 'demo', prNumber: 0 }, runtimeCtxWithKv(store), options())
-    expect(result).toEqual({ error: 'invalid_input', message: 'project and a positive prNumber are required' })
-    expect(httpFetch).not.toHaveBeenCalled()
-  })
-
-  test('prNumber=-1 returns invalid_input without calling httpFetch', async () => {
-    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const result = await tools
-      .get('review_pr')!
-      .execute({ project: 'demo', prNumber: -1 }, runtimeCtxWithKv(store), options())
-    expect(result).toEqual({ error: 'invalid_input', message: 'project and a positive prNumber are required' })
-    expect(httpFetch).not.toHaveBeenCalled()
-  })
-
-  test('missing prNumber returns invalid_input without calling httpFetch', async () => {
-    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const result = await tools.get('review_pr')!.execute({ project: 'demo' }, runtimeCtxWithKv(store), options())
-    expect(result).toEqual({ error: 'invalid_input', message: 'project and a positive prNumber are required' })
-    expect(httpFetch).not.toHaveBeenCalled()
-  })
-
-  test('not configured returns not_configured without calling httpFetch', async () => {
-    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
-    const store = new Map<string, string>()
-    const { tools } = activate(httpFetch)
-    const result = await tools.get('review_pr')!.execute(
-      { project: 'demo', prNumber: 42 },
-      runtimeCtxWithKv(store, () => undefined),
-      options(),
-    )
-    expect(result).toEqual({ error: 'not_configured', message: 'magi base URL or token is not configured' })
-    expect(httpFetch).not.toHaveBeenCalled()
-  })
-})
 
 describe('acp /acp command', () => {
   test('replies with non-empty help text mentioning sessions', async () => {

@@ -25,7 +25,7 @@ export const listSessionsSchema = {
   properties: {
     filter: {
       type: 'string',
-      enum: ['new', 'active', 'waiting', 'review', 'done'],
+      enum: ['new', 'active', 'waiting', 'done'],
       description: 'Which sessions to list; defaults to active',
     },
   },
@@ -56,13 +56,6 @@ export const answerPermissionSchema = {
   type: 'object',
   properties: { sessionId: { type: 'string' }, decision: { type: 'string', enum: ['allow', 'deny'] } },
   required: ['sessionId', 'decision'],
-  additionalProperties: false,
-} as const
-
-export const reviewPrSchema = {
-  type: 'object',
-  properties: { project: { type: 'string' }, prNumber: { type: 'integer', description: 'Pull/merge request number' } },
-  required: ['project', 'prNumber'],
   additionalProperties: false,
 } as const
 

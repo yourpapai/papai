@@ -10,7 +10,6 @@ import {
   cancelSessionTool,
   finishSessionTool,
   listSessionsTool,
-  reviewPrTool,
   sessionStatusTool,
   startSessionTool,
 } from './session-tools.js'
@@ -94,12 +93,12 @@ const ACP_PROMPT_FRAGMENT =
   'Coding sessions: use start_session(project, prompt) to run a sandboxed AI coding agent on a ' +
   'configured project, list_sessions/session_status to check progress, answer_permission(sessionId, ' +
   'decision) when the agent needs approval, finish_session(sessionId, action) to commit/push or open a ' +
-  'PR, cancel_session to stop one, and review_pr(project, prNumber) to review an open PR. ' +
+  'PR, cancel_session to stop one. ' +
   "Use continue_session(sessionId or prNumber, prompt) to keep working on a prior session's " +
   'branch/PR — it updates the existing PR. ' +
   'Use list_projects/list_agents to discover what is configured. The user is notified when a session ' +
   'finishes or needs input. ' +
-  'When start_session/continue_session/review_pr returns a transcriptUrl, include that link in your reply ' +
+  'When start_session/continue_session returns a transcriptUrl, include that link in your reply ' +
   'so the user can watch the session live in the browser and share it.'
 
 const ACP_COMMAND_TEXT =
@@ -118,7 +117,6 @@ const factory = (): { activate(ctx: unknown): void } => ({
     ctx.registerTool(finishSessionTool(ctx.httpFetch))
     ctx.registerTool(cancelSessionTool(ctx.httpFetch))
     ctx.registerTool(answerPermissionTool(ctx.httpFetch))
-    ctx.registerTool(reviewPrTool(ctx.httpFetch))
     ctx.registerTool(continueSessionTool(ctx.httpFetch))
     ctx.registerFragment({ name: 'acp-hint', content: ACP_PROMPT_FRAGMENT })
     ctx.registerCommand({

@@ -26,23 +26,6 @@ export function recordStartedSession(
     })
 }
 
-export function recordReviewSession(
-  runtimeContext: RuntimeContext,
-  result: unknown,
-  project: string,
-  prNumber: number,
-): void {
-  const id = sessionIdOf(result)
-  if (id !== null)
-    writeRecord(runtimeContext.kv, id, {
-      project,
-      title: `review PR #${prNumber}`,
-      createdAt: new Date().toISOString(),
-      prNumber,
-      ...shareFieldsOf(result),
-    })
-}
-
 // Merge the locally-known title/parentSessionId into a magi session row, and
 // refresh the local record's status/prUrl/prNumber from magi's latest view.
 export function enrichSession(runtimeContext: RuntimeContext, s: unknown): unknown {

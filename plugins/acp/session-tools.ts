@@ -17,16 +17,15 @@ import {
   answerPermissionSchema,
   finishSessionSchema,
   listSessionsSchema,
-  reviewPrSchema,
   sessionIdSchema,
   startSessionSchema,
 } from './schemas.js'
-import { enrichSession, recordReviewSession, recordStartedSession } from './session-records.js'
+import { enrichSession, recordStartedSession } from './session-records.js'
 import type { RuntimeContext, Tool } from './tools.js'
 import { buildSessionProjectSpec, canDeriveForge, sessionIdOf } from './tools.js'
 
 const DEFAULT_AGENT = 'claude-code-acp'
-const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
+const SESSION_FILTERS = ['new', 'active', 'waiting', 'done']
 const DEFAULT_FINISH_MESSAGE = 'Apply changes from magi coding session'
 
 type StartSessionAccess =
@@ -108,7 +107,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
 export function listSessionsTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'list_sessions',
-    description: 'List coding sessions started from this chat (filter: new|active|waiting|review|done).',
+    description: 'List coding sessions started from this chat (filter: new|active|waiting|done).',
     inputSchema: listSessionsSchema,
     execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
       const cfg = readMagiConfig(runtimeContext.adminConfig)
@@ -222,54 +221,6 @@ export function answerPermissionTool(httpFetch: HttpFetch | undefined): Tool {
         ),
       )
       return { resolved: toolCallIds.length, decision }
-    },
-  }
-}
-
-export function reviewPrTool(httpFetch: HttpFetch | undefined): Tool {
-  return {
-    name: 'review_pr',
-    description: 'Start a review session for an open pull/merge request; findings are posted as inline comments.',
-    inputSchema: reviewPrSchema,
-    execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
-      const cfg = readMagiConfig(runtimeContext.adminConfig)
-      if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
-      const args = asObject(input)
-      const project = asString(args, 'project')
-      const prNumber = asPositiveInt(args, 'prNumber')
-      if (project === null || prNumber === null)
-        return { error: 'invalid_input', message: 'project and a positive prNumber are required' }
-      const repo = runtimeContext.codingRepos.get(project)
-      if (repo === null)
-        return {
-          error: 'not_found',
-          message: `No repository named "${project}". Add it in settings → Repositories.`,
-        }
-      const secrets = runtimeContext.codingSecrets.resolve()
-      if (secrets === null)
-        return {
-          error: 'not_configured',
-          message:
-            "You haven't set up your coding credentials. DM me and open settings → Coding sessions to configure your AI provider key (and code host).",
-        }
-      const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
-      if (forgeToken === null)
-        return {
-          error: 'not_configured',
-          message:
-            "You haven't connected your code host. DM me and open settings → Coding sessions to add your code host token.",
-        }
-      const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
-      const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets)
-      const result = await callMagi(httpFetch, cfg, 'POST', '/reviews', {
-        prNumber,
-        contextId: runtimeContext.storageContextId,
-        secrets,
-        forgeToken,
-        projectSpec,
-      })
-      recordReviewSession(runtimeContext, result, project, prNumber)
-      return result
     },
   }
 }

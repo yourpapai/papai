@@ -45,7 +45,6 @@ const makeDeps = (toolSet: ToolSet): PrepareLlmInvocationDeps => ({
 /** A full tool set with action + read-only acp tools plus a non-acp tool. */
 const acpToolSet = (): ToolSet => ({
   plugin_acp__start_session: stub(),
-  plugin_acp__review_pr: stub(),
   plugin_acp__finish_session: stub(),
   plugin_acp__cancel_session: stub(),
   plugin_acp__answer_permission: stub(),
@@ -78,7 +77,6 @@ describe('applyWhoMayUseFilter (unit)', () => {
     const names = Object.keys(result).sort()
     // Action tools must be gone
     expect(names).not.toContain('plugin_acp__start_session')
-    expect(names).not.toContain('plugin_acp__review_pr')
     expect(names).not.toContain('plugin_acp__finish_session')
     expect(names).not.toContain('plugin_acp__cancel_session')
     expect(names).not.toContain('plugin_acp__answer_permission')
@@ -148,7 +146,6 @@ describe('buildFullToolSet / who-may-use filter (integration)', () => {
     const toolSet = acpToolSet()
     const result = await prepareLlmInvocation(baseOpts('allowed-user'), makeDeps(toolSet))
     expect(result.enabledToolNames.has('plugin_acp__start_session')).toBe(true)
-    expect(result.enabledToolNames.has('plugin_acp__review_pr')).toBe(true)
     expect(result.enabledToolNames.has('plugin_acp__list_sessions')).toBe(true)
   })
 
@@ -161,7 +158,6 @@ describe('buildFullToolSet / who-may-use filter (integration)', () => {
     const toolSet = acpToolSet()
     const result = await prepareLlmInvocation(baseOpts('allowed-user'), makeDeps(toolSet))
     expect(result.enabledToolNames.has('plugin_acp__start_session')).toBe(true)
-    expect(result.enabledToolNames.has('plugin_acp__review_pr')).toBe(true)
   })
 
   test('whoMayUse=[allowed-user] → other-user loses acp action tools but keeps list_sessions', async () => {
@@ -173,7 +169,6 @@ describe('buildFullToolSet / who-may-use filter (integration)', () => {
     const toolSet = acpToolSet()
     const result = await prepareLlmInvocation(baseOpts('other-user'), makeDeps(toolSet))
     expect(result.enabledToolNames.has('plugin_acp__start_session')).toBe(false)
-    expect(result.enabledToolNames.has('plugin_acp__review_pr')).toBe(false)
     expect(result.enabledToolNames.has('plugin_acp__finish_session')).toBe(false)
     expect(result.enabledToolNames.has('plugin_acp__cancel_session')).toBe(false)
     expect(result.enabledToolNames.has('plugin_acp__answer_permission')).toBe(false)
