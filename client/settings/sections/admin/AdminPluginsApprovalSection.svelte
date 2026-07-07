@@ -29,15 +29,18 @@
   let rejectError: string | null = $state(null)
 
   async function load(): Promise<void> {
+    const id = catalogContextId
     error = null
     status = null
     loading = true
     try {
-      plugins = (await fetchPlugins(catalogContextId)).plugins
+      const result = await fetchPlugins(id)
+      if (id !== catalogContextId) return
+      plugins = result.plugins
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      if (id === catalogContextId) error = err instanceof Error ? err.message : String(err)
     } finally {
-      loading = false
+      if (id === catalogContextId) loading = false
     }
   }
 
