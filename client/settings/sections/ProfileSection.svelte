@@ -30,11 +30,13 @@
     error = null
     loading = true
     try {
-      fields = (await fetchConfig(id)).fields
+      const result = await fetchConfig(id)
+      if (id !== contextId) return
+      fields = result.fields
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) error = err instanceof Error ? err.message : String(err)
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
