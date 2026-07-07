@@ -28,3 +28,45 @@ test.describe('settings/sections/McpSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('McpSection — populated, narrow 640', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-mcpsection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 1100 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('McpSection — header row + new endpoint expanded', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-mcpsection--populated')
+  await sharedPage.getByTestId('mcp-header-add-e1').click()
+  await sharedPage.getByTestId('mcp-add').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('McpSection — long label and url overflow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-mcpsection--populated')
+  const row = sharedPage.getByTestId('mcp-row-e1')
+  await row.locator('input').first().fill('Production analytics MCP gateway (EU-west, read-only replica)')
+  await row
+    .locator('input')
+    .nth(1)
+    .fill('https://mcp.analytics.internal.example.com/servers/production/streamable-http/v2/endpoint?tenant=acme-corp')
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('McpSection — long label and url overflow, narrow 640', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-mcpsection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 1100 })
+  const row = sharedPage.getByTestId('mcp-row-e1')
+  await row.locator('input').first().fill('Production analytics MCP gateway (EU-west, read-only replica)')
+  await row
+    .locator('input')
+    .nth(1)
+    .fill('https://mcp.analytics.internal.example.com/servers/production/streamable-http/v2/endpoint?tenant=acme-corp')
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('McpSection — save hover', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-mcpsection--populated')
+  await sharedPage.getByTestId('mcp-save').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
