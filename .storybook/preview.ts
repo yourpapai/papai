@@ -12,13 +12,6 @@ import { assertFixturesMatchSchemas } from '../client/stories/fixtures/schemas.j
 import { installIntersectionObserverStub } from '../client/stories/stubs/intersection-observer.js'
 import { installSseStub } from '../client/stories/stubs/sse.js'
 
-import adminCss from '../client/admin/admin.css?raw'
-import debugCss from '../client/debug/debug.css?raw'
-import settingsCss from '../client/settings/settings.css?raw'
-import baseCss from '../client/shared/base.css?raw'
-import tokensCss from '../client/shared/tokens.css?raw'
-import transcriptCss from '../client/transcript/transcript.css?raw'
-
 // Fail fast at preview boot if any fixture has drifted from its live schema.
 assertFixturesMatchSchemas()
 
@@ -26,29 +19,27 @@ initialize({ onUnhandledRequest: 'bypass' })
 installSseStub()
 installIntersectionObserverStub()
 
-// Shared globals every app bundles; injected for every story.
-const SHARED_CSS = `${baseCss}\n${tokensCss}`
-
-// Per-app global CSS — a story gets exactly one, matching what the real app serves.
-const APP_CSS: Record<string, string> = {
-  settings: settingsCss,
-  admin: adminCss,
-  debug: debugCss,
-  transcript: transcriptCss,
+// Each story loads base+tokens + only its own app's CSS, matching what the real app
+// serves. `storybook:prepare` (package.json) generates one `storybook-<area>.css` per
+// app (base+tokens+app) plus `storybook-shared.css` (base+tokens); this loader points a
+// single <link> at the story's own sheet, so no cross-app CSS collides.
+function appGlobalsHref(title: string): string {
+  const area = appAreaFor(title)
+  return `/storybook-${area ?? 'shared'}.css`
 }
 
-// Upsert a single <style> so each story renders with base+tokens + only its own app's CSS.
-// Runs as a loader (before render) so screenshots capture the styled state.
 function applyAppGlobals(title: string): void {
-  const area = appAreaFor(title)
-  const appCss = area !== null ? (APP_CSS[area] ?? '') : ''
-  let styleEl = document.getElementById('sb-app-globals')
-  if (styleEl === null) {
-    styleEl = document.createElement('style')
-    styleEl.id = 'sb-app-globals'
-    document.head.appendChild(styleEl)
+  const href = appGlobalsHref(title)
+  const existing = document.getElementById('sb-app-globals')
+  if (existing instanceof HTMLLinkElement) {
+    if (existing.getAttribute('href') !== href) existing.setAttribute('href', href)
+    return
   }
-  styleEl.textContent = `${SHARED_CSS}\n${appCss}`
+  const link = document.createElement('link')
+  link.id = 'sb-app-globals'
+  link.rel = 'stylesheet'
+  link.href = href
+  document.head.appendChild(link)
 }
 
 const preview: Preview = {
