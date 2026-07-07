@@ -127,6 +127,7 @@
                 value={selectedInstanceId}
                 options={instanceData.available.map((o) => ({ value: o.id, label: `${o.name ?? o.id} (${o.type} · ${o.status})` }))}
                 onChange={(v) => (selectedInstanceId = v)}
+                disabled={binding}
                 testid="context-task-instance" />
             </Field>
             <Btn variant="primary" type="submit" disabled={binding} testid="context-task-instance-save">

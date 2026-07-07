@@ -108,6 +108,20 @@ const routeBindingMock =
     return Promise.resolve(json({ contextId: 'user:1', fields: [] }))
   }
 
+/**
+ * Route the context task-instance endpoint like routeBindingMock, but never resolve
+ * the PATCH so the section stays in its "binding" state.
+ */
+const routeNeverResolvingBindMock =
+  () =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const isInstance = url.includes('/settings/api/context/task-instance')
+    if (isInstance && method === 'PATCH') return new Promise<Response>(() => {})
+    if (isInstance) return Promise.resolve(json(unboundInstancePayload))
+    return Promise.resolve(json({ contextId: 'user:1', fields: [] }))
+  }
+
 afterEach(() => {
   restoreFetch()
   setCsrfToken('')
@@ -262,6 +276,22 @@ describe('TaskProviderSection', () => {
     expect(patched).not.toBeNull()
     expect(patched!.method).toBe('PATCH')
     expect(JSON.parse(patched!.body)).toEqual({ taskInstanceId: 'yt-default', contextId: 'user:1' })
+    void unmount(component)
+  })
+
+  test('disables the instance Select while a bind is in flight', async () => {
+    setCsrfToken('t')
+    setMockFetch(routeNeverResolvingBindMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target
+      .querySelector<HTMLFormElement>('form.settings-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    flushSync()
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="context-task-instance"]')!
+    expect(sel.disabled).toBe(true)
     void unmount(component)
   })
 })
