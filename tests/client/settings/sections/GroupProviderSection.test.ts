@@ -68,6 +68,15 @@ const neverResolvingPatchMock = (url: string, init: RequestInit): Promise<Respon
   return Promise.resolve(json(payload))
 }
 
+let reloadFailGetCount = 0
+
+const reloadFailMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/group/task-instance') && init.method === 'PATCH') return Promise.resolve(json({ ok: true }))
+  reloadFailGetCount++
+  if (reloadFailGetCount === 1) return Promise.resolve(json(payload))
+  return Promise.resolve(new Response(JSON.stringify({ error: 'boom' }), { status: 500 }))
+}
+
 let resolveCtxA: ((r: Response) => void) | undefined
 
 const raceMock = (url: string): Promise<Response> => {
@@ -89,6 +98,7 @@ const raceMock = (url: string): Promise<Response> => {
 afterEach(() => {
   capturedPatchBody = undefined
   releasePendingPatch = undefined
+  reloadFailGetCount = 0
   resolveCtxA = undefined
   raceState.contextId = ''
   restoreFetch()
@@ -305,6 +315,22 @@ describe('GroupProviderSection', () => {
     flushSync()
     const sel = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
     expect(sel.disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('a failed post-save reload keeps the form, no full ErrorState takeover', async () => {
+    setCsrfToken('t')
+    setMockFetch(reloadFailMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target
+      .querySelector<HTMLFormElement>('form.settings-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await drain()
+    expect(target.querySelector('.ui-error')).toBeNull()
+    expect(target.querySelector('[data-testid="group-task-instance"]')).not.toBeNull()
     void unmount(component)
   })
 
