@@ -55,15 +55,16 @@
     loading = true
     try {
       const [identityResult, membersResult] = await Promise.all([fetchGroupCodingIdentity(id), fetchGroupMembers(id)])
+      if (id !== contextId) return
       const parsed = parseIdentity(identityResult.identity)
       policyKind = parsed.kind
       designatedUserId = parsed.designatedUserId || (membersResult.members[0]?.user_id ?? '')
       members = membersResult.members
       loaded = true
     } catch (err) {
-      loadError = err
+      if (id === contextId) loadError = err
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 

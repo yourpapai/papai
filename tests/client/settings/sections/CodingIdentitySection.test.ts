@@ -76,6 +76,21 @@ const route = (opts: {
   }
 }
 
+/** Like route(), but for a fixed initiator/[ALICE, BOB] fixture, records the PATCH body via onPatch. */
+const routeCapturingPatch = (
+  onPatch: (body: string) => void,
+): ((url: string, init: RequestInit) => Promise<Response>) => {
+  return (url, init) => {
+    if ((init.method ?? 'GET').toUpperCase() === 'PATCH') {
+      onPatch(typeof init.body === 'string' ? init.body : '')
+      return Promise.resolve(json({ ok: true }))
+    }
+    if (url.includes('/coding-identity')) return Promise.resolve(identity('initiator').clone())
+    if (url.includes('/members')) return Promise.resolve(membersPayload([ALICE, BOB]).clone())
+    return Promise.resolve(json({}, 404))
+  }
+}
+
 afterEach(() => {
   restoreFetch()
   setCsrfToken('')
@@ -180,6 +195,36 @@ describe('CodingIdentitySection', () => {
     expect(alert).not.toBeNull()
     expect(alert!.getAttribute('role')).toBe('alert')
     expect(target.querySelector('[data-testid="coding-identity-policy"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders all three policy options (initiator, shared, designated)', async () => {
+    setMockFetch(route({ identity: identity('initiator'), members: membersPayload([ALICE, BOB]) }))
+    const { target, component } = render()
+    await drain()
+    const policy = target.querySelector<HTMLSelectElement>('[data-testid="coding-identity-policy"]')!
+    const values = Array.from(policy.options).map((o) => o.value)
+    expect(values).toEqual(['initiator', 'shared', 'designated'])
+    void unmount(component)
+  })
+
+  test('Save PATCHes the selected identity with the contextId', async () => {
+    setCsrfToken('t')
+    let capturedBody = ''
+    setMockFetch(
+      routeCapturingPatch((body) => {
+        capturedBody = body
+      }),
+    )
+    const { target, component } = render()
+    await drain()
+    const policy = target.querySelector<HTMLSelectElement>('[data-testid="coding-identity-policy"]')!
+    policy.value = 'shared'
+    policy.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    submitForm(target)
+    await drain()
+    expect(JSON.parse(capturedBody)).toMatchObject({ identity: 'shared', contextId: CTX })
     void unmount(component)
   })
 })
