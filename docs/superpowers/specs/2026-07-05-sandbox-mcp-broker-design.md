@@ -171,6 +171,17 @@ not geofront, launches it, so it can simply dial a socket.)
   tunnel's server-id tag (routing only, §5.1).
 - Direction is inverted vs `--acp`: for ACP geofront creates the socket and magi _connects_; here magi
   _listens_ and geofront _mounts_, because the tunnel — not geofront — is the dialer.
+- **Deployment constraint (verified 2026-07-07):** bind-mounting a live unix socket only forwards
+  `connect()` when the socket's kernel **is** the container's kernel — i.e. magi and the sandbox
+  containers must **share a kernel** (native Linux host, or the same VM as the docker daemon).
+  geofront's production topology (magi + sandbox on one Linux host) satisfies this. But **VM-based
+  docker on macOS/Windows** (Docker Desktop / OrbStack) does **not**: a socket bound in the macOS host
+  kernel cannot be dialed from a container in the Linux VM (virtiofs mirrors the socket's file type but
+  cannot splice the cross-kernel `connect()`), so the real crossing is untestable on a macOS dev box
+  (`ECONNREFUSED`) even though the mechanism is correct — confirmed by a same-kernel container↔container
+  run passing. Test the end-to-end crossing on Linux/CI. If magi ever must run off-kernel from the
+  sandbox, Option X won't work and the fallback is Option Y (the `--acp`-style exec-relay, which crosses
+  via `docker exec` and is kernel-agnostic) or a TCP channel on the docker bridge.
 
 ### 5.3 magi-main — privileged control point (mediation)
 
