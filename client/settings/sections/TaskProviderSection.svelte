@@ -45,6 +45,7 @@
     loading = true
     try {
       const [config, instance] = await Promise.all([fetchConfig(id), fetchContextTaskInstance(id)])
+      if (id !== contextId) return
       fields = config.fields
       instanceData = instance
       const currentId = instance.taskInstanceId
@@ -53,9 +54,9 @@
           ? currentId
           : (instance.available[0]?.id ?? '')
     } catch (err) {
-      error = err
+      if (id === contextId) error = err
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
