@@ -28,18 +28,34 @@ function appGlobalsHref(title: string): string {
   return `/storybook-${area ?? 'shared'}.css`
 }
 
-function applyAppGlobals(title: string): void {
-  const href = appGlobalsHref(title)
+function ensureLink(): HTMLLinkElement {
   const existing = document.getElementById('sb-app-globals')
-  if (existing instanceof HTMLLinkElement) {
-    if (existing.getAttribute('href') !== href) existing.setAttribute('href', href)
-    return
-  }
+  if (existing instanceof HTMLLinkElement) return existing
+  if (existing !== null) existing.remove()
   const link = document.createElement('link')
   link.id = 'sb-app-globals'
   link.rel = 'stylesheet'
-  link.href = href
   document.head.appendChild(link)
+  return link
+}
+
+// Point a single <link> at the story's own app sheet and RESOLVE ONLY once the sheet has
+// loaded. Storybook awaits loaders before render, so gating here guarantees the CSS is
+// applied before `bun shoot` captures (the shoot driver waits on storyRendered + fonts,
+// not on stylesheet load, so an un-gated <link> swap could screenshot unstyled).
+function applyAppGlobals(title: string): Promise<void> {
+  const href = appGlobalsHref(title)
+  const link = ensureLink()
+  if (link.getAttribute('href') === href) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const settle = (): void => {
+      resolve()
+    }
+    // Resolve on error too (e.g. a missing sheet) so a story never hangs the preview.
+    link.addEventListener('load', settle, { once: true })
+    link.addEventListener('error', settle, { once: true })
+    link.href = href
+  })
 }
 
 const preview: Preview = {
@@ -47,8 +63,8 @@ const preview: Preview = {
     layout: 'fullscreen',
   },
   loaders: [
-    (context) => {
-      applyAppGlobals(context.title)
+    async (context) => {
+      await applyAppGlobals(context.title)
       return {}
     },
     fixturesLoader,
