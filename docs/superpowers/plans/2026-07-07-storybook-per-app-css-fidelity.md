@@ -13,6 +13,15 @@ See LICENSE in the project root for details.
 
 **Architecture:** `preview.ts` imports each global stylesheet via Vite `?raw`, and a loader injects one `<style id="sb-app-globals">` per story = `base + tokens + appCssFor(title)`, resolved by the story title's first segment. The merged `storybook-base.css` cat step and its `preview-head.html` link are removed.
 
+> **Implementation note (as-built).** The `?raw` import mechanism in Task 1 was abandoned
+> because oxlint's type-aware pass can't resolve Vite's `*?raw` ambient module (`TS2307`) and
+> the lint config is hook-protected. As shipped, `storybook:prepare` instead generates one
+> static `public/storybook-<area>.css` per app (base+tokens+app) plus `storybook-shared.css`,
+> and the preview loader swaps a single `<link id="sb-app-globals">` per story (keyed by
+> `appAreaFor`), **awaiting the sheet's `load` before render** so screenshots capture the
+> styled state. Same per-app fidelity; no typed CSS imports. Commits: `f2ec66c6d`,
+> `b7f5b2fd7`, `82b967681`.
+
 **Tech Stack:** Storybook 9 (`@storybook/svelte-vite`, Vite builder); TypeScript (`.js` import extensions); Bun test runner; `bun shoot` (Playwright) screenshots.
 
 **Spec:** [`docs/superpowers/specs/2026-07-07-storybook-per-app-css-fidelity-design.md`](../specs/2026-07-07-storybook-per-app-css-fidelity-design.md)

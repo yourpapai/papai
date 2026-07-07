@@ -34,6 +34,19 @@ cat client/shared/base.css client/shared/tokens.css client/admin/admin.css \
 
 Each story loads **base + tokens + only its own app's CSS**, reproducing the real app's per-page composition.
 
+> **Implementation note (mechanism revised during build).** The `?raw` inline-import
+> approach below proved unworkable: oxlint's type-aware pass reports `TS2307` for Vite's
+> `*?raw` wildcard ambient module (tsc resolves it, oxlint does not), and the lint config is
+> hook-protected so it cannot be scoped off. The shipped mechanism keeps the same per-app
+> composition but delivers it via **static per-app stylesheets + a `<link>` swap** instead of
+> inline `?raw` strings: `storybook:prepare` generates `public/storybook-<area>.css`
+> (base+tokens+app) plus `storybook-shared.css` (base+tokens); the preview loader points a
+> single `<link id="sb-app-globals">` at the story's own sheet, keyed by title prefix
+> (`appAreaFor`), and **awaits the stylesheet's `load` event** before render so screenshots
+> capture the styled state. No typed CSS imports, so no oxlint friction; the fidelity
+> guarantee (each story sees only its own app's globals) is unchanged. §3.1–§3.3 describe the
+> original intent; the per-app-`<link>` mechanism is the implemented one.
+
 ### 3.1 Source-of-truth imports (`preview.ts`)
 
 Import each global stylesheet as a raw string via Vite's native `?raw` (plain CSS, no `@import`, no PostCSS needed — `?raw` yields the exact source):
