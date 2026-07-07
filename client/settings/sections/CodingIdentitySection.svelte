@@ -118,12 +118,22 @@
 
     <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void save() }}>
       <Field label="Policy">
-        <Select value={policyKind} options={POLICY_OPTIONS} onChange={onPolicyChange} testid="coding-identity-policy" />
+        <Select
+          value={policyKind}
+          options={POLICY_OPTIONS}
+          onChange={onPolicyChange}
+          disabled={saving}
+          testid="coding-identity-policy" />
       </Field>
 
       {#if policyKind === 'designated'}
         <Field label="Member" error={designatedEmpty ? 'Add a group member to use the Designated policy.' : undefined}>
-          <Select value={designatedUserId} options={memberOptions} onChange={onMemberChange} testid="coding-identity-member" />
+          <Select
+            value={designatedUserId}
+            options={memberOptions}
+            onChange={onMemberChange}
+            disabled={saving}
+            testid="coding-identity-member" />
         </Field>
       {/if}
 

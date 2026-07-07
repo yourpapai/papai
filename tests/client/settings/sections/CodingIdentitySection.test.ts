@@ -227,4 +227,16 @@ describe('CodingIdentitySection', () => {
     expect(JSON.parse(capturedBody)).toMatchObject({ identity: 'shared', contextId: CTX })
     void unmount(component)
   })
+
+  test('disables the policy Select while a save is in flight', async () => {
+    setCsrfToken('t')
+    setMockFetch(route({ identity: identity('shared'), members: membersPayload([ALICE]), patch: 'never' }))
+    const { target, component } = render()
+    await drain()
+    submitForm(target)
+    flushSync()
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="coding-identity-policy"]')!
+    expect(sel.disabled).toBe(true)
+    void unmount(component)
+  })
 })
