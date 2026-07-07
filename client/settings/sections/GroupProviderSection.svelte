@@ -35,6 +35,7 @@
     loading = true
     try {
       const result = await fetchGroupTaskInstance(id)
+      if (id !== contextId) return
       data = result
       const currentId = result.taskInstanceId
       selected =
@@ -42,9 +43,9 @@
           ? currentId
           : (result.available[0]?.id ?? '')
     } catch (err) {
-      loadError = err
+      if (id === contextId) loadError = err
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 

@@ -10,6 +10,8 @@ import { flushSync, mount, unmount } from 'svelte'
 import { setCsrfToken } from '../../../../client/settings/fetchers.js'
 import GroupProviderSection from '../../../../client/settings/sections/GroupProviderSection.svelte'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
+import GroupProviderRaceFixture from './GroupProviderRaceFixture.svelte'
+import { raceState } from './section-race-harness.svelte.js'
 
 const json = (payload: unknown): Response =>
   new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -66,9 +68,28 @@ const neverResolvingPatchMock = (url: string, init: RequestInit): Promise<Respon
   return Promise.resolve(json(payload))
 }
 
+let resolveCtxA: ((r: Response) => void) | undefined
+
+const raceMock = (url: string): Promise<Response> => {
+  if (url.includes('contextId=ctxA')) {
+    return new Promise<Response>((resolve) => {
+      resolveCtxA = resolve
+    })
+  }
+  return Promise.resolve(
+    json({
+      contextId: 'ctxB',
+      taskInstanceId: 'kaneo-b',
+      available: [{ id: 'kaneo-b', type: 'kaneo', status: 'active' }],
+      canProvision: false,
+    }),
+  )
+}
+
 afterEach(() => {
   capturedPatchBody = undefined
   releasePendingPatch = undefined
+  resolveCtxA = undefined
   restoreFetch()
   setCsrfToken('')
 })
@@ -283,6 +304,33 @@ describe('GroupProviderSection', () => {
     flushSync()
     const sel = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
     expect(sel.disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('a slow load for a previous context does not overwrite the current context', async () => {
+    setMockFetch(raceMock)
+    raceState.contextId = 'ctxA'
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderRaceFixture, { target, props: {} })
+    // ctxA load is pending
+    await drain()
+    raceState.contextId = 'ctxB'
+    // ctxB loads fast and renders
+    await drain()
+    resolveCtxA?.(
+      json({
+        contextId: 'ctxA',
+        taskInstanceId: 'kaneo-a',
+        available: [{ id: 'kaneo-a', type: 'kaneo', status: 'active' }],
+        canProvision: false,
+      }),
+    )
+    // ctxA resolves late — guard must discard it
+    await drain()
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
+    expect(sel.value).toBe('kaneo-b')
+    raceState.contextId = ''
     void unmount(component)
   })
 })
