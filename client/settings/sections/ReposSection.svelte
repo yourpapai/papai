@@ -46,11 +46,12 @@
     loading = true
     try {
       const data = await fetchRepos(id)
+      if (id !== contextId) return
       repos = data.repos
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) error = err instanceof Error ? err.message : String(err)
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
