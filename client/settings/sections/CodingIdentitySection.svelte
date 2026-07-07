@@ -5,7 +5,12 @@
 
 <script lang="ts">
   import Btn from '../../shared/ui/Btn.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
+  import Field from '../../shared/ui/Field.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Select from '../../shared/ui/Select.svelte'
+  import { formatFetchError } from '../../shared/format-error.js'
+  import type { GroupMembersResponse } from '../fetcher-schemas.js'
   import { fetchGroupCodingIdentity, fetchGroupMembers, patchGroupCodingIdentity } from '../fetchers.js'
 
   interface Props {
@@ -15,6 +20,13 @@
   let { contextId }: Props = $props()
 
   type PolicyKind = 'initiator' | 'shared' | 'designated'
+  type Member = GroupMembersResponse['members'][number]
+
+  const POLICY_OPTIONS = [
+    { value: 'initiator', label: "Initiator — each user's own credentials" },
+    { value: 'shared', label: 'Shared — group vault credentials' },
+    { value: 'designated', label: "Designated — a specific member's credentials" },
+  ]
 
   /** Parse the raw identity string into a policy kind + optional designated userId. */
   function parseIdentity(identity: string): { kind: PolicyKind; designatedUserId: string } {
@@ -27,62 +39,62 @@
 
   let policyKind = $state<PolicyKind>('initiator')
   let designatedUserId = $state('')
-  let members = $state<Array<{ user_id: string; added_by: string; added_at: string }>>([])
+  let members = $state<Member[]>([])
   let loading = $state(false)
-  let mutating = $state(false)
-  let error: string | null = $state(null)
+  let saving = $state(false)
+  let loaded = $state(false)
+  let loadError: unknown = $state(null)
+  let saveError: unknown = $state(null)
+  let status: string | null = $state(null)
 
-  function messageFrom(err: unknown): string {
-    return err instanceof Error ? err.message : String(err)
-  }
+  const memberOptions = $derived(members.map((m) => ({ value: m.user_id, label: m.user_label ?? m.user_id })))
+  const designatedEmpty = $derived(policyKind === 'designated' && designatedUserId === '')
 
   async function load(id: string): Promise<void> {
-    error = null
+    loadError = null
     loading = true
     try {
-      const [identityResult, membersResult] = await Promise.all([
-        fetchGroupCodingIdentity(id),
-        fetchGroupMembers(id),
-      ])
-      if (id !== contextId) return
+      const [identityResult, membersResult] = await Promise.all([fetchGroupCodingIdentity(id), fetchGroupMembers(id)])
       const parsed = parseIdentity(identityResult.identity)
       policyKind = parsed.kind
       designatedUserId = parsed.designatedUserId || (membersResult.members[0]?.user_id ?? '')
       members = membersResult.members
+      loaded = true
     } catch (err) {
-      if (id === contextId) {
-        error = messageFrom(err)
-      }
+      loadError = err
     } finally {
-      if (id === contextId) loading = false
+      loading = false
     }
   }
 
   async function save(): Promise<void> {
-    error = null
-    mutating = true
+    saveError = null
+    status = null
+    if (designatedEmpty) return
+    saving = true
     try {
       const identity = policyKind === 'designated' ? `designated:${designatedUserId}` : policyKind
       await patchGroupCodingIdentity({ contextId, identity })
       await load(contextId)
+      status = 'Saved.'
     } catch (err) {
-      error = messageFrom(err)
+      saveError = err
     } finally {
-      mutating = false
+      saving = false
     }
   }
 
-  function onPolicyChange(e: Event): void {
-    policyKind = (e.currentTarget as HTMLSelectElement).value as PolicyKind
-    if (policyKind !== 'designated') {
-      designatedUserId = ''
-    } else {
-      designatedUserId = members[0]?.user_id ?? ''
-    }
+  function onPolicyChange(value: string): void {
+    policyKind = value as PolicyKind
+    status = null
+    saveError = null
+    designatedUserId = policyKind === 'designated' ? (members[0]?.user_id ?? '') : ''
   }
 
-  function onMemberChange(e: Event): void {
-    designatedUserId = (e.currentTarget as HTMLSelectElement).value
+  function onMemberChange(value: string): void {
+    designatedUserId = value
+    status = null
+    saveError = null
   }
 
   $effect(() => {
@@ -91,80 +103,44 @@
 </script>
 
 <section id="coding-identity" class="settings-section">
-  <PageHeader eyebrow="Group" title="Coding session identity">
-    {#snippet action()}
-      <Btn
-        variant="primary"
-        size="sm"
-        disabled={loading || mutating}
-        testid="coding-identity-save"
-        onClick={() => void save()}>
-        {#snippet children()}Save{/snippet}
-      </Btn>
-    {/snippet}
-  </PageHeader>
+  <PageHeader eyebrow="Group" title="Coding session identity" />
 
-  {#if error !== null}<p class="status-error" data-testid="coding-identity-error">{error}</p>{/if}
-
-  <div class="coding-identity__controls">
-    <label class="t-label" for="coding-identity-policy">Policy</label>
-    <select
-      id="coding-identity-policy"
-      data-testid="coding-identity-policy"
-      disabled={loading || mutating}
-      value={policyKind}
-      onchange={onPolicyChange}>
-      <option value="initiator">Initiator — each user's own credentials</option>
-      <option value="shared">Shared — group vault credentials</option>
-      <option value="designated">Designated — a specific member's credentials</option>
-    </select>
-
-    {#if policyKind === 'designated'}
-      <label class="t-label" for="coding-identity-member">Member</label>
-      <select
-        id="coding-identity-member"
-        data-testid="coding-identity-member"
-        disabled={loading || mutating}
-        value={designatedUserId}
-        onchange={onMemberChange}>
-        {#each members as member (member.user_id)}
-          <option value={member.user_id}>{member.user_id}</option>
-        {/each}
-      </select>
+  {#if loadError !== null}
+    <ErrorState message={formatFetchError(loadError)} onRetry={() => void load(contextId)} />
+  {:else if loading && !loaded}
+    <p class="placeholder">Loading…</p>
+  {:else}
+    {#if status !== null}<p class="status-success">{status}</p>{/if}
+    {#if saveError !== null}
+      <p class="status-error" role="alert" data-testid="coding-identity-error">{formatFetchError(saveError)}</p>
     {/if}
-  </div>
 
-  <p class="settings-section__caption">
-    Controls whose coding credentials (AI provider key, code host token, agent) are used for sessions started in this
-    group. <strong>Initiator</strong> (default): the user who runs
-    <code>/acp start</code> must have their own credentials configured. <strong>Shared</strong>: the group vault is
-    used for everyone. <strong>Designated</strong>: a specific member's credentials are always used.
-  </p>
+    <form class="settings-form" onsubmit={(event) => { event.preventDefault(); void save() }}>
+      <Field label="Policy">
+        <Select value={policyKind} options={POLICY_OPTIONS} onChange={onPolicyChange} testid="coding-identity-policy" />
+      </Field>
+
+      {#if policyKind === 'designated'}
+        <Field label="Member" error={designatedEmpty ? 'Add a group member to use the Designated policy.' : undefined}>
+          <Select value={designatedUserId} options={memberOptions} onChange={onMemberChange} testid="coding-identity-member" />
+        </Field>
+      {/if}
+
+      <Btn variant="primary" type="submit" disabled={saving || designatedEmpty} busy={saving} testid="coding-identity-save">
+        {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
+      </Btn>
+    </form>
+
+    <p class="settings-section__caption">
+      Controls whose coding credentials (AI provider key, code host token, agent) are used for sessions started in this
+      group. <strong>Initiator</strong> (default): the user who runs
+      <code>/acp start</code> must have their own credentials configured. <strong>Shared</strong>: the group vault is
+      used for everyone. <strong>Designated</strong>: a specific member's credentials are always used.
+    </p>
+  {/if}
 </section>
 
 <style>
-  .coding-identity__controls {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  select {
-    font-size: 13px;
-    padding: 5px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg2);
-    color: var(--text);
-    width: 100%;
-    max-width: 360px;
-  }
-
-  select:disabled {
-    opacity: 0.6;
-  }
-
   .settings-section__caption {
     margin: 0;
     font-size: 12px;
