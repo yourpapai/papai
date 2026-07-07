@@ -364,6 +364,14 @@ const createNeverResolvingPlatformCreateMock = (): ((url: string, init?: Request
   }
 }
 
+const createNeverResolvingTaskCreateMock = (): ((url: string, init?: RequestInit) => Promise<Response>) => {
+  return (url, init) => {
+    const method = requestMethod(init)
+    if (method === 'POST' && url.includes('/admin/task-instances')) return new Promise<Response>(() => {})
+    return Promise.resolve(baseInstances(url) ?? json({}))
+  }
+}
+
 const createDeferredApplyMock =
   (applyPromise: Promise<Response>) =>
   (url: string, init?: RequestInit): Promise<Response> => {
@@ -748,7 +756,7 @@ describe('AdminInstancesSection', () => {
     void unmount(component)
   })
 
-  test('disables the platform-type Select while a platform create is in flight', async () => {
+  test('disables the platform-type Select and Create button while a platform create is in flight', async () => {
     setCsrfToken('c')
     setMockFetch(createNeverResolvingPlatformCreateMock())
     document.body.innerHTML = '<div id="root"></div>'
@@ -763,6 +771,34 @@ describe('AdminInstancesSection', () => {
     flushSync()
     const sel = target.querySelector<HTMLSelectElement>('[data-testid="platform-create-card"] select')!
     expect(sel.disabled).toBe(true)
+    const createBtn = target.querySelector<HTMLButtonElement>('[data-testid="platform-create"]')!
+    expect(createBtn.disabled).toBe(true)
+    // Independent flags: the task-create form's Select must remain enabled.
+    const taskSel = target.querySelector<HTMLSelectElement>('[data-testid="task-create-card"] select')!
+    expect(taskSel.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('disables the task-type Select and Create button while a task create is in flight', async () => {
+    setCsrfToken('c')
+    setMockFetch(createNeverResolvingTaskCreateMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const taskIdInput = target.querySelector<HTMLInputElement>('[data-testid="task-id"]')!
+    taskIdInput.value = 'new-kaneo'
+    taskIdInput.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    taskIdInput.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    flushSync()
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="task-create-card"] select')!
+    expect(sel.disabled).toBe(true)
+    const createBtn = target.querySelector<HTMLButtonElement>('[data-testid="task-create"]')!
+    expect(createBtn.disabled).toBe(true)
+    // Independent flags: the platform-create form's Select must remain enabled.
+    const platformSel = target.querySelector<HTMLSelectElement>('[data-testid="platform-create-card"] select')!
+    expect(platformSel.disabled).toBe(false)
     void unmount(component)
   })
 })

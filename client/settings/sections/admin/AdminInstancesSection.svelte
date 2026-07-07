@@ -56,7 +56,8 @@
   let stopping = $state(false)
   let stopError: string | null = $state(null)
 
-  let creating = $state(false)
+  let creatingPlatform = $state(false)
+  let creatingTask = $state(false)
 
   const selectedPlatformType = $derived(platformTypes.find((t) => t.type === platformType))
   const selectedTaskType = $derived(taskTypes.find((t) => t.type === taskType))
@@ -133,9 +134,10 @@
   }
 
   async function createPlatform(): Promise<void> {
+    if (creatingPlatform) return
     error = null
     status = null
-    creating = true
+    creatingPlatform = true
     try {
       const config = collectConfig(selectedPlatformType?.instanceConfigSchema ?? [], platformConfig)
       await createAdminPlatformInstance({ id: platformId.trim(), type: platformType, config })
@@ -146,14 +148,15 @@
     } catch (err) {
       setErr(err)
     } finally {
-      creating = false
+      creatingPlatform = false
     }
   }
 
   async function createTask(): Promise<void> {
+    if (creatingTask) return
     error = null
     status = null
-    creating = true
+    creatingTask = true
     try {
       const config = collectConfig(selectedTaskType?.instanceConfigSchema ?? [], taskConfig)
       await createAdminTaskInstance({ id: taskId.trim(), type: taskType, config })
@@ -164,7 +167,7 @@
     } catch (err) {
       setErr(err)
     } finally {
-      creating = false
+      creatingTask = false
     }
   }
 
@@ -320,7 +323,7 @@
             value={platformType}
             options={platformTypes.map((t) => ({ value: t.type, label: t.displayName }))}
             onChange={(v) => (platformType = v)}
-            disabled={creating} />
+            disabled={creatingPlatform} />
         {/snippet}
       </Field>
       {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
@@ -330,7 +333,7 @@
           {/snippet}
         </Field>
       {/each}
-      <Btn variant="primary" type="submit" testid="platform-create">
+      <Btn variant="primary" type="submit" disabled={creatingPlatform} busy={creatingPlatform} testid="platform-create">
         {#snippet children()}+ Create{/snippet}
       </Btn>
     </form>
@@ -378,7 +381,7 @@
             value={taskType}
             options={taskTypes.map((t) => ({ value: t.type, label: t.displayName }))}
             onChange={(v) => (taskType = v)}
-            disabled={creating} />
+            disabled={creatingTask} />
         {/snippet}
       </Field>
       {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
@@ -388,7 +391,7 @@
           {/snippet}
         </Field>
       {/each}
-      <Btn variant="primary" type="submit" testid="task-create">
+      <Btn variant="primary" type="submit" disabled={creatingTask} busy={creatingTask} testid="task-create">
         {#snippet children()}+ Create{/snippet}
       </Btn>
     </form>
