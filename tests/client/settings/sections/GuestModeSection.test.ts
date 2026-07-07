@@ -58,6 +58,19 @@ const getFailsThenOkMock = (): ((url: string, init: RequestInit) => Promise<Resp
   }
 }
 
+/** Initial GET ok, PATCH ok, but the post-toggle reload GET fails with a 500. */
+const getOkThenPatchOkThenReloadFailsMock = (): ((url: string, init: RequestInit) => Promise<Response>) => {
+  let getCalls = 0
+  return (url, init) => {
+    const isPatch = url.includes('/group/guest-mode') && init.method === 'PATCH'
+    if (isPatch) return Promise.resolve(json({ ok: true }))
+    getCalls += 1
+    return getCalls === 1
+      ? Promise.resolve(json(disabledPayload))
+      : Promise.resolve(new Response('Server Error', { status: 500 }))
+  }
+}
+
 afterEach(() => {
   capturedPatchBody = undefined
   restoreFetch()
@@ -202,6 +215,21 @@ describe('GuestModeSection', () => {
     await drain()
     expect(btn.textContent?.trim()).toBe('Enabling…')
     expect(btn.getAttribute('aria-busy')).toBe('true')
+    void unmount(component)
+  })
+
+  test('a failed post-toggle reload keeps the toggle, no full ErrorState takeover', async () => {
+    setCsrfToken('csrf-tok')
+    setMockFetch(getOkThenPatchOkThenReloadFailsMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GuestModeSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="guest-mode-toggle"]')!.click()
+    await drain()
+    await drain()
+    expect(target.querySelector('.ui-error')).toBeNull()
+    expect(target.querySelector('[data-testid="guest-mode-toggle"]')).not.toBeNull()
     void unmount(component)
   })
 

@@ -87,11 +87,12 @@
     <p class="status-error" data-testid="guest-mode-error">{formatFetchError(toggleError)}</p>
   {/if}
 
-  {#if error !== null}
+  {#if error !== null && enabled === null}
     <ErrorState message={formatFetchError(error)} onRetry={() => void load(contextId)} />
   {:else if loading && enabled === null}
     <p class="placeholder">Loading…</p>
   {:else}
+    {#if error !== null}<p class="status-error" role="alert">{formatFetchError(error)}</p>{/if}
     <p class="t-help">
       When on, anyone in this chat can use the bot, read-only. Members and admins are unaffected.
     </p>
