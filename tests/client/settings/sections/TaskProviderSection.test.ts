@@ -122,7 +122,31 @@ const routeNeverResolvingBindMock =
     return Promise.resolve(json({ contextId: 'user:1', fields: [] }))
   }
 
+let bindReloadInstanceGetCount = 0
+
+/**
+ * Route the context task-instance endpoint like routeBindingMock: PATCH succeeds,
+ * but the reload GET that follows a successful bind fails with a 500.
+ */
+const routeBindThenReloadFailMock =
+  () =>
+  (url: string, init?: RequestInit): Promise<Response> => {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const isInstance = url.includes('/settings/api/context/task-instance')
+    if (isInstance && method === 'PATCH') return Promise.resolve(json({ ok: true, contextId: 'user:1' }))
+    if (isInstance) {
+      bindReloadInstanceGetCount++
+      return Promise.resolve(
+        bindReloadInstanceGetCount === 1
+          ? json(unboundInstancePayload)
+          : new Response('Internal Server Error', { status: 500 }),
+      )
+    }
+    return Promise.resolve(json({ contextId: 'user:1', fields: [] }))
+  }
+
 afterEach(() => {
+  bindReloadInstanceGetCount = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -276,6 +300,23 @@ describe('TaskProviderSection', () => {
     expect(patched).not.toBeNull()
     expect(patched!.method).toBe('PATCH')
     expect(JSON.parse(patched!.body)).toEqual({ taskInstanceId: 'yt-default', contextId: 'user:1' })
+    void unmount(component)
+  })
+
+  test('a failed post-bind reload keeps the form, no full ErrorState takeover', async () => {
+    setCsrfToken('t')
+    setMockFetch(routeBindThenReloadFailMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(TaskProviderSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target
+      .querySelector<HTMLFormElement>('form.settings-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await drain()
+    await drain()
+    expect(target.querySelector('.ui-error')).toBeNull()
+    expect(target.querySelector('[data-testid="context-task-instance"]')).not.toBeNull()
     void unmount(component)
   })
 
