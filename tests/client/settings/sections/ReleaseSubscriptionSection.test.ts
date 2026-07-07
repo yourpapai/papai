@@ -35,6 +35,16 @@ const respondByMethod =
   (_url: string, init: RequestInit): Promise<Response> =>
     isPatch(init) ? onPatch() : onOther()
 
+/** Initial GET ok, PATCH ok, but the post-toggle reload GET fails with a 500. */
+const reloadFailureMock = (): ((url: string, init: RequestInit) => Promise<Response>) => {
+  let getCount = 0
+  return (_url, init) => {
+    if (isPatch(init)) return Promise.resolve(json({ ok: true }))
+    getCount++
+    return getCount === 1 ? Promise.resolve(json({ enabled: false })) : Promise.resolve(json({ error: 'boom' }, 500))
+  }
+}
+
 afterEach(() => {
   restoreFetch()
   setCsrfToken('')
@@ -109,6 +119,19 @@ describe('ReleaseSubscriptionSection', () => {
     const alert = target.querySelector('[data-testid="release-subscription-error"]')
     expect(alert).not.toBeNull()
     expect(alert!.getAttribute('role')).toBe('alert')
+    expect(target.querySelector('[data-testid="release-subscription-toggle"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a failed post-toggle reload keeps the toggle, no full ErrorState takeover', async () => {
+    setCsrfToken('t')
+    setMockFetch(reloadFailureMock())
+    const { target, component } = render()
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="release-subscription-toggle"]')!.click()
+    await drain()
+    await drain()
+    expect(target.querySelector('.ui-error')).toBeNull()
     expect(target.querySelector('[data-testid="release-subscription-toggle"]')).not.toBeNull()
     void unmount(component)
   })

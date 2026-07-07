@@ -59,7 +59,7 @@
 
   const idleLabel = $derived(enabled ? 'Unsubscribe' : 'Subscribe')
   const busyLabel = $derived(enabled ? 'Unsubscribing…' : 'Subscribing…')
-  const showToggle = $derived(enabled !== null && loadError === null)
+  const showToggle = $derived(enabled !== null)
 
   $effect(() => {
     void load(contextId)
@@ -82,11 +82,12 @@
     {/snippet}
   </PageHeader>
 
-  {#if loadError !== null}
+  {#if loadError !== null && enabled === null}
     <ErrorState title="Couldn't load subscription" message={loadError} onRetry={() => void load(contextId)} />
   {:else if enabled === null}
     <p class="placeholder">Loading…</p>
   {:else}
+    {#if loadError !== null}<p class="status-error" role="alert">{loadError}</p>{/if}
     <p class="settings-section__caption">
       {#if scope === 'group'}
         When on, this group receives a message whenever a new bot version ships. Only future releases — past ones are
