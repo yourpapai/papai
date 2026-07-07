@@ -101,13 +101,14 @@
     pendingClear = false
     try {
       const res = await fetchToolsFn(id)
+      if (id !== contextId) return
       domains = res.domains
       activePreset = res.activePreset
       storedDefaults = res.hasStoredDefaults
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) error = err instanceof Error ? err.message : String(err)
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
