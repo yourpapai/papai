@@ -16,9 +16,10 @@
     options: Option[]
     onChange?: (value: string) => void
     testid?: string
+    disabled?: boolean
   }
 
-  let { value, options, onChange, testid }: Props = $props()
+  let { value, options, onChange, testid, disabled = false }: Props = $props()
 
   const labelId = getFieldLabelId()
 
@@ -27,8 +28,8 @@
   }
 </script>
 
-<div class="ui-select">
-  <select {value} onchange={handleChange} aria-labelledby={labelId} data-testid={testid}>
+<div class="ui-select" class:ui-select--disabled={disabled}>
+  <select {value} {disabled} onchange={handleChange} aria-labelledby={labelId} data-testid={testid}>
     {#each options as opt (opt.value)}
       <option value={opt.value}>{opt.label}</option>
     {/each}
@@ -65,5 +66,9 @@
     color: var(--fg3);
     font-size: 10px;
     pointer-events: none;
+  }
+  .ui-select--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

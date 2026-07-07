@@ -80,4 +80,25 @@ describe('Select.svelte', () => {
     expect(last).toBe('7d')
     void unmount(component)
   })
+
+  test('applies the disabled attribute and disabled class when disabled', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Select, {
+      target,
+      props: {
+        value: 'a',
+        options: [
+          { value: 'a', label: 'A' },
+          { value: 'b', label: 'B' },
+        ],
+        disabled: true,
+        testid: 'sel',
+      },
+    })
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="sel"]')!
+    expect(sel.disabled).toBe(true)
+    expect(target.querySelector('.ui-select--disabled')).not.toBeNull()
+    void unmount(component)
+  })
 })
