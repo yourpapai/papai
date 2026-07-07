@@ -80,6 +80,22 @@ describe('acp start_session tool', () => {
     expect(rec['transcriptUrl']).toBe('https://papai.example/t/tok_z')
   })
 
+  test('prNumber forwarded to POST /sessions body and recorded', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 's-pr', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    await tools
+      .get('start_session')!
+      .execute({ project: 'demo', prompt: 'review it', prNumber: 42 }, runtimeCtxWithKv(store), options())
+    expect(asRecord(capturedBody)['prNumber']).toBe(42)
+    const rec = readStoredRecord(store, 's-pr')
+    expect(rec['prNumber']).toBe(42)
+  })
+
   test('explicit agent forwarded', async () => {
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (_url, init) => {

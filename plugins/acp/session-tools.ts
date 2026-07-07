@@ -29,10 +29,46 @@ const DEFAULT_AGENT = 'claude-code-acp'
 const SESSION_FILTERS = ['new', 'active', 'waiting', 'review', 'done']
 const DEFAULT_FINISH_MESSAGE = 'Apply changes from magi coding session'
 
+type StartSessionAccess =
+  | { error: string; message: string }
+  | { secrets: Record<string, string>; forgeToken: string | null; resolvedAgent: string }
+
+function resolveStartSessionAccess(
+  repo: { repoUrl: string },
+  codingSecrets: RuntimeContext['codingSecrets'],
+  prNumber: number | null,
+): StartSessionAccess {
+  const secrets = codingSecrets.resolve()
+  if (secrets === null)
+    return {
+      error: 'not_configured',
+      message:
+        "You haven't set up your coding credentials. DM me and open settings → Coding sessions to configure your AI provider key (and code host).",
+    }
+  const forgeToken = codingSecrets.resolveForgeToken()
+  const resolvedAgent = codingSecrets.resolveAgent() ?? 'claude'
+  if (codingSecrets.resolveForge() === null && !canDeriveForge(repo.repoUrl))
+    return {
+      error: 'not_configured',
+      message:
+        'This repository is on a self-hosted code host. Open settings → Coding sessions and set your Code host (kind, instance URL, and token) before starting a session.',
+    }
+  if (prNumber !== null && forgeToken === null)
+    return {
+      error: 'not_configured',
+      message:
+        "You haven't connected your code host. DM me and open settings → Coding sessions to add your code host token before starting a session on a PR.",
+    }
+  return { secrets, forgeToken, resolvedAgent }
+}
+
 export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'start_session',
-    description: 'Start a sandboxed coding-agent session on a configured project.',
+    description:
+      'Start a sandboxed coding-agent session on a configured project. Pass prNumber to start on an ' +
+      'existing PR/MR (to review it or work on its branch); the project permission policy decides whether ' +
+      'the agent can edit and push back.',
     inputSchema: startSessionSchema,
     execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
       const cfg = readMagiConfig(runtimeContext.adminConfig)
@@ -40,6 +76,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       const args = asObject(input)
       const project = asString(args, 'project')
       const prompt = asString(args, 'prompt')
+      const prNumber = asPositiveInt(args, 'prNumber')
       if (project === null || prompt === null)
         return { error: 'invalid_input', message: 'project and prompt are required' }
       const repo = runtimeContext.codingRepos.get(project)
@@ -48,22 +85,10 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
           error: 'not_found',
           message: `No repository named "${project}". Add it in settings → Repositories.`,
         }
-      const secrets = runtimeContext.codingSecrets.resolve()
-      if (secrets === null)
-        return {
-          error: 'not_configured',
-          message:
-            "You haven't set up your coding credentials. DM me and open settings → Coding sessions to configure your AI provider key (and code host).",
-        }
-      const forgeToken = runtimeContext.codingSecrets.resolveForgeToken()
       const agent = optionalString(args, 'agent') ?? DEFAULT_AGENT
-      const resolvedAgent = runtimeContext.codingSecrets.resolveAgent() ?? 'claude'
-      if (runtimeContext.codingSecrets.resolveForge() === null && !canDeriveForge(repo.repoUrl))
-        return {
-          error: 'not_configured',
-          message:
-            'This repository is on a self-hosted code host. Open settings → Coding sessions and set your Code host (kind, instance URL, and token) before starting a session.',
-        }
+      const access = resolveStartSessionAccess(repo, runtimeContext.codingSecrets, prNumber)
+      if ('error' in access) return access
+      const { secrets, forgeToken, resolvedAgent } = access
       const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets)
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         agent,
@@ -71,9 +96,10 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         prompt,
         secrets,
         ...(forgeToken === null ? {} : { forgeToken }),
+        ...(prNumber === null ? {} : { prNumber }),
         projectSpec,
       })
-      recordStartedSession(runtimeContext, result, project, prompt)
+      recordStartedSession(runtimeContext, result, project, prompt, prNumber ?? undefined)
       return result
     },
   }

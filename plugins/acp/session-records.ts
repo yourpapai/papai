@@ -13,13 +13,15 @@ export function recordStartedSession(
   result: unknown,
   project: string,
   prompt: string,
+  prNumber?: number,
 ): void {
   const id = sessionIdOf(result)
   if (id !== null)
     writeRecord(runtimeContext.kv, id, {
       project,
-      title: deriveTitle(prompt),
+      title: prNumber === undefined ? deriveTitle(prompt) : `PR #${prNumber}: ${deriveTitle(prompt)}`,
       createdAt: new Date().toISOString(),
+      ...(prNumber === undefined ? {} : { prNumber }),
       ...shareFieldsOf(result),
     })
 }

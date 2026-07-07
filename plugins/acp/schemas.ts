@@ -11,6 +11,10 @@ export const startSessionSchema = {
     project: { type: 'string', description: 'Project name to run the session against.' },
     prompt: { type: 'string', description: 'Task prompt for the coding agent.' },
     agent: { type: 'string', description: 'Agent identifier to use (defaults to claude-code-acp).' },
+    prNumber: {
+      type: 'integer',
+      description: 'Optional existing PR/MR number to start the session on (review or edit its branch).',
+    },
   },
   required: ['project', 'prompt'],
   additionalProperties: false,
