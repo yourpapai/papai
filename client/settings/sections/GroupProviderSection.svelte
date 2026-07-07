@@ -92,6 +92,7 @@
             value={selected}
             options={data.available.map((o) => ({ value: o.id, label: `${o.name ?? o.id} (${o.type} · ${o.status})` }))}
             onChange={(v) => (selected = v)}
+            disabled={saving}
             testid="group-task-instance" />
         </Field>
         <Btn variant="primary" type="submit" disabled={saving} busy={saving} testid="group-task-instance-save">

@@ -61,6 +61,11 @@ const pendingPatchMock = (url: string, init: RequestInit): Promise<Response> => 
   return Promise.resolve(json(payload))
 }
 
+const neverResolvingPatchMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/group/task-instance') && init.method === 'PATCH') return new Promise<Response>(() => {})
+  return Promise.resolve(json(payload))
+}
+
 afterEach(() => {
   capturedPatchBody = undefined
   releasePendingPatch = undefined
@@ -262,6 +267,22 @@ describe('GroupProviderSection', () => {
     expect(labelledby).toBeTruthy()
     const label = target.querySelector(`#${labelledby}`)
     expect(label?.textContent).toContain('Task instance')
+    void unmount(component)
+  })
+
+  test('disables the task-instance Select while a save is in flight', async () => {
+    setCsrfToken('t')
+    setMockFetch(neverResolvingPatchMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target
+      .querySelector<HTMLFormElement>('form.settings-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    flushSync()
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
+    expect(sel.disabled).toBe(true)
     void unmount(component)
   })
 })
