@@ -35,7 +35,7 @@
     actionError = null
     try {
       const result = scope === 'group' ? await fetchGroupReleaseSubscription(id) : await fetchReleaseSubscription()
-      if (scope === 'group' && id !== contextId) return
+      if (id !== contextId) return
       enabled = result.enabled
     } catch (err) {
       if (id === contextId) loadError = messageFrom(err)
