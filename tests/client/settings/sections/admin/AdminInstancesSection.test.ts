@@ -356,6 +356,14 @@ const baseInstances = (url: string): Response | null => {
   return null
 }
 
+const createNeverResolvingPlatformCreateMock = (): ((url: string, init?: RequestInit) => Promise<Response>) => {
+  return (url, init) => {
+    const method = requestMethod(init)
+    if (method === 'POST' && url.includes('/admin/platform-instances')) return new Promise<Response>(() => {})
+    return Promise.resolve(baseInstances(url) ?? json({}))
+  }
+}
+
 const createDeferredApplyMock =
   (applyPromise: Promise<Response>) =>
   (url: string, init?: RequestInit): Promise<Response> => {
@@ -737,6 +745,24 @@ describe('AdminInstancesSection', () => {
     applyBtn!.click()
     await drain()
     expect(applyPostSeen).toBe(true)
+    void unmount(component)
+  })
+
+  test('disables the platform-type Select while a platform create is in flight', async () => {
+    setCsrfToken('c')
+    setMockFetch(createNeverResolvingPlatformCreateMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const platformIdInput = target.querySelector<HTMLInputElement>('[data-testid="platform-id"]')!
+    platformIdInput.value = 'new-tg'
+    platformIdInput.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    platformIdInput.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    flushSync()
+    const sel = target.querySelector<HTMLSelectElement>('[data-testid="platform-create-card"] select')!
+    expect(sel.disabled).toBe(true)
     void unmount(component)
   })
 })

@@ -56,6 +56,8 @@
   let stopping = $state(false)
   let stopError: string | null = $state(null)
 
+  let creating = $state(false)
+
   const selectedPlatformType = $derived(platformTypes.find((t) => t.type === platformType))
   const selectedTaskType = $derived(taskTypes.find((t) => t.type === taskType))
 
@@ -133,6 +135,7 @@
   async function createPlatform(): Promise<void> {
     error = null
     status = null
+    creating = true
     try {
       const config = collectConfig(selectedPlatformType?.instanceConfigSchema ?? [], platformConfig)
       await createAdminPlatformInstance({ id: platformId.trim(), type: platformType, config })
@@ -142,12 +145,15 @@
       status = 'Platform instance created.'
     } catch (err) {
       setErr(err)
+    } finally {
+      creating = false
     }
   }
 
   async function createTask(): Promise<void> {
     error = null
     status = null
+    creating = true
     try {
       const config = collectConfig(selectedTaskType?.instanceConfigSchema ?? [], taskConfig)
       await createAdminTaskInstance({ id: taskId.trim(), type: taskType, config })
@@ -157,6 +163,8 @@
       status = 'Task instance created.'
     } catch (err) {
       setErr(err)
+    } finally {
+      creating = false
     }
   }
 
@@ -308,7 +316,11 @@
       </Field>
       <Field label="Type">
         {#snippet children()}
-          <Select value={platformType} options={platformTypes.map((t) => ({ value: t.type, label: t.displayName }))} onChange={(v) => (platformType = v)} />
+          <Select
+            value={platformType}
+            options={platformTypes.map((t) => ({ value: t.type, label: t.displayName }))}
+            onChange={(v) => (platformType = v)}
+            disabled={creating} />
         {/snippet}
       </Field>
       {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
@@ -362,7 +374,11 @@
       </Field>
       <Field label="Type">
         {#snippet children()}
-          <Select value={taskType} options={taskTypes.map((t) => ({ value: t.type, label: t.displayName }))} onChange={(v) => (taskType = v)} />
+          <Select
+            value={taskType}
+            options={taskTypes.map((t) => ({ value: t.type, label: t.displayName }))}
+            onChange={(v) => (taskType = v)}
+            disabled={creating} />
         {/snippet}
       </Field>
       {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
