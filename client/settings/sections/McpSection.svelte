@@ -75,13 +75,16 @@
     loading = true
     try {
       const data = await fetchMcp(id)
+      if (id !== contextId) return
       rows = data.endpoints.map(toEndpointState)
       initialLoad = false
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-      initialLoad = false
+      if (id === contextId) {
+        error = err instanceof Error ? err.message : String(err)
+        initialLoad = false
+      }
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
