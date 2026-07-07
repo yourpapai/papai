@@ -29,11 +29,13 @@
     loading = true
     try {
       const res = await settingsFetch(`/settings/api/kaneo/credentials?contextId=${encodeURIComponent(id)}`)
+      if (id !== contextId) return
       if (res.status === 404) {
         notProvisioned = true
         return
       }
       const body = await readBody(res)
+      if (id !== contextId) return
       if (!res.ok) {
         const msg = typeof body === 'object' && body !== null && 'error' in body ? String((body as { error: unknown }).error) : `request failed with status ${res.status}`
         error = msg
@@ -41,9 +43,9 @@
       }
       credentials = KaneoCredentialsSchema.parse(body)
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : String(e)
+      if (id === contextId) error = e instanceof Error ? e.message : String(e)
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
