@@ -5,4 +5,6 @@
 
 // A settable, reactive contextId used by race-test fixtures to simulate the
 // top-bar context switcher changing contexts on a live-mounted section.
+// Reusable across per-section race fixtures: add one field here per section
+// that needs a reactive-contextId race test.
 export const raceState = $state<{ contextId: string }>({ contextId: '' })

@@ -90,6 +90,7 @@ afterEach(() => {
   capturedPatchBody = undefined
   releasePendingPatch = undefined
   resolveCtxA = undefined
+  raceState.contextId = ''
   restoreFetch()
   setCsrfToken('')
 })
@@ -330,7 +331,6 @@ describe('GroupProviderSection', () => {
     await drain()
     const sel = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
     expect(sel.value).toBe('kaneo-b')
-    raceState.contextId = ''
     void unmount(component)
   })
 })
