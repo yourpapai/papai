@@ -85,8 +85,11 @@ const ALICE = {
 }
 const BOB = { user_id: 'u2', added_by: 'u1', added_at: '2026-05-02T00:00:00Z', user_label: null, added_by_label: null }
 
+// 30 microtask ticks drain the async load, and the save path's PATCH + reload
+// round-trip (each through fetch → Response.json → Zod.parse), which empirically
+// needs ~16 ticks; 30 leaves comfortable headroom without being wall-clock-based.
 const drain = async (): Promise<void> => {
-  for (let i = 0; i < 10; i++) await Promise.resolve()
+  for (let i = 0; i < 30; i++) await Promise.resolve()
   flushSync()
 }
 
@@ -110,16 +113,19 @@ const route = (opts: {
   patch?: Response | 'never'
 }): ((url: string, init: RequestInit) => Promise<Response>) => {
   let identityCall = 0
+  // .clone() each Response: save()'s PATCH-then-reload reads the same fixture Response
+  // twice, and a Response body can only be read once ("Body has already been used").
   return (url, init) => {
     if ((init.method ?? 'GET').toUpperCase() === 'PATCH') {
       if (opts.patch === 'never') return new Promise<Response>(() => {})
-      return Promise.resolve(opts.patch ?? json({}))
+      return Promise.resolve((opts.patch ?? json({})).clone())
     }
     if (url.includes('/coding-identity')) {
-      if (opts.identitySeq) return Promise.resolve(opts.identitySeq[identityCall++] ?? opts.identitySeq.at(-1)!)
-      return Promise.resolve(opts.identity ?? identity('shared'))
+      if (opts.identitySeq)
+        return Promise.resolve((opts.identitySeq[identityCall++] ?? opts.identitySeq.at(-1)!).clone())
+      return Promise.resolve((opts.identity ?? identity('shared')).clone())
     }
-    if (url.includes('/members')) return Promise.resolve(opts.members ?? membersPayload([ALICE]))
+    if (url.includes('/members')) return Promise.resolve((opts.members ?? membersPayload([ALICE])).clone())
     return Promise.resolve(json({}, 404))
   }
 }
@@ -235,7 +241,13 @@ describe('CodingIdentitySection', () => {
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `bun test tests/client/settings/sections/CodingIdentitySection.test.ts`
+Run (client tests are excluded from default discovery and need the happy-dom/browser
+preload — a plain `bun test <path>` will report "did not match any test files"):
+
+```bash
+bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/settings/sections/CodingIdentitySection.test.ts
+```
+
 Expected: FAIL. The current component renders no `.placeholder` while loading, uses a raw
 `<select>` (no `.ui-select`), shows raw ids, renders no `.ui-error`/`error-retry`, has a
 static "Save" label, and no `.status-success` — so most or all of the 8 tests fail.
@@ -410,7 +422,12 @@ Overwrite `client/settings/sections/CodingIdentitySection.svelte` with exactly:
 
 - [ ] **Step 2: Run the component tests to verify they pass**
 
-Run: `bun test tests/client/settings/sections/CodingIdentitySection.test.ts`
+Run:
+
+```bash
+bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/settings/sections/CodingIdentitySection.test.ts
+```
+
 Expected: PASS — all 8 tests green.
 
 - [ ] **Step 3: Typecheck**
@@ -522,7 +539,7 @@ Expected: pre-commit `check` passes (fixture + spec are lint/format/license clea
 
 - [ ] **Step 1: Run the full settings section test suite**
 
-Run: `bun test tests/client/settings/sections/`
+Run: `bun run test:client`
 Expected: PASS, including the new `CodingIdentitySection.test.ts` and the untouched sibling
 tests (e.g. `ReleaseSubscriptionSection`, `ProfileSection`).
 
