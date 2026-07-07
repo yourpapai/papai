@@ -38,7 +38,6 @@ const log = logger.child({ scope: 'llm-orchestrator:tools' })
 const ACP_SESSION_ACTION_TOOLS = new Set([
   'plugin_acp__start_session',
   'plugin_acp__continue_session',
-  'plugin_acp__review_pr',
   'plugin_acp__finish_session',
   'plugin_acp__cancel_session',
   'plugin_acp__answer_permission',
