@@ -52,11 +52,13 @@
     error = null
     loading = true
     try {
-      plugins = (await fetchPlugins(id)).plugins
+      const result = await fetchPlugins(id)
+      if (id !== contextId) return
+      plugins = result.plugins
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) error = err instanceof Error ? err.message : String(err)
     } finally {
-      loading = false
+      if (id === contextId) loading = false
     }
   }
 
