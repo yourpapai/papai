@@ -317,6 +317,7 @@ describe('TaskProviderSection', () => {
     await drain()
     expect(target.querySelector('.ui-error')).toBeNull()
     expect(target.querySelector('[data-testid="context-task-instance"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="task-provider-load-error"]')).not.toBeNull()
     void unmount(component)
   })
 

@@ -133,6 +133,7 @@ describe('ReleaseSubscriptionSection', () => {
     await drain()
     expect(target.querySelector('.ui-error')).toBeNull()
     expect(target.querySelector('[data-testid="release-subscription-toggle"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="release-subscription-load-error"]')).not.toBeNull()
     void unmount(component)
   })
 

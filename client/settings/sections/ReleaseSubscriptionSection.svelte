@@ -87,7 +87,9 @@
   {:else if enabled === null}
     <p class="placeholder">Loading…</p>
   {:else}
-    {#if loadError !== null}<p class="status-error" role="alert">{loadError}</p>{/if}
+    {#if loadError !== null}
+      <p class="status-error" role="alert" data-testid="release-subscription-load-error">{loadError}</p>
+    {/if}
     <p class="settings-section__caption">
       {#if scope === 'group'}
         When on, this group receives a message whenever a new bot version ships. Only future releases — past ones are

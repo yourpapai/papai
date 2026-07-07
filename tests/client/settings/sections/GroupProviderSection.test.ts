@@ -331,6 +331,7 @@ describe('GroupProviderSection', () => {
     await drain()
     expect(target.querySelector('.ui-error')).toBeNull()
     expect(target.querySelector('[data-testid="group-task-instance"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="group-provider-load-error"]')).not.toBeNull()
     void unmount(component)
   })
 

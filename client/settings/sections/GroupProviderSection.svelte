@@ -82,7 +82,9 @@
   {:else if loading && data === null}
     <p class="placeholder">Loading…</p>
   {:else if data !== null}
-    {#if loadError !== null}<p class="status-error" role="alert">{formatFetchError(loadError)}</p>{/if}
+    {#if loadError !== null}
+      <p class="status-error" role="alert" data-testid="group-provider-load-error">{formatFetchError(loadError)}</p>
+    {/if}
     {#if status !== null}<p class="status-success">{status}</p>{/if}
     {#if saveError !== null}<p class="status-error">{formatFetchError(saveError)}</p>{/if}
     {#if data.available.length === 0}

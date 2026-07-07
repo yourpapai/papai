@@ -115,7 +115,9 @@
   {:else if loading && instanceData === null}
     <p class="placeholder">Loading…</p>
   {:else}
-    {#if error !== null}<p class="status-error" role="alert">{formatFetchError(error)}</p>{/if}
+    {#if error !== null}
+      <p class="status-error" role="alert" data-testid="task-provider-load-error">{formatFetchError(error)}</p>
+    {/if}
     {#if instanceData !== null}
       <div class="settings-task-instance">
         {#if bindError !== null}<p class="status-error">{formatFetchError(bindError)}</p>{/if}

@@ -230,6 +230,7 @@ describe('GuestModeSection', () => {
     await drain()
     expect(target.querySelector('.ui-error')).toBeNull()
     expect(target.querySelector('[data-testid="guest-mode-toggle"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="guest-mode-load-error"]')).not.toBeNull()
     void unmount(component)
   })
 

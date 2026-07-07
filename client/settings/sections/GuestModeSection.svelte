@@ -92,7 +92,9 @@
   {:else if loading && enabled === null}
     <p class="placeholder">Loading…</p>
   {:else}
-    {#if error !== null}<p class="status-error" role="alert">{formatFetchError(error)}</p>{/if}
+    {#if error !== null}
+      <p class="status-error" role="alert" data-testid="guest-mode-load-error">{formatFetchError(error)}</p>
+    {/if}
     <p class="t-help">
       When on, anyone in this chat can use the bot, read-only. Members and admins are unaffected.
     </p>
