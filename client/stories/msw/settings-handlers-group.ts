@@ -113,7 +113,7 @@ export const groupProviderHandlers: HandlerFamily = {
 
 const codingIdentityPopulated = {
   contextId: 'ctx-group-1',
-  identity: 'alice',
+  identity: 'designated:u1',
 }
 
 const codingIdentityEmpty = {
