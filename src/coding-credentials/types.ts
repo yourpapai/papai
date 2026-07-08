@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export const CODING_NAMESPACES = ['agent-provider', 'forge'] as const
+export const CODING_NAMESPACES = ['agent-provider', 'forge', 'mcp'] as const
 export type CodingNamespace = (typeof CODING_NAMESPACES)[number]
 
 export const PROVIDERS = ['anthropic', 'openai', 'openai-compatible'] as const
@@ -49,6 +49,10 @@ export const FORGE_FIELDS = ['kind', 'instance_url', 'forge_token'] as const
 export const REQUIRED_FORGE_FIELDS = ['kind', 'forge_token'] as const
 export type ForgeField = (typeof FORGE_FIELDS)[number]
 
+export const MCP_FIELDS = ['upstream_url', 'upstream_header', 'upstream_token'] as const
+export const REQUIRED_MCP_FIELDS = ['upstream_url', 'upstream_token'] as const
+export type McpField = (typeof MCP_FIELDS)[number]
+
 export const FORGE_KINDS = ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted'] as const
 export type ForgeKindUi = (typeof FORGE_KINDS)[number]
 
@@ -89,7 +93,7 @@ export function deriveProviderHost(provider: string, baseUrl: string | undefined
   return null
 }
 
-export type CodingCredentialConfig = Partial<Record<AgentProviderField | ForgeField, string>>
+export type CodingCredentialConfig = Partial<Record<AgentProviderField | ForgeField | McpField, string>>
 
 export type CodingCredentialState = {
   readonly configured: boolean
@@ -100,8 +104,10 @@ export type CodingCredentialState = {
 export const FIELDS_BY_NAMESPACE: Record<CodingNamespace, readonly string[]> = {
   'agent-provider': AGENT_PROVIDER_FIELDS,
   forge: FORGE_FIELDS,
+  mcp: MCP_FIELDS,
 }
 export const REQUIRED_BY_NAMESPACE: Record<CodingNamespace, readonly string[]> = {
   'agent-provider': REQUIRED_AGENT_PROVIDER_FIELDS,
   forge: REQUIRED_FORGE_FIELDS,
+  mcp: REQUIRED_MCP_FIELDS,
 }

@@ -61,6 +61,17 @@ describe('coding-credentials types', () => {
     expect(REQUIRED_BY_NAMESPACE['agent-provider']).toEqual(REQUIRED_AGENT_PROVIDER_FIELDS)
   })
 
+  describe('mcp coding-credentials namespace', () => {
+    test('is a known namespace', () => {
+      expect(CODING_NAMESPACES).toContain('mcp')
+    })
+
+    test('declares upstream url/header/token fields, url+token required', () => {
+      expect(FIELDS_BY_NAMESPACE.mcp).toEqual(['upstream_url', 'upstream_header', 'upstream_token'])
+      expect(REQUIRED_BY_NAMESPACE.mcp).toEqual(['upstream_url', 'upstream_token'])
+    })
+  })
+
   describe('FORGE_KINDS', () => {
     test('FORGE_KINDS contains all four code-host kinds', () => {
       expect(FORGE_KINDS).toContain('github')

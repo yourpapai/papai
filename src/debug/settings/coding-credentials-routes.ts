@@ -14,11 +14,7 @@ import {
 } from '../../coding-credentials/store.js'
 import type { CodingCredentialConfig } from '../../coding-credentials/types.js'
 import {
-  AGENTS,
-  AUTH_METHODS,
   CODING_NAMESPACES,
-  FORGE_KINDS,
-  PROVIDERS,
   compatible,
   isAgent,
   isAuthMethod,
@@ -29,86 +25,8 @@ import {
 } from '../../coding-credentials/types.js'
 import { maskSensitiveValue } from '../../config.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
+import { FIELDS_META } from './coding-credentials-fields-meta.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
-
-type FieldMeta = {
-  key: string
-  label: string
-  required: boolean
-  sensitive: boolean
-  control?: 'select' | 'combobox'
-  options?: readonly string[]
-}
-
-const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
-  'agent-provider': [
-    {
-      key: 'agent',
-      label: 'Coding agent',
-      required: true,
-      sensitive: false,
-      control: 'select',
-      options: AGENTS,
-    },
-    {
-      key: 'provider',
-      label: 'Model provider',
-      required: true,
-      sensitive: false,
-      control: 'select',
-      options: PROVIDERS,
-    },
-    {
-      key: 'auth_method',
-      label: 'Auth method',
-      required: false,
-      sensitive: false,
-      control: 'select',
-      options: AUTH_METHODS,
-    },
-    {
-      key: 'provider_api_key',
-      label: 'API key',
-      required: true,
-      sensitive: true,
-    },
-    {
-      key: 'provider_base_url',
-      label: 'Base URL',
-      required: false,
-      sensitive: false,
-    },
-    {
-      key: 'model',
-      label: 'Model',
-      required: false,
-      sensitive: false,
-      control: 'combobox',
-    },
-  ],
-  forge: [
-    {
-      key: 'kind',
-      label: 'Code host',
-      required: true,
-      sensitive: false,
-      control: 'select',
-      options: FORGE_KINDS,
-    },
-    {
-      key: 'instance_url',
-      label: 'Instance URL (enterprise / self-hosted)',
-      required: false,
-      sensitive: false,
-    },
-    {
-      key: 'forge_token',
-      label: 'Access token',
-      required: true,
-      sensitive: true,
-    },
-  ],
-}
 
 const NamespaceSchema = z.enum(CODING_NAMESPACES).default('agent-provider')
 
