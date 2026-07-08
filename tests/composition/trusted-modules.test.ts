@@ -6,9 +6,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import { TRUSTED_MODULES } from '../../src/composition/trusted-modules.js'
+import { codingModule } from '../../src/modules/coding/module.js'
 
 describe('TRUSTED_MODULES', () => {
-  test('is empty until a module is added in a later task', () => {
-    expect(TRUSTED_MODULES).toEqual([])
+  test('registers the coding module', () => {
+    expect(TRUSTED_MODULES).toHaveLength(1)
+    expect(TRUSTED_MODULES).toContain(codingModule)
   })
 })
