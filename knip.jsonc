@@ -155,6 +155,8 @@
     // group-tools is consumed only by ToolsSection.svelte, which knip can't parse.
     // Permanent, not temporary.
     "client/settings/lib/group-tools.ts": ["files", "exports"],
+    // validate-mcp-endpoint is consumed only by McpSection.svelte, which knip can't parse.
+    "client/settings/lib/validate-mcp-endpoint.ts": ["files", "exports"],
     // consumed only by the transcript viewer state/.svelte which knip can't parse.
     "client/transcript/fetcher-schemas.ts": ["files", "exports", "types"],
     "client/transcript/stitch.ts": ["files", "exports"],
