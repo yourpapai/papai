@@ -184,6 +184,14 @@ export const initDb = (): void => {
   runMigrations(getMigrationDb(), MIGRATIONS)
 }
 
+/**
+ * Run a trusted module's migrations through the shared migration mechanism and bookkeeping
+ * table. Generic: names no feature. `db` defaults to the process connection; tests inject one.
+ */
+export const applyModuleMigrations = (migrations: readonly Migration[], db: Database = getMigrationDb()): void => {
+  runMigrations(db, migrations)
+}
+
 export const closeMigrationDbInstance = (): void => {
   closeMigrationDb()
 }
