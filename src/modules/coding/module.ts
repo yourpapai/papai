@@ -13,8 +13,9 @@ export const codingWhoMayUseResolver = (platformInstanceId: string): WhoMayUse =
 
 /**
  * The coding trusted module. On activation it registers the operator allowlist resolver so the
- * orchestrator can gate coding-session tools without importing the coding feature. (It owns no
- * tables yet — `coding-credentials`/`coding-repos` relocation is a later phase.)
+ * orchestrator can gate coding-session tools without importing the coding feature. (Its
+ * implementation lives under `src/modules/coding/{credentials,repos}/`; DB table ownership —
+ * moving migrations into the module — is a later phase.)
  */
 export const codingModule: TrustedModule = {
   id: 'coding',

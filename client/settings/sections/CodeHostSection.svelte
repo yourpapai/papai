@@ -19,7 +19,7 @@
   import { clearCodingCredentials, fetchCodingCredentials, patchCodingCredentials } from '../coding-credentials-fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
 
-  // Client-side mirror of src/coding-credentials/types.ts `needsInstanceUrl`
+  // Client-side mirror of src/modules/coding/credentials/types.ts `needsInstanceUrl`
   function needsInstanceUrl(kind: string): boolean {
     return kind === 'github-enterprise' || kind === 'gitlab-self-hosted'
   }
