@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { REPO_PRESETS } from '../../src/coding-repos/types.js'
+import { REPO_PRESETS } from '../../../../src/modules/coding/repos/types.js'
 
 describe('coding-repos types', () => {
   test('REPO_PRESETS contains the three permission levels', () => {

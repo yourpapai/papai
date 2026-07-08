@@ -7,9 +7,9 @@ import { randomUUID } from 'node:crypto'
 
 import { and, eq } from 'drizzle-orm'
 
-import { codingSessionRepos } from '../db/coding-repos-schema.js'
-import { getDrizzleDb } from '../db/drizzle.js'
-import { logger } from '../logger.js'
+import { codingSessionRepos } from '../../../db/coding-repos-schema.js'
+import { getDrizzleDb } from '../../../db/drizzle.js'
+import { logger } from '../../../logger.js'
 import { REPO_PRESETS, type RepoInput, type RepoPreset, type RepoRecord } from './types.js'
 
 const log = logger.child({ scope: 'coding-repos:store' })
