@@ -6,6 +6,7 @@
 import { handleAdminByokRoutes } from './settings/admin/byok-routes.js'
 import { handleAdminCodingGuardrailsRoutes } from './settings/admin/coding-guardrails-routes.js'
 import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
+import { handleAdminMcpCatalogRoutes } from './settings/admin/mcp-catalog-routes.js'
 import { handleAdminPluginConfigRoutes } from './settings/admin/plugin-config-routes.js'
 import { handleAdminReleaseNotesRoutes } from './settings/admin/release-notes-routes.js'
 import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
@@ -54,6 +55,7 @@ function routeAdminApi(req: Request, url: URL): Promise<Response> | null {
   if (p === '/settings/api/admin/byok') return handleAdminByokRoutes(req, url)
   if (p === '/settings/api/admin/tool-defaults') return handleAdminToolDefaultsRoutes(req, url, p)
   if (p === '/settings/api/admin/coding-guardrails') return handleAdminCodingGuardrailsRoutes(req, url, p)
+  if (p === '/settings/api/admin/mcp-catalog') return handleAdminMcpCatalogRoutes(req, url, p)
   if (p === '/settings/api/admin/release-notes') return handleAdminReleaseNotesRoutes(req, url, p)
   return null
 }
