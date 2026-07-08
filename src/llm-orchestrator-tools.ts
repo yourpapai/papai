@@ -11,11 +11,11 @@ import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { askPermissionViaChat } from './chat/permission-prompt.js'
 import { getConfigContextIdFromStorageContextId, parseScopedContextId } from './chat/scoped-context.js'
 import type { ActorRole, ReplyFn } from './chat/types.js'
-import { resolveCodingGuardrails } from './coding-credentials/guardrails.js'
 import { buildMessagesWithMemory } from './conversation.js'
 import { resolveTimezone } from './llm-orchestrator-config.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
+import { operatorAllowlistPort } from './ports/operator-allowlist.js'
 import { toolGateRegistry, type ToolGateRegistry } from './ports/tool-gate.js'
 import type { TaskProvider } from './providers/types.js'
 import { applyResultCompaction } from './tools/compaction/wrap-compaction.js'
@@ -217,7 +217,7 @@ const buildFullToolSet = async (
       : applyToolPreferences(descriptors, contextId, askPermission)
   const pi = parseScopedContextId(contextId)?.platformInstanceId
   const gatedTools =
-    pi === undefined ? prefTools : applyWhoMayUseFilter(prefTools, resolveCodingGuardrails(pi).whoMayUse, chatUserId)
+    pi === undefined ? prefTools : applyWhoMayUseFilter(prefTools, operatorAllowlistPort.resolve(pi), chatUserId)
   const { tools: disclosedTools, disclosure } = applyCompactionAndDisclosure(
     gatedTools,
     contextId,
