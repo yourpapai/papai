@@ -10,7 +10,9 @@ import {
   toScopedContextId,
 } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
+import type { Permission } from '../tools/tool-preferences.js'
 import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
+import { resolveMcpCatalog, type McpCatalogEntry } from './mcp-catalog.js'
 import { getCodingCredentials } from './store.js'
 import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'
 
@@ -161,45 +163,63 @@ export function resolveForge(
   }
 }
 
-/** Non-secret MCP broker config resolved from the identity's `mcp` vault. Never carries the token. */
+/** Per-tool MCP permission policy resolved from the selected catalog entry. */
+export interface ToolPolicy {
+  default: Permission
+  tools?: Record<string, Permission>
+}
+
+/** Non-secret MCP broker config resolved from the identity's `mcp` vault + the admin catalog. Never carries the token. */
 export interface ResolvedMcp {
   url: string
   host: string
   header: string
   allowedHosts: string[]
+  toolPolicy?: ToolPolicy
+}
+
+function catalogToolPolicy(entry: McpCatalogEntry): ToolPolicy | undefined {
+  if (entry.default_tool_policy === undefined && entry.tool_policy === undefined) return undefined
+  return { default: entry.default_tool_policy ?? 'allow', tools: entry.tool_policy }
 }
 
 /**
- * Resolve the acting identity's MCP broker config (non-secret) from the `mcp` vault.
- * Returns null when no vault is stored, when the vault is partial (url or token
- * missing), or when the stored url is malformed or not https (fail-closed). The
- * token itself is never included here — see resolveMcpToken.
+ * Resolve the acting identity's MCP broker config (non-secret) from the `mcp` vault, joined
+ * against the platform instance's admin-configured MCP catalog. The vault only stores which
+ * catalog entry (`server`) the identity selected plus their `upstream_token`; url/host/header/
+ * toolPolicy are always derived from the current catalog entry, never from the vault.
+ *
+ * Fail-closed: returns null when no vault is stored, when the vault is partial (server or
+ * token missing), when the storage context carries no platform instance (no catalog to
+ * resolve against), or when the selected `server` no longer matches any catalog entry (e.g.
+ * the admin removed or renamed it). The token itself is never included here — see resolveMcpToken.
  */
 export function resolveMcp(storageContextId: string, chatUserId: string): ResolvedMcp | null {
   const ctx = identityContext(storageContextId, chatUserId)
   const creds = getCodingCredentials(ctx, 'mcp')
   if (creds === null) return null
-  const url = creds.upstream_url?.trim()
+  const server = creds.server?.trim()
   const token = creds.upstream_token?.trim()
-  if (url === undefined || url.length === 0 || token === undefined || token.length === 0) return null
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    log.warn({ contextId: ctx }, 'mcp upstream_url is malformed')
+  if (server === undefined || server.length === 0 || token === undefined || token.length === 0) return null
+  const pi = parseScopedContextId(storageContextId)?.platformInstanceId
+  if (pi === undefined) {
+    log.warn(
+      { contextId: ctx },
+      'mcp vault has no platform instance to resolve a catalog against; refusing (fail-closed)',
+    )
     return null
   }
-  if (parsed.protocol !== 'https:') {
-    log.warn({ contextId: ctx }, 'mcp upstream_url is not https; refusing to resolve')
+  const entry = resolveMcpCatalog(pi).find((e) => e.name === server)
+  if (entry === undefined) {
+    log.warn({ contextId: ctx, server }, 'mcp server is not in the platform instance catalog; refusing (fail-closed)')
     return null
   }
-  const host = parsed.hostname.toLowerCase()
-  const header = creds.upstream_header?.trim()
   return {
-    url,
-    host,
-    header: header === undefined || header.length === 0 ? 'Authorization' : header,
-    allowedHosts: [host],
+    url: entry.upstream_url,
+    host: entry.host,
+    header: entry.header ?? 'Authorization',
+    allowedHosts: [entry.host],
+    toolPolicy: catalogToolPolicy(entry),
   }
 }
 

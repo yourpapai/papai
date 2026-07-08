@@ -49,8 +49,8 @@ export const FORGE_FIELDS = ['kind', 'instance_url', 'forge_token'] as const
 export const REQUIRED_FORGE_FIELDS = ['kind', 'forge_token'] as const
 export type ForgeField = (typeof FORGE_FIELDS)[number]
 
-export const MCP_FIELDS = ['upstream_url', 'upstream_header', 'upstream_token'] as const
-export const REQUIRED_MCP_FIELDS = ['upstream_url', 'upstream_token'] as const
+export const MCP_FIELDS = ['server', 'upstream_token'] as const
+export const REQUIRED_MCP_FIELDS = ['server', 'upstream_token'] as const
 export type McpField = (typeof MCP_FIELDS)[number]
 
 export const FORGE_KINDS = ['github', 'github-enterprise', 'gitlab', 'gitlab-self-hosted'] as const

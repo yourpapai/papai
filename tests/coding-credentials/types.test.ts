@@ -66,9 +66,9 @@ describe('coding-credentials types', () => {
       expect(CODING_NAMESPACES).toContain('mcp')
     })
 
-    test('declares upstream url/header/token fields, url+token required', () => {
-      expect(FIELDS_BY_NAMESPACE.mcp).toEqual(['upstream_url', 'upstream_header', 'upstream_token'])
-      expect(REQUIRED_BY_NAMESPACE.mcp).toEqual(['upstream_url', 'upstream_token'])
+    test('declares server + upstream_token fields, both required', () => {
+      expect(FIELDS_BY_NAMESPACE.mcp).toEqual(['server', 'upstream_token'])
+      expect(REQUIRED_BY_NAMESPACE.mcp).toEqual(['server', 'upstream_token'])
     })
   })
 

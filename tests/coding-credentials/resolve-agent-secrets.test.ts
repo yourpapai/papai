@@ -14,6 +14,7 @@ import {
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
 import { adminCodingGuardrailsContextId, setCodingGuardrails } from '../../src/coding-credentials/guardrails.js'
+import { setMcpCatalog } from '../../src/coding-credentials/mcp-catalog.js'
 import {
   resolveAgent,
   resolveAgentSecrets,
@@ -187,76 +188,79 @@ test('resolveForge returns null for a partial self-hosted vault (instance_url pr
   expect(resolveForge(STORAGE_CTX, 'user-9')).toBeNull()
 })
 
+// resolveMcp is catalog-driven: the `mcp` vault only records which catalog entry (`server`)
+// the identity selected plus their `upstream_token`; url/host/header/toolPolicy always come
+// from the current admin-configured catalog entry for the storage context's platform instance.
+
+const MCP_PI = 'pi-mcp'
+const MCP_CTX = toScopedContextId({ platformInstanceId: MCP_PI, nativeContextId: 'user-mcp' })
+
 test('resolveMcp returns null and resolveMcpToken returns undefined when no mcp vault stored', () => {
-  expect(resolveMcp(STORAGE_CTX, 'user-9')).toBeNull()
-  expect(resolveMcpToken(STORAGE_CTX, 'user-9')).toBeUndefined()
+  expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
+  expect(resolveMcpToken(MCP_CTX, 'user-mcp')).toBeUndefined()
 })
 
-test('resolveMcp returns the non-secret config (no token field) and resolveMcpToken returns the token', () => {
-  updateCodingCredentials(
-    STORAGE_CTX,
-    'mcp',
-    { upstream_url: 'https://mcp.example.com/v1', upstream_token: 'sek' },
-    'user-9',
-  )
-  expect(resolveMcp(STORAGE_CTX, 'user-9')).toEqual({
-    url: 'https://mcp.example.com/v1',
-    host: 'mcp.example.com',
-    header: 'Authorization',
-    allowedHosts: ['mcp.example.com'],
+test('resolveMcp resolves url/host/header/allowedHosts/toolPolicy from the selected catalog entry, and resolveMcpToken returns the stored token', () => {
+  setMcpCatalog(MCP_PI, [
+    {
+      name: 'Jira',
+      upstream_url: 'https://mcp.atlassian.com/v1',
+      host: 'mcp.atlassian.com',
+      header: 'X-Auth',
+      default_tool_policy: 'deny',
+      tool_policy: { echo: 'allow' },
+    },
+  ])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
+  expect(resolveMcp(MCP_CTX, 'user-mcp')).toEqual({
+    url: 'https://mcp.atlassian.com/v1',
+    host: 'mcp.atlassian.com',
+    header: 'X-Auth',
+    allowedHosts: ['mcp.atlassian.com'],
+    toolPolicy: { default: 'deny', tools: { echo: 'allow' } },
   })
-  expect(resolveMcpToken(STORAGE_CTX, 'user-9')).toBe('sek')
+  expect(resolveMcpToken(MCP_CTX, 'user-mcp')).toBe('sek')
 })
 
-test('resolveMcp uses the stored upstream_header when set', () => {
-  updateCodingCredentials(
-    STORAGE_CTX,
-    'mcp',
-    { upstream_url: 'https://mcp.example.com/v1', upstream_token: 'sek', upstream_header: 'X-Api-Key' },
-    'user-9',
-  )
-  expect(resolveMcp(STORAGE_CTX, 'user-9')).toEqual({
-    url: 'https://mcp.example.com/v1',
-    host: 'mcp.example.com',
-    header: 'X-Api-Key',
-    allowedHosts: ['mcp.example.com'],
-  })
+test('resolveMcp defaults header to Authorization when the catalog entry omits it', () => {
+  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
+  expect(resolveMcp(MCP_CTX, 'user-mcp')?.header).toBe('Authorization')
 })
 
-test('resolveMcp returns null for a partial vault (url without token)', () => {
-  updateCodingCredentials(STORAGE_CTX, 'mcp', { upstream_url: 'https://mcp.example.com/v1' }, 'user-9')
-  expect(resolveMcp(STORAGE_CTX, 'user-9')).toBeNull()
+test('resolveMcp omits toolPolicy when the catalog entry has neither default_tool_policy nor tool_policy', () => {
+  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
+  expect(resolveMcp(MCP_CTX, 'user-mcp')?.toolPolicy).toBeUndefined()
 })
 
-test('resolveMcp returns null for a partial vault (token without url)', () => {
-  updateCodingCredentials(STORAGE_CTX, 'mcp', { upstream_token: 'sek' }, 'user-9')
-  expect(resolveMcp(STORAGE_CTX, 'user-9')).toBeNull()
+test('resolveMcp returns null for a partial vault (server without token)', () => {
+  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira' }, 'user-mcp')
+  expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
 })
 
-test('resolveMcp returns null for a non-https upstream_url (fail-closed)', () => {
-  updateCodingCredentials(
-    STORAGE_CTX,
-    'mcp',
-    { upstream_url: 'http://mcp.example.com/v1', upstream_token: 'sek' },
-    'user-9',
-  )
+test('resolveMcp returns null for a partial vault (token without server)', () => {
+  updateCodingCredentials(MCP_CTX, 'mcp', { upstream_token: 'sek' }, 'user-mcp')
+  expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
+})
+
+test('resolveMcp fail-closed: selected server no longer matches any catalog entry (removed/renamed)', () => {
+  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Ghost', upstream_token: 'sek' }, 'user-mcp')
+  expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
+})
+
+test('resolveMcp fail-closed: storage context has no platform instance, so no catalog can be resolved', () => {
+  // STORAGE_CTX is not parseable → parseScopedContextId returns null → pi undefined
+  updateCodingCredentials(STORAGE_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-9')
   expect(resolveMcp(STORAGE_CTX, 'user-9')).toBeNull()
 })
 
 test("group initiator: resolveMcpToken returns the acting user's token", () => {
   addAuthorizedGroup(GROUP_CTX, 'admin')
-  updateCodingCredentials(
-    GROUP_CTX,
-    'mcp',
-    { upstream_url: 'https://mcp.example.com/v1', upstream_token: 'ghp-GROUP' },
-    'admin',
-  )
-  updateCodingCredentials(
-    ALICE_CTX,
-    'mcp',
-    { upstream_url: 'https://mcp.example.com/v1', upstream_token: 'sek-ALICE' },
-    'alice',
-  )
+  updateCodingCredentials(GROUP_CTX, 'mcp', { server: 'Jira', upstream_token: 'ghp-GROUP' }, 'admin')
+  updateCodingCredentials(ALICE_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek-ALICE' }, 'alice')
   expect(resolveMcpToken(GROUP_THREAD_CTX, 'alice')).toBe('sek-ALICE')
 })
 

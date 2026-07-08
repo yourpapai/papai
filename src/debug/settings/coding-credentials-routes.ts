@@ -6,6 +6,7 @@
 import { z } from 'zod'
 
 import { resolveCodingGuardrails } from '../../coding-credentials/guardrails.js'
+import { resolveMcpCatalog } from '../../coding-credentials/mcp-catalog.js'
 import {
   clearCodingCredentials,
   getCodingCredentialState,
@@ -170,6 +171,10 @@ function handleGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
   if (namespace === 'agent-provider') {
     const allowedAgents = resolveCodingGuardrails(authed.principal.platformInstanceId).allowedAgents
     return settingsJson(200, { ...fields, allowedAgents })
+  }
+  if (namespace === 'mcp') {
+    const catalog = resolveMcpCatalog(authed.principal.platformInstanceId)
+    return settingsJson(200, { ...fields, catalog })
   }
   return settingsJson(200, fields)
 }

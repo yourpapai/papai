@@ -15,28 +15,23 @@ describe('FIELDS_META', () => {
     }
   })
 
-  test('mcp namespace declares upstream_url, upstream_header, upstream_token fields', () => {
+  test('mcp namespace declares server and upstream_token fields', () => {
     const keys = FIELDS_META.mcp.map((field) => field.key)
-    expect(keys).toEqual(['upstream_url', 'upstream_header', 'upstream_token'])
+    expect(keys).toEqual(['server', 'upstream_token'])
   })
 
-  test('mcp upstream_url and upstream_token are required and upstream_token is sensitive', () => {
+  test('mcp server and upstream_token are required and upstream_token is sensitive', () => {
     const byKey = Object.fromEntries(FIELDS_META.mcp.map((field) => [field.key, field]))
-    expect(byKey['upstream_url']?.required).toBe(true)
+    expect(byKey['server']?.required).toBe(true)
     expect(byKey['upstream_token']?.required).toBe(true)
     expect(byKey['upstream_token']?.sensitive).toBe(true)
-    expect(byKey['upstream_header']?.required).toBe(false)
   })
 
   test('mcp fields have user-facing labels and correct sensitivity/control', () => {
     const byKey = Object.fromEntries(FIELDS_META.mcp.map((field) => [field.key, field]))
-    expect(byKey['upstream_url']?.label).toBe('Upstream MCP URL')
-    expect(byKey['upstream_url']?.sensitive).toBe(false)
-    expect(byKey['upstream_url']?.control).toBeUndefined()
-
-    expect(byKey['upstream_header']?.label).toBe('Auth header')
-    expect(byKey['upstream_header']?.sensitive).toBe(false)
-    expect(byKey['upstream_header']?.control).toBeUndefined()
+    expect(byKey['server']?.label).toBe('MCP server')
+    expect(byKey['server']?.sensitive).toBe(false)
+    expect(byKey['server']?.control).toBe('select')
 
     expect(byKey['upstream_token']?.label).toBe('Credential')
     expect(byKey['upstream_token']?.sensitive).toBe(true)

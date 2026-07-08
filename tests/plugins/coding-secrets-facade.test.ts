@@ -5,6 +5,8 @@
 
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
+import { toScopedContextId } from '../../src/chat/scoped-context.js'
+import { setMcpCatalog } from '../../src/coding-credentials/mcp-catalog.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
 import { buildCodingSecretsFacade } from '../../src/plugins/coding-secrets-facade.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -123,13 +125,14 @@ test('resolveProviderHost throws without the coding.secrets permission', () => {
 })
 
 test('resolveMcp and resolveMcpToken via facade; denied without permission', () => {
-  updateCodingCredentials(
-    STORAGE_CTX,
-    'mcp',
-    { upstream_url: 'https://mcp.example.com/v1', upstream_token: 'sek' },
-    'user-3',
-  )
-  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
+  // resolveMcp is catalog-driven and needs a platform instance to resolve the catalog against,
+  // so this test (unlike the others in this file) uses a scoped storage context id rather than
+  // the module's non-parseable STORAGE_CTX.
+  const pi = 'pi-facade-mcp'
+  const mcpCtx = toScopedContextId({ platformInstanceId: pi, nativeContextId: 'user-3' })
+  setMcpCatalog(pi, [{ name: 'Jira', upstream_url: 'https://mcp.example.com/v1', host: 'mcp.example.com' }])
+  updateCodingCredentials(mcpCtx, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-3')
+  const facade = buildCodingSecretsFacade('acp', mcpCtx, true, CHAT_USER_ID)
   expect(facade.resolveMcp()).toEqual({
     url: 'https://mcp.example.com/v1',
     host: 'mcp.example.com',
@@ -137,10 +140,8 @@ test('resolveMcp and resolveMcpToken via facade; denied without permission', () 
     allowedHosts: ['mcp.example.com'],
   })
   expect(facade.resolveMcpToken()).toBe('sek')
-  expect(() => buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID).resolveMcp()).toThrow(
-    "'coding.secrets'",
-  )
-  expect(() => buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID).resolveMcpToken()).toThrow(
+  expect(() => buildCodingSecretsFacade('acp', mcpCtx, false, CHAT_USER_ID).resolveMcp()).toThrow("'coding.secrets'")
+  expect(() => buildCodingSecretsFacade('acp', mcpCtx, false, CHAT_USER_ID).resolveMcpToken()).toThrow(
     "'coding.secrets'",
   )
 })

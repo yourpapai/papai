@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { setMcpCatalog } from '../../../src/coding-credentials/mcp-catalog.js'
 import { getCodingCredentials } from '../../../src/coding-credentials/store.js'
 import { maskSensitiveValue } from '../../../src/config.js'
 import { handleCodingCredentialsRoutes } from '../../../src/debug/settings/coding-credentials-routes.js'
@@ -37,6 +38,19 @@ const GetResponseSchema = z.object({
   unreadable: z.literal(true).optional(),
   error: z.string().optional(),
   fields: z.array(FieldSchema),
+  allowedAgents: z.array(z.string()).optional(),
+  catalog: z
+    .array(
+      z.object({
+        name: z.string(),
+        upstream_url: z.string(),
+        host: z.string(),
+        header: z.string().optional(),
+        default_tool_policy: z.enum(['allow', 'ask', 'deny']).optional(),
+        tool_policy: z.record(z.string(), z.enum(['allow', 'ask', 'deny'])).optional(),
+      }),
+    )
+    .optional(),
 })
 
 const PatchResponseSchema = z.object({
@@ -317,20 +331,33 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(200)
     const body = GetResponseSchema.parse(await res.json())
-    expect(body.fields.map((f) => f.key)).toEqual(['upstream_url', 'upstream_header', 'upstream_token'])
+    expect(body.fields.map((f) => f.key)).toEqual(['server', 'upstream_token'])
 
     const byKey = Object.fromEntries(body.fields.map((f) => [f.key, f]))
-    expect(byKey['upstream_url']?.label).toBe('Upstream MCP URL')
-    expect(byKey['upstream_url']?.required).toBe(true)
-    expect(byKey['upstream_url']?.sensitive).toBe(false)
-
-    expect(byKey['upstream_header']?.label).toBe('Auth header')
-    expect(byKey['upstream_header']?.required).toBe(false)
-    expect(byKey['upstream_header']?.sensitive).toBe(false)
+    expect(byKey['server']?.label).toBe('MCP server')
+    expect(byKey['server']?.required).toBe(true)
+    expect(byKey['server']?.sensitive).toBe(false)
+    expect(byKey['server']?.control).toBe('select')
 
     expect(byKey['upstream_token']?.label).toBe('Credential')
     expect(byKey['upstream_token']?.required).toBe(true)
     expect(byKey['upstream_token']?.sensitive).toBe(true)
+  })
+
+  test('GET ?namespace=mcp surfaces the operator catalog', async () => {
+    const catalog = [
+      { name: 'github', upstream_url: 'https://mcp.example.com/github', host: 'mcp.example.com' },
+      { name: 'linear', upstream_url: 'https://mcp.example.com/linear', host: 'mcp.example.com', header: 'X-Token' },
+    ]
+    setMcpCatalog(PLATFORM_INSTANCE_ID, catalog)
+    const url = new URL(`https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`)
+    const res = await handleCodingCredentialsRoutes(
+      get(`/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`, session),
+      url,
+    )
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    expect(body.catalog).toEqual(catalog)
   })
 
   test('PATCH ?namespace=mcp saves the credential masked on GET', async () => {
@@ -338,7 +365,7 @@ describe('coding-credentials routes', () => {
     await handleCodingCredentialsRoutes(
       patch('/settings/api/coding-credentials', session, {
         namespace: 'mcp',
-        values: { upstream_url: 'https://mcp.example.com', upstream_token: 'mcp-secret' },
+        values: { server: 'github', upstream_token: 'mcp-secret' },
       }),
       patchUrl,
     )
