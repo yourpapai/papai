@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.8.0] - 2026-07-08
+
+### Added
+
+- **ui:** Add themed Checkbox primitive
+- **ui:** Add onBlur hook to Input
+- **settings:** Add validateMcpEndpoint helper
+- **settings:** Rework McpSection layout, empty state, and URL validation
+- **coding-mcp:** Add mcp namespace to the coding-credentials vault
+- **coding-mcp:** User-facing labels for the mcp credentials fields
+- **coding-mcp:** ResolveMcp + resolveMcpToken per-identity vault resolvers
+- **coding-mcp:** Thread projectSpec.mcp + mcpToken into the /sessions request
+- **coding-mcp:** Operator mcp catalog config (admin-scoped)
+- **coding-mcp:** Admin route for the mcp catalog
+- **coding-mcp:** Admin UI to curate the mcp catalog
+- **coding-mcp:** Catalog-driven mcp vault + resolveMcp (selection derives url/host/header/toolPolicy)
+- **coding-mcp:** Coding MCP servers settings section + projectSpec toolPolicy
+- **coding-mcp:** Derive catalog host from upstream_url + require default_tool_policy
+- **coding-mcp:** Drop catalog host input, require + pre-fill default tool policy
+- **coding-mcp:** Live plain-language tool-policy posture summary in the catalog UI
+- **settings:** Recompose KaneoAccessSection onto design-system primitives
+
+### Documentation
+
+- **coding-sessions:** MCP broker config is the per-identity vault (Phase 3A)
+- **mcp-broker:** Phase 3A verification note (config-flow test coverage + Linux E2E handoff)
+- **mcp-broker:** Phase 3B-magi (per-tool gating + audit) plan
+- **mcp-broker:** Phase 3B-papai (operator catalog + settings UI) plan
+- **coding-sessions:** Per-tool gating + audit in the mediator (Phase 3B-magi)
+- **coding-sessions:** Operator catalog + user selection (Phase 3B-papai)
+- **coding-mcp:** Design spec for mcp catalog hardening (host derivation + required tool-policy posture)
+- **coding-mcp:** Implementation plan for mcp catalog hardening
+- **ux:** Add KaneoAccessSection UX review + recompose design spec
+- **plan:** Add KaneoAccessSection UX-fix implementation plan
+- **coding-sessions:** Catalog host derived + default tool policy required (hardening)
+
+### Fixed
+
+- **ui:** Add --fg-hint token so Field hints meet WCAG AA
+- **settings:** Mirror server https prefix check in validateMcpEndpoint
+- **coding-mcp:** Posture copy truthful about 'ask' (allow-with-warn, not a hard gate)
+
+### Miscellaneous
+
+- **knip:** Ignore validate-mcp-endpoint.ts (consumed only by .svelte)
+
+### Testing
+
+- **ui:** Add Checkbox story spec and McpSection invalid-url screenshot state
+- **coding-mcp:** Client catalog schema test to required default + derived host
+- **visual:** Match KaneoAccessSection reveal label after recompose
 ## [6.7.1] - 2026-07-07
 
 ### Added
