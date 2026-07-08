@@ -28,3 +28,28 @@ test.describe('settings/sections/KaneoAccessSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('Populated — password revealed', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-kaneoaccesssection--populated')
+  await sharedPage.getByRole('button', { name: 'Reveal password' }).click()
+  await sharedPage.getByText('Password (shown once):').waitFor()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Populated — reveal button hover', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-kaneoaccesssection--populated')
+  await sharedPage.getByRole('button', { name: 'Reveal password' }).hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Populated — narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-kaneoaccesssection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Not provisioned — narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-kaneoaccesssection--not-provisioned')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
