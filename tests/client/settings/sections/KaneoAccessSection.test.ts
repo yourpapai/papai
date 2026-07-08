@@ -51,7 +51,7 @@ describe('KaneoAccessSection', () => {
     const component = mount(KaneoAccessSection, { target, props: { contextId: CONTEXT_ID } })
     await drain()
 
-    expect(target.textContent?.toLowerCase()).toContain('not provisioned')
+    expect(target.textContent).toContain('No Kaneo access yet')
     void unmount(component)
   })
 
@@ -77,7 +77,7 @@ describe('KaneoAccessSection', () => {
     const component = mount(KaneoAccessSection, { target, props: { contextId: CONTEXT_ID } })
     await drain()
 
-    const btn = target.querySelector<HTMLButtonElement>('button[data-action="reveal-password"]')
+    const btn = target.querySelector<HTMLButtonElement>('button[data-testid="kaneo-reveal"]')
     expect(btn).not.toBeNull()
     btn!.click()
     await drain()

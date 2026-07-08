@@ -8,6 +8,15 @@
   import { KaneoCredentialsSchema } from '../fetcher-schemas-kaneo.js'
   import { revealKaneoPassword, settingsFetch } from '../fetchers.js'
   import { readBody } from '../../shared/fetcher-helpers.js'
+  import Btn from '../../shared/ui/Btn.svelte'
+  import Code from '../../shared/ui/Code.svelte'
+  import CopyButton from '../../shared/ui/CopyButton.svelte'
+  import EmptyState from '../../shared/ui/EmptyState.svelte'
+  import ErrorState from '../../shared/ui/ErrorState.svelte'
+  import IconButton from '../../shared/ui/IconButton.svelte'
+  import KV from '../../shared/ui/KV.svelte'
+  import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
 
   interface Props {
     contextId: string
@@ -68,33 +77,109 @@
   }
 </script>
 
-<section id="kaneo-access">
-  <h2>My Kaneo access</h2>
+<section id="kaneo-access" class="settings-section">
+  <PageHeader eyebrow="Personal" title="My Kaneo access">
+    {#snippet action()}
+      <IconButton
+        label="Refresh"
+        glyph="⟳"
+        busy={loading}
+        onClick={() => void load(contextId)}
+        testid="kaneo-refresh" />
+    {/snippet}
+  </PageHeader>
+
   {#if loading}
-    <p>Loading…</p>
+    <p class="placeholder">Loading…</p>
   {:else if notProvisioned}
-    <p>Your Kaneo account is not provisioned in this group. Contact your group admin.</p>
+    <EmptyState
+      title="No Kaneo access yet"
+      hint="Your account isn't provisioned in this group yet. Group members are set up automatically — if this persists, ask a group admin to add you." />
   {:else if error !== null}
-    <p class="error">{error}</p>
+    <ErrorState message={error} onRetry={() => void load(contextId)} />
   {:else if credentials !== null}
-    <dl>
-      <dt>Login email</dt>
-      <dd>{credentials.login}</dd>
+    <div class="kaneo-rows">
+      <KV k="Login email" v={credentials.login} />
       {#if credentials.kaneoUrl !== null}
-        <dt>Workspace URL</dt>
-        <dd><a href={credentials.kaneoUrl} target="_blank" rel="noopener noreferrer">{credentials.kaneoUrl}</a></dd>
+        <div class="kaneo-url">
+          <KV k="Workspace URL">
+            {#snippet v()}
+              <a
+                class="kaneo-url__link"
+                href={credentials.kaneoUrl}
+                target="_blank"
+                rel="noopener noreferrer">{credentials.kaneoUrl}</a>
+            {/snippet}
+          </KV>
+        </div>
       {/if}
-      <dt>Status</dt>
-      <dd>{credentials.status}</dd>
-    </dl>
+      <KV k="Status">
+        {#snippet v()}<StatusPill status={credentials.status} />{/snippet}
+      </KV>
+    </div>
 
     {#if revealedPassword !== null}
-      <p><strong>Password (shown once):</strong> <code>{revealedPassword}</code></p>
-      <p>Store this password securely — it will not be shown again.</p>
+      <div class="kaneo-pw">
+        <span class="kaneo-pw__label">Password (shown once)</span>
+        <div class="kaneo-pw__row">
+          <Code truncate={false}>{revealedPassword}</Code>
+          <CopyButton value={revealedPassword} label="Copy password" />
+        </div>
+        <p class="placeholder">Store this password securely — it won't be shown again.</p>
+      </div>
     {:else}
-      <button data-action="reveal-password" disabled={revealing} onclick={revealPassword}>
-        {revealing ? 'Revealing…' : 'Reveal password'}
-      </button>
+      <div class="kaneo-pw__reveal">
+        <Btn
+          variant="secondary"
+          size="sm"
+          disabled={revealing}
+          testid="kaneo-reveal"
+          onClick={() => void revealPassword()}>
+          {#snippet children()}{revealing ? 'Revealing…' : 'Reveal password'}{/snippet}
+        </Btn>
+      </div>
     {/if}
   {/if}
 </section>
+
+<style>
+  .kaneo-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-inline);
+    margin-top: var(--gap-field);
+  }
+  /* URL row: let a long workspace host wrap instead of KV's default nowrap+ellipsis */
+  .kaneo-url :global(.ui-kv__v) {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .kaneo-url__link {
+    color: var(--accent);
+    overflow-wrap: anywhere;
+  }
+  .kaneo-pw {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: var(--gap-field);
+  }
+  .kaneo-pw__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg3);
+  }
+  .kaneo-pw__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .kaneo-pw__reveal {
+    margin-top: var(--gap-field);
+  }
+</style>
