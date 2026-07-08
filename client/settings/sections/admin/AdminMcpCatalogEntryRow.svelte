@@ -25,6 +25,7 @@
 <script lang="ts">
   import Btn from '../../../shared/ui/Btn.svelte'
   import Input from '../../../shared/ui/Input.svelte'
+  import { describeMcpPosture } from './mcp-posture.js'
 
   interface Props {
     entry: DraftMcpCatalogEntry
@@ -34,6 +35,8 @@
   }
 
   let { entry, index, disabled, onRemove }: Props = $props()
+
+  const posture = $derived(describeMcpPosture(entry.default_tool_policy, entry.toolPolicy))
 
   const POLICIES = ['allow', 'ask', 'deny'] as const
 
@@ -138,6 +141,7 @@
       onClick={addToolPolicyRow}>
       {#snippet children()}Add tool policy{/snippet}
     </Btn>
+    <p class="mcp-catalog-entry__posture" data-testid={`mcp-catalog-posture-${index}`}>{posture}</p>
   </div>
 
   <div class="mcp-catalog-entry__actions">
@@ -202,5 +206,11 @@
   .mcp-catalog-entry__actions {
     display: flex;
     justify-content: flex-end;
+  }
+  .mcp-catalog-entry__posture {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg2);
+    margin: 0;
   }
 </style>

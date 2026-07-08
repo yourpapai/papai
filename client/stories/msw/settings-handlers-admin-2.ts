@@ -79,10 +79,21 @@ const adminMcpCatalogEntry = {
   tool_policy: { delete_issue: 'deny' as const },
 }
 
+const adminMcpCatalogEntryAllowList = {
+  name: 'GitHub',
+  upstream_url: 'https://mcp.github.com/v1',
+  default_tool_policy: 'deny' as const,
+  tool_policy: { search: 'allow' as const, get_issue: 'allow' as const },
+}
+
 export const adminMcpCatalogHandlers: HandlerFamily = {
   populated: [
-    http.get('/settings/api/admin/mcp-catalog', () => HttpResponse.json({ entries: [adminMcpCatalogEntry] })),
-    http.post('/settings/api/admin/mcp-catalog', () => HttpResponse.json({ entries: [adminMcpCatalogEntry] })),
+    http.get('/settings/api/admin/mcp-catalog', () =>
+      HttpResponse.json({ entries: [adminMcpCatalogEntry, adminMcpCatalogEntryAllowList] }),
+    ),
+    http.post('/settings/api/admin/mcp-catalog', () =>
+      HttpResponse.json({ entries: [adminMcpCatalogEntry, adminMcpCatalogEntryAllowList] }),
+    ),
   ],
   empty: [
     http.get('/settings/api/admin/mcp-catalog', () => HttpResponse.json({ entries: [] })),
