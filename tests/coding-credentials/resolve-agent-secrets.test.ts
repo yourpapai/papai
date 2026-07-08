@@ -200,12 +200,11 @@ test('resolveMcp returns null and resolveMcpToken returns undefined when no mcp 
   expect(resolveMcpToken(MCP_CTX, 'user-mcp')).toBeUndefined()
 })
 
-test('resolveMcp resolves url/host/header/allowedHosts/toolPolicy from the selected catalog entry, and resolveMcpToken returns the stored token', () => {
+test('resolveMcp resolves url/host(derived)/header/allowedHosts/toolPolicy from the selected catalog entry', () => {
   setMcpCatalog(MCP_PI, [
     {
       name: 'Jira',
       upstream_url: 'https://mcp.atlassian.com/v1',
-      host: 'mcp.atlassian.com',
       header: 'X-Auth',
       default_tool_policy: 'deny',
       tool_policy: { echo: 'allow' },
@@ -222,20 +221,30 @@ test('resolveMcp resolves url/host/header/allowedHosts/toolPolicy from the selec
   expect(resolveMcpToken(MCP_CTX, 'user-mcp')).toBe('sek')
 })
 
+test('resolveMcp derives host from upstream_url, not any stored value', () => {
+  setMcpCatalog(MCP_PI, [
+    { name: 'Jira', upstream_url: 'https://real-host.example.com/v1', default_tool_policy: 'allow' },
+  ])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
+  const resolved = resolveMcp(MCP_CTX, 'user-mcp')
+  expect(resolved?.host).toBe('real-host.example.com')
+  expect(resolved?.allowedHosts).toEqual(['real-host.example.com'])
+})
+
 test('resolveMcp defaults header to Authorization when the catalog entry omits it', () => {
-  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }])
+  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }])
   updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
   expect(resolveMcp(MCP_CTX, 'user-mcp')?.header).toBe('Authorization')
 })
 
-test('resolveMcp omits toolPolicy when the catalog entry has neither default_tool_policy nor tool_policy', () => {
-  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }])
+test('resolveMcp always carries a toolPolicy (default is required on every entry)', () => {
+  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }])
   updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
-  expect(resolveMcp(MCP_CTX, 'user-mcp')?.toolPolicy).toBeUndefined()
+  expect(resolveMcp(MCP_CTX, 'user-mcp')?.toolPolicy?.default).toBe('allow')
 })
 
 test('resolveMcp returns null for a partial vault (server without token)', () => {
-  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }])
+  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }])
   updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira' }, 'user-mcp')
   expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
 })
@@ -246,7 +255,7 @@ test('resolveMcp returns null for a partial vault (token without server)', () =>
 })
 
 test('resolveMcp fail-closed: selected server no longer matches any catalog entry (removed/renamed)', () => {
-  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }])
+  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }])
   updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Ghost', upstream_token: 'sek' }, 'user-mcp')
   expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
 })

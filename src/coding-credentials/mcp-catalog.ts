@@ -15,9 +15,8 @@ export const mcpCatalogEntrySchema = z.object({
   upstream_url: z.url().refine((url) => url.startsWith('https://'), {
     message: 'must be https',
   }),
-  host: z.string().min(1),
   header: z.string().optional(),
-  default_tool_policy: z.enum(['allow', 'ask', 'deny']).optional(),
+  default_tool_policy: z.enum(['allow', 'ask', 'deny']),
   tool_policy: z.record(z.string(), z.enum(['allow', 'ask', 'deny'])).optional(),
 })
 export type McpCatalogEntry = z.infer<typeof mcpCatalogEntrySchema>

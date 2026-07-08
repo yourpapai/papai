@@ -178,9 +178,8 @@ export interface ResolvedMcp {
   toolPolicy?: ToolPolicy
 }
 
-function catalogToolPolicy(entry: McpCatalogEntry): ToolPolicy | undefined {
-  if (entry.default_tool_policy === undefined && entry.tool_policy === undefined) return undefined
-  return { default: entry.default_tool_policy ?? 'allow', tools: entry.tool_policy }
+function catalogToolPolicy(entry: McpCatalogEntry): ToolPolicy {
+  return { default: entry.default_tool_policy ?? 'deny', tools: entry.tool_policy }
 }
 
 /**
@@ -214,11 +213,12 @@ export function resolveMcp(storageContextId: string, chatUserId: string): Resolv
     log.warn({ contextId: ctx, server }, 'mcp server is not in the platform instance catalog; refusing (fail-closed)')
     return null
   }
+  const hostname = new URL(entry.upstream_url).hostname
   return {
     url: entry.upstream_url,
-    host: entry.host,
+    host: hostname,
     header: entry.header ?? 'Authorization',
-    allowedHosts: [entry.host],
+    allowedHosts: [hostname],
     toolPolicy: catalogToolPolicy(entry),
   }
 }

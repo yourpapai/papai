@@ -18,9 +18,8 @@ const CatalogResponseSchema = z.object({
     z.object({
       name: z.string(),
       upstream_url: z.string(),
-      host: z.string(),
       header: z.string().optional(),
-      default_tool_policy: z.enum(['allow', 'ask', 'deny']).optional(),
+      default_tool_policy: z.enum(['allow', 'ask', 'deny']),
       tool_policy: z.record(z.string(), z.enum(['allow', 'ask', 'deny'])).optional(),
     }),
   ),
@@ -75,7 +74,6 @@ describe('settings admin mcp-catalog routes', () => {
           {
             name: 'Jira',
             upstream_url: 'https://mcp.atlassian.com/v1',
-            host: 'mcp.atlassian.com',
             default_tool_policy: 'allow',
           },
         ],
@@ -88,7 +86,6 @@ describe('settings admin mcp-catalog routes', () => {
     expect(body.entries[0]).toMatchObject({
       name: 'Jira',
       upstream_url: 'https://mcp.atlassian.com/v1',
-      host: 'mcp.atlassian.com',
       default_tool_policy: 'allow',
     })
 
@@ -130,6 +127,17 @@ describe('settings admin mcp-catalog routes', () => {
       method: 'POST',
       headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind: 'catalog', entries: [{ name: '', upstream_url: 'not-a-url', host: '' }] }),
+    })
+    const res = await handleAdminMcpCatalogRoutes(req, url, url.pathname)
+    expect(res.status).toBe(422)
+  })
+
+  test('POST with an entry missing default_tool_policy returns 422', async () => {
+    const url = new URL('https://x/settings/api/admin/mcp-catalog')
+    const req = new Request(url, {
+      method: 'POST',
+      headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'catalog', entries: [{ name: 'J', upstream_url: 'https://h/v1' }] }),
     })
     const res = await handleAdminMcpCatalogRoutes(req, url, url.pathname)
     expect(res.status).toBe(422)

@@ -130,7 +130,9 @@ test('resolveMcp and resolveMcpToken via facade; denied without permission', () 
   // the module's non-parseable STORAGE_CTX.
   const pi = 'pi-facade-mcp'
   const mcpCtx = toScopedContextId({ platformInstanceId: pi, nativeContextId: 'user-3' })
-  setMcpCatalog(pi, [{ name: 'Jira', upstream_url: 'https://mcp.example.com/v1', host: 'mcp.example.com' }])
+  setMcpCatalog(pi, [
+    { name: 'Jira', upstream_url: 'https://mcp.example.com/v1', default_tool_policy: 'allow' as const },
+  ])
   updateCodingCredentials(mcpCtx, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-3')
   const facade = buildCodingSecretsFacade('acp', mcpCtx, true, CHAT_USER_ID)
   expect(facade.resolveMcp()).toEqual({
@@ -138,6 +140,7 @@ test('resolveMcp and resolveMcpToken via facade; denied without permission', () 
     host: 'mcp.example.com',
     header: 'Authorization',
     allowedHosts: ['mcp.example.com'],
+    toolPolicy: { default: 'allow' },
   })
   expect(facade.resolveMcpToken()).toBe('sek')
   expect(() => buildCodingSecretsFacade('acp', mcpCtx, false, CHAT_USER_ID).resolveMcp()).toThrow("'coding.secrets'")

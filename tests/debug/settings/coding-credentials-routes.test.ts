@@ -44,9 +44,8 @@ const GetResponseSchema = z.object({
       z.object({
         name: z.string(),
         upstream_url: z.string(),
-        host: z.string(),
         header: z.string().optional(),
-        default_tool_policy: z.enum(['allow', 'ask', 'deny']).optional(),
+        default_tool_policy: z.enum(['allow', 'ask', 'deny']),
         tool_policy: z.record(z.string(), z.enum(['allow', 'ask', 'deny'])).optional(),
       }),
     )
@@ -346,8 +345,13 @@ describe('coding-credentials routes', () => {
 
   test('GET ?namespace=mcp surfaces the operator catalog', async () => {
     const catalog = [
-      { name: 'github', upstream_url: 'https://mcp.example.com/github', host: 'mcp.example.com' },
-      { name: 'linear', upstream_url: 'https://mcp.example.com/linear', host: 'mcp.example.com', header: 'X-Token' },
+      { name: 'github', upstream_url: 'https://mcp.example.com/github', default_tool_policy: 'allow' as const },
+      {
+        name: 'linear',
+        upstream_url: 'https://mcp.example.com/linear',
+        header: 'X-Token',
+        default_tool_policy: 'allow' as const,
+      },
     ]
     setMcpCatalog(PLATFORM_INSTANCE_ID, catalog)
     const url = new URL(`https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`)
