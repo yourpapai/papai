@@ -5,8 +5,8 @@
 
 import { afterEach, describe, expect, it } from 'bun:test'
 
-import { fetchProviderModels } from '../../src/coding-credentials/provider-models.js'
-import { restoreFetch, setMockFetch } from '../utils/test-helpers.js'
+import { fetchProviderModels } from '../../../../src/modules/coding/credentials/provider-models.js'
+import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 afterEach(() => restoreFetch())
 

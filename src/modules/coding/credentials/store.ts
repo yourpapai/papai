@@ -5,10 +5,10 @@
 
 import { and, eq, sql } from 'drizzle-orm'
 
-import { codingSessionCredentials, type CodingSessionCredentialRow } from '../db/coding-credentials-schema.js'
-import { getDrizzleDb } from '../db/drizzle.js'
-import { logger } from '../logger.js'
-import { decryptSecretPayload, encryptSecretPayload, type SecretPayload } from '../secret-payload-crypto.js'
+import { codingSessionCredentials, type CodingSessionCredentialRow } from '../../../db/coding-credentials-schema.js'
+import { getDrizzleDb } from '../../../db/drizzle.js'
+import { logger } from '../../../logger.js'
+import { decryptSecretPayload, encryptSecretPayload, type SecretPayload } from '../../../secret-payload-crypto.js'
 import {
   type CodingCredentialConfig,
   type CodingCredentialState,

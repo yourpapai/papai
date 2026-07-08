@@ -7,14 +7,19 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
-import { addAuthorizedGroup } from '../../src/authorized-groups.js'
+import { addAuthorizedGroup } from '../../../../src/authorized-groups.js'
 import {
   getConfigContextIdFromStorageContextId,
   toScopedContextId,
   toScopedThreadContextId,
-} from '../../src/chat/scoped-context.js'
-import { adminCodingGuardrailsContextId, setCodingGuardrails } from '../../src/coding-credentials/guardrails.js'
-import { setMcpCatalog } from '../../src/coding-credentials/mcp-catalog.js'
+} from '../../../../src/chat/scoped-context.js'
+import { getDrizzleDb } from '../../../../src/db/drizzle.js'
+import { authorizedGroups } from '../../../../src/db/schema.js'
+import {
+  adminCodingGuardrailsContextId,
+  setCodingGuardrails,
+} from '../../../../src/modules/coding/credentials/guardrails.js'
+import { setMcpCatalog } from '../../../../src/modules/coding/credentials/mcp-catalog.js'
 import {
   resolveAgent,
   resolveAgentSecrets,
@@ -24,11 +29,9 @@ import {
   resolveMcpToken,
   resolveModel,
   resolveProviderHost,
-} from '../../src/coding-credentials/resolve-agent-secrets.js'
-import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
-import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { authorizedGroups } from '../../src/db/schema.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+} from '../../../../src/modules/coding/credentials/resolve-agent-secrets.js'
+import { updateCodingCredentials } from '../../../../src/modules/coding/credentials/store.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 const STORAGE_CTX = 'pi:telegram:ctx:user-9'
 // STORAGE_CTX is not parseable (non-standard format) → pi === undefined → legacy path unchanged

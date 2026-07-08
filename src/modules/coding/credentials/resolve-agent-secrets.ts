@@ -3,14 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getGroupCodingIdentity } from '../authorized-groups.js'
+import { getGroupCodingIdentity } from '../../../authorized-groups.js'
 import {
   getConfigContextIdFromStorageContextId,
   parseScopedContextId,
   toScopedContextId,
-} from '../chat/scoped-context.js'
-import { logger } from '../logger.js'
-import type { Permission } from '../tools/tool-preferences.js'
+} from '../../../chat/scoped-context.js'
+import { logger } from '../../../logger.js'
+import type { Permission } from '../../../tools/tool-preferences.js'
 import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
 import { resolveMcpCatalog, type McpCatalogEntry } from './mcp-catalog.js'
 import { getCodingCredentials } from './store.js'

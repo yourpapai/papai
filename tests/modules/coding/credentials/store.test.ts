@@ -5,15 +5,15 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { codingSessionCredentials } from '../../../../src/db/coding-credentials-schema.js'
+import { getDrizzleDb } from '../../../../src/db/drizzle.js'
 import {
   clearCodingCredentials,
   getCodingCredentialState,
   getCodingCredentials,
   updateCodingCredentials,
-} from '../../src/coding-credentials/store.js'
-import { codingSessionCredentials } from '../../src/db/coding-credentials-schema.js'
-import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+} from '../../../../src/modules/coding/credentials/store.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 const CTX = 'pi:telegram:ctx:user-1'
 const NS = 'agent-provider' as const

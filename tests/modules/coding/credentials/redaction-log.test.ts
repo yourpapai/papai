@@ -11,13 +11,13 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { createTrackedLoggerMock, type TrackedLoggerMock } from '../utils/logger-mock.js'
-import { setupTestDb } from '../utils/test-helpers.js'
+import { createTrackedLoggerMock, type TrackedLoggerMock } from '../../../utils/logger-mock.js'
+import { setupTestDb } from '../../../utils/test-helpers.js'
 
-type StoreModule = typeof import('../../src/coding-credentials/store.js')
+type StoreModule = typeof import('../../../../src/modules/coding/credentials/store.js')
 
 const importStore = (): Promise<StoreModule> =>
-  import(`../../src/coding-credentials/store.js?test=${crypto.randomUUID()}`)
+  import(`../../../../src/modules/coding/credentials/store.js?test=${crypto.randomUUID()}`)
 
 describe('coding-credentials redaction: no secret reaches the logger', () => {
   const tracked: TrackedLoggerMock = createTrackedLoggerMock()
@@ -25,7 +25,7 @@ describe('coding-credentials redaction: no secret reaches the logger', () => {
   beforeEach(async () => {
     tracked.clearCalls()
     process.env['INSTANCE_CONFIG_KEY'] = '0'.repeat(64)
-    void mock.module('../../src/logger.js', () => ({
+    void mock.module('../../../../src/logger.js', () => ({
       getLogLevel: tracked.getLogLevel,
       logger: tracked.logger,
     }))

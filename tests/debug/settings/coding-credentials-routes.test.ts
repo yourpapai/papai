@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { setMcpCatalog } from '../../../src/coding-credentials/mcp-catalog.js'
-import { getCodingCredentials } from '../../../src/coding-credentials/store.js'
 import { maskSensitiveValue } from '../../../src/config.js'
 import { handleCodingCredentialsRoutes } from '../../../src/debug/settings/coding-credentials-routes.js'
+import { setMcpCatalog } from '../../../src/modules/coding/credentials/mcp-catalog.js'
+import { getCodingCredentials } from '../../../src/modules/coding/credentials/store.js'
 import { resolveSettingsPrincipal } from '../../../src/settings/principal.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'

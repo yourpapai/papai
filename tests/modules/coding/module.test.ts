@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { setCodingGuardrails } from '../../../src/coding-credentials/guardrails.js'
+import { setCodingGuardrails } from '../../../src/modules/coding/credentials/guardrails.js'
 import { codingModule, codingWhoMayUseResolver } from '../../../src/modules/coding/module.js'
 import { operatorAllowlistPort } from '../../../src/ports/operator-allowlist.js'
 import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'

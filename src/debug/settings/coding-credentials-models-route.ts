@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { fetchProviderModels } from '../../coding-credentials/provider-models.js'
-import { getCodingCredentials } from '../../coding-credentials/store.js'
+import { fetchProviderModels } from '../../modules/coding/credentials/provider-models.js'
+import { getCodingCredentials } from '../../modules/coding/credentials/store.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { authenticate, resolveContextScope, settingsJson } from './respond.js'
 

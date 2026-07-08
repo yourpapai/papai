@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { getCachedConfig, setCachedConfig } from '../cache.js'
+import { getCachedConfig, setCachedConfig } from '../../../cache.js'
 
 const PREFIX = '__admin_mcp_catalog__:'
 const KEY = 'mcp_catalog'

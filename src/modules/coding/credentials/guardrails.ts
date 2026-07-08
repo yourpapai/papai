@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { getCachedConfig, setCachedConfig } from '../cache.js'
+import { getCachedConfig, setCachedConfig } from '../../../cache.js'
 import { AGENTS } from './types.js'
 
 const PREFIX = '__admin_coding_guardrails__:'
