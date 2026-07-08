@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { AdminMcpCatalogEntrySchema } from './fetcher-schemas-mcp-catalog.js'
 import { StoredConfigValueSchema } from './fetcher-schemas-shared.js'
 
 // --- Bootstrap / session ---
@@ -76,6 +77,8 @@ export const CodingCredentialsResponseSchema = z.object({
   error: z.string().optional(),
   fields: z.array(CodingCredentialFieldSchema),
   allowedAgents: z.array(z.string()).optional(),
+  // Present only for namespace: 'mcp' — the operator-curated MCP server catalog to select from.
+  catalog: z.array(AdminMcpCatalogEntrySchema).optional(),
 })
 export type CodingCredentialField = z.infer<typeof CodingCredentialFieldSchema>
 export type CodingCredentialsResponse = z.infer<typeof CodingCredentialsResponseSchema>

@@ -25,7 +25,13 @@ export type RuntimeContext = {
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
     resolveProviderHost(): string | null
     resolveModel(): string | null
-    resolveMcp(): { url: string; host: string; header: string; allowedHosts: string[] } | null
+    resolveMcp(): {
+      url: string
+      host: string
+      header: string
+      allowedHosts: string[]
+      toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
+    } | null
     resolveMcpToken(): string | undefined
   }
   codingRepos: {
@@ -109,7 +115,17 @@ export function buildSessionProjectSpec(
   const forge = codingSecrets.resolveForge()
   const providerHost = codingSecrets.resolveProviderHost()
   const model = codingSecrets.resolveModel()
-  const mcp = codingSecrets.resolveMcp()
+  const resolvedMcp = codingSecrets.resolveMcp()
+  const mcp =
+    resolvedMcp === null
+      ? null
+      : {
+          url: resolvedMcp.url,
+          host: resolvedMcp.host,
+          header: resolvedMcp.header,
+          allowedHosts: resolvedMcp.allowedHosts,
+          ...(resolvedMcp.toolPolicy === undefined ? {} : { toolPolicy: resolvedMcp.toolPolicy }),
+        }
   return {
     ...base,
     ...(forge === null ? {} : { forge }),

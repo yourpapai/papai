@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 const ToolPolicySchema = z.enum(['allow', 'ask', 'deny'])
 
-const AdminMcpCatalogEntrySchema = z.object({
+export const AdminMcpCatalogEntrySchema = z.object({
   name: z.string(),
   upstream_url: z.string(),
   host: z.string(),

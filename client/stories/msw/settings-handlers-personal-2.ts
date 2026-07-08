@@ -93,3 +93,68 @@ export const releaseSubscriptionMutationErrorHandlers: HttpHandler[] = [
   http.get('/settings/api/release-subscription', () => HttpResponse.json(releaseSubscriptionEmpty)),
   http.patch('/settings/api/release-subscription', boom),
 ]
+
+// --- Coding MCP servers (GET /settings/api/coding-credentials?namespace=mcp) ---
+
+const codingMcpCatalog = [
+  { name: 'search', upstream_url: 'https://mcp.corp.com/search', host: 'mcp.corp.com' },
+  { name: 'docs', upstream_url: 'https://mcp.corp.com/docs', host: 'mcp.corp.com' },
+]
+
+const codingMcpPopulated = {
+  namespace: 'mcp',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'server',
+      label: 'MCP server',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'search',
+      control: 'select',
+    },
+    { key: 'upstream_token', label: 'Credential', required: true, sensitive: true, hasValue: true, value: '****ab12' },
+  ],
+  catalog: codingMcpCatalog,
+}
+
+const codingMcpEmpty = {
+  namespace: 'mcp',
+  configured: false,
+  complete: false,
+  missing: ['server', 'upstream_token'],
+  fields: [
+    {
+      key: 'server',
+      label: 'MCP server',
+      required: true,
+      sensitive: false,
+      hasValue: false,
+      value: '',
+      control: 'select',
+    },
+    { key: 'upstream_token', label: 'Credential', required: true, sensitive: true, hasValue: false, value: '' },
+  ],
+  catalog: codingMcpCatalog,
+}
+
+const codingMcpNoCatalog = { ...codingMcpEmpty, catalog: [] }
+
+export const codingMcpHandlers: HandlerFamily = {
+  populated: [http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpPopulated))],
+  empty: [http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpEmpty))],
+  error: [http.get('/settings/api/coding-credentials', boom)],
+  loading: [
+    http.get('/settings/api/coding-credentials', async () => {
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json(codingMcpEmpty)
+    }),
+  ],
+}
+
+export const codingMcpNoCatalogHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpNoCatalog)),
+]

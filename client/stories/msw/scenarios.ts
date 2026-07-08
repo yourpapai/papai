@@ -34,6 +34,8 @@ import {
   guestModeHandlers,
 } from './settings-handlers-group.js'
 import {
+  codingMcpHandlers,
+  codingMcpNoCatalogHandlers,
   configHandlers,
   releaseSubscriptionHandlers,
   releaseSubscriptionMutatingHandlers,
@@ -182,6 +184,11 @@ export const scenarios = {
   'settings-coding-credentials-empty': [...codingCredentialsHandlers.empty],
   'settings-coding-credentials-error': [...codingCredentialsHandlers.error],
   'settings-coding-credentials-loading': [...codingCredentialsHandlers.loading],
+  'settings-coding-mcp-populated': [...codingMcpHandlers.populated],
+  'settings-coding-mcp-empty': [...codingMcpHandlers.empty],
+  'settings-coding-mcp-no-catalog': [...codingMcpNoCatalogHandlers],
+  'settings-coding-mcp-error': [...codingMcpHandlers.error],
+  'settings-coding-mcp-loading': [...codingMcpHandlers.loading],
   'settings-memory-populated': [...memoryHandlers.populated],
   'settings-memory-empty': [...memoryHandlers.empty],
   'settings-memory-error': [...memoryHandlers.error],

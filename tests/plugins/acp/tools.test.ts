@@ -86,6 +86,32 @@ describe('buildSessionProjectSpec', () => {
     const secrets = makeCodingSecrets({ resolveModel: () => null })
     expect('model' in buildSessionProjectSpec(demoRepo, 'claude', secrets)).toBe(false)
   })
+
+  test('includes mcp.toolPolicy when resolveMcp returns a value carrying one', () => {
+    const mcp = {
+      url: 'https://mcp.corp.com',
+      host: 'mcp.corp.com',
+      header: 'Authorization',
+      allowedHosts: ['mcp.corp.com'],
+      toolPolicy: { default: 'deny' as const, tools: { echo: 'allow' as const } },
+    }
+    const secrets = makeCodingSecrets({ resolveMcp: () => mcp })
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
+    expect(result['mcp']).toHaveProperty('toolPolicy', mcp.toolPolicy)
+  })
+
+  test('omits mcp.toolPolicy when resolveMcp returns a value without one', () => {
+    const mcp = {
+      url: 'https://mcp.corp.com',
+      host: 'mcp.corp.com',
+      header: 'Authorization',
+      allowedHosts: ['mcp.corp.com'],
+    }
+    const secrets = makeCodingSecrets({ resolveMcp: () => mcp })
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
+    expect(result['mcp']).toEqual(mcp)
+    expect(result['mcp']).not.toHaveProperty('toolPolicy')
+  })
 })
 
 describe('buildProjectSpec', () => {
