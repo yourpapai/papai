@@ -16,6 +16,7 @@ import { buildMessagesWithMemory } from './conversation.js'
 import { resolveTimezone } from './llm-orchestrator-config.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
+import { toolGateRegistry, type ToolGateRegistry } from './ports/tool-gate.js'
 import type { TaskProvider } from './providers/types.js'
 import { toolCapabilityCatalog } from './runtime/capability-catalog.js'
 import { applyResultCompaction } from './tools/compaction/wrap-compaction.js'
@@ -34,27 +35,27 @@ import type { AskPermissionFn } from './tools/permission-gate.js'
 const log = logger.child({ scope: 'llm-orchestrator:tools' })
 
 // ---------------------------------------------------------------------------
-// Who-may-use filter: gates acp state-changing tools per operator guardrails
+// Who-may-use filter: drops operator-gated tools for actors not on the
+// operator allowlist. Which tools are operator-gated is declared by the tools
+// themselves (ToolGatePort) — core never enumerates tool names.
 // ---------------------------------------------------------------------------
 
-const ACP_SESSION_ACTION_TOOLS = new Set([
-  'plugin_acp__start_session',
-  'plugin_acp__continue_session',
-  'plugin_acp__finish_session',
-  'plugin_acp__cancel_session',
-  'plugin_acp__answer_permission',
-])
-
 /**
- * Drops ACP session-action tools for actors not on the who-may-use allowlist.
- * Returns `tools` reference-identical when `whoMayUse === 'members'` (the default).
+ * Drops operator-gated tools for actors not on the who-may-use allowlist.
+ * Returns `tools` reference-identical when `whoMayUse === 'members'` (the default) or when
+ * the actor is on the allowlist.
  */
-export function applyWhoMayUseFilter(tools: ToolSet, whoMayUse: 'members' | string[], chatUserId: string): ToolSet {
+export function applyWhoMayUseFilter(
+  tools: ToolSet,
+  whoMayUse: 'members' | string[],
+  chatUserId: string,
+  gateRegistry: ToolGateRegistry = toolGateRegistry,
+): ToolSet {
   if (whoMayUse === 'members') return tools
   if (whoMayUse.includes(chatUserId)) return tools
   const out: ToolSet = {}
   for (const [name, t] of Object.entries(tools)) {
-    if (t !== undefined && !ACP_SESSION_ACTION_TOOLS.has(name)) out[name] = t
+    if (t !== undefined && !gateRegistry.isOperatorGated(name)) out[name] = t
   }
   return out
 }
