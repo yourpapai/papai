@@ -5,14 +5,14 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { setCachedConfig } from '../../src/cache.js'
+import { setCachedConfig } from '../../../../src/cache.js'
 import {
   adminMcpCatalogContextId,
   mcpCatalogSchema,
   resolveMcpCatalog,
   setMcpCatalog,
-} from '../../src/coding-credentials/mcp-catalog.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+} from '../../../../src/modules/coding/credentials/mcp-catalog.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 describe('mcp-catalog', () => {
   beforeEach(async () => {

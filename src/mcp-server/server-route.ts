@@ -12,7 +12,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
 import { getConfigContextIdFromStorageContextId, parseScopedContextId } from '../chat/scoped-context.js'
-import { listEnabledInternalMcpServers } from '../coding-credentials/mcp-plugin-servers.js'
+import { listEnabledInternalMcpServers } from '../modules/coding/credentials/mcp-plugin-servers.js'
 import { logger } from '../logger.js'
 import { callPluginMcpTool, listPluginMcpTools } from './plugin-bridge.js'
 import { verifyPluginMcpToken, type PluginMcpTokenClaims } from './token.js'

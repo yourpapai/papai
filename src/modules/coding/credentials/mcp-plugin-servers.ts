@@ -5,10 +5,10 @@
 
 import { z } from 'zod'
 
-import { getCachedConfig, setCachedConfig } from '../cache.js'
-import { logger } from '../logger.js'
-import { getPluginsForContext } from '../plugins/registry.js'
-import { getSettingsPublicBaseUrl } from '../settings/config.js'
+import { getCachedConfig, setCachedConfig } from '../../../cache.js'
+import { logger } from '../../../logger.js'
+import { getPluginsForContext } from '../../../plugins/registry.js'
+import { getSettingsPublicBaseUrl } from '../../../settings/config.js'
 import type { ToolPolicy } from './resolve-mcp-servers.js'
 
 const log = logger.child({ scope: 'coding-credentials:mcp-plugin-servers' })

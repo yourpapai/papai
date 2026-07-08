@@ -5,14 +5,14 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { setCachedConfig } from '../../src/cache.js'
+import { setCachedConfig } from '../../../../src/cache.js'
 import {
   adminCodingGuardrailsContextId,
   guardrailsSchema,
   resolveCodingGuardrails,
   setCodingGuardrails,
-} from '../../src/coding-credentials/guardrails.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+} from '../../../../src/modules/coding/credentials/guardrails.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 describe('guardrails', () => {
   beforeEach(async () => {

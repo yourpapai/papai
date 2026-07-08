@@ -9,10 +9,10 @@ import {
   listEnabledInternalMcpServers,
   mcpPluginServerConfigsSchema,
   setMcpPluginServerConfigs,
-} from '../../src/coding-credentials/mcp-plugin-servers.js'
-import { pluginRegistry } from '../../src/plugins/registry.js'
-import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../src/plugins/types.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+} from '../../../../src/modules/coding/credentials/mcp-plugin-servers.js'
+import { pluginRegistry } from '../../../../src/plugins/registry.js'
+import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../../../src/plugins/types.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 function makePlugin(overrides: Partial<DiscoveredPlugin['manifest']> = {}): DiscoveredPlugin {
   return {

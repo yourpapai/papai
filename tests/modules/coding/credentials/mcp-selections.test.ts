@@ -10,7 +10,7 @@ import {
   mergeMcpTokens,
   parseMcpSelections,
   serializeMcpSelections,
-} from '../../src/coding-credentials/mcp-selections.js'
+} from '../../../../src/modules/coding/credentials/mcp-selections.js'
 
 describe('mcp selections', () => {
   test('round-trips an array through the servers field', () => {

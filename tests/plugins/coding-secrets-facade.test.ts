@@ -6,9 +6,9 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
-import { setMcpCatalog } from '../../src/coding-credentials/mcp-catalog.js'
-import { serializeMcpSelections } from '../../src/coding-credentials/mcp-selections.js'
-import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
+import { setMcpCatalog } from '../../src/modules/coding/credentials/mcp-catalog.js'
+import { serializeMcpSelections } from '../../src/modules/coding/credentials/mcp-selections.js'
+import { updateCodingCredentials } from '../../src/modules/coding/credentials/store.js'
 import { buildCodingSecretsFacade } from '../../src/plugins/coding-secrets-facade.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 

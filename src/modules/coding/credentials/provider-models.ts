@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { assertPublicUrl } from '../web/safe-fetch.js'
+import { assertPublicUrl } from '../../../web/safe-fetch.js'
 
 export interface ModelOption {
   value: string

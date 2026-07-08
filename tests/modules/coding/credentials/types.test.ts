@@ -19,7 +19,7 @@ import {
   deriveApiBaseUrl,
   forgeMagiKind,
   isAuthMethod,
-} from '../../src/coding-credentials/types.js'
+} from '../../../../src/modules/coding/credentials/types.js'
 
 describe('coding-credentials types', () => {
   test('CODING_NAMESPACES contains agent-provider', () => {

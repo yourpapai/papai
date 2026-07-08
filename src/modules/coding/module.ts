@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { resolveCodingGuardrails } from '../../coding-credentials/guardrails.js'
 import type { TrustedModule } from '../../ports/module.js'
 import { operatorAllowlistPort, type WhoMayUse } from '../../ports/operator-allowlist.js'
+import { resolveCodingGuardrails } from './credentials/guardrails.js'
 
 /** Who-may-use resolver for coding sessions: the platform-instance guardrail policy's allowlist. */
 export const codingWhoMayUseResolver = (platformInstanceId: string): WhoMayUse =>

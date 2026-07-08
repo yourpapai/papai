@@ -5,18 +5,18 @@
 
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
-import { toScopedContextId } from '../../src/chat/scoped-context.js'
-import { setCodingGuardrails } from '../../src/coding-credentials/guardrails.js'
-import { setMcpCatalog } from '../../src/coding-credentials/mcp-catalog.js'
-import { setMcpPluginServerConfigs } from '../../src/coding-credentials/mcp-plugin-servers.js'
-import { serializeMcpSelections } from '../../src/coding-credentials/mcp-selections.js'
-import type { ResolveMcpResult } from '../../src/coding-credentials/resolve-mcp-servers.js'
-import { resolveMcpServers, resolveMcpTokens } from '../../src/coding-credentials/resolve-mcp-servers.js'
-import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
-import { verifyPluginMcpToken } from '../../src/mcp-server/token.js'
-import { pluginRegistry } from '../../src/plugins/registry.js'
-import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../src/plugins/types.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { toScopedContextId } from '../../../../src/chat/scoped-context.js'
+import { setCodingGuardrails } from '../../../../src/modules/coding/credentials/guardrails.js'
+import { setMcpCatalog } from '../../../../src/modules/coding/credentials/mcp-catalog.js'
+import { setMcpPluginServerConfigs } from '../../../../src/modules/coding/credentials/mcp-plugin-servers.js'
+import { serializeMcpSelections } from '../../../../src/modules/coding/credentials/mcp-selections.js'
+import type { ResolveMcpResult } from '../../../../src/modules/coding/credentials/resolve-mcp-servers.js'
+import { resolveMcpServers, resolveMcpTokens } from '../../../../src/modules/coding/credentials/resolve-mcp-servers.js'
+import { updateCodingCredentials } from '../../../../src/modules/coding/credentials/store.js'
+import { verifyPluginMcpToken } from '../../../../src/mcp-server/token.js'
+import { pluginRegistry } from '../../../../src/plugins/registry.js'
+import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../../../src/plugins/types.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 function assertOk(result: ResolveMcpResult): asserts result is Extract<ResolveMcpResult, { ok: true }> {
   if (!result.ok) throw new Error(`expected ok, got error: ${result.error}`)

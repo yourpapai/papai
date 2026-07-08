@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { parseScopedContextId } from '../chat/scoped-context.js'
-import { logger } from '../logger.js'
-import { mintPluginMcpToken } from '../mcp-server/token.js'
-import type { Permission } from '../tools/tool-preferences.js'
+import { parseScopedContextId } from '../../../chat/scoped-context.js'
+import { logger } from '../../../logger.js'
+import { mintPluginMcpToken } from '../../../mcp-server/token.js'
+import type { Permission } from '../../../tools/tool-preferences.js'
 import { resolveCodingGuardrails } from './guardrails.js'
 import { resolveMcpCatalog, type McpCatalogEntry } from './mcp-catalog.js'
 import { INTERNAL_SERVER_PREFIX, listEnabledInternalMcpServers } from './mcp-plugin-servers.js'

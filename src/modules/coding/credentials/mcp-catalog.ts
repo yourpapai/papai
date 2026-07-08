@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { getCachedConfig, setCachedConfig } from '../cache.js'
+import { getCachedConfig, setCachedConfig } from '../../../cache.js'
 import { INTERNAL_SERVER_PREFIX } from './mcp-plugin-servers.js'
 
 const PREFIX = '__admin_mcp_catalog__:'

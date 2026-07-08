@@ -3,12 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getGroupCodingIdentity } from '../authorized-groups.js'
+import { getGroupCodingIdentity } from '../../../authorized-groups.js'
 import {
   getConfigContextIdFromStorageContextId,
   parseScopedContextId,
   toScopedContextId,
-} from '../chat/scoped-context.js'
+} from '../../../chat/scoped-context.js'
 import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
 import { getCodingCredentials } from './store.js'
 import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'

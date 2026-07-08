@@ -11,8 +11,8 @@ import {
   resolveForgeToken,
   resolveModel,
   resolveProviderHost,
-} from '../coding-credentials/resolve-agent-secrets.js'
-import { resolveMcpServers, resolveMcpTokens } from '../coding-credentials/resolve-mcp-servers.js'
+} from '../modules/coding/credentials/resolve-agent-secrets.js'
+import { resolveMcpServers, resolveMcpTokens } from '../modules/coding/credentials/resolve-mcp-servers.js'
 import { getRepoByName, listRepos } from '../modules/coding/repos/store.js'
 import { deny } from './deny.js'
 import type { CodingRepoEntry } from './runtime-types.js'
