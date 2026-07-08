@@ -90,6 +90,7 @@ function buildChildRecord(parentId: string, parentRecord: SessionRecord, prompt:
 export function continueSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'continue_session',
+    gate: 'operator',
     description:
       'Continue a prior coding session on its existing branch/PR with a new prompt. Identify the target by ' +
       'sessionId, or by prNumber (+project). Updates the existing PR instead of opening a new one.',

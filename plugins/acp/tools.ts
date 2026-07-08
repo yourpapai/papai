@@ -46,7 +46,7 @@ export type RuntimeContext = {
   }
 }
 type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
-export type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
+export type Tool = { name: string; description: string; inputSchema: unknown; gate?: 'operator'; execute: ToolExecute }
 
 export type RepoEntry = {
   name: string
