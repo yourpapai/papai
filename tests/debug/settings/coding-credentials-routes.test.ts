@@ -309,6 +309,53 @@ describe('coding-credentials routes', () => {
     ])
   })
 
+  test('GET ?namespace=mcp returns mcp field metadata with user-facing labels', async () => {
+    const url = new URL(`https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`)
+    const res = await handleCodingCredentialsRoutes(
+      get(`/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`, session),
+      url,
+    )
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    expect(body.fields.map((f) => f.key)).toEqual(['upstream_url', 'upstream_header', 'upstream_token'])
+
+    const byKey = Object.fromEntries(body.fields.map((f) => [f.key, f]))
+    expect(byKey['upstream_url']?.label).toBe('Upstream MCP URL')
+    expect(byKey['upstream_url']?.required).toBe(true)
+    expect(byKey['upstream_url']?.sensitive).toBe(false)
+
+    expect(byKey['upstream_header']?.label).toBe('Auth header')
+    expect(byKey['upstream_header']?.required).toBe(false)
+    expect(byKey['upstream_header']?.sensitive).toBe(false)
+
+    expect(byKey['upstream_token']?.label).toBe('Credential')
+    expect(byKey['upstream_token']?.required).toBe(true)
+    expect(byKey['upstream_token']?.sensitive).toBe(true)
+  })
+
+  test('PATCH ?namespace=mcp saves the credential masked on GET', async () => {
+    const patchUrl = new URL('https://x/settings/api/coding-credentials')
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'mcp',
+        values: { upstream_url: 'https://mcp.example.com', upstream_token: 'mcp-secret' },
+      }),
+      patchUrl,
+    )
+    const getUrl = new URL(
+      `https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`,
+    )
+    const res = await handleCodingCredentialsRoutes(
+      get(`/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`, session),
+      getUrl,
+    )
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    const field = body.fields.find((f) => f.key === 'upstream_token')
+    expect(field?.hasValue).toBe(true)
+    expect(field?.value).not.toContain('mcp-secret')
+  })
+
   test('unknown namespace is rejected', async () => {
     const url = new URL(
       `https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=bogus`,

@@ -27,4 +27,18 @@ describe('FIELDS_META', () => {
     expect(byKey['upstream_token']?.sensitive).toBe(true)
     expect(byKey['upstream_header']?.required).toBe(false)
   })
+
+  test('mcp fields have user-facing labels and correct sensitivity/control', () => {
+    const byKey = Object.fromEntries(FIELDS_META.mcp.map((field) => [field.key, field]))
+    expect(byKey['upstream_url']?.label).toBe('Upstream MCP URL')
+    expect(byKey['upstream_url']?.sensitive).toBe(false)
+    expect(byKey['upstream_url']?.control).toBeUndefined()
+
+    expect(byKey['upstream_header']?.label).toBe('Auth header')
+    expect(byKey['upstream_header']?.sensitive).toBe(false)
+    expect(byKey['upstream_header']?.control).toBeUndefined()
+
+    expect(byKey['upstream_token']?.label).toBe('Credential')
+    expect(byKey['upstream_token']?.sensitive).toBe(true)
+  })
 })
