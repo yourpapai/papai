@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { describe, expect, test } from 'bun:test'
+
+import { loadTrustedModules } from '../../src/composition/load-trusted-modules.js'
+import type { Migration } from '../../src/db/migrate.js'
+import type { TrustedModule } from '../../src/ports/module.js'
+
+const noopMigration = (id: string): Migration => ({ id, up: (): void => {} })
+
+describe('loadTrustedModules', () => {
+  test('runs all migrations before any onActivate hook', async () => {
+    const order: string[] = []
+    const runMigrationsFn = (migs: readonly Migration[]): void => {
+      for (const m of migs) order.push(`migrate:${m.id}`)
+    }
+    const modA: TrustedModule = {
+      id: 'a',
+      migrations: [noopMigration('9001_a')],
+      onActivate: () => {
+        order.push('activate:a')
+      },
+    }
+    const modB: TrustedModule = {
+      id: 'b',
+      onActivate: () => {
+        order.push('activate:b')
+      },
+    }
+    await loadTrustedModules([modA, modB], runMigrationsFn)
+    expect(order).toEqual(['migrate:9001_a', 'activate:a', 'activate:b'])
+  })
+
+  test('runs no migration for a module that declares none', async () => {
+    let calls = 0
+    await loadTrustedModules([{ id: 'y' }], () => {
+      calls += 1
+    })
+    expect(calls).toBe(0)
+  })
+
+  test('awaits an async onActivate', async () => {
+    const seen: string[] = []
+    const mod: TrustedModule = {
+      id: 'x',
+      onActivate: async () => {
+        await Promise.resolve()
+        seen.push('done')
+      },
+    }
+    await loadTrustedModules([mod], () => {})
+    expect(seen).toEqual(['done'])
+  })
+})
