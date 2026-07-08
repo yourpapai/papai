@@ -70,3 +70,11 @@ test('McpSection — save hover', async ({ sharedPage }) => {
   await sharedPage.getByTestId('mcp-save').hover()
   await expect(sharedPage).toHaveScreenshot()
 })
+
+test('McpSection — invalid url touched', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-mcpsection--populated')
+  const url = sharedPage.getByTestId('mcp-url-e1')
+  await url.fill('http://insecure.example.com')
+  await url.blur()
+  await expect(sharedPage).toHaveScreenshot()
+})
