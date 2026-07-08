@@ -57,6 +57,7 @@ export type Tool = {
   capabilityId: string
   description: string
   inputSchema: unknown
+  gate?: 'operator'
   execute: ToolExecute
 }
 

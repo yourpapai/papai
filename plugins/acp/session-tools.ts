@@ -65,6 +65,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'start_session',
     capabilityId: ACP_CAPABILITIES.start,
+    gate: 'operator',
     description:
       'Start a sandboxed coding-agent session on a configured project. Pass prNumber to start on an ' +
       'existing PR/MR (to review it or work on its branch); the project permission policy decides whether ' +
@@ -156,6 +157,7 @@ export function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'finish_session',
     capabilityId: ACP_CAPABILITIES.finish,
+    gate: 'operator',
     description: 'Finish a session: commit + push the branch, or open a PR.',
     inputSchema: finishSessionSchema,
     execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
@@ -191,6 +193,7 @@ export function cancelSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'cancel_session',
     capabilityId: ACP_CAPABILITIES.cancel,
+    gate: 'operator',
     description: 'Cancel a running coding session and tear down its sandbox.',
     inputSchema: sessionIdSchema,
     execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
@@ -207,6 +210,7 @@ export function answerPermissionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'answer_permission',
     capabilityId: ACP_CAPABILITIES.answerPermission,
+    gate: 'operator',
     description: 'Answer a coding agent pending permission request (allow or deny).',
     inputSchema: answerPermissionSchema,
     execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
