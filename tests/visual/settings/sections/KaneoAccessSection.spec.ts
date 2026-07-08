@@ -32,7 +32,7 @@ test.describe('settings/sections/KaneoAccessSection', () => {
 test('Populated — password revealed', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-kaneoaccesssection--populated')
   await sharedPage.getByRole('button', { name: 'Reveal password' }).click()
-  await sharedPage.getByText('Password (shown once):').waitFor()
+  await sharedPage.getByText('Password (shown once)').waitFor()
   await expect(sharedPage).toHaveScreenshot()
 })
 
