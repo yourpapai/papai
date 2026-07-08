@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
-import { buildCodingSecretsFacade } from '../../src/plugins/tool-runtime.js'
+import { buildCodingSecretsFacade } from '../../src/plugins/coding-secrets-facade.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const STORAGE_CTX = 'pi:telegram:ctx:user-3'
@@ -120,4 +120,27 @@ test('resolveProviderHost returns host from base URL for openai-compatible', () 
 test('resolveProviderHost throws without the coding.secrets permission', () => {
   const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID)
   expect(() => facade.resolveProviderHost()).toThrow("does not have 'coding.secrets' permission")
+})
+
+test('resolveMcp and resolveMcpToken via facade; denied without permission', () => {
+  updateCodingCredentials(
+    STORAGE_CTX,
+    'mcp',
+    { upstream_url: 'https://mcp.example.com/v1', upstream_token: 'sek' },
+    'user-3',
+  )
+  const facade = buildCodingSecretsFacade('acp', STORAGE_CTX, true, CHAT_USER_ID)
+  expect(facade.resolveMcp()).toEqual({
+    url: 'https://mcp.example.com/v1',
+    host: 'mcp.example.com',
+    header: 'Authorization',
+    allowedHosts: ['mcp.example.com'],
+  })
+  expect(facade.resolveMcpToken()).toBe('sek')
+  expect(() => buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID).resolveMcp()).toThrow(
+    "'coding.secrets'",
+  )
+  expect(() => buildCodingSecretsFacade('acp', STORAGE_CTX, false, CHAT_USER_ID).resolveMcpToken()).toThrow(
+    "'coding.secrets'",
+  )
 })

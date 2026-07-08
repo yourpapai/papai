@@ -60,6 +60,8 @@ export type PluginToolRuntimeContext = {
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
     resolveProviderHost(): string | null
     resolveModel(): string | null
+    resolveMcp(): { url: string; host: string; header: string; allowedHosts: string[] } | null
+    resolveMcpToken(): string | undefined
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]

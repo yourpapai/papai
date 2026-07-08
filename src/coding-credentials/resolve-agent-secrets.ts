@@ -9,9 +9,12 @@ import {
   parseScopedContextId,
   toScopedContextId,
 } from '../chat/scoped-context.js'
+import { logger } from '../logger.js'
 import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
 import { getCodingCredentials } from './store.js'
 import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'
+
+const log = logger.child({ scope: 'coding-credentials:resolve-agent-secrets' })
 
 export function configContextOf(storageContextId: string): string {
   return getConfigContextIdFromStorageContextId(storageContextId)
@@ -156,4 +159,56 @@ export function resolveForge(
   } catch {
     return null
   }
+}
+
+/** Non-secret MCP broker config resolved from the identity's `mcp` vault. Never carries the token. */
+export interface ResolvedMcp {
+  url: string
+  host: string
+  header: string
+  allowedHosts: string[]
+}
+
+/**
+ * Resolve the acting identity's MCP broker config (non-secret) from the `mcp` vault.
+ * Returns null when no vault is stored, when the vault is partial (url or token
+ * missing), or when the stored url is malformed or not https (fail-closed). The
+ * token itself is never included here — see resolveMcpToken.
+ */
+export function resolveMcp(storageContextId: string, chatUserId: string): ResolvedMcp | null {
+  const ctx = identityContext(storageContextId, chatUserId)
+  const creds = getCodingCredentials(ctx, 'mcp')
+  if (creds === null) return null
+  const url = creds.upstream_url?.trim()
+  const token = creds.upstream_token?.trim()
+  if (url === undefined || url.length === 0 || token === undefined || token.length === 0) return null
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    log.warn({ contextId: ctx }, 'mcp upstream_url is malformed')
+    return null
+  }
+  if (parsed.protocol !== 'https:') {
+    log.warn({ contextId: ctx }, 'mcp upstream_url is not https; refusing to resolve')
+    return null
+  }
+  const host = parsed.hostname.toLowerCase()
+  const header = creds.upstream_header?.trim()
+  return {
+    url,
+    host,
+    header: header === undefined || header.length === 0 ? 'Authorization' : header,
+    allowedHosts: [host],
+  }
+}
+
+/**
+ * Resolve the acting identity's MCP upstream credential.
+ * Returns undefined when no token is stored.
+ */
+export function resolveMcpToken(storageContextId: string, chatUserId: string): string | undefined {
+  const creds = getCodingCredentials(identityContext(storageContextId, chatUserId), 'mcp')
+  const token = creds?.upstream_token?.trim()
+  return token === undefined || token.length === 0 ? undefined : token
 }

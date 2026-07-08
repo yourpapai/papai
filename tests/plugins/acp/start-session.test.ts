@@ -199,6 +199,8 @@ describe('acp start_session tool', () => {
         }),
         resolveProviderHost: (): null => null,
         resolveModel: (): null => null,
+        resolveMcp: (): null => null,
+        resolveMcpToken: (): undefined => undefined,
       },
     }
     const result = await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctx, options())
@@ -229,6 +231,8 @@ describe('acp start_session tool', () => {
         }),
         resolveProviderHost: (): null => null,
         resolveModel: (): null => null,
+        resolveMcp: (): null => null,
+        resolveMcpToken: (): undefined => undefined,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithForge, options())
@@ -256,6 +260,8 @@ describe('acp start_session tool', () => {
         resolveForge: (): null => null,
         resolveProviderHost: (): null => null,
         resolveModel: (): null => null,
+        resolveMcp: (): null => null,
+        resolveMcpToken: (): undefined => undefined,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithCodex, options())
@@ -279,6 +285,8 @@ describe('acp start_session tool', () => {
         resolveForge: (): null => null,
         resolveProviderHost: (): string => 'llm.corp.com',
         resolveModel: (): null => null,
+        resolveMcp: (): null => null,
+        resolveMcpToken: (): undefined => undefined,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithProviderHost, options())
@@ -314,6 +322,8 @@ describe('acp start_session tool', () => {
         resolveForge: (): null => null,
         resolveProviderHost: (): null => null,
         resolveModel: (): string => 'claude-opus-4-5',
+        resolveMcp: (): null => null,
+        resolveMcpToken: (): undefined => undefined,
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithModel, options())

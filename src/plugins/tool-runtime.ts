@@ -5,21 +5,13 @@
 
 import { loadAttachmentRecord } from '../attachments/store.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
-import {
-  resolveAgentSecrets,
-  resolveForge,
-  resolveForgeToken,
-  resolveAgent,
-  resolveModel,
-  resolveProviderHost,
-  configContextOf,
-} from '../coding-credentials/resolve-agent-secrets.js'
-import { getRepoByName, listRepos } from '../coding-repos/store.js'
 import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
+import { buildCodingReposFacade, buildCodingSecretsFacade } from './coding-secrets-facade.js'
+import { deny } from './deny.js'
 import { buildIdentityFacade } from './identity-facade.js'
 import { consumePluginQuota } from './rate-limit.js'
-import type { CodingRepoEntry, PluginScheduledJobRuntimeContext } from './runtime-types.js'
+import type { PluginScheduledJobRuntimeContext } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
   PluginAttachmentFacade,
@@ -32,10 +24,6 @@ export type PluginToolSetRuntime = {
   provider?: TaskProvider
   storageContextId: string
   chatUserId: string
-}
-
-function deny(pluginId: string, permission: string): never {
-  throw new Error(`Plugin ${pluginId} does not have '${permission}' permission`)
 }
 
 function buildRuntimeKv(
@@ -159,56 +147,6 @@ function buildAttachmentsFacade(
           ...(stored.forwardedFrom === undefined ? {} : { forwardedFrom: stored.forwardedFrom }),
         },
         bytes: stored.content,
-      }
-    },
-  })
-}
-
-export function buildCodingSecretsFacade(
-  pluginId: string,
-  storageContextId: string,
-  hasPermission: boolean,
-  chatUserId: string,
-): PluginToolRuntimeContext['codingSecrets'] {
-  // Gate each resolver behind the coding.secrets permission check.
-  const gate =
-    <T>(fn: () => T): (() => T) =>
-    (): T => {
-      if (!hasPermission) deny(pluginId, 'coding.secrets')
-      return fn()
-    }
-  return Object.freeze({
-    resolve: gate(() => resolveAgentSecrets(storageContextId, chatUserId)),
-    resolveForgeToken: gate(() => resolveForgeToken(storageContextId, chatUserId)),
-    resolveAgent: gate(() => resolveAgent(storageContextId, chatUserId)),
-    resolveForge: gate(() => resolveForge(storageContextId, chatUserId)),
-    resolveProviderHost: gate(() => resolveProviderHost(storageContextId, chatUserId)),
-    resolveModel: gate(() => resolveModel(storageContextId, chatUserId)),
-  })
-}
-
-export function buildCodingReposFacade(
-  pluginId: string,
-  storageContextId: string,
-  hasPermission: boolean,
-): PluginToolRuntimeContext['codingRepos'] {
-  return Object.freeze({
-    list(): { name: string; baseBranch: string }[] {
-      if (!hasPermission) deny(pluginId, 'coding.secrets')
-      const contextId = configContextOf(storageContextId)
-      return listRepos(contextId).map((r) => ({ name: r.name, baseBranch: r.baseBranch }))
-    },
-    get(name: string): CodingRepoEntry | null {
-      if (!hasPermission) deny(pluginId, 'coding.secrets')
-      const contextId = configContextOf(storageContextId)
-      const r = getRepoByName(contextId, name)
-      if (r === null) return null
-      return {
-        name: r.name,
-        repoUrl: r.repoUrl,
-        baseBranch: r.baseBranch,
-        permissionPreset: r.permissionPreset,
-        additionalEgressDomains: r.additionalEgressDomains,
       }
     },
   })

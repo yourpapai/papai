@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { upsertRepo } from '../../src/coding-repos/store.js'
-import { buildCodingReposFacade } from '../../src/plugins/tool-runtime.js'
+import { buildCodingReposFacade } from '../../src/plugins/coding-secrets-facade.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 // Use a plain context id (matching the coding-secrets-facade test pattern).
