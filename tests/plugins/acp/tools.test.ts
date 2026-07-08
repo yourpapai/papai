@@ -18,6 +18,8 @@ function makeCodingSecrets(overrides?: Partial<CodingSecrets>): CodingSecrets {
     resolveForge: () => null,
     resolveProviderHost: () => null,
     resolveModel: () => null,
+    resolveMcp: () => null,
+    resolveMcpToken: () => undefined,
     ...overrides,
   }
 }

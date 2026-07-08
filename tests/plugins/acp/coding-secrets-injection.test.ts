@@ -53,6 +53,8 @@ type FakeRuntimeContext = {
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
     resolveProviderHost(): string | null
     resolveModel(): string | null
+    resolveMcp(): { url: string; host: string; header: string; allowedHosts: string[] } | null
+    resolveMcpToken(): string | undefined
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
@@ -67,12 +69,23 @@ function ctx(
   resolveForge: () => { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null = (): null => null,
   resolveProviderHost: () => string | null = (): null => null,
   resolveModel: () => string | null = (): null => null,
+  resolveMcp: () => { url: string; host: string; header: string; allowedHosts: string[] } | null = (): null => null,
+  resolveMcpToken: () => string | undefined = (): undefined => undefined,
 ): FakeRuntimeContext {
   return {
     storageContextId: 'pi:telegram:ctx:u1',
     adminConfig: ADMIN,
     kv: KV,
-    codingSecrets: { resolve, resolveForgeToken, resolveAgent, resolveForge, resolveProviderHost, resolveModel },
+    codingSecrets: {
+      resolve,
+      resolveForgeToken,
+      resolveAgent,
+      resolveForge,
+      resolveProviderHost,
+      resolveModel,
+      resolveMcp,
+      resolveMcpToken,
+    },
     codingRepos: {
       list: () => [{ name: 'demo', baseBranch: 'main' }],
       get: (name: string) => (name === 'demo' ? DEMO_REPO : null),

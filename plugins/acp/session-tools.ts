@@ -89,6 +89,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       if ('error' in access) return access
       const { secrets, forgeToken, resolvedAgent } = access
       const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets)
+      const mcpToken = runtimeContext.codingSecrets.resolveMcpToken()
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         agent,
         contextId: runtimeContext.storageContextId,
@@ -97,6 +98,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         ...(forgeToken === null ? {} : { forgeToken }),
         ...(prNumber === null ? {} : { prNumber }),
         projectSpec,
+        ...(mcpToken === undefined ? {} : { mcpToken }),
       })
       recordStartedSession(runtimeContext, result, project, prompt, prNumber ?? undefined)
       return result

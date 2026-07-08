@@ -25,6 +25,8 @@ export type RuntimeContext = {
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
     resolveProviderHost(): string | null
     resolveModel(): string | null
+    resolveMcp(): { url: string; host: string; header: string; allowedHosts: string[] } | null
+    resolveMcpToken(): string | undefined
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
@@ -107,11 +109,13 @@ export function buildSessionProjectSpec(
   const forge = codingSecrets.resolveForge()
   const providerHost = codingSecrets.resolveProviderHost()
   const model = codingSecrets.resolveModel()
+  const mcp = codingSecrets.resolveMcp()
   return {
     ...base,
     ...(forge === null ? {} : { forge }),
     ...(providerHost === null ? {} : { providerHost }),
     ...(model === null ? {} : { model }),
+    ...(mcp === null ? {} : { mcp }),
   }
 }
 

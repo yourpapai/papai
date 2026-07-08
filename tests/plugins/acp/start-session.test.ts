@@ -329,4 +329,53 @@ describe('acp start_session tool', () => {
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithModel, options())
     expect(asRecord(asRecord(capturedBody)['projectSpec'])['model']).toBe('claude-opus-4-5')
   })
+
+  test('projectSpec includes mcp and POST body includes mcpToken when resolveMcp/resolveMcpToken return values', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 's-mcp', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const ctxWithMcp = {
+      ...runtimeCtxWithKv(store),
+      codingSecrets: {
+        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+        resolveForgeToken: (): string => 'ghp-test',
+        resolveAgent: (): null => null,
+        resolveForge: (): null => null,
+        resolveProviderHost: (): null => null,
+        resolveModel: (): null => null,
+        resolveMcp: (): { url: string; host: string; header: string; allowedHosts: string[] } => ({
+          url: 'https://mcp.example.com/mcp',
+          host: 'mcp.example.com',
+          header: 'X-Mcp-Auth',
+          allowedHosts: ['mcp.example.com'],
+        }),
+        resolveMcpToken: (): string => 'mcp-tok',
+      },
+    }
+    await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithMcp, options())
+    expect(asRecord(asRecord(capturedBody)['projectSpec'])['mcp']).toEqual({
+      url: 'https://mcp.example.com/mcp',
+      host: 'mcp.example.com',
+      header: 'X-Mcp-Auth',
+      allowedHosts: ['mcp.example.com'],
+    })
+    expect(asRecord(capturedBody)['mcpToken']).toBe('mcp-tok')
+  })
+
+  test('projectSpec omits mcp and POST body omits mcpToken when resolveMcp returns null', async () => {
+    let capturedBody: unknown = null
+    const httpFetch: HttpFetch = (_url, init) => {
+      capturedBody = JSON.parse(bodyString(init))
+      return Promise.resolve(jsonResponse({ id: 's-nomcp', status: 'queued' }, 202))
+    }
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, runtimeCtxWithKv(store), options())
+    expect(Object.keys(asRecord(asRecord(capturedBody)['projectSpec']))).not.toContain('mcp')
+    expect(Object.keys(asRecord(capturedBody))).not.toContain('mcpToken')
+  })
 })
