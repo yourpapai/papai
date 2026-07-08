@@ -87,6 +87,11 @@ export type PluginTool = {
   name: string
   description: string
   inputSchema?: z.ZodType
+  /**
+   * Access gate. `'operator'` restricts the tool to the who-may-use allowlist; omitted means
+   * unrestricted. Recorded into the ToolGatePort at assembly and enforced by the orchestrator.
+   */
+  gate?: 'operator'
   execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
 }
 
