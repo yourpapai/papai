@@ -19,7 +19,7 @@ export function describeMcpPosture(defaultPolicy: Permission, rows: PolicyRow[])
     const denied = named(rows, 'deny')
     const asked = named(rows, 'ask')
     if (denied.length > 0) parts.push(`blocked: ${denied.join(', ')}`)
-    if (asked.length > 0) parts.push(`ask first: ${asked.join(', ')}`)
+    if (asked.length > 0) parts.push(`flagged: ${asked.join(', ')}`)
     return parts.length === 0 ? 'All tools allowed.' : `All tools allowed, except — ${parts.join('; ')}.`
   }
   if (defaultPolicy === 'deny') {
@@ -27,7 +27,7 @@ export function describeMcpPosture(defaultPolicy: Permission, rows: PolicyRow[])
     const allowed = named(rows, 'allow')
     const asked = named(rows, 'ask')
     if (allowed.length > 0) parts.push(`allowed: ${allowed.join(', ')}`)
-    if (asked.length > 0) parts.push(`ask first: ${asked.join(', ')}`)
+    if (asked.length > 0) parts.push(`flagged: ${asked.join(', ')}`)
     return parts.length === 0
       ? '⚠ No tools allowed on this server.'
       : `Only these tools — ${parts.join('; ')} — all others blocked.`
@@ -38,5 +38,5 @@ export function describeMcpPosture(defaultPolicy: Permission, rows: PolicyRow[])
   if (allowed.length > 0) parts.push(`allowed: ${allowed.join(', ')}`)
   if (denied.length > 0) parts.push(`blocked: ${denied.join(', ')}`)
   const suffix = parts.length === 0 ? '' : ` Except — ${parts.join('; ')}.`
-  return `Every tool call must be confirmed (ask).${suffix}`
+  return `Every tool call is allowed but flagged for review (ask).${suffix}`
 }

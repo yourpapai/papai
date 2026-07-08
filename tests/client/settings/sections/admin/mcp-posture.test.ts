@@ -27,9 +27,14 @@ describe('describeMcpPosture', () => {
       ]),
     ).toBe('Only these tools — allowed: search, get_issue — all others blocked.')
   })
-  test('default ask → confirm each, with exceptions', () => {
+  test('default ask → allowed-but-flagged, with exceptions', () => {
     expect(describeMcpPosture('ask', [{ tool: 'search', permission: 'allow' }])).toBe(
-      'Every tool call must be confirmed (ask). Except — allowed: search.',
+      'Every tool call is allowed but flagged for review (ask). Except — allowed: search.',
+    )
+  })
+  test('default allow with an ask exception → flagged (not a hard gate)', () => {
+    expect(describeMcpPosture('allow', [{ tool: 'write_file', permission: 'ask' }])).toBe(
+      'All tools allowed, except — flagged: write_file.',
     )
   })
   test('blank tool names are ignored', () => {
