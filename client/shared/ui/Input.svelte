@@ -13,6 +13,7 @@
     placeholder?: string
     prefix?: Snippet
     onInput?: (value: string) => void
+    onBlur?: () => void
     type?: 'text' | 'search' | 'password'
     readonly?: boolean
     testid?: string
@@ -25,6 +26,7 @@
     placeholder,
     prefix,
     onInput,
+    onBlur,
     type = 'text',
     readonly = false,
     testid,
@@ -59,6 +61,7 @@
       aria-describedby={describedBy}
       data-testid={testid}
       oninput={handleInput}
+      onblur={onBlur}
     ></textarea>
   {:else}
     {#if prefix}
@@ -73,7 +76,8 @@
       aria-invalid={invalid ? 'true' : undefined}
       aria-describedby={describedBy}
       data-testid={testid}
-      oninput={handleInput} />
+      oninput={handleInput}
+      onblur={onBlur} />
   {/if}
 </div>
 
