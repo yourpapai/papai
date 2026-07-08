@@ -5,8 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { deleteRepo, listRepos, upsertRepo } from '../../src/coding-repos/store.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { deleteRepo, listRepos, upsertRepo } from '../../../../src/modules/coding/repos/store.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 const CTX = 'pi:telegram:ctx:u1'
 

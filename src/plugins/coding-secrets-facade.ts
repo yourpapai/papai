@@ -14,7 +14,7 @@ import {
   resolveModel,
   resolveProviderHost,
 } from '../coding-credentials/resolve-agent-secrets.js'
-import { getRepoByName, listRepos } from '../coding-repos/store.js'
+import { getRepoByName, listRepos } from '../modules/coding/repos/store.js'
 import { deny } from './deny.js'
 import type { CodingRepoEntry } from './runtime-types.js'
 import type { PluginToolRuntimeContext } from './types.js'
