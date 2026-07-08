@@ -10,9 +10,8 @@ const ToolPolicySchema = z.enum(['allow', 'ask', 'deny'])
 export const AdminMcpCatalogEntrySchema = z.object({
   name: z.string(),
   upstream_url: z.string(),
-  host: z.string(),
   header: z.string().optional(),
-  default_tool_policy: ToolPolicySchema.optional(),
+  default_tool_policy: ToolPolicySchema,
   tool_policy: z.record(z.string(), ToolPolicySchema).optional(),
 })
 export type AdminMcpCatalogEntry = z.infer<typeof AdminMcpCatalogEntrySchema>

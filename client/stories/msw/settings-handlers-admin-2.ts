@@ -69,12 +69,11 @@ export const adminCodingGuardrailsHandlers: HandlerFamily = {
 }
 
 // --- Admin: MCP catalog (GET/POST /settings/api/admin/mcp-catalog) ---
-// AdminMcpCatalogResponseSchema: { entries: Array<{ name, upstream_url, host, header?, default_tool_policy?, tool_policy? }> }
+// AdminMcpCatalogResponseSchema: { entries: Array<{ name, upstream_url, header?, default_tool_policy, tool_policy? }> }
 
 const adminMcpCatalogEntry = {
   name: 'Jira',
   upstream_url: 'https://mcp.atlassian.com/v1',
-  host: 'mcp.atlassian.com',
   header: 'Authorization: Bearer xyz',
   default_tool_policy: 'allow' as const,
   tool_policy: { delete_issue: 'deny' as const },

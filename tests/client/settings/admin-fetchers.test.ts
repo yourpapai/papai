@@ -303,7 +303,7 @@ describe('admin-fetchers', () => {
       seenMethod = methodOf(init)
       return Promise.resolve(
         json({
-          entries: [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }],
+          entries: [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }],
         }),
       )
     })
@@ -321,7 +321,9 @@ describe('admin-fetchers', () => {
     let seenCsrf = ''
     let seenMethod = ''
     let seenBody: unknown
-    const entries = [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }]
+    const entries = [
+      { name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' as const },
+    ]
     setMockFetch((url, init) => {
       seenUrl = url
       seenCsrf = csrfHeader(init)

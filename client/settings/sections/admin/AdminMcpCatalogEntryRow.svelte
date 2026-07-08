@@ -12,14 +12,13 @@
   export interface DraftMcpCatalogEntry {
     name: string
     upstream_url: string
-    host: string
     header: string
-    default_tool_policy: '' | 'allow' | 'ask' | 'deny'
+    default_tool_policy: 'allow' | 'ask' | 'deny'
     toolPolicy: DraftToolPolicyRow[]
   }
 
   export function emptyDraftEntry(): DraftMcpCatalogEntry {
-    return { name: '', upstream_url: '', host: '', header: '', default_tool_policy: '', toolPolicy: [] }
+    return { name: '', upstream_url: '', header: '', default_tool_policy: 'deny', toolPolicy: [] }
   }
 </script>
 
@@ -72,17 +71,6 @@
         testid={`mcp-catalog-upstream-url-${index}`} />
     </label>
     <label class="mcp-catalog-entry__field">
-      Host
-      <Input
-        value={entry.host}
-        placeholder="mcp.example.com"
-        {disabled}
-        onInput={(v) => {
-          entry.host = v
-        }}
-        testid={`mcp-catalog-host-${index}`} />
-    </label>
-    <label class="mcp-catalog-entry__field">
       Header (optional)
       <Input
         value={entry.header}
@@ -102,7 +90,6 @@
         onchange={(e) => {
           entry.default_tool_policy = (e.currentTarget as HTMLSelectElement).value as DraftMcpCatalogEntry['default_tool_policy']
         }}>
-        <option value="">Unset</option>
         {#each POLICIES as p (p)}
           <option value={p}>{p}</option>
         {/each}

@@ -27,9 +27,8 @@
     return {
       name: entry.name,
       upstream_url: entry.upstream_url,
-      host: entry.host,
       header: entry.header ?? '',
-      default_tool_policy: entry.default_tool_policy ?? '',
+      default_tool_policy: entry.default_tool_policy,
       toolPolicy: Object.entries(entry.tool_policy ?? {}).map(([tool, permission]) => ({ tool, permission })),
     }
   }
@@ -38,11 +37,10 @@
     const entry: AdminMcpCatalogEntry = {
       name: draft.name.trim(),
       upstream_url: draft.upstream_url.trim(),
-      host: draft.host.trim(),
+      default_tool_policy: draft.default_tool_policy,
     }
     const header = draft.header.trim()
     if (header !== '') entry.header = header
-    if (draft.default_tool_policy !== '') entry.default_tool_policy = draft.default_tool_policy
     const toolPolicy: Record<string, 'allow' | 'ask' | 'deny'> = {}
     for (const row of draft.toolPolicy) {
       const tool = row.tool.trim()
