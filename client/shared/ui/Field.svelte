@@ -64,7 +64,7 @@
   }
   .ui-field__hint {
     font-size: 10px;
-    color: var(--fg4);
+    color: var(--fg-hint);
   }
   .ui-field__error {
     font-size: 10px;

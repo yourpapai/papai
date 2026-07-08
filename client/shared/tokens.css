@@ -74,4 +74,5 @@
   --fg2: var(--text-muted);
   --fg3: var(--text-dim);
   --fg4: #3a4248;
+  --fg-hint: #8b978c; /* instructional hint text — ≥4.5:1 on --surface-1/-2 (measures ~6:1) */
 }
