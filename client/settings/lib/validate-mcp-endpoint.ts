@@ -16,12 +16,12 @@ export interface McpEndpointErrors {
 export function validateMcpEndpoint(endpoint: { url: string }): McpEndpointErrors {
   const url = endpoint.url.trim()
   if (url === '') return { url: 'URL is required.' }
-  let parsed: URL
+  if (!url.startsWith('https://')) return { url: 'URL must start with https://' }
   try {
-    parsed = new URL(url)
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:') return { url: 'URL must start with https://' }
   } catch {
     return { url: 'URL must start with https://' }
   }
-  if (parsed.protocol !== 'https:') return { url: 'URL must start with https://' }
   return {}
 }

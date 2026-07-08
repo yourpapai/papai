@@ -32,4 +32,10 @@ describe('validateMcpEndpoint', () => {
   test('trims before validating a valid url', () => {
     expect(validateMcpEndpoint({ url: '  https://mcp.example.com/sse  ' }).url).toBeUndefined()
   })
+  test('rejects an uppercase HTTPS scheme (server is case-sensitive)', () => {
+    expect(validateMcpEndpoint({ url: 'HTTPS://example.com' }).url).toBe('URL must start with https://')
+  })
+  test('rejects a scheme-only https url without a host', () => {
+    expect(validateMcpEndpoint({ url: 'https:example.com' }).url).toBe('URL must start with https://')
+  })
 })
