@@ -15,6 +15,7 @@ import {
 import {
   adminCodingGuardrailsHandlers,
   adminInstancesHandlers,
+  adminMcpCatalogHandlers,
   adminReleaseNotesHandlers,
 } from './settings-handlers-admin-2.js'
 import {
@@ -140,6 +141,10 @@ export const scenarios = {
   'settings-admin-coding-guardrails-empty': [...adminCodingGuardrailsHandlers.empty],
   'settings-admin-coding-guardrails-error': [...adminCodingGuardrailsHandlers.error],
   'settings-admin-coding-guardrails-loading': [...adminCodingGuardrailsHandlers.loading],
+  'settings-admin-mcp-catalog-populated': [...adminMcpCatalogHandlers.populated],
+  'settings-admin-mcp-catalog-empty': [...adminMcpCatalogHandlers.empty],
+  'settings-admin-mcp-catalog-error': [...adminMcpCatalogHandlers.error],
+  'settings-admin-mcp-catalog-loading': [...adminMcpCatalogHandlers.loading],
   'settings-admin-instances-populated': [...adminInstancesHandlers.populated],
   'settings-admin-instances-empty': [...adminInstancesHandlers.empty],
   'settings-admin-instances-error': [...adminInstancesHandlers.error],
@@ -157,6 +162,7 @@ export const scenarios = {
     ...adminToolDefaultsHandlers.populated,
     ...adminReleaseNotesHandlers.populated,
     ...adminCodingGuardrailsHandlers.populated,
+    ...adminMcpCatalogHandlers.populated,
     ...adminInstancesHandlers.populated,
   ],
   'settings-shell-group-ready': [

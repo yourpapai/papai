@@ -10,6 +10,7 @@ import type { HttpHandler } from 'msw'
 import {
   adminCodingGuardrailsHandlers,
   adminInstancesHandlers,
+  adminMcpCatalogHandlers,
   adminReleaseNotesHandlers,
 } from '../../../../client/stories/msw/settings-handlers-admin-2.js'
 
@@ -66,5 +67,23 @@ describe('admin settings msw handlers (part 2)', () => {
     expect(
       pathsOf(adminInstancesHandlers.error).some((p) => p.includes('/settings/api/admin/platform-instances')),
     ).toBe(true)
+  })
+
+  test('adminMcpCatalogHandlers has all four variants', () => {
+    expect(Array.isArray(adminMcpCatalogHandlers.populated)).toBe(true)
+    expect(Array.isArray(adminMcpCatalogHandlers.empty)).toBe(true)
+    expect(Array.isArray(adminMcpCatalogHandlers.error)).toBe(true)
+    expect(Array.isArray(adminMcpCatalogHandlers.loading)).toBe(true)
+    expect(adminMcpCatalogHandlers.populated.length).toBeGreaterThan(0)
+  })
+
+  test('adminMcpCatalogHandlers populated covers GET and POST /settings/api/admin/mcp-catalog', () => {
+    const paths = pathsOf(adminMcpCatalogHandlers.populated)
+    expect(paths.filter((p) => p.includes('/settings/api/admin/mcp-catalog')).length).toBe(2)
+  })
+
+  test('adminMcpCatalogHandlers empty covers GET and POST /settings/api/admin/mcp-catalog', () => {
+    const paths = pathsOf(adminMcpCatalogHandlers.empty)
+    expect(paths.filter((p) => p.includes('/settings/api/admin/mcp-catalog')).length).toBe(2)
   })
 })

@@ -24,6 +24,8 @@ describe('msw scenarios', () => {
     'settings-byok-secret-set',
     'settings-kaneo-populated',
     'settings-admin-users-populated',
+    'settings-admin-mcp-catalog-populated',
+    'settings-admin-mcp-catalog-empty',
     'settings-shell-ready',
   ])('%s resolves to a non-empty handler bundle', (name) => {
     expect(scenarios[name].length).toBeGreaterThan(0)

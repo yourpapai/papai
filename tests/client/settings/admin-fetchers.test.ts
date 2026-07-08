@@ -293,4 +293,47 @@ describe('admin-fetchers', () => {
     expect(result.applied).toBe(1)
     expect(result.started).toEqual(['tg-main'])
   })
+
+  test('fetchAdminMcpCatalog GETs the catalog and parses entries', async () => {
+    const { fetchAdminMcpCatalog } = await import('../../../client/settings/admin-fetchers.js')
+    let seenUrl = ''
+    let seenMethod = ''
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenMethod = methodOf(init)
+      return Promise.resolve(
+        json({
+          entries: [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }],
+        }),
+      )
+    })
+    const result = await fetchAdminMcpCatalog()
+    expect(seenUrl).toBe('/settings/api/admin/mcp-catalog')
+    expect(seenMethod).toBe('GET')
+    expect(result.entries).toHaveLength(1)
+    expect(result.entries[0]?.name).toBe('Jira')
+  })
+
+  test('postAdminMcpCatalog POSTs kind:catalog with entries and CSRF header', async () => {
+    const { postAdminMcpCatalog } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-mcp')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    const entries = [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', host: 'mcp.atlassian.com' }]
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json({ entries }))
+    })
+    const result = await postAdminMcpCatalog(entries)
+    expect(seenUrl).toBe('/settings/api/admin/mcp-catalog')
+    expect(seenCsrf).toBe('csrf-mcp')
+    expect(seenMethod).toBe('POST')
+    expect(seenBody).toEqual({ kind: 'catalog', entries })
+    expect(result.entries).toEqual(entries)
+  })
 })

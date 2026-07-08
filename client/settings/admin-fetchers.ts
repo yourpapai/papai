@@ -32,6 +32,7 @@ import {
   type AdminCodingGuardrailsResponse,
 } from './fetcher-schemas-coding-guardrails.js'
 import { ApplyInstancesResultSchema, type ApplyInstancesResult } from './fetcher-schemas-instances.js'
+import { AdminMcpCatalogResponseSchema, type AdminMcpCatalogResponse } from './fetcher-schemas-mcp-catalog.js'
 import {
   AdminPluginConfigSnapshotSchema,
   SubmitAdminPluginConfigResponseSchema,
@@ -224,3 +225,13 @@ export const fetchAdminCodingGuardrails = (): Promise<AdminCodingGuardrailsRespo
 
 export const postAdminCodingGuardrails = (body: unknown): Promise<AdminCodingGuardrailsResponse> =>
   writeJson('/settings/api/admin/coding-guardrails', 'POST', body, (b) => AdminCodingGuardrailsResponseSchema.parse(b))
+
+// --- Admin: MCP catalog ---
+
+export const fetchAdminMcpCatalog = (): Promise<AdminMcpCatalogResponse> =>
+  getJson('/settings/api/admin/mcp-catalog', (b) => AdminMcpCatalogResponseSchema.parse(b))
+
+export const postAdminMcpCatalog = (entries: unknown): Promise<AdminMcpCatalogResponse> =>
+  writeJson('/settings/api/admin/mcp-catalog', 'POST', { kind: 'catalog', entries }, (b) =>
+    AdminMcpCatalogResponseSchema.parse(b),
+  )

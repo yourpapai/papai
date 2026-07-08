@@ -68,6 +68,36 @@ export const adminCodingGuardrailsHandlers: HandlerFamily = {
   ],
 }
 
+// --- Admin: MCP catalog (GET/POST /settings/api/admin/mcp-catalog) ---
+// AdminMcpCatalogResponseSchema: { entries: Array<{ name, upstream_url, host, header?, default_tool_policy?, tool_policy? }> }
+
+const adminMcpCatalogEntry = {
+  name: 'Jira',
+  upstream_url: 'https://mcp.atlassian.com/v1',
+  host: 'mcp.atlassian.com',
+  header: 'Authorization: Bearer xyz',
+  default_tool_policy: 'allow' as const,
+  tool_policy: { delete_issue: 'deny' as const },
+}
+
+export const adminMcpCatalogHandlers: HandlerFamily = {
+  populated: [
+    http.get('/settings/api/admin/mcp-catalog', () => HttpResponse.json({ entries: [adminMcpCatalogEntry] })),
+    http.post('/settings/api/admin/mcp-catalog', () => HttpResponse.json({ entries: [adminMcpCatalogEntry] })),
+  ],
+  empty: [
+    http.get('/settings/api/admin/mcp-catalog', () => HttpResponse.json({ entries: [] })),
+    http.post('/settings/api/admin/mcp-catalog', () => HttpResponse.json({ entries: [] })),
+  ],
+  error: [http.get('/settings/api/admin/mcp-catalog', boom)],
+  loading: [
+    http.get('/settings/api/admin/mcp-catalog', async () => {
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json({ entries: [] })
+    }),
+  ],
+}
+
 // --- Admin: instances (four GETs in populated/empty) ---
 // AdminInstancesResponseSchema: { instances: Array<{ id, type, status, config?, createdAt? }>, unreadable? }
 // ProviderTypesResponseSchema: { providerTypes: Array<{ type, displayName, instanceConfigSchema }> }
