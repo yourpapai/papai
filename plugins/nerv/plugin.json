@@ -1,0 +1,29 @@
+{
+  "id": "nerv",
+  "name": "nerv Coding Tasks",
+  "version": "1.0.0",
+  "description": "Create and supervise long-running GitLab-MR coding tasks via the nerv supervisor service",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "contributes": {
+    "tools": [
+      "create_coding_task",
+      "coding_task_status",
+      "list_coding_tasks",
+      "followup_coding_task",
+      "steer_coding_task",
+      "cancel_coding_task"
+    ],
+    "commands": ["nerv"],
+    "promptFragments": ["nerv-hint"]
+  },
+  "permissions": ["http", "storage", "commands", "coding.secrets"],
+  "storageScope": "group",
+  "providerAllowedHostsFromConfig": ["nerv_base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "nerv_base_url", "label": "nerv Base URL", "required": true, "sensitive": false, "scope": "admin" },
+    { "key": "nerv_token", "label": "nerv Bearer Token", "required": true, "sensitive": true, "scope": "admin" }
+  ],
+  "activationTimeoutMs": 5000
+}
