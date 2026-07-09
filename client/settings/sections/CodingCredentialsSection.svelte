@@ -307,6 +307,7 @@
                     options={modelOptions}
                     onInput={(v) => updateDraft(field.key, v)}
                     placeholder="model id (leave blank for the agent default)"
+                    disabled={saving || loading}
                     testid={`coding-combobox-${field.key}`} />
                 {:else}
                   <Input
