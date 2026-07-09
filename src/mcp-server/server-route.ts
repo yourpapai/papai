@@ -11,9 +11,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
-import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
+import { getConfigContextIdFromStorageContextId, parseScopedContextId } from '../chat/scoped-context.js'
+import { listEnabledInternalMcpServers } from '../coding-credentials/mcp-plugin-servers.js'
 import { logger } from '../logger.js'
-import { getPluginContextEligibility } from '../plugins/registry.js'
 import { callPluginMcpTool, listPluginMcpTools } from './plugin-bridge.js'
 import { verifyPluginMcpToken, type PluginMcpTokenClaims } from './token.js'
 
@@ -22,12 +22,17 @@ const PREFIX = '/mcp/plugin/'
 
 export interface PluginMcpRouteDeps {
   verifyToken: (raw: string, nowMs?: number) => PluginMcpTokenClaims | null
-  isEligible: (pluginId: string, configContextId: string) => { eligible: boolean }
+  isExposedInternalServer: (pluginId: string, storageContextId: string) => boolean
 }
 
 const defaultDeps: PluginMcpRouteDeps = {
   verifyToken: verifyPluginMcpToken,
-  isEligible: (pluginId, cc) => getPluginContextEligibility(pluginId, cc),
+  isExposedInternalServer: (pluginId, storageContextId) => {
+    const pi = parseScopedContextId(storageContextId)?.platformInstanceId
+    if (pi === undefined) return false
+    const cc = getConfigContextIdFromStorageContextId(storageContextId)
+    return listEnabledInternalMcpServers(pi, cc).some((s) => s.pluginId === pluginId)
+  },
 }
 
 function extractBearer(req: Request): string | null {
@@ -60,9 +65,11 @@ function resolvePluginMcpAuth(req: Request, pathPluginId: string, deps: PluginMc
   const claims = deps.verifyToken(token)
   if (claims === null || claims.pluginId !== pathPluginId) return { errorResponse: unauthorized() }
 
-  const configContextId = getConfigContextIdFromStorageContextId(claims.storageContextId)
-  if (!deps.isEligible(claims.pluginId, configContextId).eligible) {
-    log.warn({ pluginId: claims.pluginId, configContextId }, 'plugin not eligible for context; refusing (fail-closed)')
+  if (!deps.isExposedInternalServer(claims.pluginId, claims.storageContextId)) {
+    log.warn(
+      { pluginId: claims.pluginId },
+      'plugin is not an enabled internal MCP server for this context; refusing (fail-closed)',
+    )
     return { errorResponse: unauthorized() }
   }
   return { claims }

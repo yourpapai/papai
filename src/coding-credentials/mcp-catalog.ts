@@ -11,7 +11,12 @@ const PREFIX = '__admin_mcp_catalog__:'
 const KEY = 'mcp_catalog'
 
 export const mcpCatalogEntrySchema = z.object({
-  name: z.string().min(1),
+  name: z
+    .string()
+    .min(1)
+    .refine((name) => !name.startsWith('plugin:'), {
+      message: "name must not start with 'plugin:' (reserved for internal MCP servers)",
+    }),
   upstream_url: z.url().refine((url) => url.startsWith('https://'), {
     message: 'must be https',
   }),

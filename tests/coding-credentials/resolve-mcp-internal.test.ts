@@ -123,3 +123,20 @@ test('resolveMcp returns null when SETTINGS_PUBLIC_BASE_URL is unset (fail-close
 
   expect(resolveMcp(MCP_CTX, 'user-int')).toBeNull()
 })
+
+test('resolveMcpToken returns undefined for a disabled internal plugin server (fail-closed)', () => {
+  activatePlugin()
+  setMcpPluginServerConfigs(MCP_PI, [{ plugin_id: PLUGIN_ID, enabled: false, default_tool_policy: 'allow' }])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: INTERNAL_SERVER }, 'user-int')
+
+  expect(resolveMcpToken(MCP_CTX, 'user-int')).toBeUndefined()
+})
+
+test('resolveMcpToken returns undefined when SETTINGS_PUBLIC_BASE_URL is unset (fail-closed)', () => {
+  activatePlugin()
+  setMcpPluginServerConfigs(MCP_PI, [{ plugin_id: PLUGIN_ID, enabled: true, default_tool_policy: 'allow' }])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: INTERNAL_SERVER }, 'user-int')
+  delete process.env['SETTINGS_PUBLIC_BASE_URL']
+
+  expect(resolveMcpToken(MCP_CTX, 'user-int')).toBeUndefined()
+})

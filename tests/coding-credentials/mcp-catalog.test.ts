@@ -57,6 +57,13 @@ describe('mcp-catalog', () => {
     expect(result.success).toBe(false)
   })
 
+  test('mcpCatalogSchema rejects a name starting with the plugin: prefix (reserved for internal servers)', () => {
+    const result = mcpCatalogSchema.safeParse([
+      { name: 'plugin:synthetic-web-search', upstream_url: 'https://h', default_tool_policy: 'allow' },
+    ])
+    expect(result.success).toBe(false)
+  })
+
   test('mcpCatalogSchema strips an unknown host key', () => {
     const result = mcpCatalogSchema.safeParse([
       { name: 'x', upstream_url: 'https://h', host: 'h', default_tool_policy: 'allow' },

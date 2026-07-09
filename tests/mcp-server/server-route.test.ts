@@ -101,12 +101,12 @@ describe('routePluginMcpPaths', () => {
     expect(res?.status).toBe(401)
   })
 
-  test('401 when the plugin is ineligible for the context', async () => {
+  test('401 when the plugin is not an enabled internal server for the context', async () => {
     const url = new URL('https://bot.example.com/mcp/plugin/demo')
     const token = mintPluginMcpToken(CLAIMS)
     const res = await routePluginMcpPaths(post(token, 'tools/list'), url, {
       verifyToken: () => CLAIMS,
-      isEligible: () => ({ eligible: false }),
+      isExposedInternalServer: () => false,
     })
     expect(res?.status).toBe(401)
   })
@@ -117,7 +117,7 @@ describe('routePluginMcpPaths', () => {
     const token = mintPluginMcpToken(CLAIMS)
     const res = await routePluginMcpPaths(post(token, 'tools/list'), url, {
       verifyToken: () => CLAIMS,
-      isEligible: () => ({ eligible: true }),
+      isExposedInternalServer: () => true,
     })
     expect(res).not.toBeNull()
     expect(res?.status).toBe(200)
@@ -146,7 +146,7 @@ describe('routePluginMcpPaths', () => {
     })
     const res = await routePluginMcpPaths(req, url, {
       verifyToken: () => CLAIMS,
-      isEligible: () => ({ eligible: true }),
+      isExposedInternalServer: () => true,
     })
     expect(res?.status).toBe(200)
     const body = callToolResponseSchema.parse(await res?.json())

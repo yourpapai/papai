@@ -185,6 +185,38 @@ function catalogToolPolicy(entry: McpCatalogEntry): ToolPolicy {
 }
 
 /**
+ * Resolve an internal papai-hosted plugin server entry, if the operator currently exposes it
+ * for this context. Fail-closed: refuses (returns null) when the server isn't enabled/eligible,
+ * or when its upstream URL can't be parsed (a malformed SETTINGS_PUBLIC_BASE_URL).
+ */
+function resolveInternalMcpServer(
+  ctx: string,
+  storageContextId: string,
+  pi: string,
+  server: string,
+): ResolvedMcp | null {
+  const entry = listEnabledInternalMcpServers(pi, configContextOf(storageContextId)).find((e) => e.name === server)
+  if (entry === undefined) {
+    log.warn({ contextId: ctx, server }, 'internal mcp server not enabled/eligible; refusing (fail-closed)')
+    return null
+  }
+  let hostname: string
+  try {
+    hostname = new URL(entry.upstreamUrl).hostname
+  } catch {
+    log.warn({ contextId: ctx, server }, 'internal mcp server has an unparseable upstream URL; refusing (fail-closed)')
+    return null
+  }
+  return {
+    url: entry.upstreamUrl,
+    host: hostname,
+    header: entry.header,
+    allowedHosts: [hostname],
+    toolPolicy: entry.toolPolicy,
+  }
+}
+
+/**
  * Resolve the acting identity's MCP broker config (non-secret) from the `mcp` vault, joined
  * against the platform instance's admin-configured MCP catalog. The vault only stores which
  * catalog entry (`server`) the identity selected plus their `upstream_token`; url/host/header/
@@ -210,19 +242,7 @@ export function resolveMcp(storageContextId: string, chatUserId: string): Resolv
 
   // Internal papai-hosted plugin server: derive from the operator's enabled-server list; no vault token.
   if (server.startsWith(INTERNAL_SERVER_PREFIX)) {
-    const entry = listEnabledInternalMcpServers(pi, configContextOf(storageContextId)).find((e) => e.name === server)
-    if (entry === undefined) {
-      log.warn({ contextId: ctx, server }, 'internal mcp server not enabled/eligible; refusing (fail-closed)')
-      return null
-    }
-    const hostname = new URL(entry.upstreamUrl).hostname
-    return {
-      url: entry.upstreamUrl,
-      host: hostname,
-      header: entry.header,
-      allowedHosts: [hostname],
-      toolPolicy: entry.toolPolicy,
-    }
+    return resolveInternalMcpServer(ctx, storageContextId, pi, server)
   }
 
   // External catalog server (unchanged): requires the user's own upstream token.
@@ -253,6 +273,9 @@ export function resolveMcpToken(storageContextId: string, chatUserId: string): s
   const creds = getCodingCredentials(identityContext(storageContextId, chatUserId), 'mcp')
   const server = creds?.server?.trim()
   if (server !== undefined && server.startsWith(INTERNAL_SERVER_PREFIX)) {
+    // Fail-closed: only mint when the internal server actually resolves (operator-enabled + plugin
+    // active/eligible + base URL set). Prevents a user self-minting a token for a non-exposed plugin.
+    if (resolveMcp(storageContextId, chatUserId) === null) return undefined
     return mintPluginMcpToken({ storageContextId, chatUserId, pluginId: server.slice(INTERNAL_SERVER_PREFIX.length) })
   }
   const token = creds?.upstream_token?.trim()
