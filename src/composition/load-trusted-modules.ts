@@ -5,6 +5,7 @@
 
 import { applyModuleMigrations } from '../db/index.js'
 import type { Migration } from '../db/migrate.js'
+import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../ports/module-contributions.js'
 import { moduleToolRegistry } from '../ports/module-tools.js'
 import type { TrustedModule } from '../ports/module.js'
 import { TRUSTED_MODULES } from './trusted-modules.js'
@@ -26,6 +27,12 @@ export async function loadTrustedModules(
   for (const mod of modules) {
     if (mod.tools !== undefined && mod.tools.length > 0) {
       moduleToolRegistry.register(mod.id, mod.tools)
+    }
+    if (mod.commands !== undefined && mod.commands.length > 0) {
+      moduleCommandRegistry.register(mod.id, mod.commands)
+    }
+    if (mod.promptFragments !== undefined && mod.promptFragments.length > 0) {
+      modulePromptFragmentRegistry.register(mod.id, mod.promptFragments)
     }
   }
   await modules.reduce(async (previous, mod) => {

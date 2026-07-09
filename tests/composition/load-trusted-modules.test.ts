@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { loadTrustedModules } from '../../src/composition/load-trusted-modules.js'
 import type { Migration } from '../../src/db/migrate.js'
+import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../../src/ports/module-contributions.js'
 import { moduleToolRegistry } from '../../src/ports/module-tools.js'
 import type { TrustedModule } from '../../src/ports/module.js'
 
@@ -74,5 +75,20 @@ describe('loadTrustedModules', () => {
     await loadTrustedModules([mod], () => {})
     expect(moduleToolRegistry.list().map((e) => `${e.moduleId}:${e.tool.name}`)).toContain('fixture:do_it')
     moduleToolRegistry.clear()
+  })
+
+  test("registers each module's commands and prompt fragments", async () => {
+    moduleCommandRegistry.clear()
+    modulePromptFragmentRegistry.clear()
+    const mod: TrustedModule = {
+      id: 'fixture',
+      commands: [{ name: 'go', description: 'go', execute: (): Promise<void> => Promise.resolve() }],
+      promptFragments: [{ name: 'hint', content: 'hi' }],
+    }
+    await loadTrustedModules([mod], () => {})
+    expect(moduleCommandRegistry.list().map((e) => `${e.moduleId}:${e.command.name}`)).toContain('fixture:go')
+    expect(modulePromptFragmentRegistry.list().map((e) => `${e.moduleId}:${e.fragment.name}`)).toContain('fixture:hint')
+    moduleCommandRegistry.clear()
+    modulePromptFragmentRegistry.clear()
   })
 })
