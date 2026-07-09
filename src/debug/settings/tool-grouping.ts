@@ -8,7 +8,7 @@ import { sanitizePluginId } from '../../plugins/contribution-names.js'
 import { pluginRegistry } from '../../plugins/registry.js'
 import { getToolMetadata, type ToolDomain } from '../../tools/tool-metadata.js'
 
-const NAMESPACED_TOOL_RE = /^(plugin|mcp)_(.+?)__/u
+const NAMESPACED_TOOL_RE = /^(plugin|mcp|module)_(.+?)__/u
 
 /**
  * Map from every sanitized form of an active plugin id to the real plugin id.

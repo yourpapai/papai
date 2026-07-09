@@ -188,5 +188,10 @@ export function getToolMetadata(toolName: string): ToolClassification | undefine
     return { domain: 'plugin', operation: 'read', risk: 'open-world' }
   }
 
+  // Module tools: module_<module-id>__<tool_name> (trusted modules, reuse the plugin domain)
+  if (toolName.startsWith('module_')) {
+    return { domain: 'plugin', operation: 'read', risk: 'open-world' }
+  }
+
   return undefined
 }
