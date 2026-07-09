@@ -20,8 +20,12 @@ describe('coding module', () => {
     expect(codingModule.id).toBe('coding')
   })
 
-  test('contributes no migrations in this phase', () => {
-    expect(codingModule.migrations).toBeUndefined()
+  test('owns the coding-table migrations (061/064/066), in ascending order', () => {
+    expect(codingModule.migrations?.map((m) => m.id)).toEqual([
+      '061_coding_session_credentials',
+      '064_coding_session_repos',
+      '066_coding_repos_egress',
+    ])
   })
 
   test('codingWhoMayUseResolver returns "members" when no guardrails are set', () => {

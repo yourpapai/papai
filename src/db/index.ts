@@ -71,12 +71,9 @@ import { migration057AttachmentGroupContext } from './migrations/057_attachment_
 import { migration058OpenDmAccess } from './migrations/058_open_dm_access.js'
 import { migration059GuestMode } from './migrations/059_guest_mode.js'
 import { migration060KaneoWorkspaceMembers } from './migrations/060_kaneo_workspace_members.js'
-import { migration061CodingSessionCredentials } from './migrations/061_coding_session_credentials.js'
 import { migration062NullableContextTaskInstance } from './migrations/062_nullable_context_task_instance.js'
 import { migration063ReleaseAnnouncements } from './migrations/063_release_announcements.js'
-import { migration064CodingSessionRepos } from './migrations/064_coding_session_repos.js'
 import { migration065CodingIdentity } from './migrations/065_coding_identity.js'
-import { migration066CodingReposEgress } from './migrations/066_coding_repos_egress.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -172,12 +169,9 @@ export const MIGRATIONS: readonly Migration[] = [
   migration058OpenDmAccess,
   migration059GuestMode,
   migration060KaneoWorkspaceMembers,
-  migration061CodingSessionCredentials,
   migration062NullableContextTaskInstance,
   migration063ReleaseAnnouncements,
-  migration064CodingSessionRepos,
   migration065CodingIdentity,
-  migration066CodingReposEgress,
 ]
 
 export const initDb = (): void => {
