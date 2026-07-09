@@ -40,6 +40,7 @@
   import AdminAdminsSection from './sections/admin/AdminAdminsSection.svelte'
   import AdminPluginsApprovalSection from './sections/admin/AdminPluginsApprovalSection.svelte'
   import AdminPluginsConfigSection from './sections/admin/AdminPluginsConfigSection.svelte'
+  import AdminModuleSectionsSection from './sections/admin/AdminModuleSectionsSection.svelte'
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
   import AdminReleaseNotesSection from './sections/admin/AdminReleaseNotesSection.svelte'
   import AdminCodingGuardrailsSection from './sections/admin/AdminCodingGuardrailsSection.svelte'
@@ -70,6 +71,7 @@
         { id: 'system', label: 'System' },
         { id: 'byok-admin', label: 'BYOK LLM' },
         { id: 'plugin-config', label: 'Plugin config' },
+        { id: 'module-sections', label: 'Module settings' },
         { id: 'users', label: 'Users' },
         { id: 'tool-defaults', label: 'Tool defaults' },
         { id: 'coding-guardrails', label: 'Coding guardrails' },
@@ -255,6 +257,7 @@
                 <AdminSystemSection />
                 <AdminByokSection />
                 <AdminPluginsConfigSection />
+                <AdminModuleSectionsSection />
                 <AdminUsersSection />
                 <AdminToolDefaultsSection />
                 <AdminCodingGuardrailsSection />
