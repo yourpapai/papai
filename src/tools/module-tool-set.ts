@@ -6,6 +6,7 @@
 import { tool, type ToolSet } from 'ai'
 
 import { logger } from '../logger.js'
+import { moduleEligibilityRegistry } from '../ports/module-eligibility.js'
 import { moduleToolRegistry, type ModuleToolRuntimeContext } from '../ports/module-tools.js'
 import { toolGateRegistry } from '../ports/tool-gate.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
@@ -27,6 +28,7 @@ export function buildModuleToolSet(existingToolNames: ReadonlySet<string>, runti
   const out: ToolSet = {}
   const used = new Set(existingToolNames)
   for (const { moduleId, tool: moduleTool } of moduleToolRegistry.list()) {
+    if (!moduleEligibilityRegistry.isEligible(moduleId, runtime.storageContextId)) continue
     const name = namespacedModuleToolName(moduleId, moduleTool.name)
     if (used.has(name)) {
       log.warn({ moduleId, tool: moduleTool.name, name }, 'Module tool name collision; skipping')
