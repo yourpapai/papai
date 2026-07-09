@@ -19,6 +19,7 @@ import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
 import { logger } from '../logger.js'
 import { getNotifyToken } from '../notify-token.js'
+import { recordProactiveInHistory } from '../proactive-history.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { jsonResponse } from './json-response.js'
 
@@ -129,6 +130,7 @@ const sendNotify = async (
     log.warn({ platformInstanceId, contextId }, 'notify delivery failed')
     return jsonResponse({ error: 'delivery failed' }, { status: 502 })
   }
+  recordProactiveInHistory(contextId, markdown)
   return jsonResponse({ sent: true })
 }
 

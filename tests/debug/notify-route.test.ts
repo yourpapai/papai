@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
 import { ChatRouter } from '../../src/chat/router.js'
@@ -15,6 +15,7 @@ import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { resetNotifyTokenCacheForTesting } from '../../src/notify-token.js'
+import * as proactiveHistoryModule from '../../src/proactive-history.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 interface Sent {
@@ -147,6 +148,66 @@ describe('handleNotifyRoute', () => {
     setRuntimeChatRouter(throwingRouter)
     const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'user-1', markdown: 'x' }))
     expect(res.status).toBe(502)
+  })
+})
+
+describe('handleNotifyRoute — proactive history recording', () => {
+  const spies: Array<{ mockRestore: () => void }> = []
+
+  const track = <T extends { mockRestore: () => void }>(spy: T): T => {
+    spies.push(spy)
+    return spy
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    resetNotifyTokenCacheForTesting()
+    process.env['NOTIFY_TOKEN'] = 'tok'
+    insertPlatformInstance({ id: 'pi-1', type: 'telegram', config: {}, status: 'active' })
+    insertTaskInstance({ id: 'ti-1', type: 'kaneo', config: {}, status: 'active' })
+    setContextSettings({ contextId: 'pi:inst:ctx:user', taskInstanceId: 'ti-1', platformInstanceId: 'pi-1' })
+  })
+
+  afterEach(() => {
+    delete process.env['NOTIFY_TOKEN']
+    resetNotifyTokenCacheForTesting()
+    clearRuntimeChatRouter()
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  test('records the delivered notify markdown into history on success', async () => {
+    setRuntimeChatRouter(new RecordingRouter())
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'pi:inst:ctx:user', markdown: 'Milestone hit' }))
+
+    expect(res.status).toBe(200)
+    expect(recordCalls).toHaveLength(1)
+    expect(recordCalls[0]).toEqual(['pi:inst:ctx:user', 'Milestone hit'])
+  })
+
+  test('does not record history when delivery fails', async () => {
+    const failingRouter = new RecordingRouter()
+    failingRouter.sendMessage = (): Promise<boolean> => Promise.resolve(false)
+    setRuntimeChatRouter(failingRouter)
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'pi:inst:ctx:user', markdown: 'Milestone hit' }))
+
+    expect(res.status).toBe(502)
+    expect(recordCalls).toHaveLength(0)
   })
 })
 
