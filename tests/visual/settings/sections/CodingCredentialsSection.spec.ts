@@ -28,3 +28,40 @@ test.describe('settings/sections/CodingCredentialsSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+test('Populated — narrow 640', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Empty — narrow 640', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingcredentialssection--empty')
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Populated — text input focused', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')
+  await sharedPage.getByTestId('coding-input-instance_url').focus()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Populated — secret replace open', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')
+  await sharedPage.getByTestId('coding-replace-forge_token').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Populated — dirty, Save enabled + hovered', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')
+  await sharedPage.getByTestId('coding-input-instance_url').fill('https://gitlab.example.com/new')
+  await sharedPage.getByTestId('coding-credentials-save').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('Populated — clear confirm dialog', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')
+  await sharedPage.getByTestId('coding-credentials-clear').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
