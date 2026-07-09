@@ -834,11 +834,13 @@ describe('processMessage', () => {
       // processMessage should have caught the error and replied with an error message
       expect(textCalls).toContain('An unexpected error occurred. Please try again later.')
 
-      // The catch block calls saveHistory(contextId, baseHistory) to roll back.
-      // baseHistory was a snapshot taken before callLlm (getCachedHistory returns a copy),
-      // so it was empty. The rollback correctly resets history to that empty snapshot.
+      // The catch block calls saveHistory(contextId, [...baseHistory, userHistoryMessage]) to
+      // roll back the incomplete assistant turn while preserving the user's triggering message.
+      // baseHistory was a snapshot taken before callLlm (getCachedHistory returns a copy), so
+      // the rollback should leave exactly the user's message in history, not erase it too.
       const history = getCachedHistory(rollbackCtx)
-      expect(history).toHaveLength(0)
+      expect(history).toHaveLength(1)
+      expect(history[0]).toMatchObject({ role: 'user' })
     })
   })
 

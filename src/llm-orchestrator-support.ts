@@ -181,6 +181,7 @@ type HandleLlmTurnErrorArgs = {
   mainModel: string
   startedAt: number
   baseHistory: readonly ModelMessage[]
+  userHistoryMessage: ModelMessage
   error: unknown
   turnId: string
 }
@@ -188,7 +189,7 @@ type HandleLlmTurnErrorArgs = {
 export const handleLlmTurnError = async (args: HandleLlmTurnErrorArgs): Promise<void> => {
   const { reply, contextId, chatUserId, contextType, mainModel, startedAt, baseHistory, error, turnId } = args
   emitLlmError(contextId, chatUserId, contextType, mainModel, startedAt, baseHistory.length + 1, error, turnId)
-  saveHistory(contextId, baseHistory)
+  saveHistory(contextId, [...baseHistory, args.userHistoryMessage])
   await handleOrchestratorMessageError(reply, contextId, error)
 }
 

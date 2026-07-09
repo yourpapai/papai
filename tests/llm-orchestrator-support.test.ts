@@ -3,15 +3,25 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, mock, test } from 'bun:test'
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import type { ModelMessage } from 'ai'
+
 import { providerError } from '../src/errors.js'
-import { emitLlmError, handleOrchestratorMessageError, handleToolCallFinish } from '../src/llm-orchestrator-support.js'
+import * as historyModule from '../src/history.js'
+import {
+  emitLlmError,
+  handleLlmTurnError,
+  handleOrchestratorMessageError,
+  handleToolCallFinish,
+} from '../src/llm-orchestrator-support.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
-import { createMockReply } from './utils/test-helpers.js'
+import { createMockReply, mockLogger } from './utils/test-helpers.js'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+type SpyInstance = { mockRestore: () => void }
 
 describe('llm-orchestrator-support', () => {
   test('handleToolCallFinish emits structured failures and replies with the user message', () => {
@@ -107,6 +117,45 @@ describe('llm-orchestrator-support', () => {
     await handleOrchestratorMessageError(reply, 'ctx-2', providerError.projectNotFound('PRJ-1'), deps)
 
     expect(getReplies()).toEqual(['Project "PRJ-1" was not found.'])
+  })
+
+  describe('handleLlmTurnError', () => {
+    const spies: SpyInstance[] = []
+
+    afterEach(() => {
+      for (const spy of spies) spy.mockRestore()
+      spies.length = 0
+    })
+
+    const track = <T extends SpyInstance>(spy: T): T => {
+      spies.push(spy)
+      return spy
+    }
+
+    test('rolls back to baseHistory plus the triggering user message, not past it', async () => {
+      mockLogger()
+      const saveHistorySpy = track(spyOn(historyModule, 'saveHistory').mockImplementation(() => {}))
+
+      const baseHistory: ModelMessage[] = [{ role: 'assistant', content: 'earlier reply' }]
+      const userHistoryMessage: ModelMessage = { role: 'user', content: 'do the thing' }
+      const { reply } = createMockReply()
+
+      await handleLlmTurnError({
+        reply,
+        contextId: 'pi:inst:ctx:user',
+        chatUserId: 'user1',
+        contextType: 'dm',
+        mainModel: 'gpt-4o',
+        startedAt: Date.now(),
+        baseHistory,
+        userHistoryMessage,
+        error: new Error('boom'),
+        turnId: 'turn-1',
+      })
+
+      expect(saveHistorySpy).toHaveBeenCalledTimes(1)
+      expect(saveHistorySpy).toHaveBeenCalledWith('pi:inst:ctx:user', [...baseHistory, userHistoryMessage])
+    })
   })
 
   describe('emitLlmError', () => {

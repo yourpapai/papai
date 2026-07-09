@@ -237,6 +237,7 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
         mainModel: resolvedLlm.mainModel,
         startedAt,
         baseHistory: turn.baseHistory,
+        userHistoryMessage: turn.historyMessage,
         error,
         turnId: resolvedTurnId,
       })
