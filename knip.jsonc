@@ -163,6 +163,9 @@
     "client/settings/release-fetchers.ts": ["exports"],
     "client/settings/repos-fetchers.ts": ["exports"],
     "client/settings/fetcher-schemas-repos.ts": ["types"],
+    // ModuleSection/ModuleSectionField are consumed only by
+    // AdminModuleSectionsSection.svelte, which knip can't parse.
+    "client/settings/fetcher-schemas-module-sections.ts": ["types"],
     "client/settings/scrollspy.ts": ["exports"],
     "client/settings/session.svelte.ts": ["exports"],
     "client/settings/lib/mask-secret.ts": ["exports"],
