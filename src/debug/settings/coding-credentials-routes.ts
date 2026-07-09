@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { resolveCodingGuardrails } from '../../coding-credentials/guardrails.js'
 import { resolveMcpCatalog } from '../../coding-credentials/mcp-catalog.js'
+import { listEnabledInternalMcpServers } from '../../coding-credentials/mcp-plugin-servers.js'
 import {
   clearCodingCredentials,
   getCodingCredentialState,
@@ -174,7 +175,10 @@ function handleGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
   }
   if (namespace === 'mcp') {
     const catalog = resolveMcpCatalog(authed.principal.platformInstanceId)
-    return settingsJson(200, { ...fields, catalog })
+    const pluginServers = listEnabledInternalMcpServers(authed.principal.platformInstanceId, scope.scope.contextId).map(
+      (s) => ({ name: s.name, label: s.label }),
+    )
+    return settingsJson(200, { ...fields, catalog, pluginServers })
   }
   return settingsJson(200, fields)
 }
