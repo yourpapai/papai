@@ -140,3 +140,12 @@ test('resolveMcpToken returns undefined when SETTINGS_PUBLIC_BASE_URL is unset (
 
   expect(resolveMcpToken(MCP_CTX, 'user-int')).toBeUndefined()
 })
+
+test('resolveMcp returns null when SETTINGS_PUBLIC_BASE_URL is malformed (fail-closed, catch → null)', () => {
+  activatePlugin()
+  setMcpPluginServerConfigs(MCP_PI, [{ plugin_id: PLUGIN_ID, enabled: true, default_tool_policy: 'allow' }])
+  updateCodingCredentials(MCP_CTX, 'mcp', { server: INTERNAL_SERVER }, 'user-int')
+  process.env['SETTINGS_PUBLIC_BASE_URL'] = 'not a url'
+
+  expect(resolveMcp(MCP_CTX, 'user-int')).toBeNull()
+})
