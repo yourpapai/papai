@@ -13,6 +13,7 @@
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
+  import Select from '../../shared/ui/Select.svelte'
   import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
   import type { CodingCredentialField, CodingCredentialsResponse } from '../fetcher-schemas.js'
   import { clearCodingCredentials, fetchCodingCredentials, patchCodingCredentials } from '../coding-credentials-fetchers.js'
@@ -200,18 +201,13 @@
             {/snippet}
             {#snippet editor(labelId)}
               {#if field.control === 'select'}
-                <select
-                  data-testid={`coding-mcp-select-${field.key}`}
-                  aria-labelledby={labelId}
+                <Select
                   value={drafts[field.key] ?? ''}
+                  options={selectOptionsFor(field).map((o) => ({ value: o, label: o }))}
+                  onChange={(v) => updateDraft(field.key, v)}
                   disabled={saving || loading || catalogEmpty}
-                  onchange={(e) => updateDraft(field.key, (e.currentTarget as HTMLSelectElement).value)}
-                  class="coding-select">
-                  <option value="" disabled>Select an MCP server…</option>
-                  {#each selectOptionsFor(field) as opt (opt)}
-                    <option value={opt}>{opt}</option>
-                  {/each}
-                </select>
+                  placeholder="Select an MCP server…"
+                  testid={`coding-mcp-select-${field.key}`} />
               {:else}
                 <Input
                   type={field.sensitive ? 'password' : 'text'}
@@ -279,14 +275,5 @@
   .settings-field__actions {
     display: flex;
     justify-content: flex-end;
-  }
-  .coding-select {
-    flex: 1;
-    min-width: 200px;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--fg);
-    font-size: 14px;
   }
 </style>
