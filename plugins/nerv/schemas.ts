@@ -37,7 +37,13 @@ export const taskRefSchema: OptionalTaskIdSchema = {
   additionalProperties: false,
 }
 
-export const cancelSchema = taskRefSchema
+export const cancelSchema: OptionalTaskIdSchema = {
+  type: 'object',
+  properties: {
+    taskId: { type: 'string', description: "Optional nerv task id; defaults to this thread's current task." },
+  },
+  additionalProperties: false,
+}
 
 export const followupSchema = {
   type: 'object',
