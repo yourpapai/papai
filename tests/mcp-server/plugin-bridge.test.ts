@@ -21,7 +21,10 @@ const MANIFEST = pluginManifestSchema.parse({
   contributes: { tools: ['echo'] },
 })
 
-function registerDemo(execute: (input: unknown) => Promise<unknown>): void {
+function registerDemo(
+  execute: (input: unknown) => Promise<unknown>,
+  inputSchema: z.ZodType = z.object({ message: z.string() }),
+): void {
   contributionRegistry.register(
     'demo',
     {
@@ -29,7 +32,7 @@ function registerDemo(execute: (input: unknown) => Promise<unknown>): void {
         {
           name: 'echo',
           description: 'echoes the message',
-          inputSchema: z.object({ message: z.string() }),
+          inputSchema,
           execute: (input: unknown): Promise<unknown> => execute(input),
         },
       ],
@@ -59,6 +62,16 @@ describe('plugin-bridge listPluginMcpTools', () => {
   test('returns [] for an unknown plugin', async () => {
     expect(await listPluginMcpTools('nope')).toEqual([])
   })
+
+  test('falls back to the empty-object schema when schema derivation throws', async () => {
+    registerDemo(
+      () => Promise.resolve({ ok: true }),
+      z.custom<() => void>(() => true),
+    )
+    const tools = await listPluginMcpTools('demo')
+    expect(tools).toHaveLength(1)
+    expect(tools[0]!.inputSchema).toEqual({ type: 'object', properties: {} })
+  })
 })
 
 describe('plugin-bridge callPluginMcpTool', () => {
@@ -85,5 +98,20 @@ describe('plugin-bridge callPluginMcpTool', () => {
       chatUserId: 'u1',
     })
     expect(result.isError).toBe(true)
+  })
+
+  test('returns an isError result when execute throws', async () => {
+    registerDemo(() => {
+      throw new Error('boom')
+    })
+    const result = await callPluginMcpTool({
+      pluginId: 'demo',
+      toolName: 'echo',
+      input: { message: 'hi' },
+      storageContextId: 'pi:thread:1',
+      chatUserId: 'u1',
+    })
+    expect(result.isError).toBe(true)
+    expect(result.content[0]!.text).toContain('boom')
   })
 })

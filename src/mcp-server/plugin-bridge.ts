@@ -34,7 +34,7 @@ export interface McpCallResult {
 const EMPTY_OBJECT_SCHEMA: McpJsonSchema = { type: 'object', properties: {} }
 
 function isJsonSchemaObject(value: unknown): value is McpJsonSchema {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function resolveToolJsonSchema(pluginId: string, pluginTool: PluginTool): Promise<McpJsonSchema> {
