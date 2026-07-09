@@ -277,7 +277,7 @@ export function buildSystemPrompt(
   const addendum = provider.getPromptAddendum()
   const basePrompt = assembleSystemPrompt(CORE_INTRO, contextId, enabledToolNames, options)
   const withAddendum = addendum === '' ? basePrompt : `${basePrompt}\n\n${addendum}`
-  return appendModulePromptSection(appendPluginPromptSection(withAddendum, sharedContextId))
+  return appendModulePromptSection(appendPluginPromptSection(withAddendum, sharedContextId), contextId)
 }
 
 export function buildProviderlessSystemPrompt(
@@ -292,5 +292,5 @@ export function buildProviderlessSystemPrompt(
     ...options,
     deferredFragmentText: PROVIDERLESS_DEFERRED,
   })
-  return appendModulePromptSection(appendProviderlessPluginPromptSection(basePrompt, sharedContextId))
+  return appendModulePromptSection(appendProviderlessPluginPromptSection(basePrompt, sharedContextId), contextId)
 }

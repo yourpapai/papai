@@ -5,6 +5,7 @@
 
 import { logger } from '../logger.js'
 import { modulePromptFragmentRegistry } from '../ports/module-contributions.js'
+import { moduleEligibilityRegistry } from '../ports/module-eligibility.js'
 
 const log = logger.child({ scope: 'modules:prompt-contributions' })
 
@@ -14,12 +15,14 @@ export const MAX_FRAGMENT_LENGTH_PER_MODULE = 2000
 /** Maximum total module prompt budget (characters) — independent of the plugin budget. */
 export const MAX_TOTAL_MODULE_PROMPT_LENGTH = 8000
 
-/** Build the system-prompt section for all trusted-module prompt fragments (modules are always active). */
-export function buildModulePromptSection(): string {
+/** Build the system-prompt section for all trusted-module prompt fragments eligible for the given context. */
+export function buildModulePromptSection(storageContextId: string): string {
   const sections: string[] = []
   let totalLength = 0
 
   for (const { moduleId, fragment } of modulePromptFragmentRegistry.list()) {
+    if (!moduleEligibilityRegistry.isEligible(moduleId, storageContextId)) continue
+
     if (totalLength >= MAX_TOTAL_MODULE_PROMPT_LENGTH) {
       log.warn({ moduleId }, 'Total module prompt budget exceeded — stopping')
       break
@@ -49,8 +52,8 @@ export function buildModulePromptSection(): string {
 }
 
 /** Append the module prompt section to a base prompt, or return it unchanged when there is none. */
-export function appendModulePromptSection(basePrompt: string): string {
-  const section = buildModulePromptSection()
+export function appendModulePromptSection(basePrompt: string, storageContextId: string): string {
+  const section = buildModulePromptSection(storageContextId)
   if (section === '') return basePrompt
   return `${basePrompt}\n\n${section}`
 }
