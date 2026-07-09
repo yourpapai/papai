@@ -9,6 +9,7 @@ import { handleMattermostActionRequest, isMattermostActionPath } from '../chat/m
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
+import { routePluginMcpPaths } from '../mcp-server/index.js'
 import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
 import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
@@ -204,6 +205,15 @@ export function routeSettingsStatic(pathname: string): Response | null {
   return null
 }
 
+/** PUBLIC capability-token routes (transcript viewer, plugin-mcp); must stay before the auth gate. */
+async function routePublicCapabilityPaths(req: Request, url: URL): Promise<Response | null> {
+  const transcriptResponse = await routeTranscriptPaths(req, url)
+  if (transcriptResponse !== null) return transcriptResponse
+  const pluginMcpResponse = await routePluginMcpPaths(req, url)
+  if (pluginMcpResponse !== null) return pluginMcpResponse
+  return null
+}
+
 async function routeRequest(req: Request, options: WebServerRouteOptions = routeOptions): Promise<Response> {
   const url = new URL(req.url)
   const settingsStatic = routeSettingsStatic(url.pathname)
@@ -227,9 +237,8 @@ async function routeRequest(req: Request, options: WebServerRouteOptions = route
 
   if (url.pathname === '/api/notify') return handleNotifyRoute(req)
 
-  // Transcript trust domain: PUBLIC capability-token routes; must stay before the auth gate.
-  const transcriptResponse = await routeTranscriptPaths(req, url)
-  if (transcriptResponse !== null) return transcriptResponse
+  const publicCapabilityResponse = await routePublicCapabilityPaths(req, url)
+  if (publicCapabilityResponse !== null) return publicCapabilityResponse
 
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
