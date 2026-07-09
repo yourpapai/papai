@@ -57,6 +57,8 @@
   "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw", "@crvy/strybk"],
 
   "ignoreIssues": {
+    // defaultBroadcastDepsForTest is a test-only seam.
+    "src/announcements/broadcast.ts": ["exports"],
     // applyVisibility is unused; turn-assembly re-exports are consumed only by .svelte files.
     "src/debug/state-collector.ts": ["exports"],
     // resetTurnBuffers is a test-only seam.

@@ -3,13 +3,22 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 
-import { broadcastAnnouncement, groupTarget, type BroadcastDeps } from '../../src/announcements/broadcast.js'
+import {
+  defaultBroadcastDepsForTest,
+  broadcastAnnouncement,
+  groupTarget,
+  type BroadcastDeps,
+} from '../../src/announcements/broadcast.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
-import { createMockChat } from '../utils/test-helpers.js'
+import * as proactiveDeliveryModule from '../../src/deferred-prompts/proactive-delivery.js'
+import * as proactiveHistoryModule from '../../src/proactive-history.js'
+import { createMockChat, mockLogger } from '../utils/test-helpers.js'
 
 const chat = createMockChat()
+
+type SpyInstance = { mockRestore: () => void }
 
 function makeDeps(over: Partial<BroadcastDeps>): BroadcastDeps {
   const delivered = new Set<string>()
@@ -121,5 +130,85 @@ describe('broadcastAnnouncement', () => {
     )
     expect(result).toEqual({ sent: 0, failed: 0, skipped: 0 })
     expect(broadcastMarked).toBe(true)
+  })
+})
+
+describe('defaultDeps send + record wiring', () => {
+  const spies: SpyInstance[] = []
+
+  const track = <T extends SpyInstance>(spy: T): T => {
+    spies.push(spy)
+    return spy
+  }
+
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  test('sendDm records the delivered body into the recipient DM history on success', async () => {
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+    const dmChat = createMockChat({ sendMessage: () => Promise.resolve(true) })
+
+    const ok = await defaultBroadcastDepsForTest.sendDm(dmChat, 'inst', 'u1', 'Release notes')
+
+    expect(ok).toBe(true)
+    expect(recordCalls).toEqual([
+      [toScopedContextId({ platformInstanceId: 'inst', nativeContextId: 'u1' }), 'Release notes'],
+    ])
+  })
+
+  test('sendDm does not record when delivery fails', async () => {
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+    const dmChat = createMockChat({ sendMessage: () => Promise.resolve(false) })
+
+    const ok = await defaultBroadcastDepsForTest.sendDm(dmChat, 'inst', 'u1', 'Release notes')
+
+    expect(ok).toBe(false)
+    expect(recordCalls).toEqual([])
+  })
+
+  test('sendGroup records the delivered body into the scoped group history on success', async () => {
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+    track(spyOn(proactiveDeliveryModule, 'sendProactiveMessage').mockImplementation(() => Promise.resolve(true)))
+
+    const ok = await defaultBroadcastDepsForTest.sendGroup(chat, 'pi:inst:ctx:grp', 'Release notes')
+
+    expect(ok).toBe(true)
+    expect(recordCalls).toEqual([['pi:inst:ctx:grp', 'Release notes']])
+  })
+
+  test('sendGroup does not record when delivery fails', async () => {
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+    track(spyOn(proactiveDeliveryModule, 'sendProactiveMessage').mockImplementation(() => Promise.resolve(false)))
+
+    const ok = await defaultBroadcastDepsForTest.sendGroup(chat, 'pi:inst:ctx:grp', 'Release notes')
+
+    expect(ok).toBe(false)
+    expect(recordCalls).toEqual([])
   })
 })

@@ -5,10 +5,11 @@
 
 import pLimit from 'p-limit'
 
-import { getNativeContextId } from '../chat/scoped-context.js'
+import { getNativeContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { dmTarget, type ChatProvider, type DeferredDeliveryTarget } from '../chat/types.js'
 import { sendProactiveMessage } from '../deferred-prompts/proactive-delivery.js'
 import { logger } from '../logger.js'
+import { recordProactiveInHistory } from '../proactive-history.js'
 import {
   isDelivered as defaultIsDelivered,
   listSubscribedGroups as defaultListGroups,
@@ -71,11 +72,20 @@ const defaultDeps: BroadcastDeps = {
   markBroadcast: defaultMarkBroadcast,
   sendDm: async (chat, platformInstanceId, platformUserId, body) => {
     const result = await chat.sendMessage(platformInstanceId, dmTarget(platformUserId), body)
-    return result !== false
+    const ok = result !== false
+    if (ok) recordProactiveInHistory(toScopedContextId({ platformInstanceId, nativeContextId: platformUserId }), body)
+    return ok
   },
-  sendGroup: (chat, groupId, body) => sendProactiveMessage(chat, groupTarget(groupId), body),
+  sendGroup: async (chat, groupId, body) => {
+    const ok = await sendProactiveMessage(chat, groupTarget(groupId), body)
+    if (ok) recordProactiveInHistory(groupId, body)
+    return ok
+  },
   now: () => new Date().toISOString(),
 }
+
+/** Test-only handle to exercise the real send+record deps. */
+export const defaultBroadcastDepsForTest = defaultDeps
 
 // dedup key for announcement_deliveries only; not a canonical scoped context id
 const dmContextKey = (u: SubscribedUser): string => `${u.platformInstanceId}:${u.platformUserId}`
