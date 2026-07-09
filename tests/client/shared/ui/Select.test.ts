@@ -101,4 +101,28 @@ describe('Select.svelte', () => {
     expect(target.querySelector('.ui-select--disabled')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders a leading disabled placeholder option when placeholder is set', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Select, {
+      target,
+      props: {
+        value: '',
+        placeholder: 'Pick one…',
+        options: [
+          { value: 'a', label: 'A' },
+          { value: 'b', label: 'B' },
+        ],
+        testid: 'sel',
+      },
+    })
+    const opts = target.querySelectorAll('option')
+    expect(opts.length).toBe(3)
+    const first = opts[0]!
+    expect(first.textContent).toBe('Pick one…')
+    expect(first.hasAttribute('disabled')).toBe(true)
+    expect(first.getAttribute('value')).toBe('')
+    void unmount(component)
+  })
 })

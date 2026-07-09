@@ -27,3 +27,14 @@
   }} />
 
 <Story name="Single option" args={{ value: 'only', options: [{ value: 'only', label: 'Only choice' }] }} />
+
+<Story
+  name="Placeholder"
+  args={{
+    value: '',
+    placeholder: 'Select an option…',
+    options: [
+      { value: 'a', label: 'Alpha' },
+      { value: 'b', label: 'Beta' },
+    ],
+  }} />

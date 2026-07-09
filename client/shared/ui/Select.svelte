@@ -17,9 +17,10 @@
     onChange?: (value: string) => void
     testid?: string
     disabled?: boolean
+    placeholder?: string
   }
 
-  let { value, options, onChange, testid, disabled = false }: Props = $props()
+  let { value, options, onChange, testid, disabled = false, placeholder }: Props = $props()
 
   const labelId = getFieldLabelId()
 
@@ -30,6 +31,9 @@
 
 <div class="ui-select" class:ui-select--disabled={disabled}>
   <select {value} {disabled} onchange={handleChange} aria-labelledby={labelId} data-testid={testid}>
+    {#if placeholder}
+      <option value="" disabled>{placeholder}</option>
+    {/if}
     {#each options as opt (opt.value)}
       <option value={opt.value}>{opt.label}</option>
     {/each}
