@@ -108,6 +108,42 @@ export const adminMcpCatalogHandlers: HandlerFamily = {
   ],
 }
 
+// --- Admin: MCP plugin servers (GET/POST /settings/api/admin/mcp-plugin-servers) ---
+// AdminMcpPluginServersResponseSchema: { available: Array<{ pluginId, name, description, tools }>,
+//   configs: Array<{ plugin_id, enabled, default_tool_policy, tool_policy? }> }
+
+const adminMcpPluginServerAvailable = {
+  pluginId: 'synthetic-web-search',
+  name: 'Synthetic Web Search',
+  description: 'Search the web for current information.',
+  tools: ['search'],
+}
+
+export const adminMcpPluginServersHandlers: HandlerFamily = {
+  populated: [
+    http.get('/settings/api/admin/mcp-plugin-servers', () =>
+      HttpResponse.json({ available: [adminMcpPluginServerAvailable], configs: [] }),
+    ),
+    http.post('/settings/api/admin/mcp-plugin-servers', () =>
+      HttpResponse.json({
+        available: [adminMcpPluginServerAvailable],
+        configs: [{ plugin_id: 'synthetic-web-search', enabled: true, default_tool_policy: 'ask' }],
+      }),
+    ),
+  ],
+  empty: [
+    http.get('/settings/api/admin/mcp-plugin-servers', () => HttpResponse.json({ available: [], configs: [] })),
+    http.post('/settings/api/admin/mcp-plugin-servers', () => HttpResponse.json({ available: [], configs: [] })),
+  ],
+  error: [http.get('/settings/api/admin/mcp-plugin-servers', boom)],
+  loading: [
+    http.get('/settings/api/admin/mcp-plugin-servers', async () => {
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json({ available: [], configs: [] })
+    }),
+  ],
+}
+
 // --- Admin: instances (four GETs in populated/empty) ---
 // AdminInstancesResponseSchema: { instances: Array<{ id, type, status, config?, createdAt? }>, unreadable? }
 // ProviderTypesResponseSchema: { providerTypes: Array<{ type, displayName, instanceConfigSchema }> }

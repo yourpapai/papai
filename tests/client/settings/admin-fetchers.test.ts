@@ -338,4 +338,56 @@ describe('admin-fetchers', () => {
     expect(seenBody).toEqual({ kind: 'catalog', entries })
     expect(result.entries).toEqual(entries)
   })
+
+  test('fetchAdminMcpPluginServers GETs available plugins and configs', async () => {
+    const { fetchAdminMcpPluginServers } = await import('../../../client/settings/admin-fetchers.js')
+    let seenUrl = ''
+    let seenMethod = ''
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenMethod = methodOf(init)
+      return Promise.resolve(
+        json({
+          available: [
+            {
+              pluginId: 'synthetic-web-search',
+              name: 'Synthetic Web Search',
+              description: 'Search the web',
+              tools: ['search'],
+            },
+          ],
+          configs: [],
+        }),
+      )
+    })
+    const result = await fetchAdminMcpPluginServers()
+    expect(seenUrl).toBe('/settings/api/admin/mcp-plugin-servers')
+    expect(seenMethod).toBe('GET')
+    expect(result.available).toHaveLength(1)
+    expect(result.available[0]?.pluginId).toBe('synthetic-web-search')
+    expect(result.configs).toEqual([])
+  })
+
+  test('postAdminMcpPluginServers POSTs kind:plugin-servers with configs and CSRF header', async () => {
+    const { postAdminMcpPluginServers } = await import('../../../client/settings/admin-fetchers.js')
+    setCsrfToken('csrf-plugin-servers')
+    let seenUrl = ''
+    let seenCsrf = ''
+    let seenMethod = ''
+    let seenBody: unknown
+    const configs = [{ plugin_id: 'synthetic-web-search', enabled: true, default_tool_policy: 'ask' as const }]
+    setMockFetch((url, init) => {
+      seenUrl = url
+      seenCsrf = csrfHeader(init)
+      seenMethod = methodOf(init)
+      seenBody = parseBody(init.body)
+      return Promise.resolve(json({ available: [], configs }))
+    })
+    const result = await postAdminMcpPluginServers(configs)
+    expect(seenUrl).toBe('/settings/api/admin/mcp-plugin-servers')
+    expect(seenCsrf).toBe('csrf-plugin-servers')
+    expect(seenMethod).toBe('POST')
+    expect(seenBody).toEqual({ kind: 'plugin-servers', configs })
+    expect(result.configs).toEqual(configs)
+  })
 })

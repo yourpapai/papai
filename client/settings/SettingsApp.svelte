@@ -44,6 +44,7 @@
   import AdminReleaseNotesSection from './sections/admin/AdminReleaseNotesSection.svelte'
   import AdminCodingGuardrailsSection from './sections/admin/AdminCodingGuardrailsSection.svelte'
   import AdminMcpCatalogSection from './sections/admin/AdminMcpCatalogSection.svelte'
+  import AdminMcpPluginServersSection from './sections/admin/AdminMcpPluginServersSection.svelte'
   import AdminToolDefaultsSection from './sections/admin/AdminToolDefaultsSection.svelte'
 
   type SidebarItem = SidebarGroup['items'][number]
@@ -74,6 +75,7 @@
         { id: 'tool-defaults', label: 'Tool defaults' },
         { id: 'coding-guardrails', label: 'Coding guardrails' },
         { id: 'mcp-catalog', label: 'MCP catalog' },
+        { id: 'mcp-plugin-servers', label: 'MCP plugin servers' },
         { id: 'groups', label: 'Groups' },
         { id: 'announce', label: 'Announce' },
         { id: 'release-notes', label: 'Release notes' },
@@ -259,6 +261,7 @@
                 <AdminToolDefaultsSection />
                 <AdminCodingGuardrailsSection />
                 <AdminMcpCatalogSection />
+                <AdminMcpPluginServersSection />
                 <AdminGroupsSection />
                 <AdminAnnounceSection />
                 <AdminReleaseNotesSection />

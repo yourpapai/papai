@@ -34,6 +34,10 @@ import {
 import { ApplyInstancesResultSchema, type ApplyInstancesResult } from './fetcher-schemas-instances.js'
 import { AdminMcpCatalogResponseSchema, type AdminMcpCatalogResponse } from './fetcher-schemas-mcp-catalog.js'
 import {
+  AdminMcpPluginServersResponseSchema,
+  type AdminMcpPluginServersResponse,
+} from './fetcher-schemas-mcp-plugin-servers.js'
+import {
   AdminPluginConfigSnapshotSchema,
   SubmitAdminPluginConfigResponseSchema,
 } from './fetcher-schemas-plugin-config.js'
@@ -234,4 +238,14 @@ export const fetchAdminMcpCatalog = (): Promise<AdminMcpCatalogResponse> =>
 export const postAdminMcpCatalog = (entries: unknown): Promise<AdminMcpCatalogResponse> =>
   writeJson('/settings/api/admin/mcp-catalog', 'POST', { kind: 'catalog', entries }, (b) =>
     AdminMcpCatalogResponseSchema.parse(b),
+  )
+
+// --- Admin: MCP plugin servers ---
+
+export const fetchAdminMcpPluginServers = (): Promise<AdminMcpPluginServersResponse> =>
+  getJson('/settings/api/admin/mcp-plugin-servers', (b) => AdminMcpPluginServersResponseSchema.parse(b))
+
+export const postAdminMcpPluginServers = (configs: unknown): Promise<AdminMcpPluginServersResponse> =>
+  writeJson('/settings/api/admin/mcp-plugin-servers', 'POST', { kind: 'plugin-servers', configs }, (b) =>
+    AdminMcpPluginServersResponseSchema.parse(b),
   )

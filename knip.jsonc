@@ -143,6 +143,7 @@
     "client/settings/fetcher-schemas-admin.ts": ["types"],
     "client/settings/fetcher-schemas-tools.ts": ["types"],
     "client/settings/fetcher-schemas-mcp-catalog.ts": ["types"],
+    "client/settings/fetcher-schemas-mcp-plugin-servers.ts": ["types"],
     "client/settings/fetchers.ts": ["exports"],
     "client/settings/coding-credentials-fetchers.ts": ["exports"],
     "client/settings/admin-fetchers.ts": ["exports"],
