@@ -11,6 +11,7 @@ import { deriveProjectPath, isDefinitelyNotGitlab, resolveProjectNames, taskIdOf
 test('deriveProjectPath strips host, leading slash, and .git', () => {
   expect(deriveProjectPath('https://gitlab.com/group/sub/repo.git')).toBe('group/sub/repo')
   expect(deriveProjectPath('https://gitlab.corp.example/team/app')).toBe('team/app')
+  expect(deriveProjectPath('https://gitlab.com/group/repo/')).toBe('group/repo')
   expect(deriveProjectPath('not a url')).toBeNull()
 })
 

@@ -51,7 +51,10 @@ export function taskIdOf(result: unknown): string | null {
 
 export function deriveProjectPath(repoUrl: string): string | null {
   try {
-    const path = new URL(repoUrl).pathname.replace(/^\/+/u, '').replace(/\.git$/u, '')
+    const path = new URL(repoUrl).pathname
+      .replace(/^\/+/u, '')
+      .replace(/\/+$/u, '')
+      .replace(/\.git$/u, '')
     return path.length > 0 ? path : null
   } catch {
     return null
@@ -234,6 +237,9 @@ export function listCodingTasksTool(httpFetch: HttpFetch | undefined): Tool {
       const cfg = readNervConfig(runtimeContext.adminConfig)
       if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
       const records = listRecords(runtimeContext.kv)
+      // Unbounded Promise.all over the group's (small) record set: plugin code cannot import
+      // p-limit (bare-module imports are rejected by discovery) and a hand-rolled worker pool
+      // trips oxlint's no-await-in-loop; this matches acp's answer_permission fan-out precedent.
       const enriched = await Promise.all(
         records.map(async (record): Promise<unknown> => {
           const doc = await callNerv(httpFetch, cfg, 'GET', `/tasks/${encodeURIComponent(record.taskId)}`)
