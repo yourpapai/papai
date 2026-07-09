@@ -3,11 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
+import * as proactiveHistoryModule from '../src/proactive-history.js'
 import type { Task } from '../src/providers/types.js'
+import { mockLogger } from './utils/test-helpers.js'
 
 const USER_ID = 'user-1'
 const createdTask = {
@@ -77,5 +79,80 @@ describe('scheduler-recurring notifyUser', () => {
     )
 
     expect(sentTargets).toEqual([{ platformInstanceId: 'telegram-default', contextId: USER_ID }])
+  })
+})
+
+describe('scheduler-recurring notifyUser — proactive history recording', () => {
+  const spies: Array<{ mockRestore: () => void }> = []
+
+  const track = <T extends { mockRestore: () => void }>(spy: T): T => {
+    spies.push(spy)
+    return spy
+  }
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  test('records the recurring-task notification in history once delivery is confirmed', async () => {
+    mockLogger()
+    const { notifyUser } = await import('../src/scheduler-recurring.js')
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const weeklyReportTask = { ...createdTask, title: 'Weekly report' } as const satisfies Task
+    const chat = {
+      name: 'mock',
+      threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+      capabilities: new Set(),
+      traits: { observedGroupMessages: 'all' },
+      configRequirements: [],
+      registerCommand: () => {},
+      onMessage: () => {},
+      sendMessage: (_platformInstanceId, _target, _text): Promise<true> => Promise.resolve(true),
+      renderContext: () => ({ method: 'text', content: '' }),
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+    } as const satisfies ChatProvider
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+
+    await notifyUser(chat, scopedUserId, weeklyReportTask)
+
+    expect(recordCalls).toHaveLength(1)
+    expect(recordCalls[0]).toEqual([scopedUserId, 'Recurring task created: **Weekly report** in project.'])
+  })
+
+  test('does not record history when the recurring-task notification is refused', async () => {
+    mockLogger()
+    const { notifyUser } = await import('../src/scheduler-recurring.js')
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const weeklyReportTask = { ...createdTask, title: 'Weekly report' } as const satisfies Task
+    const chat = {
+      name: 'mock',
+      threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+      capabilities: new Set(),
+      traits: { observedGroupMessages: 'all' },
+      configRequirements: [],
+      registerCommand: () => {},
+      onMessage: () => {},
+      sendMessage: (_platformInstanceId, _target, _text): Promise<false> => Promise.resolve(false),
+      renderContext: () => ({ method: 'text', content: '' }),
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+    } as const satisfies ChatProvider
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+
+    await notifyUser(chat, scopedUserId, weeklyReportTask)
+
+    expect(recordCalls).toHaveLength(0)
   })
 })

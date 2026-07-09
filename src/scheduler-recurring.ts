@@ -9,6 +9,7 @@ import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
+import { recordProactiveInHistory } from './proactive-history.js'
 import type { Task, TaskProvider } from './providers/types.js'
 import { recordOccurrence } from './recurring-occurrences.js'
 import { markExecuted, type RecurringTaskRecord } from './recurring.js'
@@ -86,17 +87,16 @@ export const notifyUser = async (
   if (route === null) return
 
   try {
-    const delivered = await chatProviderRef.sendMessage(
-      route.platformInstanceId,
-      route.target,
-      `Recurring task created: **${created.title}** in project.`,
-    )
+    const message = `Recurring task created: **${created.title}** in project.`
+    const delivered = await chatProviderRef.sendMessage(route.platformInstanceId, route.target, message)
     if (delivered === false) {
       log.warn(
         { userId, platformInstanceId: route.platformInstanceId, taskId: created.id },
         'Recurring task notification refused',
       )
+      return
     }
+    if (parseScopedContextId(userId) !== null) recordProactiveInHistory(userId, message)
   } catch (notifyError) {
     log.warn(
       { userId, error: notifyError instanceof Error ? notifyError.message : String(notifyError) },
