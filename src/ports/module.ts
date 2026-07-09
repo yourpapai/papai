@@ -6,6 +6,7 @@
 import type { Migration } from '../db/migrate.js'
 import type { ModuleCommand, ModulePromptFragment } from './module-contributions.js'
 import type { ModuleTool } from './module-tools.js'
+import type { SettingsSection } from './settings-sections.js'
 
 /**
  * A privileged, in-repo **Trusted Module** (Tier 1). Unlike a sandboxed plugin, a module may
@@ -30,6 +31,8 @@ export interface TrustedModule {
   readonly commands?: readonly ModuleCommand[]
   /** System-prompt fragments this module contributes (assembled by buildModulePromptSection). */
   readonly promptFragments?: readonly ModulePromptFragment[]
+  /** Admin settings sections this module contributes (served by the generic module-sections route). */
+  readonly settingsSections?: readonly SettingsSection[]
   /** Called once after all modules' migrations have run. Registers resolvers/adapters into ports. */
   onActivate?(): void | Promise<void>
 }

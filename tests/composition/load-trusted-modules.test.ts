@@ -12,6 +12,7 @@ import type { Migration } from '../../src/db/migrate.js'
 import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../../src/ports/module-contributions.js'
 import { moduleToolRegistry } from '../../src/ports/module-tools.js'
 import type { TrustedModule } from '../../src/ports/module.js'
+import { moduleSettingsRegistry } from '../../src/ports/settings-sections.js'
 
 const noopMigration = (id: string): Migration => ({ id, up: (): void => {} })
 
@@ -90,5 +91,16 @@ describe('loadTrustedModules', () => {
     expect(modulePromptFragmentRegistry.list().map((e) => `${e.moduleId}:${e.fragment.name}`)).toContain('fixture:hint')
     moduleCommandRegistry.clear()
     modulePromptFragmentRegistry.clear()
+  })
+
+  test("registers each module's settings sections", async () => {
+    moduleSettingsRegistry.clear()
+    const mod: TrustedModule = {
+      id: 'fixture',
+      settingsSections: [{ id: 'fixture-cfg', label: 'Fixture', fields: [{ key: 'url', label: 'URL' }] }],
+    }
+    await loadTrustedModules([mod], () => {})
+    expect(moduleSettingsRegistry.list().map((s) => s.id)).toContain('fixture-cfg')
+    moduleSettingsRegistry.clear()
   })
 })
