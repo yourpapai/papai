@@ -10,8 +10,8 @@ import { setCodingGuardrails } from '../../src/coding-credentials/guardrails.js'
 import { setMcpCatalog } from '../../src/coding-credentials/mcp-catalog.js'
 import { setMcpPluginServerConfigs } from '../../src/coding-credentials/mcp-plugin-servers.js'
 import { serializeMcpSelections } from '../../src/coding-credentials/mcp-selections.js'
-import type { ResolveMcpResult } from '../../src/coding-credentials/resolve-agent-secrets.js'
-import { resolveMcpServers, resolveMcpTokens } from '../../src/coding-credentials/resolve-agent-secrets.js'
+import type { ResolveMcpResult } from '../../src/coding-credentials/resolve-mcp-servers.js'
+import { resolveMcpServers, resolveMcpTokens } from '../../src/coding-credentials/resolve-mcp-servers.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
 import { verifyPluginMcpToken } from '../../src/mcp-server/token.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
@@ -116,6 +116,7 @@ test('resolveMcpServers/resolveMcpTokens resolve a mixed internal+external set',
   expect(external?.toolPolicy?.default).toBe('allow')
 
   const tokens = resolveMcpTokens(MCP_CTX, 'user-int')
+  expect(Object.keys(tokens).sort()).toEqual(['github-mcp', INTERNAL_SERVER].sort())
   expect(tokens['github-mcp']).toBe('sek')
   const internalToken = tokens[INTERNAL_SERVER]
   expect(internalToken).toBeDefined()
@@ -140,6 +141,10 @@ test('resolveMcpServers fails closed and names the offending disabled internal s
   expect(result.ok).toBe(false)
   assertFail(result)
   expect(result.error).toContain(INTERNAL_SERVER)
+
+  // resolveMcpTokens must derive from the validated set, not independently re-parse the vault:
+  // when resolveMcpServers refuses (disabled internal server), it must not mint/emit anything.
+  expect(resolveMcpTokens(MCP_CTX, 'user-int')).toEqual({})
 })
 
 test('resolveMcpServers fails closed when an external selection is missing its token', () => {
@@ -181,6 +186,9 @@ test('resolveMcpServers fails closed when the count exceeds maxMcpServers', () =
   expect(result.ok).toBe(false)
   assertFail(result)
   expect(result.error).toContain('max')
+
+  // Over-cap refusal must also short-circuit resolveMcpTokens (no drift, no partial emission).
+  expect(resolveMcpTokens(MCP_CTX, 'user-int')).toEqual({})
 })
 
 test('resolveMcpServers/resolveMcpTokens return empty for an empty selection', () => {

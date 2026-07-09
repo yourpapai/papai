@@ -64,6 +64,24 @@ describe('mcp-catalog', () => {
     expect(result.success).toBe(false)
   })
 
+  test("mcpCatalogSchema rejects a name outside magi's id charset (space or !)", () => {
+    const withSpace = mcpCatalogSchema.safeParse([
+      { name: 'GitHub MCP', upstream_url: 'https://h', default_tool_policy: 'allow' },
+    ])
+    expect(withSpace.success).toBe(false)
+    const withBang = mcpCatalogSchema.safeParse([
+      { name: 'github!', upstream_url: 'https://h', default_tool_policy: 'allow' },
+    ])
+    expect(withBang.success).toBe(false)
+  })
+
+  test("mcpCatalogSchema accepts a name within magi's id charset", () => {
+    const result = mcpCatalogSchema.safeParse([
+      { name: 'github-mcp', upstream_url: 'https://h', default_tool_policy: 'allow' },
+    ])
+    expect(result.success).toBe(true)
+  })
+
   test('mcpCatalogSchema strips an unknown host key', () => {
     const result = mcpCatalogSchema.safeParse([
       { name: 'x', upstream_url: 'https://h', host: 'h', default_tool_policy: 'allow' },

@@ -15,6 +15,7 @@ export const mcpCatalogEntrySchema = z.object({
   name: z
     .string()
     .min(1)
+    .regex(/^[a-zA-Z0-9_.:/-]+$/u, { message: 'name may only contain letters, digits, and _ . : / -' })
     .refine((name) => !name.startsWith(INTERNAL_SERVER_PREFIX), {
       message: `name must not start with '${INTERNAL_SERVER_PREFIX}' (reserved for internal MCP servers)`,
     }),

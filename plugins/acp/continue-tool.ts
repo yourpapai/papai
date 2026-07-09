@@ -36,6 +36,9 @@ function checkAccess(runtimeContext: RuntimeContext): AccessError | AccessOk {
       error: 'not_configured',
       message: 'Connect a code host in settings → Coding sessions before continuing a session.',
     }
+  // The follow-up endpoint never resends mcp[]; resolveMcpServers() here is purely a fail-closed
+  // gate (refuse to continue if the MCP set no longer resolves) — its .servers is intentionally
+  // unused. Do not "fix" this into resending the MCP spec.
   const mcpResult = runtimeContext.codingSecrets.resolveMcpServers()
   if (!mcpResult.ok) return { error: 'mcp_unavailable', message: mcpResult.error }
   return { secrets, forgeToken, mcpTokens: runtimeContext.codingSecrets.resolveMcpTokens() }

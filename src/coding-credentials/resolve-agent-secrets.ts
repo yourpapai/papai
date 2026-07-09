@@ -9,17 +9,12 @@ import {
   parseScopedContextId,
   toScopedContextId,
 } from '../chat/scoped-context.js'
-import { logger } from '../logger.js'
-import { mintPluginMcpToken } from '../mcp-server/token.js'
-import type { Permission } from '../tools/tool-preferences.js'
 import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
-import { resolveMcpCatalog, type McpCatalogEntry } from './mcp-catalog.js'
-import { INTERNAL_SERVER_PREFIX, listEnabledInternalMcpServers } from './mcp-plugin-servers.js'
-import { parseMcpSelections } from './mcp-selections.js'
 import { getCodingCredentials } from './store.js'
 import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'
 
-const log = logger.child({ scope: 'coding-credentials:resolve-agent-secrets' })
+// MCP-server resolution (resolveMcpServers/resolveMcpTokens + supporting types) lives in
+// ./resolve-mcp-servers.js, which imports configContextOf/identityContext from this module.
 
 export function configContextOf(storageContextId: string): string {
   return getConfigContextIdFromStorageContextId(storageContextId)
@@ -164,133 +159,4 @@ export function resolveForge(
   } catch {
     return null
   }
-}
-
-/** Per-tool MCP permission policy resolved from the selected catalog entry. */
-export interface ToolPolicy {
-  default: Permission
-  tools?: Record<string, Permission>
-}
-
-/** A resolved MCP upstream for the projectSpec.mcp array. Never carries the token. */
-export interface ResolvedMcpServer {
-  id: string
-  url: string
-  host: string
-  header: string
-  allowedHosts: string[]
-  toolPolicy?: ToolPolicy
-}
-
-export type ResolveMcpResult = { ok: true; servers: ResolvedMcpServer[] } | { ok: false; error: string }
-
-function catalogToolPolicy(entry: McpCatalogEntry): ToolPolicy {
-  return { default: entry.default_tool_policy ?? 'deny', tools: entry.tool_policy }
-}
-
-/**
- * Resolve a single selected MCP server (internal plugin server or external catalog entry)
- * against the operator's current enabled-server list / catalog. Fail-closed: returns a
- * structured `{ error }` naming this server when it doesn't (or no longer) resolve.
- */
-function resolveOneMcpServer(
-  server: string,
-  upstreamToken: string | undefined,
-  storageContextId: string,
-  pi: string,
-): ResolvedMcpServer | { error: string } {
-  if (server.startsWith(INTERNAL_SERVER_PREFIX)) {
-    const entry = listEnabledInternalMcpServers(pi, configContextOf(storageContextId)).find((e) => e.name === server)
-    if (entry === undefined) return { error: `MCP server '${server}' is not an enabled internal server` }
-    let hostname: string
-    try {
-      hostname = new URL(entry.upstreamUrl).hostname
-    } catch {
-      return { error: `MCP server '${server}' has an unparseable upstream URL` }
-    }
-    return {
-      id: server,
-      url: entry.upstreamUrl,
-      host: hostname,
-      header: entry.header,
-      allowedHosts: [hostname],
-      toolPolicy: entry.toolPolicy,
-    }
-  }
-  const token = upstreamToken?.trim()
-  if (token === undefined || token.length === 0) return { error: `MCP server '${server}' is missing its credential` }
-  const entry = resolveMcpCatalog(pi).find((e) => e.name === server)
-  if (entry === undefined) return { error: `MCP server '${server}' is not in the catalog` }
-  let hostname: string
-  try {
-    hostname = new URL(entry.upstream_url).hostname
-  } catch {
-    return { error: `MCP server '${server}' has an unparseable upstream URL` }
-  }
-  return {
-    id: server,
-    url: entry.upstream_url,
-    host: hostname,
-    header: entry.header ?? 'Authorization',
-    allowedHosts: [hostname],
-    toolPolicy: catalogToolPolicy(entry),
-  }
-}
-
-/**
- * Resolve the acting identity's full MCP set from the `servers` vault array, joined against
- * the platform instance's admin-configured catalog + enabled internal plugin servers.
- *
- * Fail-closed, all-or-nothing: if any selection doesn't currently resolve (disabled/removed
- * internal server, missing token, unknown catalog entry, duplicate selection) or the set
- * exceeds the operator's `maxMcpServers` guardrail, the whole call fails and the error names
- * the offending server. An empty selection resolves to an empty (ok) set.
- */
-export function resolveMcpServers(storageContextId: string, chatUserId: string): ResolveMcpResult {
-  const ctx = identityContext(storageContextId, chatUserId)
-  const selections = parseMcpSelections(getCodingCredentials(ctx, 'mcp'))
-  if (selections.length === 0) return { ok: true, servers: [] }
-  const pi = parseScopedContextId(storageContextId)?.platformInstanceId
-  if (pi === undefined) {
-    log.warn({ contextId: ctx }, 'mcp vault has no platform instance to resolve against; refusing (fail-closed)')
-    return { ok: false, error: 'no platform instance for MCP resolution' }
-  }
-  const cap = resolveCodingGuardrails(pi).maxMcpServers
-  if (selections.length > cap) return { ok: false, error: `too many MCP servers selected (max ${cap})` }
-  const servers: ResolvedMcpServer[] = []
-  const seen = new Set<string>()
-  for (const sel of selections) {
-    if (seen.has(sel.server)) return { ok: false, error: `MCP server '${sel.server}' selected more than once` }
-    seen.add(sel.server)
-    const resolved = resolveOneMcpServer(sel.server, sel.upstream_token, storageContextId, pi)
-    if ('error' in resolved) {
-      log.warn({ contextId: ctx, server: sel.server }, 'mcp selection failed to resolve; refusing (fail-closed)')
-      return { ok: false, error: resolved.error }
-    }
-    servers.push(resolved)
-  }
-  return { ok: true, servers }
-}
-
-/**
- * Per-server credential map for the acting identity's full MCP selection. Internal papai-hosted
- * plugin servers mint a signed binding token instead of reading one from the vault (internal
- * servers never store an upstream_token); external catalog servers use their vault token.
- */
-export function resolveMcpTokens(storageContextId: string, chatUserId: string): Record<string, string> {
-  const selections = parseMcpSelections(getCodingCredentials(identityContext(storageContextId, chatUserId), 'mcp'))
-  const tokens: Record<string, string> = {}
-  for (const sel of selections) {
-    if (sel.server.startsWith(INTERNAL_SERVER_PREFIX)) {
-      tokens[sel.server] = mintPluginMcpToken({
-        storageContextId,
-        chatUserId,
-        pluginId: sel.server.slice(INTERNAL_SERVER_PREFIX.length),
-      })
-    } else {
-      const token = sel.upstream_token?.trim()
-      if (token !== undefined && token.length > 0) tokens[sel.server] = token
-    }
-  }
-  return tokens
 }

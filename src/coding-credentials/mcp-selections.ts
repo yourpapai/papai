@@ -22,7 +22,7 @@ export function serializeMcpSelections(selections: CodingMcpSelection[]): string
 
 /** Parse the `servers` vault field into a selection array. Fail-safe: [] on missing/invalid. */
 export function parseMcpSelections(config: CodingCredentialConfig | null): CodingMcpSelection[] {
-  const raw = (config as Record<string, string | undefined> | null)?.['servers']
+  const raw = config?.servers
   if (raw === undefined || raw.length === 0) return []
   try {
     const parsed = codingMcpSelectionsSchema.safeParse(JSON.parse(raw))
