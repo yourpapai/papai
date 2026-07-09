@@ -2,6 +2,8 @@
 
 `src/mcp/` connects papai to external [Model Context Protocol](https://modelcontextprotocol.io) servers and exposes their tools to the LLM as ordinary Vercel AI SDK tools. There are two sources of MCP servers:
 
+**Direction note:** this module is papai-as-MCP-**client** (consuming external/plugin-declared upstreams for the orchestrator LLM). `src/mcp-server/` is the opposite direction — papai-as-MCP-**server**, hosting a plugin's own tools at `/mcp/plugin/<pluginId>` for the sandboxed coding agent, reached via the sandbox MCP broker (see `docs/architecture/coding-sessions.md` § Internal plugin MCP servers). The two modules are distinct and do not share code.
+
 - **User endpoints** — per-context servers configured through the `mcp_endpoints` config key (see `src/config-keys.ts`).
 - **Plugin endpoints** — servers declared by a plugin manifest's `mcp` field (`src/plugins/types.ts`).
 
