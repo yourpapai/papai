@@ -8,6 +8,7 @@ import type { Migration } from '../db/migrate.js'
 import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../ports/module-contributions.js'
 import { moduleToolRegistry } from '../ports/module-tools.js'
 import type { TrustedModule } from '../ports/module.js'
+import { moduleSettingsRegistry } from '../ports/settings-sections.js'
 import { TRUSTED_MODULES } from './trusted-modules.js'
 
 /**
@@ -33,6 +34,9 @@ export async function loadTrustedModules(
     }
     if (mod.promptFragments !== undefined && mod.promptFragments.length > 0) {
       modulePromptFragmentRegistry.register(mod.id, mod.promptFragments)
+    }
+    if (mod.settingsSections !== undefined && mod.settingsSections.length > 0) {
+      moduleSettingsRegistry.register(mod.settingsSections)
     }
   }
   await modules.reduce(async (previous, mod) => {
