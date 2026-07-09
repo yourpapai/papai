@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { loadTrustedModules } from '../../src/composition/load-trusted-modules.js'
 import type { Migration } from '../../src/db/migrate.js'
 import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../../src/ports/module-contributions.js'
+import { moduleEligibilityRegistry } from '../../src/ports/module-eligibility.js'
 import { moduleToolRegistry } from '../../src/ports/module-tools.js'
 import type { TrustedModule } from '../../src/ports/module.js'
 import { moduleSettingsRegistry } from '../../src/ports/settings-sections.js'
@@ -102,5 +103,14 @@ describe('loadTrustedModules', () => {
     await loadTrustedModules([mod], () => {})
     expect(moduleSettingsRegistry.list().map((s) => s.id)).toContain('fixture-cfg')
     moduleSettingsRegistry.clear()
+  })
+
+  test("registers each module's eligibility predicate", async () => {
+    moduleEligibilityRegistry.clear()
+    const mod: TrustedModule = { id: 'fixture', isEligibleForContext: (ctx) => ctx === 'ok' }
+    await loadTrustedModules([mod], () => {})
+    expect(moduleEligibilityRegistry.isEligible('fixture', 'ok')).toBe(true)
+    expect(moduleEligibilityRegistry.isEligible('fixture', 'no')).toBe(false)
+    moduleEligibilityRegistry.clear()
   })
 })
