@@ -16,5 +16,10 @@ test.describe('shared/ui/Select', () => {
     await switchStory(sharedPage, 'shared-ui-select--single-option')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Placeholder', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-select--placeholder')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
