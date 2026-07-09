@@ -82,6 +82,11 @@ export const CodingCredentialsResponseSchema = z.object({
   // Present only for namespace: 'mcp' — operator-exposed internal plugin MCP servers; no user
   // credential is needed for these (papai mints the token).
   pluginServers: z.array(z.object({ name: z.string(), label: z.string() })).optional(),
+  // Present only for namespace: 'mcp' — the operator's cap on the number of selected servers.
+  maxMcpServers: z.number().optional(),
+  // Present only for namespace: 'mcp' — the current server selection, tokens stripped. `servers`
+  // above stays a masked opaque blob; this is what the add-row UI seeds itself from.
+  selections: z.array(z.object({ server: z.string(), hasToken: z.boolean() })).optional(),
 })
 export type CodingCredentialField = z.infer<typeof CodingCredentialFieldSchema>
 export type CodingCredentialsResponse = z.infer<typeof CodingCredentialsResponseSchema>

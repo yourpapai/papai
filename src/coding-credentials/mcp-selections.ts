@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { INTERNAL_SERVER_PREFIX } from './mcp-plugin-servers.js'
 import type { CodingCredentialConfig } from './types.js'
 
 export const codingMcpSelectionSchema = z.object({
@@ -30,4 +31,25 @@ export function parseMcpSelections(config: CodingCredentialConfig | null): Codin
   } catch {
     return []
   }
+}
+
+/**
+ * Token-preserving merge for a PATCH to the `servers` vault field. The client never receives
+ * upstream tokens back (see the GET `selections` view), so a kept external row is submitted with
+ * `upstream_token` blank/absent to mean "keep the stored one". For each incoming external
+ * selection with no (or a blank) token, carry forward the token from the previously stored
+ * selection with the same `server` name, if any. Internal (`plugin:`-prefixed) selections never
+ * carry a token, incoming or stored — papai mints their credential at resolve time.
+ */
+export function mergeMcpTokens(incoming: CodingMcpSelection[], stored: CodingMcpSelection[]): CodingMcpSelection[] {
+  const storedByServer = new Map(stored.map((sel) => [sel.server, sel]))
+  return incoming.map((sel) => {
+    if (sel.server.startsWith(INTERNAL_SERVER_PREFIX)) return { server: sel.server }
+    const token = sel.upstream_token?.trim()
+    if (token !== undefined && token.length > 0) return { server: sel.server, upstream_token: token }
+    const preserved = storedByServer.get(sel.server)?.upstream_token?.trim()
+    return preserved !== undefined && preserved.length > 0
+      ? { server: sel.server, upstream_token: preserved }
+      : { server: sel.server }
+  })
 }

@@ -95,57 +95,64 @@ export const releaseSubscriptionMutationErrorHandlers: HttpHandler[] = [
 ]
 
 // --- Coding MCP servers (GET /settings/api/coding-credentials?namespace=mcp) ---
+// The `servers` vault field is a single sensitive JSON blob (tokens never leave the server); the
+// add-row UI is seeded from `selections` (server name + whether a token is stored, no token value).
+
+interface CodingMcpServersField {
+  key: string
+  label: string
+  required: boolean
+  sensitive: boolean
+  hasValue: boolean
+  value: string
+}
+
+const codingMcpServersField = (hasValue: boolean): CodingMcpServersField => ({
+  key: 'servers',
+  label: 'MCP servers',
+  required: false,
+  sensitive: true,
+  hasValue,
+  value: hasValue ? '***' : '',
+})
 
 const codingMcpCatalog = [
-  { name: 'search', upstream_url: 'https://mcp.corp.com/search', host: 'mcp.corp.com' },
-  { name: 'docs', upstream_url: 'https://mcp.corp.com/docs', host: 'mcp.corp.com' },
+  { name: 'search', upstream_url: 'https://mcp.corp.com/search', default_tool_policy: 'allow' as const },
+  { name: 'docs', upstream_url: 'https://mcp.corp.com/docs', default_tool_policy: 'allow' as const },
 ]
+
+// Operator-exposed internal plugin MCP server: papai mints the token, so the picker offers it
+// alongside the external catalog and never shows a credential field for it.
+const codingMcpPluginServers = [{ name: 'plugin:synthetic-web-search', label: 'Synthetic Web Search' }]
 
 const codingMcpPopulated = {
   namespace: 'mcp',
   configured: true,
   complete: true,
   missing: [],
-  fields: [
-    {
-      key: 'server',
-      label: 'MCP server',
-      required: true,
-      sensitive: false,
-      hasValue: true,
-      value: 'search',
-      control: 'select',
-    },
-    { key: 'upstream_token', label: 'Credential', required: true, sensitive: true, hasValue: true, value: '****ab12' },
-  ],
+  fields: [codingMcpServersField(true)],
   catalog: codingMcpCatalog,
+  pluginServers: codingMcpPluginServers,
+  maxMcpServers: 3,
+  selections: [
+    { server: 'plugin:synthetic-web-search', hasToken: false },
+    { server: 'search', hasToken: true },
+  ],
 }
 
 const codingMcpEmpty = {
   namespace: 'mcp',
   configured: false,
-  complete: false,
-  missing: ['server', 'upstream_token'],
-  fields: [
-    {
-      key: 'server',
-      label: 'MCP server',
-      required: true,
-      sensitive: false,
-      hasValue: false,
-      value: '',
-      control: 'select',
-    },
-    { key: 'upstream_token', label: 'Credential', required: true, sensitive: true, hasValue: false, value: '' },
-  ],
+  complete: true,
+  missing: [],
+  fields: [codingMcpServersField(false)],
   catalog: codingMcpCatalog,
+  pluginServers: [],
+  maxMcpServers: 3,
+  selections: [],
 }
 
-const codingMcpNoCatalog = { ...codingMcpEmpty, catalog: [] }
-
-// Operator-exposed internal plugin MCP server: papai mints the token, so the picker offers it
-// alongside (or instead of) the external catalog and hides the credential field once selected.
-const codingMcpPluginServers = [{ name: 'plugin:synthetic-web-search', label: 'Synthetic Web Search' }]
+const codingMcpNoCatalog = { ...codingMcpEmpty, catalog: [], pluginServers: [] }
 
 const codingMcpInternalAvailable = {
   ...codingMcpEmpty,
@@ -158,20 +165,11 @@ const codingMcpInternalSelected = {
   configured: true,
   complete: true,
   missing: [],
-  fields: [
-    {
-      key: 'server',
-      label: 'MCP server',
-      required: true,
-      sensitive: false,
-      hasValue: true,
-      value: 'plugin:synthetic-web-search',
-      control: 'select',
-    },
-    { key: 'upstream_token', label: 'Credential', required: true, sensitive: true, hasValue: false, value: '' },
-  ],
+  fields: [codingMcpServersField(true)],
   catalog: [],
   pluginServers: codingMcpPluginServers,
+  maxMcpServers: 3,
+  selections: [{ server: 'plugin:synthetic-web-search', hasToken: false }],
 }
 
 export const codingMcpHandlers: HandlerFamily = {

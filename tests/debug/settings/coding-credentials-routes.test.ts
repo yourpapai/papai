@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import { setMcpCatalog } from '../../../src/coding-credentials/mcp-catalog.js'
+import { parseMcpSelections } from '../../../src/coding-credentials/mcp-selections.js'
 import { getCodingCredentials } from '../../../src/coding-credentials/store.js'
 import { maskSensitiveValue } from '../../../src/config.js'
 import { handleCodingCredentialsRoutes } from '../../../src/debug/settings/coding-credentials-routes.js'
@@ -50,6 +51,8 @@ const GetResponseSchema = z.object({
       }),
     )
     .optional(),
+  maxMcpServers: z.number().optional(),
+  selections: z.array(z.object({ server: z.string(), hasToken: z.boolean() })).optional(),
 })
 
 const PatchResponseSchema = z.object({
@@ -380,6 +383,74 @@ describe('coding-credentials routes', () => {
     const field = body.fields.find((f) => f.key === 'servers')
     expect(field?.hasValue).toBe(true)
     expect(field?.value).not.toContain('mcp-secret')
+  })
+
+  test('GET ?namespace=mcp returns a selections view with hasToken but never the token value', async () => {
+    const patchUrl = new URL('https://x/settings/api/coding-credentials')
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'mcp',
+        values: {
+          servers: JSON.stringify([
+            { server: 'github', upstream_token: 'mcp-secret-1' },
+            { server: 'plugin:web-search' },
+          ]),
+        },
+      }),
+      patchUrl,
+    )
+    const getUrl = new URL(
+      `https://x/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`,
+    )
+    const res = await handleCodingCredentialsRoutes(
+      get(`/settings/api/coding-credentials?contextId=${personalConfigContextId}&namespace=mcp`, session),
+      getUrl,
+    )
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(text).not.toContain('mcp-secret-1')
+    const body = GetResponseSchema.parse(JSON.parse(text))
+    expect(body.selections).toEqual([
+      { server: 'github', hasToken: true },
+      { server: 'plugin:web-search', hasToken: false },
+    ])
+  })
+
+  test('PATCH ?namespace=mcp keeping an external row with a blank token preserves the stored token', async () => {
+    const patchUrl = new URL('https://x/settings/api/coding-credentials')
+    await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'mcp',
+        values: { servers: JSON.stringify([{ server: 'github', upstream_token: 'original-secret' }]) },
+      }),
+      patchUrl,
+    )
+
+    const keepRes = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'mcp',
+        values: { servers: JSON.stringify([{ server: 'github', upstream_token: '' }]) },
+      }),
+      patchUrl,
+    )
+    expect(keepRes.status).toBe(200)
+
+    const stored = getCodingCredentials(personalConfigContextId, 'mcp')
+    expect(parseMcpSelections(stored)).toEqual([{ server: 'github', upstream_token: 'original-secret' }])
+  })
+
+  test('PATCH ?namespace=mcp rejects a new external row with no token as missing its credential', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'mcp',
+        values: { servers: JSON.stringify([{ server: 'github' }]) },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toContain('missing its credential')
   })
 
   test('unknown namespace is rejected', async () => {

@@ -7,8 +7,13 @@ import { z } from 'zod'
 
 import { resolveCodingGuardrails } from '../../coding-credentials/guardrails.js'
 import { resolveMcpCatalog } from '../../coding-credentials/mcp-catalog.js'
-import { listEnabledInternalMcpServers } from '../../coding-credentials/mcp-plugin-servers.js'
-import { codingMcpSelectionsSchema, serializeMcpSelections } from '../../coding-credentials/mcp-selections.js'
+import { INTERNAL_SERVER_PREFIX, listEnabledInternalMcpServers } from '../../coding-credentials/mcp-plugin-servers.js'
+import {
+  codingMcpSelectionsSchema,
+  mergeMcpTokens,
+  parseMcpSelections,
+  serializeMcpSelections,
+} from '../../coding-credentials/mcp-selections.js'
 import {
   clearCodingCredentials,
   getCodingCredentialState,
@@ -165,6 +170,7 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
 }
 
 const checkMcpServers = (
+  contextId: string,
   platformInstanceId: string,
   toPersist: CodingCredentialConfig,
 ): Response | { toPersist: CodingCredentialConfig } => {
@@ -178,11 +184,25 @@ const checkMcpServers = (
   }
   const parsed = codingMcpSelectionsSchema.safeParse(json)
   if (!parsed.success) return settingsJson(422, { error: 'invalid mcp servers' })
+
+  // The client never receives upstream tokens back (see the GET `selections` view): a kept
+  // external row is submitted with a blank/absent token meaning "keep the stored one". Carry
+  // the stored token forward before validating so a legitimate keep isn't rejected as missing.
+  const stored = parseMcpSelections(getCodingCredentials(contextId, 'mcp'))
+  const merged = mergeMcpTokens(parsed.data, stored)
+
+  const tokenless = merged.find(
+    (sel) => !sel.server.startsWith(INTERNAL_SERVER_PREFIX) && (sel.upstream_token ?? '').trim().length === 0,
+  )
+  if (tokenless !== undefined) {
+    return settingsJson(422, { error: `MCP server '${tokenless.server}' is missing its credential` })
+  }
+
   const maxMcpServers = resolveCodingGuardrails(platformInstanceId).maxMcpServers
-  if (parsed.data.length > maxMcpServers) {
+  if (merged.length > maxMcpServers) {
     return settingsJson(422, { error: 'too many MCP servers' })
   }
-  return { toPersist: { ...toPersist, servers: serializeMcpSelections(parsed.data) } }
+  return { toPersist: { ...toPersist, servers: serializeMcpSelections(merged) } }
 }
 
 function handleGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
@@ -201,7 +221,14 @@ function handleGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
       (s) => ({ name: s.name, label: s.label }),
     )
     const maxMcpServers = resolveCodingGuardrails(authed.principal.platformInstanceId).maxMcpServers
-    return settingsJson(200, { ...fields, catalog, pluginServers, maxMcpServers })
+    // Server names are not secret; only the token is. Expose which selections currently carry a
+    // token WITHOUT ever sending the token value itself — the client uses this to seed its
+    // add-row list and offer a "keep existing credential" affordance per external row.
+    const selections = parseMcpSelections(getCodingCredentials(scope.scope.contextId, 'mcp')).map((s) => ({
+      server: s.server,
+      hasToken: (s.upstream_token ?? '').trim().length > 0,
+    }))
+    return settingsJson(200, { ...fields, catalog, pluginServers, maxMcpServers, selections })
   }
   return settingsJson(200, fields)
 }
@@ -238,7 +265,7 @@ async function handlePatch(req: Request, authed: AuthenticatedSettingsRequest): 
   }
 
   if (namespace === 'mcp') {
-    const mcpResult = checkMcpServers(authed.principal.platformInstanceId, toPersist)
+    const mcpResult = checkMcpServers(scope.scope.contextId, authed.principal.platformInstanceId, toPersist)
     if (mcpResult instanceof Response) return mcpResult
     toPersist = mcpResult.toPersist
   }
