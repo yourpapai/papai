@@ -15,25 +15,20 @@ describe('FIELDS_META', () => {
     }
   })
 
-  test('mcp namespace declares server and upstream_token fields', () => {
+  test('mcp namespace declares a single servers field (JSON array vault)', () => {
     const keys = FIELDS_META.mcp.map((field) => field.key)
-    expect(keys).toEqual(['server', 'upstream_token'])
+    expect(keys).toEqual(['servers'])
   })
 
-  test('mcp server and upstream_token are required and upstream_token is sensitive', () => {
+  test('mcp servers field is optional (row-level validation happens in the array) and sensitive', () => {
     const byKey = Object.fromEntries(FIELDS_META.mcp.map((field) => [field.key, field]))
-    expect(byKey['server']?.required).toBe(true)
-    expect(byKey['upstream_token']?.required).toBe(true)
-    expect(byKey['upstream_token']?.sensitive).toBe(true)
+    expect(byKey['servers']?.required).toBe(false)
+    expect(byKey['servers']?.sensitive).toBe(true)
   })
 
-  test('mcp fields have user-facing labels and correct sensitivity/control', () => {
+  test('mcp servers field has a user-facing label', () => {
     const byKey = Object.fromEntries(FIELDS_META.mcp.map((field) => [field.key, field]))
-    expect(byKey['server']?.label).toBe('MCP server')
-    expect(byKey['server']?.sensitive).toBe(false)
-    expect(byKey['server']?.control).toBe('select')
-
-    expect(byKey['upstream_token']?.label).toBe('Credential')
-    expect(byKey['upstream_token']?.sensitive).toBe(true)
+    expect(byKey['servers']?.label).toBe('MCP servers')
+    expect(byKey['servers']?.sensitive).toBe(true)
   })
 })

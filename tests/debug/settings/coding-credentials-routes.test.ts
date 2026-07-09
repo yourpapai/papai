@@ -330,17 +330,12 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(200)
     const body = GetResponseSchema.parse(await res.json())
-    expect(body.fields.map((f) => f.key)).toEqual(['server', 'upstream_token'])
+    expect(body.fields.map((f) => f.key)).toEqual(['servers'])
 
     const byKey = Object.fromEntries(body.fields.map((f) => [f.key, f]))
-    expect(byKey['server']?.label).toBe('MCP server')
-    expect(byKey['server']?.required).toBe(true)
-    expect(byKey['server']?.sensitive).toBe(false)
-    expect(byKey['server']?.control).toBe('select')
-
-    expect(byKey['upstream_token']?.label).toBe('Credential')
-    expect(byKey['upstream_token']?.required).toBe(true)
-    expect(byKey['upstream_token']?.sensitive).toBe(true)
+    expect(byKey['servers']?.label).toBe('MCP servers')
+    expect(byKey['servers']?.required).toBe(false)
+    expect(byKey['servers']?.sensitive).toBe(true)
   })
 
   test('GET ?namespace=mcp surfaces the operator catalog', async () => {
@@ -364,17 +359,12 @@ describe('coding-credentials routes', () => {
     expect(body.catalog).toEqual(catalog)
   })
 
-  // Known gap: the mcp vault moved from {server, upstream_token} to a single JSON-encoded
-  // `servers` array field (multi-server MCP selection, plan Tasks 1-5). FIELDS_META and this
-  // route's PATCH/GET handling for the mcp namespace are still on the old per-field UI shape —
-  // that's Task 6/7 of docs/superpowers/plans/2026-07-09-multi-server-mcp-papai.md, out of
-  // scope here. Skipped until Task 6/7 lands the `servers`-array UI for this route.
-  test.skip('PATCH ?namespace=mcp saves the credential masked on GET', async () => {
+  test('PATCH ?namespace=mcp saves the credential masked on GET', async () => {
     const patchUrl = new URL('https://x/settings/api/coding-credentials')
     await handleCodingCredentialsRoutes(
       patch('/settings/api/coding-credentials', session, {
         namespace: 'mcp',
-        values: { server: 'github', upstream_token: 'mcp-secret' },
+        values: { servers: JSON.stringify([{ server: 'github', upstream_token: 'mcp-secret' }]) },
       }),
       patchUrl,
     )
@@ -387,7 +377,7 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(200)
     const body = GetResponseSchema.parse(await res.json())
-    const field = body.fields.find((f) => f.key === 'upstream_token')
+    const field = body.fields.find((f) => f.key === 'servers')
     expect(field?.hasValue).toBe(true)
     expect(field?.value).not.toContain('mcp-secret')
   })

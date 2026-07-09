@@ -84,16 +84,9 @@ export const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
   ],
   mcp: [
     {
-      key: 'server',
-      label: 'MCP server',
-      required: true,
-      sensitive: false,
-      control: 'select',
-    },
-    {
-      key: 'upstream_token',
-      label: 'Credential',
-      required: true,
+      key: 'servers',
+      label: 'MCP servers',
+      required: false,
       sensitive: true,
     },
   ],

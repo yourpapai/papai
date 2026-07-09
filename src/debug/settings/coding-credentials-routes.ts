@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { resolveCodingGuardrails } from '../../coding-credentials/guardrails.js'
 import { resolveMcpCatalog } from '../../coding-credentials/mcp-catalog.js'
 import { listEnabledInternalMcpServers } from '../../coding-credentials/mcp-plugin-servers.js'
+import { codingMcpSelectionsSchema, serializeMcpSelections } from '../../coding-credentials/mcp-selections.js'
 import {
   clearCodingCredentials,
   getCodingCredentialState,
@@ -163,6 +164,27 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
   return null
 }
 
+const checkMcpServers = (
+  platformInstanceId: string,
+  toPersist: CodingCredentialConfig,
+): Response | { toPersist: CodingCredentialConfig } => {
+  const raw = toPersist.servers
+  if (raw === undefined) return { toPersist }
+  let json: unknown
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    return settingsJson(422, { error: 'invalid mcp servers' })
+  }
+  const parsed = codingMcpSelectionsSchema.safeParse(json)
+  if (!parsed.success) return settingsJson(422, { error: 'invalid mcp servers' })
+  const maxMcpServers = resolveCodingGuardrails(platformInstanceId).maxMcpServers
+  if (parsed.data.length > maxMcpServers) {
+    return settingsJson(422, { error: 'too many MCP servers' })
+  }
+  return { toPersist: { ...toPersist, servers: serializeMcpSelections(parsed.data) } }
+}
+
 function handleGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
   const namespace = parseNamespace(url.searchParams.get('namespace'))
   if (namespace === null) return settingsJson(400, { error: 'unknown namespace' })
@@ -178,7 +200,8 @@ function handleGet(authed: AuthenticatedSettingsRequest, url: URL): Response {
     const pluginServers = listEnabledInternalMcpServers(authed.principal.platformInstanceId, scope.scope.contextId).map(
       (s) => ({ name: s.name, label: s.label }),
     )
-    return settingsJson(200, { ...fields, catalog, pluginServers })
+    const maxMcpServers = resolveCodingGuardrails(authed.principal.platformInstanceId).maxMcpServers
+    return settingsJson(200, { ...fields, catalog, pluginServers, maxMcpServers })
   }
   return settingsJson(200, fields)
 }
@@ -202,7 +225,7 @@ async function handlePatch(req: Request, authed: AuthenticatedSettingsRequest): 
     return settingsJson(200, { ok: true, contextId: scope.scope.contextId })
   }
 
-  const toPersist = valuesToPersist(scope.scope.contextId, namespace, body.data.values)
+  let toPersist = valuesToPersist(scope.scope.contextId, namespace, body.data.values)
 
   if (namespace === 'agent-provider') {
     const incompatibleErr = checkCompatibility(scope.scope.contextId, toPersist)
@@ -212,6 +235,12 @@ async function handlePatch(req: Request, authed: AuthenticatedSettingsRequest): 
   if (namespace === 'forge') {
     const forgeErr = checkForgeKind(scope.scope.contextId, toPersist)
     if (forgeErr !== null) return forgeErr
+  }
+
+  if (namespace === 'mcp') {
+    const mcpResult = checkMcpServers(authed.principal.platformInstanceId, toPersist)
+    if (mcpResult instanceof Response) return mcpResult
+    toPersist = mcpResult.toPersist
   }
 
   updateCodingCredentials(scope.scope.contextId, namespace, toPersist, authed.principal.platformUserId)
