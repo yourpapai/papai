@@ -12,11 +12,13 @@ import {
   updateHumanizedBody as defaultUpdateHumanizedBody,
 } from './announcements/store.js'
 import { readChangelogFile as defaultReadChangelogFile } from './changelog-reader.js'
+import { toScopedContextId } from './chat/scoped-context.js'
 import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { versionAnnouncements } from './db/schema.js'
 import { logger } from './logger.js'
+import { recordProactiveInHistory } from './proactive-history.js'
 import { extractChangelogSection } from './utils/changelog.js'
 
 export interface AnnouncementsDeps {
@@ -63,6 +65,7 @@ async function sendAnnouncementToAdmin(
     }
     const result = await chat.sendMessage(platformInstanceId, dmTarget(adminUserId), markdown)
     if (result === false) return false
+    recordProactiveInHistory(toScopedContextId({ platformInstanceId, nativeContextId: adminUserId }), markdown)
     log.debug({ version: VERSION }, 'Announcement review notice sent to admin')
     return true
   } catch (error) {

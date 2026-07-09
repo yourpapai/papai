@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test, beforeEach } from 'bun:test'
+import { afterEach, describe, expect, test, beforeEach, spyOn } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
@@ -11,9 +11,11 @@ import packageJson from '../package.json' with { type: 'json' }
 import type { AnnouncementsDeps } from '../src/announcements.js'
 import { announceNewVersion } from '../src/announcements.js'
 import { upsertAnnouncementDraft, updateHumanizedBody } from '../src/announcements/store.js'
+import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import * as schema from '../src/db/schema.js'
 import { versionAnnouncements } from '../src/db/schema.js'
+import * as proactiveHistoryModule from '../src/proactive-history.js'
 import { extractChangelogSection } from './helpers/extract-changelog-section.js'
 import { createMockChat, getTestDb, mockLogger, seedTestPlatformInstance, setupTestDb } from './utils/test-helpers.js'
 
@@ -274,5 +276,38 @@ describe('announceNewVersion', () => {
 
     expect(attempts).toBe(1)
     expect(sentMessages).toHaveLength(0)
+  })
+
+  describe('proactive history recording', () => {
+    const spies: Array<{ mockRestore: () => void }> = []
+
+    const track = <T extends { mockRestore: () => void }>(spy: T): T => {
+      spies.push(spy)
+      return spy
+    }
+
+    afterEach(() => {
+      for (const spy of spies) spy.mockRestore()
+      spies.length = 0
+    })
+
+    test('records the admin review notice in history once delivery is confirmed', async () => {
+      changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
+      const recordCalls: Array<[string, string]> = []
+      track(
+        spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+          recordCalls.push([storageContextId, markdown])
+        }),
+      )
+
+      await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+
+      expect(sentMessages).toHaveLength(1)
+      expect(recordCalls).toHaveLength(1)
+      expect(recordCalls[0]?.[0]).toBe(
+        toScopedContextId({ platformInstanceId: PLATFORM_INSTANCE_ID, nativeContextId: ADMIN_USER_ID }),
+      )
+      expect(recordCalls[0]?.[1]).toBe(sentMessages[0]?.text)
+    })
   })
 })
