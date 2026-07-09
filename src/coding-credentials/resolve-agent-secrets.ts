@@ -10,9 +10,11 @@ import {
   toScopedContextId,
 } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
+import { mintPluginMcpToken } from '../mcp-server/token.js'
 import type { Permission } from '../tools/tool-preferences.js'
 import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
 import { resolveMcpCatalog, type McpCatalogEntry } from './mcp-catalog.js'
+import { INTERNAL_SERVER_PREFIX, listEnabledInternalMcpServers } from './mcp-plugin-servers.js'
 import { getCodingCredentials } from './store.js'
 import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'
 
@@ -198,16 +200,34 @@ export function resolveMcp(storageContextId: string, chatUserId: string): Resolv
   const creds = getCodingCredentials(ctx, 'mcp')
   if (creds === null) return null
   const server = creds.server?.trim()
-  const token = creds.upstream_token?.trim()
-  if (server === undefined || server.length === 0 || token === undefined || token.length === 0) return null
+  if (server === undefined || server.length === 0) return null
+
   const pi = parseScopedContextId(storageContextId)?.platformInstanceId
   if (pi === undefined) {
-    log.warn(
-      { contextId: ctx },
-      'mcp vault has no platform instance to resolve a catalog against; refusing (fail-closed)',
-    )
+    log.warn({ contextId: ctx }, 'mcp vault has no platform instance to resolve against; refusing (fail-closed)')
     return null
   }
+
+  // Internal papai-hosted plugin server: derive from the operator's enabled-server list; no vault token.
+  if (server.startsWith(INTERNAL_SERVER_PREFIX)) {
+    const entry = listEnabledInternalMcpServers(pi, configContextOf(storageContextId)).find((e) => e.name === server)
+    if (entry === undefined) {
+      log.warn({ contextId: ctx, server }, 'internal mcp server not enabled/eligible; refusing (fail-closed)')
+      return null
+    }
+    const hostname = new URL(entry.upstreamUrl).hostname
+    return {
+      url: entry.upstreamUrl,
+      host: hostname,
+      header: entry.header,
+      allowedHosts: [hostname],
+      toolPolicy: entry.toolPolicy,
+    }
+  }
+
+  // External catalog server (unchanged): requires the user's own upstream token.
+  const token = creds.upstream_token?.trim()
+  if (token === undefined || token.length === 0) return null
   const entry = resolveMcpCatalog(pi).find((e) => e.name === server)
   if (entry === undefined) {
     log.warn({ contextId: ctx, server }, 'mcp server is not in the platform instance catalog; refusing (fail-closed)')
@@ -224,11 +244,17 @@ export function resolveMcp(storageContextId: string, chatUserId: string): Resolv
 }
 
 /**
- * Resolve the acting identity's MCP upstream credential.
- * Returns undefined when no token is stored.
+ * Resolve the acting identity's MCP upstream credential. For an internal papai-hosted
+ * plugin server, mints a signed binding token instead of reading one from the vault
+ * (internal servers never store an upstream_token). Returns undefined when no external
+ * token is stored and the server is not an internal plugin server.
  */
 export function resolveMcpToken(storageContextId: string, chatUserId: string): string | undefined {
   const creds = getCodingCredentials(identityContext(storageContextId, chatUserId), 'mcp')
+  const server = creds?.server?.trim()
+  if (server !== undefined && server.startsWith(INTERNAL_SERVER_PREFIX)) {
+    return mintPluginMcpToken({ storageContextId, chatUserId, pluginId: server.slice(INTERNAL_SERVER_PREFIX.length) })
+  }
   const token = creds?.upstream_token?.trim()
   return token === undefined || token.length === 0 ? undefined : token
 }
