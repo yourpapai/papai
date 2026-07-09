@@ -64,8 +64,8 @@ export function verifyPluginMcpToken(raw: string, nowMs: number = Date.now()): P
   if (dot <= 0 || dot === raw.length - 1) return null
   const payload = raw.slice(0, dot)
   const sig = raw.slice(dot + 1)
-  if (!signaturesMatch(sig, sign(payload))) return null
   try {
+    if (!signaturesMatch(sig, sign(payload))) return null
     const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown
     if (typeof decoded !== 'object' || decoded === null) return null
     const env = decoded as Partial<TokenEnvelope>

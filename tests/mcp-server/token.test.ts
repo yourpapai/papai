@@ -35,4 +35,23 @@ describe('plugin mcp token', () => {
     expect(verifyPluginMcpToken('not-a-token')).toBeNull()
     expect(verifyPluginMcpToken('')).toBeNull()
   })
+
+  test('rejects structurally-varied malformed tokens', () => {
+    // has a '.' but the payload segment is not valid base64url-encoded JSON
+    expect(verifyPluginMcpToken('!!!not-base64url!!!.somesig')).toBeNull()
+    // valid base64url payload, but it decodes to non-JSON garbage
+    const nonJsonPayload = Buffer.from('this is not json', 'utf8').toString('base64url')
+    expect(verifyPluginMcpToken(`${nonJsonPayload}.somesig`)).toBeNull()
+    // correctly-shaped token but with a signature of the wrong length
+    const token = mintPluginMcpToken(CLAIMS)
+    const [payload] = token.split('.')
+    expect(verifyPluginMcpToken(`${payload}.short`)).toBeNull()
+  })
+
+  test('never throws on adversarial input', () => {
+    const adversarial = ['', '.', 'a.b', 'not-a-token', 'x'.repeat(100_000), '.'.repeat(50), '=====.=====']
+    for (const input of adversarial) {
+      expect(() => verifyPluginMcpToken(input)).not.toThrow()
+    }
+  })
 })
