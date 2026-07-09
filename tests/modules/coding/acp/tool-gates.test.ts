@@ -5,14 +5,14 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { HttpFetch } from '../../plugins/acp/client.js'
-import { continueSessionTool } from '../../plugins/acp/continue-tool.js'
+import type { HttpFetch } from '../../../../src/modules/coding/acp/client.js'
+import { continueSessionTool } from '../../../../src/modules/coding/acp/continue-tool.js'
 import {
   answerPermissionTool,
   cancelSessionTool,
   finishSessionTool,
   startSessionTool,
-} from '../../plugins/acp/session-tools.js'
+} from '../../../../src/modules/coding/acp/session-tools.js'
 
 // The factories take an httpFetch; a no-op stub is fine — we only inspect the returned shape.
 const noopFetch: HttpFetch = () => Promise.resolve(new Response('{}'))

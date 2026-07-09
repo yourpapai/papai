@@ -6,8 +6,16 @@
 import { migration061CodingSessionCredentials } from '../../db/migrations/061_coding_session_credentials.js'
 import { migration064CodingSessionRepos } from '../../db/migrations/064_coding_session_repos.js'
 import { migration066CodingReposEgress } from '../../db/migrations/066_coding_repos_egress.js'
+import { migration067AcpToolPrefsRename } from '../../db/migrations/067_acp_tool_prefs_rename.js'
 import type { TrustedModule } from '../../ports/module.js'
 import { operatorAllowlistPort, type WhoMayUse } from '../../ports/operator-allowlist.js'
+import {
+  codingAcpCommand,
+  codingAcpPromptFragment,
+  codingAcpSettingsSection,
+  codingAcpTools,
+  isCodingContextEligible,
+} from './acp/contributions.js'
 import { resolveCodingGuardrails } from './credentials/guardrails.js'
 
 /** Who-may-use resolver for coding sessions: the platform-instance guardrail policy's allowlist. */
@@ -15,15 +23,24 @@ export const codingWhoMayUseResolver = (platformInstanceId: string): WhoMayUse =
   resolveCodingGuardrails(platformInstanceId).whoMayUse
 
 /**
- * The coding trusted module. It owns the coding-session DB tables via `migrations` (run by the
- * composition root's loadTrustedModules → applyModuleMigrations after core initDb), and on
- * activation registers the operator allowlist resolver so the orchestrator can gate
- * coding-session tools without importing the coding feature. (`065_coding_identity` stays in
- * core — it alters the core-owned `authorized_groups` table.)
+ * The coding trusted module. Owns the coding-session DB tables via `migrations`, contributes the
+ * acp coding-session tools/command/prompt fragment/settings section, gates them per-context via
+ * `isEligibleForContext`, and on activation registers the operator allowlist resolver so the
+ * orchestrator can gate coding-session tools without importing the coding feature.
  */
 export const codingModule: TrustedModule = {
   id: 'coding',
-  migrations: [migration061CodingSessionCredentials, migration064CodingSessionRepos, migration066CodingReposEgress],
+  migrations: [
+    migration061CodingSessionCredentials,
+    migration064CodingSessionRepos,
+    migration066CodingReposEgress,
+    migration067AcpToolPrefsRename,
+  ],
+  tools: codingAcpTools,
+  commands: [codingAcpCommand],
+  promptFragments: [codingAcpPromptFragment],
+  settingsSections: [codingAcpSettingsSection],
+  isEligibleForContext: isCodingContextEligible,
   onActivate(): void {
     operatorAllowlistPort.register(codingWhoMayUseResolver)
   },
