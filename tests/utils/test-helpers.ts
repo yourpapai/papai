@@ -26,6 +26,7 @@ import type {
   ReplyOptions,
   ResolveUserContext,
 } from '../../src/chat/types.js'
+import { TRUSTED_MODULES } from '../../src/composition/trusted-modules.js'
 import { resetDrizzleDbForTesting, setDrizzleDbForTesting } from '../../src/db/drizzle.js'
 import { MIGRATIONS } from '../../src/db/index.js'
 import * as schema from '../../src/db/schema.js'
@@ -112,32 +113,47 @@ let testSqlite: Database | null = null
 // deserializing a snapshot is ~190x faster (~0.1ms), so we migrate once per
 // distinct migration set and clone the resulting image for every later setup.
 type MigrationSet = readonly { id: string; up: (db: Database) => void }[]
-const migratedSnapshotCache = new Map<MigrationSet, Uint8Array>()
+// Cache keyed by the concatenated migration ids across all passes (stable per distinct
+// pass-set) so we still migrate-once-and-clone, now supporting multiple passes.
+const migratedSnapshotCache = new Map<string, Uint8Array>()
 
-async function buildMigratedSnapshot(migrations: MigrationSet): Promise<Uint8Array> {
-  const cached = migratedSnapshotCache.get(migrations)
+const snapshotCacheKey = (passes: readonly MigrationSet[]): string =>
+  passes.map((pass) => pass.map((m) => m.id).join(',')).join('|')
+
+// Trusted-module migration passes, mirroring production: core migrations run first (initDb),
+// then each trusted module's own migrations (loadTrustedModules), one pass per module so each
+// is validated independently.
+const TRUSTED_MODULE_MIGRATION_PASSES: readonly MigrationSet[] = TRUSTED_MODULES.map((m) => m.migrations).filter(
+  (migrations): migrations is MigrationSet => migrations !== undefined && migrations.length > 0,
+)
+
+async function buildMigratedSnapshot(passes: readonly MigrationSet[]): Promise<Uint8Array> {
+  const key = snapshotCacheKey(passes)
+  const cached = migratedSnapshotCache.get(key)
   if (cached !== undefined) return cached
 
   const { runMigrations } = await import('../../src/db/migrate.js')
   const template = new Database(':memory:')
   template.run('PRAGMA foreign_keys=ON')
-  runMigrations(template, migrations)
+  for (const pass of passes) runMigrations(template, pass)
   // serialize() copies the schema into a standalone image; deserialize() below
   // copies it back into a fresh private DB, so the cached buffer is never mutated.
   const snapshot = template.serialize()
   template.close()
-  migratedSnapshotCache.set(migrations, snapshot)
+  migratedSnapshotCache.set(key, snapshot)
   return snapshot
 }
 
-async function setupMigratedTestDb(migrations: MigrationSet): Promise<ReturnType<typeof drizzle<typeof schema>>> {
+async function setupMigratedTestDb(
+  passes: readonly MigrationSet[],
+): Promise<ReturnType<typeof drizzle<typeof schema>>> {
   // Clear the in-memory user cache to prevent config/session bleed between tests
   const { userCachesForTesting } = await import('../../src/cache.js')
   userCachesForTesting.clear()
   const { resetPluginRegistryForTesting } = await import('../../src/plugins/registry.js')
   resetPluginRegistryForTesting()
 
-  const snapshot = await buildMigratedSnapshot(migrations)
+  const snapshot = await buildMigratedSnapshot(passes)
   testSqlite = Database.deserialize(snapshot)
   // foreign_keys is a per-connection pragma, not part of the serialized image.
   testSqlite.run('PRAGMA foreign_keys=ON')
@@ -152,7 +168,7 @@ async function setupMigratedTestDb(migrations: MigrationSet): Promise<ReturnType
  * Returns drizzle db instance.
  */
 export function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
-  return setupMigratedTestDb(MIGRATIONS)
+  return setupMigratedTestDb([MIGRATIONS, ...TRUSTED_MODULE_MIGRATION_PASSES])
 }
 
 /**
@@ -161,7 +177,7 @@ export function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>
  */
 export function setupSettingsAuthTestDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
   return import('../../src/db/migrations/050_settings_auth.js').then(({ migration050SettingsAuth }) =>
-    setupMigratedTestDb([migration050SettingsAuth]),
+    setupMigratedTestDb([[migration050SettingsAuth]]),
   )
 }
 
