@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { namespacedModuleCommandName, registerModuleCommands } from '../../src/plugins/module-command-contributions.js'
 import { moduleCommandRegistry } from '../../src/ports/module-contributions.js'
+import { moduleEligibilityRegistry } from '../../src/ports/module-eligibility.js'
 import {
   createAuth,
   createDmMessage,
@@ -16,6 +17,7 @@ import {
 
 afterEach(() => {
   moduleCommandRegistry.clear()
+  moduleEligibilityRegistry.clear()
 })
 
 describe('registerModuleCommands', () => {
@@ -44,5 +46,55 @@ describe('registerModuleCommands', () => {
     await handler!(createDmMessage('user-1'), reply, createAuth('user-1'))
 
     expect(called).toBe(true)
+  })
+
+  test('does not invoke execute and replies when the module is ineligible for the context', async () => {
+    let called = false
+    moduleCommandRegistry.register('coding', [
+      {
+        name: 'acp',
+        description: 'acp',
+        execute: (): Promise<void> => {
+          called = true
+          return Promise.resolve()
+        },
+      },
+    ])
+    moduleEligibilityRegistry.register('coding', () => false)
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    registerModuleCommands(provider)
+    const handler = commandHandlers.get('module_coding_acp')
+    expect(handler).toBeDefined()
+    const { reply, textCalls } = createMockReply()
+    await handler!(createDmMessage('user-1'), reply, createAuth('user-1'))
+
+    expect(called).toBe(false)
+    expect(textCalls.length).toBeGreaterThan(0)
+  })
+
+  test('invokes execute when the module is eligible for the context', async () => {
+    let called = false
+    moduleCommandRegistry.register('coding', [
+      {
+        name: 'acp',
+        description: 'acp',
+        execute: (): Promise<void> => {
+          called = true
+          return Promise.resolve()
+        },
+      },
+    ])
+    moduleEligibilityRegistry.register('coding', () => true)
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    registerModuleCommands(provider)
+    const handler = commandHandlers.get('module_coding_acp')
+    expect(handler).toBeDefined()
+    const { reply, textCalls } = createMockReply()
+    await handler!(createDmMessage('user-1'), reply, createAuth('user-1'))
+
+    expect(called).toBe(true)
+    expect(textCalls.length).toBe(0)
   })
 })
