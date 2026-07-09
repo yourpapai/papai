@@ -44,6 +44,14 @@ function unauthorized(): Response {
   })
 }
 
+function decodePluginId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return null
+  }
+}
+
 type PluginMcpAuthResult = { claims: PluginMcpTokenClaims } | { errorResponse: Response }
 
 function resolvePluginMcpAuth(req: Request, pathPluginId: string, deps: PluginMcpRouteDeps): PluginMcpAuthResult {
@@ -100,6 +108,11 @@ async function handlePluginMcpTransport(req: Request, claims: PluginMcpTokenClai
   // the server right after `handleRequest` resolves would race — and could truncate —
   // that write. With JSON mode, the response is fully materialized before we get it
   // back, so closing the server in `finally` below is safe.
+  //
+  // This rationale is scoped to the POST JSON-RPC path this route actually serves. A
+  // GET+SSE streaming session is not a supported/used mode here — if one were added,
+  // closing in `finally` right after `handleRequest` resolves would tear down the
+  // stream immediately instead of letting it deliver further server-initiated messages.
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -127,8 +140,9 @@ export function routePluginMcpPaths(
   deps: PluginMcpRouteDeps = defaultDeps,
 ): Promise<Response | null> {
   if (!url.pathname.startsWith(PREFIX)) return Promise.resolve(null)
-  const pathPluginId = decodeURIComponent(url.pathname.slice(PREFIX.length).split('/')[0] ?? '')
-  if (pathPluginId === '') return Promise.resolve(new Response('Not found', { status: 404 }))
+  const rawSegment = url.pathname.slice(PREFIX.length).split('/')[0] ?? ''
+  const pathPluginId = decodePluginId(rawSegment)
+  if (pathPluginId === null || pathPluginId === '') return Promise.resolve(new Response('Not found', { status: 404 }))
 
   const auth = resolvePluginMcpAuth(req, pathPluginId, deps)
   if ('errorResponse' in auth) return Promise.resolve(auth.errorResponse)

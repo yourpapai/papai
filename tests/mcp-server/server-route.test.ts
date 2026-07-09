@@ -76,6 +76,18 @@ describe('routePluginMcpPaths', () => {
     expect(res).toBeNull()
   })
 
+  test('404 for a malformed percent-encoded plugin-id segment (does not throw)', async () => {
+    const url = new URL('https://bot.example.com/mcp/plugin/%zz')
+    const res = await routePluginMcpPaths(new Request(url), url)
+    expect(res?.status).toBe(404)
+  })
+
+  test('404 for an empty plugin-id segment', async () => {
+    const url = new URL('https://bot.example.com/mcp/plugin/')
+    const res = await routePluginMcpPaths(new Request(url), url)
+    expect(res?.status).toBe(404)
+  })
+
   test('401 without a token', async () => {
     const url = new URL('https://bot.example.com/mcp/plugin/demo')
     const res = await routePluginMcpPaths(post(null, 'tools/list'), url)
