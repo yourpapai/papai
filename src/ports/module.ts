@@ -5,6 +5,7 @@
 
 import type { Migration } from '../db/migrate.js'
 import type { ModuleCommand, ModulePromptFragment } from './module-contributions.js'
+import type { ModuleEligibilityPredicate } from './module-eligibility.js'
 import type { ModuleTool } from './module-tools.js'
 import type { SettingsSection } from './settings-sections.js'
 
@@ -33,6 +34,8 @@ export interface TrustedModule {
   readonly promptFragments?: readonly ModulePromptFragment[]
   /** Admin settings sections this module contributes (served by the generic module-sections route). */
   readonly settingsSections?: readonly SettingsSection[]
+  /** Per-context eligibility predicate; when present, this module's contributions surface only where it returns true. */
+  readonly isEligibleForContext?: ModuleEligibilityPredicate
   /** Called once after all modules' migrations have run. Registers resolvers/adapters into ports. */
   onActivate?(): void | Promise<void>
 }
