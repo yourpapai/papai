@@ -21,9 +21,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { and, eq } from 'drizzle-orm'
 
-import { NOT_CONFIGURED } from '../../../../plugins/acp/client.js'
 import { codingSessionCredentials } from '../../../../src/db/coding-credentials-schema.js'
 import { getDrizzleDb } from '../../../../src/db/drizzle.js'
+import { NOT_CONFIGURED } from '../../../../src/modules/coding/acp/client.js'
 import { adminCodingGuardrailsContextId } from '../../../../src/modules/coding/credentials/guardrails.js'
 import { updateCodingCredentials } from '../../../../src/modules/coding/credentials/store.js'
 import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
@@ -121,7 +121,7 @@ describe('coding-credentials redaction — not-configured reference', () => {
   })
 
   test('start_session not-configured result carries no secret', async () => {
-    const { startSessionTool } = await import('../../../../plugins/acp/session-tools.js')
+    const { startSessionTool } = await import('../../../../src/modules/coding/acp/session-tools.js')
     const httpFetch = mock((): Promise<Response> => Promise.resolve(new Response('{}', { status: 200 })))
     const tool = startSessionTool(httpFetch)
 
