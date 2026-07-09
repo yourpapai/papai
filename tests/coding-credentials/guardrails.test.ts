@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { setCachedConfig } from '../../src/cache.js'
 import {
   adminCodingGuardrailsContextId,
+  guardrailsSchema,
   resolveCodingGuardrails,
   setCodingGuardrails,
 } from '../../src/coding-credentials/guardrails.js'
@@ -24,14 +25,21 @@ describe('guardrails', () => {
     expect(g.whoMayUse).toBe('members')
     expect(g.forceSharedKey).toBe(false)
     expect(g.allowedAgents).toEqual(['claude', 'codex', 'opencode'])
+    expect(g.maxMcpServers).toBe(3)
   })
 
   test('setCodingGuardrails round-trips', () => {
-    setCodingGuardrails('pi-1', { allowedAgents: ['claude'], whoMayUse: ['u1'], forceSharedKey: true })
+    setCodingGuardrails('pi-1', {
+      allowedAgents: ['claude'],
+      whoMayUse: ['u1'],
+      forceSharedKey: true,
+      maxMcpServers: 5,
+    })
     const g = resolveCodingGuardrails('pi-1')
     expect(g.allowedAgents).toEqual(['claude'])
     expect(g.whoMayUse).toEqual(['u1'])
     expect(g.forceSharedKey).toBe(true)
+    expect(g.maxMcpServers).toBe(5)
     expect(adminCodingGuardrailsContextId('pi-1')).toBe('__admin_coding_guardrails__:pi-1')
   })
 
@@ -40,5 +48,13 @@ describe('guardrails', () => {
     const g = resolveCodingGuardrails('pi-1')
     expect(g.allowedAgents).toEqual(['claude', 'codex', 'opencode'])
     expect(g.whoMayUse).toBe('members')
+    expect(g.maxMcpServers).toBe(3)
+  })
+
+  test('guardrailsSchema clamps maxMcpServers to [1, 8]', () => {
+    expect(guardrailsSchema.safeParse({ maxMcpServers: 0 }).success).toBe(false)
+    expect(guardrailsSchema.safeParse({ maxMcpServers: 9 }).success).toBe(false)
+    expect(guardrailsSchema.safeParse({ maxMcpServers: 1 }).success).toBe(true)
+    expect(guardrailsSchema.safeParse({ maxMcpServers: 8 }).success).toBe(true)
   })
 })

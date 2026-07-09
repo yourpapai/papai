@@ -9,8 +9,8 @@ import {
   resolveAgentSecrets,
   resolveForge,
   resolveForgeToken,
-  resolveMcp,
-  resolveMcpToken,
+  resolveMcpServers,
+  resolveMcpTokens,
   resolveModel,
   resolveProviderHost,
 } from '../coding-credentials/resolve-agent-secrets.js'
@@ -39,8 +39,8 @@ export function buildCodingSecretsFacade(
     resolveForge: gate(() => resolveForge(storageContextId, chatUserId)),
     resolveProviderHost: gate(() => resolveProviderHost(storageContextId, chatUserId)),
     resolveModel: gate(() => resolveModel(storageContextId, chatUserId)),
-    resolveMcp: gate(() => resolveMcp(storageContextId, chatUserId)),
-    resolveMcpToken: gate(() => resolveMcpToken(storageContextId, chatUserId)),
+    resolveMcpServers: gate(() => resolveMcpServers(storageContextId, chatUserId)),
+    resolveMcpTokens: gate(() => resolveMcpTokens(storageContextId, chatUserId)),
   })
 }
 

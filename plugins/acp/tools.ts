@@ -25,14 +25,20 @@ export type RuntimeContext = {
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
     resolveProviderHost(): string | null
     resolveModel(): string | null
-    resolveMcp(): {
-      url: string
-      host: string
-      header: string
-      allowedHosts: string[]
-      toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
-    } | null
-    resolveMcpToken(): string | undefined
+    resolveMcpServers():
+      | {
+          ok: true
+          servers: Array<{
+            id: string
+            url: string
+            host: string
+            header: string
+            allowedHosts: string[]
+            toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
+          }>
+        }
+      | { ok: false; error: string }
+    resolveMcpTokens(): Record<string, string>
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
@@ -106,32 +112,31 @@ export function buildProjectSpec(
   }
 }
 
+export type McpUpstream = {
+  id: string
+  url: string
+  host: string
+  header: string
+  allowedHosts: string[]
+  toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
+}
+
 export function buildSessionProjectSpec(
   repo: RepoEntry,
   agent: string,
   codingSecrets: RuntimeContext['codingSecrets'],
+  mcpServers: McpUpstream[],
 ): Record<string, unknown> {
   const base = buildProjectSpec(repo, agent)
   const forge = codingSecrets.resolveForge()
   const providerHost = codingSecrets.resolveProviderHost()
   const model = codingSecrets.resolveModel()
-  const resolvedMcp = codingSecrets.resolveMcp()
-  const mcp =
-    resolvedMcp === null
-      ? null
-      : {
-          url: resolvedMcp.url,
-          host: resolvedMcp.host,
-          header: resolvedMcp.header,
-          allowedHosts: resolvedMcp.allowedHosts,
-          ...(resolvedMcp.toolPolicy === undefined ? {} : { toolPolicy: resolvedMcp.toolPolicy }),
-        }
   return {
     ...base,
     ...(forge === null ? {} : { forge }),
     ...(providerHost === null ? {} : { providerHost }),
     ...(model === null ? {} : { model }),
-    ...(mcp === null ? {} : { mcp }),
+    ...(mcpServers.length === 0 ? {} : { mcp: mcpServers }),
   }
 }
 

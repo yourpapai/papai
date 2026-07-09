@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { RepoEntry, RuntimeContext } from '../../../plugins/acp/tools.js'
+import type { McpUpstream, RepoEntry, RuntimeContext } from '../../../plugins/acp/tools.js'
 import { buildProjectSpec, buildSessionProjectSpec, canDeriveForge } from '../../../plugins/acp/tools.js'
 
 type CodingSecrets = RuntimeContext['codingSecrets']
@@ -18,8 +18,8 @@ function makeCodingSecrets(overrides?: Partial<CodingSecrets>): CodingSecrets {
     resolveForge: () => null,
     resolveProviderHost: () => null,
     resolveModel: () => null,
-    resolveMcp: () => null,
-    resolveMcpToken: () => undefined,
+    resolveMcpServers: () => ({ ok: true, servers: [] }),
+    resolveMcpTokens: () => ({}),
     ...overrides,
   }
 }
@@ -34,7 +34,7 @@ const demoRepo: RepoEntry = {
 describe('buildSessionProjectSpec', () => {
   test('returns base projectSpec fields when forge and providerHost are null', () => {
     const secrets = makeCodingSecrets()
-    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets, [])
     expect(result).toEqual(buildProjectSpec(demoRepo, 'claude'))
     expect(Object.keys(result)).not.toContain('forge')
     expect(Object.keys(result)).not.toContain('providerHost')
@@ -43,25 +43,25 @@ describe('buildSessionProjectSpec', () => {
   test('includes forge when resolveForge returns a value', () => {
     const forge = { kind: 'github' as const, apiBaseUrl: 'https://api.github.com' }
     const secrets = makeCodingSecrets({ resolveForge: () => forge })
-    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets, [])
     expect(result['forge']).toEqual(forge)
   })
 
   test('omits forge when resolveForge returns null', () => {
     const secrets = makeCodingSecrets({ resolveForge: () => null })
-    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets, [])
     expect(Object.keys(result)).not.toContain('forge')
   })
 
   test('includes providerHost when resolveProviderHost returns a value', () => {
     const secrets = makeCodingSecrets({ resolveProviderHost: () => 'llm.corp.com' })
-    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets, [])
     expect(result['providerHost']).toBe('llm.corp.com')
   })
 
   test('omits providerHost when resolveProviderHost returns null', () => {
     const secrets = makeCodingSecrets({ resolveProviderHost: () => null })
-    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets, [])
     expect(Object.keys(result)).not.toContain('providerHost')
   })
 
@@ -71,7 +71,7 @@ describe('buildSessionProjectSpec', () => {
       resolveForge: () => forge,
       resolveProviderHost: () => 'api.openai.com',
     })
-    const result = buildSessionProjectSpec(demoRepo, 'codex', secrets)
+    const result = buildSessionProjectSpec(demoRepo, 'codex', secrets, [])
     expect(result['forge']).toEqual(forge)
     expect(result['providerHost']).toBe('api.openai.com')
     expect(result['agent']).toBe('codex')
@@ -79,38 +79,46 @@ describe('buildSessionProjectSpec', () => {
 
   test('includes model when resolveModel returns a value', () => {
     const secrets = makeCodingSecrets({ resolveModel: () => 'opus' })
-    expect(buildSessionProjectSpec(demoRepo, 'claude', secrets)['model']).toBe('opus')
+    expect(buildSessionProjectSpec(demoRepo, 'claude', secrets, [])['model']).toBe('opus')
   })
 
   test('omits model when resolveModel returns null', () => {
     const secrets = makeCodingSecrets({ resolveModel: () => null })
-    expect('model' in buildSessionProjectSpec(demoRepo, 'claude', secrets)).toBe(false)
+    expect('model' in buildSessionProjectSpec(demoRepo, 'claude', secrets, [])).toBe(false)
   })
 
-  test('includes mcp.toolPolicy when resolveMcp returns a value carrying one', () => {
-    const mcp = {
+  test('includes mcp[] with toolPolicy when a passed-in server carries one', () => {
+    const mcp: McpUpstream = {
+      id: 'jira-mcp',
       url: 'https://mcp.corp.com',
       host: 'mcp.corp.com',
       header: 'Authorization',
       allowedHosts: ['mcp.corp.com'],
       toolPolicy: { default: 'deny' as const, tools: { echo: 'allow' as const } },
     }
-    const secrets = makeCodingSecrets({ resolveMcp: () => mcp })
-    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
-    expect(result['mcp']).toHaveProperty('toolPolicy', mcp.toolPolicy)
+    const secrets = makeCodingSecrets()
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets, [mcp])
+    expect(result['mcp']).toEqual([mcp])
   })
 
-  test('omits mcp.toolPolicy when resolveMcp returns a value without one', () => {
-    const mcp = {
+  test('mcp[] entries omit toolPolicy when the passed-in server has none', () => {
+    const mcp: McpUpstream = {
+      id: 'jira-mcp',
       url: 'https://mcp.corp.com',
       host: 'mcp.corp.com',
       header: 'Authorization',
       allowedHosts: ['mcp.corp.com'],
     }
-    const secrets = makeCodingSecrets({ resolveMcp: () => mcp })
-    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets)
-    expect(result['mcp']).toEqual(mcp)
-    expect(result['mcp']).not.toHaveProperty('toolPolicy')
+    const secrets = makeCodingSecrets()
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets, [mcp])
+    // toEqual is a strict recursive comparison, so this also proves no stray toolPolicy key crept in.
+    expect(result['mcp']).toEqual([mcp])
+  })
+
+  test('omits mcp entirely when the passed-in servers array is empty', () => {
+    const secrets = makeCodingSecrets()
+    const result = buildSessionProjectSpec(demoRepo, 'claude', secrets, [])
+    expect(Object.keys(result)).not.toContain('mcp')
   })
 })
 

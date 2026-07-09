@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import { setMcpCatalog } from '../../src/coding-credentials/mcp-catalog.js'
+import { serializeMcpSelections } from '../../src/coding-credentials/mcp-selections.js'
 import { updateCodingCredentials } from '../../src/coding-credentials/store.js'
 import { buildCodingSecretsFacade } from '../../src/plugins/coding-secrets-facade.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -124,8 +125,8 @@ test('resolveProviderHost throws without the coding.secrets permission', () => {
   expect(() => facade.resolveProviderHost()).toThrow("does not have 'coding.secrets' permission")
 })
 
-test('resolveMcp and resolveMcpToken via facade; denied without permission', () => {
-  // resolveMcp is catalog-driven and needs a platform instance to resolve the catalog against,
+test('resolveMcpServers and resolveMcpTokens via facade; denied without permission', () => {
+  // resolveMcpServers is catalog-driven and needs a platform instance to resolve the catalog against,
   // so this test (unlike the others in this file) uses a scoped storage context id rather than
   // the module's non-parseable STORAGE_CTX.
   const pi = 'pi-facade-mcp'
@@ -133,18 +134,31 @@ test('resolveMcp and resolveMcpToken via facade; denied without permission', () 
   setMcpCatalog(pi, [
     { name: 'Jira', upstream_url: 'https://mcp.example.com/v1', default_tool_policy: 'allow' as const },
   ])
-  updateCodingCredentials(mcpCtx, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-3')
+  updateCodingCredentials(
+    mcpCtx,
+    'mcp',
+    { servers: serializeMcpSelections([{ server: 'Jira', upstream_token: 'sek' }]) },
+    'user-3',
+  )
   const facade = buildCodingSecretsFacade('acp', mcpCtx, true, CHAT_USER_ID)
-  expect(facade.resolveMcp()).toEqual({
-    url: 'https://mcp.example.com/v1',
-    host: 'mcp.example.com',
-    header: 'Authorization',
-    allowedHosts: ['mcp.example.com'],
-    toolPolicy: { default: 'allow' },
+  expect(facade.resolveMcpServers()).toEqual({
+    ok: true,
+    servers: [
+      {
+        id: 'Jira',
+        url: 'https://mcp.example.com/v1',
+        host: 'mcp.example.com',
+        header: 'Authorization',
+        allowedHosts: ['mcp.example.com'],
+        toolPolicy: { default: 'allow' },
+      },
+    ],
   })
-  expect(facade.resolveMcpToken()).toBe('sek')
-  expect(() => buildCodingSecretsFacade('acp', mcpCtx, false, CHAT_USER_ID).resolveMcp()).toThrow("'coding.secrets'")
-  expect(() => buildCodingSecretsFacade('acp', mcpCtx, false, CHAT_USER_ID).resolveMcpToken()).toThrow(
+  expect(facade.resolveMcpTokens()).toEqual({ Jira: 'sek' })
+  expect(() => buildCodingSecretsFacade('acp', mcpCtx, false, CHAT_USER_ID).resolveMcpServers()).toThrow(
+    "'coding.secrets'",
+  )
+  expect(() => buildCodingSecretsFacade('acp', mcpCtx, false, CHAT_USER_ID).resolveMcpTokens()).toThrow(
     "'coding.secrets'",
   )
 })

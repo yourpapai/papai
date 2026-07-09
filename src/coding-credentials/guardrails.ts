@@ -15,6 +15,7 @@ export const guardrailsSchema = z.object({
   allowedAgents: z.array(z.string()).default([...AGENTS]),
   whoMayUse: z.union([z.literal('members'), z.array(z.string())]).default('members'),
   forceSharedKey: z.boolean().default(false),
+  maxMcpServers: z.number().int().min(1).max(8).default(3),
 })
 export type CodingGuardrails = z.infer<typeof guardrailsSchema>
 
@@ -22,7 +23,12 @@ export function adminCodingGuardrailsContextId(platformInstanceId: string): stri
   return `${PREFIX}${platformInstanceId}`
 }
 
-const DEFAULTS = (): CodingGuardrails => ({ allowedAgents: [...AGENTS], whoMayUse: 'members', forceSharedKey: false })
+const DEFAULTS = (): CodingGuardrails => ({
+  allowedAgents: [...AGENTS],
+  whoMayUse: 'members',
+  forceSharedKey: false,
+  maxMcpServers: 3,
+})
 
 export function resolveCodingGuardrails(platformInstanceId: string): CodingGuardrails {
   const raw = getCachedConfig(adminCodingGuardrailsContextId(platformInstanceId), KEY)

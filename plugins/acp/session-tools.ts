@@ -88,8 +88,12 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
       const access = resolveStartSessionAccess(repo, runtimeContext.codingSecrets, prNumber)
       if ('error' in access) return access
       const { secrets, forgeToken, resolvedAgent } = access
-      const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets)
-      const mcpToken = runtimeContext.codingSecrets.resolveMcpToken()
+      const mcpResult = runtimeContext.codingSecrets.resolveMcpServers()
+      if (!mcpResult.ok) {
+        return { error: 'mcp_unavailable', message: mcpResult.error }
+      }
+      const projectSpec = buildSessionProjectSpec(repo, resolvedAgent, runtimeContext.codingSecrets, mcpResult.servers)
+      const mcpTokens = runtimeContext.codingSecrets.resolveMcpTokens()
       const result = await callMagi(httpFetch, cfg, 'POST', '/sessions', {
         agent,
         contextId: runtimeContext.storageContextId,
@@ -98,7 +102,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         ...(forgeToken === null ? {} : { forgeToken }),
         ...(prNumber === null ? {} : { prNumber }),
         projectSpec,
-        ...(mcpToken === undefined ? {} : { mcpToken }),
+        ...(Object.keys(mcpTokens).length === 0 ? {} : { mcpTokens }),
       })
       recordStartedSession(runtimeContext, result, project, prompt, prNumber ?? undefined)
       return result

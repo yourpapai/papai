@@ -199,8 +199,8 @@ describe('acp start_session tool', () => {
         }),
         resolveProviderHost: (): null => null,
         resolveModel: (): null => null,
-        resolveMcp: (): null => null,
-        resolveMcpToken: (): undefined => undefined,
+        resolveMcpServers: (): { ok: true; servers: never[] } => ({ ok: true, servers: [] }),
+        resolveMcpTokens: (): Record<string, string> => ({}),
       },
     }
     const result = await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctx, options())
@@ -231,8 +231,8 @@ describe('acp start_session tool', () => {
         }),
         resolveProviderHost: (): null => null,
         resolveModel: (): null => null,
-        resolveMcp: (): null => null,
-        resolveMcpToken: (): undefined => undefined,
+        resolveMcpServers: (): { ok: true; servers: never[] } => ({ ok: true, servers: [] }),
+        resolveMcpTokens: (): Record<string, string> => ({}),
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithForge, options())
@@ -260,8 +260,8 @@ describe('acp start_session tool', () => {
         resolveForge: (): null => null,
         resolveProviderHost: (): null => null,
         resolveModel: (): null => null,
-        resolveMcp: (): null => null,
-        resolveMcpToken: (): undefined => undefined,
+        resolveMcpServers: (): { ok: true; servers: never[] } => ({ ok: true, servers: [] }),
+        resolveMcpTokens: (): Record<string, string> => ({}),
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithCodex, options())
@@ -285,8 +285,8 @@ describe('acp start_session tool', () => {
         resolveForge: (): null => null,
         resolveProviderHost: (): string => 'llm.corp.com',
         resolveModel: (): null => null,
-        resolveMcp: (): null => null,
-        resolveMcpToken: (): undefined => undefined,
+        resolveMcpServers: (): { ok: true; servers: never[] } => ({ ok: true, servers: [] }),
+        resolveMcpTokens: (): Record<string, string> => ({}),
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithProviderHost, options())
@@ -322,15 +322,15 @@ describe('acp start_session tool', () => {
         resolveForge: (): null => null,
         resolveProviderHost: (): null => null,
         resolveModel: (): string => 'claude-opus-4-5',
-        resolveMcp: (): null => null,
-        resolveMcpToken: (): undefined => undefined,
+        resolveMcpServers: (): { ok: true; servers: never[] } => ({ ok: true, servers: [] }),
+        resolveMcpTokens: (): Record<string, string> => ({}),
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithModel, options())
     expect(asRecord(asRecord(capturedBody)['projectSpec'])['model']).toBe('claude-opus-4-5')
   })
 
-  test('projectSpec includes mcp and POST body includes mcpToken when resolveMcp/resolveMcpToken return values', async () => {
+  test('projectSpec includes mcp[] and POST body includes mcpTokens when resolveMcpServers/resolveMcpTokens return values', async () => {
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (_url, init) => {
       capturedBody = JSON.parse(bodyString(init))
@@ -347,26 +347,38 @@ describe('acp start_session tool', () => {
         resolveForge: (): null => null,
         resolveProviderHost: (): null => null,
         resolveModel: (): null => null,
-        resolveMcp: (): { url: string; host: string; header: string; allowedHosts: string[] } => ({
-          url: 'https://mcp.example.com/mcp',
-          host: 'mcp.example.com',
-          header: 'X-Mcp-Auth',
-          allowedHosts: ['mcp.example.com'],
+        resolveMcpServers: (): {
+          ok: true
+          servers: Array<{ id: string; url: string; host: string; header: string; allowedHosts: string[] }>
+        } => ({
+          ok: true,
+          servers: [
+            {
+              id: 'jira-mcp',
+              url: 'https://mcp.example.com/mcp',
+              host: 'mcp.example.com',
+              header: 'X-Mcp-Auth',
+              allowedHosts: ['mcp.example.com'],
+            },
+          ],
         }),
-        resolveMcpToken: (): string => 'mcp-tok',
+        resolveMcpTokens: (): Record<string, string> => ({ 'jira-mcp': 'mcp-tok' }),
       },
     }
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctxWithMcp, options())
-    expect(asRecord(asRecord(capturedBody)['projectSpec'])['mcp']).toEqual({
-      url: 'https://mcp.example.com/mcp',
-      host: 'mcp.example.com',
-      header: 'X-Mcp-Auth',
-      allowedHosts: ['mcp.example.com'],
-    })
-    expect(asRecord(capturedBody)['mcpToken']).toBe('mcp-tok')
+    expect(asRecord(asRecord(capturedBody)['projectSpec'])['mcp']).toEqual([
+      {
+        id: 'jira-mcp',
+        url: 'https://mcp.example.com/mcp',
+        host: 'mcp.example.com',
+        header: 'X-Mcp-Auth',
+        allowedHosts: ['mcp.example.com'],
+      },
+    ])
+    expect(asRecord(capturedBody)['mcpTokens']).toEqual({ 'jira-mcp': 'mcp-tok' })
   })
 
-  test('projectSpec omits mcp and POST body omits mcpToken when resolveMcp returns null', async () => {
+  test('projectSpec omits mcp and POST body omits mcpTokens when the selection is empty', async () => {
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (_url, init) => {
       capturedBody = JSON.parse(bodyString(init))
@@ -376,6 +388,36 @@ describe('acp start_session tool', () => {
     const { tools } = activate(httpFetch)
     await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, runtimeCtxWithKv(store), options())
     expect(Object.keys(asRecord(asRecord(capturedBody)['projectSpec']))).not.toContain('mcp')
-    expect(Object.keys(asRecord(capturedBody))).not.toContain('mcpToken')
+    expect(Object.keys(asRecord(capturedBody))).not.toContain('mcpTokens')
+  })
+
+  test('start_session refuses fail-closed (naming the culprit) when resolveMcpServers fails, without calling magi', async () => {
+    const httpFetch = mock((): Promise<Response> => Promise.resolve(jsonResponse({})))
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const ctxWithBadMcp = {
+      ...runtimeCtxWithKv(store),
+      codingSecrets: {
+        resolve: (): Record<string, string> => ({ ANTHROPIC_API_KEY: 'sk-test' }),
+        resolveForgeToken: (): string => 'ghp-test',
+        resolveAgent: (): null => null,
+        resolveForge: (): null => null,
+        resolveProviderHost: (): null => null,
+        resolveModel: (): null => null,
+        resolveMcpServers: (): { ok: false; error: string } => ({
+          ok: false,
+          error: "MCP server 'jira-mcp' is missing its credential",
+        }),
+        resolveMcpTokens: (): Record<string, string> => ({}),
+      },
+    }
+    const result = await tools
+      .get('start_session')!
+      .execute({ project: 'demo', prompt: 'do it' }, ctxWithBadMcp, options())
+    expect(result).toEqual({
+      error: 'mcp_unavailable',
+      message: "MCP server 'jira-mcp' is missing its credential",
+    })
+    expect(httpFetch).not.toHaveBeenCalled()
   })
 })

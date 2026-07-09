@@ -14,14 +14,11 @@ import {
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
 import { adminCodingGuardrailsContextId, setCodingGuardrails } from '../../src/coding-credentials/guardrails.js'
-import { setMcpCatalog } from '../../src/coding-credentials/mcp-catalog.js'
 import {
   resolveAgent,
   resolveAgentSecrets,
   resolveForge,
   resolveForgeToken,
-  resolveMcp,
-  resolveMcpToken,
   resolveModel,
   resolveProviderHost,
 } from '../../src/coding-credentials/resolve-agent-secrets.js'
@@ -188,90 +185,8 @@ test('resolveForge returns null for a partial self-hosted vault (instance_url pr
   expect(resolveForge(STORAGE_CTX, 'user-9')).toBeNull()
 })
 
-// resolveMcp is catalog-driven: the `mcp` vault only records which catalog entry (`server`)
-// the identity selected plus their `upstream_token`; url/host/header/toolPolicy always come
-// from the current admin-configured catalog entry for the storage context's platform instance.
-
-const MCP_PI = 'pi-mcp'
-const MCP_CTX = toScopedContextId({ platformInstanceId: MCP_PI, nativeContextId: 'user-mcp' })
-
-test('resolveMcp returns null and resolveMcpToken returns undefined when no mcp vault stored', () => {
-  expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
-  expect(resolveMcpToken(MCP_CTX, 'user-mcp')).toBeUndefined()
-})
-
-test('resolveMcp resolves url/host(derived)/header/allowedHosts/toolPolicy from the selected catalog entry', () => {
-  setMcpCatalog(MCP_PI, [
-    {
-      name: 'Jira',
-      upstream_url: 'https://mcp.atlassian.com/v1',
-      header: 'X-Auth',
-      default_tool_policy: 'deny',
-      tool_policy: { echo: 'allow' },
-    },
-  ])
-  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
-  expect(resolveMcp(MCP_CTX, 'user-mcp')).toEqual({
-    url: 'https://mcp.atlassian.com/v1',
-    host: 'mcp.atlassian.com',
-    header: 'X-Auth',
-    allowedHosts: ['mcp.atlassian.com'],
-    toolPolicy: { default: 'deny', tools: { echo: 'allow' } },
-  })
-  expect(resolveMcpToken(MCP_CTX, 'user-mcp')).toBe('sek')
-})
-
-test('resolveMcp derives host from upstream_url, not any stored value', () => {
-  setMcpCatalog(MCP_PI, [
-    { name: 'Jira', upstream_url: 'https://real-host.example.com/v1', default_tool_policy: 'allow' },
-  ])
-  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
-  const resolved = resolveMcp(MCP_CTX, 'user-mcp')
-  expect(resolved?.host).toBe('real-host.example.com')
-  expect(resolved?.allowedHosts).toEqual(['real-host.example.com'])
-})
-
-test('resolveMcp defaults header to Authorization when the catalog entry omits it', () => {
-  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }])
-  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
-  expect(resolveMcp(MCP_CTX, 'user-mcp')?.header).toBe('Authorization')
-})
-
-test('resolveMcp always carries a toolPolicy (default is required on every entry)', () => {
-  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }])
-  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-mcp')
-  expect(resolveMcp(MCP_CTX, 'user-mcp')?.toolPolicy?.default).toBe('allow')
-})
-
-test('resolveMcp returns null for a partial vault (server without token)', () => {
-  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }])
-  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Jira' }, 'user-mcp')
-  expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
-})
-
-test('resolveMcp returns null for a partial vault (token without server)', () => {
-  updateCodingCredentials(MCP_CTX, 'mcp', { upstream_token: 'sek' }, 'user-mcp')
-  expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
-})
-
-test('resolveMcp fail-closed: selected server no longer matches any catalog entry (removed/renamed)', () => {
-  setMcpCatalog(MCP_PI, [{ name: 'Jira', upstream_url: 'https://mcp.atlassian.com/v1', default_tool_policy: 'allow' }])
-  updateCodingCredentials(MCP_CTX, 'mcp', { server: 'Ghost', upstream_token: 'sek' }, 'user-mcp')
-  expect(resolveMcp(MCP_CTX, 'user-mcp')).toBeNull()
-})
-
-test('resolveMcp fail-closed: storage context has no platform instance, so no catalog can be resolved', () => {
-  // STORAGE_CTX is not parseable → parseScopedContextId returns null → pi undefined
-  updateCodingCredentials(STORAGE_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek' }, 'user-9')
-  expect(resolveMcp(STORAGE_CTX, 'user-9')).toBeNull()
-})
-
-test("group initiator: resolveMcpToken returns the acting user's token", () => {
-  addAuthorizedGroup(GROUP_CTX, 'admin')
-  updateCodingCredentials(GROUP_CTX, 'mcp', { server: 'Jira', upstream_token: 'ghp-GROUP' }, 'admin')
-  updateCodingCredentials(ALICE_CTX, 'mcp', { server: 'Jira', upstream_token: 'sek-ALICE' }, 'alice')
-  expect(resolveMcpToken(GROUP_THREAD_CTX, 'alice')).toBe('sek-ALICE')
-})
+// MCP resolution (resolveMcpServers/resolveMcpTokens) is covered by
+// tests/coding-credentials/resolve-mcp-servers.test.ts.
 
 test('resolveProviderHost returns null when no credentials stored', () => {
   expect(resolveProviderHost(STORAGE_CTX, 'user-9')).toBeNull()
@@ -364,6 +279,7 @@ test('forceSharedKey:true — resolveAgentSecrets returns the shared (admin) key
     allowedAgents: ['claude', 'codex', 'opencode'],
     whoMayUse: 'members',
     forceSharedKey: true,
+    maxMcpServers: 3,
   })
   updateCodingCredentials(
     ADMIN_CTX,
@@ -385,6 +301,7 @@ test('forceSharedKey:true — resolveProviderHost returns the shared (admin) hos
     allowedAgents: ['claude', 'codex', 'opencode'],
     whoMayUse: 'members',
     forceSharedKey: true,
+    maxMcpServers: 3,
   })
   updateCodingCredentials(
     ADMIN_CTX,
@@ -416,6 +333,7 @@ test('forceSharedKey:true — resolveForgeToken still returns the user token (fo
     allowedAgents: ['claude', 'codex', 'opencode'],
     whoMayUse: 'members',
     forceSharedKey: true,
+    maxMcpServers: 3,
   })
   updateCodingCredentials(ADMIN_CTX, 'forge', { forge_token: 'ghp-admin-token' }, 'admin')
   updateCodingCredentials(USER_CTX, 'forge', { forge_token: 'ghp-user-token' }, 'user-9')
@@ -427,6 +345,7 @@ test('forceSharedKey:false — resolveAgentSecrets returns the user key unchange
     allowedAgents: ['claude', 'codex', 'opencode'],
     whoMayUse: 'members',
     forceSharedKey: false,
+    maxMcpServers: 3,
   })
   updateCodingCredentials(
     ADMIN_CTX,
@@ -448,6 +367,7 @@ test('forceSharedKey:false — resolveProviderHost returns the user host unchang
     allowedAgents: ['claude', 'codex', 'opencode'],
     whoMayUse: 'members',
     forceSharedKey: false,
+    maxMcpServers: 3,
   })
   updateCodingCredentials(
     ADMIN_CTX,
@@ -480,6 +400,7 @@ test('non-scoped/legacy context id — sharedKeyContext returns null and resolve
     allowedAgents: ['claude', 'codex', 'opencode'],
     whoMayUse: 'members',
     forceSharedKey: true,
+    maxMcpServers: 3,
   })
   updateCodingCredentials(
     STORAGE_CTX,
@@ -631,6 +552,7 @@ test('forceSharedKey:true + initiator policy: provider key from admin, forge fro
     allowedAgents: ['claude', 'codex', 'opencode'],
     whoMayUse: 'members',
     forceSharedKey: true,
+    maxMcpServers: 3,
   })
   const adminCtx = adminCodingGuardrailsContextId(PI_GROUP)
   updateCodingCredentials(
@@ -715,6 +637,7 @@ test('forceSharedKey:true — resolveModel returns the user model, not the share
     allowedAgents: ['claude', 'codex', 'opencode'],
     whoMayUse: 'members',
     forceSharedKey: true,
+    maxMcpServers: 3,
   })
   const adminCtx = adminCodingGuardrailsContextId(PI_GROUP)
   updateCodingCredentials(

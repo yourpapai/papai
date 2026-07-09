@@ -60,14 +60,20 @@ export type PluginToolRuntimeContext = {
     resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
     resolveProviderHost(): string | null
     resolveModel(): string | null
-    resolveMcp(): {
-      url: string
-      host: string
-      header: string
-      allowedHosts: string[]
-      toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
-    } | null
-    resolveMcpToken(): string | undefined
+    resolveMcpServers():
+      | {
+          ok: true
+          servers: Array<{
+            id: string
+            url: string
+            host: string
+            header: string
+            allowedHosts: string[]
+            toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
+          }>
+        }
+      | { ok: false; error: string }
+    resolveMcpTokens(): Record<string, string>
   }
   codingRepos: {
     list(): { name: string; baseBranch: string }[]

@@ -20,7 +20,7 @@ import type { RuntimeContext, Tool } from './tools.js'
 import { sessionIdOf, shareFieldsOf } from './tools.js'
 
 type AccessError = { error: string; message: string }
-type AccessOk = { secrets: Record<string, string>; forgeToken: string }
+type AccessOk = { secrets: Record<string, string>; forgeToken: string; mcpTokens: Record<string, string> }
 
 function checkAccess(runtimeContext: RuntimeContext): AccessError | AccessOk {
   const secrets = runtimeContext.codingSecrets.resolve()
@@ -36,7 +36,9 @@ function checkAccess(runtimeContext: RuntimeContext): AccessError | AccessOk {
       error: 'not_configured',
       message: 'Connect a code host in settings → Coding sessions before continuing a session.',
     }
-  return { secrets, forgeToken }
+  const mcpResult = runtimeContext.codingSecrets.resolveMcpServers()
+  if (!mcpResult.ok) return { error: 'mcp_unavailable', message: mcpResult.error }
+  return { secrets, forgeToken, mcpTokens: runtimeContext.codingSecrets.resolveMcpTokens() }
 }
 
 // Find a locally-known parent session id for a PR number by asking magi for the
@@ -103,7 +105,7 @@ export function continueSessionTool(httpFetch: HttpFetch | undefined): Tool {
 
       const access = checkAccess(runtimeContext)
       if ('error' in access) return access
-      const { secrets, forgeToken } = access
+      const { secrets, forgeToken, mcpTokens } = access
 
       const parentId = await resolveParentId(httpFetch, cfg, runtimeContext, args)
       if (parentId === null)
@@ -120,6 +122,7 @@ export function continueSessionTool(httpFetch: HttpFetch | undefined): Tool {
         contextId: runtimeContext.storageContextId,
         secrets,
         forgeToken,
+        ...(Object.keys(mcpTokens).length === 0 ? {} : { mcpTokens }),
       })
       const childId = sessionIdOf(result)
       if (childId !== null)

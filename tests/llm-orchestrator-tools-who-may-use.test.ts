@@ -154,6 +154,7 @@ describe('buildFullToolSet / who-may-use filter (integration)', () => {
       allowedAgents: ['claude', 'codex', 'opencode'],
       whoMayUse: ['allowed-user'],
       forceSharedKey: false,
+      maxMcpServers: 3,
     })
     const toolSet = acpToolSet()
     const result = await prepareLlmInvocation(baseOpts('allowed-user'), makeDeps(toolSet))
@@ -165,6 +166,7 @@ describe('buildFullToolSet / who-may-use filter (integration)', () => {
       allowedAgents: ['claude', 'codex', 'opencode'],
       whoMayUse: ['allowed-user'],
       forceSharedKey: false,
+      maxMcpServers: 3,
     })
     const toolSet = acpToolSet()
     const result = await prepareLlmInvocation(baseOpts('other-user'), makeDeps(toolSet))
@@ -181,6 +183,7 @@ describe('buildFullToolSet / who-may-use filter (integration)', () => {
       allowedAgents: ['claude', 'codex', 'opencode'],
       whoMayUse: 'members',
       forceSharedKey: false,
+      maxMcpServers: 3,
     })
     const toolSet = acpToolSet()
     const resultAllowed = await prepareLlmInvocation(baseOpts('allowed-user'), makeDeps(toolSet))

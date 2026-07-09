@@ -66,9 +66,9 @@ describe('coding-credentials types', () => {
       expect(CODING_NAMESPACES).toContain('mcp')
     })
 
-    test('declares server + upstream_token fields, both required', () => {
-      expect(FIELDS_BY_NAMESPACE.mcp).toEqual(['server', 'upstream_token'])
-      expect(REQUIRED_BY_NAMESPACE.mcp).toEqual(['server', 'upstream_token'])
+    test('declares a single servers field (JSON-encoded selection array), not required', () => {
+      expect(FIELDS_BY_NAMESPACE.mcp).toEqual(['servers'])
+      expect(REQUIRED_BY_NAMESPACE.mcp).toEqual([])
     })
   })
 

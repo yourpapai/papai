@@ -213,8 +213,8 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
       resolveForge: () => null,
       resolveProviderHost: () => null,
       resolveModel: () => null,
-      resolveMcp: () => null,
-      resolveMcpToken: () => undefined,
+      resolveMcpServers: () => ({ ok: true, servers: [] }),
+      resolveMcpTokens: () => ({}),
     },
     codingRepos: { list: () => [], get: () => null },
   }
