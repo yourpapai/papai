@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { moduleEligibilityRegistry } from '../../src/ports/module-eligibility.js'
 import { moduleToolRegistry, type ModuleTool, type ModuleToolRuntimeContext } from '../../src/ports/module-tools.js'
 import { toolGateRegistry } from '../../src/ports/tool-gate.js'
 import { buildModuleToolSet, namespacedModuleToolName } from '../../src/tools/module-tool-set.js'
@@ -24,6 +25,7 @@ const echoTool = (name: string, gate?: 'operator'): ModuleTool => ({
 
 afterEach(() => {
   moduleToolRegistry.clear()
+  moduleEligibilityRegistry.clear()
 })
 
 describe('buildModuleToolSet', () => {
@@ -56,5 +58,18 @@ describe('buildModuleToolSet', () => {
     moduleToolRegistry.register('coding', [echoTool('start_session')])
     const out = buildModuleToolSet(new Set<string>(['module_coding__start_session']), ctx)
     expect('module_coding__start_session' in out).toBe(false)
+  })
+
+  test('omits tools whose module is ineligible for the context', () => {
+    moduleToolRegistry.register('coding', [echoTool('start_session')])
+    moduleEligibilityRegistry.register('coding', (storageContextId) => storageContextId === 'ctx-ok')
+    expect(
+      'module_coding__start_session' in
+        buildModuleToolSet(new Set<string>(), { storageContextId: 'ctx-no', chatUserId: 'u' }),
+    ).toBe(false)
+    expect(
+      'module_coding__start_session' in
+        buildModuleToolSet(new Set<string>(), { storageContextId: 'ctx-ok', chatUserId: 'u' }),
+    ).toBe(true)
   })
 })
