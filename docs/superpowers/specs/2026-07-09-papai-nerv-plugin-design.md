@@ -217,9 +217,12 @@ multi-repo fan-out. For each name:
 repository named "<name>". Add it in settings → Repositories.' }`.
 2. Derive `projectPath` from `repo.repoUrl`: take `new URL(repoUrl).pathname`, strip the leading
    `/` and a trailing `.git`. e.g. `https://gitlab.com/group/sub/repo.git` → `group/sub/repo`.
-3. **GitLab pre-flight** (mirrors acp's `canDeriveForge`): if `new URL(repoUrl).host` is not a
-   GitLab host, refuse `{ error: 'not_configured', message: 'nerv supervises GitLab MRs; "<name>"
-is on <host>.' }`. nerv's only `kind` today is `gitlab-mr-supervision`.
+3. **GitLab pre-flight** (mirrors the _spirit_ of acp's `canDeriveForge`): refuse only when the
+   host is a **known non-GitLab forge** — today `github.com` → `{ error: 'not_configured', message:
+'nerv supervises GitLab MRs; "<name>" is on GitHub.' }`. A positive "is GitLab" host check is
+   **not** used because self-hosted GitLab has an arbitrary host and would be false-refused;
+   `gitlab.com` and self-hosted GitLab hosts pass through and are validated downstream by
+   nerv/magi (`MAGI_ALLOWED_REPO_HOSTS`). nerv's only `kind` today is `gitlab-mr-supervision`.
 4. `targetBranch` = `repo.baseBranch` (sent; see §3 drift note).
 
 The task body's `repos` is the array of derived `{ projectPath }`. `kind` defaults to
