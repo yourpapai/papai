@@ -36,6 +36,12 @@ describe('personal settings msw handlers', () => {
     ).toBe(true)
   })
 
+  test('codingCredentialsHandlers populated wires the models endpoint', () => {
+    expect(
+      pathsOf(codingCredentialsHandlers.populated).some((p) => p.includes('/settings/api/coding-credentials/models')),
+    ).toBe(true)
+  })
+
   // --- memoryHandlers ---
 
   test('memoryHandlers has all four variants with at least one handler each', () => {

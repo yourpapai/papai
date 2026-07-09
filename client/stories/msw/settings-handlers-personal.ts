@@ -18,36 +18,84 @@ export interface HandlerFamily {
 
 // --- Coding credentials (GET /settings/api/coding-credentials) ---
 
+const AGENT_OPTIONS = ['claude', 'codex', 'opencode']
+const PROVIDER_OPTIONS = ['anthropic', 'openai', 'openai-compatible']
+const AUTH_METHOD_OPTIONS = ['api-key', 'oauth-subscription']
+
+type AgentProviderField = Record<string, unknown>
+
+function agentProviderField(key: string, label: string, overrides: AgentProviderField = {}): AgentProviderField {
+  return { key, label, required: false, sensitive: false, hasValue: false, value: '', ...overrides }
+}
+
+function agentProviderFields(hasValue: boolean): AgentProviderField[] {
+  return [
+    agentProviderField('agent', 'Coding agent', {
+      required: true,
+      hasValue,
+      value: 'claude',
+      control: 'select',
+      options: AGENT_OPTIONS,
+    }),
+    agentProviderField('provider', 'Model provider', {
+      required: true,
+      hasValue,
+      value: 'anthropic',
+      control: 'select',
+      options: PROVIDER_OPTIONS,
+    }),
+    agentProviderField('auth_method', 'Auth method', {
+      hasValue,
+      value: 'api-key',
+      control: 'select',
+      options: AUTH_METHOD_OPTIONS,
+    }),
+    agentProviderField('provider_api_key', 'API key', {
+      required: true,
+      sensitive: true,
+      hasValue,
+      value: hasValue ? '****ab12' : '',
+    }),
+    agentProviderField('provider_base_url', 'Base URL'),
+    agentProviderField('model', 'Model', { hasValue, value: hasValue ? 'claude-sonnet-4' : '', control: 'combobox' }),
+  ]
+}
+
 const codingCredentialsPopulated = {
-  namespace: 'forge',
+  namespace: 'agent-provider',
   configured: true,
   complete: true,
   missing: [],
-  fields: [
-    { key: 'forge_token', label: 'Forge token', required: true, sensitive: true, hasValue: true, value: '****ab12' },
-    {
-      key: 'instance_url',
-      label: 'Instance URL',
-      required: false,
-      sensitive: false,
-      hasValue: true,
-      value: 'https://gitlab.example.com',
-    },
-  ],
-  allowedAgents: ['claude'],
+  fields: agentProviderFields(true),
+  allowedAgents: AGENT_OPTIONS,
 }
 
 const codingCredentialsEmpty = {
-  namespace: 'forge',
+  namespace: 'agent-provider',
   configured: false,
   complete: false,
-  missing: ['forge_token'],
-  fields: [],
+  missing: ['provider_api_key'],
+  fields: agentProviderFields(false),
+  allowedAgents: AGENT_OPTIONS,
+}
+
+const codingModelsPopulated = {
+  ok: true,
+  models: [
+    { value: 'claude-sonnet-4', label: 'claude-sonnet-4' },
+    { value: 'claude-opus-4', label: 'claude-opus-4' },
+  ],
 }
 
 export const codingCredentialsHandlers: HandlerFamily = {
-  populated: [http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingCredentialsPopulated))],
-  empty: [http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingCredentialsEmpty))],
+  populated: [
+    http.get('/settings/api/coding-credentials/models', () => HttpResponse.json(codingModelsPopulated)),
+    http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingCredentialsPopulated)),
+  ],
+  empty: [
+    http.get('/settings/api/coding-credentials/models', () => HttpResponse.json({ ok: false, models: [] })),
+    http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingCredentialsEmpty)),
+  ],
   error: [http.get('/settings/api/coding-credentials', boom)],
   loading: [
     http.get('/settings/api/coding-credentials', async () => {
