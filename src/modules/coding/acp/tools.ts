@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { z } from 'zod'
+
 import { asObject, callMagi, NOT_CONFIGURED, optionalString, readMagiConfig } from './client.js'
 import type { HttpFetch } from './client.js'
 import { emptySchema } from './schemas.js'
@@ -46,7 +48,13 @@ export type RuntimeContext = {
   }
 }
 type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
-export type Tool = { name: string; description: string; inputSchema: unknown; gate?: 'operator'; execute: ToolExecute }
+export type Tool = {
+  name: string
+  description: string
+  inputSchema: z.ZodType
+  gate?: 'operator'
+  execute: ToolExecute
+}
 
 export type RepoEntry = {
   name: string
