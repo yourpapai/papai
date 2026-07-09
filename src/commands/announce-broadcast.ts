@@ -5,9 +5,11 @@
 
 import pLimit from 'p-limit'
 
+import { toScopedContextId } from '../chat/scoped-context.js'
 import { dmTarget } from '../chat/types.js'
 import type { ChatProvider } from '../chat/types.js'
 import { logger } from '../logger.js'
+import { recordProactiveInHistory } from '../proactive-history.js'
 import { listUsers } from '../users.js'
 
 const log = logger.child({ scope: 'commands:announce-broadcast' })
@@ -34,7 +36,13 @@ export async function broadcastMessage(
     users.map((user) =>
       limit(async () => {
         const result = await chat.sendMessage(platformInstanceId, dmTarget(user.platform_user_id), message)
-        return result !== false
+        const ok = result !== false
+        if (ok)
+          recordProactiveInHistory(
+            toScopedContextId({ platformInstanceId, nativeContextId: user.platform_user_id }),
+            message,
+          )
+        return ok
       }),
     ),
   )
