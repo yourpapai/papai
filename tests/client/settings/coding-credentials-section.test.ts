@@ -867,4 +867,23 @@ describe('CodingCredentialsSection', () => {
     expect(labelEl!.textContent).toContain('Model')
     void unmount(component)
   })
+
+  test('shows a placeholder and no Save button when the field list is empty', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        json({ namespace: 'agent-provider', configured: false, complete: false, missing: [], fields: [] }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+
+    await drain()
+
+    const placeholder = target.querySelector('.placeholder')
+    expect(placeholder).not.toBeNull()
+    expect(String(placeholder?.textContent)).toContain('No provider fields available')
+    expect(target.querySelector('[data-testid="coding-credentials-save"]')).toBeNull()
+    void unmount(component)
+  })
 })

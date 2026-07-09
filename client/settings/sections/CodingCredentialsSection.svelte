@@ -8,11 +8,13 @@
 
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
+  import Combobox from '../../shared/ui/Combobox.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
+  import Select from '../../shared/ui/Select.svelte'
   import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
   import type { CodingCredentialField, CodingCredentialsResponse } from '../fetcher-schemas.js'
   import {
@@ -70,6 +72,10 @@
   const authMethodField = $derived(fields.find((f) => f.key === 'auth_method'))
   const currentAuthMethod = $derived(drafts['auth_method'] ?? authMethodField?.value ?? 'api-key')
   const isOauthSubscription = $derived(currentAuthMethod === 'oauth-subscription')
+
+  // Model suggestions load only once the API key is saved (see the models $effect below);
+  // surface a hint on first setup so an empty dropdown does not read as broken.
+  const hasSavedKey = $derived(fields.find((f) => f.key === 'provider_api_key')?.hasValue === true)
 
   function fieldHidden(field: CodingCredentialField): boolean {
     if (field.key === 'provider_base_url' && isOauthSubscription) return true
@@ -261,105 +267,101 @@
     {#if unreadableError !== null}
       <p class="status-error" role="alert">Stored credentials are unreadable. Re-enter your key to repair this context.</p>
     {/if}
-    {#if !currentData.complete}
-      <p class="placeholder">
-        Coding sessions need your model-provider API key. Enter it below — it is encrypted and used only to run your sessions.
-      </p>
-    {/if}
+    {#if fields.length === 0}
+      <p class="placeholder">No provider fields available — try Refresh.</p>
+    {:else}
+      {#if !currentData.complete}
+        <p class="placeholder">
+          Coding sessions need your model-provider API key. Enter it below — it is encrypted and used only to run your sessions.
+        </p>
+      {/if}
 
-    <div class="settings-byok-fields">
-      {#each fields as field (field.key)}
-        {#if !fieldHidden(field)}
-          {@const effectiveRequired = field.required || (field.key === 'provider_base_url' && isOpenAiCompatible)}
-          <SettingsFieldShell
-            label={labelFor(field)}
-            required={effectiveRequired}
-            editorOpen={editorOpen(field)}
-            testid={`coding-row-${field.key}`}>
-            {#snippet head()}
-              {#if field.sensitive && field.hasValue && !editorOpen(field)}
-                <Secret value={displaySecret(field.value)} />
-                <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
-                  {#snippet children()}Replace{/snippet}
-                </Btn>
-              {/if}
-            {/snippet}
-            {#snippet editor(labelId)}
-              {#if field.control === 'select'}
-                <select
-                  data-testid={`coding-select-${field.key}`}
-                  aria-labelledby={labelId}
-                  value={drafts[field.key] ?? ''}
-                  disabled={saving || loading}
-                  onchange={(e) => onSelectChange(field, (e.currentTarget as HTMLSelectElement).value)}
-                  class="coding-select">
-                  {#each selectOptionsFor(field) as opt (opt)}
-                    <option value={opt}>{opt}</option>
-                  {/each}
-                </select>
-              {:else if field.control === 'combobox'}
-                <input
-                  list={`coding-models-${field.key}`}
-                  data-testid={`coding-combobox-${field.key}`}
-                  aria-labelledby={labelId}
-                  value={drafts[field.key] ?? ''}
-                  placeholder="model id (leave blank for the agent default)"
-                  disabled={saving || loading}
-                  oninput={(e) => updateDraft(field.key, (e.currentTarget as HTMLInputElement).value)}
-                  class="coding-select" />
-                <datalist id={`coding-models-${field.key}`}>
-                  {#each modelOptions as opt (opt.value)}
-                    <option value={opt.value}></option>
-                  {/each}
-                </datalist>
-              {:else}
-                <Input
-                  type={field.sensitive ? 'password' : 'text'}
-                  value={drafts[field.key] ?? ''}
-                  placeholder={field.key === 'provider_api_key' && isOauthSubscription
-                    ? 'sk-ant-oat01-… (run `claude setup-token`)'
-                    : field.sensitive
-                      ? 'enter a new value'
-                      : field.key === 'provider_base_url' && isOpenAiCompatible
-                        ? 'https://your-llm-endpoint/v1 (required)'
-                        : ''}
-                  onInput={(value) => updateDraft(field.key, value)}
-                  testid={`coding-input-${field.key}`} />
-                {#if field.sensitive && field.hasValue}
-                  <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
-                    {#snippet children()}Cancel{/snippet}
+      <div class="settings-byok-fields">
+        {#each fields as field (field.key)}
+          {#if !fieldHidden(field)}
+            {@const effectiveRequired = field.required || (field.key === 'provider_base_url' && isOpenAiCompatible)}
+            <SettingsFieldShell
+              label={labelFor(field)}
+              required={effectiveRequired}
+              editorOpen={editorOpen(field)}
+              testid={`coding-row-${field.key}`}>
+              {#snippet head()}
+                {#if field.sensitive && field.hasValue && !editorOpen(field)}
+                  <Secret value={displaySecret(field.value)} />
+                  <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
+                    {#snippet children()}Replace{/snippet}
                   </Btn>
                 {/if}
-              {/if}
-            {/snippet}
-          </SettingsFieldShell>
-        {/if}
-      {/each}
+              {/snippet}
+              {#snippet editor(labelId)}
+                {#if field.control === 'select'}
+                  <Select
+                    value={drafts[field.key] ?? ''}
+                    options={selectOptionsFor(field).map((o) => ({ value: o, label: o }))}
+                    onChange={(v) => onSelectChange(field, v)}
+                    disabled={saving || loading}
+                    testid={`coding-select-${field.key}`} />
+                {:else if field.control === 'combobox'}
+                  <Combobox
+                    value={drafts[field.key] ?? ''}
+                    options={modelOptions}
+                    onInput={(v) => updateDraft(field.key, v)}
+                    placeholder="model id (leave blank for the agent default)"
+                    testid={`coding-combobox-${field.key}`} />
+                {:else}
+                  <Input
+                    type={field.sensitive ? 'password' : 'text'}
+                    value={drafts[field.key] ?? ''}
+                    placeholder={field.key === 'provider_api_key' && isOauthSubscription
+                      ? 'sk-ant-oat01-… (run `claude setup-token`)'
+                      : field.sensitive
+                        ? 'enter a new value'
+                        : field.key === 'provider_base_url' && isOpenAiCompatible
+                          ? 'https://your-llm-endpoint/v1 (required)'
+                          : ''}
+                    onInput={(value) => updateDraft(field.key, value)}
+                    testid={`coding-input-${field.key}`} />
+                  {#if field.sensitive && field.hasValue}
+                    <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
+                      {#snippet children()}Cancel{/snippet}
+                    </Btn>
+                  {/if}
+                {/if}
+              {/snippet}
+              {#snippet footer()}
+                {#if field.control === 'combobox' && !hasSavedKey}
+                  <p class="field-hint">Save your API key to load model suggestions.</p>
+                {/if}
+              {/snippet}
+            </SettingsFieldShell>
+          {/if}
+        {/each}
 
-      <div class="settings-field__actions">
-        {#if currentData.configured}
+        <div class="settings-field__actions">
+          {#if currentData.configured}
+            <Btn
+              variant="ghost"
+              size="sm"
+              testid="coding-credentials-clear"
+              disabled={saving || loading || clearing}
+              onClick={() => {
+                pendingClear = true
+                clearError = null
+              }}>
+              {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
+            </Btn>
+          {/if}
           <Btn
-            variant="ghost"
+            variant="primary"
             size="sm"
-            testid="coding-credentials-clear"
-            disabled={saving || loading || clearing}
-            onClick={() => {
-              pendingClear = true
-              clearError = null
-            }}>
-            {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
+            testid="coding-credentials-save"
+            disabled={!formDirty || saving || loading || clearing}
+            onClick={() => void saveAll()}>
+            {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
           </Btn>
-        {/if}
-        <Btn
-          variant="primary"
-          size="sm"
-          testid="coding-credentials-save"
-          disabled={!formDirty || saving || loading || clearing}
-          onClick={() => void saveAll()}>
-          {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
-        </Btn>
+        </div>
       </div>
-    </div>
+    {/if}
   {/if}
 
   <Confirm
@@ -386,13 +388,9 @@
     display: flex;
     justify-content: flex-end;
   }
-  .coding-select {
-    flex: 1;
-    min-width: 200px;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--fg);
-    font-size: 14px;
+  .field-hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
   }
 </style>
