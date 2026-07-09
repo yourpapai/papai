@@ -9,6 +9,7 @@ import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.j
 import type { ChatProvider } from '../chat/types.js'
 import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
+import { recordProactiveInHistory } from '../proactive-history.js'
 import type { Task } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
 import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
@@ -79,12 +80,10 @@ async function executeScheduledPromptsForGroup(
       { userId: createdByUserId, promptIds, error: errMsg },
       'Scheduled prompt execution failed before delivery',
     )
-    const delivered = await sendProactiveMessage(
-      chat,
-      execCtx.deliveryTarget,
-      `I ran into an error while working on that: ${errMsg}`,
-    )
+    const errText = `I ran into an error while working on that: ${errMsg}`
+    const delivered = await sendProactiveMessage(chat, execCtx.deliveryTarget, errText)
     if (!delivered) return
+    recordProactiveInHistory(getStorageContextId(execCtx.deliveryTarget), errText)
     finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
     return
   }
@@ -172,12 +171,10 @@ async function executeSingleAlert(
       { id: alert.id, userId: alert.createdByUserId, error: errMsg },
       'Alert prompt execution failed before delivery',
     )
-    const delivered = await sendProactiveMessage(
-      chat,
-      alert.deliveryTarget,
-      `Sorry, something went wrong while preparing this update: ${errMsg}`,
-    )
+    const errText = `Sorry, something went wrong while preparing this update: ${errMsg}`
+    const delivered = await sendProactiveMessage(chat, alert.deliveryTarget, errText)
     if (!delivered) return { matched: true, delivered: false }
+    recordProactiveInHistory(getStorageContextId(alert.deliveryTarget), errText)
     return markAlertDelivered(alert, matchedTasks.length, false)
   }
 

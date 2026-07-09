@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mock, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, mock, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
@@ -13,9 +13,12 @@ import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.
 import { setConfig } from '../../src/config.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
 import { pollAlertsOnce, pollScheduledOnce, stopPollers } from '../../src/deferred-prompts/poller.js'
+import * as proactiveDeliveryModule from '../../src/deferred-prompts/proactive-delivery.js'
+import * as proactiveLlmModule from '../../src/deferred-prompts/proactive-llm.js'
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
+import * as proactiveHistoryModule from '../../src/proactive-history.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -485,6 +488,184 @@ describe('pollScheduledOnce — error handling', () => {
     expect(updated!.status).toBe('active')
     expect(updated!.lastExecutedAt).toBeNull()
     expect(sentMessages).toHaveLength(0)
+  })
+})
+
+describe('pollScheduledOnce — error notice history recording', () => {
+  let chat: ChatProvider
+  let provider: TaskProvider
+  const spies: Array<{ mockRestore: () => void }> = []
+
+  const track = <T extends { mockRestore: () => void }>(spy: T): T => {
+    spies.push(spy)
+    return spy
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    const result = createMockChatWithSentMessages()
+    chat = result.provider
+    provider = createMockProvider()
+    setupUserConfig(USER_ID)
+  })
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  test('records the error notice in history once delivery is confirmed', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    setConfig(scopedUserId, 'timezone', 'UTC')
+    setContextSettings({
+      contextId: scopedMainContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'telegram-default',
+    })
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    createScheduledPrompt(
+      scopedUserId,
+      'Scoped thread reminder',
+      { fireAt: pastTime },
+      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      {
+        contextId: '-1001',
+        storageContextId: scopedThreadContextId,
+        contextType: 'group',
+        threadId: '42',
+        audience: 'personal',
+        mentionUserIds: [USER_ID],
+        createdByUserId: USER_ID,
+        createdByUsername: null,
+      },
+    )
+
+    track(
+      spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() =>
+        Promise.reject(new Error('LLM exploded')),
+      ),
+    )
+    track(spyOn(proactiveDeliveryModule, 'sendProactiveMessage').mockImplementation(() => Promise.resolve(true)))
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+
+    await pollScheduledOnce(chat, () => provider)
+
+    expect(recordCalls).toHaveLength(1)
+    expect(recordCalls[0]![0]).toBe(scopedThreadContextId)
+    expect(recordCalls[0]![1]).toContain('I ran into an error while working on that:')
+  })
+
+  test('does not record history when delivery of the error notice fails', async () => {
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    createScheduledPrompt(USER_ID, 'do something', { fireAt: pastTime })
+
+    track(
+      spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() =>
+        Promise.reject(new Error('LLM exploded')),
+      ),
+    )
+    track(spyOn(proactiveDeliveryModule, 'sendProactiveMessage').mockImplementation(() => Promise.resolve(false)))
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+
+    await pollScheduledOnce(chat, () => provider)
+
+    expect(recordCalls).toHaveLength(0)
+  })
+})
+
+describe('pollAlertsOnce — error notice history recording', () => {
+  let chat: ChatProvider
+  const spies: Array<{ mockRestore: () => void }> = []
+
+  const track = <T extends { mockRestore: () => void }>(spy: T): T => {
+    spies.push(spy)
+    return spy
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    const result = createMockChatWithSentMessages()
+    chat = result.provider
+    setupUserConfig(USER_ID)
+  })
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies.length = 0
+  })
+
+  test('records the error notice in history once delivery is confirmed', async () => {
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    track(
+      spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() =>
+        Promise.reject(new Error('LLM exploded')),
+      ),
+    )
+    track(spyOn(proactiveDeliveryModule, 'sendProactiveMessage').mockImplementation(() => Promise.resolve(true)))
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(recordCalls).toHaveLength(1)
+    expect(recordCalls[0]![0]).toBe(USER_ID)
+    expect(recordCalls[0]![1]).toContain('Sorry, something went wrong while preparing this update:')
+  })
+
+  test('does not record history when delivery of the error notice fails', async () => {
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    track(
+      spyOn(proactiveLlmModule, 'dispatchExecution').mockImplementation(() =>
+        Promise.reject(new Error('LLM exploded')),
+      ),
+    )
+    track(spyOn(proactiveDeliveryModule, 'sendProactiveMessage').mockImplementation(() => Promise.resolve(false)))
+    const recordCalls: Array<[string, string]> = []
+    track(
+      spyOn(proactiveHistoryModule, 'recordProactiveInHistory').mockImplementation((storageContextId, markdown) => {
+        recordCalls.push([storageContextId, markdown])
+      }),
+    )
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(recordCalls).toHaveLength(0)
   })
 })
 
