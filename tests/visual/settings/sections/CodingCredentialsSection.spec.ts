@@ -41,21 +41,21 @@ test('Empty — narrow 640', async ({ sharedPage }) => {
   await expect(sharedPage).toHaveScreenshot()
 })
 
-test('Populated — text input focused', async ({ sharedPage }) => {
+test('Populated — base URL input focused', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')
-  await sharedPage.getByTestId('coding-input-instance_url').focus()
+  await sharedPage.getByTestId('coding-input-provider_base_url').focus()
   await expect(sharedPage).toHaveScreenshot()
 })
 
-test('Populated — secret replace open', async ({ sharedPage }) => {
+test('Populated — API key replace open', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')
-  await sharedPage.getByTestId('coding-replace-forge_token').click()
+  await sharedPage.getByTestId('coding-replace-provider_api_key').click()
   await expect(sharedPage).toHaveScreenshot()
 })
 
 test('Populated — dirty, Save enabled + hovered', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-codingcredentialssection--populated')
-  await sharedPage.getByTestId('coding-input-instance_url').fill('https://gitlab.example.com/new')
+  await sharedPage.getByTestId('coding-input-provider_base_url').fill('https://llm.example.com/v1')
   await sharedPage.getByTestId('coding-credentials-save').hover()
   await expect(sharedPage).toHaveScreenshot()
 })
