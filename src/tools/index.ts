@@ -14,6 +14,7 @@ import { filterProviderlessPluginIds } from '../plugins/providerless.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
 import { maybeSeedAdminToolDefaults } from './admin-tool-defaults.js'
+import { buildModuleToolSet } from './module-tool-set.js'
 import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
 import { getToolMetadata } from './tool-metadata.js'
 import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
@@ -216,7 +217,12 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
-  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools }
+  let moduleTools: ToolSet = {}
+  if (contextId !== undefined && chatUserId !== undefined) {
+    const existing = new Set([...Object.keys(wrappedBuiltins), ...Object.keys(mcpTools), ...Object.keys(pluginTools)])
+    moduleTools = buildModuleToolSet(existing, { storageContextId: contextId, chatUserId })
+  }
+  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools, ...moduleTools }
 }
 
 export async function buildProviderlessToolDescriptors(options: MakeToolsOptions): Promise<ToolSet> {
@@ -257,7 +263,12 @@ export async function buildProviderlessToolDescriptors(options: MakeToolsOptions
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
-  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools }
+  let moduleTools: ToolSet = {}
+  if (contextId !== undefined && chatUserId !== undefined) {
+    const existing = new Set([...Object.keys(wrappedBuiltins), ...Object.keys(mcpTools), ...Object.keys(pluginTools)])
+    moduleTools = buildModuleToolSet(existing, { storageContextId: contextId, chatUserId })
+  }
+  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools, ...moduleTools }
 }
 
 /**
