@@ -79,6 +79,9 @@ export const CodingCredentialsResponseSchema = z.object({
   allowedAgents: z.array(z.string()).optional(),
   // Present only for namespace: 'mcp' — the operator-curated MCP server catalog to select from.
   catalog: z.array(AdminMcpCatalogEntrySchema).optional(),
+  // Present only for namespace: 'mcp' — operator-exposed internal plugin MCP servers; no user
+  // credential is needed for these (papai mints the token).
+  pluginServers: z.array(z.object({ name: z.string(), label: z.string() })).optional(),
 })
 export type CodingCredentialField = z.infer<typeof CodingCredentialFieldSchema>
 export type CodingCredentialsResponse = z.infer<typeof CodingCredentialsResponseSchema>

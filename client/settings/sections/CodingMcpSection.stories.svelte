@@ -30,3 +30,15 @@
 <Story name="Error" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-coding-mcp-error' }} />
 
 <Story name="Loading" args={{ contextId: CONTEXT_ID }} parameters={{ fixtures: 'settings-coding-mcp-loading' }} />
+
+<Story
+  name="Internal available"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-coding-mcp-internal-available' }}
+/>
+
+<Story
+  name="Internal selected"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-coding-mcp-internal-selected' }}
+/>

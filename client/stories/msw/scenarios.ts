@@ -35,6 +35,8 @@ import {
 } from './settings-handlers-group.js'
 import {
   codingMcpHandlers,
+  codingMcpInternalAvailableHandlers,
+  codingMcpInternalSelectedHandlers,
   codingMcpNoCatalogHandlers,
   configHandlers,
   releaseSubscriptionHandlers,
@@ -189,6 +191,8 @@ export const scenarios = {
   'settings-coding-mcp-no-catalog': [...codingMcpNoCatalogHandlers],
   'settings-coding-mcp-error': [...codingMcpHandlers.error],
   'settings-coding-mcp-loading': [...codingMcpHandlers.loading],
+  'settings-coding-mcp-internal-available': [...codingMcpInternalAvailableHandlers],
+  'settings-coding-mcp-internal-selected': [...codingMcpInternalSelectedHandlers],
   'settings-memory-populated': [...memoryHandlers.populated],
   'settings-memory-empty': [...memoryHandlers.empty],
   'settings-memory-error': [...memoryHandlers.error],

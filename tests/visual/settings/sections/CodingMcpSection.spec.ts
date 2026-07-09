@@ -31,5 +31,33 @@ test.describe('settings/sections/CodingMcpSection', () => {
     await switchStory(sharedPage, 'settings-sections-codingmcpsection--loading')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Internal available', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-codingmcpsection--internal-available')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
+  test('Internal selected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-codingmcpsection--internal-selected')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
+
+test('CodingMcp — internal server option listed in picker', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--internal-available')
+  const options = await sharedPage.getByTestId('coding-mcp-select-server').locator('option').allTextContents()
+  expect(options).toContain('plugin:synthetic-web-search')
+})
+
+test('CodingMcp — selecting an internal server hides the credential row', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--internal-available')
+  await expect(sharedPage.getByTestId('coding-mcp-row-upstream_token')).toBeVisible()
+  await sharedPage.getByTestId('coding-mcp-select-server').selectOption('plugin:synthetic-web-search')
+  await expect(sharedPage.getByTestId('coding-mcp-row-upstream_token')).toHaveCount(0)
+})
+
+test('CodingMcp — internal server pre-selected has no credential row', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-codingmcpsection--internal-selected')
+  await expect(sharedPage.getByTestId('coding-mcp-row-upstream_token')).toHaveCount(0)
+})

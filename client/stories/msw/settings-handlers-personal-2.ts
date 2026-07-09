@@ -143,6 +143,37 @@ const codingMcpEmpty = {
 
 const codingMcpNoCatalog = { ...codingMcpEmpty, catalog: [] }
 
+// Operator-exposed internal plugin MCP server: papai mints the token, so the picker offers it
+// alongside (or instead of) the external catalog and hides the credential field once selected.
+const codingMcpPluginServers = [{ name: 'plugin:synthetic-web-search', label: 'Synthetic Web Search' }]
+
+const codingMcpInternalAvailable = {
+  ...codingMcpEmpty,
+  catalog: [],
+  pluginServers: codingMcpPluginServers,
+}
+
+const codingMcpInternalSelected = {
+  namespace: 'mcp',
+  configured: true,
+  complete: true,
+  missing: [],
+  fields: [
+    {
+      key: 'server',
+      label: 'MCP server',
+      required: true,
+      sensitive: false,
+      hasValue: true,
+      value: 'plugin:synthetic-web-search',
+      control: 'select',
+    },
+    { key: 'upstream_token', label: 'Credential', required: true, sensitive: true, hasValue: false, value: '' },
+  ],
+  catalog: [],
+  pluginServers: codingMcpPluginServers,
+}
+
 export const codingMcpHandlers: HandlerFamily = {
   populated: [http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpPopulated))],
   empty: [http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpEmpty))],
@@ -157,4 +188,12 @@ export const codingMcpHandlers: HandlerFamily = {
 
 export const codingMcpNoCatalogHandlers: HttpHandler[] = [
   http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpNoCatalog)),
+]
+
+export const codingMcpInternalAvailableHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpInternalAvailable)),
+]
+
+export const codingMcpInternalSelectedHandlers: HttpHandler[] = [
+  http.get('/settings/api/coding-credentials', () => HttpResponse.json(codingMcpInternalSelected)),
 ]
