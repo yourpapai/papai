@@ -37,6 +37,7 @@ import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orch
 import { logger } from './logger.js'
 import { enqueueMessage, type CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
+import { registerModuleCommands } from './plugins/module-command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
 import { runRegistry } from './run-control/registry.js'
 
@@ -126,6 +127,7 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerDashboardCommand(observedChat)
   registerStopCommand(observedChat)
   registerPluginCommands(observedChat)
+  registerModuleCommands(observedChat)
 }
 async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps: BotDeps): Promise<void> {
   const start = Date.now()
