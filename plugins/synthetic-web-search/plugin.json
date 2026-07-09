@@ -5,6 +5,7 @@
   "description": "Web search via Synthetic Search API",
   "apiVersion": 1,
   "main": "index.ts",
+  "mcpServer": true,
   "contributes": {
     "tools": ["search"],
     "promptFragments": ["web-search-hint"],
