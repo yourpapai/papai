@@ -43,8 +43,18 @@ const ACP_SESSION_ACTION_TOOLS = new Set([
   'plugin_acp__answer_permission',
 ])
 
+const NERV_TASK_ACTION_TOOLS = new Set([
+  'plugin_nerv__create_coding_task',
+  'plugin_nerv__followup_coding_task',
+  'plugin_nerv__steer_coding_task',
+  'plugin_nerv__cancel_coding_task',
+])
+
+// Both plugins drive the same magi-backed coding work, so they share the one who-may-use gate.
+const CODING_ACTION_TOOLS = new Set([...ACP_SESSION_ACTION_TOOLS, ...NERV_TASK_ACTION_TOOLS])
+
 /**
- * Drops ACP session-action tools for actors not on the who-may-use allowlist.
+ * Drops coding session/task action tools for actors not on the who-may-use allowlist.
  * Returns `tools` reference-identical when `whoMayUse === 'members'` (the default).
  */
 export function applyWhoMayUseFilter(tools: ToolSet, whoMayUse: 'members' | string[], chatUserId: string): ToolSet {
@@ -52,7 +62,7 @@ export function applyWhoMayUseFilter(tools: ToolSet, whoMayUse: 'members' | stri
   if (whoMayUse.includes(chatUserId)) return tools
   const out: ToolSet = {}
   for (const [name, t] of Object.entries(tools)) {
-    if (t !== undefined && !ACP_SESSION_ACTION_TOOLS.has(name)) out[name] = t
+    if (t !== undefined && !CODING_ACTION_TOOLS.has(name)) out[name] = t
   }
   return out
 }
