@@ -5,8 +5,11 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { z } from 'zod'
+
 import { loadTrustedModules } from '../../src/composition/load-trusted-modules.js'
 import type { Migration } from '../../src/db/migrate.js'
+import { moduleToolRegistry } from '../../src/ports/module-tools.js'
 import type { TrustedModule } from '../../src/ports/module.js'
 
 const noopMigration = (id: string): Migration => ({ id, up: (): void => {} })
@@ -53,5 +56,23 @@ describe('loadTrustedModules', () => {
     }
     await loadTrustedModules([mod], () => {})
     expect(seen).toEqual(['done'])
+  })
+
+  test("registers each module's tools into the moduleToolRegistry", async () => {
+    moduleToolRegistry.clear()
+    const mod: TrustedModule = {
+      id: 'fixture',
+      tools: [
+        {
+          name: 'do_it',
+          description: 'do_it',
+          inputSchema: z.object({}),
+          execute: (): Promise<null> => Promise.resolve(null),
+        },
+      ],
+    }
+    await loadTrustedModules([mod], () => {})
+    expect(moduleToolRegistry.list().map((e) => `${e.moduleId}:${e.tool.name}`)).toContain('fixture:do_it')
+    moduleToolRegistry.clear()
   })
 })

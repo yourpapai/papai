@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { Migration } from '../db/migrate.js'
+import type { ModuleTool } from './module-tools.js'
 
 /**
  * A privileged, in-repo **Trusted Module** (Tier 1). Unlike a sandboxed plugin, a module may
@@ -22,6 +23,8 @@ export interface TrustedModule {
    * modules' or core's migration ids in the shared `migrations` bookkeeping table.
    */
   readonly migrations?: readonly Migration[]
+  /** LLM tools this module contributes (assembled by buildModuleToolSet, namespaced module_<id>__<tool>). */
+  readonly tools?: readonly ModuleTool[]
   /** Called once after all modules' migrations have run. Registers resolvers/adapters into ports. */
   onActivate?(): void | Promise<void>
 }

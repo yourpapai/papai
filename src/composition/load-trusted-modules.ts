@@ -5,6 +5,7 @@
 
 import { applyModuleMigrations } from '../db/index.js'
 import type { Migration } from '../db/migrate.js'
+import { moduleToolRegistry } from '../ports/module-tools.js'
 import type { TrustedModule } from '../ports/module.js'
 import { TRUSTED_MODULES } from './trusted-modules.js'
 
@@ -20,6 +21,11 @@ export async function loadTrustedModules(
   for (const mod of modules) {
     if (mod.migrations !== undefined && mod.migrations.length > 0) {
       runMigrationsFn(mod.migrations)
+    }
+  }
+  for (const mod of modules) {
+    if (mod.tools !== undefined && mod.tools.length > 0) {
+      moduleToolRegistry.register(mod.id, mod.tools)
     }
   }
   await modules.reduce(async (previous, mod) => {
