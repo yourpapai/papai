@@ -9,6 +9,7 @@ import { handleAdminCodingGuardrailsRoutes } from './settings/admin/coding-guard
 import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
 import { handleAdminMcpCatalogRoutes } from './settings/admin/mcp-catalog-routes.js'
 import { handleAdminMcpPluginServersRoutes } from './settings/admin/mcp-plugin-servers-routes.js'
+import { handleAdminModuleSectionsRoutes } from './settings/admin/module-sections-routes.js'
 import { handleAdminPluginConfigRoutes } from './settings/admin/plugin-config-routes.js'
 import { handleAdminReleaseNotesRoutes } from './settings/admin/release-notes-routes.js'
 import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
@@ -56,6 +57,7 @@ function routeAdminApi(req: Request, url: URL, options: SettingsApiRouteOptions)
   )
     return handleAdminRosterPluginsRoutes(req, url, p, options)
   if (p === '/settings/api/admin/plugin-config') return handleAdminPluginConfigRoutes(req, url, p)
+  if (p === '/settings/api/admin/module-sections') return handleAdminModuleSectionsRoutes(req, url, p)
   if (p === '/settings/api/admin/byok') return handleAdminByokRoutes(req, url)
   if (p === '/settings/api/admin/tool-defaults') return handleAdminToolDefaultsRoutes(req, url, p)
   if (p === '/settings/api/admin/coding-guardrails') return handleAdminCodingGuardrailsRoutes(req, url, p)
