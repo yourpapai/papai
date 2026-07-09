@@ -22,6 +22,7 @@
   let draftWhoMayUse: 'members' | 'allowlist' = $state('members')
   let draftAllowlist: string = $state('')
   let draftForceSharedKey: boolean = $state(false)
+  let draftMaxMcpServers: number = $state(3)
   let draftProvider: string = $state('anthropic')
   let draftApiKey: string = $state('')
   let draftBaseUrl: string = $state('')
@@ -40,6 +41,7 @@
       draftWhoMayUse = Array.isArray(next.guardrails.whoMayUse) ? 'allowlist' : 'members'
       draftAllowlist = Array.isArray(next.guardrails.whoMayUse) ? next.guardrails.whoMayUse.join('\n') : ''
       draftForceSharedKey = next.guardrails.forceSharedKey
+      draftMaxMcpServers = next.guardrails.maxMcpServers
       draftProvider = 'anthropic'
       draftApiKey = ''
       draftBaseUrl = ''
@@ -73,7 +75,12 @@
               .filter((s) => s.length > 0)
       await postAdminCodingGuardrails({
         kind: 'policy',
-        guardrails: { allowedAgents: draftAllowedAgents, whoMayUse, forceSharedKey: draftForceSharedKey },
+        guardrails: {
+          allowedAgents: draftAllowedAgents,
+          whoMayUse,
+          forceSharedKey: draftForceSharedKey,
+          maxMcpServers: draftMaxMcpServers,
+        },
       })
       await load()
       status = 'Policy saved.'
@@ -206,6 +213,23 @@
         Force all users to use the operator shared key (ignore user-configured keys)
       </label>
 
+      <h3 class="guardrails-heading">Max MCP servers per session</h3>
+      <label class="guardrails-number">
+        <input
+          type="number"
+          min="1"
+          max="8"
+          step="1"
+          data-testid="guardrails-max-mcp-servers"
+          value={draftMaxMcpServers}
+          disabled={loading}
+          oninput={(e) => {
+            const next = Number((e.currentTarget as HTMLInputElement).value)
+            if (Number.isInteger(next)) draftMaxMcpServers = next
+          }} />
+        Maximum number of MCP servers a user may select at once
+      </label>
+
       <div class="guardrails-save">
         <Btn
           variant="primary"
@@ -320,12 +344,22 @@
     gap: 8px;
   }
   .guardrails-checkbox,
-  .guardrails-radio {
+  .guardrails-radio,
+  .guardrails-number {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 14px;
     cursor: pointer;
+  }
+  .guardrails-number input {
+    width: 4em;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 13px;
+    font-family: var(--font-mono);
   }
   .guardrails-allowlist {
     width: 100%;

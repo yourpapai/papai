@@ -37,10 +37,10 @@ export const adminReleaseNotesHandlers: HandlerFamily = {
 }
 
 // --- Admin: coding guardrails (GET /settings/api/admin/coding-guardrails) ---
-// AdminCodingGuardrailsResponseSchema: { guardrails: { allowedAgents, whoMayUse, forceSharedKey }, sharedKeySet }
+// AdminCodingGuardrailsResponseSchema: { guardrails: { allowedAgents, whoMayUse, forceSharedKey, maxMcpServers }, sharedKeySet }
 
 const adminCodingGuardrailsPopulated = {
-  guardrails: { allowedAgents: ['claude-code'], whoMayUse: 'members', forceSharedKey: false },
+  guardrails: { allowedAgents: ['claude-code'], whoMayUse: 'members', forceSharedKey: false, maxMcpServers: 3 },
   sharedKeySet: true,
 }
 
@@ -51,7 +51,7 @@ export const adminCodingGuardrailsHandlers: HandlerFamily = {
   empty: [
     http.get('/settings/api/admin/coding-guardrails', () =>
       HttpResponse.json({
-        guardrails: { allowedAgents: [], whoMayUse: 'members', forceSharedKey: false },
+        guardrails: { allowedAgents: [], whoMayUse: 'members', forceSharedKey: false, maxMcpServers: 3 },
         sharedKeySet: false,
       }),
     ),
@@ -61,7 +61,7 @@ export const adminCodingGuardrailsHandlers: HandlerFamily = {
     http.get('/settings/api/admin/coding-guardrails', async () => {
       await delay(NEVER_RESOLVE_MS)
       return HttpResponse.json({
-        guardrails: { allowedAgents: [], whoMayUse: 'members', forceSharedKey: false },
+        guardrails: { allowedAgents: [], whoMayUse: 'members', forceSharedKey: false, maxMcpServers: 3 },
         sharedKeySet: false,
       })
     }),

@@ -20,12 +20,17 @@ const drain = async (): Promise<void> => {
 }
 
 const defaultPayload = {
-  guardrails: { allowedAgents: ['claude', 'codex', 'opencode'], whoMayUse: 'members', forceSharedKey: false },
+  guardrails: {
+    allowedAgents: ['claude', 'codex', 'opencode'],
+    whoMayUse: 'members',
+    forceSharedKey: false,
+    maxMcpServers: 3,
+  },
   sharedKeySet: false,
 }
 
 const keySetPayload = {
-  guardrails: { allowedAgents: ['claude'], whoMayUse: ['user-1'], forceSharedKey: true },
+  guardrails: { allowedAgents: ['claude'], whoMayUse: ['user-1'], forceSharedKey: true, maxMcpServers: 5 },
   sharedKeySet: true,
 }
 
@@ -77,6 +82,40 @@ describe('AdminCodingGuardrailsSection', () => {
     await drain()
     expect(lastPostBody).not.toBeNull()
     expect(JSON.stringify(JSON.parse(lastPostBody!))).toContain('"kind":"policy"')
+    void unmount(component)
+  })
+
+  test('renders the max MCP servers input populated from the loaded guardrails', async () => {
+    setMockFetch(() => Promise.resolve(json(keySetPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminCodingGuardrailsSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="guardrails-max-mcp-servers"]')
+    expect(input).not.toBeNull()
+    expect(input!.type).toBe('number')
+    expect(input!.min).toBe('1')
+    expect(input!.max).toBe('8')
+    expect(input!.value).toBe('5')
+    void unmount(component)
+  })
+
+  test('changing max MCP servers and saving includes it in the policy POST body', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminCodingGuardrailsSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="guardrails-max-mcp-servers"]')!
+    input.value = '7'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await drain()
+    lastPostBody = null
+    target.querySelector<HTMLButtonElement>('[data-testid="guardrails-save-policy"]')!.click()
+    await drain()
+    expect(lastPostBody).not.toBeNull()
+    expect(JSON.stringify(JSON.parse(lastPostBody!))).toContain('"maxMcpServers":7')
     void unmount(component)
   })
 

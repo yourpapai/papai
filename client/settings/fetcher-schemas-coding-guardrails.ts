@@ -9,6 +9,7 @@ const CodingGuardrailsSchema = z.object({
   allowedAgents: z.array(z.string()),
   whoMayUse: z.union([z.literal('members'), z.array(z.string())]),
   forceSharedKey: z.boolean(),
+  maxMcpServers: z.number().int().min(1).max(8).default(3),
 })
 export const AdminCodingGuardrailsResponseSchema = z.object({
   guardrails: CodingGuardrailsSchema,

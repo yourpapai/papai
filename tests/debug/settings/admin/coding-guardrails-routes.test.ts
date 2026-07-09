@@ -18,6 +18,7 @@ const GuardrailsResponseSchema = z.object({
     allowedAgents: z.array(z.string()),
     whoMayUse: z.union([z.literal('members'), z.array(z.string())]),
     forceSharedKey: z.boolean(),
+    maxMcpServers: z.number(),
   }),
   sharedKeySet: z.boolean(),
 })
@@ -61,16 +62,17 @@ describe('settings admin coding-guardrails routes', () => {
     expect(body.guardrails.allowedAgents).toEqual(['claude', 'codex', 'opencode'])
     expect(body.guardrails.whoMayUse).toBe('members')
     expect(body.guardrails.forceSharedKey).toBe(false)
+    expect(body.guardrails.maxMcpServers).toBe(3)
   })
 
-  test('POST kind:policy round-trips guardrails', async () => {
+  test('POST kind:policy round-trips guardrails, including a non-default maxMcpServers', async () => {
     const url = new URL('https://x/settings/api/admin/coding-guardrails')
     const req = new Request(url, {
       method: 'POST',
       headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         kind: 'policy',
-        guardrails: { allowedAgents: ['claude'], whoMayUse: ['u1'], forceSharedKey: true },
+        guardrails: { allowedAgents: ['claude'], whoMayUse: ['u1'], forceSharedKey: true, maxMcpServers: 5 },
       }),
     })
     const res = await handleAdminCodingGuardrailsRoutes(req, url, url.pathname)
@@ -79,6 +81,30 @@ describe('settings admin coding-guardrails routes', () => {
     expect(body.guardrails.allowedAgents).toEqual(['claude'])
     expect(body.guardrails.whoMayUse).toEqual(['u1'])
     expect(body.guardrails.forceSharedKey).toBe(true)
+    expect(body.guardrails.maxMcpServers).toBe(5)
+
+    // A subsequent GET reflects the persisted non-default value.
+    const getRes = await handleAdminCodingGuardrailsRoutes(
+      new Request(url, { headers: authHeaders(adminSession) }),
+      url,
+      url.pathname,
+    )
+    const getBody = GuardrailsResponseSchema.parse(await getRes.json())
+    expect(getBody.guardrails.maxMcpServers).toBe(5)
+  })
+
+  test.each([0, 9])('POST kind:policy rejects an out-of-range maxMcpServers of %p', async (maxMcpServers) => {
+    const url = new URL('https://x/settings/api/admin/coding-guardrails')
+    const req = new Request(url, {
+      method: 'POST',
+      headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'policy',
+        guardrails: { allowedAgents: ['claude'], whoMayUse: 'members', forceSharedKey: false, maxMcpServers },
+      }),
+    })
+    const res = await handleAdminCodingGuardrailsRoutes(req, url, url.pathname)
+    expect(res.status).toBe(422)
   })
 
   test('POST kind:shared-key sets sharedKeySet:true without leaking the key', async () => {
