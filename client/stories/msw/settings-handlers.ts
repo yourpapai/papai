@@ -115,7 +115,7 @@ export const kaneoHandlers = {
         contextId: 'ctx-personal-1',
         login: 'alice@example.com',
         status: 'active',
-        kaneoUrl: 'https://workspace.kaneo.app',
+        instanceUrl: 'https://workspace.kaneo.app',
       }),
     ),
     http.post('/settings/api/kaneo/credentials', () =>

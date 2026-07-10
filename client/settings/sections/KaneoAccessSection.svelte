@@ -100,15 +100,15 @@
   {:else if credentials !== null}
     <div class="kaneo-rows">
       <KV k="Login email" v={credentials.login} />
-      {#if credentials.kaneoUrl !== null}
+      {#if credentials.instanceUrl !== null}
         <div class="kaneo-url">
           <KV k="Workspace URL">
             {#snippet v()}
               <a
                 class="kaneo-url__link"
-                href={credentials.kaneoUrl}
+                href={credentials.instanceUrl}
                 target="_blank"
-                rel="noopener noreferrer">{credentials.kaneoUrl}</a>
+                rel="noopener noreferrer">{credentials.instanceUrl}</a>
             {/snippet}
           </KV>
         </div>

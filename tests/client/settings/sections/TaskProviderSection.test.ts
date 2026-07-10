@@ -50,7 +50,7 @@ const provisionPayload = {
   contextId: 'user:1',
   email: 'a@b.c',
   password: 'p@ss',
-  kaneoUrl: 'https://k',
+  instanceUrl: 'https://k',
   workspaceId: 'w1',
 }
 
