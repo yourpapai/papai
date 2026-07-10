@@ -188,6 +188,9 @@
     "plugins/nerv/index.ts": ["exports"],
     "plugins/mcp-sentry/index.ts": ["exports"],
     "plugins/mcp-confluence/index.ts": ["exports"],
+    // input-schema.ts is consumed by tool registration in a later task; only the
+    // schema test imports it for now.
+    "plugins/mcp-confluence/input-schema.ts": ["files"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.
