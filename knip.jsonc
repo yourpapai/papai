@@ -101,9 +101,6 @@
     // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
     "src/byok-llm/store.ts": ["files", "exports"],
     "src/byok-llm/types.ts": ["files", "types"],
-    // setMcpRedactionConfig is a test-only seam today; the settings-route admin
-    // config writer for mcp_redaction lands in a downstream task.
-    "src/coding-credentials/mcp-redaction.ts": ["exports"],
     // isBlockedResult is a test-only seam.
     "src/mcp-server/redaction.ts": ["exports"],
     // partitionToolNames is a test-only seam.
