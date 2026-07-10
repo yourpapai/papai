@@ -105,11 +105,6 @@
     "src/instances/admin-store.ts": ["exports"],
     // deleteContextsByTaskInstance, deleteContextsByPlatformInstance are test-only seams.
     "src/instances/context-store.ts": ["exports"],
-    // The membership barrel is consumed only by tests now that the kernel goes through
-    // src/ports/membership-store.ts instead of importing this feature directly (Phase 3b
-    // Task 3). Task 4 relocates src/providers/membership/** under
-    // src/modules/task-tracker/membership/**, where this will be revisited.
-    "src/providers/membership/index.ts": ["files"],
     // knip --strict cannot trace test-to-test cross-references.
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports"],

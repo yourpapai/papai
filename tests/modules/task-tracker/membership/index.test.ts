@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { ensureWorkspaceMember, defaultMembershipDeps } from '../../../src/providers/membership/index.js'
+import { ensureWorkspaceMember, defaultMembershipDeps } from '../../../../src/modules/task-tracker/membership/index.js'
 
 describe('membership/index barrel', () => {
   test('exports ensureWorkspaceMember', () => {

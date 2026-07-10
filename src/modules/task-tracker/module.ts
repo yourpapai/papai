@@ -7,8 +7,8 @@ import { migration060KaneoWorkspaceMembers } from '../../db/migrations/060_kaneo
 import { migration068TaskProviderMembers } from '../../db/migrations/068_task_provider_members.js'
 import { membershipStorePort } from '../../ports/membership-store.js'
 import type { TrustedModule } from '../../ports/module.js'
-import { registerMembershipSubscriber } from '../../providers/membership/subscriber.js'
 import { taskProviderMembershipStore } from './membership-store.js'
+import { registerMembershipSubscriber } from './membership/index.js'
 
 /**
  * The task-tracker trusted module. It owns the host-side membership store (`task_provider_members`)

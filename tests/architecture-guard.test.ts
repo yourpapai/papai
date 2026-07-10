@@ -35,4 +35,16 @@ describe('architecture guard: core never names a feature', () => {
     const text = readFileSync('src/llm-orchestrator-tools.ts', 'utf8')
     expect(/coding-credentials|resolveCodingGuardrails/u.test(text)).toBe(false)
   })
+
+  test('src/index.ts does not import the membership feature directly', () => {
+    const source = readFileSync('src/index.ts', 'utf8')
+    expect(source).not.toContain('providers/membership')
+    expect(source).not.toContain('modules/task-tracker')
+  })
+
+  test('src/llm-orchestrator.ts does not import the membership feature directly', () => {
+    const source = readFileSync('src/llm-orchestrator.ts', 'utf8')
+    expect(source).not.toContain('providers/membership')
+    expect(source).not.toContain('modules/task-tracker')
+  })
 })

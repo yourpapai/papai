@@ -7,13 +7,16 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { eq, and } from 'drizzle-orm'
 
-import { getDrizzleDb } from '../../../src/db/drizzle.js'
-import { taskProviderMembers } from '../../../src/db/schema.js'
-import type { AppError } from '../../../src/errors.js'
-import { getIdentityMapping } from '../../../src/identity/mapping.js'
-import { ensureWorkspaceMember, type MembershipDeps } from '../../../src/providers/membership/ensure-member.js'
-import type { TaskProvider } from '../../../src/providers/types.js'
-import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
+import { getDrizzleDb } from '../../../../src/db/drizzle.js'
+import { taskProviderMembers } from '../../../../src/db/schema.js'
+import type { AppError } from '../../../../src/errors.js'
+import { getIdentityMapping } from '../../../../src/identity/mapping.js'
+import {
+  ensureWorkspaceMember,
+  type MembershipDeps,
+} from '../../../../src/modules/task-tracker/membership/ensure-member.js'
+import type { TaskProvider } from '../../../../src/providers/types.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 const GROUP_CTX = 'grp-ctx-1'
 const CHAT_USER = 'chat-user-1'
@@ -338,8 +341,8 @@ describe('ensureWorkspaceMember', () => {
     expect(result).toBe('exists')
   })
 
-  test('ensureWorkspaceMember is exported from src/providers/membership/index.ts', async () => {
-    const mod = await import('../../../src/providers/membership/index.js')
+  test('ensureWorkspaceMember is exported from src/modules/task-tracker/membership/index.ts', async () => {
+    const mod = await import('../../../../src/modules/task-tracker/membership/index.js')
     expect(typeof mod.ensureWorkspaceMember).toBe('function')
   })
 })

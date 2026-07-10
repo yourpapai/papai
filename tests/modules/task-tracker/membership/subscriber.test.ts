@@ -5,8 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { emitGlobal, subscribeCountForTest } from '../../../src/debug/event-bus.js'
-import { mockLogger, setupTestDb, waitFor } from '../../utils/test-helpers.js'
+import { emitGlobal, subscribeCountForTest } from '../../../../src/debug/event-bus.js'
+import { mockLogger, setupTestDb, waitFor } from '../../../utils/test-helpers.js'
 
 describe('membership subscriber', () => {
   let ensureCalls: Array<{ groupContextId: string; chatUserId: string }> = []
@@ -20,7 +20,8 @@ describe('membership subscriber', () => {
   })
 
   test('registerMembershipSubscriber adds a global listener', async () => {
-    const { registerMembershipSubscriber } = await import('../../../src/providers/membership/subscriber.js')
+    const { registerMembershipSubscriber } =
+      await import('../../../../src/modules/task-tracker/membership/subscriber.js')
     const before = subscribeCountForTest()
     const unregister = registerMembershipSubscriber({
       ensure: (g, u) => {
@@ -34,7 +35,8 @@ describe('membership subscriber', () => {
   })
 
   test('group_member:added triggers ensureWorkspaceMember', async () => {
-    const { registerMembershipSubscriber } = await import('../../../src/providers/membership/subscriber.js')
+    const { registerMembershipSubscriber } =
+      await import('../../../../src/modules/task-tracker/membership/subscriber.js')
     const unregister = registerMembershipSubscriber({
       ensure: (g, u) => {
         ensureCalls.push({ groupContextId: g, chatUserId: u })
@@ -52,7 +54,8 @@ describe('membership subscriber', () => {
   })
 
   test('group_member:added skips placeholder userIds', async () => {
-    const { registerMembershipSubscriber } = await import('../../../src/providers/membership/subscriber.js')
+    const { registerMembershipSubscriber } =
+      await import('../../../../src/modules/task-tracker/membership/subscriber.js')
     const unregister = registerMembershipSubscriber({
       ensure: (g, u) => {
         ensureCalls.push({ groupContextId: g, chatUserId: u })
@@ -72,7 +75,8 @@ describe('membership subscriber', () => {
   })
 
   test('group_member:removed calls markInactive', async () => {
-    const { registerMembershipSubscriber } = await import('../../../src/providers/membership/subscriber.js')
+    const { registerMembershipSubscriber } =
+      await import('../../../../src/modules/task-tracker/membership/subscriber.js')
     const unregister = registerMembershipSubscriber({
       ensure: () => Promise.resolve('skipped' as const),
       markInactive: (g, u) => {

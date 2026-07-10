@@ -5,9 +5,9 @@
 
 import pLimit from 'p-limit'
 
-import { getDrizzleDb } from '../../db/drizzle.js'
-import { groupMembers } from '../../db/schema.js'
-import { logger } from '../../logger.js'
+import { getDrizzleDb } from '../../../db/drizzle.js'
+import { groupMembers } from '../../../db/schema.js'
+import { logger } from '../../../logger.js'
 import type { MemberOutcome } from './ensure-member.js'
 
 const log = logger.child({ scope: 'providers:membership:backfill' })

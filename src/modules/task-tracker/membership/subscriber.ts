@@ -5,9 +5,9 @@
 
 import pLimit from 'p-limit'
 
-import type { DebugEvent } from '../../debug/event-bus.js'
-import { subscribe, unsubscribe } from '../../debug/event-bus.js'
-import { logger } from '../../logger.js'
+import type { DebugEvent } from '../../../debug/event-bus.js'
+import { subscribe, unsubscribe } from '../../../debug/event-bus.js'
+import { logger } from '../../../logger.js'
 import type { MemberOutcome } from './ensure-member.js'
 
 const log = logger.child({ scope: 'providers:membership:subscriber' })
