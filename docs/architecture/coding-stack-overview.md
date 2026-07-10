@@ -245,6 +245,15 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   `MCP_SERVER_SIGNING_SECRET`). Selecting `mcp.server = 'plugin:<id>'` stores no
   `upstream_token`. Exposure is re-checked on every redemption, so disabling a plugin server
   takes effect immediately regardless of the token's TTL.
+- A plugin can additionally opt into **bridge-level response redaction** with manifest flag
+  `mcpResponseRedaction: true`: `callPluginMcpTool` (`src/mcp-server/plugin-bridge.ts`) runs the
+  tool's JSON result through `src/mcp-server/redaction.ts` before it reaches the coding agent.
+  This requires operator `mcp_redaction` admin config (`src/coding-credentials/mcp-redaction.ts`)
+  and is fail-closed at both call time (a redacting plugin without config returns a blocked
+  result) and at server-selection time (`listEnabledInternalMcpServers` in
+  `src/coding-credentials/mcp-plugin-servers.ts` excludes the plugin until configured). The
+  `mcp-sentry` plugin (`plugins/mcp-sentry/`) is the first first-party MCP plugin migrated onto
+  this pattern — 7 read-only Sentry issue-diagnosis tools.
 
 ### 3.7 Transcript viewer (papai-side)
 
