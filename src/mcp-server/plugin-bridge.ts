@@ -6,11 +6,14 @@
 import type { ToolExecutionOptions } from 'ai'
 import { asSchema } from 'ai'
 
+import { parseScopedContextId } from '../chat/scoped-context.js'
+import { resolveMcpRedactionConfig } from '../coding-credentials/mcp-redaction.js'
 import { logger } from '../logger.js'
 import { contributionRegistry } from '../plugins/contributions.js'
 import { getPluginToolInputSchema } from '../plugins/input-schema.js'
 import { buildPluginToolRuntimeContext } from '../plugins/tool-runtime.js'
 import type { PluginTool } from '../plugins/types.js'
+import { BLOCK_PREFIX, DEFAULT_REDACTION_PROMPT, redactText, sizeGuard } from './redaction.js'
 
 const log = logger.child({ scope: 'mcp-server:plugin-bridge' })
 
@@ -101,7 +104,17 @@ export async function callPluginMcpTool(args: CallPluginMcpToolArgs): Promise<Mc
 
   try {
     const result = await pluginTool.execute(args.input, runtimeContext, buildExecutionOptions(args))
-    return textResult(typeof result === 'string' ? result : JSON.stringify(result))
+    const rawText = typeof result === 'string' ? result : JSON.stringify(result)
+    if (contributions.manifest.mcpResponseRedaction !== true) return textResult(rawText)
+
+    const platformInstanceId = parseScopedContextId(args.storageContextId)?.platformInstanceId
+    const config = platformInstanceId === undefined ? null : resolveMcpRedactionConfig(platformInstanceId)
+    if (config === null) {
+      return textResult(`${BLOCK_PREFIX}: mcp_redaction is not configured]`, true)
+    }
+    const redacted = await redactText(rawText, DEFAULT_REDACTION_PROMPT, config, fetch, args.abortSignal)
+    const guarded = sizeGuard(redacted)
+    return textResult(guarded, guarded.startsWith(BLOCK_PREFIX) ? true : undefined)
   } catch (err) {
     log.warn(
       { pluginId: args.pluginId, tool: args.toolName, error: err instanceof Error ? err.message : String(err) },

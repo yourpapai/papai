@@ -101,12 +101,11 @@
     // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
     "src/byok-llm/store.ts": ["files", "exports"],
     "src/byok-llm/types.ts": ["files", "types"],
-    // mcp_redaction admin-config store is created ahead of the redactor consumer wiring
-    // in the MCP response-redaction plan.
-    "src/coding-credentials/mcp-redaction.ts": ["files", "exports"],
-    // Bridge-level MCP response redactor is created ahead of the plugin bridge consumer wiring
-    // in the MCP response-redaction plan.
-    "src/mcp-server/redaction.ts": ["files", "exports"],
+    // setMcpRedactionConfig is a test-only seam today; the settings-route admin
+    // config writer for mcp_redaction lands in a downstream task.
+    "src/coding-credentials/mcp-redaction.ts": ["exports"],
+    // isBlockedResult is a test-only seam.
+    "src/mcp-server/redaction.ts": ["exports"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
