@@ -5,24 +5,24 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { kaneoWorkspaceMembers, type KaneoWorkspaceMember } from '../../src/db/membership-schema.js'
+import { taskProviderMembers, type TaskProviderMember } from '../../src/db/membership-schema.js'
 
 describe('membership-schema', () => {
-  test('kaneoWorkspaceMembers table has correct column definitions', () => {
+  test('taskProviderMembers table has correct column definitions', () => {
     // Access column objects directly on the table (Drizzle table API)
-    expect(kaneoWorkspaceMembers.groupContextId).toBeDefined()
-    expect(kaneoWorkspaceMembers.chatUserId).toBeDefined()
-    expect(kaneoWorkspaceMembers.providerName).toBeDefined()
-    expect(kaneoWorkspaceMembers.providerUserId).toBeDefined()
-    expect(kaneoWorkspaceMembers.login).toBeDefined()
-    expect(kaneoWorkspaceMembers.status).toBeDefined()
-    expect(kaneoWorkspaceMembers.encryptedPassword).toBeDefined()
-    expect(kaneoWorkspaceMembers.createdAt).toBeDefined()
+    expect(taskProviderMembers.groupContextId).toBeDefined()
+    expect(taskProviderMembers.chatUserId).toBeDefined()
+    expect(taskProviderMembers.providerName).toBeDefined()
+    expect(taskProviderMembers.providerUserId).toBeDefined()
+    expect(taskProviderMembers.login).toBeDefined()
+    expect(taskProviderMembers.status).toBeDefined()
+    expect(taskProviderMembers.encryptedPassword).toBeDefined()
+    expect(taskProviderMembers.createdAt).toBeDefined()
   })
 
-  test('KaneoWorkspaceMember type is inferred from the table', () => {
+  test('TaskProviderMember type is inferred from the table', () => {
     // Type-level check: ensure the type has encryptedPassword as string | null
-    const row: KaneoWorkspaceMember = {
+    const row: TaskProviderMember = {
       groupContextId: 'g1',
       chatUserId: 'u1',
       providerName: 'kaneo',
