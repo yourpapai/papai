@@ -35,7 +35,7 @@ export type TaskProviderProvisionOutcome =
       status: 'provisioned'
       email: string
       password: string
-      kaneoUrl: string
+      instanceUrl: string
       apiKey: string
       workspaceId: string
     }

@@ -33,7 +33,7 @@ function outcomeToResponse(scope: ContextScope, outcome: TaskProviderProvisionOu
       contextId: scope.contextId,
       email: outcome.email,
       password: outcome.password,
-      kaneoUrl: outcome.kaneoUrl,
+      instanceUrl: outcome.instanceUrl,
       workspaceId: outcome.workspaceId,
     })
   }

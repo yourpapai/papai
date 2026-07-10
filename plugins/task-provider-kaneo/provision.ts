@@ -187,7 +187,7 @@ export type ProvisionOutcome =
       status: 'provisioned'
       email: string
       password: string
-      kaneoUrl: string
+      instanceUrl: string
       apiKey: string
       workspaceId: string
     }
@@ -221,12 +221,12 @@ export async function provisionAndConfigure(
   if (normalizedConfig === null) return { status: 'failed', error: 'Kaneo task instance public URL is missing' }
 
   try {
-    const kaneoUrl = normalizedConfig.publicUrl
-    let kaneoInternalUrl = kaneoUrl
+    const instanceUrl = normalizedConfig.publicUrl
+    let kaneoInternalUrl = instanceUrl
     if (normalizedConfig.internalUrl !== undefined) {
       kaneoInternalUrl = normalizedConfig.internalUrl
     }
-    const result = await provisionKaneoUser(kaneoInternalUrl, kaneoUrl, userId, username)
+    const result = await provisionKaneoUser(kaneoInternalUrl, instanceUrl, userId, username)
     setConfigValue(userId, KANEO_PLUGIN_CREDENTIAL_KEY, result.kaneoKey)
     setConfigValue(userId, KANEO_PLUGIN_WORKSPACE_KEY, result.workspaceId)
     clearProvisionedContextToolCaches(userId)
@@ -235,7 +235,7 @@ export async function provisionAndConfigure(
       status: 'provisioned',
       email: result.email,
       password: result.password,
-      kaneoUrl,
+      instanceUrl,
       apiKey: result.kaneoKey,
       workspaceId: result.workspaceId,
     }

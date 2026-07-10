@@ -3,8 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export function formatKaneoProvisionedMessage(outcome: { kaneoUrl: string; email: string; password: string }): string {
-  return `✅ Your Kaneo account has been created!\n🌐 ${outcome.kaneoUrl}\n📧 Email: ${outcome.email}\n🔑 Password: ${outcome.password}\n\nThe bot is already configured and ready to use.`
+export function formatKaneoProvisionedMessage(outcome: {
+  instanceUrl: string
+  email: string
+  password: string
+}): string {
+  return `✅ Your Kaneo account has been created!\n🌐 ${outcome.instanceUrl}\n📧 Email: ${outcome.email}\n🔑 Password: ${outcome.password}\n\nThe bot is already configured and ready to use.`
 }
 
 export const KANEO_REGISTRATION_DISABLED_MESSAGE =

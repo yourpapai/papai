@@ -22,7 +22,7 @@ type TaskProviderProvisionLike = (context: {
   publicUrl: string | undefined
   internalUrl: string | undefined
 }) => Promise<
-  | { status: 'provisioned'; email: string; password: string; kaneoUrl: string; apiKey: string; workspaceId: string }
+  | { status: 'provisioned'; email: string; password: string; instanceUrl: string; apiKey: string; workspaceId: string }
   | { status: 'registration_disabled' }
   | { status: 'failed'; error: string }
 >
