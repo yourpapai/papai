@@ -30,13 +30,7 @@ import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from './
 import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
 import { collectStartupCompatibilityInstances } from './plugins/startup-compatibility.js'
 import { evaluateStartupGuard } from './plugins/startup-guard.js'
-import {
-  defaultMembershipDeps,
-  ensureWorkspaceMember,
-  markMemberInactive,
-  registerMembershipSubscriber,
-  runMembershipBackfill,
-} from './providers/membership/index.js'
+import { membershipStorePort } from './ports/membership-store.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
@@ -109,23 +103,13 @@ for (const instance of activePlatformResult.instances) {
 }
 setRuntimeChatRouter(chatProvider)
 
-const membershipDeps = {
-  ...defaultMembershipDeps,
-  resolveUserLabel: (userId: string, groupContextId: string, platformInstanceId: string): Promise<string | null> =>
-    chatProvider.resolveUserLabel(userId, { contextId: groupContextId, contextType: 'group', platformInstanceId }),
-}
-registerMembershipSubscriber({
-  ensure: (groupContextId, chatUserId) => ensureWorkspaceMember(groupContextId, chatUserId, membershipDeps),
-  markInactive: (groupContextId, chatUserId) => {
-    markMemberInactive(groupContextId, chatUserId)
-    return Promise.resolve()
-  },
-})
+membershipStorePort.setUserLabelResolver((userId, groupContextId, platformInstanceId) =>
+  chatProvider.resolveUserLabel(userId, { contextId: groupContextId, contextType: 'group', platformInstanceId }),
+)
 
 // Fire-and-forget startup backfill: ensure every existing group member is provisioned.
-void runMembershipBackfill({
-  ensure: (groupContextId, chatUserId) => ensureWorkspaceMember(groupContextId, chatUserId, membershipDeps),
-})
+void membershipStorePort
+  .runStartupBackfill()
   .then((result) => {
     log.info(result, 'Startup membership backfill finished')
   })

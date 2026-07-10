@@ -18,4 +18,8 @@ describe('task-tracker module', () => {
       '068_task_provider_members',
     ])
   })
+
+  test('has an onActivate hook', () => {
+    expect(typeof taskTrackerModule.onActivate).toBe('function')
+  })
 })
