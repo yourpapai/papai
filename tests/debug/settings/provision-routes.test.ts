@@ -114,7 +114,7 @@ describe('settings kaneo provision route', () => {
         status: 'provisioned',
         email: 'u@example.com',
         password: 'pw',
-        kaneoUrl: 'https://k.example.com',
+        instanceUrl: 'https://k.example.com',
         apiKey: 'k',
         workspaceId: 'ws',
       })

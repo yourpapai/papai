@@ -678,7 +678,7 @@ describe('kaneoProvision', () => {
 
     assertProvisioned(outcome)
     expect(outcome.email).toContain('alice')
-    expect(outcome.kaneoUrl).toBe('https://k.example.com')
+    expect(outcome.instanceUrl).toBe('https://k.example.com')
     expect(outcome.workspaceId).toBe('ws-1')
     expect(capturedUrls.length).toBeGreaterThan(0)
     expect(capturedUrls.every((u) => u.startsWith('https://k-internal.example.com/'))).toBe(true)
