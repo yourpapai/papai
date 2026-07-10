@@ -6,8 +6,6 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 
-import { MIGRATIONS } from '../../../src/db/index.js'
-import { runMigrations } from '../../../src/db/migrate.js'
 import { migration060KaneoWorkspaceMembers } from '../../../src/db/migrations/060_kaneo_workspace_members.js'
 
 const cols = (db: Database, table: string): string[] =>
@@ -23,7 +21,7 @@ describe('migration 060 kaneo_workspace_members', () => {
 
   test('table exists with required columns after migration', () => {
     const db = new Database(':memory:')
-    runMigrations(db, MIGRATIONS)
+    migration060KaneoWorkspaceMembers.up(db)
     const tableCols = cols(db, 'kaneo_workspace_members')
     expect(tableCols).toContain('group_context_id')
     expect(tableCols).toContain('chat_user_id')
@@ -37,14 +35,14 @@ describe('migration 060 kaneo_workspace_members', () => {
 
   test('up is idempotent (safe to re-run)', () => {
     const db = new Database(':memory:')
-    runMigrations(db, MIGRATIONS)
+    migration060KaneoWorkspaceMembers.up(db)
     expect(() => migration060KaneoWorkspaceMembers.up(db)).not.toThrow()
     expect(cols(db, 'kaneo_workspace_members')).toContain('group_context_id')
   })
 
   test('unique constraint prevents duplicate (group_context_id, chat_user_id, provider_name)', () => {
     const db = new Database(':memory:')
-    runMigrations(db, MIGRATIONS)
+    migration060KaneoWorkspaceMembers.up(db)
     db.run(`INSERT INTO kaneo_workspace_members
       (group_context_id, chat_user_id, provider_name, provider_user_id, login, status, created_at)
       VALUES ('g1','u1','kaneo','pid1','u1@pap.ai','active','2026-01-01T00:00:00.000Z')`)
