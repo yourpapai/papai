@@ -187,16 +187,6 @@
     "plugins/task-provider-youtrack/index.ts": ["exports"],
     "plugins/nerv/index.ts": ["exports"],
     "plugins/mcp-sentry/index.ts": ["exports"],
-    // Tool input schemas, consumed only by mcp-sentry-schema.test.ts until a later
-    // task wires them into the plugin's tool registrations.
-    "plugins/mcp-sentry/input-schema.ts": ["files"],
-    // HTTP client, consumed only by mcp-sentry.test.ts until the next task wires it
-    // into the plugin's tool registrations.
-    "plugins/mcp-sentry/client.ts": ["files"],
-    // Static key-name sanitizer, imported by client.ts (which is itself not yet
-    // reachable from the plugin's index.ts) and by mcp-sentry.test.ts; stays
-    // unreachable-from-entry until the tool-registration task wires client.ts in.
-    "plugins/mcp-sentry/format.ts": ["files"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.
