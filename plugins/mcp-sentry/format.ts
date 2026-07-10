@@ -8,7 +8,8 @@ const SECRET_KEY = /password|token|secret|apikey|api_key|credential|authorizatio
 function sanitizeKeyValue(key: string | undefined, value: unknown): unknown {
   if (key === undefined || key === 'key') return value
   if (!SECRET_KEY.test(key)) return value
-  return value ? '[REDACTED]' : value
+  const falsy = value === undefined || value === null || value === false || value === '' || value === 0
+  return falsy ? value : '[REDACTED]'
 }
 
 export function sanitizeObject(input: unknown, key?: string): unknown {
