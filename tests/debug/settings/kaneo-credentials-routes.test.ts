@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
@@ -13,8 +13,15 @@ import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { taskProviderMembers } from '../../../src/db/schema.js'
 import { handleKaneoCredentialsRoutes } from '../../../src/debug/settings/kaneo-credentials-routes.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
+import { setContextSettings } from '../../../src/instances/context-store.js'
 import { encryptInstanceConfig } from '../../../src/instances/encryption.js'
+import { insertTaskInstance } from '../../../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../../src/providers/registry.js'
 import { addUser } from '../../../src/users.js'
+import { createMockProvider } from '../../tools/mock-provider.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
 
@@ -25,8 +32,32 @@ const GetResponseSchema = z.object({
   contextId: z.string(),
   login: z.string(),
   status: z.string(),
-  kaneoUrl: z.string().nullable().optional(),
+  instanceUrl: z.string().nullable().optional(),
 })
+
+/** A provisioning-capable provider type scoped to this suite, cleaned up in afterEach. */
+const PROVISIONING_PLUGIN_ID = 'test-cred-provisioning'
+const PROVISIONING_TYPE = 'cred-kaneo'
+function registerProvisioningType(): void {
+  registerContributedTaskProviderType(PROVISIONING_TYPE, {
+    pluginId: PROVISIONING_PLUGIN_ID,
+    factory: () => createMockProvider({ name: PROVISIONING_TYPE }),
+    capabilities: new Set(['members.provision']),
+    displayName: 'Provisioning',
+  })
+}
+
+/** A non-provisioning-capable provider type scoped to this suite, cleaned up in afterEach. */
+const NON_PROVISIONING_PLUGIN_ID = 'test-cred-non-provisioning'
+const NON_PROVISIONING_TYPE = 'cred-youtrack'
+function registerNonProvisioningType(): void {
+  registerContributedTaskProviderType(NON_PROVISIONING_TYPE, {
+    pluginId: NON_PROVISIONING_PLUGIN_ID,
+    factory: () => createMockProvider({ name: NON_PROVISIONING_TYPE }),
+    capabilities: new Set(),
+    displayName: 'Non-provisioning',
+  })
+}
 
 const RevealResponseSchema = z.object({
   password: z.string(),
@@ -83,6 +114,11 @@ describe('GET /settings/api/kaneo/credentials', () => {
     groupContextId = seedManageableGroup(PLATFORM_INSTANCE_ID, USER_ID)
   })
 
+  afterEach(() => {
+    unregisterContributedTaskProviderType(PROVISIONING_PLUGIN_ID)
+    unregisterContributedTaskProviderType(NON_PROVISIONING_PLUGIN_ID)
+  })
+
   test('handler function is exported and callable', () => {
     expect(typeof handleKaneoCredentialsRoutes).toBe('function')
   })
@@ -122,6 +158,78 @@ describe('GET /settings/api/kaneo/credentials', () => {
     const body = GetResponseSchema.parse(await res.json())
     expect(body.login).toBe('u-cred-1@pap.ai')
     expect(body.status).toBe('active')
+  })
+
+  test('instanceUrl is null when the bound instance provider lacks members.provision', async () => {
+    registerNonProvisioningType()
+    insertTaskInstance({
+      id: 'ti-non-provisioning',
+      type: NON_PROVISIONING_TYPE,
+      config: { baseUrl: 'https://tracker.example.com' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: groupContextId,
+      taskInstanceId: 'ti-non-provisioning',
+      platformInstanceId: PLATFORM_INSTANCE_ID,
+    })
+    const db = getDrizzleDb()
+    db.insert(taskProviderMembers)
+      .values({
+        groupContextId,
+        chatUserId: USER_ID,
+        providerName: NON_PROVISIONING_TYPE,
+        providerUserId: 'pid-1',
+        login: 'u-cred-1@pap.ai',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      })
+      .run()
+
+    const url = new URL(`https://x/settings/api/kaneo/credentials?contextId=${encodeURIComponent(groupContextId)}`)
+    const res = await handleKaneoCredentialsRoutes(
+      request(`/settings/api/kaneo/credentials?contextId=${encodeURIComponent(groupContextId)}`, session),
+      url,
+    )
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    expect(body.instanceUrl).toBeNull()
+  })
+
+  test('instanceUrl is the instance baseUrl when the bound instance provider has members.provision', async () => {
+    registerProvisioningType()
+    insertTaskInstance({
+      id: 'ti-provisioning',
+      type: PROVISIONING_TYPE,
+      config: { baseUrl: 'https://workspace.example.com' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: groupContextId,
+      taskInstanceId: 'ti-provisioning',
+      platformInstanceId: PLATFORM_INSTANCE_ID,
+    })
+    const db = getDrizzleDb()
+    db.insert(taskProviderMembers)
+      .values({
+        groupContextId,
+        chatUserId: USER_ID,
+        providerName: PROVISIONING_TYPE,
+        providerUserId: 'pid-1',
+        login: 'u-cred-1@pap.ai',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      })
+      .run()
+
+    const url = new URL(`https://x/settings/api/kaneo/credentials?contextId=${encodeURIComponent(groupContextId)}`)
+    const res = await handleKaneoCredentialsRoutes(
+      request(`/settings/api/kaneo/credentials?contextId=${encodeURIComponent(groupContextId)}`, session),
+      url,
+    )
+    expect(res.status).toBe(200)
+    const body = GetResponseSchema.parse(await res.json())
+    expect(body.instanceUrl).toBe('https://workspace.example.com')
   })
 
   test('returns 401 when unauthenticated', async () => {

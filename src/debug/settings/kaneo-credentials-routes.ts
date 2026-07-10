@@ -12,6 +12,8 @@ import { getContextSettings } from '../../instances/context-store.js'
 import { decryptInstanceConfig } from '../../instances/encryption.js'
 import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
+import { getCapabilitiesForTaskInstance } from '../../providers/registry.js'
+import type { TaskCapability } from '../../providers/task-capability.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-kaneo-credentials' })
@@ -24,11 +26,19 @@ function getKaneoMemberRow(groupContextId: string, chatUserId: string): TaskProv
     .get()
 }
 
-function getKaneoPublicUrl(groupContextId: string): string | null {
+function getInstancePublicUrl(groupContextId: string): string | null {
   const settings = getContextSettings(groupContextId)
   if (settings === null) return null
   const instance = getTaskInstance(settings.taskInstanceId)
-  if (instance === null || instance.type !== 'kaneo') return null
+  if (instance === null) return null
+  let capabilities: ReadonlySet<TaskCapability>
+  try {
+    capabilities = getCapabilitiesForTaskInstance(instance)
+  } catch {
+    // Provider type not registered.
+    return null
+  }
+  if (!capabilities.has('members.provision')) return null
   return instance.config['baseUrl'] ?? null
 }
 
@@ -44,12 +54,12 @@ function handleGet(req: Request, url: URL): Response {
   if (row === undefined) {
     return settingsJson(404, { error: 'No Kaneo account provisioned for this member in this group.' })
   }
-  const kaneoUrl = getKaneoPublicUrl(contextId)
+  const instanceUrl = getInstancePublicUrl(contextId)
   return settingsJson(200, {
     contextId,
     login: row.login,
     status: row.status,
-    kaneoUrl,
+    instanceUrl,
     // password is never returned in GET — use POST { action: 'reveal' } to reveal it once.
   })
 }
