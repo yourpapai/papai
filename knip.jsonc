@@ -101,6 +101,9 @@
     // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
     "src/byok-llm/store.ts": ["files", "exports"],
     "src/byok-llm/types.ts": ["files", "types"],
+    // mcp_redaction admin-config store is created ahead of the redactor consumer wiring
+    // in the MCP response-redaction plan.
+    "src/coding-credentials/mcp-redaction.ts": ["files", "exports"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
