@@ -5,14 +5,14 @@
 
 import { and, eq, isNotNull } from 'drizzle-orm'
 
-import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
-import { taskProviderMembers } from '../../db/schema.js'
-import { setProvisionedIdentityMapping } from '../../identity/mapping.js'
-import { getContextSettings as defaultGetContextSettings } from '../../instances/context-store.js'
-import { decryptInstanceConfig, encryptInstanceConfig } from '../../instances/encryption.js'
-import { logger } from '../../logger.js'
-import { defaultTaskProviderResolver } from '../resolver.js'
-import type { TaskProvider } from '../types.js'
+import { getDrizzleDb as defaultGetDrizzleDb } from '../../../db/drizzle.js'
+import { taskProviderMembers } from '../../../db/schema.js'
+import { setProvisionedIdentityMapping } from '../../../identity/mapping.js'
+import { getContextSettings as defaultGetContextSettings } from '../../../instances/context-store.js'
+import { decryptInstanceConfig, encryptInstanceConfig } from '../../../instances/encryption.js'
+import { logger } from '../../../logger.js'
+import { defaultTaskProviderResolver } from '../../../providers/resolver.js'
+import type { TaskProvider } from '../../../providers/types.js'
 
 const log = logger.child({ scope: 'providers:membership' })
 
@@ -192,7 +192,8 @@ async function provisionAndPersist(
 }
 
 /**
- * Idempotent entry point: ensure a chat user is provisioned as a Kaneo workspace member.
+ * Idempotent entry point: ensure a chat user is provisioned as a workspace member of the
+ * group's bound task provider.
  * All failures are logged and returned as 'failed' — never thrown into the caller.
  *
  * Reuse logic: if a prior `task_provider_members` row (any group) has `encrypted_password`,

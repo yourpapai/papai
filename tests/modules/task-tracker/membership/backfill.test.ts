@@ -5,11 +5,11 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { getDrizzleDb } from '../../../src/db/drizzle.js'
-import { groupMembers } from '../../../src/db/schema.js'
-import { runMembershipBackfill } from '../../../src/providers/membership/backfill.js'
-import type { MemberOutcome } from '../../../src/providers/membership/ensure-member.js'
-import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
+import { getDrizzleDb } from '../../../../src/db/drizzle.js'
+import { groupMembers } from '../../../../src/db/schema.js'
+import { runMembershipBackfill } from '../../../../src/modules/task-tracker/membership/backfill.js'
+import type { MemberOutcome } from '../../../../src/modules/task-tracker/membership/ensure-member.js'
+import { mockLogger, setupTestDb } from '../../../utils/test-helpers.js'
 
 describe('runMembershipBackfill', () => {
   beforeEach(async () => {
