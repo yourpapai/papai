@@ -253,7 +253,9 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   result) and at server-selection time (`listEnabledInternalMcpServers` in
   `src/coding-credentials/mcp-plugin-servers.ts` excludes the plugin until configured). The
   `mcp-sentry` plugin (`plugins/mcp-sentry/`) is the first first-party MCP plugin migrated onto
-  this pattern — 7 read-only Sentry issue-diagnosis tools.
+  this pattern — 7 read-only Sentry issue-diagnosis tools. `mcp-confluence`
+  (`plugins/mcp-confluence/`) is the second — 5 Confluence wiki read/comment tools over HTTP
+  Basic auth, responses redacted the same way.
 
 ### 3.7 Transcript viewer (papai-side)
 
