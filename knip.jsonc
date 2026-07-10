@@ -187,6 +187,9 @@
     "plugins/task-provider-youtrack/index.ts": ["exports"],
     "plugins/nerv/index.ts": ["exports"],
     "plugins/mcp-sentry/index.ts": ["exports"],
+    // Tool input schemas, consumed only by mcp-sentry-schema.test.ts until a later
+    // task wires them into the plugin's tool registrations.
+    "plugins/mcp-sentry/input-schema.ts": ["files"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.
