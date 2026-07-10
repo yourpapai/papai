@@ -11,6 +11,7 @@ import { resolveChatParticipant } from './chat/participants/roster.js'
 import { createChatProviderFromConfig } from './chat/registry.js'
 import { ChatRouter } from './chat/router.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
+import { loadTrustedModules } from './composition/load-trusted-modules.js'
 import { startSweeper } from './dashboard-auth/sweeper.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
@@ -67,6 +68,8 @@ try {
   log.error({ error: error instanceof Error ? error.message : String(error) }, 'Database migration failed')
   process.exit(1)
 }
+
+await loadTrustedModules()
 
 seedSystemConfigFromEnv()
 const bootstrapResult = bootstrapInstancesFromEnv()

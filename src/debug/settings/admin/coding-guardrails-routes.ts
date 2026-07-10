@@ -5,19 +5,19 @@
 
 import { z } from 'zod'
 
+import { logger } from '../../../logger.js'
 import {
   adminCodingGuardrailsContextId,
   guardrailsSchema,
   resolveCodingGuardrails,
   setCodingGuardrails,
-} from '../../../coding-credentials/guardrails.js'
+} from '../../../modules/coding/credentials/guardrails.js'
 import {
   clearCodingCredentials,
   getCodingCredentials,
   updateCodingCredentials,
-} from '../../../coding-credentials/store.js'
-import { PROVIDERS } from '../../../coding-credentials/types.js'
-import { logger } from '../../../logger.js'
+} from '../../../modules/coding/credentials/store.js'
+import { PROVIDERS } from '../../../modules/coding/credentials/types.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
 import { requireAdmin } from './admin-guard.js'

@@ -149,6 +149,9 @@
     "client/settings/release-fetchers.ts": ["exports"],
     "client/settings/repos-fetchers.ts": ["exports"],
     "client/settings/fetcher-schemas-repos.ts": ["types"],
+    // ModuleSection/ModuleSectionField are consumed only by
+    // AdminModuleSectionsSection.svelte, which knip can't parse.
+    "client/settings/fetcher-schemas-module-sections.ts": ["types"],
     "client/settings/scrollspy.ts": ["exports"],
     "client/settings/session.svelte.ts": ["exports"],
     "client/settings/lib/mask-secret.ts": ["exports"],
@@ -175,7 +178,6 @@
     "client/shared/ui/field-context.ts": ["exports"],
     // Plugin entry-point default exports are imported dynamically by the plugin
     // loader (by path), so knip sees no static importer. Each new plugin adds a line.
-    "plugins/acp/index.ts": ["exports"],
     "plugins/audio-transcribe/index.ts": ["exports"],
     "plugins/synthetic-web-search/index.ts": ["exports"],
     "plugins/task-provider-kaneo/index.ts": ["exports"],

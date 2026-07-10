@@ -5,15 +5,16 @@
 
 import { z } from 'zod'
 
-import { resolveCodingGuardrails } from '../../coding-credentials/guardrails.js'
-import { resolveMcpCatalog } from '../../coding-credentials/mcp-catalog.js'
+import { maskSensitiveValue } from '../../config.js'
+import { resolveCodingGuardrails } from '../../modules/coding/credentials/guardrails.js'
+import { resolveMcpCatalog } from '../../modules/coding/credentials/mcp-catalog.js'
 import {
   clearCodingCredentials,
   getCodingCredentialState,
   getCodingCredentials,
   updateCodingCredentials,
-} from '../../coding-credentials/store.js'
-import type { CodingCredentialConfig } from '../../coding-credentials/types.js'
+} from '../../modules/coding/credentials/store.js'
+import type { CodingCredentialConfig } from '../../modules/coding/credentials/types.js'
 import {
   CODING_NAMESPACES,
   compatible,
@@ -23,8 +24,7 @@ import {
   isProvider,
   needsInstanceUrl,
   type CodingNamespace,
-} from '../../coding-credentials/types.js'
-import { maskSensitiveValue } from '../../config.js'
+} from '../../modules/coding/credentials/types.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { FIELDS_META } from './coding-credentials-fields-meta.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'

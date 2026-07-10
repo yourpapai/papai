@@ -285,7 +285,7 @@ export const groupUserObservations = sqliteTable(
   ],
 )
 export { webCache, webRateLimit } from './web-schema.js'
-export { kaneoWorkspaceMembers, type KaneoWorkspaceMember } from './membership-schema.js'
+export { taskProviderMembers, type TaskProviderMember } from './membership-schema.js'
 export { attachments } from './attachments-schema.js'
 export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'

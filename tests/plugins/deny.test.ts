@@ -8,5 +8,7 @@ import { expect, test } from 'bun:test'
 import { deny } from '../../src/plugins/deny.js'
 
 test('deny throws an error naming the plugin and the missing permission', () => {
-  expect(() => deny('acp', 'coding.secrets')).toThrow("Plugin acp does not have 'coding.secrets' permission")
+  expect(() => deny('audio-transcribe', 'storage')).toThrow(
+    "Plugin audio-transcribe does not have 'storage' permission",
+  )
 })

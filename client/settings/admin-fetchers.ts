@@ -33,6 +33,7 @@ import {
 } from './fetcher-schemas-coding-guardrails.js'
 import { ApplyInstancesResultSchema, type ApplyInstancesResult } from './fetcher-schemas-instances.js'
 import { AdminMcpCatalogResponseSchema, type AdminMcpCatalogResponse } from './fetcher-schemas-mcp-catalog.js'
+import { ModuleSectionsResponseSchema, type ModuleSectionsResponse } from './fetcher-schemas-module-sections.js'
 import {
   AdminPluginConfigSnapshotSchema,
   SubmitAdminPluginConfigResponseSchema,
@@ -176,6 +177,17 @@ export const patchAdminPluginConfig = (input: {
 
 export const unsetAdminPluginConfig = (input: { pluginId: string; key: string }): Promise<unknown> =>
   writeJson('/settings/api/admin/plugin-config', 'PATCH', { action: 'unset', ...input }, (b) => b)
+
+// --- Admin: module sections ---
+
+export const fetchModuleSections = (): Promise<ModuleSectionsResponse> =>
+  getJson('/settings/api/admin/module-sections', (b) => ModuleSectionsResponseSchema.parse(b))
+
+export const patchModuleSection = (input: { id: string; key: string; value: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/module-sections', 'PATCH', input, (b) => b)
+
+export const unsetModuleSection = (input: { id: string; key: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/module-sections', 'PATCH', { action: 'unset', ...input }, (b) => b)
 
 // Admin tool defaults: POST for all toggle kinds (domain/tool/preset), mirroring the user-facing /tools route.
 

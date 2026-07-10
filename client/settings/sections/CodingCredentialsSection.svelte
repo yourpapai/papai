@@ -23,7 +23,7 @@
   } from '../coding-credentials-fetchers.js'
   import { maskSecret } from '../lib/mask-secret.js'
 
-  // Client-side compatibility map (mirrors src/coding-credentials/types.ts `compatible`)
+  // Client-side compatibility map (mirrors src/modules/coding/credentials/types.ts `compatible`)
   function compatibleProviders(agent: string, allProviders: readonly string[]): string[] {
     if (agent === 'claude') return allProviders.filter((p) => p === 'anthropic')
     if (agent === 'codex') return allProviders.filter((p) => p === 'openai' || p === 'openai-compatible')

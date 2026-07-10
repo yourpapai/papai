@@ -91,6 +91,10 @@ describe('tool-grouping', () => {
     expect(deriveToolGroup('plugin_unknown_seg__t', new Map())).toBe('unknown_seg')
   })
 
+  test('deriveToolGroup groups module tools by their sanitized module segment', () => {
+    expect(deriveToolGroup('module_coding__start_session', new Map())).toBe('coding')
+  })
+
   test('activePluginSegmentMap contains both sanitized forms of each active plugin id', () => {
     pluginRegistry.registerDiscovered(makeDiscoveredPlugin(PLUGIN_ID))
     pluginRegistry.markActive(PLUGIN_ID)

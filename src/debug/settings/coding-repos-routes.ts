@@ -5,8 +5,8 @@
 
 import { z } from 'zod'
 
-import { deleteRepo, listRepos, upsertRepo } from '../../coding-repos/store.js'
-import { REPO_PRESETS } from '../../coding-repos/types.js'
+import { deleteRepo, listRepos, upsertRepo } from '../../modules/coding/repos/store.js'
+import { REPO_PRESETS } from '../../modules/coding/repos/types.js'
 import {
   authenticate,
   type AuthOutcome,

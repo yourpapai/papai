@@ -6,7 +6,7 @@
 import { and, eq, isNotNull } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
-import { kaneoWorkspaceMembers } from '../../db/schema.js'
+import { taskProviderMembers } from '../../db/schema.js'
 import { setProvisionedIdentityMapping } from '../../identity/mapping.js'
 import { getContextSettings as defaultGetContextSettings } from '../../instances/context-store.js'
 import { decryptInstanceConfig, encryptInstanceConfig } from '../../instances/encryption.js'
@@ -47,11 +47,9 @@ function buildDisplayName(resolvedLabel: string | null, username: string | null,
 function findActiveExistingMemberRow(groupContextId: string, chatUserId: string): boolean {
   const db = defaultGetDrizzleDb()
   const row = db
-    .select({ status: kaneoWorkspaceMembers.status })
-    .from(kaneoWorkspaceMembers)
-    .where(
-      and(eq(kaneoWorkspaceMembers.groupContextId, groupContextId), eq(kaneoWorkspaceMembers.chatUserId, chatUserId)),
-    )
+    .select({ status: taskProviderMembers.status })
+    .from(taskProviderMembers)
+    .where(and(eq(taskProviderMembers.groupContextId, groupContextId), eq(taskProviderMembers.chatUserId, chatUserId)))
     .get()
   return row?.status === 'active'
 }
@@ -66,16 +64,16 @@ function findStoredCredentialsAcrossGroups(
   const db = defaultGetDrizzleDb()
   const row = db
     .select({
-      providerUserId: kaneoWorkspaceMembers.providerUserId,
-      login: kaneoWorkspaceMembers.login,
-      encryptedPassword: kaneoWorkspaceMembers.encryptedPassword,
+      providerUserId: taskProviderMembers.providerUserId,
+      login: taskProviderMembers.login,
+      encryptedPassword: taskProviderMembers.encryptedPassword,
     })
-    .from(kaneoWorkspaceMembers)
+    .from(taskProviderMembers)
     .where(
       and(
-        eq(kaneoWorkspaceMembers.chatUserId, chatUserId),
-        eq(kaneoWorkspaceMembers.providerName, 'kaneo'),
-        isNotNull(kaneoWorkspaceMembers.encryptedPassword),
+        eq(taskProviderMembers.chatUserId, chatUserId),
+        eq(taskProviderMembers.providerName, 'kaneo'),
+        isNotNull(taskProviderMembers.encryptedPassword),
       ),
     )
     .get()
@@ -98,7 +96,7 @@ function writeMemberRow(
 ): void {
   const db = defaultGetDrizzleDb()
   const now = new Date().toISOString()
-  db.insert(kaneoWorkspaceMembers)
+  db.insert(taskProviderMembers)
     .values({
       groupContextId,
       chatUserId,
@@ -110,11 +108,7 @@ function writeMemberRow(
       createdAt: now,
     })
     .onConflictDoUpdate({
-      target: [
-        kaneoWorkspaceMembers.groupContextId,
-        kaneoWorkspaceMembers.chatUserId,
-        kaneoWorkspaceMembers.providerName,
-      ],
+      target: [taskProviderMembers.groupContextId, taskProviderMembers.chatUserId, taskProviderMembers.providerName],
       set: { providerUserId, login, status, encryptedPassword, createdAt: now },
     })
     .run()
@@ -190,7 +184,7 @@ async function provisionAndPersist(
  * Idempotent entry point: ensure a chat user is provisioned as a Kaneo workspace member.
  * All failures are logged and returned as 'failed' — never thrown into the caller.
  *
- * Reuse logic: if a prior `kaneo_workspace_members` row (any group) has `encrypted_password`,
+ * Reuse logic: if a prior `task_provider_members` row (any group) has `encrypted_password`,
  * decrypt it and pass `existingProviderUserId`, `existingLogin`, and `existingPassword` to the
  * provider so it can sign-in (not sign-up) and invite+accept. If the stored row has no password
  * (older row), fall back to a fresh sign-up.
@@ -236,10 +230,8 @@ export async function ensureWorkspaceMember(
 export function markMemberInactive(groupContextId: string, chatUserId: string): void {
   log.debug({ groupContextId, chatUserId }, 'markMemberInactive called')
   const db = defaultGetDrizzleDb()
-  db.update(kaneoWorkspaceMembers)
+  db.update(taskProviderMembers)
     .set({ status: 'inactive' })
-    .where(
-      and(eq(kaneoWorkspaceMembers.groupContextId, groupContextId), eq(kaneoWorkspaceMembers.chatUserId, chatUserId)),
-    )
+    .where(and(eq(taskProviderMembers.groupContextId, groupContextId), eq(taskProviderMembers.chatUserId, chatUserId)))
     .run()
 }

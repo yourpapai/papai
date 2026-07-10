@@ -94,4 +94,12 @@ describe('tool metadata', () => {
       risk: 'destructive',
     })
   })
+
+  test('classifies module tools as open-world plugin-domain', () => {
+    expect(getToolMetadata('module_coding__start_session')).toEqual({
+      domain: 'plugin',
+      operation: 'read',
+      risk: 'open-world',
+    })
+  })
 })
