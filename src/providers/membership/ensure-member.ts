@@ -184,7 +184,7 @@ async function provisionAndPersist(
  * Idempotent entry point: ensure a chat user is provisioned as a Kaneo workspace member.
  * All failures are logged and returned as 'failed' — never thrown into the caller.
  *
- * Reuse logic: if a prior `kaneo_workspace_members` row (any group) has `encrypted_password`,
+ * Reuse logic: if a prior `task_provider_members` row (any group) has `encrypted_password`,
  * decrypt it and pass `existingProviderUserId`, `existingLogin`, and `existingPassword` to the
  * provider so it can sign-in (not sign-up) and invite+accept. If the stored row has no password
  * (older row), fall back to a fresh sign-up.
