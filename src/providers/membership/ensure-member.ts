@@ -60,6 +60,7 @@ function findActiveExistingMemberRow(groupContextId: string, chatUserId: string)
  */
 function findStoredCredentialsAcrossGroups(
   chatUserId: string,
+  providerName: string,
 ): { providerUserId: string; login: string; encryptedPassword: string } | null {
   const db = defaultGetDrizzleDb()
   const row = db
@@ -72,7 +73,7 @@ function findStoredCredentialsAcrossGroups(
     .where(
       and(
         eq(taskProviderMembers.chatUserId, chatUserId),
-        eq(taskProviderMembers.providerName, 'kaneo'),
+        eq(taskProviderMembers.providerName, providerName),
         isNotNull(taskProviderMembers.encryptedPassword),
       ),
     )
@@ -89,6 +90,7 @@ function findStoredCredentialsAcrossGroups(
 function writeMemberRow(
   groupContextId: string,
   chatUserId: string,
+  providerName: string,
   providerUserId: string,
   login: string,
   status: 'active' | 'failed',
@@ -100,7 +102,7 @@ function writeMemberRow(
     .values({
       groupContextId,
       chatUserId,
-      providerName: 'kaneo',
+      providerName,
       providerUserId,
       login,
       status,
@@ -122,9 +124,10 @@ type ExistingOpts = { existingProviderUserId: string; existingLogin: string; exi
  */
 function resolveExistingOpts(
   chatUserId: string,
+  providerName: string,
   decryptPassword: ((enc: string) => string) | undefined,
 ): ExistingOpts | undefined {
-  const stored = findStoredCredentialsAcrossGroups(chatUserId)
+  const stored = findStoredCredentialsAcrossGroups(chatUserId, providerName)
   if (stored === null) return undefined
   try {
     const decryptFn: (enc: string) => string =
@@ -158,7 +161,15 @@ async function provisionAndPersist(
       { chatUserId, displayName, username },
       existingOpts,
     )
-    writeMemberRow(groupContextId, chatUserId, providerUserId, login, 'active', encryptInstanceConfig({ password }))
+    writeMemberRow(
+      groupContextId,
+      chatUserId,
+      provider.name,
+      providerUserId,
+      login,
+      'active',
+      encryptInstanceConfig({ password }),
+    )
     setProvisionedIdentityMapping({
       contextId: chatUserId,
       providerName: provider.name,
@@ -175,7 +186,7 @@ async function provisionAndPersist(
       { groupContextId, chatUserId, error: err instanceof Error ? err.message : String(err) },
       'ensureWorkspaceMember failed',
     )
-    writeMemberRow(groupContextId, chatUserId, '', '', 'failed', null)
+    writeMemberRow(groupContextId, chatUserId, provider.name, '', '', 'failed', null)
     return 'failed'
   }
 }
@@ -218,6 +229,7 @@ export async function ensureWorkspaceMember(
   const displayName = buildDisplayName(resolvedLabel, opts?.username ?? null, chatUserId)
   const existingOpts = resolveExistingOpts(
     chatUserId,
+    provider.name,
     deps.decryptPassword === undefined ? undefined : (enc: string): string => deps.decryptPassword!(enc),
   )
   return provisionAndPersist(groupContextId, chatUserId, displayName, opts?.username ?? null, provider, existingOpts)
