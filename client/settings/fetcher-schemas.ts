@@ -171,7 +171,7 @@ export const ProvisionResultSchema = z.object({
   contextId: z.string(),
   email: z.string(),
   password: z.string(),
-  kaneoUrl: z.string(),
+  instanceUrl: z.string(),
   workspaceId: z.string(),
 })
 export type ProvisionResult = z.infer<typeof ProvisionResultSchema>

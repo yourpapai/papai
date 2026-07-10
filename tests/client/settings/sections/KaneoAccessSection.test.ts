@@ -30,7 +30,7 @@ describe('KaneoAccessSection', () => {
   test('shows login email when credentials fetch succeeds', async () => {
     setMockFetch(() =>
       Promise.resolve(
-        json({ contextId: CONTEXT_ID, login: 'alice@pap.ai', status: 'active', kaneoUrl: 'http://kaneo' }),
+        json({ contextId: CONTEXT_ID, login: 'alice@pap.ai', status: 'active', instanceUrl: 'http://kaneo' }),
       ),
     )
 
@@ -67,7 +67,7 @@ describe('KaneoAccessSection', () => {
     setCsrfToken('csrf-test')
     setMockFetch(
       routeCredentialsMock(
-        json({ contextId: CONTEXT_ID, login: 'alice@pap.ai', status: 'active', kaneoUrl: 'http://kaneo' }),
+        json({ contextId: CONTEXT_ID, login: 'alice@pap.ai', status: 'active', instanceUrl: 'http://kaneo' }),
         json({ password: 'Secret1!Aa', warning: 'This password is shown once. Store it securely.' }),
       ),
     )
@@ -86,10 +86,15 @@ describe('KaneoAccessSection', () => {
     void unmount(component)
   })
 
-  test('shows workspace URL when kaneoUrl is present', async () => {
+  test('shows workspace URL when instanceUrl is present', async () => {
     setMockFetch(() =>
       Promise.resolve(
-        json({ contextId: CONTEXT_ID, login: 'bob@pap.ai', status: 'active', kaneoUrl: 'http://kaneo.example.com' }),
+        json({
+          contextId: CONTEXT_ID,
+          login: 'bob@pap.ai',
+          status: 'active',
+          instanceUrl: 'http://kaneo.example.com',
+        }),
       ),
     )
 

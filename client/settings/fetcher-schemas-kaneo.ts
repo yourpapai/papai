@@ -11,7 +11,7 @@ export const KaneoCredentialsSchema = z.object({
   contextId: z.string(),
   login: z.string(),
   status: z.enum(['active', 'inactive', 'failed']),
-  kaneoUrl: z.string().nullable(),
+  instanceUrl: z.string().nullable(),
 })
 export type KaneoCredentials = z.infer<typeof KaneoCredentialsSchema>
 

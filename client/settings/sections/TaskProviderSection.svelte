@@ -170,7 +170,7 @@
           <p class="status-success">Provisioned — copy these now, they will not be shown again:</p>
           <SummaryList items={[
             { k: 'Email', v: provisioned.email },
-            { k: 'Kaneo URL', v: provisioned.kaneoUrl },
+            { k: 'Instance URL', v: provisioned.instanceUrl },
           ]} />
           <div class="settings-provision__secret">
             <span class="settings-provision__secret-label">Password</span>

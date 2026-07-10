@@ -13,25 +13,25 @@ describe('KaneoCredentialsSchema', () => {
       contextId: 'grp-1',
       login: 'user@pap.ai',
       status: 'active',
-      kaneoUrl: 'http://kaneo.example.com',
+      instanceUrl: 'http://kaneo.example.com',
     })
     expect(result.login).toBe('user@pap.ai')
     expect(result.status).toBe('active')
   })
 
-  test('parses with null kaneoUrl', () => {
+  test('parses with null instanceUrl', () => {
     const result = KaneoCredentialsSchema.parse({
       contextId: 'grp-1',
       login: 'user@pap.ai',
       status: 'active',
-      kaneoUrl: null,
+      instanceUrl: null,
     })
-    expect(result.kaneoUrl).toBeNull()
+    expect(result.instanceUrl).toBeNull()
   })
 
   test('rejects unknown status values', () => {
     expect(() =>
-      KaneoCredentialsSchema.parse({ contextId: 'g', login: 'x@pap.ai', status: 'unknown', kaneoUrl: null }),
+      KaneoCredentialsSchema.parse({ contextId: 'g', login: 'x@pap.ai', status: 'unknown', instanceUrl: null }),
     ).toThrow()
   })
 })
