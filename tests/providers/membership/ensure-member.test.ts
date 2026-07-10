@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq, and } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
-import { kaneoWorkspaceMembers } from '../../../src/db/schema.js'
+import { taskProviderMembers } from '../../../src/db/schema.js'
 import type { AppError } from '../../../src/errors.js'
 import { getIdentityMapping } from '../../../src/identity/mapping.js'
 import { ensureWorkspaceMember, type MembershipDeps } from '../../../src/providers/membership/ensure-member.js'
@@ -68,8 +68,8 @@ describe('ensureWorkspaceMember', () => {
     const db = getDrizzleDb()
     const row = db
       .select()
-      .from(kaneoWorkspaceMembers)
-      .where(and(eq(kaneoWorkspaceMembers.groupContextId, GROUP_CTX), eq(kaneoWorkspaceMembers.chatUserId, CHAT_USER)))
+      .from(taskProviderMembers)
+      .where(and(eq(taskProviderMembers.groupContextId, GROUP_CTX), eq(taskProviderMembers.chatUserId, CHAT_USER)))
       .get()
     expect(row?.providerUserId).toBe(KANEO_USER_ID)
     expect(row?.status).toBe('active')
@@ -130,8 +130,8 @@ describe('ensureWorkspaceMember', () => {
     const db = getDrizzleDb()
     const row = db
       .select()
-      .from(kaneoWorkspaceMembers)
-      .where(and(eq(kaneoWorkspaceMembers.groupContextId, GROUP_CTX), eq(kaneoWorkspaceMembers.chatUserId, CHAT_USER)))
+      .from(taskProviderMembers)
+      .where(and(eq(taskProviderMembers.groupContextId, GROUP_CTX), eq(taskProviderMembers.chatUserId, CHAT_USER)))
       .get()
     expect(row?.status).toBe('failed')
   })
@@ -163,7 +163,7 @@ describe('ensureWorkspaceMember', () => {
     // (simulate: user was provisioned in another group, `encrypted_password` was stored)
     const db = getDrizzleDb()
     // For the test, we insert a plaintext sentinel and use a deps override for decryption:
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId: 'other-group',
         chatUserId: CHAT_USER,
@@ -208,7 +208,7 @@ describe('ensureWorkspaceMember', () => {
   test('falls back to new-member path when stored row has no encrypted_password', async () => {
     // Pre-insert a member row with no password (pre-credential row from an older provisioning)
     const db = getDrizzleDb()
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId: 'other-group',
         chatUserId: CHAT_USER,
@@ -268,7 +268,7 @@ describe('ensureWorkspaceMember', () => {
   test('a "failed" row is retried and becomes "active" on success', async () => {
     const db = getDrizzleDb()
     // Pre-insert a failed row
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId: GROUP_CTX,
         chatUserId: CHAT_USER,
@@ -285,8 +285,8 @@ describe('ensureWorkspaceMember', () => {
     expect(result).toBe('created')
     const row = db
       .select()
-      .from(kaneoWorkspaceMembers)
-      .where(and(eq(kaneoWorkspaceMembers.groupContextId, GROUP_CTX), eq(kaneoWorkspaceMembers.chatUserId, CHAT_USER)))
+      .from(taskProviderMembers)
+      .where(and(eq(taskProviderMembers.groupContextId, GROUP_CTX), eq(taskProviderMembers.chatUserId, CHAT_USER)))
       .get()
     expect(row?.status).toBe('active')
     expect(row?.providerUserId).toBe(KANEO_USER_ID)
@@ -295,7 +295,7 @@ describe('ensureWorkspaceMember', () => {
   test('an "inactive" row is retried and becomes "active" on success', async () => {
     const db = getDrizzleDb()
     // Pre-insert an inactive row
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId: GROUP_CTX,
         chatUserId: CHAT_USER,
@@ -312,8 +312,8 @@ describe('ensureWorkspaceMember', () => {
     expect(result).toBe('created')
     const row = db
       .select()
-      .from(kaneoWorkspaceMembers)
-      .where(and(eq(kaneoWorkspaceMembers.groupContextId, GROUP_CTX), eq(kaneoWorkspaceMembers.chatUserId, CHAT_USER)))
+      .from(taskProviderMembers)
+      .where(and(eq(taskProviderMembers.groupContextId, GROUP_CTX), eq(taskProviderMembers.chatUserId, CHAT_USER)))
       .get()
     expect(row?.status).toBe('active')
     expect(row?.providerUserId).toBe(KANEO_USER_ID)
@@ -321,7 +321,7 @@ describe('ensureWorkspaceMember', () => {
 
   test('an "active" row still short-circuits to "exists"', async () => {
     const db = getDrizzleDb()
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId: GROUP_CTX,
         chatUserId: CHAT_USER,

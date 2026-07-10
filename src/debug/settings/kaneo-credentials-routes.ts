@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { getDrizzleDb } from '../../db/drizzle.js'
-import { kaneoWorkspaceMembers, type KaneoWorkspaceMember } from '../../db/schema.js'
+import { taskProviderMembers, type TaskProviderMember } from '../../db/schema.js'
 import { getContextSettings } from '../../instances/context-store.js'
 import { decryptInstanceConfig } from '../../instances/encryption.js'
 import { getTaskInstance } from '../../instances/task-store.js'
@@ -16,13 +16,11 @@ import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settings
 
 const log = logger.child({ scope: 'debug-server:settings-kaneo-credentials' })
 
-function getKaneoMemberRow(groupContextId: string, chatUserId: string): KaneoWorkspaceMember | undefined {
+function getKaneoMemberRow(groupContextId: string, chatUserId: string): TaskProviderMember | undefined {
   return getDrizzleDb()
     .select()
-    .from(kaneoWorkspaceMembers)
-    .where(
-      and(eq(kaneoWorkspaceMembers.groupContextId, groupContextId), eq(kaneoWorkspaceMembers.chatUserId, chatUserId)),
-    )
+    .from(taskProviderMembers)
+    .where(and(eq(taskProviderMembers.groupContextId, groupContextId), eq(taskProviderMembers.chatUserId, chatUserId)))
     .get()
 }
 
@@ -89,9 +87,9 @@ function decryptStoredPassword(
 
 function clearStoredPassword(contextId: string, chatUserId: string): void {
   getDrizzleDb()
-    .update(kaneoWorkspaceMembers)
+    .update(taskProviderMembers)
     .set({ encryptedPassword: null })
-    .where(and(eq(kaneoWorkspaceMembers.groupContextId, contextId), eq(kaneoWorkspaceMembers.chatUserId, chatUserId)))
+    .where(and(eq(taskProviderMembers.groupContextId, contextId), eq(taskProviderMembers.chatUserId, chatUserId)))
     .run()
 }
 

@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
-import { kaneoWorkspaceMembers } from '../../../src/db/schema.js'
+import { taskProviderMembers } from '../../../src/db/schema.js'
 import { handleKaneoCredentialsRoutes } from '../../../src/debug/settings/kaneo-credentials-routes.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
 import { encryptInstanceConfig } from '../../../src/instances/encryption.js'
@@ -100,7 +100,7 @@ describe('GET /settings/api/kaneo/credentials', () => {
 
   test('returns 200 with login and status when member row exists (password not revealed)', async () => {
     const db = getDrizzleDb()
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId,
         chatUserId: USER_ID,
@@ -135,7 +135,7 @@ describe('GET /settings/api/kaneo/credentials', () => {
 
   test('scope isolation: authenticated user sees their own row (404 when absent), not another users row', async () => {
     const db = getDrizzleDb()
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId,
         chatUserId: 'other-user',
@@ -172,7 +172,7 @@ describe('POST /settings/api/kaneo/credentials', () => {
 
   test('returns 409 when member row has no encrypted_password', async () => {
     const db = getDrizzleDb()
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId,
         chatUserId: USER_ID,
@@ -199,7 +199,7 @@ describe('POST /settings/api/kaneo/credentials', () => {
   test('returns password once and clears encrypted_password column (reveal-once semantics)', async () => {
     const plainPassword = 'Rev3alM3!'
     const db = getDrizzleDb()
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId,
         chatUserId: USER_ID,
@@ -227,7 +227,7 @@ describe('POST /settings/api/kaneo/credentials', () => {
     // Verify encrypted_password was cleared (reveal-once semantics)
     const rawRow = db.$client
       .query<{ encrypted_password: string | null }, [string, string]>(
-        `SELECT encrypted_password FROM kaneo_workspace_members WHERE group_context_id = ? AND chat_user_id = ?`,
+        `SELECT encrypted_password FROM task_provider_members WHERE group_context_id = ? AND chat_user_id = ?`,
       )
       .get(groupContextId, USER_ID)
     expect(rawRow?.encrypted_password).toBeNull()
@@ -247,7 +247,7 @@ describe('POST /settings/api/kaneo/credentials', () => {
 
   test('returns 403 when CSRF header is missing on POST', async () => {
     const db = getDrizzleDb()
-    db.insert(kaneoWorkspaceMembers)
+    db.insert(taskProviderMembers)
       .values({
         groupContextId,
         chatUserId: USER_ID,
