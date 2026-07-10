@@ -28,8 +28,8 @@ import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './l
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
+import { membershipStorePort } from './ports/membership-store.js'
 import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
-import { ensureWorkspaceMember } from './providers/membership/index.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { runRegistry } from './run-control/registry.js'
@@ -53,7 +53,7 @@ export const defaultDeps: LlmOrchestratorDeps = {
 
 /** Fire-and-forget workspace member provisioning backstop for group contexts. */
 const maybeEnsureGroupMembership = (configId: string, chatUserId: string, username: string | null): void => {
-  ensureWorkspaceMember(configId, chatUserId, undefined, { username }).catch((err: unknown) => {
+  membershipStorePort.ensureMember(configId, chatUserId, { username }).catch((err: unknown) => {
     log.warn(
       { chatUserId, error: err instanceof Error ? err.message : String(err) },
       'Backstop ensureWorkspaceMember failed',
