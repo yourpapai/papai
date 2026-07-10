@@ -88,6 +88,34 @@ describe('SentryClient', () => {
     expect(result).toEqual({ id: 'ABC-1' })
   })
 
+  test('getIssue encodes a traversal-like issueId so the request stays under /api/0/issues/', async () => {
+    let capturedUrl = ''
+    const httpFetch = (url: string): Promise<Response> => {
+      capturedUrl = url
+      return Promise.resolve(jsonResponse({ id: 'x' }))
+    }
+    const client = new SentryClient({ baseUrl, token, orgSlug, httpFetch })
+
+    await client.getIssue('../../organizations/acme/projects')
+
+    expect(capturedUrl).toContain('issues/..%2F..%2Forganizations')
+    expect(new URL(capturedUrl).pathname.startsWith('/api/0/issues/')).toBe(true)
+  })
+
+  test('getIssueTagValues encodes a traversal-like tagKey', async () => {
+    let capturedUrl = ''
+    const httpFetch = (url: string): Promise<Response> => {
+      capturedUrl = url
+      return Promise.resolve(jsonResponse([]))
+    }
+    const client = new SentryClient({ baseUrl, token, orgSlug, httpFetch })
+
+    await client.getIssueTagValues('A', 'env/../x')
+
+    const { pathname } = new URL(capturedUrl)
+    expect(pathname).toBe('/api/0/issues/A/tags/env%2F..%2Fx/values/')
+  })
+
   test('getProjects calls the org projects URL with no query params', async () => {
     let capturedUrl = ''
     const httpFetch = (url: string): Promise<Response> => {

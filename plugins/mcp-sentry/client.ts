@@ -94,13 +94,13 @@ export class SentryClient {
   }
 
   async getProjects(limit?: number): Promise<unknown> {
-    const data = await this.request(`/organizations/${this.orgSlug}/projects/`)
+    const data = await this.request(`/organizations/${encodeURIComponent(this.orgSlug)}/projects/`)
     const items = asUnknownArray(data)
     return items.slice(0, limitOrDefault(limit, 100)).map((item) => sanitizeObject(item))
   }
 
   async searchIssues(params: SearchIssuesParams): Promise<unknown> {
-    const data = await this.request(`/organizations/${this.orgSlug}/issues/`, {
+    const data = await this.request(`/organizations/${encodeURIComponent(this.orgSlug)}/issues/`, {
       query: params.query,
       statsPeriod: params.statsPeriod,
       environment: params.environment,
@@ -112,38 +112,44 @@ export class SentryClient {
   }
 
   async getIssue(issueId: string): Promise<unknown> {
-    const data = await this.request(`/issues/${issueId}/`)
+    const data = await this.request(`/issues/${encodeURIComponent(issueId)}/`)
     return sanitizeObject(data)
   }
 
   async getIssueEvents(issueId: string, limit?: number): Promise<unknown> {
-    const data = await this.request(`/issues/${issueId}/events/`, { limit: limitOrDefault(limit, 5) })
-    return asUnknownArray(data).map((item) => sanitizeObject(item))
-  }
-
-  async getIssueTagValues(issueId: string, tagKey: string, limit?: number): Promise<unknown> {
-    const data = await this.request(`/issues/${issueId}/tags/${tagKey}/values/`, {
-      limit: limitOrDefault(limit, 10),
+    const data = await this.request(`/issues/${encodeURIComponent(issueId)}/events/`, {
+      limit: limitOrDefault(limit, 5),
     })
     return asUnknownArray(data).map((item) => sanitizeObject(item))
   }
 
+  async getIssueTagValues(issueId: string, tagKey: string, limit?: number): Promise<unknown> {
+    const data = await this.request(
+      `/issues/${encodeURIComponent(issueId)}/tags/${encodeURIComponent(tagKey)}/values/`,
+      { limit: limitOrDefault(limit, 10) },
+    )
+    return asUnknownArray(data).map((item) => sanitizeObject(item))
+  }
+
   async getIssueComments(issueId: string, limit?: number): Promise<unknown> {
-    const data = await this.request(`/issues/${issueId}/comments/`)
+    const data = await this.request(`/issues/${encodeURIComponent(issueId)}/comments/`)
     return asUnknownArray(data)
       .slice(0, limitOrDefault(limit, 20))
       .map((item) => sanitizeObject(item))
   }
 
   private async getRelease(version: string): Promise<unknown> {
-    const data = await this.request(`/organizations/${this.orgSlug}/releases/${version}/`)
+    const data = await this.request(
+      `/organizations/${encodeURIComponent(this.orgSlug)}/releases/${encodeURIComponent(version)}/`,
+    )
     return sanitizeObject(data)
   }
 
   private async getReleaseCommits(version: string, limit?: number): Promise<unknown> {
-    const data = await this.request(`/organizations/${this.orgSlug}/releases/${version}/commits/`, {
-      limit: limitOrDefault(limit, 20),
-    })
+    const data = await this.request(
+      `/organizations/${encodeURIComponent(this.orgSlug)}/releases/${encodeURIComponent(version)}/commits/`,
+      { limit: limitOrDefault(limit, 20) },
+    )
     return asUnknownArray(data).map((item) => sanitizeObject(item))
   }
 
