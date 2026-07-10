@@ -142,6 +142,15 @@ beforeEach(() => {
   // the isolated (`--parallel`) per-file processes, so a config-seeding file can't
   // leave LLM credentials visible to a later file that assumes none are configured.
   _systemConfig.systemConfigCacheForTesting.clear()
+  // Trusted-module contribution registries are process-wide singletons that accumulate
+  // across test files in serial mode (`bun test`, CI) — the startup tests re-run
+  // loadTrustedModules() via cache-busted entry imports. Clear them so serial runs match
+  // the isolated (`--parallel`) per-file processes.
+  moduleToolRegistry.clear()
+  moduleCommandRegistry.clear()
+  modulePromptFragmentRegistry.clear()
+  moduleSettingsRegistry.clear()
+  moduleEligibilityRegistry.clear()
   setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
   process.env['S3_BUCKET'] = 'test-bucket'
   process.env['S3_ACCESS_KEY_ID'] = 'test-key'
