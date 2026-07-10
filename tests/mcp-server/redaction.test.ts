@@ -10,6 +10,7 @@ import {
   applyRedactions,
   BLOCK_PREFIX,
   isBlockedResult,
+  MAX_REDACTION_INPUT_CHARS,
   parseFindings,
   redactText,
   sizeGuard,
@@ -26,6 +27,20 @@ function modelResponse(body: unknown): Response {
   return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(body) } }] }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+// Mimics native fetch: rejects immediately for an already-aborted signal (via
+// `throwIfAborted`, which throws synchronously inside the executor and rejects the
+// promise), otherwise rejects once the signal later fires. Kept outside any `test()`
+// body per vitest(no-conditional-in-test).
+function abortAwareHttpFetch(_url: string, init: RequestInit | undefined): Promise<Response> {
+  const signal = init?.signal
+  return new Promise<Response>((_resolve, reject) => {
+    signal?.throwIfAborted()
+    signal?.addEventListener('abort', () => {
+      reject(new Error('aborted'))
+    })
   })
 }
 
@@ -100,6 +115,29 @@ describe('redactText', () => {
         }),
       }),
     )
+  })
+
+  test('fails closed on oversize input without calling the internal model', async () => {
+    const httpFetch = mock().mockResolvedValue(modelResponse([]))
+    const oversized = 'x'.repeat(MAX_REDACTION_INPUT_CHARS + 1)
+    const out = await redactText(oversized, 'PROMPT', cfg, httpFetch, undefined)
+    expect(isBlockedResult(out)).toBe(true)
+    expect(out.startsWith(BLOCK_PREFIX)).toBe(true)
+    expect(httpFetch).not.toHaveBeenCalled()
+  })
+
+  test('still redacts normal-size input', async () => {
+    const httpFetch = mock().mockResolvedValue(modelResponse([{ string: 'a@b.com', redacted: 'email' }]))
+    const out = await redactText('contact a@b.com', 'PROMPT', cfg, httpFetch, undefined)
+    expect(out).toBe('contact [EMAIL]')
+  })
+
+  test('short-circuits on an already-aborted parent signal without a completed model call', async () => {
+    const httpFetch = mock(abortAwareHttpFetch)
+    const controller = new AbortController()
+    controller.abort()
+    const out = await redactText('secret', 'PROMPT', cfg, httpFetch, controller.signal)
+    expect(isBlockedResult(out)).toBe(true)
   })
 })
 

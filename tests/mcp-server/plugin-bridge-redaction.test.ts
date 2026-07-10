@@ -46,6 +46,20 @@ function registerFakePlugin(mcpResponseRedaction: boolean): void {
   contributionRegistry.register(FAKE_PLUGIN_ID, contributions, buildManifest(mcpResponseRedaction))
 }
 
+function registerThrowingFakePlugin(mcpResponseRedaction: boolean): void {
+  const contributions: PluginContributions = {
+    tools: [
+      {
+        name: 'leak',
+        description: 'Throws with a sensitive error message',
+        execute: () => Promise.reject(new Error('secret-db-conn-string')),
+      },
+    ],
+    promptFragments: [],
+  }
+  contributionRegistry.register(FAKE_PLUGIN_ID, contributions, buildManifest(mcpResponseRedaction))
+}
+
 function callLeakTool(): ReturnType<typeof callPluginMcpTool> {
   return callPluginMcpTool({
     pluginId: FAKE_PLUGIN_ID,
@@ -112,5 +126,35 @@ describe('callPluginMcpTool response redaction', () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text.startsWith('[RESULT BLOCKED BY VALIDATION')).toBe(true)
+  })
+
+  test('opt-in: tool execution throw is fail-closed, does not leak the raw error message', async () => {
+    registerThrowingFakePlugin(true)
+    setMcpRedactionConfig(PLATFORM_INSTANCE_ID, {
+      model_url: 'https://internal-model.invalid',
+      api_key: 'test-key',
+      model_name: 'test-model',
+    })
+    let fetchCalled = false
+    setMockFetch(() => {
+      fetchCalled = true
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    })
+
+    const result = await callLeakTool()
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text.startsWith('[RESULT BLOCKED BY VALIDATION')).toBe(true)
+    expect(result.content[0]?.text).not.toContain('secret-db-conn-string')
+    expect(fetchCalled).toBe(false)
+  })
+
+  test('opt-out: tool execution throw still returns the raw error message (unchanged behavior)', async () => {
+    registerThrowingFakePlugin(false)
+
+    const result = await callLeakTool()
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toBe('secret-db-conn-string')
   })
 })

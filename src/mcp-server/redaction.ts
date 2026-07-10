@@ -12,6 +12,7 @@ export const BLOCK_PREFIX = '[RESULT BLOCKED BY VALIDATION'
 const DEFAULT_LABEL = 'REDACTED'
 const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_MAX_SIZE = 25_000
+export const MAX_REDACTION_INPUT_CHARS = 100_000
 
 export interface Finding {
   value: string
@@ -101,6 +102,7 @@ async function callInternalModel(
   const onParentAbort = (): void => {
     controller.abort()
   }
+  if (parentSignal?.aborted === true) controller.abort()
   parentSignal?.addEventListener('abort', onParentAbort)
   try {
     const res = await httpFetch(endpoint, {
@@ -142,6 +144,10 @@ export async function redactText(
   httpFetch: HttpFetch,
   parentSignal: AbortSignal | undefined,
 ): Promise<string> {
+  if (text.length > MAX_REDACTION_INPUT_CHARS) {
+    log.warn({ length: text.length }, 'redaction input exceeds cap; blocking (fail-closed)')
+    return `${BLOCK_PREFIX}: response too large to redact safely (${text.length} chars)]`
+  }
   try {
     const raw = await callInternalModel(systemPrompt, text, config, httpFetch, parentSignal)
     return applyRedactions(text, parseFindings(raw))

@@ -116,10 +116,11 @@ export async function callPluginMcpTool(args: CallPluginMcpToolArgs): Promise<Mc
     const guarded = sizeGuard(redacted)
     return textResult(guarded, guarded.startsWith(BLOCK_PREFIX) ? true : undefined)
   } catch (err) {
-    log.warn(
-      { pluginId: args.pluginId, tool: args.toolName, error: err instanceof Error ? err.message : String(err) },
-      'plugin tool execution failed',
-    )
-    return textResult(err instanceof Error ? err.message : String(err), true)
+    const message = err instanceof Error ? err.message : String(err)
+    log.warn({ pluginId: args.pluginId, tool: args.toolName, error: message }, 'plugin tool execution failed')
+    if (contributions.manifest.mcpResponseRedaction === true) {
+      return textResult(`${BLOCK_PREFIX}: tool execution error suppressed]`, true)
+    }
+    return textResult(message, true)
   }
 }
