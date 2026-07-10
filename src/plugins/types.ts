@@ -206,6 +206,10 @@ export const pluginManifestSchema = z
     // (src/mcp-server/) that the coding agent can consume via the sandbox MCP broker.
     // Exposes ALL registered tools; the operator's per-tool policy does the filtering.
     mcpServer: z.boolean().optional().default(false),
+    // When true, this plugin's MCP tool responses are run through the bridge-level
+    // redactor (src/mcp-server/redaction.ts) before leaving papai for the coding agent.
+    // Requires operator `mcp_redaction` admin config; fail-closed otherwise.
+    mcpResponseRedaction: z.boolean().optional().default(false),
   })
   .refine((m) => m.contributes.commands.length === 0 || m.permissions.includes('commands'), {
     message: "Declaring contributes.commands requires the 'commands' permission",
@@ -252,13 +256,19 @@ export type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
 // Fields with Zod `.default([])` are optional on the hand-constructed type; test fixtures and non-provider plugins may omit them.
 export type PluginManifest = Omit<
   ParsedPluginManifest,
-  'providerContextConfigSchema' | 'providerTraits' | 'providerAllowedHostsFromConfig' | 'storageScope' | 'mcpServer'
+  | 'providerContextConfigSchema'
+  | 'providerTraits'
+  | 'providerAllowedHostsFromConfig'
+  | 'storageScope'
+  | 'mcpServer'
+  | 'mcpResponseRedaction'
 > & {
   providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
   providerTraits?: ParsedPluginManifest['providerTraits']
   providerAllowedHostsFromConfig?: ParsedPluginManifest['providerAllowedHostsFromConfig']
   storageScope?: ParsedPluginManifest['storageScope']
   mcpServer?: ParsedPluginManifest['mcpServer']
+  mcpResponseRedaction?: ParsedPluginManifest['mcpResponseRedaction']
 }
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {

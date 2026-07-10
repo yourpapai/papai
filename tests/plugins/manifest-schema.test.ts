@@ -436,3 +436,24 @@ describe('pluginManifestSchema attachmentTransformers and providerAllowedHostsFr
     expect(result.success).toBe(false)
   })
 })
+
+describe('pluginManifestSchema mcpResponseRedaction', () => {
+  const base = {
+    id: 'mcp-sentry',
+    name: 'Sentry',
+    version: '1.0.0',
+    description: 'x',
+    apiVersion: 1,
+    main: 'index.ts',
+  }
+
+  test('defaults mcpResponseRedaction to false when omitted', () => {
+    const parsed = pluginManifestSchema.parse(base)
+    expect(parsed.mcpResponseRedaction).toBe(false)
+  })
+
+  test('accepts mcpResponseRedaction: true', () => {
+    const parsed = pluginManifestSchema.parse({ ...base, mcpResponseRedaction: true })
+    expect(parsed.mcpResponseRedaction).toBe(true)
+  })
+})
