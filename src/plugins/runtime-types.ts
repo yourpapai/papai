@@ -29,15 +29,6 @@ export type PluginContextConfig = {
   get(key: string): string | undefined
 }
 
-/** Repo record surfaced to plugins via the `codingRepos` facade. */
-export type CodingRepoEntry = {
-  name: string
-  repoUrl: string
-  baseBranch: string
-  permissionPreset: string
-  additionalEgressDomains?: string[]
-}
-
 export type PluginToolRuntimeContext = {
   pluginId: string
   storageContextId: string
@@ -53,26 +44,6 @@ export type PluginToolRuntimeContext = {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }
   }
   attachments: PluginAttachmentFacade
-  codingSecrets: {
-    resolve(): Record<string, string> | null
-    resolveForgeToken(): string | null
-    resolveAgent(): string | null
-    resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
-    resolveProviderHost(): string | null
-    resolveModel(): string | null
-    resolveMcp(): {
-      url: string
-      host: string
-      header: string
-      allowedHosts: string[]
-      toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
-    } | null
-    resolveMcpToken(): string | undefined
-  }
-  codingRepos: {
-    list(): { name: string; baseBranch: string }[]
-    get(name: string): CodingRepoEntry | null
-  }
 }
 
 export type PluginScheduledJobRuntimeContext = {
