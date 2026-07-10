@@ -3,10 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+
+import type { ToolExecutionOptions } from 'ai'
 
 import { ConfluenceClient } from '../../plugins/mcp-confluence/client.js'
 import { simplifyComment, simplifyComments, simplifyPage } from '../../plugins/mcp-confluence/format.js'
+import factory from '../../plugins/mcp-confluence/index.js'
+import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
+import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 
 describe('mcp-confluence simplify', () => {
   test('simplifyPage keeps only id/type/title/space{key,name}/body.storage', () => {
@@ -350,5 +355,227 @@ describe('ConfluenceClient', () => {
         'Could not extract pageId from resolved URL "https://wiki.test/nowhere"',
       )
     })
+  })
+})
+
+function createMockLogger(): PluginLogger {
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  }
+}
+
+function createMockContext(overrides: { httpFetch?: (url: string, init?: RequestInit) => Promise<Response> } = {}): {
+  ctx: PluginContext
+  registeredTools: Map<string, PluginTool>
+} {
+  const registeredTools = new Map<string, PluginTool>()
+
+  const registration: PluginRegistration = {
+    registerTool: (tool: PluginTool) => {
+      registeredTools.set(tool.name, tool)
+    },
+    registerPromptFragment: () => {},
+    registerCommand: () => {},
+    registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
+    registerTaskProviderType: () => {},
+  }
+
+  const ctx: PluginContext = {
+    pluginId: 'mcp-confluence',
+    contextId: '__system__',
+    permissions: new Set(['http']),
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    log: createMockLogger(),
+    registration,
+    providerRuntime: {
+      httpFetch: overrides.httpFetch ?? mock(),
+      allowedHosts: new Set(['wiki.test']),
+      logger: createMockLogger(),
+    },
+    adminConfig: {
+      get: () => undefined,
+    },
+  }
+
+  return { ctx, registeredTools }
+}
+
+function createMockRuntimeContext(
+  overrides: {
+    allowed?: boolean
+    retryAfterSec?: number
+    baseUrl?: string | undefined
+    username?: string | undefined
+    password?: string | undefined
+  } = {},
+): PluginToolRuntimeContext {
+  const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
+
+  const values: Record<string, string | undefined> = {
+    base_url: 'baseUrl' in overrides ? overrides.baseUrl : 'https://wiki.test',
+    username: 'username' in overrides ? overrides.username : 'u',
+    password: 'password' in overrides ? overrides.password : 'p',
+  }
+
+  return {
+    pluginId: 'mcp-confluence',
+    storageContextId: 'test-context',
+    chatUserId: 'test-user',
+    taskProvider: {
+      getTask: () => notImplemented(),
+      listTasks: () => notImplemented(),
+      searchTasks: () => notImplemented(),
+      createTask: () => notImplemented(),
+      updateTask: () => notImplemented(),
+    },
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    rateLimit: {
+      check: () => ({
+        allowed: overrides.allowed ?? true,
+        retryAfterSec: overrides.retryAfterSec,
+      }),
+    },
+    attachments: {
+      read: () => notImplemented(),
+    },
+    adminConfig: {
+      get: (key: string) => values[key],
+    },
+    contextConfig: {
+      get: () => undefined,
+    },
+    codingSecrets: {
+      resolve: () => null,
+      resolveForgeToken: () => null,
+      resolveAgent: () => null,
+      resolveForge: () => null,
+      resolveProviderHost: () => null,
+      resolveModel: () => null,
+      resolveMcpServers: () => ({ ok: true, servers: [] }),
+      resolveMcpTokens: () => ({}),
+    },
+    codingRepos: { list: () => [], get: () => null },
+  } as PluginToolRuntimeContext
+}
+
+function createMockOptions(): ToolExecutionOptions {
+  return {
+    toolCallId: 'test-call-id',
+    messages: [],
+  }
+}
+
+describe('mcp-confluence plugin', () => {
+  test('activates and registers all 5 Confluence tools', () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    expect([...registeredTools.keys()].sort()).toEqual(
+      [
+        'confluence_get_page',
+        'confluence_get_page_by_title',
+        'confluence_get_comments',
+        'confluence_add_comment',
+        'confluence_resolve_short_link',
+      ].sort(),
+    )
+  })
+
+  test('confluence_get_page returns the simplified page and calls the correct URL', async () => {
+    let capturedUrl = ''
+    const httpFetch = (url: string): Promise<Response> => {
+      capturedUrl = url
+      return Promise.resolve(
+        new Response(JSON.stringify(rawPage), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('confluence_get_page')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ pageId: '810922884' }, runtimeCtx, options)
+
+    expect(capturedUrl).toBe('https://wiki.test/rest/api/content/810922884?expand=body.storage,version,space')
+    expect(result).toEqual(simplifyPage(rawPage))
+  })
+
+  test('returns not_configured when admin creds are missing', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('confluence_get_page')!
+    const runtimeCtx = createMockRuntimeContext({ baseUrl: undefined })
+    const options = createMockOptions()
+    const result = await tool.execute({ pageId: '1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'not_configured', message: 'Confluence is not configured' })
+  })
+
+  test('returns rate_limited when the rate limit is exceeded', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('confluence_get_page')!
+    const runtimeCtx = createMockRuntimeContext({ allowed: false, retryAfterSec: 30 })
+    const options = createMockOptions()
+    const result = await tool.execute({ pageId: '1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
+  })
+
+  test('returns confluence_error when httpFetch throws a non-abort error', async () => {
+    const httpFetch = (): Promise<Response> => Promise.reject(new Error('Connection refused'))
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('confluence_get_page')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ pageId: '1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'confluence_error', message: 'Connection refused' })
+  })
+
+  test('returns timeout when httpFetch aborts', async () => {
+    const abortError = new Error('The operation was aborted')
+    abortError.name = 'AbortError'
+    const httpFetch = (): Promise<Response> => Promise.reject(abortError)
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('confluence_get_page')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ pageId: '1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'timeout', message: 'The operation was aborted' })
   })
 })
