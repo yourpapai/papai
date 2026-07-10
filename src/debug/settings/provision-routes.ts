@@ -77,8 +77,8 @@ export async function handleProvisionKaneo(req: Request): Promise<Response> {
   }
 
   const username = resolveProvisionUsername(scope.scope, principal.platformInstanceId, principal.platformUserId)
-  const publicUrl = process.env['KANEO_CLIENT_URL']
-  const internalUrl = process.env['KANEO_INTERNAL_URL']
+  const publicUrl = taskInstance.config['baseUrl']
+  const internalUrl = taskInstance.config['internalUrl']
   const outcome = await provision({
     contextId: scope.scope.contextId,
     username,
