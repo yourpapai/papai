@@ -63,6 +63,10 @@ import * as _pluginDiscovery from '../src/plugins/discovery.js'
 import * as _pluginLoader from '../src/plugins/loader.js'
 import * as _pluginRegistry from '../src/plugins/registry.js'
 import * as _pluginStartupGuard from '../src/plugins/startup-guard.js'
+import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../src/ports/module-contributions.js'
+import { moduleEligibilityRegistry } from '../src/ports/module-eligibility.js'
+import { moduleToolRegistry } from '../src/ports/module-tools.js'
+import { moduleSettingsRegistry } from '../src/ports/settings-sections.js'
 import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
@@ -134,6 +138,15 @@ beforeEach(() => {
   // the isolated (`--parallel`) per-file processes, so a config-seeding file can't
   // leave LLM credentials visible to a later file that assumes none are configured.
   _systemConfig.systemConfigCacheForTesting.clear()
+  // Trusted-module contribution registries are process-wide singletons that accumulate
+  // across test files in serial mode (`bun test`, CI) — the startup tests re-run
+  // loadTrustedModules() via cache-busted entry imports. Clear them so serial runs match
+  // the isolated (`--parallel`) per-file processes.
+  moduleToolRegistry.clear()
+  moduleCommandRegistry.clear()
+  modulePromptFragmentRegistry.clear()
+  moduleSettingsRegistry.clear()
+  moduleEligibilityRegistry.clear()
   setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
   process.env['S3_BUCKET'] = 'test-bucket'
   process.env['S3_ACCESS_KEY_ID'] = 'test-key'
