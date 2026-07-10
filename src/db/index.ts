@@ -74,6 +74,7 @@ import { migration060KaneoWorkspaceMembers } from './migrations/060_kaneo_worksp
 import { migration062NullableContextTaskInstance } from './migrations/062_nullable_context_task_instance.js'
 import { migration063ReleaseAnnouncements } from './migrations/063_release_announcements.js'
 import { migration065CodingIdentity } from './migrations/065_coding_identity.js'
+import { migration068TaskProviderMembers } from './migrations/068_task_provider_members.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -172,6 +173,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration062NullableContextTaskInstance,
   migration063ReleaseAnnouncements,
   migration065CodingIdentity,
+  migration068TaskProviderMembers,
 ]
 
 export const initDb = (): void => {
