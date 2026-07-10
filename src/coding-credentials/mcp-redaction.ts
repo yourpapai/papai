@@ -6,9 +6,11 @@
 import { z } from 'zod'
 
 import { getCachedConfig, setCachedConfig } from '../cache.js'
+import { decryptSecretPayload, encryptSecretPayload } from '../secret-payload-crypto.js'
 
 const PREFIX = '__admin_mcp_redaction__:'
 const KEY = 'mcp_redaction'
+const PAYLOAD_FIELD = 'config'
 
 export const mcpRedactionConfigSchema = z.object({
   model_url: z.url().refine((u) => u.startsWith('https://'), { message: 'model_url must be https' }),
@@ -23,10 +25,13 @@ export function adminMcpRedactionContextId(platformInstanceId: string): string {
 }
 
 export function resolveMcpRedactionConfig(platformInstanceId: string): McpRedactionConfig | null {
-  const raw = getCachedConfig(adminMcpRedactionContextId(platformInstanceId), KEY)
-  if (raw === null) return null
+  const encrypted = getCachedConfig(adminMcpRedactionContextId(platformInstanceId), KEY)
+  if (encrypted === null) return null
   try {
-    const parsed = mcpRedactionConfigSchema.safeParse(JSON.parse(raw))
+    const payload = decryptSecretPayload(encrypted)
+    const serialized = payload[PAYLOAD_FIELD]
+    if (serialized === undefined) return null
+    const parsed = mcpRedactionConfigSchema.safeParse(JSON.parse(serialized))
     return parsed.success ? parsed.data : null
   } catch {
     return null
@@ -34,9 +39,7 @@ export function resolveMcpRedactionConfig(platformInstanceId: string): McpRedact
 }
 
 export function setMcpRedactionConfig(platformInstanceId: string, config: McpRedactionConfig): void {
-  setCachedConfig(
-    adminMcpRedactionContextId(platformInstanceId),
-    KEY,
-    JSON.stringify(mcpRedactionConfigSchema.parse(config)),
-  )
+  const validated = mcpRedactionConfigSchema.parse(config)
+  const encrypted = encryptSecretPayload({ [PAYLOAD_FIELD]: JSON.stringify(validated) })
+  setCachedConfig(adminMcpRedactionContextId(platformInstanceId), KEY, encrypted)
 }
