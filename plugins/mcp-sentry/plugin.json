@@ -1,0 +1,32 @@
+{
+  "id": "mcp-sentry",
+  "name": "Sentry (coding agent)",
+  "version": "1.0.0",
+  "description": "Agent-facing Sentry issue diagnosis tools exposed as an MCP server",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "mcpResponseRedaction": true,
+  "contributes": {
+    "tools": [
+      "sentry_get_projects",
+      "sentry_search_issues",
+      "sentry_get_issue",
+      "sentry_get_issue_events",
+      "sentry_get_issue_tag_values",
+      "sentry_get_issue_comments",
+      "sentry_get_issue_details"
+    ],
+    "promptFragments": [],
+    "configKeys": []
+  },
+  "permissions": ["http"],
+  "providerAllowedHostsFromConfig": ["base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "base_url", "label": "Sentry Base URL", "required": true, "scope": "admin" },
+    { "key": "token", "label": "Sentry API Token", "required": true, "sensitive": true, "scope": "admin" },
+    { "key": "org_slug", "label": "Sentry Org Slug", "required": true, "scope": "admin" }
+  ],
+  "activationTimeoutMs": 3000
+}

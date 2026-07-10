@@ -186,6 +186,7 @@
     "plugins/task-provider-kaneo/index.ts": ["exports"],
     "plugins/task-provider-youtrack/index.ts": ["exports"],
     "plugins/nerv/index.ts": ["exports"],
+    "plugins/mcp-sentry/index.ts": ["exports"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.
