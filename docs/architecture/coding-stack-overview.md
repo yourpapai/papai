@@ -255,7 +255,10 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   `mcp-sentry` plugin (`plugins/mcp-sentry/`) is the first first-party MCP plugin migrated onto
   this pattern — 7 read-only Sentry issue-diagnosis tools. `mcp-confluence`
   (`plugins/mcp-confluence/`) is the second — 5 Confluence wiki read/comment tools over HTTP
-  Basic auth, responses redacted the same way.
+  Basic auth, responses redacted the same way. `mcp-figma` (`plugins/mcp-figma/`) is the
+  third — 7 Figma file/node/style/component/comment tools authenticated via `X-Figma-Token`;
+  it does not opt into `mcpResponseRedaction` (design metadata, not customer data) and is the
+  first of the three with a context-scoped (per-team) rather than admin-scoped credential.
 
 ### 3.7 Transcript viewer (papai-side)
 
