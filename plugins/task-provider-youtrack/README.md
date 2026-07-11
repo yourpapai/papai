@@ -9,16 +9,19 @@ task tools. YouTrack is the most fully-featured provider in papai.
 
 ## Contributions
 
-| Surface            | Name       | Notes                                     |
-| ------------------ | ---------- | ----------------------------------------- |
-| Task provider type | `youtrack` | Registered via `registerTaskProviderType` |
+| Surface            | Name                                                    | Notes                                                                                                         |
+| ------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Task provider type | `youtrack`                                              | Registered via `registerTaskProviderType`                                                                     |
+| Tool               | `plugin_task_provider_youtrack__apply_youtrack_command` | Plugin-contributed; gated by `requiredTaskCapabilities: ['tasks.commands']` (only YouTrack declares it today) |
 
 No auto-provisioning — connect to an existing YouTrack instance with a
 permanent token.
 
 ## Permissions
 
-`provider.task`, `identity`.
+`provider.task`, `identity`, `tasks.write` (the last one gates the
+contributed `apply_youtrack_command` tool's use of the task-provider
+facade's `applyCommand`).
 
 ## Provider capabilities
 
@@ -48,7 +51,7 @@ Stored under the namespaced key
 
 ## Traits
 
-`supports-command-language` (`command-language:youtrack`), `custom-fields`.
+`supports-command-language`, `custom-fields`.
 
 ## Behavior notes
 
@@ -60,9 +63,12 @@ Stored under the namespaced key
 - **Readable IDs** — issues use human-readable IDs like `PROJ-123`; always use
   these.
 - **Tags as labels** — YouTrack tags map onto the label tools.
-- **Command language** — `apply_youtrack_command` is used only for explicit
-  command-style operations or field mutations the structured tools cannot
-  express safely.
+- **Command language** — the plugin-contributed
+  `plugin_task_provider_youtrack__apply_youtrack_command` tool is used only
+  for explicit command-style operations or field mutations the structured
+  tools cannot express safely. It is a `contributes.tools` entry (not a core
+  builtin), gated by `requiredTaskCapabilities: ['tasks.commands']`, and
+  excluded from proactive/unattended turns like other write tools.
 
 (See `prompt-addendum.ts` for the full YouTrack-specific guidance injected into
 the system prompt.)
