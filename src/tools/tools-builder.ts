@@ -15,7 +15,6 @@ import { makeAddCommentTool } from './add-comment.js'
 import { makeAddProjectMemberTool } from './add-project-member.js'
 import { makeAddTaskLabelTool } from './add-task-label.js'
 import { makeAddTaskRelationTool } from './add-task-relation.js'
-import { makeApplyYouTrackCommandTool } from './apply-youtrack-command.js'
 import { makeAssignTaskToSprintTool } from './assign-task-to-sprint.js'
 import { makeListAttachmentsTool, makeRemoveAttachmentTool, makeUploadAttachmentTool } from './attachment-tools.js'
 import { makeClearMyIdentityTool } from './clear-my-identity.js'
@@ -168,20 +167,13 @@ function maybeAddPhaseFiveSprintTools(tools: ToolSet, provider: TaskProvider): v
     tools['assign_task_to_sprint'] = makeAssignTaskToSprintTool(provider)
 }
 
-function maybeAddPhaseFiveQueryTools(tools: ToolSet, provider: TaskProvider, mode: ToolMode): void {
+function maybeAddPhaseFiveQueryTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('activities.read') && provider.getTaskHistory !== undefined)
     tools['get_task_history'] = makeGetTaskHistoryTool(provider)
   if (provider.capabilities.has('queries.saved') && provider.listSavedQueries !== undefined)
     tools['list_saved_queries'] = makeListSavedQueriesTool(provider)
   if (provider.capabilities.has('queries.saved') && provider.runSavedQuery !== undefined)
     tools['run_saved_query'] = makeRunSavedQueryTool(provider)
-  if (
-    mode === 'normal' &&
-    provider.traits.has('command-language:youtrack') &&
-    provider.capabilities.has('tasks.commands') &&
-    provider.applyCommand !== undefined
-  )
-    tools['apply_youtrack_command'] = makeApplyYouTrackCommandTool(provider)
 }
 
 function maybeAddIdentityTools(
@@ -223,7 +215,7 @@ export function buildTools(
   addAttachmentTools(tools, provider, contextId, groupReadContextId)
   maybeAddWorkItemTools(tools, provider)
   maybeAddPhaseFiveSprintTools(tools, provider)
-  maybeAddPhaseFiveQueryTools(tools, provider, mode)
+  maybeAddPhaseFiveQueryTools(tools, provider)
   if (provider.capabilities.has('tasks.count') && provider.countTasks !== undefined)
     tools['count_tasks'] = makeCountTasksTool(provider)
   addProviderIndependentTools(tools, {

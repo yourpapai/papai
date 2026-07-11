@@ -268,7 +268,7 @@ export function createMockKaneoProvider(overrides: Partial<TaskProvider> = {}): 
 export function createMockYouTrackProvider(overrides: Partial<TaskProvider> = {}): TaskProvider {
   return createMockProvider({
     name: 'youtrack',
-    traits: new Set<TaskProviderTrait>(['supports-command-language', 'command-language:youtrack', 'custom-fields']),
+    traits: new Set<TaskProviderTrait>(['supports-command-language', 'custom-fields']),
     preferredUserIdentifier: 'login',
     normalizeDueDateInput: (_dueDate: ToolDueDateInput | undefined, _timezone: string): string | undefined =>
       normalizeYouTrackMockDueDateInput(_dueDate),
