@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { handleAdminNervHealthRoutes } from '../../../../src/debug/settings/admin/nerv-health-routes.js'
+import {
+  handleAdminNervHealthRoutes,
+  probeNervHealth,
+} from '../../../../src/debug/settings/admin/nerv-health-routes.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
 import { setPluginAdminConfig } from '../../../../src/plugins/store.js'
 import { addUser } from '../../../../src/users.js'
@@ -121,5 +124,21 @@ describe('settings admin nerv-health routes', () => {
     )
     const body = NervHealthResponseSchema.parse(await res.json())
     expect(body.status).toBe('unreachable')
+  })
+
+  test('probes nerv at {baseUrl}/health with a bearer header, trailing slash stripped', async () => {
+    setPluginAdminConfig('nerv', 'nerv_base_url', 'https://nerv.example/', 'admin-1')
+    setPluginAdminConfig('nerv', 'nerv_token', 'secret-tok', 'admin-1')
+    const captured: { url: string; init: RequestInit }[] = []
+    setMockFetch((fetchUrl, init) => {
+      captured.push({ url: fetchUrl, init })
+      return Promise.resolve(new Response('', { status: 200 }))
+    })
+    const status = await probeNervHealth()
+    expect(status).toBe('connected')
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.url).toBe('https://nerv.example/health')
+    const headers = new Headers(captured[0]?.init.headers)
+    expect(headers.get('Authorization')).toBe('Bearer secret-tok')
   })
 })

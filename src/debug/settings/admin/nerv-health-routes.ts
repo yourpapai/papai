@@ -23,6 +23,8 @@ export async function probeNervHealth(): Promise<NervHealthStatus> {
   if (baseUrl === undefined || baseUrl.trim() === '' || token === undefined || token.trim() === '') {
     return 'misconfigured'
   }
+  // Intentionally mirrors readNervConfig's baseUrl trim/trailing-slash-strip in plugins/nerv/client.ts —
+  // core can't import a plugin's impl module across that boundary, so keep the two in sync by hand.
   const url = `${baseUrl.trim().replace(/\/+$/u, '')}/health`
   try {
     const res = await fetch(url, {
