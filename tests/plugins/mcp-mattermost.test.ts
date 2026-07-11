@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+
+import type { ToolExecutionOptions } from 'ai'
 
 import { MattermostClient } from '../../plugins/mcp-mattermost/client.js'
 import {
@@ -13,6 +15,9 @@ import {
   parseSince,
   shapePost,
 } from '../../plugins/mcp-mattermost/format.js'
+import factory from '../../plugins/mcp-mattermost/index.js'
+import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
+import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 
 describe('mcp-mattermost format', () => {
   describe('normalizeBaseUrl', () => {
@@ -411,5 +416,211 @@ describe('MattermostClient', () => {
     const client = new MattermostClient({ baseUrl, token, httpFetch })
 
     await expect(client.getPost('P1')).rejects.toThrow('Mattermost API 500 for /posts/P1')
+  })
+})
+
+function createMockLogger(): PluginLogger {
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  }
+}
+
+function createMockContext(overrides: { httpFetch?: (url: string, init?: RequestInit) => Promise<Response> } = {}): {
+  ctx: PluginContext
+  registeredTools: Map<string, PluginTool>
+} {
+  const registeredTools = new Map<string, PluginTool>()
+
+  const registration: PluginRegistration = {
+    registerTool: (tool: PluginTool) => {
+      registeredTools.set(tool.name, tool)
+    },
+    registerPromptFragment: () => {},
+    registerCommand: () => {},
+    registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
+    registerTaskProviderType: () => {},
+  }
+
+  const ctx: PluginContext = {
+    pluginId: 'mcp-mattermost',
+    contextId: '__system__',
+    permissions: new Set(['http']),
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    log: createMockLogger(),
+    registration,
+    providerRuntime: {
+      httpFetch: overrides.httpFetch ?? mock(),
+      allowedHosts: new Set(['mm.test']),
+      logger: createMockLogger(),
+    },
+    adminConfig: {
+      get: () => undefined,
+    },
+  }
+
+  return { ctx, registeredTools }
+}
+
+function createMockRuntimeContext(
+  overrides: {
+    allowed?: boolean
+    retryAfterSec?: number
+    baseUrl?: string | undefined
+    accessToken?: string | undefined
+  } = {},
+): PluginToolRuntimeContext {
+  const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
+
+  const values: Record<string, string | undefined> = {
+    base_url: 'baseUrl' in overrides ? overrides.baseUrl : 'https://mm.test',
+    access_token: 'accessToken' in overrides ? overrides.accessToken : 'tok',
+  }
+
+  return {
+    pluginId: 'mcp-mattermost',
+    storageContextId: 'test-context',
+    chatUserId: 'test-user',
+    taskProvider: {
+      getTask: () => notImplemented(),
+      listTasks: () => notImplemented(),
+      searchTasks: () => notImplemented(),
+      createTask: () => notImplemented(),
+      updateTask: () => notImplemented(),
+    },
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    rateLimit: {
+      check: () => ({
+        allowed: overrides.allowed ?? true,
+        retryAfterSec: overrides.retryAfterSec,
+      }),
+    },
+    attachments: {
+      read: () => notImplemented(),
+    },
+    adminConfig: {
+      get: (key: string) => values[key],
+    },
+    contextConfig: {
+      get: () => undefined,
+    },
+    codingSecrets: {
+      resolve: () => null,
+      resolveForgeToken: () => null,
+      resolveAgent: () => null,
+      resolveForge: () => null,
+      resolveProviderHost: () => null,
+      resolveModel: () => null,
+      resolveMcpServers: () => ({ ok: true, servers: [] }),
+      resolveMcpTokens: () => ({}),
+    },
+    codingRepos: { list: () => [], get: () => null },
+  } as PluginToolRuntimeContext
+}
+
+function createMockOptions(): ToolExecutionOptions {
+  return {
+    toolCallId: 'test-call-id',
+    messages: [],
+  }
+}
+
+describe('mcp-mattermost plugin', () => {
+  test('activates and registers all 5 Mattermost tools', () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    expect([...registeredTools.keys()].sort()).toEqual(
+      [
+        'mattermost_get_post',
+        'mattermost_get_thread',
+        'mattermost_get_channel_posts',
+        'mattermost_create_post',
+        'mattermost_download_attachment',
+      ].sort(),
+    )
+  })
+
+  test('mattermost_get_post returns the enriched post and calls the correct URL', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts/P1': jsonResponse({ id: 'P1', message: 'hi', user_id: 'u1', channel_id: 'c1', create_at: 1 }),
+      '/api/v4/users/u1': jsonResponse({ id: 'u1', username: 'alice', first_name: 'Alice', last_name: 'A' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('mattermost_get_post')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ linkOrId: 'P1' }, runtimeCtx, options)
+
+    expect(calls[0]?.url).toBe('https://mm.test/api/v4/posts/P1')
+    expect(result).toEqual({
+      id: 'P1',
+      message: 'hi',
+      user_id: 'u1',
+      channel_id: 'c1',
+      create_at: 1,
+      user: { id: 'u1', username: 'alice', name: 'Alice A' },
+    })
+  })
+
+  test('returns not_configured when admin creds are missing', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('mattermost_get_post')!
+    const runtimeCtx = createMockRuntimeContext({ baseUrl: undefined })
+    const options = createMockOptions()
+    const result = await tool.execute({ linkOrId: 'P1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'not_configured', message: 'Mattermost is not configured' })
+  })
+
+  test('returns rate_limited when the rate limit is exceeded', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('mattermost_get_post')!
+    const runtimeCtx = createMockRuntimeContext({ allowed: false, retryAfterSec: 30 })
+    const options = createMockOptions()
+    const result = await tool.execute({ linkOrId: 'P1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
+  })
+
+  test('returns mattermost_error when httpFetch throws a non-abort error', async () => {
+    const httpFetch = (): Promise<Response> => Promise.reject(new Error('Connection refused'))
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('mattermost_get_post')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ linkOrId: 'P1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'mattermost_error', message: 'Connection refused' })
   })
 })
