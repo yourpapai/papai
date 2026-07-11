@@ -22,6 +22,7 @@ import {
   type ShapedFieldOption,
   type ShapedIssue,
 } from './format.js'
+import { createYouTrackRequester, type YouTrackRequester } from './http.js'
 
 export interface YouTrackClientOptions {
   baseUrl: string
@@ -40,12 +41,6 @@ export interface ReadAttachmentResult {
   tooLarge?: boolean
   isBinary?: boolean
   note?: string
-}
-
-interface RequestOptions {
-  method?: string
-  body?: string
-  headers?: Record<string, string>
 }
 
 const MAX_INLINE = 512_000
@@ -69,41 +64,19 @@ function shapeTag(raw: unknown): ShapedTag {
 }
 
 export class YouTrackClient {
-  private readonly baseUrl: string
-  private readonly token: string
-  private readonly httpFetch: HttpFetch
+  private readonly requester: YouTrackRequester
 
   constructor(options: YouTrackClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/+$/u, '')
-    this.token = options.token
-    this.httpFetch = options.httpFetch
-  }
-
-  private async request(path: string, init?: RequestOptions): Promise<unknown> {
-    const res = await this.httpFetch(`${this.baseUrl}/api${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(init?.headers ?? {}),
-      },
-    })
-    if (!res.ok) {
-      throw new Error(`YouTrack API ${res.status} for ${path}`)
-    }
-    if (res.status === 204) return undefined
-    const body = await res.text()
-    return body === '' ? undefined : JSON.parse(body)
+    this.requester = createYouTrackRequester(options)
   }
 
   async getIssue(issueId: string): Promise<ShapedIssue> {
-    const raw = await this.request(`/issues/${encodeURIComponent(issueId)}?fields=${ISSUE_FIELDS}`)
+    const raw = await this.requester.request(`/issues/${encodeURIComponent(issueId)}?fields=${ISSUE_FIELDS}`)
     return shapeIssue(raw)
   }
 
   async getStateActivities(issueId: string): Promise<ShapedActivity[]> {
-    const json = await this.request(
+    const json = await this.requester.request(
       `/issues/${encodeURIComponent(issueId)}/activities?categories=CustomFieldCategory&fields=${ACTIVITY_FIELDS}&$top=500&$orderby=timestamp`,
     )
     const arr = Array.isArray(json) ? json : []
@@ -113,7 +86,7 @@ export class YouTrackClient {
   }
 
   async getComments(issueId: string): Promise<ShapedComment[]> {
-    const json = await this.request(
+    const json = await this.requester.request(
       `/issues/${encodeURIComponent(issueId)}/comments?fields=${COMMENT_READ_FIELDS}&$top=500`,
     )
     const arr = Array.isArray(json) ? json : []
@@ -121,22 +94,24 @@ export class YouTrackClient {
   }
 
   async getIssueTags(issueId: string): Promise<ShapedTag[]> {
-    const json = await this.request(`/issues/${encodeURIComponent(issueId)}/tags?fields=id,name`)
+    const json = await this.requester.request(`/issues/${encodeURIComponent(issueId)}/tags?fields=id,name`)
     return Array.isArray(json) ? json.map((entry) => shapeTag(entry)) : []
   }
 
   async getFieldOptions(issueId: string, fieldName?: string): Promise<ShapedFieldOption[]> {
-    const raw = await this.request(`/issues/${encodeURIComponent(issueId)}?fields=${FIELD_OPTIONS_FIELDS}`)
+    const raw = await this.requester.request(`/issues/${encodeURIComponent(issueId)}?fields=${FIELD_OPTIONS_FIELDS}`)
     return shapeFieldOptions(raw, fieldName)
   }
 
   async getAttachments(issueId: string): Promise<ShapedAttachment[]> {
-    const json = await this.request(`/issues/${encodeURIComponent(issueId)}/attachments?fields=${ATTACHMENT_FIELDS}`)
+    const json = await this.requester.request(
+      `/issues/${encodeURIComponent(issueId)}/attachments?fields=${ATTACHMENT_FIELDS}`,
+    )
     return Array.isArray(json) ? json.map((entry) => shapeAttachment(entry)) : []
   }
 
   async readAttachment(issueId: string, attachmentId: string): Promise<ReadAttachmentResult> {
-    const meta = await this.request(
+    const meta = await this.requester.request(
       `/issues/${encodeURIComponent(issueId)}/attachments/${encodeURIComponent(attachmentId)}?fields=${ATTACHMENT_FIELDS}`,
     )
     const attachment = shapeAttachment(meta)
@@ -149,8 +124,8 @@ export class YouTrackClient {
       if (url === undefined) {
         return { attachment, isBinary: true, note: 'No download URL' }
       }
-      const res = await this.httpFetch(`${this.baseUrl}${url}`, {
-        headers: { Authorization: `Bearer ${this.token}`, Accept: '*/*' },
+      const res = await this.requester.httpFetch(`${this.requester.baseUrl}${url}`, {
+        headers: { Authorization: `Bearer ${this.requester.token}`, Accept: '*/*' },
       })
       if (!res.ok) {
         throw new Error(`YouTrack API ${res.status} for attachment content`)
@@ -166,10 +141,13 @@ export class YouTrackClient {
   }
 
   async addComment(issueId: string, text: string): Promise<ShapedComment> {
-    const raw = await this.request(`/issues/${encodeURIComponent(issueId)}/comments?fields=${COMMENT_WRITE_FIELDS}`, {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    })
+    const raw = await this.requester.request(
+      `/issues/${encodeURIComponent(issueId)}/comments?fields=${COMMENT_WRITE_FIELDS}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      },
+    )
     return shapeComment(raw)
   }
 }
