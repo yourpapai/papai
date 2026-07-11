@@ -1,0 +1,28 @@
+{
+  "id": "mcp-gitlab",
+  "name": "GitLab (coding agent)",
+  "version": "1.0.0",
+  "description": "Agent-facing read-only GitLab (repo/MR/job) tools exposed as an MCP server",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "contributes": {
+    "tools": [
+      "gitlab_get_repository_tree",
+      "gitlab_get_file_content",
+      "gitlab_get_mr_info",
+      "gitlab_get_mrs",
+      "gitlab_get_job"
+    ],
+    "promptFragments": [],
+    "configKeys": []
+  },
+  "permissions": ["http"],
+  "providerAllowedHostsFromConfig": ["base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "base_url", "label": "GitLab Base URL", "required": true, "scope": "admin" },
+    { "key": "token", "label": "GitLab Token (PRIVATE-TOKEN)", "required": true, "sensitive": true, "scope": "admin" }
+  ],
+  "activationTimeoutMs": 3000
+}
