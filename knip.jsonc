@@ -212,6 +212,9 @@
     // mcp-figma is still a scaffold (see plugins/mcp-figma/index.ts); tool
     // registration wiring that will import these schemas lands in a later task.
     "plugins/mcp-figma/input-schema.ts": ["files"],
+    // simplifyFigmaResponse/parseIds are consumed by the tool implementations
+    // wired up in a later task; not imported anywhere yet.
+    "plugins/mcp-figma/format.ts": ["files"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
