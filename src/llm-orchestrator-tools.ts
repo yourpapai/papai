@@ -46,7 +46,6 @@ const ACP_SESSION_ACTION_TOOLS = new Set([
 const NERV_TASK_ACTION_TOOLS = new Set([
   'plugin_nerv__create_coding_task',
   'plugin_nerv__followup_coding_task',
-  'plugin_nerv__steer_coding_task',
   'plugin_nerv__cancel_coding_task',
 ])
 

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { HttpFetch } from './client.js'
-import { cancelCodingTaskTool, followupCodingTaskTool, steerCodingTaskTool } from './event-tools.js'
+import { cancelCodingTaskTool, followupCodingTaskTool } from './event-tools.js'
 import { codingTaskStatusTool, createCodingTaskTool, listCodingTasksTool } from './tools.js'
 import type { Tool } from './tools.js'
 
@@ -82,7 +82,7 @@ function extractActivationContext(ctx: unknown): ActivationContext {
 const NERV_PROMPT_FRAGMENT =
   'Supervised coding tasks: for long-running work — open/update a GitLab merge request and watch it until CI is ' +
   'green, iterate on review comments, or work across multiple repos — use create_coding_task(project, prompt). ' +
-  'It runs until done and notifies the user; use followup_coding_task/steer_coding_task to guide it, ' +
+  'It runs until done and notifies the user; use followup_coding_task to queue guidance for the next checkpoint, ' +
   'cancel_coding_task to stop it, and coding_task_status/list_coding_tasks to check progress. Only one task runs ' +
   'per thread. For a single one-shot change that opens a PR immediately, use start_session (the acp plugin) instead.'
 
@@ -98,7 +98,6 @@ const factory = (): { activate(ctx: unknown): void } => ({
     ctx.registerTool(codingTaskStatusTool(ctx.httpFetch))
     ctx.registerTool(listCodingTasksTool(ctx.httpFetch))
     ctx.registerTool(followupCodingTaskTool(ctx.httpFetch))
-    ctx.registerTool(steerCodingTaskTool(ctx.httpFetch))
     ctx.registerTool(cancelCodingTaskTool(ctx.httpFetch))
     ctx.registerFragment({ name: 'nerv-hint', content: NERV_PROMPT_FRAGMENT })
     ctx.registerCommand({

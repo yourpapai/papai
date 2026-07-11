@@ -303,11 +303,14 @@ magi's URL/token never reach the browser. The stream proxy binds directly to the
 A sibling of `plugins/acp/` and a stateless HTTP client of **nerv**, the stateful supervisor tier
 (`papai → nerv → magi → geofront`). Where acp runs a **one-shot** coding session, nerv drives a
 **long-running, supervised** GitLab-MR task: it opens/updates a merge request and watches it until CI
-is green, ingesting review comments and iterating. The plugin exposes six LLM tools —
+is green, ingesting review comments and iterating. The plugin exposes five LLM tools —
 `create_coding_task`, `coding_task_status`, `list_coding_tasks`, `followup_coding_task`,
-`steer_coding_task`, `cancel_coding_task` — mapping to nerv's `POST /tasks`, `GET /tasks/:id`, and
+`cancel_coding_task` — mapping to nerv's `POST /tasks`, `GET /tasks/:id`, and
 `POST /tasks/:id/events`. Admin config `nerv_base_url`/`nerv_token` (bearer, allowlisted via
-`providerAllowedHostsFromConfig`), same shape as acp's `magi_*`.
+`providerAllowedHostsFromConfig`), same shape as acp's `magi_*`. There is no separate "steer" tool —
+`followup_coding_task` is the single honest entry point (queued, applied at the next checkpoint); a
+prior dedicated `steer_coding_task` tool was removed since both hit the identical nerv-side
+`chat_instruction` path and implied a distinction that did not exist.
 
 - **contextId round-trip**: the chat's thread-scoped `storageContextId` is sent as
   `contextRef.contextId`; nerv stores it, forwards it to magi, and relays milestones back through
@@ -315,12 +318,12 @@ is green, ingesting review comments and iterating. The plugin exposes six LLM to
   `MAGI_NOTIFY_URL` points at **nerv**, not papai — so papai only ever hears from nerv for
   supervised tasks. No papai inbound code changed.
 - **One task per thread**: nerv correlates a task 1:1 by `contextId`, so the plugin keeps a
-  group-scoped local record (`task:<id>`) plus an `active:<thread>` pointer; follow-up/steer/cancel
+  group-scoped local record (`task:<id>`) plus an `active:<thread>` pointer; follow-up/cancel
   auto-resolve the thread's task. `create_coding_task` refuses while a non-terminal task is live.
 - **projectPath** is derived from the reuse of papai's coding-repo catalogue (`codingRepos`, gated by
   `coding.secrets` — used **only** for the repo lookup; nerv owns the forge/magi credentials, so the
   plugin passes no user secrets). GitHub repos are refused (nerv is GitLab-only today).
-- **Gating**: the four nerv action tools join acp's in the operator `whoMayUse` guardrail via
+- **Gating**: the three nerv action tools join acp's in the operator `whoMayUse` guardrail via
   `CODING_ACTION_TOOLS` (`src/llm-orchestrator-tools.ts`); status/list stay ungated.
 
 Design + plan: `docs/superpowers/specs/2026-07-09-papai-nerv-plugin-design.md`,

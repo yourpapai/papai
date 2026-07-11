@@ -13,12 +13,7 @@ function resolveTaskId(runtimeContext: RuntimeContext, args: Record<string, unkn
   return asString(args, 'taskId') ?? getActiveTaskId(runtimeContext.kv, runtimeContext.storageContextId)
 }
 
-function eventTool(
-  httpFetch: HttpFetch | undefined,
-  name: string,
-  description: string,
-  type: 'chat_followup' | 'steer',
-): Tool {
+function eventTool(httpFetch: HttpFetch | undefined, name: string, description: string, type: 'chat_followup'): Tool {
   return {
     name,
     description,
@@ -44,17 +39,8 @@ export function followupCodingTaskTool(httpFetch: HttpFetch | undefined): Tool {
   return eventTool(
     httpFetch,
     'followup_coding_task',
-    'Send a follow-up instruction to this thread’s running coding task (e.g. address a review comment).',
+    'Queue a message or instruction for the running task; it is applied at the next checkpoint.',
     'chat_followup',
-  )
-}
-
-export function steerCodingTaskTool(httpFetch: HttpFetch | undefined): Tool {
-  return eventTool(
-    httpFetch,
-    'steer_coding_task',
-    'Steer this thread’s running coding task mid-flight with a corrective instruction.',
-    'steer',
   )
 }
 

@@ -5,7 +5,7 @@
 
 import { expect, test } from 'bun:test'
 
-import { cancelCodingTaskTool, followupCodingTaskTool, steerCodingTaskTool } from '../../../plugins/nerv/event-tools.js'
+import { cancelCodingTaskTool, followupCodingTaskTool } from '../../../plugins/nerv/event-tools.js'
 import { getActiveTaskId, setActive } from '../../../plugins/nerv/history.js'
 import { options, runtimeCtx } from './support.js'
 
@@ -70,15 +70,6 @@ test('contract: chat_followup wire body is exactly {type, payload:{prompt}}', as
   const tool = followupCodingTaskTool(capturingFetch(captured))
   await tool.execute({ text: 'ship it' }, runtimeCtx(store), options())
   expect(captured[0]?.body).toEqual({ type: 'chat_followup', payload: { prompt: 'ship it' } })
-})
-
-test('steer posts steer with text', async () => {
-  const captured: Captured[] = []
-  const store = new Map<string, string>()
-  withActive(store, 't1')
-  const tool = steerCodingTaskTool(capturingFetch(captured))
-  await tool.execute({ text: 'stop touching the config' }, runtimeCtx(store), options())
-  expect(captured[0]?.body).toEqual({ type: 'steer', payload: { prompt: 'stop touching the config' } })
 })
 
 test('cancel posts cancel and clears the active pointer', async () => {

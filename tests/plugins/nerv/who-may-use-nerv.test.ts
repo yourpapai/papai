@@ -23,7 +23,6 @@ const stub = (): ToolSet[string] =>
 const NAMES = [
   'plugin_nerv__create_coding_task',
   'plugin_nerv__followup_coding_task',
-  'plugin_nerv__steer_coding_task',
   'plugin_nerv__cancel_coding_task',
   'plugin_nerv__coding_task_status',
   'plugin_nerv__list_coding_tasks',
@@ -42,7 +41,7 @@ test('off-allowlist actor loses nerv action tools but keeps status/list', () => 
 
 test('allowlisted actor keeps all nerv tools', () => {
   const filtered = applyWhoMayUseFilter(makeToolSet(NAMES), ['bob'], 'bob')
-  expect(Object.keys(filtered).length).toBe(6)
+  expect(Object.keys(filtered).length).toBe(5)
 })
 
 test('members default keeps everything (reference-identical)', () => {
