@@ -307,7 +307,10 @@ is green, ingesting review comments and iterating. The plugin exposes five LLM t
 `create_coding_task`, `coding_task_status`, `list_coding_tasks`, `followup_coding_task`,
 `cancel_coding_task` — mapping to nerv's `POST /tasks`, `GET /tasks/:id`, and
 `POST /tasks/:id/events`. Admin config `nerv_base_url`/`nerv_token` (bearer, allowlisted via
-`providerAllowedHostsFromConfig`), same shape as acp's `magi_*`. There is no separate "steer" tool —
+`providerAllowedHostsFromConfig`), same shape as acp's `magi_*`. Context-scoped config
+`output_language` (optional; read via `runtimeContext.contextConfig.get('output_language')`) is
+forwarded as `outputLanguage` on `POST /tasks` when set; unset defaults to English on the nerv side.
+There is no separate "steer" tool —
 `followup_coding_task` is the single honest entry point (queued, applied at the next checkpoint); a
 prior dedicated `steer_coding_task` tool was removed since both hit the identical nerv-side
 `chat_instruction` path and implied a distinction that did not exist.

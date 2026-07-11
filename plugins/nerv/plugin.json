@@ -22,7 +22,14 @@
   "defaultEnabled": false,
   "configRequirements": [
     { "key": "nerv_base_url", "label": "nerv Base URL", "required": true, "sensitive": false, "scope": "admin" },
-    { "key": "nerv_token", "label": "nerv Bearer Token", "required": true, "sensitive": true, "scope": "admin" }
+    { "key": "nerv_token", "label": "nerv Bearer Token", "required": true, "sensitive": true, "scope": "admin" },
+    {
+      "key": "output_language",
+      "label": "Output language (e.g. English, Russian)",
+      "required": false,
+      "sensitive": false,
+      "scope": "context"
+    }
   ],
   "activationTimeoutMs": 5000
 }

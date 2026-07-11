@@ -129,6 +129,18 @@ test('create returns NOT_CONFIGURED when nerv config is missing', async () => {
   expect(asRecord(result)['error']).toBe('not_configured')
 })
 
+test('create passes outputLanguage from context config when set', async () => {
+  const captured: Captured[] = []
+  const ctx = runtimeCtx(new Map())
+  const withLang = {
+    ...ctx,
+    contextConfig: { get: (): string | undefined => 'Russian' },
+  }
+  const tool = createCodingTaskTool(capturingFetch(captured, { taskId: 't3' }))
+  await tool.execute({ project: 'demo', prompt: 'fix the CI' }, withLang, options())
+  expect(asRecord(captured[0]?.body)['outputLanguage']).toBe('Russian')
+})
+
 test('multi-repo passes an array of projectPaths', async () => {
   const captured: Captured[] = []
   const tool = createCodingTaskTool(capturingFetch(captured, { taskId: 't2' }))

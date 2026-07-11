@@ -19,6 +19,7 @@ import type { TaskRecord } from './history.js'
 import { createCodingTaskSchema, emptySchema, taskRefSchema } from './schemas.js'
 
 type AdminConfigReader = { get(key: string): string | undefined }
+type ContextConfigReader = { get(key: string): string | undefined }
 type KvStore = {
   get(key: string): string | undefined
   set(key: string, value: string): void
@@ -28,6 +29,7 @@ type KvStore = {
 export type RuntimeContext = {
   storageContextId: string
   adminConfig: AdminConfigReader
+  contextConfig: ContextConfigReader
   kv: KvStore
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
@@ -124,6 +126,7 @@ function buildCreateTaskBody(
   prompt: string,
   storageContextId: string,
   resolved: { repos: { projectPath: string }[]; targetBranch: string | undefined },
+  outputLanguage: string | undefined,
 ): Record<string, unknown> {
   const kind = optionalString(args, 'kind')
   const costBudgetUsd = asNumber(args, 'costBudgetUsd')
@@ -135,6 +138,7 @@ function buildCreateTaskBody(
     source: 'chat',
     ...(resolved.targetBranch === undefined ? {} : { targetBranch: resolved.targetBranch }),
     ...(costBudgetUsd === null ? {} : { costBudgetUsd }),
+    ...(outputLanguage === undefined ? {} : { outputLanguage }),
   }
 }
 
@@ -180,7 +184,8 @@ export function createCodingTaskTool(httpFetch: HttpFetch | undefined): Tool {
       const resolved = resolveRepos(runtimeContext, names)
       if ('error' in resolved) return resolved
 
-      const body = buildCreateTaskBody(args, prompt, runtimeContext.storageContextId, resolved)
+      const outputLanguage = runtimeContext.contextConfig.get('output_language')
+      const body = buildCreateTaskBody(args, prompt, runtimeContext.storageContextId, resolved, outputLanguage)
       const result = await callNerv(httpFetch, cfg, 'POST', '/tasks', body)
       recordCreatedTask(runtimeContext, result, prompt, resolved)
       return result
