@@ -5,6 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import {
+  BUILD_TYPES_LIST_FIELDS,
+  PROJECT_FIELDS,
+  PROJECTS_LIST_FIELDS,
+  TeamCityClient,
+} from '../../plugins/mcp-teamcity/client.js'
 import { sanitizeTeamCityConfig } from '../../plugins/mcp-teamcity/format.js'
 
 describe('mcp-teamcity sanitizeTeamCityConfig', () => {
@@ -106,5 +112,165 @@ describe('mcp-teamcity sanitizeTeamCityConfig', () => {
     const result = sanitizeTeamCityConfig({ name: 123, value: 'x' })
 
     expect(result).toEqual({ name: 123, value: 'x' })
+  })
+})
+
+interface CapturedRequest {
+  url: string
+  headers: Record<string, string>
+}
+
+interface MockHttpFetchResponse {
+  status?: number
+  body: unknown
+}
+
+interface MockHttpFetch {
+  httpFetch: (url: string, init: RequestInit | undefined) => Promise<Response>
+  captured: CapturedRequest[]
+}
+
+function headersToRecord(headers: RequestInit['headers']): Record<string, string> {
+  const record: Record<string, string> = {}
+  if (headers === undefined || headers instanceof Headers || Array.isArray(headers)) {
+    return record
+  }
+  for (const [k, v] of Object.entries(headers)) {
+    record[k] = v
+  }
+  return record
+}
+
+function createMockHttpFetch(
+  responses: MockHttpFetchResponse | ((captured: CapturedRequest) => MockHttpFetchResponse),
+): MockHttpFetch {
+  const captured: CapturedRequest[] = []
+  const httpFetch = (url: string, init: RequestInit | undefined): Promise<Response> => {
+    const record = { url, headers: headersToRecord(init?.headers) }
+    captured.push(record)
+    const resolved = typeof responses === 'function' ? responses(record) : responses
+    const status = resolved.status ?? 200
+    return Promise.resolve(new Response(JSON.stringify(resolved.body), { status }))
+  }
+  return { httpFetch, captured }
+}
+
+describe('TeamCityClient', () => {
+  test('getProjects() requests the projects list with field selection and auth headers', async () => {
+    const { httpFetch, captured } = createMockHttpFetch({ body: { project: [{ id: 'A' }] } })
+    const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
+
+    const result = await client.getProjects()
+
+    expect(captured).toHaveLength(1)
+    const req = captured[0]!
+    expect(req.url.startsWith('https://tc.test/app/rest/projects?fields=')).toBe(true)
+    const parsedUrl = new URL(req.url)
+    expect(parsedUrl.searchParams.get('fields')).toBe(PROJECTS_LIST_FIELDS)
+    expect(req.headers['Authorization']).toBe('Bearer tok')
+    expect(req.headers['Accept']).toBe('application/json')
+    expect(result).toEqual([{ id: 'A' }])
+  })
+
+  test('getProjects() returns [] when the response has no project array', async () => {
+    const { httpFetch } = createMockHttpFetch({ body: {} })
+    const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
+
+    const result = await client.getProjects()
+
+    expect(result).toEqual([])
+  })
+
+  test('getProjectConfig() requests the project by id and sanitizes the response', async () => {
+    const { httpFetch, captured } = createMockHttpFetch({
+      body: { id: 'MyProj', parameters: { property: [{ name: 'secret.x', value: 'zzz' }] } },
+    })
+    const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
+
+    const result = await client.getProjectConfig('MyProj')
+
+    const req = captured[0]!
+    expect(req.url.startsWith('https://tc.test/app/rest/projects/id:MyProj?fields=')).toBe(true)
+    const parsedUrl = new URL(req.url)
+    expect(parsedUrl.searchParams.get('fields')).toBe(PROJECT_FIELDS)
+    expect(result).toEqual({
+      id: 'MyProj',
+      parameters: { property: [{ name: 'secret.x', value: '[REDACTED]' }] },
+    })
+  })
+
+  test('getProjectBuildTypes() requests build types under a project', async () => {
+    const { httpFetch, captured } = createMockHttpFetch({ body: { buildType: [{ id: 'Bt_1' }] } })
+    const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
+
+    const result = await client.getProjectBuildTypes('MyProj')
+
+    const req = captured[0]!
+    expect(req.url.startsWith('https://tc.test/app/rest/projects/id:MyProj/buildTypes?fields=')).toBe(true)
+    const parsedUrl = new URL(req.url)
+    expect(parsedUrl.searchParams.get('fields')).toBe(BUILD_TYPES_LIST_FIELDS)
+    expect(result).toEqual([{ id: 'Bt_1' }])
+  })
+
+  test('getProjectBuildTypes() returns [] when the response has no buildType array', async () => {
+    const { httpFetch } = createMockHttpFetch({ body: {} })
+    const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
+
+    const result = await client.getProjectBuildTypes('MyProj')
+
+    expect(result).toEqual([])
+  })
+
+  test('getBuildTypeConfig() requests the build type by id and sanitizes secrets nested in steps', async () => {
+    const { httpFetch, captured } = createMockHttpFetch({
+      body: {
+        id: 'Bt_1',
+        steps: {
+          step: [
+            {
+              id: 'RUNNER_1',
+              properties: { property: [{ name: 'env.DEPLOY_TOKEN', value: 'abc' }] },
+            },
+          ],
+        },
+      },
+    })
+    const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
+
+    const result = await client.getBuildTypeConfig('Bt_1')
+
+    const req = captured[0]!
+    expect(req.url.startsWith('https://tc.test/app/rest/buildTypes/id:Bt_1?fields=')).toBe(true)
+    expect(result).toEqual({
+      id: 'Bt_1',
+      steps: {
+        step: [
+          {
+            id: 'RUNNER_1',
+            properties: { property: [{ name: 'env.DEPLOY_TOKEN', value: '[REDACTED]' }] },
+          },
+        ],
+      },
+    })
+  })
+
+  test('percent-encodes locator values so path traversal cannot escape the projects path', async () => {
+    const { httpFetch, captured } = createMockHttpFetch({ body: { id: 'x' } })
+    const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
+
+    await client.getProjectConfig('../../x')
+
+    const req = captured[0]!
+    const parsedUrl = new URL(req.url)
+    expect(parsedUrl.pathname.startsWith('/app/rest/projects/')).toBe(true)
+    expect(parsedUrl.pathname).not.toContain('/app/rest/x')
+    expect(req.url).toContain('id:..%2F..%2Fx')
+  })
+
+  test('rejects when the response is not ok', async () => {
+    const { httpFetch } = createMockHttpFetch({ status: 404, body: { message: 'not found' } })
+    const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
+
+    await expect(client.getProjectConfig('MyProj')).rejects.toThrow('TeamCity API 404')
   })
 })

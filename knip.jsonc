@@ -194,6 +194,8 @@
     "plugins/mcp-teamcity/input-schema.ts": ["files"],
     // Consumed by tool registration/response formatting, which lands in a later task.
     "plugins/mcp-teamcity/format.ts": ["files"],
+    // Consumed by tool registration, which lands in a later task (index.ts not yet wired).
+    "plugins/mcp-teamcity/client.ts": ["files"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.
