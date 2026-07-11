@@ -276,7 +276,11 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   (`plugins/mcp-youtrack/`) is the eighth — 8 YouTrack issue read + comment tools authenticated
   via Bearer token over a context-scoped (per-team) permanent token, responses redacted the same
   way as `mcp-sentry`/`mcp-confluence`; this is part 1 of 2, with 6 write tools (issue creation,
-  field updates, tag management, issue links) deferred to Plan 8b.
+  field updates, tag management, issue links) deferred to Plan 8b. `mcp-test`
+  (`plugins/mcp-test/`) is the ninth and last — a canary with a single no-input `test` tool that
+  returns a fixed confirmation string, used as a live per-deploy probe of the
+  `/mcp/plugin/<id>` path; it completes the migrated first-party MCP plugin fleet (`mcp-npm`
+  remains the documented sandbox-side exception — it belongs in magi, not papai).
 
 ### 3.7 Transcript viewer (papai-side)
 
