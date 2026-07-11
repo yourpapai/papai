@@ -22,6 +22,12 @@ const YOUTRACK_TOOL_NAMES = [
   'youtrack_get_attachments',
   'youtrack_read_attachment',
   'youtrack_add_comment',
+  'youtrack_create_issue',
+  'youtrack_update_fields',
+  'youtrack_add_issue_tag',
+  'youtrack_remove_issue_tag',
+  'youtrack_set_tags',
+  'youtrack_set_issue_link',
 ]
 
 function discoverMcpYouTrack(): DiscoveredPlugin {
@@ -49,7 +55,7 @@ describe('mcp-youtrack reachable through the mcp-server plugin bridge', () => {
     resetPluginRegistryForTesting()
   })
 
-  test('activation exposes all 8 youtrack tools with object input schemas via listPluginMcpTools', async () => {
+  test('activation exposes all 14 youtrack tools with object input schemas via listPluginMcpTools', async () => {
     const plugin = discoverMcpYouTrack()
     expect(plugin.manifest.mcpServer).toBe(true)
     expect(plugin.manifest.mcpResponseRedaction).toBe(true)
@@ -77,7 +83,7 @@ describe('mcp-youtrack reachable through the mcp-server plugin bridge', () => {
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
     pluginRegistry.evaluateCompatibilityAcrossInstances([])
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
-    expect(await listPluginMcpTools('mcp-youtrack')).toHaveLength(8)
+    expect(await listPluginMcpTools('mcp-youtrack')).toHaveLength(14)
 
     await deactivateAllPlugins()
 

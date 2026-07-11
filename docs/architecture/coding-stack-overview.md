@@ -273,10 +273,10 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   (`plugins/mcp-gitlab/`) is the seventh — 5 read-only GitLab repo/MR/job tools authenticated via
   the `PRIVATE-TOKEN` header, no `mcpResponseRedaction`; write tools (comments, MR state, job
   retry/cancel) are deferred to magi's forge-write domain. `mcp-youtrack`
-  (`plugins/mcp-youtrack/`) is the eighth — 8 YouTrack issue read + comment tools authenticated
-  via Bearer token over a context-scoped (per-team) permanent token, responses redacted the same
-  way as `mcp-sentry`/`mcp-confluence`; this is part 1 of 2, with 6 write tools (issue creation,
-  field updates, tag management, issue links) deferred to Plan 8b. `mcp-test`
+  (`plugins/mcp-youtrack/`) is the eighth — 14 YouTrack tools (7 reads, comment, and 6 further
+  write tools: issue creation, field updates, tag management, issue links) authenticated via
+  Bearer token over a context-scoped (per-team) permanent token, responses redacted the same way
+  as `mcp-sentry`/`mcp-confluence`. `mcp-test`
   (`plugins/mcp-test/`) is the ninth and last — a canary with a single no-input `test` tool that
   returns a fixed confirmation string, used as a live per-deploy probe of the
   `/mcp/plugin/<id>` path; it completes the migrated first-party MCP plugin fleet (`mcp-npm`

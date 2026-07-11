@@ -2,26 +2,16 @@
 
 > Plugin ID: `mcp-youtrack` · Version: 1.0.0 · `defaultEnabled: false`
 
-Agent-facing YouTrack issue/comment/attachment read tools. This plugin does
-**not** register chat-visible tools for end users — it declares
-`mcpServer: true`, so its 8 tools are exposed as an MCP server surface at
-`/mcp/plugin/mcp-youtrack` for an external coding agent (via papai's sandbox
-MCP broker) to call directly. It is the eighth first-party plugin migrated
-onto the "MCP server as a papai plugin" pattern, after `mcp-sentry`,
-`mcp-confluence`, `mcp-figma`, `mcp-teamcity`, `mcp-rag`, `mcp-mattermost`,
-and `mcp-gitlab` (see `docs/architecture/coding-stack-overview.md` §3.6).
-
-## Scope: part 1 of 2
-
-This migration covers **read + comment** only. Six write tools are deferred
-to a follow-up (Plan 8b) and are **not** part of this plugin yet:
-
-- `youtrack_create_issue`
-- `youtrack_update_fields`
-- `youtrack_add_issue_tag`
-- `youtrack_remove_issue_tag`
-- `youtrack_set_tags`
-- `youtrack_set_issue_link`
+Agent-facing YouTrack issue/comment/attachment/tag/link tools — read and
+write. This plugin does **not** register chat-visible tools for end users —
+it declares `mcpServer: true`, so its 14 tools are exposed as an MCP server
+surface at `/mcp/plugin/mcp-youtrack` for an external coding agent (via
+papai's sandbox MCP broker) to call directly. It is the eighth first-party
+plugin migrated onto the "MCP server as a papai plugin" pattern, after
+`mcp-sentry`, `mcp-confluence`, `mcp-figma`, `mcp-teamcity`, `mcp-rag`,
+`mcp-mattermost`, and `mcp-gitlab` (see
+`docs/architecture/coding-stack-overview.md` §3.6). The plugin is now
+**complete**: 14/14 tools (7 reads, 1 comment write, 6 further write tools).
 
 ## Tools
 
@@ -35,6 +25,14 @@ to a follow-up (Plan 8b) and are **not** part of this plugin yet:
 | `youtrack_get_attachments`      | List attachments on a YouTrack issue                                            |
 | `youtrack_read_attachment`      | Read an attachment by id, inlining small text content when available            |
 | `youtrack_add_comment`          | **WRITE:** add a comment to a YouTrack issue                                    |
+| `youtrack_create_issue`         | **WRITE:** create a new YouTrack issue (project, summary, description, fields)  |
+| `youtrack_update_fields`        | **WRITE:** update one or more custom fields on a YouTrack issue                 |
+| `youtrack_add_issue_tag`        | **WRITE:** add a tag to a YouTrack issue                                        |
+| `youtrack_remove_issue_tag`     | **WRITE:** remove a tag from a YouTrack issue                                   |
+| `youtrack_set_tags`             | **WRITE:** set the exact tag set on a YouTrack issue, adding/removing as needed |
+| `youtrack_set_issue_link`       | **WRITE:** link two YouTrack issues with a given link type and direction        |
+
+All six writes marked above mutate live YouTrack state.
 
 See `plugins/mcp-youtrack/input-schema.ts` for the exact JSON-schema input
 contract per tool.
@@ -78,12 +76,24 @@ plugin is excluded entirely from the internal-MCP-server picker
 (`listEnabledInternalMcpServers` in
 `src/coding-credentials/mcp-plugin-servers.ts`) until it is set.
 
-## Write tool
+## Write tools
 
-`youtrack_add_comment` is the one **write** tool in this plugin — it posts a
-new comment to a live YouTrack issue. Operators should set its per-tool
-policy to `ask` or `deny` (rather than `allow`) at enable time if they want a
-confirmation gate or want to keep this plugin read-only in practice.
+Seven of the fourteen tools mutate live YouTrack state: `youtrack_add_comment`,
+`youtrack_create_issue`, `youtrack_update_fields`, `youtrack_add_issue_tag`,
+`youtrack_remove_issue_tag`, `youtrack_set_tags`, and `youtrack_set_issue_link`.
+None of them default to unattended `allow`; operators configure per-tool
+`tool_prefs` policy at enable time via the settings UI:
+
+- `youtrack_add_comment`, `youtrack_create_issue`, `youtrack_update_fields`,
+  `youtrack_add_issue_tag`, `youtrack_remove_issue_tag`, `youtrack_set_tags` —
+  default to `ask` (confirmation gate before the mutation runs).
+- `youtrack_set_issue_link` — cross-issue relationships are harder to review
+  and revert than a field/tag change on a single issue, so operators should
+  consider `deny` unless the coding agent has a specific, trusted need to
+  create issue links.
+
+Set any of these to `deny` to keep this plugin read-only in practice for a
+given context.
 
 ## Reading attachments
 
