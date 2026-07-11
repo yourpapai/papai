@@ -212,8 +212,11 @@
     // mcp-figma is still a scaffold (see plugins/mcp-figma/index.ts); tool
     // registration wiring that will import these schemas lands in a later task.
     "plugins/mcp-figma/input-schema.ts": ["files"],
-    // simplifyFigmaResponse/parseIds are consumed by the tool implementations
-    // wired up in a later task; not imported anywhere yet.
+    // FigmaClient is consumed by the tool registration wiring added in a later
+    // task; knip's reachability graph only starts from plugins/*/index.ts, so
+    // client.ts (and format.ts, only reachable through it) stay unreachable
+    // until that wiring lands.
+    "plugins/mcp-figma/client.ts": ["files"],
     "plugins/mcp-figma/format.ts": ["files"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
