@@ -220,6 +220,9 @@
     // helper it statically imports appear unimported.
     "plugins/audio-transcribe/runtime.ts": ["files", "exports"],
     "plugins/audio-transcribe/transcription.ts": ["files"],
+    // Pure write helpers for mcp-youtrack custom-field/link shaping; consumed by the
+    // write-client wiring added in a later task, so no static importer exists yet.
+    "plugins/mcp-youtrack/format-writes.ts": ["files"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
