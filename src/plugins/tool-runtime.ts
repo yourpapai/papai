@@ -120,6 +120,12 @@ export function buildPluginTaskProviderFacade(
       if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.updateTask(taskId, params)
     },
+    applyCommand(params) {
+      if (!canWrite) deny(pluginId, 'tasks.write')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
+      if (provider.applyCommand === undefined) throw new Error(`Plugin ${pluginId} provider has no command support`)
+      return provider.applyCommand(params)
+    },
   }) satisfies PluginTaskProviderFacade
 }
 
