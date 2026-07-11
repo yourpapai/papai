@@ -10,7 +10,11 @@ import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from 
 import { setPluginConfig } from '../../src/config.js'
 import { PLUGIN_QUOTA_LIMIT } from '../../src/plugins/rate-limit.js'
 import { kvGet, setPluginAdminConfig } from '../../src/plugins/store.js'
-import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from '../../src/plugins/tool-runtime.js'
+import {
+  buildPluginTaskProviderFacade,
+  buildPluginToolRuntimeContext,
+  type PluginToolSetRuntime,
+} from '../../src/plugins/tool-runtime.js'
 import { pluginManifestSchema, type PluginManifest } from '../../src/plugins/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -450,5 +454,33 @@ describe('buildPluginToolRuntimeContext', () => {
     )
     expect(createTask).not.toHaveBeenCalled()
     expect(updateTask).not.toHaveBeenCalled()
+  })
+
+  describe('buildPluginTaskProviderFacade applyCommand', () => {
+    test('forwards to the provider when the plugin has tasks.write', async () => {
+      const applyCommand = mock((params: { query: string; taskIds: string[]; comment?: string; silent?: boolean }) =>
+        Promise.resolve(params),
+      )
+      const provider = createMockProvider({ applyCommand })
+      const facade = buildPluginTaskProviderFacade('test-plugin', provider, false, true)
+
+      const result = await facade.applyCommand?.({ query: 'for me', taskIds: ['T-1'] })
+
+      expect(applyCommand).toHaveBeenCalledWith({ query: 'for me', taskIds: ['T-1'] })
+      expect(result).toEqual({ query: 'for me', taskIds: ['T-1'] })
+    })
+
+    test('denies without tasks.write', () => {
+      const applyCommand = mock((params: { query: string; taskIds: string[]; comment?: string; silent?: boolean }) =>
+        Promise.resolve(params),
+      )
+      const provider = createMockProvider({ applyCommand })
+      const facade = buildPluginTaskProviderFacade('test-plugin', provider, false, false)
+
+      expect(() => facade.applyCommand?.({ query: 'for me', taskIds: ['T-1'] })).toThrow(
+        "Plugin test-plugin does not have 'tasks.write' permission",
+      )
+      expect(applyCommand).not.toHaveBeenCalled()
+    })
   })
 })

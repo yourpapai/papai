@@ -21,7 +21,7 @@ import type { PluginIdentityFacade } from './identity-facade.js'
 
 export type PluginTaskProviderFacade = Pick<
   TaskProvider,
-  'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
+  'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask' | 'applyCommand'
 >
 
 /** Context-scoped plugin config declared in configRequirements with scope 'context'. */
