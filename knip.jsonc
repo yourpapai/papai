@@ -194,6 +194,9 @@
     "plugins/mcp-mattermost/index.ts": ["exports"],
     "plugins/mcp-gitlab/index.ts": ["exports"],
     "plugins/mcp-youtrack/index.ts": ["exports"],
+    // Tool registrations wiring input-schema.ts into index.ts land in a later task;
+    // until then knip sees no importer of this schema module.
+    "plugins/mcp-youtrack/input-schema.ts": ["files"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.
