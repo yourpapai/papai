@@ -191,6 +191,7 @@
     "plugins/mcp-figma/index.ts": ["exports"],
     "plugins/mcp-teamcity/index.ts": ["exports"],
     "plugins/mcp-rag/index.ts": ["exports"],
+    "plugins/mcp-mattermost/index.ts": ["exports"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.

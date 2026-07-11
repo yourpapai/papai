@@ -1,0 +1,29 @@
+{
+  "id": "mcp-mattermost",
+  "name": "Mattermost (coding agent)",
+  "version": "1.0.0",
+  "description": "Agent-facing Mattermost read/post tools exposed as an MCP server",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "mcpResponseRedaction": true,
+  "contributes": {
+    "tools": [
+      "mattermost_get_post",
+      "mattermost_get_thread",
+      "mattermost_get_channel_posts",
+      "mattermost_create_post",
+      "mattermost_download_attachment"
+    ],
+    "promptFragments": [],
+    "configKeys": []
+  },
+  "permissions": ["http"],
+  "providerAllowedHostsFromConfig": ["base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "base_url", "label": "Mattermost URL", "required": true, "scope": "admin" },
+    { "key": "access_token", "label": "Mattermost Access Token", "required": true, "sensitive": true, "scope": "admin" }
+  ],
+  "activationTimeoutMs": 3000
+}
