@@ -9,6 +9,7 @@ import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js
 import { handleAdminMcpCatalogRoutes } from './settings/admin/mcp-catalog-routes.js'
 import { handleAdminMcpPluginServersRoutes } from './settings/admin/mcp-plugin-servers-routes.js'
 import { handleAdminMcpRedactionRoutes } from './settings/admin/mcp-redaction-routes.js'
+import { handleAdminNervHealthRoutes } from './settings/admin/nerv-health-routes.js'
 import { handleAdminPluginConfigRoutes } from './settings/admin/plugin-config-routes.js'
 import { handleAdminReleaseNotesRoutes } from './settings/admin/release-notes-routes.js'
 import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
@@ -60,6 +61,7 @@ function routeAdminApi(req: Request, url: URL): Promise<Response> | null {
   if (p === '/settings/api/admin/mcp-catalog') return handleAdminMcpCatalogRoutes(req, url, p)
   if (p === '/settings/api/admin/mcp-plugin-servers') return handleAdminMcpPluginServersRoutes(req, url, p)
   if (p === '/settings/api/admin/mcp-redaction') return handleAdminMcpRedactionRoutes(req, url, p)
+  if (p === '/settings/api/admin/nerv-health') return handleAdminNervHealthRoutes(req, url, p)
   if (p === '/settings/api/admin/release-notes') return handleAdminReleaseNotesRoutes(req, url, p)
   return null
 }
