@@ -101,6 +101,8 @@
     // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
     "src/byok-llm/store.ts": ["files", "exports"],
     "src/byok-llm/types.ts": ["files", "types"],
+    // mcp-gitlab tool input schemas are created ahead of tool registration wiring in a later task.
+    "plugins/mcp-gitlab/input-schema.ts": ["files"],
     // isBlockedResult is a test-only seam.
     "src/mcp-server/redaction.ts": ["exports"],
     // partitionToolNames is a test-only seam.
