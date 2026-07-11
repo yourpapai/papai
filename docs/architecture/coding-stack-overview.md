@@ -269,7 +269,10 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   than failing the call) and also skips `mcpResponseRedaction`. `mcp-mattermost`
   (`plugins/mcp-mattermost/`) is the sixth — 5 Mattermost read/post tools authenticated via
   Bearer token, posts enriched with author username and attachment metadata via deduped extra
-  fetches, responses redacted the same way as `mcp-sentry`/`mcp-confluence`.
+  fetches, responses redacted the same way as `mcp-sentry`/`mcp-confluence`. `mcp-gitlab`
+  (`plugins/mcp-gitlab/`) is the seventh — 5 read-only GitLab repo/MR/job tools authenticated via
+  the `PRIVATE-TOKEN` header, no `mcpResponseRedaction`; write tools (comments, MR state, job
+  retry/cancel) are deferred to magi's forge-write domain.
 
 ### 3.7 Transcript viewer (papai-side)
 
