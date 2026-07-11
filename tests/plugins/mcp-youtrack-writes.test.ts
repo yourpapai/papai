@@ -205,6 +205,18 @@ function hasCallTo(calls: CapturedCall[], url: string, method: string): boolean 
   return calls.some((c) => c.url === url && c.init?.method === method)
 }
 
+function findCall(calls: CapturedCall[], url: string, method: string): CapturedCall | undefined {
+  return calls.find((c) => c.url === url && c.init?.method === method)
+}
+
+function findCallByMethod(calls: CapturedCall[], method: string): CapturedCall | undefined {
+  return calls.find((c) => c.init?.method === method)
+}
+
+function parseJsonBody(body: RequestInit['body']): unknown {
+  return typeof body === 'string' ? JSON.parse(body) : undefined
+}
+
 describe('YouTrackWriteClient tags + links', () => {
   const baseUrl = 'https://yt.test'
   const token = 'tok'
@@ -375,5 +387,136 @@ describe('YouTrackWriteClient tags + links', () => {
     await client.addIssueTag('../../x', 'bug')
 
     expect(calls[1]?.url).toBe('https://yt.test/api/issues/..%2F..%2Fx/tags?fields=id,name')
+  })
+})
+
+describe('YouTrackWriteClient issues', () => {
+  const baseUrl = 'https://yt.test'
+  const token = 'tok'
+
+  test('createIssue resolves a non-numeric project short name before creating', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/admin/projects/MYPROJ')]: jsonResponse({ id: '0-5' }),
+      [routeKey('POST', '/api/issues')]: jsonResponse({ idReadable: '0-5-1', summary: 'S' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    const result = await client.createIssue({ project: 'MYPROJ', summary: 'S' })
+
+    expect(calls[0]?.url).toBe('https://yt.test/api/admin/projects/MYPROJ?fields=id')
+    const postCall = findCallByMethod(calls, 'POST')
+    expect(postCall).toBeDefined()
+    const body = parseJsonBody(postCall?.init?.body)
+    expect(body).toMatchObject({ project: { id: '0-5' }, summary: 'S' })
+    expect(result).toMatchObject({ idReadable: '0-5-1', summary: 'S' })
+  })
+
+  test('createIssue skips project resolution when project is already a numeric id', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('POST', '/api/issues')]: jsonResponse({ idReadable: '0-5-1', summary: 'S' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await client.createIssue({ project: '0-5', summary: 'S' })
+
+    expect(calls.some((c) => c.url.includes('/admin/projects'))).toBe(false)
+    const postCall = findCallByMethod(calls, 'POST')
+    const body = parseJsonBody(postCall?.init?.body)
+    expect(body).toMatchObject({ project: { id: '0-5' } })
+  })
+
+  test('createIssue with customFields and referenceIssueId resolves field types then builds values', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/issues/P-9')]: jsonResponse({
+        customFields: [{ name: 'Priority', $type: 'SingleEnumIssueCustomField' }],
+      }),
+      [routeKey('POST', '/api/issues')]: jsonResponse({ idReadable: '0-5-1', summary: 'S' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await client.createIssue({
+      project: '0-5',
+      summary: 'S',
+      customFields: { Priority: 'High' },
+      referenceIssueId: 'P-9',
+    })
+
+    expect(calls[0]?.url).toBe('https://yt.test/api/issues/P-9?fields=customFields(name,$type)')
+    const postCall = findCallByMethod(calls, 'POST')
+    const body = parseJsonBody(postCall?.init?.body)
+    expect(body).toMatchObject({
+      customFields: [
+        { name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { $type: 'EnumBundleElement', name: 'High' } },
+      ],
+    })
+  })
+
+  test('createIssue re-posts the summary when the server returns a different one', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('POST', '/api/issues')]: jsonResponse({ idReadable: '0-5-1', summary: 'Server-mangled summary' }),
+      [routeKey('POST', '/api/issues/0-5-1')]: jsonResponse({ idReadable: '0-5-1', summary: 'S' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    const result = await client.createIssue({ project: '0-5', summary: 'S' })
+
+    const fixupCall = findCall(calls, 'https://yt.test/api/issues/0-5-1', 'POST')
+    expect(fixupCall).toBeDefined()
+    expect(fixupCall?.init?.body).toBe(JSON.stringify({ summary: 'S' }))
+    expect(result).toMatchObject({ summary: 'S' })
+  })
+
+  test('updateFields resolves field types then posts built custom field values', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/issues/P-1')]: jsonResponse({
+        customFields: [{ name: 'Priority', $type: 'SingleEnumIssueCustomField' }],
+      }),
+      [routeKey('POST', '/api/issues/P-1')]: jsonResponse({ idReadable: 'P-1', summary: 'S' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await client.updateFields('P-1', { Priority: 'Low' })
+
+    expect(calls[0]?.url).toBe('https://yt.test/api/issues/P-1?fields=customFields(name,$type)')
+    const postCall = findCallByMethod(calls, 'POST')
+    expect(postCall?.url).toContain('https://yt.test/api/issues/P-1?fields=')
+    const body = parseJsonBody(postCall?.init?.body)
+    expect(body).toMatchObject({
+      customFields: [
+        { name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { $type: 'EnumBundleElement', name: 'Low' } },
+      ],
+    })
+  })
+
+  test('updateFields rejects on an unknown field name', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/issues/P-1')]: jsonResponse({
+        customFields: [{ name: 'Priority', $type: 'SingleEnumIssueCustomField' }],
+      }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await expect(client.updateFields('P-1', { Nonexistent: 'x' })).rejects.toThrow(/Unknown field/u)
+  })
+
+  test('updateFields rejects when given no fields', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {}
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await expect(client.updateFields('P-1', {})).rejects.toThrow(/No fields/u)
   })
 })
