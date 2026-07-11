@@ -105,6 +105,8 @@
     "plugins/mcp-gitlab/input-schema.ts": ["files"],
     // mcp-gitlab response shaping/query helpers are created ahead of client wiring in a later task.
     "plugins/mcp-gitlab/format.ts": ["files"],
+    // mcp-gitlab GitLab REST client is created ahead of tool registration wiring in a later task.
+    "plugins/mcp-gitlab/client.ts": ["files"],
     // isBlockedResult is a test-only seam.
     "src/mcp-server/redaction.ts": ["exports"],
     // partitionToolNames is a test-only seam.
