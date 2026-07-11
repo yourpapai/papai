@@ -262,7 +262,11 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   `mcp-teamcity` (`plugins/mcp-teamcity/`) is the fourth — 4 TeamCity project/pipeline config
   tools authenticated via Bearer token; it also skips `mcpResponseRedaction`, relying solely on
   a static `name`/`value`-pattern sanitizer (`sanitizeTeamCityConfig` in `format.ts`) to redact
-  secret-shaped config properties before responses reach the coding agent.
+  secret-shaped config properties before responses reach the coding agent. `mcp-rag`
+  (`plugins/mcp-rag/`) is the fifth — a single `rag_search` tool that fans out a query to one or
+  more corporate knowledge-base contexts (`X-Kontur-ApiKey` auth, semicolon-separated
+  `context_code` admin config queried in parallel, per-context failures reported inline rather
+  than failing the call) and also skips `mcpResponseRedaction`.
 
 ### 3.7 Transcript viewer (papai-side)
 
