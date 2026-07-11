@@ -1,0 +1,51 @@
+{
+  "id": "mcp-rag",
+  "name": "RAG Search (coding agent)",
+  "version": "1.0.0",
+  "description": "Agent-facing corporate knowledge-base (RAG) search exposed as an MCP server",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "contributes": {
+    "tools": ["rag_search"],
+    "promptFragments": [],
+    "configKeys": []
+  },
+  "permissions": ["http"],
+  "providerAllowedHostsFromConfig": ["base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    {
+      "key": "base_url",
+      "label": "RAG Base URL",
+      "required": true,
+      "scope": "admin"
+    },
+    {
+      "key": "api_key",
+      "label": "RAG API Key",
+      "required": true,
+      "sensitive": true,
+      "scope": "admin"
+    },
+    {
+      "key": "context_code",
+      "label": "RAG Context Code(s) (semicolon-separated)",
+      "required": true,
+      "scope": "admin"
+    },
+    {
+      "key": "sources",
+      "label": "RAG Sources filter (comma-separated)",
+      "required": false,
+      "scope": "admin"
+    },
+    {
+      "key": "source_description",
+      "label": "RAG Source Description (appended to tool description)",
+      "required": false,
+      "scope": "admin"
+    }
+  ],
+  "activationTimeoutMs": 3000
+}
