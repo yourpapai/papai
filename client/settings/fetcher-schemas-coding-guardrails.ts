@@ -16,3 +16,8 @@ export const AdminCodingGuardrailsResponseSchema = z.object({
   sharedKeySet: z.boolean(),
 })
 export type AdminCodingGuardrailsResponse = z.infer<typeof AdminCodingGuardrailsResponseSchema>
+
+export const NervHealthResponseSchema = z.object({
+  status: z.enum(['connected', 'misconfigured', 'unreachable']),
+})
+export type NervHealthResponse = z.infer<typeof NervHealthResponseSchema>

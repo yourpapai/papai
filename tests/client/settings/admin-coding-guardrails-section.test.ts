@@ -41,6 +41,11 @@ const captureMock = (_url: string, init?: RequestInit): Promise<Response> => {
   return Promise.resolve(json(defaultPayload))
 }
 
+const nervHealthMock =
+  (status: 'connected' | 'misconfigured' | 'unreachable') =>
+  (url: string): Promise<Response> =>
+    url.includes('nerv-health') ? Promise.resolve(json({ status })) : Promise.resolve(json(defaultPayload))
+
 afterEach(() => {
   lastPostBody = null
   restoreFetch()
@@ -138,6 +143,29 @@ describe('AdminCodingGuardrailsSection', () => {
     await drain()
     expect(target.querySelector('[data-testid="guardrails-key-input"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="guardrails-key-set"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('renders nerv-health-status badge reflecting the probe status', async () => {
+    setMockFetch(nervHealthMock('connected'))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminCodingGuardrailsSection, { target })
+    await drain()
+    const badge = target.querySelector('[data-testid="nerv-health-status"]')
+    expect(badge).not.toBeNull()
+    expect(badge!.textContent).toContain('Connected')
+    void unmount(component)
+  })
+
+  test('renders misconfigured nerv-health-status when nerv admin config is unset', async () => {
+    setMockFetch(nervHealthMock('misconfigured'))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminCodingGuardrailsSection, { target })
+    await drain()
+    const badge = target.querySelector('[data-testid="nerv-health-status"]')
+    expect(badge!.textContent).toContain('Not configured')
     void unmount(component)
   })
 })

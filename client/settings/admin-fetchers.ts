@@ -29,7 +29,9 @@ import {
 } from './fetcher-schemas-admin.js'
 import {
   AdminCodingGuardrailsResponseSchema,
+  NervHealthResponseSchema,
   type AdminCodingGuardrailsResponse,
+  type NervHealthResponse,
 } from './fetcher-schemas-coding-guardrails.js'
 import { ApplyInstancesResultSchema, type ApplyInstancesResult } from './fetcher-schemas-instances.js'
 import { AdminMcpCatalogResponseSchema, type AdminMcpCatalogResponse } from './fetcher-schemas-mcp-catalog.js'
@@ -229,6 +231,9 @@ export const fetchAdminCodingGuardrails = (): Promise<AdminCodingGuardrailsRespo
 
 export const postAdminCodingGuardrails = (body: unknown): Promise<AdminCodingGuardrailsResponse> =>
   writeJson('/settings/api/admin/coding-guardrails', 'POST', body, (b) => AdminCodingGuardrailsResponseSchema.parse(b))
+
+export const fetchAdminNervHealth = (): Promise<NervHealthResponse> =>
+  getJson('/settings/api/admin/nerv-health', (b) => NervHealthResponseSchema.parse(b))
 
 // --- Admin: MCP catalog ---
 
