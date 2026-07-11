@@ -223,6 +223,9 @@
     // Pure write helpers for mcp-youtrack custom-field/link shaping; consumed by the
     // write-client wiring added in a later task, so no static importer exists yet.
     "plugins/mcp-youtrack/format-writes.ts": ["files"],
+    // Tag + link write client for mcp-youtrack; consumed by the tool/index wiring
+    // (issue create/update client methods) added in a later task.
+    "plugins/mcp-youtrack/write-client.ts": ["files"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at

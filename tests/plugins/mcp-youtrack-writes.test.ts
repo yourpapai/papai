@@ -9,8 +9,10 @@ import {
   buildCustomFieldValue,
   fieldTypeToValueType,
   findIssueLink,
+  ISSUE_LINK_FIELDS,
   linkMatches,
 } from '../../plugins/mcp-youtrack/format-writes.js'
+import { YouTrackWriteClient } from '../../plugins/mcp-youtrack/write-client.js'
 
 describe('mcp-youtrack write helpers', () => {
   describe('fieldTypeToValueType', () => {
@@ -170,5 +172,208 @@ describe('mcp-youtrack write helpers', () => {
       expect(linkMatches({ id: 's1', linkType: 'relates' }, 'relates', 'sourceToTarget')).toBe(false)
       expect(linkMatches({ id: 's1' }, 'relates', 'sourceToTarget')).toBe(false)
     })
+  })
+})
+
+type CapturedCall = { url: string; init: RequestInit | undefined }
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function routeKey(method: string, pathname: string): string {
+  return `${method} ${pathname}`
+}
+
+function createRoutedHttpFetch(
+  routes: Record<string, Response>,
+  calls: CapturedCall[],
+): (url: string, init: RequestInit | undefined) => Promise<Response> {
+  return (url: string, init: RequestInit | undefined): Promise<Response> => {
+    calls.push({ url, init })
+    const pathname = new URL(url).pathname
+    const method = init?.method ?? 'GET'
+    const route = routes[routeKey(method, pathname)]
+    return Promise.resolve(route ?? jsonResponse({ error: `unexpected ${method} ${pathname}` }, 404))
+  }
+}
+
+function hasCallTo(calls: CapturedCall[], url: string, method: string): boolean {
+  return calls.some((c) => c.url === url && c.init?.method === method)
+}
+
+describe('YouTrackWriteClient tags + links', () => {
+  const baseUrl = 'https://yt.test'
+  const token = 'tok'
+
+  test('addIssueTag resolves the tag by name then posts it to the issue', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/tags')]: jsonResponse([{ id: 't9', name: 'bug' }]),
+      [routeKey('POST', '/api/issues/P-1/tags')]: jsonResponse({ id: 't9', name: 'bug' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    const result = await client.addIssueTag('P-1', 'bug')
+
+    expect(calls[0]?.url).toBe('https://yt.test/api/tags?fields=id,name&query=bug')
+    const headers = new Headers(calls[0]?.init?.headers)
+    expect(headers.get('Authorization')).toBe('Bearer tok')
+    expect(calls[1]?.url).toBe('https://yt.test/api/issues/P-1/tags?fields=id,name')
+    expect(calls[1]?.init?.method).toBe('POST')
+    expect(calls[1]?.init?.body).toBe(JSON.stringify({ id: 't9' }))
+    expect(result).toContain('bug')
+    expect(result).toContain('P-1')
+  })
+
+  test('addIssueTag rejects when no exact tag name match is found', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/tags')]: jsonResponse([]),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await expect(client.addIssueTag('P-1', 'bug')).rejects.toThrow(/not found/u)
+  })
+
+  test('addIssueTag rejects when multiple exact tag name matches are found', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/tags')]: jsonResponse([
+        { id: 't1', name: 'bug' },
+        { id: 't2', name: 'bug' },
+      ]),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await expect(client.addIssueTag('P-1', 'bug')).rejects.toThrow(/Ambiguous/u)
+  })
+
+  test('removeIssueTag resolves the tag by name then deletes it from the issue', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/tags')]: jsonResponse([{ id: 't9', name: 'bug' }]),
+      [routeKey('DELETE', '/api/issues/P-1/tags/t9')]: jsonResponse(undefined, 204),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    const result = await client.removeIssueTag('P-1', 'bug')
+
+    expect(calls[1]?.url).toBe('https://yt.test/api/issues/P-1/tags/t9')
+    expect(calls[1]?.init?.method).toBe('DELETE')
+    expect(result).toContain('bug')
+    expect(result).toContain('P-1')
+  })
+
+  test('setTags adds only the missing tags and leaves existing ones alone', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/issues/P-1/tags')]: jsonResponse([{ id: 't1', name: 'a' }]),
+      [routeKey('GET', '/api/tags')]: jsonResponse([{ id: 't2', name: 'b' }]),
+      [routeKey('POST', '/api/issues/P-1/tags')]: jsonResponse({ id: 't2', name: 'b' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    const result = await client.setTags('P-1', ['a', 'b'])
+
+    expect(calls.some((c) => c.init?.method === 'DELETE')).toBe(false)
+    const resolveCall = calls.find((c) => c.url.startsWith('https://yt.test/api/tags'))
+    expect(resolveCall?.url).toBe('https://yt.test/api/tags?fields=id,name&query=b')
+    const postCall = calls.find((c) => c.init?.method === 'POST')
+    expect(postCall?.url).toBe('https://yt.test/api/issues/P-1/tags?fields=id,name')
+    expect(postCall?.init?.body).toBe(JSON.stringify({ id: 't2' }))
+    expect(result).toContain('a')
+    expect(result).toContain('b')
+  })
+
+  test('setTags removes all current tags when the desired list is empty', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/issues/P-1/tags')]: jsonResponse([{ id: 't1', name: 'a' }]),
+      [routeKey('DELETE', '/api/issues/P-1/tags/t1')]: jsonResponse(undefined, 204),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    const result = await client.setTags('P-1', [])
+
+    expect(calls.some((c) => c.init?.method === 'POST')).toBe(false)
+    expect(hasCallTo(calls, 'https://yt.test/api/issues/P-1/tags/t1', 'DELETE')).toBe(true)
+    expect(result).toBe('Tags set on P-1: ')
+  })
+
+  test('setIssueLink sourceToTarget posts to the source issue link slot', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/issues/P-1')]: jsonResponse({
+        links: [{ id: 'slot1', linkType: { name: 'relates', sourceToTarget: 'relates to' } }],
+      }),
+      [routeKey('POST', '/api/issues/P-1/links/slot1/issues')]: jsonResponse({}),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    const result = await client.setIssueLink('P-1', 'P-2', 'relates', 'sourceToTarget')
+
+    expect(calls[0]?.url).toBe(`https://yt.test/api/issues/P-1?fields=${ISSUE_LINK_FIELDS}`)
+    const postCall = calls[1]
+    expect(postCall?.url).toBe('https://yt.test/api/issues/P-1/links/slot1/issues')
+    expect(postCall?.init?.method).toBe('POST')
+    expect(postCall?.init?.body).toBe(JSON.stringify({ id: 'P-2' }))
+    expect(result).toContain('relates')
+    expect(result).toContain('P-1')
+    expect(result).toContain('P-2')
+  })
+
+  test('setIssueLink targetToSource posts to the target issue link slot with reversed ids', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/issues/P-2')]: jsonResponse({
+        links: [{ id: 'slot2', linkType: { name: 'relates', targetToSource: 'relates to' } }],
+      }),
+      [routeKey('POST', '/api/issues/P-2/links/slot2/issues')]: jsonResponse({}),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await client.setIssueLink('P-1', 'P-2', 'relates', 'targetToSource')
+
+    expect(calls[0]?.url).toBe(`https://yt.test/api/issues/P-2?fields=${ISSUE_LINK_FIELDS}`)
+    const postCall = calls[1]
+    expect(postCall?.url).toBe('https://yt.test/api/issues/P-2/links/slot2/issues')
+    expect(postCall?.init?.body).toBe(JSON.stringify({ id: 'P-1' }))
+  })
+
+  test('setIssueLink rejects when the link type has no matching slot', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/issues/P-1')]: jsonResponse({ links: [] }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await expect(client.setIssueLink('P-1', 'P-2', 'blocks', 'sourceToTarget')).rejects.toThrow(/Link type not found/u)
+  })
+
+  test('addIssueTag encodes a traversal-like issue id in the tag POST path', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      [routeKey('GET', '/api/tags')]: jsonResponse([{ id: 't9', name: 'bug' }]),
+      [routeKey('POST', '/api/issues/..%2F..%2Fx/tags')]: jsonResponse({}),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackWriteClient({ baseUrl, token, httpFetch })
+
+    await client.addIssueTag('../../x', 'bug')
+
+    expect(calls[1]?.url).toBe('https://yt.test/api/issues/..%2F..%2Fx/tags?fields=id,name')
   })
 })
