@@ -194,18 +194,6 @@
     "plugins/mcp-mattermost/index.ts": ["exports"],
     "plugins/mcp-gitlab/index.ts": ["exports"],
     "plugins/mcp-youtrack/index.ts": ["exports"],
-    // Tool registrations wiring input-schema.ts into index.ts land in a later task;
-    // until then knip sees no importer of this schema module.
-    "plugins/mcp-youtrack/input-schema.ts": ["files"],
-    // format.ts (and its internal format-shapers.ts / format-activity-shapers.ts
-    // helper modules) are consumed by the client.ts built in a later task; until
-    // then knip sees no importer of these response-shaping modules.
-    "plugins/mcp-youtrack/format.ts": ["files"],
-    "plugins/mcp-youtrack/format-shapers.ts": ["files"],
-    "plugins/mcp-youtrack/format-activity-shapers.ts": ["files"],
-    // client.ts is consumed by index.ts tool registrations wired in a later
-    // task; until then knip sees no importer of this REST client.
-    "plugins/mcp-youtrack/client.ts": ["files"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.

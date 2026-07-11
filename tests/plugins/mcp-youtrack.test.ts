@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+
+import type { ToolExecutionOptions } from 'ai'
 
 import { YouTrackClient } from '../../plugins/mcp-youtrack/client.js'
 import {
@@ -20,6 +22,9 @@ import {
   shapeIssue,
   shapeUser,
 } from '../../plugins/mcp-youtrack/format.js'
+import factory from '../../plugins/mcp-youtrack/index.js'
+import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
+import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 
 describe('mcp-youtrack format', () => {
   test('shapeUser picks known fields and drops unknown ones', () => {
@@ -483,5 +488,217 @@ describe('YouTrackClient', () => {
     const client = new YouTrackClient({ baseUrl, token, httpFetch })
 
     await expect(client.getIssue('P-404')).rejects.toThrow('YouTrack API 404')
+  })
+})
+
+function createMockLogger(): PluginLogger {
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  }
+}
+
+function createMockContext(overrides: { httpFetch?: (url: string, init?: RequestInit) => Promise<Response> } = {}): {
+  ctx: PluginContext
+  registeredTools: Map<string, PluginTool>
+} {
+  const registeredTools = new Map<string, PluginTool>()
+
+  const registration: PluginRegistration = {
+    registerTool: (tool: PluginTool) => {
+      registeredTools.set(tool.name, tool)
+    },
+    registerPromptFragment: () => {},
+    registerCommand: () => {},
+    registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
+    registerTaskProviderType: () => {},
+  }
+
+  const ctx: PluginContext = {
+    pluginId: 'mcp-youtrack',
+    contextId: '__system__',
+    permissions: new Set(['http']),
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    log: createMockLogger(),
+    registration,
+    providerRuntime: {
+      httpFetch: overrides.httpFetch ?? mock(),
+      allowedHosts: new Set(['yt.test']),
+      logger: createMockLogger(),
+    },
+    adminConfig: {
+      get: () => undefined,
+    },
+  }
+
+  return { ctx, registeredTools }
+}
+
+function createMockRuntimeContext(
+  overrides: {
+    allowed?: boolean
+    retryAfterSec?: number
+    baseUrl?: string | undefined
+    token?: string | undefined
+  } = {},
+): PluginToolRuntimeContext {
+  const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
+
+  const baseUrl = 'baseUrl' in overrides ? overrides.baseUrl : 'https://yt.test'
+  const token = 'token' in overrides ? overrides.token : 'tok'
+
+  return {
+    pluginId: 'mcp-youtrack',
+    storageContextId: 'test-context',
+    chatUserId: 'test-user',
+    taskProvider: {
+      getTask: () => notImplemented(),
+      listTasks: () => notImplemented(),
+      searchTasks: () => notImplemented(),
+      createTask: () => notImplemented(),
+      updateTask: () => notImplemented(),
+    },
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    rateLimit: {
+      check: () => ({
+        allowed: overrides.allowed ?? true,
+        retryAfterSec: overrides.retryAfterSec,
+      }),
+    },
+    attachments: {
+      read: () => notImplemented(),
+    },
+    adminConfig: {
+      get: (key: string) => (key === 'base_url' ? baseUrl : undefined),
+    },
+    contextConfig: {
+      get: (key: string) => (key === 'token' ? token : undefined),
+    },
+    codingSecrets: {
+      resolve: () => null,
+      resolveForgeToken: () => null,
+      resolveAgent: () => null,
+      resolveForge: () => null,
+      resolveProviderHost: () => null,
+      resolveModel: () => null,
+      resolveMcpServers: () => ({ ok: true, servers: [] }),
+      resolveMcpTokens: () => ({}),
+    },
+    codingRepos: { list: () => [], get: () => null },
+  } as PluginToolRuntimeContext
+}
+
+function createMockOptions(): ToolExecutionOptions {
+  return {
+    toolCallId: 'test-call-id',
+    messages: [],
+  }
+}
+
+describe('mcp-youtrack plugin', () => {
+  test('activates and registers all 8 YouTrack tools', () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    expect([...registeredTools.keys()].sort()).toEqual(
+      [
+        'youtrack_get_issue',
+        'youtrack_get_state_activities',
+        'youtrack_get_comments',
+        'youtrack_get_issue_tags',
+        'youtrack_get_field_options',
+        'youtrack_get_attachments',
+        'youtrack_read_attachment',
+        'youtrack_add_comment',
+      ].sort(),
+    )
+  })
+
+  test('youtrack_get_issue returns the shaped issue and calls the correct URL', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-1': jsonResponse({ idReadable: 'P-1', summary: 'S', junk: 'drop' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('youtrack_get_issue')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ issueId: 'P-1' }, runtimeCtx, options)
+
+    expect(calls[0]?.url).toBe(`https://yt.test/api/issues/P-1?fields=${ISSUE_FIELDS}`)
+    expect(result).toEqual({ idReadable: 'P-1', summary: 'S' })
+  })
+
+  test('returns not_configured when the context token is missing', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('youtrack_get_issue')!
+    const runtimeCtx = createMockRuntimeContext({ token: undefined })
+    const options = createMockOptions()
+    const result = await tool.execute({ issueId: 'P-1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'not_configured', message: 'YouTrack is not configured' })
+  })
+
+  test('returns not_configured when the admin base_url is missing', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('youtrack_get_issue')!
+    const runtimeCtx = createMockRuntimeContext({ baseUrl: undefined })
+    const options = createMockOptions()
+    const result = await tool.execute({ issueId: 'P-1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'not_configured', message: 'YouTrack is not configured' })
+  })
+
+  test('returns rate_limited when the rate limit is exceeded', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('youtrack_get_issue')!
+    const runtimeCtx = createMockRuntimeContext({ allowed: false, retryAfterSec: 30 })
+    const options = createMockOptions()
+    const result = await tool.execute({ issueId: 'P-1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
+  })
+
+  test('returns youtrack_error when httpFetch throws a non-abort error', async () => {
+    const httpFetch = (): Promise<Response> => Promise.reject(new Error('Connection refused'))
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('youtrack_get_issue')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ issueId: 'P-1' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'youtrack_error', message: 'Connection refused' })
   })
 })
