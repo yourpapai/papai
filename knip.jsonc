@@ -196,6 +196,8 @@
     "plugins/mcp-mattermost/input-schema.ts": ["files"],
     // Pure format helpers consumed by the mcp-mattermost client, added ahead of that wiring.
     "plugins/mcp-mattermost/format.ts": ["files"],
+    // REST client consumed by the mcp-mattermost tool registrations, added ahead of that wiring.
+    "plugins/mcp-mattermost/client.ts": ["files"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.

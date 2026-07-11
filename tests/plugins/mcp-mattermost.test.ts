@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { MattermostClient } from '../../plugins/mcp-mattermost/client.js'
 import {
   extractPostId,
   mapOrderedPosts,
@@ -129,5 +130,286 @@ describe('mcp-mattermost format', () => {
     test('returns an empty array for a record missing posts/order', () => {
       expect(mapOrderedPosts({})).toEqual([])
     })
+  })
+})
+
+type CapturedCall = { url: string; init: RequestInit | undefined }
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function textResponse(body: string, status = 200): Response {
+  return new Response(body, { status })
+}
+
+function createRoutedHttpFetch(
+  routes: Record<string, Response>,
+  calls: CapturedCall[],
+): (url: string, init: RequestInit | undefined) => Promise<Response> {
+  return (url: string, init: RequestInit | undefined): Promise<Response> => {
+    calls.push({ url, init })
+    const pathname = new URL(url).pathname
+    const route = routes[pathname]
+    return Promise.resolve(route ?? jsonResponse({ error: `unexpected pathname ${pathname}` }, 404))
+  }
+}
+
+function countCallsTo(calls: CapturedCall[], pathname: string): number {
+  return calls.filter((c) => new URL(c.url).pathname === pathname).length
+}
+
+describe('MattermostClient', () => {
+  const baseUrl = 'https://mm.test'
+  const token = 'tok'
+
+  test('getPost fetches the post, enriches the author, and returns a shaped post', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts/P1': jsonResponse({
+        id: 'P1',
+        message: 'hi',
+        user_id: 'u1',
+        channel_id: 'c1',
+        create_at: 1000,
+        props: { should: 'be dropped' },
+      }),
+      '/api/v4/users/u1': jsonResponse({ id: 'u1', username: 'alice', first_name: 'Alice', last_name: 'A' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getPost('https://mm.test/pl/P1')
+
+    expect(calls[0]?.url).toBe('https://mm.test/api/v4/posts/P1')
+    const headers = new Headers(calls[0]?.init?.headers)
+    expect(headers.get('Authorization')).toBe('Bearer tok')
+    expect(headers.get('Accept')).toBe('application/json')
+    expect(calls[1]?.url).toBe('https://mm.test/api/v4/users/u1')
+    expect(result).toEqual({
+      id: 'P1',
+      message: 'hi',
+      user_id: 'u1',
+      channel_id: 'c1',
+      create_at: 1000,
+      user: { id: 'u1', username: 'alice', name: 'Alice A' },
+    })
+    expect(result).not.toHaveProperty('props')
+  })
+
+  test('getPost resolves file_ids into attachments', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts/P1': jsonResponse({ id: 'P1', message: 'see attached', file_ids: ['F1'] }),
+      '/api/v4/files/F1/info': jsonResponse({
+        id: 'F1',
+        name: 'a.txt',
+        size: 5,
+        mime_type: 'text/plain',
+        extension: 'txt',
+        create_at: 123,
+      }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getPost('P1')
+
+    expect(result.attachments).toEqual([
+      { id: 'F1', name: 'a.txt', size: 5, mime_type: 'text/plain', extension: 'txt', create_at: 123 },
+    ])
+  })
+
+  test('getPost swallows a failed user enrichment and returns the post without a user field', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts/P1': jsonResponse({ id: 'P1', message: 'hi', user_id: 'u1' }),
+      '/api/v4/users/u1': jsonResponse({ error: 'not found' }, 404),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getPost('P1')
+
+    expect(result).toEqual({ id: 'P1', message: 'hi', user_id: 'u1' })
+    expect(result).not.toHaveProperty('user')
+  })
+
+  test('getThread orders posts and dedupes repeated user enrichment fetches', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts/P1/thread': jsonResponse({
+        posts: {
+          a: { id: 'a', user_id: 'u1' },
+          b: { id: 'b', user_id: 'u1' },
+        },
+        order: ['b', 'a'],
+      }),
+      '/api/v4/users/u1': jsonResponse({ id: 'u1', username: 'alice' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getThread('P1')
+
+    expect(result.map((p) => p.id)).toEqual(['b', 'a'])
+    expect(result.every((p) => p.user?.username === 'alice')).toBe(true)
+    expect(countCallsTo(calls, '/api/v4/users/u1')).toBe(1)
+  })
+
+  test('getChannelPosts caps per_page at 200, defaults page to 0, and sorts posts ascending by create_at', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/channels/c1/posts': jsonResponse({
+        posts: {
+          a: { id: 'a', create_at: 200 },
+          b: { id: 'b', create_at: 100 },
+        },
+        order: ['a', 'b'],
+      }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getChannelPosts('c1', { perPage: 300 })
+
+    expect(calls[0]?.url).toBe('https://mm.test/api/v4/channels/c1/posts?page=0&per_page=200')
+    expect(result.posts.map((p) => p.id)).toEqual(['b', 'a'])
+    expect(result.order).toEqual(['b', 'a'])
+    expect(result.page).toBe(0)
+    expect(result.per_page).toBe(200)
+    expect(result.since).toBeUndefined()
+  })
+
+  test('getChannelPosts uses since instead of page/per_page when provided', async () => {
+    const calls: CapturedCall[] = []
+    const expectedSince = Date.parse('2023-01-01T00:00:00Z')
+    const routes: Record<string, Response> = {
+      '/api/v4/channels/c1/posts': jsonResponse({ posts: {}, order: [] }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getChannelPosts('c1', { since: '2023-01-01T00:00:00Z' })
+
+    expect(calls[0]?.url).toBe(`https://mm.test/api/v4/channels/c1/posts?since=${expectedSince}`)
+    expect(result.since).toBe(expectedSince)
+    expect(result.page).toBeUndefined()
+    expect(result.per_page).toBeUndefined()
+  })
+
+  test('createPost sends root_id from an explicit rootId', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts': jsonResponse({ id: 'P9', message: 'hi', channel_id: 'c1', root_id: 'r1' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    const result = await client.createPost({ channelId: 'c1', message: 'hi', rootId: 'r1' })
+
+    expect(calls[0]?.url).toBe('https://mm.test/api/v4/posts')
+    expect(calls[0]?.init?.method).toBe('POST')
+    const headers = new Headers(calls[0]?.init?.headers)
+    expect(headers.get('Content-Type')).toBe('application/json')
+    expect(calls[0]?.init?.body).toBe(JSON.stringify({ channel_id: 'c1', message: 'hi', root_id: 'r1' }))
+    expect(result.id).toBe('P9')
+  })
+
+  test('createPost derives root_id from a threadLinkOrId permalink', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts': jsonResponse({ id: 'P9', message: 'hi', channel_id: 'c1', root_id: 'R2' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    await client.createPost({ channelId: 'c1', message: 'hi', threadLinkOrId: 'https://mm.test/pl/R2' })
+
+    expect(calls[0]?.init?.body).toBe(JSON.stringify({ channel_id: 'c1', message: 'hi', root_id: 'R2' }))
+  })
+
+  describe('downloadAttachment', () => {
+    test('inlines text content for small text/* attachments', async () => {
+      const calls: CapturedCall[] = []
+      const routes: Record<string, Response> = {
+        '/api/v4/files/F1/info': jsonResponse({ id: 'F1', size: 100, mime_type: 'text/plain', name: 'a.txt' }),
+        '/api/v4/files/F1': textResponse('hello'),
+      }
+      const httpFetch = createRoutedHttpFetch(routes, calls)
+      const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+      const result = await client.downloadAttachment('F1')
+
+      expect(result).toEqual({
+        attachment: { id: 'F1', size: 100, mime_type: 'text/plain', name: 'a.txt' },
+        text: 'hello',
+      })
+      expect(calls[1]?.url).toBe('https://mm.test/api/v4/files/F1')
+      const headers = new Headers(calls[1]?.init?.headers)
+      expect(headers.get('Accept')).toBe('*/*')
+    })
+
+    test('flags large attachments as too large without fetching content', async () => {
+      const calls: CapturedCall[] = []
+      const routes: Record<string, Response> = {
+        '/api/v4/files/F1/info': jsonResponse({ id: 'F1', size: 999_999, mime_type: 'text/plain', name: 'big.txt' }),
+      }
+      const httpFetch = createRoutedHttpFetch(routes, calls)
+      const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+      const result = await client.downloadAttachment('F1')
+
+      expect(result).toEqual({
+        attachment: { id: 'F1', size: 999_999, mime_type: 'text/plain', name: 'big.txt' },
+        tooLarge: true,
+      })
+      expect(countCallsTo(calls, '/api/v4/files/F1')).toBe(0)
+    })
+
+    test('flags non-text attachments as binary without fetching content', async () => {
+      const calls: CapturedCall[] = []
+      const routes: Record<string, Response> = {
+        '/api/v4/files/F1/info': jsonResponse({ id: 'F1', size: 100, mime_type: 'image/png', name: 'p.png' }),
+      }
+      const httpFetch = createRoutedHttpFetch(routes, calls)
+      const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+      const result = await client.downloadAttachment('F1')
+
+      expect(result).toEqual({
+        attachment: { id: 'F1', size: 100, mime_type: 'image/png', name: 'p.png' },
+        isBinary: true,
+        note: 'Binary attachment; content not inlined (no filesystem handoff in this MCP transport).',
+      })
+      expect(countCallsTo(calls, '/api/v4/files/F1')).toBe(0)
+    })
+  })
+
+  test('getPost encodes a traversal-like id so the request stays under /posts/', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts/..%2F..%2Fadmin': jsonResponse({ id: 'x' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    await client.getPost('../../admin')
+
+    expect(calls[0]?.url).toBe('https://mm.test/api/v4/posts/..%2F..%2Fadmin')
+  })
+
+  test('getPost rejects on a non-2xx response from the primary post fetch', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/v4/posts/P1': jsonResponse({ error: 'nope' }, 500),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new MattermostClient({ baseUrl, token, httpFetch })
+
+    await expect(client.getPost('P1')).rejects.toThrow('Mattermost API 500 for /posts/P1')
   })
 })
