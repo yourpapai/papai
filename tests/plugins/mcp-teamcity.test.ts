@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+
+import type { ToolExecutionOptions } from 'ai'
 
 import {
   BUILD_TYPES_LIST_FIELDS,
@@ -12,6 +14,9 @@ import {
   TeamCityClient,
 } from '../../plugins/mcp-teamcity/client.js'
 import { sanitizeTeamCityConfig } from '../../plugins/mcp-teamcity/format.js'
+import factory from '../../plugins/mcp-teamcity/index.js'
+import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
+import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 
 describe('mcp-teamcity sanitizeTeamCityConfig', () => {
   test('redacts a deeply nested secret inside a build-config tree', () => {
@@ -272,5 +277,302 @@ describe('TeamCityClient', () => {
     const client = new TeamCityClient({ baseUrl: 'https://tc.test', token: 'tok', httpFetch })
 
     await expect(client.getProjectConfig('MyProj')).rejects.toThrow('TeamCity API 404')
+  })
+})
+
+function createMockLogger(): PluginLogger {
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  }
+}
+
+function createMockContext(overrides: { httpFetch?: (url: string, init?: RequestInit) => Promise<Response> } = {}): {
+  ctx: PluginContext
+  registeredTools: Map<string, PluginTool>
+} {
+  const registeredTools = new Map<string, PluginTool>()
+
+  const registration: PluginRegistration = {
+    registerTool: (tool: PluginTool) => {
+      registeredTools.set(tool.name, tool)
+    },
+    registerPromptFragment: () => {},
+    registerCommand: () => {},
+    registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
+    registerTaskProviderType: () => {},
+  }
+
+  const ctx: PluginContext = {
+    pluginId: 'mcp-teamcity',
+    contextId: '__system__',
+    permissions: new Set(['http']),
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    log: createMockLogger(),
+    registration,
+    providerRuntime: {
+      httpFetch: overrides.httpFetch ?? mock(),
+      allowedHosts: new Set(['tc.test']),
+      logger: createMockLogger(),
+    },
+    adminConfig: {
+      get: () => undefined,
+    },
+  }
+
+  return { ctx, registeredTools }
+}
+
+function createMockRuntimeContext(
+  overrides: {
+    allowed?: boolean
+    retryAfterSec?: number
+    baseUrl?: string | undefined
+    token?: string | undefined
+  } = {},
+): PluginToolRuntimeContext {
+  const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
+
+  const values: Record<string, string | undefined> = {
+    base_url: 'baseUrl' in overrides ? overrides.baseUrl : 'https://tc.test',
+    token: 'token' in overrides ? overrides.token : 'tok',
+  }
+
+  return {
+    pluginId: 'mcp-teamcity',
+    storageContextId: 'test-context',
+    chatUserId: 'test-user',
+    taskProvider: {
+      getTask: () => notImplemented(),
+      listTasks: () => notImplemented(),
+      searchTasks: () => notImplemented(),
+      createTask: () => notImplemented(),
+      updateTask: () => notImplemented(),
+    },
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    rateLimit: {
+      check: () => ({
+        allowed: overrides.allowed ?? true,
+        retryAfterSec: overrides.retryAfterSec,
+      }),
+    },
+    attachments: {
+      read: () => notImplemented(),
+    },
+    adminConfig: {
+      get: (key: string) => values[key],
+    },
+    contextConfig: {
+      get: () => undefined,
+    },
+    codingSecrets: {
+      resolve: () => null,
+      resolveForgeToken: () => null,
+      resolveAgent: () => null,
+      resolveForge: () => null,
+      resolveProviderHost: () => null,
+      resolveModel: () => null,
+      resolveMcpServers: () => ({ ok: true, servers: [] }),
+      resolveMcpTokens: () => ({}),
+    },
+    codingRepos: { list: () => [], get: () => null },
+  } as PluginToolRuntimeContext
+}
+
+function createMockOptions(): ToolExecutionOptions {
+  return {
+    toolCallId: 'test-call-id',
+    messages: [],
+  }
+}
+
+describe('mcp-teamcity plugin', () => {
+  test('activates and registers all 4 TeamCity tools', () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    expect([...registeredTools.keys()].sort()).toEqual(
+      [
+        'teamcity_get_projects',
+        'teamcity_get_project_config',
+        'teamcity_get_project_pipelines',
+        'teamcity_get_pipeline_config',
+      ].sort(),
+    )
+  })
+
+  test('teamcity_get_projects requires no input and returns the projects list', async () => {
+    let capturedUrl = ''
+    const httpFetch = (url: string): Promise<Response> => {
+      capturedUrl = url
+      return Promise.resolve(
+        new Response(JSON.stringify({ project: [{ id: 'A' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('teamcity_get_projects')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({}, runtimeCtx, options)
+
+    expect(capturedUrl.startsWith('https://tc.test/app/rest/projects?fields=')).toBe(true)
+    expect(result).toEqual([{ id: 'A' }])
+  })
+
+  test('returns not_configured when admin creds are missing', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('teamcity_get_projects')!
+    const runtimeCtx = createMockRuntimeContext({ baseUrl: undefined })
+    const options = createMockOptions()
+    const result = await tool.execute({}, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'not_configured', message: 'TeamCity is not configured' })
+  })
+
+  test('returns rate_limited when the rate limit is exceeded', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('teamcity_get_projects')!
+    const runtimeCtx = createMockRuntimeContext({ allowed: false, retryAfterSec: 30 })
+    const options = createMockOptions()
+    const result = await tool.execute({}, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
+  })
+
+  test('returns teamcity_error when httpFetch throws a non-abort error', async () => {
+    const httpFetch = (): Promise<Response> => Promise.reject(new Error('Connection refused'))
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('teamcity_get_projects')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({}, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'teamcity_error', message: 'Connection refused' })
+  })
+
+  test('returns timeout when httpFetch aborts', async () => {
+    const abortError = new Error('The operation was aborted')
+    abortError.name = 'AbortError'
+    const httpFetch = (): Promise<Response> => Promise.reject(abortError)
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('teamcity_get_projects')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({}, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'timeout', message: 'The operation was aborted' })
+  })
+
+  test('teamcity_get_project_config validates required projectId and calls getProjectConfig', async () => {
+    let capturedUrl = ''
+    const httpFetch = (url: string): Promise<Response> => {
+      capturedUrl = url
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'MyProj' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('teamcity_get_project_config')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ projectId: 'MyProj' }, runtimeCtx, options)
+
+    expect(capturedUrl.startsWith('https://tc.test/app/rest/projects/id:MyProj?fields=')).toBe(true)
+    expect(result).toEqual({ id: 'MyProj' })
+
+    const validationResult = await tool.execute({}, runtimeCtx, options)
+    expect(validationResult).toEqual({ error: 'validation_error', message: 'projectId must be a non-empty string' })
+  })
+
+  test('teamcity_get_project_pipelines calls getProjectBuildTypes', async () => {
+    let capturedUrl = ''
+    const httpFetch = (url: string): Promise<Response> => {
+      capturedUrl = url
+      return Promise.resolve(
+        new Response(JSON.stringify({ buildType: [{ id: 'Bt_1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('teamcity_get_project_pipelines')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ projectId: 'MyProj' }, runtimeCtx, options)
+
+    expect(capturedUrl.startsWith('https://tc.test/app/rest/projects/id:MyProj/buildTypes?fields=')).toBe(true)
+    expect(result).toEqual([{ id: 'Bt_1' }])
+  })
+
+  test('teamcity_get_pipeline_config calls getBuildTypeConfig', async () => {
+    let capturedUrl = ''
+    const httpFetch = (url: string): Promise<Response> => {
+      capturedUrl = url
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'Bt_1' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('teamcity_get_pipeline_config')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ buildTypeId: 'Bt_1' }, runtimeCtx, options)
+
+    expect(capturedUrl.startsWith('https://tc.test/app/rest/buildTypes/id:Bt_1?fields=')).toBe(true)
+    expect(result).toEqual({ id: 'Bt_1' })
   })
 })
