@@ -57,7 +57,19 @@ test('followup posts chat_followup with text to the thread task', async () => {
   const tool = followupCodingTaskTool(capturingFetch(captured))
   await tool.execute({ text: 'address review comments' }, runtimeCtx(store), options())
   expect(captured[0]?.url).toBe('http://nerv:9000/tasks/t1/events')
-  expect(captured[0]?.body).toEqual({ type: 'chat_followup', payload: { text: 'address review comments' } })
+  expect(captured[0]?.body).toEqual({ type: 'chat_followup', payload: { prompt: 'address review comments' } })
+})
+
+// Anti-drift contract pin: papai emits payload.prompt (not payload.text) on the wire. nerv's
+// tasks.ts route schema requires payload.prompt — a silent field-name mismatch here previously
+// made the followup instruction resolve to '' on the nerv side and get silently dropped.
+test('contract: chat_followup wire body is exactly {type, payload:{prompt}}', async () => {
+  const captured: Captured[] = []
+  const store = new Map<string, string>()
+  withActive(store, 't1')
+  const tool = followupCodingTaskTool(capturingFetch(captured))
+  await tool.execute({ text: 'ship it' }, runtimeCtx(store), options())
+  expect(captured[0]?.body).toEqual({ type: 'chat_followup', payload: { prompt: 'ship it' } })
 })
 
 test('steer posts steer with text', async () => {
@@ -66,7 +78,7 @@ test('steer posts steer with text', async () => {
   withActive(store, 't1')
   const tool = steerCodingTaskTool(capturingFetch(captured))
   await tool.execute({ text: 'stop touching the config' }, runtimeCtx(store), options())
-  expect(captured[0]?.body).toEqual({ type: 'steer', payload: { text: 'stop touching the config' } })
+  expect(captured[0]?.body).toEqual({ type: 'steer', payload: { prompt: 'stop touching the config' } })
 })
 
 test('cancel posts cancel and clears the active pointer', async () => {

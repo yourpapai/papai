@@ -33,7 +33,7 @@ function eventTool(
       if (taskId === null) return { error: 'not_found', message: 'No coding task is running in this thread.' }
       const result = await callNerv(httpFetch, cfg, 'POST', `/tasks/${encodeURIComponent(taskId)}/events`, {
         type,
-        payload: { text },
+        payload: { prompt: text },
       })
       return result
     },
