@@ -196,6 +196,41 @@ export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs):
   }, Promise.resolve())
 }
 
+function addPluginTool(
+  pluginId: string,
+  pluginTool: PluginTool,
+  manifest: PluginManifest,
+  runtime: PluginToolSetRuntime,
+  usedNames: Set<string>,
+  pluginTools: ToolSet,
+): void {
+  const namespacedName = namespacedToolName(pluginId, pluginTool.name)
+
+  if (usedNames.has(namespacedName)) {
+    const message = `Tool contribution '${namespacedName}' skipped because the name already exists`
+    const collisionKey = `${pluginId}:${namespacedName}`
+    log.warn({ pluginId, toolName: namespacedName }, 'Plugin tool name collision — skipping')
+    if (!recordedToolCollisionEvents.has(collisionKey)) {
+      recordedToolCollisionEvents.add(collisionKey)
+      recordRuntimeEvent(pluginId, 'skipped', message)
+    }
+    return
+  }
+
+  usedNames.add(namespacedName)
+
+  const schema = getPluginToolInputSchema(pluginTool)
+  const wrappedExecute = wrapToolExecution((input, options) => {
+    return pluginTool.execute(input, buildPluginToolRuntimeContext(pluginId, manifest, runtime), options)
+  }, namespacedName)
+
+  pluginTools[namespacedName] = tool({
+    description: pluginTool.description,
+    inputSchema: schema,
+    execute: wrappedExecute,
+  })
+}
+
 export function buildPluginToolSet(
   activePluginIds: string[],
   existingToolNames: ReadonlySet<string>,
@@ -211,35 +246,8 @@ export function buildPluginToolSet(
     registerToolGates(pluginId, contributions.tools)
 
     for (const pluginTool of contributions.tools) {
-      const namespacedName = namespacedToolName(pluginId, pluginTool.name)
-
-      if (usedNames.has(namespacedName)) {
-        const message = `Tool contribution '${namespacedName}' skipped because the name already exists`
-        const collisionKey = `${pluginId}:${namespacedName}`
-        log.warn({ pluginId, toolName: namespacedName }, 'Plugin tool name collision — skipping')
-        if (!recordedToolCollisionEvents.has(collisionKey)) {
-          recordedToolCollisionEvents.add(collisionKey)
-          recordRuntimeEvent(pluginId, 'skipped', message)
-        }
-        continue
-      }
-
-      usedNames.add(namespacedName)
-
-      const schema = getPluginToolInputSchema(pluginTool)
-      const wrappedExecute = wrapToolExecution((input, options) => {
-        return pluginTool.execute(
-          input,
-          buildPluginToolRuntimeContext(pluginId, contributions.manifest, runtime),
-          options,
-        )
-      }, namespacedName)
-
-      pluginTools[namespacedName] = tool({
-        description: pluginTool.description,
-        inputSchema: schema,
-        execute: wrappedExecute,
-      })
+      if (runtime.mode === 'proactive' && pluginTool.availableInProactiveMode === false) continue
+      addPluginTool(pluginId, pluginTool, contributions.manifest, runtime, usedNames, pluginTools)
     }
   }
 

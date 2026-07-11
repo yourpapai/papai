@@ -63,6 +63,12 @@ export type PluginTool = {
    * unrestricted. Recorded into the ToolGatePort at assembly and enforced by the orchestrator.
    */
   gate?: 'operator'
+  /**
+   * When false, this tool is omitted from tool sets assembled in `proactive` mode (unattended /
+   * deferred-prompt turns). Defaults to available. Used for tools that should only run in
+   * attended turns (e.g. command-execution tools with a confirmation gate).
+   */
+  availableInProactiveMode?: boolean
   execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
 }
 
