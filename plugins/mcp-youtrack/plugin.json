@@ -16,7 +16,13 @@
       "youtrack_get_field_options",
       "youtrack_get_attachments",
       "youtrack_read_attachment",
-      "youtrack_add_comment"
+      "youtrack_add_comment",
+      "youtrack_create_issue",
+      "youtrack_update_fields",
+      "youtrack_add_issue_tag",
+      "youtrack_remove_issue_tag",
+      "youtrack_set_tags",
+      "youtrack_set_issue_link"
     ],
     "promptFragments": [],
     "configKeys": ["token"]

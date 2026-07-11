@@ -74,6 +74,11 @@
     // getTaskProviderProvision is a forward-compat export wired in a downstream
     // task of the plugins deployment safety plan (mirrors getTaskProviderConfigValidator).
     "src/providers/registry.ts": ["exports"],
+    // youtrackCreateIssueSchema/youtrackUpdateFieldsSchema/youtrackAddIssueTagSchema/
+    // youtrackRemoveIssueTagSchema/youtrackSetTagsSchema/youtrackSetIssueLinkSchema are
+    // forward-compat exports wired into index.ts by a downstream task that adds the
+    // mcp-youtrack write-tool executors.
+    "plugins/mcp-youtrack/input-schema.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.
     "src/system-config.ts": ["exports"],
     // resetNotifyTokenCacheForTesting is a test-only seam.

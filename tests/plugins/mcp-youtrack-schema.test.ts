@@ -7,6 +7,8 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   youtrackAddCommentSchema,
+  youtrackAddIssueTagSchema,
+  youtrackCreateIssueSchema,
   youtrackGetAttachmentsSchema,
   youtrackGetCommentsSchema,
   youtrackGetFieldOptionsSchema,
@@ -14,6 +16,10 @@ import {
   youtrackGetIssueTagsSchema,
   youtrackGetStateActivitiesSchema,
   youtrackReadAttachmentSchema,
+  youtrackRemoveIssueTagSchema,
+  youtrackSetIssueLinkSchema,
+  youtrackSetTagsSchema,
+  youtrackUpdateFieldsSchema,
 } from '../../plugins/mcp-youtrack/input-schema.js'
 
 // papai does not locally validate plugin MCP tool inputs at runtime: the plugin
@@ -58,5 +64,40 @@ describe('mcp-youtrack schemas', () => {
   test('add_comment requires issueId and text', () => {
     expect(youtrackAddCommentSchema.required).toContain('issueId')
     expect(youtrackAddCommentSchema.required).toContain('text')
+  })
+
+  test('create_issue requires project and summary, allows customFields object', () => {
+    expect(youtrackCreateIssueSchema.required).toContain('project')
+    expect(youtrackCreateIssueSchema.required).toContain('summary')
+    expect(youtrackCreateIssueSchema.properties.customFields.type).toBe('object')
+  })
+
+  test('update_fields requires issueId and fields', () => {
+    expect(youtrackUpdateFieldsSchema.required).toContain('issueId')
+    expect(youtrackUpdateFieldsSchema.required).toContain('fields')
+  })
+
+  test('add_issue_tag requires issueId and tagName', () => {
+    expect(youtrackAddIssueTagSchema.required).toContain('issueId')
+    expect(youtrackAddIssueTagSchema.required).toContain('tagName')
+  })
+
+  test('remove_issue_tag requires issueId and tagName', () => {
+    expect(youtrackRemoveIssueTagSchema.required).toContain('issueId')
+    expect(youtrackRemoveIssueTagSchema.required).toContain('tagName')
+  })
+
+  test('set_tags requires issueId and tags, tags is an array', () => {
+    expect(youtrackSetTagsSchema.required).toContain('issueId')
+    expect(youtrackSetTagsSchema.required).toContain('tags')
+    expect(youtrackSetTagsSchema.properties.tags.type).toBe('array')
+  })
+
+  test('set_issue_link requires all four fields and constrains direction', () => {
+    expect(youtrackSetIssueLinkSchema.required).toContain('sourceIssueId')
+    expect(youtrackSetIssueLinkSchema.required).toContain('targetIssueId')
+    expect(youtrackSetIssueLinkSchema.required).toContain('linkType')
+    expect(youtrackSetIssueLinkSchema.required).toContain('direction')
+    expect(youtrackSetIssueLinkSchema.properties.direction.enum).toEqual(['sourceToTarget', 'targetToSource'])
   })
 })
