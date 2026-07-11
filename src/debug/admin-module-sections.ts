@@ -7,7 +7,14 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import { deletePluginAdminConfig, getPluginAdminConfig, setPluginAdminConfig } from '../plugins/store.js'
-import { moduleSettingsRegistry, type SettingsSection } from '../ports/settings-sections.js'
+import {
+  moduleSettingsRegistry,
+  type SettingsAction,
+  type SettingsFieldControl,
+  type SettingsFieldOption,
+  type SettingsSection,
+  type SettingsSectionScope,
+} from '../ports/settings-sections.js'
 
 const log = logger.child({ scope: 'debug:admin-module-sections' })
 
@@ -17,12 +24,17 @@ export type ModuleSectionFieldState = {
   value: string | null
   sensitive: boolean
   required: boolean
+  control?: SettingsFieldControl
+  options?: readonly SettingsFieldOption[]
+  actionId?: string
 }
 
 export type ModuleSectionState = {
   id: string
   label: string
   fields: ModuleSectionFieldState[]
+  scope?: SettingsSectionScope
+  actions?: readonly SettingsAction[]
 }
 
 export type ModuleSectionsSnapshot = {
@@ -53,6 +65,8 @@ export function getModuleSectionsSnapshot(descriptors: readonly SettingsSection[
   const sections: ModuleSectionState[] = descriptors.map((section) => ({
     id: section.id,
     label: section.label,
+    ...(section.scope === undefined ? {} : { scope: section.scope }),
+    ...(section.actions === undefined ? {} : { actions: section.actions }),
     fields: section.fields.map((field) => {
       const raw = getPluginAdminConfig(section.id, field.key)
       const sensitive = field.sensitive ?? false
@@ -62,6 +76,9 @@ export function getModuleSectionsSnapshot(descriptors: readonly SettingsSection[
         value: raw === undefined ? null : sensitive ? maskSensitive(raw) : raw,
         sensitive,
         required: field.required ?? false,
+        ...(field.control === undefined ? {} : { control: field.control }),
+        ...(field.options === undefined ? {} : { options: field.options }),
+        ...(field.actionId === undefined ? {} : { actionId: field.actionId }),
       }
     }),
   }))
