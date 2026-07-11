@@ -34,6 +34,26 @@ const snapshotPayload = {
 
 const emptyPayload = { sections: [] }
 
+const readonlyDerivedPayload = {
+  sections: [
+    {
+      id: 'section-a',
+      label: 'Section A',
+      fields: [
+        { key: 'api_key', label: 'API Key', value: '****cret', sensitive: true, required: true },
+        {
+          key: 'derived_status',
+          label: 'Connection status',
+          value: 'connected',
+          sensitive: false,
+          required: false,
+          control: 'readonly-derived',
+        },
+      ],
+    },
+  ],
+}
+
 let capturedPatchBody: string | undefined
 
 const capturePatchMock = (url: string, init: RequestInit): Promise<Response> => {
@@ -165,6 +185,26 @@ describe('AdminModuleSectionsSection', () => {
 
     expect(target.querySelector('.status-error[role="alert"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="module-section-field-section-a-api_key"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('readonly-derived field renders its value with no save/clear editor, legacy field keeps its editor', async () => {
+    setMockFetch(() => Promise.resolve(json(readonlyDerivedPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminModuleSectionsSection, { target })
+    await drain()
+
+    const derivedRow = target.querySelector('[data-testid="module-section-field-section-a-derived_status"]')
+    expect(derivedRow).not.toBeNull()
+    expect(derivedRow!.textContent).toContain('connected')
+    expect(target.querySelector('[data-testid="module-section-input-section-a-derived_status"]')).toBeNull()
+    expect(target.querySelector('[data-testid="module-section-save-section-a-derived_status"]')).toBeNull()
+    expect(target.querySelector('[data-testid="module-section-clear-section-a-derived_status"]')).toBeNull()
+
+    // Legacy (non-readonly-derived) field in the same payload still renders its editor unchanged.
+    expect(target.querySelector('[data-testid="module-section-input-section-a-api_key"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="module-section-save-section-a-api_key"]')).not.toBeNull()
     void unmount(component)
   })
 })

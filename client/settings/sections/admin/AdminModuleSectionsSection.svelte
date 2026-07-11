@@ -100,46 +100,66 @@
       <p class="module-block__id">{section.label}</p>
       <div class="settings-field-list">
         {#each section.fields as field (field.key)}
-          <SettingsFieldShell
-            label={field.label}
-            testid={`module-section-field-${section.id}-${field.key}`}>
-            {#snippet head()}
-              {#if field.value !== null}
-                <Secret value={field.value} />
-              {:else}
-                <span class="placeholder">unset</span>
-              {/if}
-              {#if field.required}<span class="badge-required">required</span>{/if}
-            {/snippet}
-            {#snippet editor()}
-              <Input
-                type={field.sensitive ? 'password' : 'text'}
-                value={drafts[draftKey(section.id, field.key)] ?? ''}
-                placeholder="enter a new value"
-                onInput={(v) => (drafts[draftKey(section.id, field.key)] = v)}
-                testid={`module-section-input-${section.id}-${field.key}`} />
-              <Btn
-                variant="primary"
-                size="sm"
-                testid={`module-section-save-${section.id}-${field.key}`}
-                disabled={(drafts[draftKey(section.id, field.key)] ?? '').trim() === ''}
-                onClick={() => void save(section.id, field.key)}>
-                {#snippet children()}Save{/snippet}
-              </Btn>
-              {#if field.value !== null}
+          {#if field.control === 'readonly-derived'}
+            <SettingsFieldShell
+              label={field.label}
+              editorOpen={false}
+              testid={`module-section-field-${section.id}-${field.key}`}>
+              {#snippet head()}
+                {#if field.value !== null}
+                  {#if field.sensitive}
+                    <Secret value={field.value} />
+                  {:else}
+                    <span class="derived-value">{field.value}</span>
+                  {/if}
+                {:else}
+                  <span class="placeholder">unset</span>
+                {/if}
+                {#if field.required}<span class="badge-required">required</span>{/if}
+              {/snippet}
+            </SettingsFieldShell>
+          {:else}
+            <SettingsFieldShell
+              label={field.label}
+              testid={`module-section-field-${section.id}-${field.key}`}>
+              {#snippet head()}
+                {#if field.value !== null}
+                  <Secret value={field.value} />
+                {:else}
+                  <span class="placeholder">unset</span>
+                {/if}
+                {#if field.required}<span class="badge-required">required</span>{/if}
+              {/snippet}
+              {#snippet editor()}
+                <Input
+                  type={field.sensitive ? 'password' : 'text'}
+                  value={drafts[draftKey(section.id, field.key)] ?? ''}
+                  placeholder="enter a new value"
+                  onInput={(v) => (drafts[draftKey(section.id, field.key)] = v)}
+                  testid={`module-section-input-${section.id}-${field.key}`} />
                 <Btn
-                  variant="ghost"
+                  variant="primary"
                   size="sm"
-                  testid={`module-section-clear-${section.id}-${field.key}`}
-                  onClick={() => {
-                    pendingClear = { sectionId: section.id, key: field.key, required: field.required }
-                    clearError = null
-                  }}>
-                  {#snippet children()}Clear{/snippet}
+                  testid={`module-section-save-${section.id}-${field.key}`}
+                  disabled={(drafts[draftKey(section.id, field.key)] ?? '').trim() === ''}
+                  onClick={() => void save(section.id, field.key)}>
+                  {#snippet children()}Save{/snippet}
                 </Btn>
-              {/if}
-            {/snippet}
-          </SettingsFieldShell>
+                {#if field.value !== null}
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    testid={`module-section-clear-${section.id}-${field.key}`}
+                    onClick={() => {
+                      pendingClear = { sectionId: section.id, key: field.key, required: field.required }
+                      clearError = null
+                    }}>
+                    {#snippet children()}Clear{/snippet}
+                  </Btn>
+                {/if}
+              {/snippet}
+            </SettingsFieldShell>
+          {/if}
         {/each}
       </div>
     </div>
@@ -184,5 +204,10 @@
     border: 1px solid var(--border);
     padding: 1px 4px;
     border-radius: 2px;
+  }
+  .derived-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg2);
   }
 </style>
