@@ -609,7 +609,7 @@ function createMockOptions(): ToolExecutionOptions {
 }
 
 describe('mcp-youtrack plugin', () => {
-  test('activates and registers all 8 YouTrack tools', () => {
+  test('activates and registers all 14 YouTrack tools', () => {
     const { ctx, registeredTools } = createMockContext()
     const instance = factory()
     instance.activate(ctx)
@@ -624,6 +624,12 @@ describe('mcp-youtrack plugin', () => {
         'youtrack_get_attachments',
         'youtrack_read_attachment',
         'youtrack_add_comment',
+        'youtrack_create_issue',
+        'youtrack_update_fields',
+        'youtrack_add_issue_tag',
+        'youtrack_remove_issue_tag',
+        'youtrack_set_tags',
+        'youtrack_set_issue_link',
       ].sort(),
     )
   })

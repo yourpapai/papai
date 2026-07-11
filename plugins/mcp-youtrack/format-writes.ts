@@ -6,8 +6,6 @@
 export const ISSUE_LINK_FIELDS =
   'id,links(id,direction,linkType(name,sourceToTarget,targetToSource),issues(id,idReadable,summary))'
 
-export type FieldValue = string | number | boolean | null | Array<string | number>
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
