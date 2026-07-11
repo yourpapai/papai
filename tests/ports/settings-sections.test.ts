@@ -34,4 +34,28 @@ describe('moduleSettingsRegistry', () => {
   test('exposes a shared singleton', () => {
     expect(typeof moduleSettingsRegistry.list).toBe('function')
   })
+
+  test('registry accepts a rich descriptor with new field kinds + visibleWhen + actions', () => {
+    const registry = createSettingsSectionRegistry()
+    const richSection: SettingsSection = {
+      id: 'demo',
+      label: 'Demo',
+      scope: 'context',
+      visibleWhen: { kind: 'providerCapability', capability: 'members.provision' },
+      actions: [{ id: 'provision', label: 'Provision', route: '/ext/demo/provision', method: 'POST' }],
+      fields: [
+        { key: 'login', label: 'Login', control: 'readonly-derived' },
+        { key: 'password', label: 'Password', control: 'reveal-secret', sensitive: true },
+        { key: 'provision', label: 'Provision', control: 'action-button', actionId: 'provision' },
+      ],
+    }
+    registry.register([richSection])
+    expect(registry.list()).toHaveLength(1)
+  })
+
+  test('a minimal descriptor (no new attributes) still registers', () => {
+    const registry = createSettingsSectionRegistry()
+    registry.register([{ id: 'm', label: 'M', fields: [{ key: 'k', label: 'K' }] }])
+    expect(registry.list()[0]?.fields[0]?.control).toBeUndefined()
+  })
 })
