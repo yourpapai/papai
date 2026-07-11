@@ -105,6 +105,8 @@
     "plugins/mcp-rag/input-schema.ts": ["files"],
     // Result formatting/dedupe helpers are created ahead of the mcp-rag client integration (a later task).
     "plugins/mcp-rag/format.ts": ["files"],
+    // RAG HTTP client is created ahead of mcp-rag tool/index.ts wiring (a later task).
+    "plugins/mcp-rag/client.ts": ["files"],
     // isBlockedResult is a test-only seam.
     "src/mcp-server/redaction.ts": ["exports"],
     // partitionToolNames is a test-only seam.

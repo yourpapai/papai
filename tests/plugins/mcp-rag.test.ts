@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { RagClient } from '../../plugins/mcp-rag/client.js'
 import {
   dedupeDocuments,
   formatDocuments,
@@ -72,5 +73,134 @@ describe('mcp-rag format', () => {
     expect(output).toContain('boom')
     expect(output).toContain('c2')
     expect(output).toContain('nope')
+  })
+})
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function createRoutedHttpFetch(
+  routes: Record<string, Response>,
+  calls: Array<{ url: string; init: RequestInit | undefined }>,
+): (url: string, init: RequestInit | undefined) => Promise<Response> {
+  return (url: string, init: RequestInit | undefined): Promise<Response> => {
+    calls.push({ url, init })
+    const pathname = new URL(url).pathname
+    const found = routes[pathname]
+    return Promise.resolve(found ?? jsonResponse({ error: `unexpected path ${pathname}` }, 404))
+  }
+}
+
+describe('RagClient', () => {
+  const baseUrl = 'https://rag.test'
+
+  test('search fires one POST per context code with X-Kontur-ApiKey auth and a JSON body', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = []
+    const routes: Record<string, Response> = {
+      '/v1/rag_contexts/c1/search-queries': jsonResponse({ documents: [] }),
+      '/v1/rag_contexts/c2/search-queries': jsonResponse({ documents: [] }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new RagClient({ baseUrl, apiKey: 'k', contextCodes: ['c1', 'c2'], sources: ['s1'], httpFetch })
+
+    await client.search('hello')
+
+    expect(calls).toHaveLength(2)
+    const urls = calls.map((call) => call.url).sort()
+    expect(urls).toEqual([
+      'https://rag.test/v1/rag_contexts/c1/search-queries',
+      'https://rag.test/v1/rag_contexts/c2/search-queries',
+    ])
+    for (const call of calls) {
+      expect(call.init?.method).toBe('POST')
+      const headers = new Headers(call.init?.headers)
+      expect(headers.get('X-Kontur-ApiKey')).toBe('k')
+      expect(headers.get('Content-Type')).toBe('application/json')
+      expect(call.init?.body).toBe(JSON.stringify({ query: 'hello', sources: ['s1'] }))
+    }
+  })
+
+  test('merges documents from every context when all succeed', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = []
+    const routes: Record<string, Response> = {
+      '/v1/rag_contexts/c1/search-queries': jsonResponse({ documents: [{ document_id: '1', title: 'A' }] }),
+      '/v1/rag_contexts/c2/search-queries': jsonResponse({ documents: [{ document_id: '2', title: 'B' }] }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new RagClient({ baseUrl, apiKey: 'k', contextCodes: ['c1', 'c2'], sources: ['s1'], httpFetch })
+
+    const result = await client.search('hello')
+
+    expect(result.documents).toHaveLength(2)
+    expect(result.documents.some((doc) => doc.document_id === '1')).toBe(true)
+    expect(result.documents.some((doc) => doc.document_id === '2')).toBe(true)
+    expect(result.failures).toEqual([])
+  })
+
+  test('a single context failure does not throw, is collected in failures, and other contexts still contribute documents', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = []
+    const routes: Record<string, Response> = {
+      '/v1/rag_contexts/c1/search-queries': jsonResponse({ documents: [{ document_id: '1', title: 'A' }] }),
+      '/v1/rag_contexts/c2/search-queries': jsonResponse({ error: 'boom' }, 500),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new RagClient({ baseUrl, apiKey: 'k', contextCodes: ['c1', 'c2'], sources: ['s1'], httpFetch })
+
+    const result = await client.search('hello')
+
+    expect(result.documents).toEqual([{ document_id: '1', title: 'A' }])
+    expect(result.failures).toHaveLength(1)
+    expect(result.failures[0]?.contextCode).toBe('c2')
+    expect(result.failures[0]?.error).toContain('500')
+  })
+
+  test('URL-encodes a path-traversal-like context code in the request path', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = []
+    const routes: Record<string, Response> = {
+      '/v1/rag_contexts/..%2F..%2Fx/search-queries': jsonResponse({ documents: [] }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new RagClient({ baseUrl, apiKey: 'k', contextCodes: ['../../x'], sources: ['s1'], httpFetch })
+
+    await client.search('hello')
+
+    expect(calls[0]?.url).toBe('https://rag.test/v1/rag_contexts/..%2F..%2Fx/search-queries')
+  })
+
+  test('a response with a missing or non-array documents field contributes no documents without throwing', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = []
+    const routes: Record<string, Response> = {
+      '/v1/rag_contexts/c1/search-queries': jsonResponse({}),
+      '/v1/rag_contexts/c2/search-queries': jsonResponse({ documents: 'nope' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new RagClient({ baseUrl, apiKey: 'k', contextCodes: ['c1', 'c2'], sources: ['s1'], httpFetch })
+
+    const result = await client.search('hello')
+
+    expect(result.documents).toEqual([])
+    expect(result.failures).toEqual([])
+  })
+
+  test('only known string fields are picked into each RagDocument, dropping unrelated fields', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = []
+    const routes: Record<string, Response> = {
+      '/v1/rag_contexts/c1/search-queries': jsonResponse({
+        documents: [{ document_id: '1', title: 'A', extra: 'drop', score: 5 }],
+      }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new RagClient({ baseUrl, apiKey: 'k', contextCodes: ['c1'], sources: ['s1'], httpFetch })
+
+    const result = await client.search('hello')
+    const [doc] = result.documents
+
+    expect(doc).toEqual({ document_id: '1', title: 'A' })
+    expect(Object.hasOwn(doc!, 'extra')).toBe(false)
+    expect(Object.hasOwn(doc!, 'score')).toBe(false)
   })
 })
