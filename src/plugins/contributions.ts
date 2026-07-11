@@ -223,6 +223,8 @@ export function buildPluginToolSet(
     registerToolGates(pluginId, contributions.tools)
 
     for (const pluginTool of contributions.tools) {
+      if (runtime.mode === 'proactive' && pluginTool.availableInProactiveMode === false) continue
+
       const namespacedName = namespacedToolName(pluginId, pluginTool.name)
 
       if (usedNames.has(namespacedName)) {

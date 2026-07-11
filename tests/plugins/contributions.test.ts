@@ -1072,6 +1072,52 @@ describe('buildPluginToolSet', () => {
     )
   })
 
+  test('excludes availableInProactiveMode: false tools only in proactive mode', () => {
+    const manifest = makeManifest({
+      contributes: {
+        tools: ['restricted_tool', 'control_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'restricted_tool',
+            description: 'Only available in attended turns',
+            availableInProactiveMode: false,
+            execute: (): Promise<unknown> => Promise.resolve('restricted'),
+          },
+          {
+            name: 'control_tool',
+            description: 'Available everywhere (no flag)',
+            execute: (): Promise<unknown> => Promise.resolve('control'),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+
+    const normalTools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime({ mode: 'normal' }))
+    const proactiveTools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime({ mode: 'proactive' }))
+    const unspecifiedModeTools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime())
+
+    expect(Object.keys(normalTools)).toContain('plugin_test_plugin__restricted_tool')
+    expect(Object.keys(normalTools)).toContain('plugin_test_plugin__control_tool')
+
+    expect(Object.keys(proactiveTools)).not.toContain('plugin_test_plugin__restricted_tool')
+    expect(Object.keys(proactiveTools)).toContain('plugin_test_plugin__control_tool')
+
+    expect(Object.keys(unspecifiedModeTools)).toContain('plugin_test_plugin__restricted_tool')
+    expect(Object.keys(unspecifiedModeTools)).toContain('plugin_test_plugin__control_tool')
+  })
+
   test('passes active runtime context to plugin tool executions', async () => {
     const manifest = makeManifest({ permissions: ['storage', 'tasks.read'] })
     contributionRegistry.register(

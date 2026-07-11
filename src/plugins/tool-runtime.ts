@@ -23,6 +23,12 @@ export type PluginToolSetRuntime = {
   provider?: TaskProvider
   storageContextId: string
   chatUserId: string
+  /**
+   * Tool assembly mode: 'normal' (default) or 'proactive' (unattended / deferred-prompt
+   * turns). Used by `buildPluginToolSet` to skip tools declared
+   * `availableInProactiveMode: false`.
+   */
+  mode?: 'normal' | 'proactive'
 }
 
 function buildRuntimeKv(

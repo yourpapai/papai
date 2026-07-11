@@ -42,6 +42,11 @@ type PluginToolLike = {
   name: string
   description: string
   inputSchema?: unknown
+  /**
+   * When false, this tool is omitted from tool sets assembled in `proactive` mode
+   * (unattended / deferred-prompt turns). Defaults to available.
+   */
+  availableInProactiveMode?: boolean
   execute: (input: unknown, runtimeContext: RuntimeContextLike, options: unknown) => Promise<unknown>
 }
 
@@ -74,6 +79,9 @@ const factory: PluginFactoryLike = () => ({
       description:
         'Apply a YouTrack command to a single YouTrack issue. Use this only for YouTrack-native command workflows that do not fit the structured tools.',
       inputSchema: applyYouTrackCommandInputSchema,
+      // Command execution must only run in attended turns — excluded from proactive
+      // (unattended / deferred-prompt) tool assembly.
+      availableInProactiveMode: false,
       execute: (input, runtimeContext) => executeApplyYouTrackCommand(input, runtimeContext),
     })
   },

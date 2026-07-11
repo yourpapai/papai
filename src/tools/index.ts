@@ -97,12 +97,26 @@ function buildPluginMcpDescriptors(pluginIds: readonly string[], contextId: stri
   return result
 }
 
+async function buildMcpToolsForPlugins(pluginIds: readonly string[], sharedContextId: string): Promise<ToolSet> {
+  const extraMcpTools: ToolSet = {}
+  if (pluginIds.length === 0) return extraMcpTools
+  const descriptors = buildPluginMcpDescriptors(pluginIds, sharedContextId)
+  try {
+    const pluginMcpTools = await buildPluginMcpToolSet(pluginIds, descriptors, adaptMcpPool())
+    Object.assign(extraMcpTools, pluginMcpTools)
+  } catch {
+    // MCP failures don't break the tool pipeline
+  }
+  return extraMcpTools
+}
+
 async function buildPluginAndMcpTools(
   provider: TaskProvider,
   sharedContextId: string,
   storageContextId: string,
   chatUserId: string,
   wrappedBuiltins: ToolSet,
+  mode: MakeToolsOptions['mode'],
 ): Promise<{ pluginTools: ToolSet; extraMcpTools: ToolSet }> {
   const activePlugins = getPluginsForContext(sharedContextId)
   if (activePlugins.length === 0) return { pluginTools: {}, extraMcpTools: {} }
@@ -118,19 +132,11 @@ async function buildPluginAndMcpTools(
     provider,
     storageContextId,
     chatUserId,
+    mode,
   })
 
-  const extraMcpTools: ToolSet = {}
   const mcpPluginIds = activePlugins.filter((p) => p.manifest.mcp !== undefined).map((p) => p.manifest.id)
-  if (mcpPluginIds.length > 0) {
-    const descriptors = buildPluginMcpDescriptors(mcpPluginIds, sharedContextId)
-    try {
-      const pluginMcpTools = await buildPluginMcpToolSet(mcpPluginIds, descriptors, adaptMcpPool())
-      Object.assign(extraMcpTools, pluginMcpTools)
-    } catch {
-      // MCP failures don't break the tool pipeline
-    }
-  }
+  const extraMcpTools = await buildMcpToolsForPlugins(mcpPluginIds, sharedContextId)
 
   return { pluginTools, extraMcpTools }
 }
@@ -140,6 +146,7 @@ async function buildProviderlessPluginAndMcpTools(
   storageContextId: string,
   chatUserId: string,
   wrappedBuiltins: ToolSet,
+  mode: MakeToolsOptions['mode'],
 ): Promise<{ pluginTools: ToolSet; extraMcpTools: ToolSet }> {
   const activePlugins = getPluginsForContext(sharedContextId)
   if (activePlugins.length === 0) return { pluginTools: {}, extraMcpTools: {} }
@@ -154,23 +161,77 @@ async function buildProviderlessPluginAndMcpTools(
     provider: undefined,
     storageContextId,
     chatUserId,
+    mode,
   })
 
-  const extraMcpTools: ToolSet = {}
   const mcpPluginIds = filterProviderlessPluginIds(
     activePlugins.filter((p) => p.manifest.mcp !== undefined).map((p) => p.manifest.id),
   )
-  if (mcpPluginIds.length > 0) {
-    const descriptors = buildPluginMcpDescriptors(mcpPluginIds, sharedContextId)
+  const extraMcpTools = await buildMcpToolsForPlugins(mcpPluginIds, sharedContextId)
+
+  return { pluginTools, extraMcpTools }
+}
+
+type ResolvedToolAssemblyOptions = {
+  chatUserId: string | undefined
+  username: string | null | undefined
+  contextId: string | undefined
+  sharedContextId: string | undefined
+  mode: ToolMode
+  contextType: MakeToolsOptions['contextType']
+  stagedDownloadFn: MakeToolsOptions['stagedDownloadFn']
+}
+
+function resolveToolAssemblyOptions(options: MakeToolsOptions): ResolvedToolAssemblyOptions {
+  const contextId = options.storageContextId
+  const sharedContextId = contextId === undefined ? undefined : getConfigContextIdFromStorageContextId(contextId)
+  return {
+    chatUserId: options.chatUserId,
+    username: options.username,
+    contextId,
+    sharedContextId,
+    mode: options.mode ?? 'normal',
+    contextType: options.contextType,
+    stagedDownloadFn: options.stagedDownloadFn,
+  }
+}
+
+type BuildPluginAndMcpToolsFn = (
+  sharedContextId: string,
+  contextId: string,
+  chatUserId: string,
+  wrappedBuiltins: ToolSet,
+) => Promise<{ pluginTools: ToolSet; extraMcpTools: ToolSet }>
+
+async function assembleMcpPluginModuleTools(
+  wrappedBuiltins: ToolSet,
+  resolved: Pick<ResolvedToolAssemblyOptions, 'sharedContextId' | 'contextId' | 'chatUserId'>,
+  buildPluginAndMcp: BuildPluginAndMcpToolsFn,
+): Promise<ToolSet> {
+  const { sharedContextId, contextId, chatUserId } = resolved
+
+  let mcpTools: ToolSet = {}
+  if (sharedContextId !== undefined) {
     try {
-      const pluginMcpTools = await buildPluginMcpToolSet(mcpPluginIds, descriptors, adaptMcpPool())
-      Object.assign(extraMcpTools, pluginMcpTools)
+      mcpTools = await buildMcpToolSet(sharedContextId)
     } catch {
       // MCP failures don't break the tool pipeline
     }
   }
 
-  return { pluginTools, extraMcpTools }
+  let pluginTools: ToolSet = {}
+  if (sharedContextId !== undefined && contextId !== undefined && chatUserId !== undefined) {
+    const result = await buildPluginAndMcp(sharedContextId, contextId, chatUserId, wrappedBuiltins)
+    pluginTools = result.pluginTools
+    Object.assign(mcpTools, result.extraMcpTools)
+  }
+
+  let moduleTools: ToolSet = {}
+  if (contextId !== undefined && chatUserId !== undefined) {
+    const existing = new Set([...Object.keys(wrappedBuiltins), ...Object.keys(mcpTools), ...Object.keys(pluginTools)])
+    moduleTools = buildModuleToolSet(existing, { storageContextId: contextId, chatUserId })
+  }
+  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools, ...moduleTools }
 }
 
 /**
@@ -178,16 +239,9 @@ async function buildProviderlessPluginAndMcpTools(
  * The result may be cached by the orchestrator; per-turn preference application
  * (including ask-gating) is done separately via `applyToolPreferences`.
  */
-export async function buildToolDescriptors(provider: TaskProvider, options: MakeToolsOptions): Promise<ToolSet> {
-  const storageContextId = options.storageContextId
-  const chatUserId = options.chatUserId
-  const username = options.username
-  const contextId = storageContextId
-  const sharedContextId = contextId === undefined ? undefined : getConfigContextIdFromStorageContextId(contextId)
-  let mode: MakeToolsOptions['mode'] = 'normal'
-  if (options.mode !== undefined) mode = options.mode
-  const contextType = options.contextType
-  const stagedDownloadFn = options.stagedDownloadFn
+export function buildToolDescriptors(provider: TaskProvider, options: MakeToolsOptions): Promise<ToolSet> {
+  const resolved = resolveToolAssemblyOptions(options)
+  const { chatUserId, username, contextId, mode, contextType, stagedDownloadFn } = resolved
 
   const tools = buildTools(
     provider,
@@ -201,40 +255,14 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
   )
   const wrappedBuiltins = wrapToolSet(tools)
 
-  let mcpTools: ToolSet = {}
-  if (sharedContextId !== undefined) {
-    try {
-      mcpTools = await buildMcpToolSet(sharedContextId)
-    } catch {
-      // MCP failures don't break the tool pipeline
-    }
-  }
-
-  let pluginTools: ToolSet = {}
-  if (sharedContextId !== undefined && contextId !== undefined && chatUserId !== undefined) {
-    const result = await buildPluginAndMcpTools(provider, sharedContextId, contextId, chatUserId, wrappedBuiltins)
-    pluginTools = result.pluginTools
-    Object.assign(mcpTools, result.extraMcpTools)
-  }
-
-  let moduleTools: ToolSet = {}
-  if (contextId !== undefined && chatUserId !== undefined) {
-    const existing = new Set([...Object.keys(wrappedBuiltins), ...Object.keys(mcpTools), ...Object.keys(pluginTools)])
-    moduleTools = buildModuleToolSet(existing, { storageContextId: contextId, chatUserId })
-  }
-  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools, ...moduleTools }
+  return assembleMcpPluginModuleTools(wrappedBuiltins, resolved, (sharedContextId, ctx, user, builtins) =>
+    buildPluginAndMcpTools(provider, sharedContextId, ctx, user, builtins, mode),
+  )
 }
 
-export async function buildProviderlessToolDescriptors(options: MakeToolsOptions): Promise<ToolSet> {
-  const storageContextId = options.storageContextId
-  const chatUserId = options.chatUserId
-  const username = options.username
-  const contextId = storageContextId
-  const sharedContextId = contextId === undefined ? undefined : getConfigContextIdFromStorageContextId(contextId)
-  let mode: MakeToolsOptions['mode'] = 'normal'
-  if (options.mode !== undefined) mode = options.mode
-  const contextType = options.contextType
-  const stagedDownloadFn = options.stagedDownloadFn
+export function buildProviderlessToolDescriptors(options: MakeToolsOptions): Promise<ToolSet> {
+  const resolved = resolveToolAssemblyOptions(options)
+  const { chatUserId, username, contextId, mode, contextType, stagedDownloadFn } = resolved
 
   const tools = buildProviderlessTools(
     chatUserId,
@@ -247,28 +275,9 @@ export async function buildProviderlessToolDescriptors(options: MakeToolsOptions
   )
   const wrappedBuiltins = wrapToolSet(tools)
 
-  let mcpTools: ToolSet = {}
-  if (sharedContextId !== undefined) {
-    try {
-      mcpTools = await buildMcpToolSet(sharedContextId)
-    } catch {
-      // MCP failures don't break the tool pipeline
-    }
-  }
-
-  let pluginTools: ToolSet = {}
-  if (sharedContextId !== undefined && contextId !== undefined && chatUserId !== undefined) {
-    const result = await buildProviderlessPluginAndMcpTools(sharedContextId, contextId, chatUserId, wrappedBuiltins)
-    pluginTools = result.pluginTools
-    Object.assign(mcpTools, result.extraMcpTools)
-  }
-
-  let moduleTools: ToolSet = {}
-  if (contextId !== undefined && chatUserId !== undefined) {
-    const existing = new Set([...Object.keys(wrappedBuiltins), ...Object.keys(mcpTools), ...Object.keys(pluginTools)])
-    moduleTools = buildModuleToolSet(existing, { storageContextId: contextId, chatUserId })
-  }
-  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools, ...moduleTools }
+  return assembleMcpPluginModuleTools(wrappedBuiltins, resolved, (sharedContextId, ctx, user, builtins) =>
+    buildProviderlessPluginAndMcpTools(sharedContextId, ctx, user, builtins, mode),
+  )
 }
 
 /**
