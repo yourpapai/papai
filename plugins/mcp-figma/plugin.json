@@ -1,0 +1,29 @@
+{
+  "id": "mcp-figma",
+  "name": "Figma (coding agent)",
+  "version": "1.0.0",
+  "description": "Agent-facing Figma file/node/style/component/comment tools exposed as an MCP server",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "contributes": {
+    "tools": [
+      "figma_get_file",
+      "figma_get_file_nodes",
+      "figma_get_images",
+      "figma_get_file_styles",
+      "figma_get_style",
+      "figma_get_components",
+      "figma_get_comments"
+    ],
+    "promptFragments": [],
+    "configKeys": ["token"]
+  },
+  "permissions": ["http"],
+  "providerAllowedHosts": ["api.figma.com"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "token", "label": "Figma Personal Access Token", "required": true, "sensitive": true, "scope": "context" }
+  ],
+  "activationTimeoutMs": 3000
+}
