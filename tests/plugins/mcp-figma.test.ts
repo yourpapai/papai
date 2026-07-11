@@ -3,10 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+
+import type { ToolExecutionOptions } from 'ai'
 
 import { FigmaClient } from '../../plugins/mcp-figma/client.js'
 import { parseIds, simplifyFigmaResponse } from '../../plugins/mcp-figma/format.js'
+import factory from '../../plugins/mcp-figma/index.js'
+import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
+import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 
 interface CapturedRequest {
   url: string
@@ -219,5 +224,210 @@ describe('FigmaClient', () => {
     const client = new FigmaClient({ token: 'tok', httpFetch })
 
     await expect(client.getFile('abc')).rejects.toThrow('Figma API 403 for /v1/files/abc')
+  })
+})
+
+function createMockLogger(): PluginLogger {
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  }
+}
+
+function createMockContext(overrides: { httpFetch?: (url: string, init?: RequestInit) => Promise<Response> } = {}): {
+  ctx: PluginContext
+  registeredTools: Map<string, PluginTool>
+} {
+  const registeredTools = new Map<string, PluginTool>()
+
+  const registration: PluginRegistration = {
+    registerTool: (tool: PluginTool) => {
+      registeredTools.set(tool.name, tool)
+    },
+    registerPromptFragment: () => {},
+    registerCommand: () => {},
+    registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
+    registerTaskProviderType: () => {},
+  }
+
+  const ctx: PluginContext = {
+    pluginId: 'mcp-figma',
+    contextId: '__system__',
+    permissions: new Set(['http']),
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    log: createMockLogger(),
+    registration,
+    providerRuntime: {
+      httpFetch: overrides.httpFetch ?? mock(),
+      allowedHosts: new Set(['api.figma.com']),
+      logger: createMockLogger(),
+    },
+    adminConfig: {
+      get: () => undefined,
+    },
+  }
+
+  return { ctx, registeredTools }
+}
+
+function createMockRuntimeContext(
+  overrides: {
+    allowed?: boolean
+    retryAfterSec?: number
+    token?: string | undefined
+  } = {},
+): PluginToolRuntimeContext {
+  const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
+
+  const token = 'token' in overrides ? overrides.token : 'tok'
+
+  return {
+    pluginId: 'mcp-figma',
+    storageContextId: 'test-context',
+    chatUserId: 'test-user',
+    taskProvider: {
+      getTask: () => notImplemented(),
+      listTasks: () => notImplemented(),
+      searchTasks: () => notImplemented(),
+      createTask: () => notImplemented(),
+      updateTask: () => notImplemented(),
+    },
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    rateLimit: {
+      check: () => ({
+        allowed: overrides.allowed ?? true,
+        retryAfterSec: overrides.retryAfterSec,
+      }),
+    },
+    attachments: {
+      read: () => notImplemented(),
+    },
+    adminConfig: {
+      get: () => undefined,
+    },
+    contextConfig: {
+      get: (key: string) => (key === 'token' ? token : undefined),
+    },
+    codingSecrets: {
+      resolve: () => null,
+      resolveForgeToken: () => null,
+      resolveAgent: () => null,
+      resolveForge: () => null,
+      resolveProviderHost: () => null,
+      resolveModel: () => null,
+      resolveMcpServers: () => ({ ok: true, servers: [] }),
+      resolveMcpTokens: () => ({}),
+    },
+    codingRepos: { list: () => [], get: () => null },
+  } as PluginToolRuntimeContext
+}
+
+function createMockOptions(): ToolExecutionOptions {
+  return {
+    toolCallId: 'test-call-id',
+    messages: [],
+  }
+}
+
+describe('mcp-figma plugin', () => {
+  test('activates and registers all 7 Figma tools', () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    expect([...registeredTools.keys()].sort()).toEqual(
+      [
+        'figma_get_file',
+        'figma_get_file_nodes',
+        'figma_get_images',
+        'figma_get_file_styles',
+        'figma_get_style',
+        'figma_get_components',
+        'figma_get_comments',
+      ].sort(),
+    )
+  })
+
+  test('figma_get_file returns the simplified file and calls the correct URL', async () => {
+    let capturedUrl = ''
+    const apiResponse = {
+      name: 'Doc',
+      document: { name: 'D', children: [{ id: '1:1', name: 'Frame', type: 'FRAME', visible: true }] },
+    }
+    const httpFetch = (url: string): Promise<Response> => {
+      capturedUrl = url
+      return Promise.resolve(
+        new Response(JSON.stringify(apiResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('figma_get_file')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ fileKey: 'abc' }, runtimeCtx, options)
+
+    expect(capturedUrl).toBe('https://api.figma.com/v1/files/abc')
+    expect(result).toEqual(simplifyFigmaResponse(apiResponse))
+  })
+
+  test('returns not_configured when the context token is missing', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('figma_get_file')!
+    const runtimeCtx = createMockRuntimeContext({ token: undefined })
+    const options = createMockOptions()
+    const result = await tool.execute({ fileKey: 'abc' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'not_configured', message: 'Figma token is not configured' })
+  })
+
+  test('returns rate_limited when the rate limit is exceeded', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('figma_get_file')!
+    const runtimeCtx = createMockRuntimeContext({ allowed: false, retryAfterSec: 30 })
+    const options = createMockOptions()
+    const result = await tool.execute({ fileKey: 'abc' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
+  })
+
+  test('returns figma_error when httpFetch throws a non-abort error', async () => {
+    const httpFetch = (): Promise<Response> => Promise.reject(new Error('Connection refused'))
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('figma_get_file')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ fileKey: 'abc' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'figma_error', message: 'Connection refused' })
   })
 })
