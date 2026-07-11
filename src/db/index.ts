@@ -73,6 +73,7 @@ import { migration059GuestMode } from './migrations/059_guest_mode.js'
 import { migration062NullableContextTaskInstance } from './migrations/062_nullable_context_task_instance.js'
 import { migration063ReleaseAnnouncements } from './migrations/063_release_announcements.js'
 import { migration065CodingIdentity } from './migrations/065_coding_identity.js'
+import { migration069YoutrackCommandToolPrefsRename } from './migrations/069_youtrack_command_tool_prefs_rename.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -170,6 +171,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration062NullableContextTaskInstance,
   migration063ReleaseAnnouncements,
   migration065CodingIdentity,
+  migration069YoutrackCommandToolPrefsRename,
 ]
 
 export const initDb = (): void => {

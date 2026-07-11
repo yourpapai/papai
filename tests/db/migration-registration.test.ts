@@ -23,9 +23,9 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('065_coding_identity is the last core migration', () => {
+  test('069_youtrack_command_tool_prefs_rename is the last core migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('065_coding_identity')
+    expect(lastMigration.id).toBe('069_youtrack_command_tool_prefs_rename')
   })
 
   test('coding-table migrations are owned by the coding module, not core', () => {
