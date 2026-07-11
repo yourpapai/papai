@@ -259,6 +259,10 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   third — 7 Figma file/node/style/component/comment tools authenticated via `X-Figma-Token`;
   it does not opt into `mcpResponseRedaction` (design metadata, not customer data) and is the
   first of the three with a context-scoped (per-team) rather than admin-scoped credential.
+  `mcp-teamcity` (`plugins/mcp-teamcity/`) is the fourth — 4 TeamCity project/pipeline config
+  tools authenticated via Bearer token; it also skips `mcpResponseRedaction`, relying solely on
+  a static `name`/`value`-pattern sanitizer (`sanitizeTeamCityConfig` in `format.ts`) to redact
+  secret-shaped config properties before responses reach the coding agent.
 
 ### 3.7 Transcript viewer (papai-side)
 
