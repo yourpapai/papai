@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { YouTrackClient } from '../../plugins/mcp-youtrack/client.js'
 import {
+  ACTIVITY_FIELDS,
+  ATTACHMENT_FIELDS,
+  COMMENT_READ_FIELDS,
+  COMMENT_WRITE_FIELDS,
+  ISSUE_FIELDS,
   shapeActivity,
   shapeAttachment,
   shapeComment,
@@ -213,5 +219,269 @@ describe('mcp-youtrack format', () => {
 
   test('shapeFieldOptions returns empty array when customFields is not an array', () => {
     expect(shapeFieldOptions({ customFields: 'nope' })).toEqual([])
+  })
+})
+
+type CapturedCall = { url: string; init: RequestInit | undefined }
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function textResponse(body: string, status = 200): Response {
+  return new Response(body, { status })
+}
+
+function createRoutedHttpFetch(
+  routes: Record<string, Response>,
+  calls: CapturedCall[],
+): (url: string, init: RequestInit | undefined) => Promise<Response> {
+  return (url: string, init: RequestInit | undefined): Promise<Response> => {
+    calls.push({ url, init })
+    const pathname = new URL(url).pathname
+    const route = routes[pathname]
+    return Promise.resolve(route ?? jsonResponse({ error: `unexpected pathname ${pathname}` }, 404))
+  }
+}
+
+function countCallsTo(calls: CapturedCall[], pathname: string): number {
+  return calls.filter((c) => new URL(c.url).pathname === pathname).length
+}
+
+describe('YouTrackClient', () => {
+  const baseUrl = 'https://yt.test'
+  const token = 'tok'
+
+  test('getIssue fetches and shapes the issue', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-1': jsonResponse({ idReadable: 'P-1', summary: 'S', junk: 'drop' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getIssue('P-1')
+
+    expect(calls[0]?.url).toBe(`https://yt.test/api/issues/P-1?fields=${ISSUE_FIELDS}`)
+    const headers = new Headers(calls[0]?.init?.headers)
+    expect(headers.get('Authorization')).toBe('Bearer tok')
+    expect(headers.get('Accept')).toBe('application/json')
+    expect(result).toEqual({ idReadable: 'P-1', summary: 'S' })
+  })
+
+  test('getStateActivities filters to State-field activities', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-1/activities': jsonResponse([
+        { timestamp: 1, field: { name: 'State' }, added: [{ name: 'Open' }] },
+        { timestamp: 2, field: { name: 'Priority' }, added: [{ name: 'High' }] },
+      ]),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getStateActivities('P-1')
+
+    expect(calls[0]?.url).toBe(
+      `https://yt.test/api/issues/P-1/activities?categories=CustomFieldCategory&fields=${ACTIVITY_FIELDS}&$top=500&$orderby=timestamp`,
+    )
+    expect(result).toEqual([{ timestamp: 1, field: { name: 'State' }, added: [{ name: 'Open' }] }])
+  })
+
+  test('getComments drops deleted comments and never exposes a deleted key', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-1/comments': jsonResponse([
+        { id: 'c1', text: 'hi', deleted: false },
+        { id: 'c2', text: 'bye', deleted: true },
+      ]),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getComments('P-1')
+
+    expect(calls[0]?.url).toBe(`https://yt.test/api/issues/P-1/comments?fields=${COMMENT_READ_FIELDS}&$top=500`)
+    expect(result).toEqual([{ id: 'c1', text: 'hi' }])
+    for (const comment of result) {
+      expect(comment).not.toHaveProperty('deleted')
+    }
+  })
+
+  test('getIssueTags returns shaped tags', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-1/tags': jsonResponse([
+        { id: 't1', name: 'bug', junk: 'drop' },
+        { id: 't2', name: 'urgent' },
+      ]),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getIssueTags('P-1')
+
+    expect(calls[0]?.url).toBe('https://yt.test/api/issues/P-1/tags?fields=id,name')
+    expect(result).toEqual([
+      { id: 't1', name: 'bug' },
+      { id: 't2', name: 'urgent' },
+    ])
+  })
+
+  test('getFieldOptions filters options by fieldName', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-1': jsonResponse({
+        customFields: [
+          {
+            name: 'Priority',
+            $type: 'SingleEnumIssueCustomField',
+            projectCustomField: { bundle: { values: [{ name: 'High' }, { name: 'Low' }] } },
+          },
+          { name: 'Assignee', $type: 'SingleUserIssueCustomField' },
+        ],
+      }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getFieldOptions('P-1', 'Priority')
+
+    expect(calls[0]?.url).toBe(
+      `https://yt.test/api/issues/P-1?fields=customFields(name,$type,projectCustomField(bundle(values(name))))`,
+    )
+    expect(result).toEqual([{ name: 'Priority', type: 'SingleEnumIssueCustomField', values: ['High', 'Low'] }])
+  })
+
+  test('getAttachments returns shaped attachments', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-1/attachments': jsonResponse([{ id: 'a1', name: 'a.txt', size: 5, mimeType: 'text/plain' }]),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    const result = await client.getAttachments('P-1')
+
+    expect(calls[0]?.url).toBe(`https://yt.test/api/issues/P-1/attachments?fields=${ATTACHMENT_FIELDS}`)
+    expect(result).toEqual([{ id: 'a1', name: 'a.txt', size: 5, mimeType: 'text/plain' }])
+  })
+
+  describe('readAttachment', () => {
+    test('inlines text content for small text/* attachments via the pre-signed url', async () => {
+      const calls: CapturedCall[] = []
+      const routes: Record<string, Response> = {
+        '/api/issues/P-1/attachments/A9': jsonResponse({
+          id: 'A9',
+          size: 100,
+          mimeType: 'text/plain',
+          url: '/api/files/A9?sign=x',
+        }),
+        '/api/files/A9': textResponse('hello'),
+      }
+      const httpFetch = createRoutedHttpFetch(routes, calls)
+      const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+      const result = await client.readAttachment('P-1', 'A9')
+
+      expect(result).toEqual({
+        attachment: { id: 'A9', size: 100, mimeType: 'text/plain', url: '/api/files/A9?sign=x' },
+        text: 'hello',
+      })
+      expect(calls[1]?.url).toBe('https://yt.test/api/files/A9?sign=x')
+      const headers = new Headers(calls[1]?.init?.headers)
+      expect(headers.get('Authorization')).toBe('Bearer tok')
+      expect(headers.get('Accept')).toBe('*/*')
+    })
+
+    test('flags large attachments as too large without fetching content', async () => {
+      const calls: CapturedCall[] = []
+      const routes: Record<string, Response> = {
+        '/api/issues/P-1/attachments/A9': jsonResponse({
+          id: 'A9',
+          size: 999_999,
+          mimeType: 'text/plain',
+          url: '/api/files/A9?sign=x',
+        }),
+      }
+      const httpFetch = createRoutedHttpFetch(routes, calls)
+      const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+      const result = await client.readAttachment('P-1', 'A9')
+
+      expect(result).toEqual({
+        attachment: { id: 'A9', size: 999_999, mimeType: 'text/plain', url: '/api/files/A9?sign=x' },
+        tooLarge: true,
+      })
+      expect(countCallsTo(calls, '/api/files/A9')).toBe(0)
+    })
+
+    test('flags non-text attachments as binary without fetching content', async () => {
+      const calls: CapturedCall[] = []
+      const routes: Record<string, Response> = {
+        '/api/issues/P-1/attachments/A9': jsonResponse({
+          id: 'A9',
+          size: 100,
+          mimeType: 'image/png',
+          url: '/api/files/A9?sign=x',
+        }),
+      }
+      const httpFetch = createRoutedHttpFetch(routes, calls)
+      const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+      const result = await client.readAttachment('P-1', 'A9')
+
+      expect(result).toEqual({
+        attachment: { id: 'A9', size: 100, mimeType: 'image/png', url: '/api/files/A9?sign=x' },
+        isBinary: true,
+        note: 'Binary attachment; content not inlined (no filesystem handoff in this MCP transport).',
+      })
+      expect(countCallsTo(calls, '/api/files/A9')).toBe(0)
+    })
+  })
+
+  test('addComment posts and returns the shaped comment', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-1/comments': jsonResponse({ id: 'c9', text: 'hi', author: { login: 'a' } }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    const result = await client.addComment('P-1', 'hi')
+
+    expect(calls[0]?.url).toBe(`https://yt.test/api/issues/P-1/comments?fields=${COMMENT_WRITE_FIELDS}`)
+    expect(calls[0]?.init?.method).toBe('POST')
+    expect(calls[0]?.init?.body).toBe(JSON.stringify({ text: 'hi' }))
+    const headers = new Headers(calls[0]?.init?.headers)
+    expect(headers.get('Content-Type')).toBe('application/json')
+    expect(result).toEqual({ id: 'c9', text: 'hi', author: { login: 'a' } })
+  })
+
+  test('getIssue encodes a traversal-like id so the request stays under /issues/', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/..%2F..%2Fx': jsonResponse({ idReadable: 'x' }),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    await client.getIssue('../../x')
+
+    expect(calls[0]?.url).toBe(`https://yt.test/api/issues/..%2F..%2Fx?fields=${ISSUE_FIELDS}`)
+  })
+
+  test('getIssue throws on a non-2xx response', async () => {
+    const calls: CapturedCall[] = []
+    const routes: Record<string, Response> = {
+      '/api/issues/P-404': jsonResponse({ error: 'not found' }, 404),
+    }
+    const httpFetch = createRoutedHttpFetch(routes, calls)
+    const client = new YouTrackClient({ baseUrl, token, httpFetch })
+
+    await expect(client.getIssue('P-404')).rejects.toThrow('YouTrack API 404')
   })
 })
