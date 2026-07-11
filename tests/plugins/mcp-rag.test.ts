@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+
+import type { ToolExecutionOptions } from 'ai'
 
 import { RagClient } from '../../plugins/mcp-rag/client.js'
 import {
@@ -13,6 +15,9 @@ import {
   parseContextCodes,
   parseSources,
 } from '../../plugins/mcp-rag/format.js'
+import factory from '../../plugins/mcp-rag/index.js'
+import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
+import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 
 describe('mcp-rag format', () => {
   test('parseContextCodes trims, splits on semicolon, and drops empties', () => {
@@ -202,5 +207,222 @@ describe('RagClient', () => {
     expect(doc).toEqual({ document_id: '1', title: 'A' })
     expect(Object.hasOwn(doc!, 'extra')).toBe(false)
     expect(Object.hasOwn(doc!, 'score')).toBe(false)
+  })
+})
+
+function requireString(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new Error('expected a string result')
+  }
+  return value
+}
+
+function createMockLogger(): PluginLogger {
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  }
+}
+
+function createMockContext(
+  overrides: {
+    httpFetch?: (url: string, init?: RequestInit) => Promise<Response>
+    sourceDescription?: string
+  } = {},
+): {
+  ctx: PluginContext
+  registeredTools: Map<string, PluginTool>
+} {
+  const registeredTools = new Map<string, PluginTool>()
+
+  const registration: PluginRegistration = {
+    registerTool: (tool: PluginTool) => {
+      registeredTools.set(tool.name, tool)
+    },
+    registerPromptFragment: () => {},
+    registerCommand: () => {},
+    registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
+    registerTaskProviderType: () => {},
+  }
+
+  const ctx: PluginContext = {
+    pluginId: 'mcp-rag',
+    contextId: '__system__',
+    permissions: new Set(['http']),
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    log: createMockLogger(),
+    registration,
+    providerRuntime: {
+      httpFetch: overrides.httpFetch ?? mock(),
+      allowedHosts: new Set(['rag.test']),
+      logger: createMockLogger(),
+    },
+    adminConfig: {
+      get: (key: string) => (key === 'source_description' ? overrides.sourceDescription : undefined),
+    },
+  }
+
+  return { ctx, registeredTools }
+}
+
+function createMockRuntimeContext(
+  overrides: {
+    allowed?: boolean
+    retryAfterSec?: number
+    baseUrl?: string | undefined
+    apiKey?: string | undefined
+    contextCode?: string | undefined
+    sources?: string | undefined
+  } = {},
+): PluginToolRuntimeContext {
+  const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
+
+  const values: Record<string, string | undefined> = {
+    base_url: 'baseUrl' in overrides ? overrides.baseUrl : 'https://rag.test',
+    api_key: 'apiKey' in overrides ? overrides.apiKey : 'k',
+    context_code: 'contextCode' in overrides ? overrides.contextCode : 'c1',
+    sources: 'sources' in overrides ? overrides.sources : undefined,
+  }
+
+  return {
+    pluginId: 'mcp-rag',
+    storageContextId: 'test-context',
+    chatUserId: 'test-user',
+    taskProvider: {
+      getTask: () => notImplemented(),
+      listTasks: () => notImplemented(),
+      searchTasks: () => notImplemented(),
+      createTask: () => notImplemented(),
+      updateTask: () => notImplemented(),
+    },
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    rateLimit: {
+      check: () => ({
+        allowed: overrides.allowed ?? true,
+        retryAfterSec: overrides.retryAfterSec,
+      }),
+    },
+    attachments: {
+      read: () => notImplemented(),
+    },
+    adminConfig: {
+      get: (key: string) => values[key],
+    },
+    contextConfig: {
+      get: () => undefined,
+    },
+    codingSecrets: {
+      resolve: () => null,
+      resolveForgeToken: () => null,
+      resolveAgent: () => null,
+      resolveForge: () => null,
+      resolveProviderHost: () => null,
+      resolveModel: () => null,
+      resolveMcpServers: () => ({ ok: true, servers: [] }),
+      resolveMcpTokens: () => ({}),
+    },
+    codingRepos: { list: () => [], get: () => null },
+  } as PluginToolRuntimeContext
+}
+
+function createMockOptions(): ToolExecutionOptions {
+  return {
+    toolCallId: 'test-call-id',
+    messages: [],
+  }
+}
+
+const BASE_TOOL_DESCRIPTION =
+  'Search a corporate knowledge base (RAG service) by natural-language query. ' +
+  'Returns matching documents (title, link, source). Sources and context are fixed in the server config.'
+
+describe('mcp-rag plugin', () => {
+  test('activates and registers exactly 1 tool named rag_search', () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    expect([...registeredTools.keys()]).toEqual(['rag_search'])
+  })
+
+  test('description is base + operator source_description when configured', () => {
+    const { ctx, registeredTools } = createMockContext({ sourceDescription: 'Covers Team X docs.' })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const description = registeredTools.get('rag_search')!.description
+    expect(description.startsWith(BASE_TOOL_DESCRIPTION)).toBe(true)
+    expect(description.endsWith('Covers Team X docs.')).toBe(true)
+  })
+
+  test('description is just the base string when source_description is not configured', () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    expect(registeredTools.get('rag_search')!.description).toBe(BASE_TOOL_DESCRIPTION)
+  })
+
+  test('rag_search returns formatted documents on success', async () => {
+    const httpFetch = (): Promise<Response> =>
+      Promise.resolve(
+        new Response(JSON.stringify({ documents: [{ document_id: '1', title: 'A' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('rag_search')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'hello' }, runtimeCtx, options)
+
+    expect(typeof result).toBe('string')
+    const text = requireString(result)
+    expect(text).toContain('Found 1 documents:')
+    expect(text).toContain('A')
+  })
+
+  test('returns not_configured when admin creds are missing', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('rag_search')!
+    const runtimeCtx = createMockRuntimeContext({ baseUrl: undefined })
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'hello' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'not_configured', message: 'RAG is not configured' })
+  })
+
+  test('returns rate_limited when the rate limit is exceeded', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('rag_search')!
+    const runtimeCtx = createMockRuntimeContext({ allowed: false, retryAfterSec: 30 })
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'hello' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
   })
 })
