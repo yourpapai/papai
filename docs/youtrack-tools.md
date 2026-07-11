@@ -13,14 +13,14 @@ See LICENSE in the project root for details.
 
 ### New capabilities for YouTrack users
 
-| Category                      | What changed                                                                                                                                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Agile & Sprint management** | New tools: `list_agiles`, `list_sprints`, `create_sprint`, `update_sprint`, `assign_task_to_sprint`. YouTrack users can now manage agile boards and sprints directly through the bot. |
-| **YouTrack commands**         | New `apply_youtrack_command` tool lets the bot execute native YouTrack commands (e.g. `for me`, `vote`). Destructive or ambiguous commands require explicit confirmation.             |
-| **Saved queries**             | New `list_saved_queries` and `run_saved_query` tools expose YouTrack saved searches.                                                                                                  |
-| **Task history**              | New `get_task_history` tool shows full activity timeline for a task (field changes, comments, links, visibility).                                                                     |
-| **Single project lookup**     | New `get_project` tool fetches full project details by ID.                                                                                                                            |
-| **Current user**              | New `get_current_user` tool resolves the authenticated YouTrack user.                                                                                                                 |
+| Category                      | What changed                                                                                                                                                                                                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Agile & Sprint management** | New tools: `list_agiles`, `list_sprints`, `create_sprint`, `update_sprint`, `assign_task_to_sprint`. YouTrack users can now manage agile boards and sprints directly through the bot.                                                                                    |
+| **YouTrack commands**         | New `apply_youtrack_command` tool lets the bot execute native YouTrack commands (e.g. `for me`, `vote`). Destructive or ambiguous commands require explicit confirmation. (Later relocated out of core into the YouTrack plugin as a contributed tool — see note below.) |
+| **Saved queries**             | New `list_saved_queries` and `run_saved_query` tools expose YouTrack saved searches.                                                                                                                                                                                     |
+| **Task history**              | New `get_task_history` tool shows full activity timeline for a task (field changes, comments, links, visibility).                                                                                                                                                        |
+| **Single project lookup**     | New `get_project` tool fetches full project details by ID.                                                                                                                                                                                                               |
+| **Current user**              | New `get_current_user` tool resolves the authenticated YouTrack user.                                                                                                                                                                                                    |
 
 ### Improvements to existing tools
 
@@ -101,6 +101,7 @@ The central tool assembly file. Key changes:
 
 - **11 new tools registered**: `get_project`, `get_current_user`, `get_task_history`, `list_agiles`, `list_sprints`, `create_sprint`, `update_sprint`, `assign_task_to_sprint`, `list_saved_queries`, `run_saved_query`, `apply_youtrack_command`
 - **New registration functions**: `maybeAddPhaseFiveSprintTools()` and `maybeAddPhaseFiveQueryTools()` — both check capabilities and provider method existence
+- **Update (phase 3d)**: `apply_youtrack_command` no longer lives in `tools-builder.ts`. It was relocated out of core into the YouTrack plugin (`plugins/task-provider-youtrack/`) as a `contributes.tools` entry, LLM-visible as `plugin_task_provider_youtrack__apply_youtrack_command`. It is present only when the YouTrack plugin is enabled in a context bound to a YouTrack task instance (gated by `requiredTaskCapabilities: ['tasks.commands']`), and — like all provider-specific write tools — excluded from proactive/unattended turns. The other 10 tools listed above remain core builtins.
 - **`get_project`** gated by `projects.read` capability + `provider.getProject` existence
 - **Attachment tools** now receive `contextId` instead of `chatUserId`
 - **Formatting cleanup**: multi-line `if` blocks collapsed to single lines throughout
@@ -202,25 +203,25 @@ The reference (`reports/mcp-youtrack/main.py`) defines **22 MCP tools** across 7
 
 These are papai capabilities the reference MCP server doesn't have:
 
-| Domain                 | papai Extras                                                                             |
-| ---------------------- | ---------------------------------------------------------------------------------------- |
-| **Sprints/Agiles**     | `list_agiles`, `list_sprints`, `create_sprint`, `update_sprint`, `assign_task_to_sprint` |
-| **Activities/History** | `get_task_history` with category filters, date range, author filter                      |
-| **Saved Queries**      | `list_saved_queries`, `run_saved_query`                                                  |
-| **YouTrack Commands**  | `apply_youtrack_command` with safety confirmation gate                                   |
-| **Labels CRUD**        | `list_labels`, `create_label`, `update_label`, `remove_label`                            |
-| **Statuses**           | `list_statuses`, `create_status`, `update_status`, `delete_status`, `reorder_statuses`   |
-| **Collaboration**      | `list_watchers`, `add/remove_watcher`, `add/remove_vote`, `set_visibility`, `find_user`  |
-| **Comment Reactions**  | `add_comment_reaction`, `remove_comment_reaction`                                        |
-| **Project Team**       | `list_project_team`, `add/remove_project_member`                                         |
-| **Work Items**         | `update_work`                                                                            |
-| **Recurring Tasks**    | Full CRUD + pause/resume/skip                                                            |
-| **Memos**              | Save, search, list, archive, promote-to-task                                             |
-| **Deferred Prompts**   | Full CRUD + cancel                                                                       |
-| **Identity**           | `set_my_identity`, `clear_my_identity`                                                   |
-| **Web Fetch**          | `web_fetch` with extraction/distillation                                                 |
-| **Instructions**       | Save, list, delete per-context instructions                                              |
-| **Task Count**         | `count_tasks`                                                                            |
+| Domain                 | papai Extras                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Sprints/Agiles**     | `list_agiles`, `list_sprints`, `create_sprint`, `update_sprint`, `assign_task_to_sprint`               |
+| **Activities/History** | `get_task_history` with category filters, date range, author filter                                    |
+| **Saved Queries**      | `list_saved_queries`, `run_saved_query`                                                                |
+| **YouTrack Commands**  | `plugin_task_provider_youtrack__apply_youtrack_command` (plugin-contributed, safety confirmation gate) |
+| **Labels CRUD**        | `list_labels`, `create_label`, `update_label`, `remove_label`                                          |
+| **Statuses**           | `list_statuses`, `create_status`, `update_status`, `delete_status`, `reorder_statuses`                 |
+| **Collaboration**      | `list_watchers`, `add/remove_watcher`, `add/remove_vote`, `set_visibility`, `find_user`                |
+| **Comment Reactions**  | `add_comment_reaction`, `remove_comment_reaction`                                                      |
+| **Project Team**       | `list_project_team`, `add/remove_project_member`                                                       |
+| **Work Items**         | `update_work`                                                                                          |
+| **Recurring Tasks**    | Full CRUD + pause/resume/skip                                                                          |
+| **Memos**              | Save, search, list, archive, promote-to-task                                                           |
+| **Deferred Prompts**   | Full CRUD + cancel                                                                                     |
+| **Identity**           | `set_my_identity`, `clear_my_identity`                                                                 |
+| **Web Fetch**          | `web_fetch` with extraction/distillation                                                               |
+| **Instructions**       | Save, list, delete per-context instructions                                                            |
+| **Task Count**         | `count_tasks`                                                                                          |
 
 ### Summary
 
