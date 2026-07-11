@@ -266,7 +266,10 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   (`plugins/mcp-rag/`) is the fifth — a single `rag_search` tool that fans out a query to one or
   more corporate knowledge-base contexts (`X-Kontur-ApiKey` auth, semicolon-separated
   `context_code` admin config queried in parallel, per-context failures reported inline rather
-  than failing the call) and also skips `mcpResponseRedaction`.
+  than failing the call) and also skips `mcpResponseRedaction`. `mcp-mattermost`
+  (`plugins/mcp-mattermost/`) is the sixth — 5 Mattermost read/post tools authenticated via
+  Bearer token, posts enriched with author username and attachment metadata via deduped extra
+  fetches, responses redacted the same way as `mcp-sentry`/`mcp-confluence`.
 
 ### 3.7 Transcript viewer (papai-side)
 
