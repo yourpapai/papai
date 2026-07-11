@@ -329,6 +329,9 @@ prior dedicated `steer_coding_task` tool was removed since both hit the identica
 - **Gating**: the three nerv action tools join acp's in the operator `whoMayUse` guardrail via
   `CODING_ACTION_TOOLS` (`src/llm-orchestrator-tools.ts`); status/list stay ungated.
 
+Operator enablement (config keys, `MAGI_NOTIFY_URL`, smoke test): see
+[`docs/deployment/nerv-enablement.md`](../deployment/nerv-enablement.md).
+
 Design + plan: `docs/superpowers/specs/2026-07-09-papai-nerv-plugin-design.md`,
 `docs/superpowers/plans/2026-07-09-papai-nerv-plugin.md`.
 
