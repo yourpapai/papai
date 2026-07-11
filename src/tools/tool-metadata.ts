@@ -68,7 +68,6 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   get_task: read('task'),
   count_tasks: read('task'),
   delete_task: destructive('task'),
-  apply_youtrack_command: write('task', 'update'),
 
   get_current_time: read('time'),
 

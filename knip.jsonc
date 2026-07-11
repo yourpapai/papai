@@ -195,6 +195,7 @@
     "plugins/task-provider-kaneo/client.ts": ["exports"],
     "plugins/task-provider-kaneo/provider.ts": ["exports"],
     "plugins/task-provider-youtrack/provider.ts": ["exports"],
+    "plugins/task-provider-youtrack/tool-apply-command.ts": ["exports"],
     // audio-transcribe moved its zod-using implementation behind an
     // import.meta.require('./runtime.js') bridge (mirrors task-provider-kaneo) to keep
     // the discovery scanner's static entry graph free of bare-module imports. Knip

@@ -66,7 +66,6 @@ const EXPECTED_TOOLS = [
   'get_task_history',
   'list_saved_queries',
   'run_saved_query',
-  'apply_youtrack_command',
   'get_current_time',
   'delete_task',
   'list_attachments',

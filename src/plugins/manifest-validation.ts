@@ -74,7 +74,6 @@ export const PLUGIN_MANIFEST_PROVIDER_TRAITS = [
   'workspace-scoped',
   'task-label-read-requires-provider-specific-api',
   'supports-command-language',
-  'command-language:youtrack',
   'custom-fields',
 ] as const satisfies readonly TaskProviderTrait[]
 

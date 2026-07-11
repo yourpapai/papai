@@ -154,7 +154,7 @@ describe('contributed task provider registry', () => {
 
   test('createProvider normalizes contributed runtime traits from descriptor traits', () => {
     mockLogger()
-    const traits = new Set(['command-language:youtrack'] as const)
+    const traits = new Set(['supports-command-language'] as const)
     registerContributedTaskProviderType('traited-tracker', {
       pluginId: 'task-provider-demo',
       factory: () => createMockProvider({ name: 'traited-tracker', traits: new Set() }),

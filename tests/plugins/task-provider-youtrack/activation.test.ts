@@ -38,12 +38,16 @@ describe('task-provider-youtrack activation', () => {
     type RegistrationContext = Parameters<ReturnType<typeof factory>['activate']>[0]
 
     let capturedFactory: Parameters<RegisterTaskProviderType>[1] | undefined
+    let capturedToolName: string | undefined
 
     const stubRegistration: RegistrationContext['registration'] = {
       registerTaskProviderType(...args: Parameters<RegisterTaskProviderType>): void {
         const [type, input] = args
         expect(type).toBe('youtrack')
         capturedFactory = input
+      },
+      registerTool(tool): void {
+        capturedToolName = tool.name
       },
     }
 
@@ -54,6 +58,7 @@ describe('task-provider-youtrack activation', () => {
     factory().activate(mockCtx)
 
     expect(capturedFactory).toBeDefined()
+    expect(capturedToolName).toBe('apply_youtrack_command')
 
     const providerFactory = capturedFactory!
 

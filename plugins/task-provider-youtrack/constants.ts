@@ -139,6 +139,5 @@ export const YOUTRACK_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCa
 
 export const YOUTRACK_TRAITS: ReadonlySet<TaskProviderTrait> = new Set<TaskProviderTrait>([
   'supports-command-language',
-  'command-language:youtrack',
   'custom-fields',
 ])

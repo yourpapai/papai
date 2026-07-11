@@ -5,10 +5,12 @@
   "description": "YouTrack task-tracker integration.",
   "apiVersion": 1,
   "main": "index.ts",
-  "permissions": ["provider.task", "identity"],
+  "permissions": ["provider.task", "identity", "tasks.write"],
   "contributes": {
-    "taskProviderTypes": ["youtrack"]
+    "taskProviderTypes": ["youtrack"],
+    "tools": ["apply_youtrack_command"]
   },
+  "requiredTaskCapabilities": ["tasks.commands"],
   "providerCapabilities": [
     "activities.read",
     "agiles.list",
@@ -59,7 +61,7 @@
   "providerContextConfigSchema": [
     { "key": "token", "label": "YouTrack Permanent Token", "required": true, "sensitive": true, "scope": "context" }
   ],
-  "providerTraits": ["supports-command-language", "command-language:youtrack", "custom-fields"],
+  "providerTraits": ["supports-command-language", "custom-fields"],
   "providerAllowedHosts": [],
   "providerConfigValidator": "validateConfig",
   "defaultEnabled": false

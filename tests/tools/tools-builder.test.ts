@@ -448,53 +448,6 @@ describe('buildTools', () => {
     expect(tools).not.toHaveProperty('run_saved_query')
   })
 
-  it('should expose apply_youtrack_command only for providers with the YouTrack command-language trait', () => {
-    const provider = createMockProvider({
-      name: 'custom',
-      traits: new Set(['command-language:youtrack']),
-    })
-    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
-    expect(tools).toHaveProperty('apply_youtrack_command')
-
-    const spoofedProvider = createMockProvider({ name: 'youtrack' as const, traits: new Set() })
-    const spoofedTools = buildTools(spoofedProvider, 'user-123', 'user-123', 'normal')
-    expect(spoofedTools).not.toHaveProperty('apply_youtrack_command')
-  })
-
-  it('should not expose apply_youtrack_command when tasks.commands capability is absent', () => {
-    const provider = createMockProvider({
-      name: 'youtrack' as const,
-      traits: new Set(['command-language:youtrack']),
-      capabilities: new Set(
-        [...createMockProvider().capabilities].filter((capability) => capability !== 'tasks.commands'),
-      ),
-    })
-
-    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
-
-    expect(tools).not.toHaveProperty('apply_youtrack_command')
-  })
-
-  it('should not expose apply_youtrack_command when applyCommand is missing', () => {
-    const provider = createMockProvider({
-      name: 'youtrack' as const,
-      traits: new Set(['command-language:youtrack']),
-      applyCommand: undefined,
-    })
-
-    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
-
-    expect(tools).not.toHaveProperty('apply_youtrack_command')
-  })
-
-  it('should not expose apply_youtrack_command in proactive mode', () => {
-    const provider = createMockProvider({ name: 'youtrack' as const, traits: new Set(['command-language:youtrack']) })
-
-    const tools = buildTools(provider, 'user-123', 'user-123', 'proactive')
-
-    expect(tools).not.toHaveProperty('apply_youtrack_command')
-  })
-
   it('should not add deferred prompt tools in proactive mode', () => {
     const provider = createMockProvider()
     const tools = buildTools(provider, 'user-123', 'user-123', 'proactive')
