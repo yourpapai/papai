@@ -24,6 +24,7 @@ type SearchTaskInput = Parameters<TaskProvider['searchTasks']>[0]
 export type MemoryTaskProviderOptions = Readonly<{
   events?: ScenarioEvents
   nextId?: () => string
+  capabilities?: readonly TaskCapability[]
 }>
 
 const clone = <T>(value: T): T => structuredClone(value)
@@ -97,7 +98,6 @@ const definedUpdate = (params: UpdateTaskInput): UpdateTaskInput => ({
 export class MemoryTaskProvider implements TaskProvider {
   readonly name = 'kaneo'
   readonly supportsCustomFields = true
-  readonly capabilities: ReadonlySet<TaskCapability> = new Set<TaskCapability>()
   readonly traits: ReadonlySet<TaskProviderTrait> = new Set<TaskProviderTrait>()
   readonly preferredUserIdentifier = 'id' as const
   readonly identityResolver = {
@@ -118,11 +118,21 @@ export class MemoryTaskProvider implements TaskProvider {
   private readonly identityUsers = new Map<string, IdentityUser>()
   private readonly events: ScenarioEvents | undefined
   private readonly nextId: () => string
+  private capabilitySet = new Set<TaskCapability>()
+
+  get capabilities(): ReadonlySet<TaskCapability> {
+    return this.capabilitySet
+  }
 
   constructor(options: MemoryTaskProviderOptions = {}) {
     this.events = options.events
+    this.setCapabilities(options.capabilities ?? [])
     let sequence = 0
     this.nextId = options.nextId ?? ((): string => `task-${++sequence}`)
+  }
+
+  setCapabilities(capabilities: readonly TaskCapability[]): void {
+    this.capabilitySet = new Set(capabilities)
   }
 
   addIdentityUser(identity: IdentityUser): void {

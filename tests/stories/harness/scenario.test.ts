@@ -9,6 +9,7 @@ import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
 import { executeScenario } from './scenario.js'
+import { answer, callCapability } from './scripted-llm.js'
 import type { ScenarioWorld } from './world.js'
 import { createScenarioWorld } from './world.js'
 
@@ -18,6 +19,40 @@ const requireAggregateError = (value: unknown): AggregateError => {
 }
 
 describe('scenario execution', () => {
+  test('task capability prerequisite configures the provider before a core task story starts', async () => {
+    await executeScenario('task capability prerequisite', async ({ given, when, then, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      const taskInstance = given.taskInstance()
+      given.taskCapabilities(['tasks.delete'])
+      given.assign(dm, taskInstance)
+      given.llm([
+        callCapability('tasks.create', { projectId: 'project-1', title: 'Release 7' }),
+        answer('Created “Release 7”.'),
+      ])
+
+      await when.message(alice, dm, 'Create task Release 7')
+
+      expect([...world.tasks.capabilities]).toEqual(['tasks.delete'])
+      then.replyTo(alice).equals('Created “Release 7”.')
+      await then.task('Release 7').exists()
+    })
+  })
+
+  test('task capability prerequisite is blocked after startup', async () => {
+    const world = await createScenarioWorld('task capability startup guard')
+
+    try {
+      await world.ensureStarted()
+
+      expect(() => world.api.given.taskCapabilities(['tasks.delete'])).toThrow(
+        'given.taskCapabilities requires an unstarted scenario world',
+      )
+    } finally {
+      await world.stop()
+    }
+  })
+
   test('coding-session prerequisite configures the semantic capability before lazy startup', async () => {
     const world = await createScenarioWorld('coding-session prerequisite')
 

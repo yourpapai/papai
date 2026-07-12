@@ -5,10 +5,32 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import type { TaskCapability } from '../../../src/providers/types.js'
 import { createScenarioEvents } from './events.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 
 describe('MemoryTaskProvider', () => {
+  test('defaults to an empty capability set', () => {
+    expect([...new MemoryTaskProvider().capabilities]).toEqual([])
+  })
+
+  test('copies constructor capabilities', () => {
+    const capabilities: TaskCapability[] = ['tasks.delete']
+    const provider = new MemoryTaskProvider({ capabilities })
+    capabilities.push('projects.read')
+
+    expect([...provider.capabilities]).toEqual(['tasks.delete'])
+  })
+
+  test('replaces capabilities with a copy of the supplied values', () => {
+    const provider = new MemoryTaskProvider({ capabilities: ['tasks.delete'] })
+    const capabilities: TaskCapability[] = ['comments.create']
+    provider.setCapabilities(capabilities)
+    capabilities.push('projects.read')
+
+    expect([...provider.capabilities]).toEqual(['comments.create'])
+  })
+
   test('creates, reads, lists, updates, and searches tasks deterministically', async () => {
     const provider = new MemoryTaskProvider()
     const first = await provider.createTask({ projectId: 'project-1', title: 'Release 7', description: 'Ship it' })

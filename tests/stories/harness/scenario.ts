@@ -8,6 +8,7 @@ import { expect, test } from 'bun:test'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { configureCodingSessionCapability } from '../../../src/coding-sessions/configure.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
+import type { TaskCapability } from '../../../src/providers/types.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
 import type { ModelDecision } from './scripted-llm.js'
@@ -56,6 +57,7 @@ type ScenarioGiven = Readonly<{
   dm(user: UserHandle): DmHandle
   thread(group: GroupHandle, id: string): ThreadHandle
   taskInstance(id?: string, providerType?: string): TaskInstanceHandle
+  taskCapabilities(capabilities: readonly TaskCapability[]): void
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
   settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
   plugin(plugin: DiscoveredPlugin): PluginHandle
@@ -223,6 +225,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.taskInstance')
       world.fixtures.seedTaskInstance({ id, type: providerType })
       return makeTaskInstanceHandle(id, providerType)
+    },
+    taskCapabilities(capabilities): void {
+      prerequisite('given.taskCapabilities')
+      world.tasks.setCapabilities(capabilities)
     },
     assign(context, taskInstance): void {
       prerequisite('given.assign')
