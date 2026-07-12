@@ -54,7 +54,7 @@ describe('scenario execution', () => {
       'world.cleanup.http.verify',
       'world.cleanup.model.verify',
     ])
-    expect(capturedWorld?.events.all().some(({ kind }) => kind === 'chat.stop')).toBe(true)
+    expect(capturedWorld?.events.all().some(({ kind }) => kind === 'chat.start')).toBe(false)
     expect(getActivatedPluginIds()).toEqual([])
   })
 

@@ -6,22 +6,46 @@
 import { describe, expect, test } from 'bun:test'
 
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
+import { discoverPlugins } from '../../../src/plugins/discovery.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
+import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { toolCapabilityCatalog } from '../../../src/runtime/capability-catalog.js'
 import { answer } from './scripted-llm.js'
+import type { DmHandle, GroupHandle, PluginHandle, TaskInstanceHandle, ThreadHandle, UserHandle } from './world.js'
 import { createScenarioWorld } from './world.js'
+
+const requireDiscoveredPlugin = (pluginId: string): DiscoveredPlugin => {
+  const plugin = discoverPlugins('plugins').plugins.find(({ manifest }) => manifest.id === pluginId)
+  if (plugin === undefined) throw new Error(`Missing test plugin: ${pluginId}`)
+  return plugin
+}
+
+const requireAggregateError = (value: unknown): AggregateError => {
+  if (value instanceof AggregateError) return value
+  throw new Error('Expected aggregate error')
+}
 
 describe('scenario world', () => {
   test('composes the real runtime path with deterministic scenario boundaries', async () => {
     const world = await createScenarioWorld('real runtime path')
 
     try {
+      expect(world.events.all()).toEqual([])
       expect(world.clock.now().toISOString()).toBe('2026-01-01T00:00:00.000Z')
       expect(world.ids.next('probe')).toBe('probe-1')
 
       const alice = world.api.given.user('alice')
       const dm = world.api.given.dm(alice)
+      const group = world.api.given.group('team')
+      const thread = world.api.given.thread(group, 'topic')
+      const taskInstance = world.api.given.taskInstance()
       world.api.given.llm([answer('Hello Alice')])
+
+      alice satisfies UserHandle
+      dm satisfies DmHandle
+      group satisfies GroupHandle
+      thread satisfies ThreadHandle
+      taskInstance satisfies TaskInstanceHandle
 
       await world.api.when.message(alice, dm, 'hello')
 
@@ -39,8 +63,13 @@ describe('scenario world', () => {
     const firstDatabase = getDrizzleDb()
 
     expect(first.ids.next('probe')).toBe('probe-1')
+    const alice = first.api.given.user('alice')
+    const dm = first.api.given.dm(alice)
+    first.api.given.llm([answer('First reply')])
+    await first.api.when.message(alice, dm, 'hello')
+    first.api.then.replyTo(alice).equals('First reply')
+    first.model.verifyConsumed()
     await first.tasks.createTask({ projectId: 'project-1', title: 'First task' })
-    first.events.record('scenario.first', {})
     await first.stop()
 
     expect(getActivatedPluginIds()).toEqual([])
@@ -50,6 +79,8 @@ describe('scenario world', () => {
     try {
       expect(getDrizzleDb()).not.toBe(firstDatabase)
       expect(second.chat.allReplies()).toEqual([])
+      expect(second.model.inspections()).toEqual([])
+      await second.start()
       expect(second.events.all()).toEqual(second.startupEvents)
       expect(await second.tasks.searchTasks({ query: '' })).toEqual([])
       expect(getActivatedPluginIds()).toEqual([])
@@ -66,9 +97,85 @@ describe('scenario world', () => {
   test('stop is concurrent-safe and idempotent', async () => {
     const world = await createScenarioWorld('idempotent stop')
 
+    await Promise.all([world.start(), world.start()])
     await Promise.all([world.stop(), world.stop()])
     await world.stop()
 
     expect(world.events.all().filter(({ kind }) => kind === 'world.cleanup.runtime.stop')).toHaveLength(1)
+  })
+
+  test('approves discoverable plugin prerequisites before one production activation pass', async () => {
+    const world = await createScenarioWorld('plugin prerequisite')
+    const plugin = world.api.given.plugin(requireDiscoveredPlugin('synthetic-web-search'))
+    plugin satisfies PluginHandle
+
+    expect(getActivatedPluginIds()).toEqual([])
+    await Promise.all([world.start(), world.start()])
+    expect(getActivatedPluginIds()).toContain(plugin.id)
+    expect(() => world.api.given.plugin(requireDiscoveredPlugin('acp'))).toThrow('given.plugin')
+
+    await world.stop()
+    expect(getActivatedPluginIds()).toEqual([])
+  })
+
+  test('aggregates startup failure first and attempts every applicable cleanup step', async () => {
+    const cleanupSteps: string[] = []
+    const startupFailure = new Error('injected startup failure')
+    const world = await createScenarioWorld('startup failure', {
+      testHooks: {
+        afterProductionExtensionsStart: () => {
+          throw startupFailure
+        },
+        onCleanupStep: (kind): void => {
+          cleanupSteps.push(kind)
+        },
+      },
+    })
+    world.http.expect({ method: 'GET', url: 'https://leftover.invalid/' }, () => new Response('unused'))
+
+    const failure = await world.start().then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+
+    expect(failure).toBeInstanceOf(AggregateError)
+    const aggregate = requireAggregateError(failure)
+    expect(aggregate.errors[0]).toBe(startupFailure)
+    expect(String(aggregate.errors[1])).toContain('unconsumed HTTP expectations')
+    expect(cleanupSteps).toEqual([
+      'world.cleanup.runtime.stop',
+      'world.cleanup.plugins.deactivate',
+      'world.cleanup.provider.unregister',
+      'world.cleanup.database.reset',
+      'world.cleanup.http.verify',
+      'world.cleanup.model.verify',
+    ])
+  })
+
+  test('cleans partial database setup when world construction fails', async () => {
+    const cleanupSteps: string[] = []
+    const setupFailure = new Error('injected setup failure')
+
+    const failure = await createScenarioWorld('setup failure', {
+      testHooks: {
+        afterDatabaseSetup: () => {
+          throw setupFailure
+        },
+        onCleanupStep: (kind): void => {
+          cleanupSteps.push(kind)
+        },
+      },
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+
+    expect(failure).toBe(setupFailure)
+    expect(cleanupSteps).toEqual([
+      'world.cleanup.plugins.deactivate',
+      'world.cleanup.database.reset',
+      'world.cleanup.http.verify',
+      'world.cleanup.model.verify',
+    ])
   })
 })

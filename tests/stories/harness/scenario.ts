@@ -18,6 +18,12 @@ import {
   type ThreadHandle,
   type UserHandle,
   interactionForContext,
+  makeDmHandle,
+  makeGroupHandle,
+  makePluginHandle,
+  makeTaskInstanceHandle,
+  makeThreadHandle,
+  makeUserHandle,
   messageForContext,
   repliesForContext,
 } from './world.js'
@@ -30,7 +36,7 @@ type ScenarioGiven = Readonly<{
   thread(group: GroupHandle, id: string): ThreadHandle
   taskInstance(id?: string, providerType?: string): TaskInstanceHandle
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
-  plugin(plugin?: DiscoveredPlugin): PluginHandle
+  plugin(plugin: DiscoveredPlugin): PluginHandle
   llm(decisions: readonly ModelDecision[]): void
 }>
 
@@ -81,25 +87,34 @@ function replyAssertion(world: ScenarioWorld, id: string): ReplyAssertion {
 }
 
 function createGiven(world: ScenarioWorld): ScenarioGiven {
+  const prerequisite = (operation: string): void => {
+    world.events.setPhase(operation)
+    world.assertPrerequisitesOpen(operation)
+  }
   return {
     user(id): UserHandle {
+      prerequisite('given.user')
       world.fixtures.authorizeUser({ userId: id, platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID, username: id })
-      return { kind: 'user', id, username: id, platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID }
+      return makeUserHandle(id)
     },
     group(id): GroupHandle {
+      prerequisite('given.group')
       world.fixtures.authorizeGroup({ groupId: id })
-      return { kind: 'group', id }
+      return makeGroupHandle(id)
     },
     member(group, user): void {
+      prerequisite('given.member')
       world.fixtures.addGroupMember({ groupId: group.id, userId: user.id })
     },
-    dm: (user): DmHandle => ({ kind: 'dm', id: user.id, user }),
-    thread: (group, id): ThreadHandle => ({ kind: 'thread', id, group }),
+    dm: makeDmHandle,
+    thread: makeThreadHandle,
     taskInstance(id = world.ids.next('task-instance'), providerType = 'kaneo'): TaskInstanceHandle {
+      prerequisite('given.taskInstance')
       world.fixtures.seedTaskInstance({ id, type: providerType })
-      return { kind: 'task-instance', id, providerType }
+      return makeTaskInstanceHandle(id, providerType)
     },
     assign(context, taskInstance): void {
+      prerequisite('given.assign')
       world.fixtures.assignContext({
         contextId: contextId(context),
         platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID,
@@ -107,10 +122,12 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       })
     },
     plugin(plugin): PluginHandle {
+      prerequisite('given.plugin')
       const approved = world.fixtures.approvePlugin(plugin)
-      return { kind: 'plugin', id: approved.manifest.id, plugin: approved }
+      return makePluginHandle(approved)
     },
     llm(decisions): void {
+      world.events.setPhase('given.llm')
       world.model.enqueue(decisions)
     },
   }
@@ -120,16 +137,19 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
   return {
     async message(user, context, text): Promise<void> {
       world.events.setPhase('when.message')
+      await world.ensureStarted()
       await world.runtime.dispatch(messageForContext(world, user, context, text))
       await world.settle()
     },
     async interaction(user, context, callbackData): Promise<void> {
       world.events.setPhase('when.interaction')
+      await world.ensureStarted()
       await world.runtime.dispatchInteraction(interactionForContext(user, context, callbackData))
       await world.settle()
     },
-    request(path, init): Promise<Response> {
+    async request(path, init): Promise<Response> {
       world.events.setPhase('when.request')
+      await world.ensureStarted()
       return world.runtime.request(new Request(new URL(path, 'http://scenario.invalid'), init))
     },
   }
