@@ -9,6 +9,7 @@ import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
+import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import { executeScenario } from './scenario.js'
 import { answer, callCapability } from './scripted-llm.js'
 import type { ScenarioWorld } from './world.js'
@@ -20,6 +21,52 @@ const requireAggregateError = (value: unknown): AggregateError => {
 }
 
 describe('scenario execution', () => {
+  test('runtime extension prerequisite starts once for a message and cleans up when the world stops', async () => {
+    const lifecycle: string[] = []
+    const extension: ScenarioRuntimeExtension = {
+      start: (): (() => void) => {
+        lifecycle.push('start')
+        return (): void => {
+          lifecycle.push('cleanup')
+        }
+      },
+    }
+    const world = await createScenarioWorld('runtime extension prerequisite')
+
+    try {
+      const alice = world.api.given.user('alice')
+      const dm = world.api.given.dm(alice)
+
+      world.api.given.runtimeExtension(extension)
+      await world.api.when.message(alice, dm, 'hello')
+
+      expect(lifecycle).toEqual(['start'])
+    } finally {
+      await world.stop()
+    }
+
+    expect(lifecycle).toEqual(['start', 'cleanup'])
+  })
+
+  test('runtime extension prerequisite is blocked after a message starts the world', async () => {
+    const world = await createScenarioWorld('late runtime extension prerequisite')
+
+    try {
+      const alice = world.api.given.user('alice')
+      const dm = world.api.given.dm(alice)
+
+      await world.api.when.message(alice, dm, 'hello')
+
+      expect(() =>
+        world.api.given.runtimeExtension({
+          start: (): void => undefined,
+        }),
+      ).toThrow('given.runtimeExtension requires an unstarted scenario world')
+    } finally {
+      await world.stop()
+    }
+  })
+
   test('task capability prerequisite configures the provider before a core task story starts', async () => {
     await executeScenario('task capability prerequisite', async ({ given, when, then, world }) => {
       const alice = given.user('alice')

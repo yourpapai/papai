@@ -11,6 +11,7 @@ import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
+import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
   type ContextHandle,
@@ -70,6 +71,7 @@ type ScenarioGiven = Readonly<{
       updatedBy: string
     }>,
   ): CodingSessionHandle
+  runtimeExtension(extension: ScenarioRuntimeExtension): void
   llm(decisions: readonly ModelDecision[]): void
 }>
 
@@ -265,6 +267,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
         updatedBy: config.updatedBy,
       })
       return makeCodingSessionHandle(configContextId)
+    },
+    runtimeExtension(extension): void {
+      prerequisite('given.runtimeExtension')
+      world.registerRuntimeExtension(extension)
     },
     llm(decisions): void {
       world.events.setPhase('given.llm')
