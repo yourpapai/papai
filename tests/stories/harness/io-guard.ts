@@ -7,13 +7,12 @@ import { mock } from 'bun:test'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import childProcess from 'node:child_process'
 import fs from 'node:fs'
-import fsPromises from 'node:fs/promises'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import type { ScenarioEvents } from './events.js'
+import { assertGuardedWritePath, type FilesystemBoundary, installFilesystemGuard } from './io-guard-filesystem.js'
 import type { StrictHttpDispatcher } from './strict-http.js'
 
 type BoundaryBindings = Readonly<{
@@ -22,12 +21,18 @@ type BoundaryBindings = Readonly<{
 }>
 
 type TimerHandle = unknown
+type ProcessListener = CallableFunction
+type ListenerRecord = Readonly<{ event: string | symbol; listener: ProcessListener; original: ProcessListener }>
 
-type Boundary = {
+type Boundary = FilesystemBoundary & {
   readonly name: string
   readonly tempRoot: string
   readonly env: Readonly<Record<string, string>>
   readonly timers: Set<TimerHandle>
+  readonly listeners: Set<ListenerRecord>
+  readonly servers: Set<unknown>
+  readonly sockets: Set<unknown>
+  readonly subprocesses: Set<unknown>
   bindings: BoundaryBindings | undefined
   allowCleanup: boolean
 }
@@ -41,6 +46,30 @@ export type IoGuardSession = Readonly<{
 const storage = new AsyncLocalStorage<Boundary>()
 let installed = false
 
+const PROCESS_LISTENER_METHODS = [
+  'on',
+  'addListener',
+  'once',
+  'prependListener',
+  'prependOnceListener',
+  'removeListener',
+  'off',
+  'removeAllListeners',
+] as const
+
+const processMethodDescriptors = new Map(
+  PROCESS_LISTENER_METHODS.map((name) => [name, Object.getOwnPropertyDescriptor(process, name)] as const),
+)
+
+const processMethods = {
+  on: process.on.bind(process),
+  addListener: process.addListener.bind(process),
+  prependListener: process.prependListener.bind(process),
+  removeListener: process.removeListener.bind(process),
+  off: process.off.bind(process),
+  removeAllListeners: process.removeAllListeners.bind(process),
+}
+
 const originals = {
   fetch: globalThis.fetch,
   setTimeout: globalThis.setTimeout,
@@ -51,6 +80,10 @@ const originals = {
   bunSpawnSync: Bun.spawnSync,
   bunServe: Bun.serve,
   bunWrite: Bun.write,
+  fsMkdtempSync: fs.mkdtempSync,
+  fsRealpathSync: fs.realpathSync,
+  fsRmSync: fs.rmSync,
+  fsCloseSync: fs.closeSync,
   serverListenDescriptor: Object.getOwnPropertyDescriptor(net.Server.prototype, 'listen'),
   socketConnectDescriptor: Object.getOwnPropertyDescriptor(net.Socket.prototype, 'connect'),
 }
@@ -70,6 +103,69 @@ function deny(operation: string): never {
   throw diagnostic(active(operation), operation)
 }
 
+const invoke = (fn: CallableFunction, args: readonly unknown[]): unknown => Reflect.apply(fn, undefined, args)
+
+function bunWriteTarget(value: unknown): unknown {
+  if (typeof value === 'string' || value instanceof URL) return value
+  if (value instanceof Blob) return Reflect.get(value, 'name') as unknown
+  return value
+}
+
+function installProcessListenerTracking(): void {
+  const add =
+    (method: CallableFunction, once: boolean) =>
+    (event: unknown, listener: unknown, ...args: unknown[]): unknown => {
+      if ((typeof event !== 'string' && typeof event !== 'symbol') || typeof listener !== 'function') {
+        return invoke(method, [event, listener, ...args])
+      }
+      const boundary = storage.getStore()
+      if (boundary === undefined) return invoke(method, [event, listener, ...args])
+      if (!once) {
+        boundary.listeners.add({ event, listener, original: listener })
+        return invoke(method, [event, listener, ...args])
+      }
+      let record: ListenerRecord
+      const wrapped = (...listenerArgs: unknown[]): unknown => {
+        invoke(processMethods.removeListener, [event, wrapped])
+        boundary.listeners.delete(record)
+        return Reflect.apply(listener, process, listenerArgs)
+      }
+      record = { event, listener: wrapped, original: listener }
+      boundary.listeners.add(record)
+      return invoke(method, [event, wrapped, ...args])
+    }
+  const remove =
+    (method: CallableFunction) =>
+    (event: unknown, listener: unknown, ...args: unknown[]): unknown => {
+      const result = invoke(method, [event, listener, ...args])
+      const boundary = storage.getStore()
+      if (boundary === undefined) return result
+      for (const record of boundary.listeners) {
+        if (record.event === event && (record.listener === listener || record.original === listener)) {
+          boundary.listeners.delete(record)
+        }
+      }
+      return result
+    }
+  Reflect.set(process, 'on', add(processMethods.on, false))
+  Reflect.set(process, 'addListener', add(processMethods.addListener, false))
+  Reflect.set(process, 'once', add(processMethods.on, true))
+  Reflect.set(process, 'prependListener', add(processMethods.prependListener, false))
+  Reflect.set(process, 'prependOnceListener', add(processMethods.prependListener, true))
+  Reflect.set(process, 'removeListener', remove(processMethods.removeListener))
+  Reflect.set(process, 'off', remove(processMethods.off))
+  Reflect.set(process, 'removeAllListeners', (event?: string | symbol): unknown => {
+    const result = event === undefined ? processMethods.removeAllListeners() : processMethods.removeAllListeners(event)
+    const boundary = storage.getStore()
+    if (boundary !== undefined) {
+      for (const record of boundary.listeners) {
+        if (event === undefined || record.event === event) boundary.listeners.delete(record)
+      }
+    }
+    return result
+  })
+}
+
 function environmentSnapshot(): Readonly<Record<string, string>> {
   return Object.fromEntries(
     Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
@@ -85,80 +181,6 @@ function restoreEnvironment(snapshot: Readonly<Record<string, string>>): readonl
   }
   for (const [key, value] of Object.entries(snapshot)) process.env[key] = value
   return mutations
-}
-
-function nearestExisting(candidate: string): Readonly<{ logical: string; canonical: string }> {
-  let cursor = candidate
-  while (!fs.existsSync(cursor)) {
-    const parent = path.dirname(cursor)
-    if (parent === cursor) return { logical: cursor, canonical: cursor }
-    cursor = parent
-  }
-  return { logical: cursor, canonical: fs.realpathSync(cursor) }
-}
-
-function assertWritePath(value: unknown, operation: string): void {
-  const boundary = active(operation)
-  if (boundary.allowCleanup) return
-  if (typeof value !== 'string' && !(value instanceof URL)) throw diagnostic(boundary, operation)
-  const candidate = path.resolve(value instanceof URL ? fileURLToPath(value) : value)
-  const ancestor = nearestExisting(candidate)
-  const canonical = path.resolve(ancestor.canonical, path.relative(ancestor.logical, candidate))
-  const relative = path.relative(boundary.tempRoot, canonical)
-  if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative)))
-    return
-  throw diagnostic(boundary, operation)
-}
-
-const invoke = (fn: CallableFunction, args: readonly unknown[]): unknown => Reflect.apply(fn, undefined, args)
-
-function guardedCall(operation: string, paths: readonly number[], fn: CallableFunction) {
-  return (...args: unknown[]): unknown => {
-    for (const index of paths) assertWritePath(args[index], operation)
-    return invoke(fn, args)
-  }
-}
-
-function installFilesystemMocks(): void {
-  const sync = {
-    writeFileSync: guardedCall('fs.writeFileSync', [0], fs.writeFileSync),
-    appendFileSync: guardedCall('fs.appendFileSync', [0], fs.appendFileSync),
-    mkdirSync: guardedCall('fs.mkdirSync', [0], fs.mkdirSync),
-    rmSync: guardedCall('fs.rmSync', [0], fs.rmSync),
-    renameSync: guardedCall('fs.renameSync', [0, 1], fs.renameSync),
-    copyFileSync: guardedCall('fs.copyFileSync', [1], fs.copyFileSync),
-    symlinkSync: guardedCall('fs.symlinkSync', [1], fs.symlinkSync),
-  }
-  const callbacks = {
-    writeFile: guardedCall('fs.writeFile', [0], fs.writeFile),
-    appendFile: guardedCall('fs.appendFile', [0], fs.appendFile),
-    mkdir: guardedCall('fs.mkdir', [0], fs.mkdir),
-    rm: guardedCall('fs.rm', [0], fs.rm),
-    rename: guardedCall('fs.rename', [0, 1], fs.rename),
-    copyFile: guardedCall('fs.copyFile', [1], fs.copyFile),
-    symlink: guardedCall('fs.symlink', [1], fs.symlink),
-  }
-  const promises = {
-    writeFile: guardedCall('fs.promises.writeFile', [0], fsPromises.writeFile),
-    appendFile: guardedCall('fs.promises.appendFile', [0], fsPromises.appendFile),
-    mkdir: guardedCall('fs.promises.mkdir', [0], fsPromises.mkdir),
-    rm: guardedCall('fs.promises.rm', [0], fsPromises.rm),
-    rename: guardedCall('fs.promises.rename', [0, 1], fsPromises.rename),
-    copyFile: guardedCall('fs.promises.copyFile', [1], fsPromises.copyFile),
-    symlink: guardedCall('fs.promises.symlink', [1], fsPromises.symlink),
-  }
-  void mock.module('node:fs/promises', () => ({
-    ...fsPromises,
-    ...promises,
-    default: { ...fsPromises, ...promises },
-  }))
-  void mock.module('node:fs', () => ({
-    ...fs,
-    ...sync,
-    ...callbacks,
-    promises: { ...fs.promises, ...promises },
-    default: { ...fs, ...sync, ...callbacks, promises: { ...fs.promises, ...promises } },
-  }))
 }
 
 function installProcessAndNetworkMocks(): void {
@@ -224,8 +246,13 @@ function installTimers(): void {
 export function installIoGuard(): void {
   if (installed) return
   installed = true
-  installFilesystemMocks()
+  installFilesystemGuard(
+    active,
+    () => storage.getStore(),
+    (operation) => diagnostic(active(operation), operation),
+  )
   installProcessAndNetworkMocks()
+  installProcessListenerTracking()
   Reflect.set(globalThis, 'fetch', (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const boundary = active('fetch')
     if (boundary.bindings === undefined) throw diagnostic(boundary, 'fetch')
@@ -234,7 +261,12 @@ export function installIoGuard(): void {
   Reflect.set(Bun, 'spawn', () => deny('Bun.spawn'))
   Reflect.set(Bun, 'spawnSync', () => deny('Bun.spawnSync'))
   Reflect.set(Bun, 'serve', () => deny('Bun.serve'))
-  Reflect.set(Bun, 'write', () => deny('Bun.write'))
+  Reflect.set(Bun, 'write', (...args: unknown[]): unknown => {
+    assertGuardedWritePath(bunWriteTarget(args[0]), 'Bun.write', active, (operation) =>
+      diagnostic(active(operation), operation),
+    )
+    return invoke(originals.bunWrite, args)
+  })
   installTimers()
 }
 
@@ -256,14 +288,50 @@ export function restoreIoGuard(): void {
   if (originals.socketConnectDescriptor !== undefined) {
     Object.defineProperty(net.Socket.prototype, 'connect', originals.socketConnectDescriptor)
   }
+  for (const [name, descriptor] of processMethodDescriptors) {
+    if (descriptor === undefined) Reflect.deleteProperty(process, name)
+    else Object.defineProperty(process, name, descriptor)
+  }
   mock.restore()
+}
+
+function cleanupTrackedResources(boundary: Boundary): void {
+  for (const record of boundary.listeners) invoke(processMethods.removeListener, [record.event, record.listener])
+  boundary.listeners.clear()
+  for (const fd of boundary.writableFileDescriptors) {
+    try {
+      originals.fsCloseSync(fd)
+    } catch {
+      // The owner may already have closed the descriptor without using a guarded close surface.
+    }
+  }
+  boundary.writableFileDescriptors.clear()
+  const cleanup = (resources: Set<unknown>, methodName: string): void => {
+    for (const resource of resources) {
+      if (resource === null || (typeof resource !== 'object' && typeof resource !== 'function')) continue
+      const method = Reflect.get(resource, methodName) as unknown
+      if (typeof method === 'function') Reflect.apply(method, resource, [])
+    }
+    resources.clear()
+  }
+  cleanup(boundary.subprocesses, 'kill')
+  cleanup(boundary.servers, 'close')
+  cleanup(boundary.sockets, 'destroy')
 }
 
 function verifyBoundary(boundary: Boundary): void {
   const failures: string[] = []
   if (boundary.timers.size > 0) failures.push(`active timers: ${boundary.timers.size}`)
+  if (boundary.listeners.size > 0) failures.push(`process listeners: ${boundary.listeners.size}`)
+  if (boundary.subprocesses.size > 0) failures.push(`subprocesses: ${boundary.subprocesses.size}`)
+  if (boundary.servers.size > 0) failures.push(`servers: ${boundary.servers.size}`)
+  if (boundary.sockets.size > 0) failures.push(`sockets: ${boundary.sockets.size}`)
+  if (boundary.writableFileDescriptors.size > 0) {
+    failures.push(`file descriptors: ${boundary.writableFileDescriptors.size}`)
+  }
   const mutations = restoreEnvironment(boundary.env)
   if (mutations.length > 0) failures.push(`environment mutations: ${mutations.join(', ')}`)
+  cleanupTrackedResources(boundary)
   if (failures.length > 0) throw diagnostic(boundary, `scenario leaks (${failures.join('; ')})`)
 }
 
@@ -272,12 +340,17 @@ export function runWithScenarioIoGuard<T>(
   work: (session: IoGuardSession | undefined) => Promise<T>,
 ): Promise<T> {
   if (!installed) return work(undefined)
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'papai-story-'))
+  const tempRoot = originals.fsMkdtempSync(path.join(os.tmpdir(), 'papai-story-'))
   const boundary: Boundary = {
     name,
-    tempRoot: fs.realpathSync(tempRoot),
+    tempRoot: originals.fsRealpathSync(tempRoot),
     env: environmentSnapshot(),
     timers: new Set(),
+    listeners: new Set(),
+    servers: new Set(),
+    sockets: new Set(),
+    subprocesses: new Set(),
+    writableFileDescriptors: new Set(),
     bindings: undefined,
     allowCleanup: false,
   }
@@ -314,7 +387,7 @@ export function runWithScenarioIoGuard<T>(
         Reflect.apply(originals.clearInterval, globalThis, [timer])
       }
       boundary.allowCleanup = true
-      fs.rmSync(boundary.tempRoot, { recursive: true, force: true })
+      originals.fsRmSync(boundary.tempRoot, { recursive: true, force: true })
       boundary.allowCleanup = false
       restoreEnvironment(boundary.env)
     }

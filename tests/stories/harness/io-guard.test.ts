@@ -45,12 +45,22 @@ describe('hermetic story runner', () => {
     ['rejects socket instance connect', 'net.Socket.connect'],
     ['rejects server listen', 'net.Server.listen'],
     ['rejects Bun.serve', 'Bun.serve'],
-    ['rejects Bun.write', 'Bun.write'],
+    ['rejects Bun.write outside root', 'Bun.write'],
+    ['rejects Bun.write symlink escape', 'Bun.write'],
+    ['rejects Bun.write unsupported target', 'Bun.write'],
     ['rejects fs write outside root', 'fs.writeFileSync'],
     ['rejects fs promises write outside root', 'fs.promises.writeFile'],
     ['rejects fs callback write outside root', 'fs.writeFile'],
+    ['rejects fs createWriteStream outside root', 'fs.createWriteStream'],
+    ['rejects write-capable fs open outside root', 'fs.promises.open'],
+    ['rejects numeric write-capable fs open outside root', 'fs.openSync'],
+    ['rejects raw fd write without write-capable open', 'fs.writeSync'],
+    ['rejects fs truncate outside root', 'fs.truncateSync'],
+    ['rejects fs copy outside root', 'fs.copyFileSync'],
+    ['rejects fs removal outside root', 'fs.rmSync'],
     ['rejects symlink escape', 'fs.writeFileSync'],
     ['rejects timer leak', 'scenario leaks (active timers: 1)'],
+    ['rejects process listener leak', 'scenario leaks (process listeners: 1)'],
     ['rejects environment mutation', 'scenario leaks (environment mutations: PAPAI_MUTATED)'],
   ])('%s with a scenario-aware diagnostic', async (scenarioName, operation) => {
     const result = await runProbe(scenarioName)
@@ -61,7 +71,16 @@ describe('hermetic story runner', () => {
     expect(result.output).toContain(operation)
   })
 
-  test.each(['allows declared fetch', 'allows write inside root'])('%s', async (scenarioName) => {
+  test.each([
+    'allows declared fetch',
+    'allows write inside root',
+    'allows Bun.write inside root',
+    'allows FileHandle write inside root',
+    'allows Bun.write URL inside root',
+    'allows tracked raw fd write inside root',
+    'allows removed process listener',
+    'allows fired process once listener',
+  ])('%s', async (scenarioName) => {
     const result = await runProbe(scenarioName)
 
     expect(result.exitCode).toBe(0)
@@ -82,6 +101,23 @@ describe('hermetic story runner', () => {
 
     expect(result.exitCode).not.toBe(0)
     expect(result.output).toContain('Unsupported story runner argument: --watch')
+  })
+
+  test('default story-directory discovery excludes special-preload story files', async () => {
+    const child = Bun.spawn(
+      ['bun', 'test', 'tests/stories', '--test-name-pattern', '^no-default-story-test-can-match-this$'],
+      { cwd: ROOT, env: process.env, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    const output = `${stdout}\n${stderr}`
+
+    expect(exitCode).not.toBe(0)
+    expect(output).toContain('tests/stories/harness/io-guard.test.ts')
+    expect(output).not.toContain('.story.test.ts')
   })
 
   test('preload refuses direct use without the story launcher marker', async () => {
