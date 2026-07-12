@@ -6,13 +6,20 @@
 import { mock } from 'bun:test'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import childProcess from 'node:child_process'
+import dgram from 'node:dgram'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import workerThreads from 'node:worker_threads'
 
 import type { ScenarioEvents } from './events.js'
-import { assertGuardedWritePath, type FilesystemBoundary, installFilesystemGuard } from './io-guard-filesystem.js'
+import {
+  assertGuardedWritePath,
+  type FilesystemBoundary,
+  installFilesystemGuard,
+  restoreFilesystemGuard,
+} from './io-guard-filesystem.js'
 import { installTimerGuard, type InstalledTimerGuard } from './io-guard-timers.js'
 import type { StrictHttpDispatcher } from './strict-http.js'
 
@@ -47,6 +54,7 @@ export type IoGuardSession = Readonly<{
 const storage = new AsyncLocalStorage<Boundary>()
 let installed = false
 let timerGuard: InstalledTimerGuard | undefined
+let boundaryOwner: string | undefined
 
 const PROCESS_LISTENER_METHODS = [
   'on',
@@ -78,13 +86,24 @@ const originals = {
   bunSpawnSync: Bun.spawnSync,
   bunServe: Bun.serve,
   bunWrite: Bun.write,
+  bunFile: Bun.file,
+  bunListen: Bun.listen,
+  bunConnect: Bun.connect,
+  bunUdpSocket: Bun.udpSocket,
   fsMkdtempSync: fs.mkdtempSync,
   fsRealpathSync: fs.realpathSync,
   fsRmSync: fs.rmSync,
   fsCloseSync: fs.closeSync,
   serverListenDescriptor: Object.getOwnPropertyDescriptor(net.Server.prototype, 'listen'),
   socketConnectDescriptor: Object.getOwnPropertyDescriptor(net.Socket.prototype, 'connect'),
+  dgramBindDescriptor: Object.getOwnPropertyDescriptor(dgram.Socket.prototype, 'bind'),
+  dgramSendDescriptor: Object.getOwnPropertyDescriptor(dgram.Socket.prototype, 'send'),
 }
+
+const originalDgram = { ...dgram }
+const originalWorkerThreads = { ...workerThreads }
+const originalChildProcess = { ...childProcess }
+const originalNet = { ...net }
 
 function active(operation: string): Boundary {
   const boundary = storage.getStore()
@@ -102,6 +121,8 @@ function deny(operation: string): never {
 }
 
 const invoke = (fn: CallableFunction, args: readonly unknown[]): unknown => Reflect.apply(fn, undefined, args)
+const invokeOn = (fn: CallableFunction, target: object, args: readonly unknown[]): unknown =>
+  Reflect.apply(fn, target, args)
 
 function bunWriteTarget(value: unknown): unknown {
   if (typeof value === 'string' || value instanceof URL) return value
@@ -143,6 +164,9 @@ function installProcessListenerTracking(): void {
           (candidate) =>
             candidate.event === event && (candidate.listener === listener || candidate.original === listener),
         )
+      if (boundary !== undefined && record === undefined) {
+        throw diagnostic(boundary, 'process.removeListener')
+      }
       const result = invoke(method, [event, record?.listener ?? listener, ...args])
       if (record !== undefined) boundary?.listeners.delete(record)
       return result
@@ -155,13 +179,9 @@ function installProcessListenerTracking(): void {
   Reflect.set(process, 'removeListener', remove(processMethods.removeListener))
   Reflect.set(process, 'off', remove(processMethods.off))
   Reflect.set(process, 'removeAllListeners', (event?: string | symbol): unknown => {
-    const result = event === undefined ? processMethods.removeAllListeners() : processMethods.removeAllListeners(event)
     const boundary = storage.getStore()
-    if (boundary !== undefined) {
-      for (const record of boundary.listeners) {
-        if (event === undefined || record.event === event) boundary.listeners.delete(record)
-      }
-    }
+    if (boundary !== undefined) throw diagnostic(boundary, 'process.removeAllListeners')
+    const result = event === undefined ? processMethods.removeAllListeners() : processMethods.removeAllListeners(event)
     return result
   })
 }
@@ -203,12 +223,64 @@ function installProcessAndNetworkMocks(): void {
     createConnection: (): never => deny('net.createConnection'),
   }
   void mock.module('node:net', () => ({ ...net, ...deniedNet, default: { ...net, ...deniedNet } }))
+  const createSocket = (...args: unknown[]): unknown => {
+    if (storage.getStore() !== undefined) return deny('dgram.createSocket')
+    return invoke(originalDgram.createSocket, args)
+  }
+  void mock.module('node:dgram', () => ({
+    ...originalDgram,
+    createSocket,
+    default: { ...originalDgram, createSocket },
+  }))
+  const GuardedWorker = function guardedWorker(...args: unknown[]): unknown {
+    if (storage.getStore() !== undefined) return deny('worker_threads.Worker')
+    return Reflect.construct(originalWorkerThreads.Worker, args)
+  }
+  Reflect.set(GuardedWorker, 'prototype', originalWorkerThreads.Worker.prototype)
+  void mock.module('node:worker_threads', () => ({
+    ...originalWorkerThreads,
+    Worker: GuardedWorker,
+    default: { ...originalWorkerThreads, Worker: GuardedWorker },
+  }))
   Reflect.set(net.Server.prototype, 'listen', function guardedListen(): never {
     return deny('net.Server.listen')
   })
   Reflect.set(net.Socket.prototype, 'connect', function guardedConnect(): never {
     return deny('net.Socket.connect')
   })
+  Reflect.set(dgram.Socket.prototype, 'bind', function guardedDgramBind(this: object, ...args: unknown[]): unknown {
+    if (storage.getStore() !== undefined) return deny('dgram.Socket.bind')
+    const method = originals.dgramBindDescriptor?.value as unknown
+    if (typeof method !== 'function') throw new Error('Original dgram bind is unavailable')
+    return invokeOn(method, this, args)
+  })
+  Reflect.set(dgram.Socket.prototype, 'send', function guardedDgramSend(this: object, ...args: unknown[]): void {
+    if (storage.getStore() !== undefined) return deny('dgram.Socket.send')
+    const method = originals.dgramSendDescriptor?.value as unknown
+    if (typeof method !== 'function') throw new Error('Original dgram send is unavailable')
+    invokeOn(method, this, args)
+  })
+}
+
+function guardedBunFile(...args: unknown[]): unknown {
+  const file = invoke(originals.bunFile, args)
+  if (file === null || typeof file !== 'object') return file
+  const target = args[0]
+  const writer = Reflect.get(file, 'writer') as unknown
+  if (typeof writer === 'function') {
+    Reflect.set(file, 'writer', (...writerArgs: unknown[]): unknown => {
+      assertGuardedWritePath(target, 'Bun.file.writer', active, (operation) => diagnostic(active(operation), operation))
+      return invokeOn(writer, file, writerArgs)
+    })
+  }
+  const deleteFile = Reflect.get(file, 'delete') as unknown
+  if (typeof deleteFile === 'function') {
+    Reflect.set(file, 'delete', (...deleteArgs: unknown[]): unknown => {
+      assertGuardedWritePath(target, 'Bun.file.delete', active, (operation) => diagnostic(active(operation), operation))
+      return invokeOn(deleteFile, file, deleteArgs)
+    })
+  }
+  return file
 }
 
 export function installIoGuard(): void {
@@ -229,6 +301,10 @@ export function installIoGuard(): void {
   Reflect.set(Bun, 'spawn', () => deny('Bun.spawn'))
   Reflect.set(Bun, 'spawnSync', () => deny('Bun.spawnSync'))
   Reflect.set(Bun, 'serve', () => deny('Bun.serve'))
+  Reflect.set(Bun, 'listen', () => deny('Bun.listen'))
+  Reflect.set(Bun, 'connect', () => deny('Bun.connect'))
+  Reflect.set(Bun, 'udpSocket', () => deny('Bun.udpSocket'))
+  Reflect.set(Bun, 'file', guardedBunFile)
   Reflect.set(Bun, 'write', (...args: unknown[]): unknown => {
     assertGuardedWritePath(bunWriteTarget(args[0]), 'Bun.write', active, (operation) =>
       diagnostic(active(operation), operation),
@@ -244,15 +320,33 @@ export function restoreIoGuard(): void {
   Reflect.set(globalThis, 'fetch', originals.fetch)
   timerGuard?.restore()
   timerGuard = undefined
+  restoreFilesystemGuard()
+  void mock.module('node:child_process', () => ({ ...originalChildProcess, default: { ...originalChildProcess } }))
+  void mock.module('node:net', () => ({ ...originalNet, default: { ...originalNet } }))
+  void mock.module('node:dgram', () => ({ ...originalDgram, default: { ...originalDgram } }))
+  void mock.module('node:worker_threads', () => ({
+    ...originalWorkerThreads,
+    default: { ...originalWorkerThreads },
+  }))
   Reflect.set(Bun, 'spawn', originals.bunSpawn)
   Reflect.set(Bun, 'spawnSync', originals.bunSpawnSync)
   Reflect.set(Bun, 'serve', originals.bunServe)
+  Reflect.set(Bun, 'listen', originals.bunListen)
+  Reflect.set(Bun, 'connect', originals.bunConnect)
+  Reflect.set(Bun, 'udpSocket', originals.bunUdpSocket)
+  Reflect.set(Bun, 'file', originals.bunFile)
   Reflect.set(Bun, 'write', originals.bunWrite)
   if (originals.serverListenDescriptor !== undefined) {
     Object.defineProperty(net.Server.prototype, 'listen', originals.serverListenDescriptor)
   }
   if (originals.socketConnectDescriptor !== undefined) {
     Object.defineProperty(net.Socket.prototype, 'connect', originals.socketConnectDescriptor)
+  }
+  if (originals.dgramBindDescriptor !== undefined) {
+    Object.defineProperty(dgram.Socket.prototype, 'bind', originals.dgramBindDescriptor)
+  }
+  if (originals.dgramSendDescriptor !== undefined) {
+    Object.defineProperty(dgram.Socket.prototype, 'send', originals.dgramSendDescriptor)
   }
   for (const [name, descriptor] of processMethodDescriptors) {
     if (descriptor === undefined) Reflect.deleteProperty(process, name)
@@ -306,6 +400,14 @@ export function runWithScenarioIoGuard<T>(
   work: (session: IoGuardSession | undefined) => Promise<T>,
 ): Promise<T> {
   if (!installed) return work(undefined)
+  if (boundaryOwner !== undefined) {
+    return Promise.reject(
+      new Error(
+        `Hermetic scenario overlap: scenario="${name}" phase="scenario.setup" activeScenario="${boundaryOwner}"`,
+      ),
+    )
+  }
+  boundaryOwner = name
   const tempRoot = originals.fsMkdtempSync(path.join(os.tmpdir(), 'papai-story-'))
   const boundary: Boundary = {
     name,
@@ -355,6 +457,7 @@ export function runWithScenarioIoGuard<T>(
       originals.fsRmSync(boundary.tempRoot, { recursive: true, force: true })
       boundary.allowCleanup = false
       restoreEnvironment(boundary.env)
+      if (boundaryOwner === name) boundaryOwner = undefined
     }
   })
 }

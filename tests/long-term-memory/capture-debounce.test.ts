@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   armMemoryCapture,
+  cancelAndDrainPendingMemoryCaptures,
   cancelPendingMemoryCaptures,
   type ArmCaptureDeps,
 } from '../../src/long-term-memory/capture-debounce.js'
@@ -71,5 +72,40 @@ describe('armMemoryCapture', () => {
     cancelPendingMemoryCaptures()
 
     expect(cleared).toBe(3)
+  })
+
+  test('drain waits for an in-flight capture before permitting reuse', async () => {
+    let scheduled: (() => void) | undefined
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const deps: ArmCaptureDeps = {
+      markActivity: (): void => undefined,
+      runCapture: (): Promise<void> => gate,
+      schedule: (fn): ReturnType<typeof setTimeout> => {
+        scheduled = fn
+        return setTimeout(() => undefined, 9_999_999)
+      },
+      clear: clearTimeout,
+      debounceMs: 600_000,
+      now: (): string => '2026-06-16T00:00:00.000Z',
+    }
+    armMemoryCapture(makeInput('in-flight'), deps)
+    scheduled?.()
+    let drained = false
+    const draining = cancelAndDrainPendingMemoryCaptures().then((): void => {
+      drained = true
+    })
+
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    release?.()
+    await draining
+    expect(drained).toBe(true)
+
+    armMemoryCapture(makeInput('reuse'), deps)
+    expect(scheduled).toBeDefined()
+    cancelPendingMemoryCaptures()
   })
 })

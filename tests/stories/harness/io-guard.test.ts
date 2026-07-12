@@ -45,9 +45,18 @@ describe('hermetic story runner', () => {
     ['rejects socket instance connect', 'net.Socket.connect'],
     ['rejects server listen', 'net.Server.listen'],
     ['rejects Bun.serve', 'Bun.serve'],
+    ['rejects Bun.listen', 'Bun.listen'],
+    ['rejects Bun.connect', 'Bun.connect'],
+    ['rejects Bun.udpSocket', 'Bun.udpSocket'],
+    ['rejects dgram socket creation', 'dgram.createSocket'],
+    ['rejects dgram socket bind', 'dgram.Socket.bind'],
+    ['rejects dgram socket send', 'dgram.Socket.send'],
+    ['rejects worker construction', 'worker_threads.Worker'],
     ['rejects Bun.write outside root', 'Bun.write'],
     ['rejects Bun.write symlink escape', 'Bun.write'],
     ['rejects Bun.write unsupported target', 'Bun.write'],
+    ['rejects Bun.file writer outside root', 'Bun.file.writer'],
+    ['rejects Bun.file delete outside root', 'Bun.file.delete'],
     ['rejects fs write outside root', 'fs.writeFileSync'],
     ['rejects fs promises write outside root', 'fs.promises.writeFile'],
     ['rejects fs callback write outside root', 'fs.writeFile'],
@@ -56,6 +65,7 @@ describe('hermetic story runner', () => {
     ['rejects numeric write-capable fs open outside root', 'fs.openSync'],
     ['rejects raw fd write without write-capable open', 'fs.writeSync'],
     ['rejects fs truncate outside root', 'fs.truncateSync'],
+    ['rejects fs metadata outside root', 'fs.chmodSync'],
     ['rejects fs copy outside root', 'fs.copyFileSync'],
     ['rejects fs removal outside root', 'fs.rmSync'],
     ['rejects symlink escape', 'fs.writeFileSync'],
@@ -65,6 +75,8 @@ describe('hermetic story runner', () => {
     ['rejects node timers promises scheduler wait leak', 'scenario leaks (active timers: 1)'],
     ['rejects process listener leak', 'scenario leaks (process listeners: 1)'],
     ['rejects one remaining duplicate process listener', 'scenario leaks (process listeners: 1)'],
+    ['rejects removing pre-existing process listener', 'process.removeListener'],
+    ['rejects process removeAllListeners', 'process.removeAllListeners'],
     ['rejects environment mutation', 'scenario leaks (environment mutations: PAPAI_MUTATED)'],
   ])('%s with a scenario-aware diagnostic', async (scenarioName, operation) => {
     const result = await runProbe(scenarioName)
@@ -81,6 +93,9 @@ describe('hermetic story runner', () => {
     'allows Bun.write inside root',
     'allows FileHandle write inside root',
     'allows Bun.write URL inside root',
+    'allows Bun.file writer inside root',
+    'allows Bun.file outside-root reads',
+    'allows fs metadata inside root',
     'allows tracked raw fd write inside root',
     'allows removed process listener',
     'allows fired process once listener',
@@ -92,6 +107,8 @@ describe('hermetic story runner', () => {
     'allows aborted node timers promises scheduler wait',
     'allows completed node timers promises scheduler yield',
     'allows removing duplicate process listeners twice',
+    'rejects overlapping scenario boundary without corrupting the owner',
+    'restores mocked builtin module identities',
   ])('%s', async (scenarioName) => {
     const result = await runProbe(scenarioName)
 
@@ -130,6 +147,17 @@ describe('hermetic story runner', () => {
     expect(exitCode).not.toBe(0)
     expect(output).toContain('tests/stories/harness/io-guard.test.ts')
     expect(output).not.toContain('.story.test.ts')
+  })
+
+  test('forwards SIGTERM to the story child and exits conventionally', async () => {
+    const child = Bun.spawn(
+      ['bun', RUNNER, '--fixture', PROBE, '--test-name-pattern', '^waits for launcher signal forwarding$'],
+      { cwd: ROOT, env: process.env, stdout: 'pipe', stderr: 'pipe' },
+    )
+    await Bun.sleep(500)
+    child.kill('SIGTERM')
+
+    expect(await child.exited).toBe(143)
   })
 
   test('preload refuses direct use without the story launcher marker', async () => {

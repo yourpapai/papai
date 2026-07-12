@@ -6,8 +6,10 @@
 import { expect } from 'bun:test'
 import { execFile, execFileSync } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
+import { createSocket } from 'node:dgram'
 import {
   closeSync,
+  chmodSync,
   constants,
   copyFileSync,
   createWriteStream,
@@ -27,11 +29,16 @@ import {
   setInterval as setPromiseInterval,
   setTimeout as setPromiseTimeout,
 } from 'node:timers/promises'
+import { Worker } from 'node:worker_threads'
 
+import { restoreIoGuard, runWithScenarioIoGuard } from './io-guard.js'
 import { scenario } from './scenario.js'
 
 const phase = (world: { events: { setPhase(value: string): void } }): void => world.events.setPhase('when.ioProbe')
 const invoke = (fn: CallableFunction, args: readonly unknown[]): unknown => Reflect.apply(fn, undefined, args)
+const preExistingListener = (): void => undefined
+process.on('papai-story-pre-existing', preExistingListener)
+const preExistingDgramSocket = createSocket('udp4')
 
 scenario('rejects undeclared fetch', async ({ world }) => {
   phase(world)
@@ -88,6 +95,42 @@ scenario('rejects Bun.serve', ({ world }) => {
   Bun.serve({ port: 0, fetch: () => new Response('no') })
 })
 
+scenario('rejects Bun.listen', ({ world }) => {
+  phase(world)
+  Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data: () => undefined } })
+})
+
+scenario('rejects Bun.connect', async ({ world }) => {
+  phase(world)
+  await Bun.connect({ hostname: '127.0.0.1', port: 9, socket: { data: () => undefined } })
+})
+
+scenario('rejects Bun.udpSocket', async ({ world }) => {
+  phase(world)
+  await Bun.udpSocket({ socket: { data: () => undefined } })
+})
+
+scenario('rejects dgram socket creation', ({ world }) => {
+  phase(world)
+  createSocket('udp4')
+})
+
+scenario('rejects dgram socket bind', ({ world }) => {
+  phase(world)
+  preExistingDgramSocket.bind(0)
+})
+
+scenario('rejects dgram socket send', ({ world }) => {
+  phase(world)
+  preExistingDgramSocket.send('no', 9, '127.0.0.1')
+})
+
+scenario('rejects worker construction', ({ world }) => {
+  phase(world)
+  const worker = new Worker('process.exit(0)', { eval: true })
+  void worker
+})
+
 scenario('rejects Bun.write outside root', async ({ world }) => {
   phase(world)
   await Bun.write(`${world.tempRoot}/../bun.txt`, 'no')
@@ -102,6 +145,16 @@ scenario('rejects Bun.write symlink escape', async ({ world }) => {
 scenario('rejects Bun.write unsupported target', ({ world }) => {
   phase(world)
   Reflect.apply(Bun.write, Bun, [123, 'no'])
+})
+
+scenario('rejects Bun.file writer outside root', ({ world }) => {
+  phase(world)
+  Bun.file(`${world.tempRoot}/../writer.txt`).writer()
+})
+
+scenario('rejects Bun.file delete outside root', async ({ world }) => {
+  phase(world)
+  await Bun.file(`${world.tempRoot}/../delete.txt`).delete()
 })
 
 scenario('rejects fs write outside root', ({ world }) => {
@@ -149,6 +202,11 @@ scenario('rejects raw fd write without write-capable open', ({ world }) => {
 scenario('rejects fs truncate outside root', ({ world }) => {
   phase(world)
   truncateSync(`${world.tempRoot}/../escape.txt`, 0)
+})
+
+scenario('rejects fs metadata outside root', ({ world }) => {
+  phase(world)
+  chmodSync(`${world.tempRoot}/../metadata.txt`, 0o600)
 })
 
 scenario('rejects fs copy outside root', ({ world }) => {
@@ -206,6 +264,16 @@ scenario('rejects one remaining duplicate process listener', ({ world }) => {
   process.off('papai-story-probe-duplicate', listener)
 })
 
+scenario('rejects removing pre-existing process listener', ({ world }) => {
+  phase(world)
+  process.off('papai-story-pre-existing', preExistingListener)
+})
+
+scenario('rejects process removeAllListeners', ({ world }) => {
+  phase(world)
+  process.removeAllListeners('papai-story-pre-existing')
+})
+
 scenario('rejects environment mutation', ({ world }) => {
   phase(world)
   process.env['PAPAI_MUTATED'] = 'yes'
@@ -248,6 +316,27 @@ scenario('allows Bun.write URL inside root', async ({ world }) => {
   const path = `${world.tempRoot}/bun-url-inside.txt`
   await Bun.write(new URL(`file://${path}`), 'ok')
   expect(await Bun.file(path).text()).toBe('ok')
+})
+
+scenario('allows Bun.file writer inside root', async ({ world }) => {
+  phase(world)
+  const path = `${world.tempRoot}/writer-inside.txt`
+  const writer = Bun.file(path).writer()
+  await writer.write('ok')
+  await writer.end()
+  expect(await Bun.file(path).text()).toBe('ok')
+})
+
+scenario('allows Bun.file outside-root reads', async ({ world }) => {
+  phase(world)
+  expect(await Bun.file('package.json').text()).toContain('"name"')
+})
+
+scenario('allows fs metadata inside root', ({ world }) => {
+  phase(world)
+  const path = `${world.tempRoot}/metadata-inside.txt`
+  writeFileSync(path, 'ok')
+  chmodSync(path, 0o600)
 })
 
 scenario('allows tracked raw fd write inside root', async ({ world }) => {
@@ -336,6 +425,27 @@ scenario('allows removing duplicate process listeners twice', ({ world }) => {
   process.on('papai-story-probe-duplicate-removed', listener)
   process.off('papai-story-probe-duplicate-removed', listener)
   process.off('papai-story-probe-duplicate-removed', listener)
+})
+
+scenario('rejects overlapping scenario boundary without corrupting the owner', async ({ world }) => {
+  phase(world)
+  await expect(runWithScenarioIoGuard('overlap', () => Promise.resolve())).rejects.toThrow('overlap')
+  expect(process.env['PAPAI_STORY_RUNNER']).toBe('1')
+})
+
+scenario('waits for launcher signal forwarding', async ({ world }) => {
+  phase(world)
+  await new Promise<void>(() => {
+    // The launcher signal must terminate this intentionally pending story.
+  })
+})
+
+scenario('restores mocked builtin module identities', async ({ world }) => {
+  phase(world)
+  restoreIoGuard()
+  const [restoredTimers, restoredFs] = await Promise.all([import('node:timers'), import('node:fs')])
+  expect(restoredTimers.setInterval).toBe(globalThis.setInterval)
+  expect(restoredFs.writeFileSync).toBe((await import('node:fs')).writeFileSync)
 })
 
 scenario('uses sanitized environment', () => {

@@ -136,10 +136,10 @@ function createOpenWrappers(active: ActiveBoundary, current: CurrentBoundary, fa
     const writable = flagsPermitWrite(args[1])
     if (writable) assertGuardedWritePath(args[0], 'fs.promises.open', active, failure)
     const handle = await invoke(originalFsPromises.open, args)
-    if (writable && handle !== null && typeof handle === 'object') {
+    if (handle !== null && typeof handle === 'object') {
       const fd = Number(Reflect.get(handle, 'fd'))
       const closeMethod = Reflect.get(handle, 'close') as unknown
-      if (Number.isInteger(fd) && typeof closeMethod === 'function') {
+      if (writable && Number.isInteger(fd) && typeof closeMethod === 'function') {
         active('fs.promises.open').writableFileDescriptors.add(fd)
         Reflect.set(handle, 'close', async (...closeArgs: unknown[]): Promise<unknown> => {
           try {
@@ -147,6 +147,14 @@ function createOpenWrappers(active: ActiveBoundary, current: CurrentBoundary, fa
           } finally {
             current()?.writableFileDescriptors.delete(fd)
           }
+        })
+      }
+      for (const methodName of ['chmod', 'chown', 'utimes'] as const) {
+        const method = Reflect.get(handle, methodName) as unknown
+        if (typeof method !== 'function') continue
+        Reflect.set(handle, methodName, (...methodArgs: unknown[]): unknown => {
+          assertGuardedWritePath(args[0], `fs.promises.FileHandle.${methodName}`, active, failure)
+          return invokeOn(method, handle, methodArgs)
         })
       }
     }
@@ -167,6 +175,11 @@ function pathWrappers(active: ActiveBoundary, failure: GuardFailure): PathWrappe
     appendFileSync: guardedPaths('fs.appendFileSync', [0], fs.appendFileSync, active, failure),
     createWriteStream: guardedPaths('fs.createWriteStream', [0], fs.createWriteStream, active, failure),
     truncateSync: guardedPaths('fs.truncateSync', [0], fs.truncateSync, active, failure),
+    chmodSync: guardedPaths('fs.chmodSync', [0], fs.chmodSync, active, failure),
+    chownSync: guardedPaths('fs.chownSync', [0], fs.chownSync, active, failure),
+    utimesSync: guardedPaths('fs.utimesSync', [0], fs.utimesSync, active, failure),
+    lchownSync: guardedPaths('fs.lchownSync', [0], fs.lchownSync, active, failure),
+    lutimesSync: guardedPaths('fs.lutimesSync', [0], fs.lutimesSync, active, failure),
     mkdirSync: guardedPaths('fs.mkdirSync', [0], fs.mkdirSync, active, failure),
     mkdtempSync: guardedPaths('fs.mkdtempSync', [0], fs.mkdtempSync, active, failure),
     rmSync: guardedPaths('fs.rmSync', [0], fs.rmSync, active, failure),
@@ -181,6 +194,11 @@ function pathWrappers(active: ActiveBoundary, failure: GuardFailure): PathWrappe
     writeFile: guardedPaths('fs.writeFile', [0], fs.writeFile, active, failure),
     appendFile: guardedPaths('fs.appendFile', [0], fs.appendFile, active, failure),
     truncate: guardedPaths('fs.truncate', [0], fs.truncate, active, failure),
+    chmod: guardedPaths('fs.chmod', [0], fs.chmod, active, failure),
+    chown: guardedPaths('fs.chown', [0], fs.chown, active, failure),
+    utimes: guardedPaths('fs.utimes', [0], fs.utimes, active, failure),
+    lchown: guardedPaths('fs.lchown', [0], fs.lchown, active, failure),
+    lutimes: guardedPaths('fs.lutimes', [0], fs.lutimes, active, failure),
     mkdir: guardedPaths('fs.mkdir', [0], fs.mkdir, active, failure),
     mkdtemp: guardedPaths('fs.mkdtemp', [0], fs.mkdtemp, active, failure),
     rm: guardedPaths('fs.rm', [0], fs.rm, active, failure),
@@ -195,6 +213,11 @@ function pathWrappers(active: ActiveBoundary, failure: GuardFailure): PathWrappe
     writeFile: guardedPaths('fs.promises.writeFile', [0], fsPromises.writeFile, active, failure),
     appendFile: guardedPaths('fs.promises.appendFile', [0], fsPromises.appendFile, active, failure),
     truncate: guardedPaths('fs.promises.truncate', [0], fsPromises.truncate, active, failure),
+    chmod: guardedPaths('fs.promises.chmod', [0], fsPromises.chmod, active, failure),
+    chown: guardedPaths('fs.promises.chown', [0], fsPromises.chown, active, failure),
+    utimes: guardedPaths('fs.promises.utimes', [0], fsPromises.utimes, active, failure),
+    lchown: guardedPaths('fs.promises.lchown', [0], fsPromises.lchown, active, failure),
+    lutimes: guardedPaths('fs.promises.lutimes', [0], fsPromises.lutimes, active, failure),
     mkdir: guardedPaths('fs.promises.mkdir', [0], fsPromises.mkdir, active, failure),
     mkdtemp: guardedPaths('fs.promises.mkdtemp', [0], fsPromises.mkdtemp, active, failure),
     rm: guardedPaths('fs.promises.rm', [0], fsPromises.rm, active, failure),
@@ -218,6 +241,12 @@ export function installFilesystemGuard(active: ActiveBoundary, current: CurrentB
     writevSync: guardedFd('fs.writevSync', fs.writevSync, active, failure),
     ftruncate: guardedFd('fs.ftruncate', fs.ftruncate, active, failure),
     ftruncateSync: guardedFd('fs.ftruncateSync', fs.ftruncateSync, active, failure),
+    fchmod: guardedFd('fs.fchmod', fs.fchmod, active, failure),
+    fchmodSync: guardedFd('fs.fchmodSync', fs.fchmodSync, active, failure),
+    fchown: guardedFd('fs.fchown', fs.fchown, active, failure),
+    fchownSync: guardedFd('fs.fchownSync', fs.fchownSync, active, failure),
+    futimes: guardedFd('fs.futimes', fs.futimes, active, failure),
+    futimesSync: guardedFd('fs.futimesSync', fs.futimesSync, active, failure),
   }
   const promiseOverrides = { ...paths.promises, open: opens.promiseOpen }
   const overrides = {
@@ -239,5 +268,17 @@ export function installFilesystemGuard(active: ActiveBoundary, current: CurrentB
     ...overrides,
     promises: { ...originalNestedPromises, ...promiseOverrides },
     default: { ...originalFs, ...overrides, promises: { ...originalNestedPromises, ...promiseOverrides } },
+  }))
+}
+
+export function restoreFilesystemGuard(): void {
+  void mock.module('node:fs/promises', () => ({
+    ...originalFsPromises,
+    default: { ...originalFsPromises },
+  }))
+  void mock.module('node:fs', () => ({
+    ...originalFs,
+    promises: { ...originalNestedPromises },
+    default: { ...originalFs, promises: { ...originalNestedPromises } },
   }))
 }

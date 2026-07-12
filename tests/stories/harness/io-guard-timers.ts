@@ -220,6 +220,11 @@ export function installTimerGuard(current: CurrentBoundary): InstalledTimerGuard
       Reflect.set(globalThis, 'clearInterval', originals.clearInterval)
       Reflect.set(globalThis, 'setImmediate', originals.setImmediate)
       Reflect.set(globalThis, 'clearImmediate', originals.clearImmediate)
+      void mock.module('node:timers', () => ({ ...originalTimers, default: { ...originalTimers } }))
+      void mock.module('node:timers/promises', () => ({
+        ...originalTimerPromises,
+        default: { ...originalTimerPromises },
+      }))
     },
     dispose(handle): void {
       invoke(originals.clearTimeout, globalThis, [handle])

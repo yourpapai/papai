@@ -18,7 +18,7 @@ import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-rout
 import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
 import { logger } from '../logger.js'
-import { cancelPendingMemoryCaptures } from '../long-term-memory/capture-debounce.js'
+import { cancelAndDrainPendingMemoryCaptures } from '../long-term-memory/capture-debounce.js'
 import { initializeMessageCache } from '../message-cache/index.js'
 import { flushOnShutdown } from '../message-queue/index.js'
 import { deactivateAllPlugins } from '../plugins/loader.js'
@@ -265,7 +265,7 @@ export function createProductionRuntimeDeps(
     application: {
       ...application,
       async flush(): Promise<void> {
-        cancelPendingMemoryCaptures()
+        await cancelAndDrainPendingMemoryCaptures()
         await flushApplication()
       },
     },

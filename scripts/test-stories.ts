@@ -67,6 +67,34 @@ async function discoverStories(): Promise<readonly string[]> {
   return files.sort()
 }
 
+async function waitForChild(
+  child: Readonly<{ exited: Promise<number>; kill(signal: NodeJS.Signals): void }>,
+): Promise<number> {
+  let forwardedSignal: 'SIGINT' | 'SIGTERM' | undefined
+  const forward = (signal: 'SIGINT' | 'SIGTERM'): void => {
+    if (forwardedSignal !== undefined) return
+    forwardedSignal = signal
+    child.kill(signal)
+  }
+  const onInterrupt = (): void => {
+    forward('SIGINT')
+  }
+  const onTerminate = (): void => {
+    forward('SIGTERM')
+  }
+  process.once('SIGINT', onInterrupt)
+  process.once('SIGTERM', onTerminate)
+  try {
+    const exitCode = await child.exited
+    if (forwardedSignal === 'SIGINT') return 130
+    if (forwardedSignal === 'SIGTERM') return 143
+    return exitCode
+  } finally {
+    process.off('SIGINT', onInterrupt)
+    process.off('SIGTERM', onTerminate)
+  }
+}
+
 async function main(): Promise<number> {
   let parsed: ParsedArguments
   try {
@@ -97,8 +125,7 @@ async function main(): Promise<number> {
     ],
     { cwd: process.cwd(), env: sanitizedEnvironment(), stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' },
   )
-  const exitCode = await child.exited
-  return exitCode
+  return waitForChild(child)
 }
 
 process.exitCode = await main()
