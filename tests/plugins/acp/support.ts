@@ -110,6 +110,7 @@ export function runtimeCtx(
       resolveMcpTokens: () => ({}),
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
+    transcript: { mintUrl: () => null },
   } as PluginToolRuntimeContext
 }
 
@@ -157,6 +158,7 @@ export function runtimeCtxWithKv(
       resolveMcpTokens: () => ({}),
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
+    transcript: { mintUrl: () => null },
   } as PluginToolRuntimeContext
 }
 

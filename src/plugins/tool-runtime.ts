@@ -13,6 +13,7 @@ import { buildIdentityFacade } from './identity-facade.js'
 import { consumePluginQuota } from './rate-limit.js'
 import type { PluginScheduledJobRuntimeContext } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
+import { buildTranscriptFacade } from './transcript-facade.js'
 import type {
   PluginAttachmentFacade,
   PluginManifest,
@@ -234,5 +235,6 @@ export function buildPluginToolRuntimeContext(
       runtime.chatUserId,
     ),
     codingRepos: buildCodingReposFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
+    transcript: buildTranscriptFacade(pluginId, permissions.has('coding.secrets')),
   })
 }

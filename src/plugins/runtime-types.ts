@@ -79,6 +79,10 @@ export type PluginToolRuntimeContext = {
     list(): { name: string; baseBranch: string }[]
     get(name: string): CodingRepoEntry | null
   }
+  transcript: {
+    /** Mints a papai `/t/<token>` transcript URL for a magi session id, or null if no public base URL is configured. */
+    mintUrl(magiSessionId: string): string | null
+  }
 }
 
 export type PluginScheduledJobRuntimeContext = {

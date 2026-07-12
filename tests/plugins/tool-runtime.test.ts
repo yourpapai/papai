@@ -178,6 +178,25 @@ describe('buildPluginToolRuntimeContext', () => {
     })
   })
 
+  describe('transcript facade', () => {
+    test('provides a working transcript.mintUrl on the runtime context', () => {
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({ permissions: ['coding.secrets'] }),
+        makeRuntime(),
+      )
+      expect(ctx.transcript).toBeDefined()
+      expect(typeof ctx.transcript.mintUrl).toBe('function')
+      // No SETTINGS_PUBLIC_BASE_URL configured in the test env → null, not a throw.
+      expect(ctx.transcript.mintUrl('sess-1')).toBeNull()
+    })
+
+    test('throws when plugin lacks coding.secrets permission', () => {
+      const ctx = buildPluginToolRuntimeContext('test-plugin', makeManifest({ permissions: [] }), makeRuntime())
+      expect(() => ctx.transcript.mintUrl('sess-1')).toThrow(/coding\.secrets/u)
+    })
+  })
+
   describe('contextConfig facade', () => {
     test('resolves declared context-scoped keys and hides others', () => {
       setPluginConfig('ctx-1', 'test-plugin', 'api_key', 'ctx-key-1')

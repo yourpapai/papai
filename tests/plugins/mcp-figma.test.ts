@@ -332,6 +332,7 @@ function createMockRuntimeContext(
       resolveMcpTokens: () => ({}),
     },
     codingRepos: { list: () => [], get: () => null },
+    transcript: { mintUrl: () => null },
   } as PluginToolRuntimeContext
 }
 

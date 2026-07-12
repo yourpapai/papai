@@ -124,6 +124,7 @@ export function runtimeCtx(store: Map<string, string>, codingRepos?: FakeCodingR
       resolveMcpTokens: () => ({}),
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
+    transcript: { mintUrl: () => null },
   }
 }
 
