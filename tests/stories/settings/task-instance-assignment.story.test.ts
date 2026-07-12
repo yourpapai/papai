@@ -7,7 +7,6 @@ import { expect } from 'bun:test'
 
 import { z } from 'zod'
 
-import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
 import { scenario } from '../harness/scenario.js'
 import { answer, callCapability } from '../harness/scripted-llm.js'
 
@@ -32,11 +31,16 @@ scenario(
     })
     then.responseStatus(unauthenticated, 401)
 
-    const rejected = await when.settingsRequest(session, '/settings/api/context/task-instance', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', [CSRF_HEADER]: '' },
-      body,
-    })
+    const rejected = await when.settingsRequest(
+      session,
+      '/settings/api/context/task-instance',
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      },
+      { csrf: false },
+    )
     then.responseStatus(rejected, 403)
 
     const assigned = await when.settingsRequest(session, '/settings/api/context/task-instance', {

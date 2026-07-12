@@ -17,6 +17,7 @@ import { logBuffer, logBufferStream } from './log-buffer.js'
 import { parseLogFilter } from './log-filter-model.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
+import { DEFAULT_WEB_SERVER_ROUTE_OPTIONS, type WebServerRouteOptions } from './server-route-options.js'
 import { handleDeferred, handleIdentity, handleMemos, handleRecurring } from './server-route-support.js'
 import { isSettingsPath, routeSettingsPaths } from './settings-router.js'
 import { addClient, init, removeClient, findTurnById, isScopeVisibleToCurrentAdmin } from './state-collector.js'
@@ -111,9 +112,8 @@ function handleLogStats(url: URL): Response {
   return jsonResponse({ ...logBuffer.stats(), matchingCount: logBuffer.countMatching(filter) })
 }
 
-export type WebServerRouteOptions = Readonly<{ debugEnabled: boolean; mattermostActionSecretForTest?: string }>
 type WebServerStartOptions = Readonly<{ debugEnabled?: boolean; logLevel?: string }>
-const DEFAULT_ROUTE_OPTIONS: WebServerRouteOptions = { debugEnabled: true }
+export type { WebServerRouteOptions } from './server-route-options.js'
 const DEBUG_ONLY_PATHS = new Set([
   '/debug',
   '/debug.js',
@@ -126,7 +126,7 @@ const DEBUG_ONLY_PATHS = new Set([
 ])
 
 let server: ReturnType<typeof Bun.serve> | null = null
-let routeOptions: WebServerRouteOptions = DEFAULT_ROUTE_OPTIONS
+let routeOptions: WebServerRouteOptions = DEFAULT_WEB_SERVER_ROUTE_OPTIONS
 
 function handleClientFile(prefix: 'debug' | 'admin' | 'settings', pathname: string): Response {
   if (pathname === `/${prefix}`) {
@@ -220,7 +220,7 @@ export async function routeRequest(req: Request, options: WebServerRouteOptions 
   if (settingsStatic !== null) return settingsStatic
   // Settings trust domain: session-cookie auth only, never DEBUG_TOKEN.
   if (isSettingsPath(url.pathname)) {
-    return (await routeSettingsPaths(req, url)) ?? new Response('Not found', { status: 404 })
+    return (await routeSettingsPaths(req, url, { nowMs: options.nowMs })) ?? new Response('Not found', { status: 404 })
   }
 
   const publicAuthResponse = routePublicAuthPaths(req, url)
@@ -280,10 +280,10 @@ export function startDebugServer(adminUserId: string, options?: WebServerStartOp
 }
 
 export const routeRequestForTest = (req: Request, options?: Partial<WebServerRouteOptions>): Promise<Response> =>
-  routeRequest(req, { ...DEFAULT_ROUTE_OPTIONS, ...options })
+  routeRequest(req, { ...DEFAULT_WEB_SERVER_ROUTE_OPTIONS, ...options })
 
 export function stopDebugServer(): void {
-  routeOptions = DEFAULT_ROUTE_OPTIONS
+  routeOptions = DEFAULT_WEB_SERVER_ROUTE_OPTIONS
   if (server !== null) {
     void server.stop()
     server = null

@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
+import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
 import { executeScenario } from './scenario.js'
 import type { ScenarioWorld } from './world.js'
 import { createScenarioWorld } from './world.js'
@@ -16,6 +17,68 @@ const requireAggregateError = (value: unknown): AggregateError => {
 }
 
 describe('scenario execution', () => {
+  test('settings requests reject unsafe URLs before dispatching and accept a settings query', async () => {
+    await executeScenario('settings URL safety', async ({ given, when, world }) => {
+      const alice = given.user('alice')
+      const session = await given.settingsSession(alice)
+      const requestsBeforeRejections = world.events.all().filter(({ kind }) => kind === 'settings.request').length
+
+      for (const unsafe of [
+        'https://evil.invalid/settings/api/session',
+        '//evil.invalid/settings/api/session',
+        '/settings-evil',
+        String.raw`\settings\api\session`,
+        '/settings/%2f%2fevil.invalid/api/session',
+        '/settings/%2e%2e/settings-evil',
+      ]) {
+        await expect(when.settingsRequest(session, unsafe)).rejects.toThrow('Unsafe settings request path')
+      }
+      expect(world.events.all().filter(({ kind }) => kind === 'settings.request')).toHaveLength(
+        requestsBeforeRejections,
+      )
+
+      const response = await when.settingsRequest(session, '/settings/api/context/task-instance?source=scenario')
+      expect(response.status).toBe(200)
+    })
+  })
+
+  test('settings session handles are bound to one active world and cannot be fabricated', async () => {
+    const first = await createScenarioWorld('first session world')
+    const alice = first.api.given.user('alice')
+    const session = await first.api.given.settingsSession(alice)
+    const second = await createScenarioWorld('second session world')
+
+    try {
+      await expect(second.api.when.settingsRequest(session, '/settings/api/session')).rejects.toThrow(
+        'Settings session handle belongs to a different scenario world',
+      )
+      const fabricated = structuredClone(session)
+      await expect(second.api.when.settingsRequest(fabricated, '/settings/api/session')).rejects.toThrow(
+        'Unknown settings session handle',
+      )
+      expect(second.events.all().some(({ kind }) => kind === 'settings.request')).toBe(false)
+    } finally {
+      await second.stop()
+      await first.stop()
+    }
+
+    await expect(first.api.when.settingsRequest(session, '/settings/api/session')).rejects.toThrow(
+      'Scenario settings sessions are no longer active',
+    )
+  })
+
+  test('the world clock deterministically expires an exchanged settings session', async () => {
+    await executeScenario('settings session expiry', async ({ given, when, world }) => {
+      const alice = given.user('alice')
+      const session = await given.settingsSession(alice)
+      expect((await when.settingsRequest(session, '/settings/api/session')).status).toBe(200)
+
+      world.clock.advance(SESSION_TTL_MS)
+
+      expect((await when.settingsRequest(session, '/settings/api/context/task-instance')).status).toBe(401)
+    })
+  })
+
   test('preserves a primary assertion failure while surfacing every teardown failure and attempt', async () => {
     let capturedWorld: ScenarioWorld | undefined
     const createWorld = async (name: string): Promise<ScenarioWorld> => {

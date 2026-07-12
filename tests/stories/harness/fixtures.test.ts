@@ -29,9 +29,8 @@ import {
   SCENARIO_PLATFORM_INSTANCE_ID,
   SCENARIO_TASK_INSTANCE_ID,
   SCENARIO_USER_ID,
-  buildSettingsSessionHeaders,
   createScenarioFixtures,
-  parseSettingsSessionExchange,
+  createSettingsSessionVault,
 } from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 
@@ -160,7 +159,8 @@ describe('scenario fixtures', () => {
   })
 
   test('parses an opaque settings session and builds authenticated write headers', async () => {
-    const session = await parseSettingsSessionExchange(
+    const vault = createSettingsSessionVault()
+    const session = await vault.parseExchange(
       { platformInstanceId: 'pi-1', platformUserId: 'alice' },
       new Response(JSON.stringify({ csrfToken: 'csrf-secret' }), {
         status: 200,
@@ -169,18 +169,22 @@ describe('scenario fixtures', () => {
     )
 
     expect(JSON.stringify(session)).not.toContain('secret')
-    const headers = buildSettingsSessionHeaders(session, 'PATCH', { 'Content-Type': 'application/json' })
+    const headers = vault.buildHeaders(session, 'PATCH', {
+      'Content-Type': 'application/json',
+      Cookie: 'foreign-session=untrusted',
+      [CSRF_HEADER]: 'untrusted-csrf',
+    })
     expect(headers.get('Cookie')).toBe(`${SESSION_COOKIE_NAME}=session-secret`)
     expect(headers.get(CSRF_HEADER)).toBe('csrf-secret')
     expect(headers.get('Content-Type')).toBe('application/json')
 
-    const withoutCsrf = buildSettingsSessionHeaders(session, 'PATCH', { [CSRF_HEADER]: '' })
-    expect(withoutCsrf.get(CSRF_HEADER)).toBe('')
-    expect(buildSettingsSessionHeaders(session, 'GET').has(CSRF_HEADER)).toBe(false)
+    const withoutCsrf = vault.buildHeaders(session, 'PATCH', { [CSRF_HEADER]: 'untrusted-csrf' }, false)
+    expect(withoutCsrf.has(CSRF_HEADER)).toBe(false)
+    expect(vault.buildHeaders(session, 'GET').has(CSRF_HEADER)).toBe(false)
   })
 
   test('rejects a settings exchange response without the production session cookie', async () => {
-    const parsing = parseSettingsSessionExchange(
+    const parsing = createSettingsSessionVault().parseExchange(
       { platformInstanceId: 'pi-1', platformUserId: 'alice' },
       new Response(JSON.stringify({ csrfToken: 'csrf-secret' }), { status: 200 }),
     )

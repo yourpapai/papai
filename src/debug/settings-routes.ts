@@ -15,6 +15,7 @@ import { authenticateSettingsRequest, isSecureRequest, verifyCsrf } from '../set
 import { requireScope } from '../settings/scope-guard.js'
 import { createSession, deleteSession, rotateSessionCsrf } from '../settings/session-store.js'
 import { listUsers } from '../users.js'
+import { settingsRequestNowMs } from './settings/request-clock.js'
 
 const log = logger.child({ scope: 'debug-server:settings-routes' })
 
@@ -51,7 +52,10 @@ function principalDisplay(platformInstanceId: string, platformUserId: string): s
   return username !== null && username !== undefined && username.length > 0 ? username : platformUserId
 }
 
-export async function handleSettingsExchange(req: Request, nowMs: number = Date.now()): Promise<Response> {
+export async function handleSettingsExchange(
+  req: Request,
+  nowMs: number = settingsRequestNowMs(req),
+): Promise<Response> {
   const quota = consumeSettingsQuota('exchange', clientIp(req), EXCHANGE_LIMIT, EXCHANGE_WINDOW_MS, nowMs)
   if (!quota.allowed) {
     return jsonResponse(429, { error: 'rate limited' }, { 'Retry-After': String(quota.retryAfterSec) })
@@ -87,7 +91,7 @@ export async function handleSettingsExchange(req: Request, nowMs: number = Date.
   )
 }
 
-export function handleSettingsBootstrap(req: Request, nowMs: number = Date.now()): Response {
+export function handleSettingsBootstrap(req: Request, nowMs: number = settingsRequestNowMs(req)): Response {
   const authed = authenticateSettingsRequest(req, nowMs)
   if (authed === null) return jsonResponse(401, { error: 'unauthenticated' })
 
@@ -108,7 +112,7 @@ export function handleSettingsBootstrap(req: Request, nowMs: number = Date.now()
   })
 }
 
-export function handleSettingsLogout(req: Request, nowMs: number = Date.now()): Response {
+export function handleSettingsLogout(req: Request, nowMs: number = settingsRequestNowMs(req)): Response {
   const authed = authenticateSettingsRequest(req, nowMs)
   if (authed === null) {
     return jsonResponse(401, { error: 'unauthenticated' }, { 'Set-Cookie': clearSessionCookie(isSecureRequest(req)) })

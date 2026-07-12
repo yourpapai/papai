@@ -10,6 +10,7 @@ import {
   type AuthenticatedSettingsRequest,
 } from '../../settings/request-auth.js'
 import { requireScope, type ScopeResult } from '../../settings/scope-guard.js'
+import { settingsRequestNowMs } from './request-clock.js'
 
 export const settingsJson = (status: number, body: unknown, extraHeaders: Record<string, string> = {}): Response =>
   new Response(JSON.stringify(body), {
@@ -21,7 +22,7 @@ export type AuthOutcome =
   | { readonly ok: true; readonly authed: AuthenticatedSettingsRequest }
   | { readonly ok: false; readonly response: Response }
 
-export function authenticate(req: Request, nowMs: number = Date.now()): AuthOutcome {
+export function authenticate(req: Request, nowMs: number = settingsRequestNowMs(req)): AuthOutcome {
   const authed = authenticateSettingsRequest(req, nowMs)
   if (authed === null) return { ok: false, response: settingsJson(401, { error: 'unauthenticated' }) }
   return { ok: true, authed }

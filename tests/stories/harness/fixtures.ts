@@ -39,18 +39,17 @@ export const SCENARIO_GROUP_ID = 'scenario-group'
 export const SCENARIO_USER_ID = 'scenario-user'
 export const SCENARIO_PROVIDER_PLUGIN_ID = 'scenario-memory-provider'
 
-const settingsSessionBrand: unique symbol = Symbol('scenario-settings-session')
+const settingsSessionOwner: unique symbol = Symbol('scenario-settings-session-owner')
 
 export type SettingsSessionHandle = Readonly<{
   kind: 'settings-session'
   principal: Readonly<{ platformInstanceId: string; platformUserId: string }>
-  readonly [settingsSessionBrand]: true
+  readonly [settingsSessionOwner]: object
 }>
 
 type SettingsSessionSecrets = Readonly<{ cookie: string; csrf: string }>
 
 const ExchangeResponseSchema = z.object({ csrfToken: z.string().min(1) })
-const settingsSessionSecrets = new WeakMap<SettingsSessionHandle, SettingsSessionSecrets>()
 
 const extractSessionCookie = (setCookie: string | null): string => {
   const pair = setCookie?.split(';', 1)[0]
@@ -61,35 +60,65 @@ const extractSessionCookie = (setCookie: string | null): string => {
   return pair.slice(prefix.length)
 }
 
-export async function parseSettingsSessionExchange(
-  principal: Readonly<{ platformInstanceId: string; platformUserId: string }>,
-  response: Response,
-): Promise<SettingsSessionHandle> {
-  if (response.status !== 200) throw new Error(`Settings auth exchange failed with status ${response.status}`)
-  const cookie = extractSessionCookie(response.headers.get('Set-Cookie'))
-  const { csrfToken } = ExchangeResponseSchema.parse(await response.json())
-  const handle: SettingsSessionHandle = Object.freeze({
-    kind: 'settings-session',
-    principal: Object.freeze({ ...principal }),
-    [settingsSessionBrand]: true as const,
-  })
-  settingsSessionSecrets.set(handle, { cookie, csrf: csrfToken })
-  return handle
-}
+export type SettingsSessionVault = Readonly<{
+  parseExchange(
+    principal: Readonly<{ platformInstanceId: string; platformUserId: string }>,
+    response: Response,
+  ): Promise<SettingsSessionHandle>
+  buildHeaders(session: SettingsSessionHandle, method: string, initial?: HeadersInit, withCsrf?: boolean): Headers
+  reset(): void
+  revoke(): void
+}>
 
-export function buildSettingsSessionHeaders(
-  session: SettingsSessionHandle,
-  method: string,
-  initial?: HeadersInit,
-): Headers {
-  const secrets = settingsSessionSecrets.get(session)
-  if (secrets === undefined) throw new Error('Unknown settings session handle')
-  const headers = new Headers(initial)
-  if (!headers.has('Cookie')) headers.set('Cookie', `${SESSION_COOKIE_NAME}=${secrets.cookie}`)
-  const normalizedMethod = method.toUpperCase()
-  const requiresCsrf = !['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod)
-  if (requiresCsrf && !headers.has(CSRF_HEADER)) headers.set(CSRF_HEADER, secrets.csrf)
-  return headers
+export function createSettingsSessionVault(): SettingsSessionVault {
+  const owner = Object.freeze({})
+  const secrets = new Map<SettingsSessionHandle, SettingsSessionSecrets>()
+  let active = true
+
+  const resolve = (session: SettingsSessionHandle): SettingsSessionSecrets => {
+    if (!active) throw new Error('Scenario settings sessions are no longer active')
+    if (typeof session !== 'object' || session === null || !Object.hasOwn(session, settingsSessionOwner)) {
+      throw new Error('Unknown settings session handle')
+    }
+    const sessionOwner = session[settingsSessionOwner]
+    if (sessionOwner !== owner) throw new Error('Settings session handle belongs to a different scenario world')
+    const stored = secrets.get(session)
+    if (stored === undefined) throw new Error('Unknown settings session handle')
+    return stored
+  }
+
+  return {
+    async parseExchange(principal, response): Promise<SettingsSessionHandle> {
+      if (!active) throw new Error('Scenario settings sessions are no longer active')
+      if (response.status !== 200) throw new Error(`Settings auth exchange failed with status ${response.status}`)
+      const cookie = extractSessionCookie(response.headers.get('Set-Cookie'))
+      const { csrfToken } = ExchangeResponseSchema.parse(await response.json())
+      const handle: SettingsSessionHandle = Object.freeze({
+        kind: 'settings-session',
+        principal: Object.freeze({ ...principal }),
+        [settingsSessionOwner]: owner,
+      })
+      secrets.set(handle, { cookie, csrf: csrfToken })
+      return handle
+    },
+    buildHeaders(session, method, initial, withCsrf = true): Headers {
+      const stored = resolve(session)
+      const headers = new Headers(initial)
+      headers.set('Cookie', `${SESSION_COOKIE_NAME}=${stored.cookie}`)
+      const requiresCsrf = !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())
+      if (requiresCsrf && withCsrf) headers.set(CSRF_HEADER, stored.csrf)
+      else headers.delete(CSRF_HEADER)
+      return headers
+    },
+    reset(): void {
+      secrets.clear()
+      active = true
+    },
+    revoke(): void {
+      secrets.clear()
+      active = false
+    },
+  }
 }
 
 const SCENARIO_PLUGIN: DiscoveredPlugin = {
@@ -132,6 +161,7 @@ export type ScenarioFixturesOptions = Readonly<{
 
 export type ScenarioFixtures = Readonly<{
   taskProvider: TaskProvider
+  settingsSessions: SettingsSessionVault
   setupDatabase(): Promise<void>
   seedPlatformInstance(input?: Readonly<{ id?: string; type?: PlatformInstanceType }>): void
   seedTaskInstance(input?: Readonly<{ id?: string; type?: string }>): void
@@ -150,7 +180,7 @@ export type ScenarioFixtures = Readonly<{
     }>,
   ): void
   seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
-  issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>): string
+  issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>, nowMs: number): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
   registerTaskProvider(): void
   teardown(): void
@@ -158,16 +188,24 @@ export type ScenarioFixtures = Readonly<{
 
 export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): ScenarioFixtures {
   const taskProvider = options.taskProvider ?? new MemoryTaskProvider()
+  const settingsSessions = createSettingsSessionVault()
 
-  const teardown = (): void => {
+  const teardownRegistries = (): void => {
     unregisterContributedTaskProviderType(SCENARIO_PROVIDER_PLUGIN_ID)
     pluginRegistry.clearForTesting()
   }
 
+  const teardown = (): void => {
+    teardownRegistries()
+    settingsSessions.revoke()
+  }
+
   return {
     taskProvider,
+    settingsSessions,
     async setupDatabase(): Promise<void> {
-      teardown()
+      teardownRegistries()
+      settingsSessions.reset()
       await setupTestDb()
       resetSystemConfigCacheForTesting()
     },
@@ -217,8 +255,8 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       setSystemConfig('llm_baseurl', input.baseUrl ?? 'https://llm.invalid/v1', 'scenario-admin')
       setSystemConfig('main_model', input.mainModel ?? 'scenario-main-model', 'scenario-admin')
     },
-    issueSettingsAuthCode(input): string {
-      return issueAuthCode(input)
+    issueSettingsAuthCode(input, nowMs): string {
+      return issueAuthCode(input, nowMs)
     },
     approvePlugin(plugin = SCENARIO_PLUGIN): DiscoveredPlugin {
       pluginRegistry.registerDiscovered(plugin)

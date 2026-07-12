@@ -7,12 +7,7 @@ import { expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
-import {
-  SCENARIO_PLATFORM_INSTANCE_ID,
-  buildSettingsSessionHeaders,
-  parseSettingsSessionExchange,
-  type SettingsSessionHandle,
-} from './fixtures.js'
+import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
   type ContextHandle,
@@ -60,7 +55,12 @@ type ScenarioWhen = Readonly<{
   message(user: UserHandle, context: ContextHandle, text: string): Promise<void>
   interaction(user: UserHandle, context: ContextHandle, callbackData: string): Promise<void>
   request(path: string, init?: RequestInit): Promise<Response>
-  settingsRequest(session: SettingsSessionHandle, path: string, init?: RequestInit): Promise<Response>
+  settingsRequest(
+    session: SettingsSessionHandle,
+    path: string,
+    init?: RequestInit,
+    options?: Readonly<{ csrf?: boolean }>,
+  ): Promise<Response>
 }>
 
 type ReplyAssertion = Readonly<{ equals(expected: string): void }>
@@ -93,17 +93,41 @@ const scopedGroupId = (group: GroupHandle): string =>
 
 const scenarioUrl = (path: string): URL => new URL(path, 'https://scenario.invalid')
 
+function settingsUrl(world: ScenarioWorld, path: string): URL {
+  const hasSettingsBoundary = path === '/settings' || path.startsWith('/settings/') || path.startsWith('/settings?')
+  const rawPathname = path.split(/[?#]/u, 1)[0] ?? ''
+  const hasEncodedSeparator = /%(?:2f|5c)/iu.test(rawPathname)
+  if (!hasSettingsBoundary || path.includes('\\') || hasEncodedSeparator) {
+    throw new Error(world.events.formatFailure('Unsafe settings request path'))
+  }
+  let url: URL
+  try {
+    url = scenarioUrl(path)
+  } catch (error) {
+    throw new Error(world.events.formatFailure('Unsafe settings request path'), { cause: error })
+  }
+  const validPath = url.pathname === '/settings' || url.pathname.startsWith('/settings/')
+  if (url.origin !== 'https://scenario.invalid' || !validPath) {
+    throw new Error(world.events.formatFailure('Unsafe settings request path'))
+  }
+  return url
+}
+
+type SettingsRequestAuth = Readonly<{ session: SettingsSessionHandle; withCsrf: boolean }>
+
 async function runtimeRequest(
   world: ScenarioWorld,
   path: string,
   init: RequestInit = {},
-  session?: SettingsSessionHandle,
+  settingsAuth?: SettingsRequestAuth,
 ): Promise<Response> {
-  await world.ensureStarted()
   const method = (init.method ?? 'GET').toUpperCase()
+  const url = settingsAuth === undefined ? scenarioUrl(path) : settingsUrl(world, path)
   const headers =
-    session === undefined ? new Headers(init.headers) : buildSettingsSessionHeaders(session, method, init.headers)
-  const url = scenarioUrl(path)
+    settingsAuth === undefined
+      ? new Headers(init.headers)
+      : world.fixtures.settingsSessions.buildHeaders(settingsAuth.session, method, init.headers, settingsAuth.withCsrf)
+  await world.ensureStarted()
   world.events.record('settings.request', { method, url, headers, hasBody: init.body !== undefined })
   const response = await world.runtime.request(new Request(url, { ...init, method, headers }))
   world.events.record('settings.response', { method, url, status: response.status, headers: response.headers })
@@ -183,13 +207,13 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     async settingsSession(user): Promise<SettingsSessionHandle> {
       prerequisite('given.settingsSession')
       const principal = { platformInstanceId: user.platformInstanceId, platformUserId: user.id }
-      const code = world.fixtures.issueSettingsAuthCode(principal)
+      const code = world.fixtures.issueSettingsAuthCode(principal, world.clock.now().getTime())
       const response = await runtimeRequest(world, '/settings/auth/exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       })
-      return parseSettingsSessionExchange(principal, response)
+      return world.fixtures.settingsSessions.parseExchange(principal, response)
     },
     plugin(plugin): PluginHandle {
       prerequisite('given.plugin')
@@ -221,9 +245,9 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
       world.events.setPhase('when.request')
       return runtimeRequest(world, path, init)
     },
-    settingsRequest(session, path, init): Promise<Response> {
+    settingsRequest(session, path, init, options): Promise<Response> {
       world.events.setPhase('when.settingsRequest')
-      return runtimeRequest(world, path, init, session)
+      return runtimeRequest(world, path, init, { session, withCsrf: options?.csrf ?? true })
     },
   }
 }

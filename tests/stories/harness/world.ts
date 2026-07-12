@@ -10,6 +10,7 @@ import { setupBot, type BotDeps } from '../../../src/bot.js'
 import { ChatRouter } from '../../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
 import { closeDrizzleDb } from '../../../src/db/drizzle.js'
+import { routeRequest } from '../../../src/debug/server.js'
 import type { ProcessMessageFn } from '../../../src/llm-orchestrator-process-args.js'
 import { defaultDeps as defaultLlmDeps, processMessage } from '../../../src/llm-orchestrator.js'
 import { deactivateAllPlugins } from '../../../src/plugins/loader.js'
@@ -29,7 +30,7 @@ import { createStrictHttpDispatcher, type StrictHttpDispatcher } from './strict-
 const FIXED_NOW = '2026-01-01T00:00:00.000Z'
 const ADMIN_USER_ID = 'scenario-admin'
 
-export type ScenarioClock = Readonly<{ now(): Date }>
+export type ScenarioClock = Readonly<{ now(): Date; advance(milliseconds: number): void }>
 export type ScenarioIds = Readonly<{ next(namespace: string): string }>
 
 const userHandleBrand: unique symbol = Symbol('scenario-user')
@@ -158,7 +159,16 @@ type PendingWork = Readonly<{
   hasPending(): boolean
 }>
 
-const createClock = (): ScenarioClock => ({ now: (): Date => new Date(FIXED_NOW) })
+const createClock = (): ScenarioClock => {
+  let nowMs = new Date(FIXED_NOW).getTime()
+  return {
+    now: (): Date => new Date(nowMs),
+    advance(milliseconds): void {
+      if (!Number.isFinite(milliseconds)) throw new Error('Scenario clock advance must be finite')
+      nowMs += milliseconds
+    },
+  }
+}
 
 const createIds = (): ScenarioIds => {
   const sequences = new Map<string, number>()
@@ -401,6 +411,9 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
       application: {
         setupBot: (activeRouter) => setupScenarioBot(activeRouter, model, pending),
         flush: pending.settle,
+      },
+      web: {
+        route: (request) => routeRequest(request, { debugEnabled: false, nowMs: clock.now().getTime() }),
       },
     })
     const deps = { ...productionDeps, extensions: wrapProductionExtensions(productionDeps, hooks) }
