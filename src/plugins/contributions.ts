@@ -9,6 +9,8 @@ import { tool } from 'ai'
 import { logger } from '../logger.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
 import type { TaskProvider } from '../providers/types.js'
+import { toolCapabilityCatalog } from '../runtime/capability-catalog.js'
+import type { ToolCapabilityCatalog } from '../runtime/capability-catalog.js'
 import { scheduler } from '../scheduler-instance.js'
 import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
 import {
@@ -195,10 +197,20 @@ export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs):
   }, Promise.resolve())
 }
 
+function registerToolCapability(
+  pluginTool: PluginTool,
+  namespacedName: string,
+  capabilityCatalog: ToolCapabilityCatalog,
+): void {
+  if (pluginTool.capabilityId === undefined) return
+  capabilityCatalog.register(pluginTool.capabilityId, namespacedName)
+}
+
 export function buildPluginToolSet(
   activePluginIds: string[],
   existingToolNames: ReadonlySet<string>,
   runtime: PluginToolSetRuntime,
+  capabilityCatalog: ToolCapabilityCatalog = toolCapabilityCatalog,
 ): ToolSet {
   const pluginTools: ToolSet = {}
   const usedNames = new Set<string>(existingToolNames)
@@ -222,6 +234,7 @@ export function buildPluginToolSet(
       }
 
       usedNames.add(namespacedName)
+      registerToolCapability(pluginTool, namespacedName, capabilityCatalog)
 
       const schema = getPluginToolInputSchema(pluginTool)
       const wrappedExecute = wrapToolExecution((input, options) => {

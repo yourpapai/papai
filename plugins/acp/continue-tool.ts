@@ -17,7 +17,7 @@ import { deriveTitle, parsePrNumber, readRecord, writeRecord } from './history.j
 import type { SessionRecord } from './history.js'
 import { continueSessionSchema } from './schemas.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { sessionIdOf, shareFieldsOf } from './tools.js'
+import { ACP_CAPABILITIES, sessionIdOf, shareFieldsOf } from './tools.js'
 
 type AccessError = { error: string; message: string }
 type AccessOk = { secrets: Record<string, string>; forgeToken: string; mcpTokens: Record<string, string> }
@@ -95,6 +95,7 @@ function buildChildRecord(parentId: string, parentRecord: SessionRecord, prompt:
 export function continueSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'continue_session',
+    capabilityId: ACP_CAPABILITIES.continue,
     description:
       'Continue a prior coding session on its existing branch/PR with a new prompt. Identify the target by ' +
       'sessionId, or by prNumber (+project). Updates the existing PR instead of opening a new one.',

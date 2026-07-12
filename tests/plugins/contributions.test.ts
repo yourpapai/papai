@@ -37,6 +37,7 @@ import {
 } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
 import { pluginManifestSchema } from '../../src/plugins/types.js'
+import { createToolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { scheduler } from '../../src/scheduler-instance.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
@@ -1002,6 +1003,73 @@ describe('buildPluginToolSet', () => {
     )
     const tools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime())
     expect(Object.keys(tools)).toContain('plugin_test_plugin__my_tool')
+  })
+
+  test('registers stable capability ids against namespaced wire names', () => {
+    const manifest = makeManifest({ contributes: { tools: ['start_session'] } })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'start_session',
+            capabilityId: 'coding-session.start',
+            description: 'Start a coding session',
+            execute: (): Promise<unknown> => Promise.resolve('ok'),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+    const catalog = createToolCapabilityCatalog()
+
+    buildPluginToolSet(['test-plugin'], new Set(), makeRuntime(), catalog)
+
+    expect(catalog.resolve('coding-session.start')).toBe('plugin_test_plugin__start_session')
+  })
+
+  test('keeps duplicate registration idempotent and rejects conflicting capability wire names', () => {
+    const manifest = makeManifest({ contributes: { tools: ['start_session', 'continue_session'] } })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'start_session',
+            capabilityId: 'coding-session.start',
+            description: 'Start a coding session',
+            execute: (): Promise<unknown> => Promise.resolve('ok'),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+    const catalog = createToolCapabilityCatalog()
+
+    buildPluginToolSet(['test-plugin'], new Set(), makeRuntime(), catalog)
+    buildPluginToolSet(['test-plugin'], new Set(), makeRuntime(), catalog)
+
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'continue_session',
+            capabilityId: 'coding-session.start',
+            description: 'Continue a coding session',
+            execute: (): Promise<unknown> => Promise.resolve('ok'),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+
+    expect(() => buildPluginToolSet(['test-plugin'], new Set(), makeRuntime(), catalog)).toThrow(
+      "Duplicate tool capability id 'coding-session.start'",
+    )
   })
 
   test('passes active runtime context to plugin tool executions', async () => {

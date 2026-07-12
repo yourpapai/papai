@@ -91,6 +91,8 @@ export type PluginScheduledJobRuntimeContext = {
 export type PluginTool = {
   /** Raw tool name as declared in the manifest (snake_case). */
   name: string
+  /** Stable behavioral identifier independent of the production wire name. */
+  capabilityId?: string
   description: string
   inputSchema?: z.ZodType
   execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
