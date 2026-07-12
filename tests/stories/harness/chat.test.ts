@@ -115,6 +115,34 @@ describe('scenario chat', () => {
     expect(chat.sendMessage('platform-1', dmTarget('user-1'), 'late')).rejects.toThrow('stopped')
   })
 
+  test('duplicate registration errors include the scenario and current phase', () => {
+    const events = createScenarioEvents('duplicate registration')
+    events.setPhase('register handlers')
+    const chat = createScenarioChat('duplicate registration', events)
+    const commandHandler = (): Promise<void> => Promise.resolve()
+    const messageHandler = (): Promise<void> => Promise.resolve()
+    const interactionHandler = (): Promise<void> => Promise.resolve()
+
+    chat.registerCommand('help', commandHandler)
+    expect(() => chat.registerCommand('help', commandHandler)).toThrow('duplicate registration')
+    expect(() => chat.registerCommand('help', commandHandler)).toThrow('phase: register handlers')
+
+    chat.onMessage(messageHandler)
+    expect(() => chat.onMessage(messageHandler)).toThrow('duplicate registration')
+    expect(() => chat.onMessage(messageHandler)).toThrow('phase: register handlers')
+
+    chat.onInteraction(interactionHandler)
+    expect(() => chat.onInteraction(interactionHandler)).toThrow('duplicate registration')
+    expect(() => chat.onInteraction(interactionHandler)).toThrow('phase: register handlers')
+  })
+
+  test('does not advertise unsupported user resolution', () => {
+    const chat = createScenarioChat('capabilities', createScenarioEvents('capabilities'))
+
+    expect(chat.capabilities.has('users.resolve')).toBeFalse()
+    expect(chat.resolveUserId).toBeUndefined()
+  })
+
   test('reply snapshots do not leak mutations', async () => {
     const chat = createScenarioChat('snapshots', createScenarioEvents('snapshots'))
     chat.onMessage((_message, reply) => reply.text('safe', { threadId: 'thread-1' }))

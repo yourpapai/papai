@@ -169,20 +169,25 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
       'messages.redact',
       'messages.reply-context',
       'files.receive',
-      'users.resolve',
     ]),
     traits: { observedGroupMessages: 'all' },
     configRequirements: [],
     registerCommand(name, handler): void {
-      if (commands.has(name)) throw new Error(`command handler already registered: ${name}`)
+      if (commands.has(name)) {
+        throw new Error(events.formatFailure(`command handler already registered: ${name}`))
+      }
       commands.set(name, handler)
     },
     onMessage(handler): void {
-      if (messageHandler !== undefined) throw new Error('message handler already registered')
+      if (messageHandler !== undefined) {
+        throw new Error(events.formatFailure('message handler already registered'))
+      }
       messageHandler = handler
     },
     onInteraction(handler): void {
-      if (interactionHandler !== undefined) throw new Error('interaction handler already registered')
+      if (interactionHandler !== undefined) {
+        throw new Error(events.formatFailure('interaction handler already registered'))
+      }
       interactionHandler = handler
     },
     sendMessage(platformInstanceId, target: DeferredDeliveryTarget, markdown): Promise<boolean> {
