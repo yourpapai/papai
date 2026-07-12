@@ -68,4 +68,22 @@ describe('scenario execution', () => {
       await world.stop()
     }
   })
+
+  test('flattens primary, HTTP, and model teardown failures in order', async () => {
+    const primary = new Error('primary assertion')
+    const failure = await executeScenario('flatten teardown', ({ world }): Promise<void> => {
+      world.http.expect({ method: 'GET', url: 'https://unused.invalid/' }, () => new Response('unused'))
+      world.api.given.llm([{ kind: 'answer', text: 'unused model answer' }])
+      return Promise.reject(primary)
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+
+    const aggregate = requireAggregateError(failure)
+    expect(aggregate.errors).toHaveLength(3)
+    expect(aggregate.errors[0]).toBe(primary)
+    expect(String(aggregate.errors[1])).toContain('unconsumed HTTP expectations')
+    expect(String(aggregate.errors[2])).toContain('unused decision')
+  })
 })

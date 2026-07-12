@@ -5,6 +5,7 @@
 
 import { expect, test } from 'bun:test'
 
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID } from './fixtures.js'
 import type { ModelDecision } from './scripted-llm.js'
@@ -26,6 +27,7 @@ import {
   makeUserHandle,
   messageForContext,
   repliesForContext,
+  repliesForThread,
 } from './world.js'
 
 type ScenarioGiven = Readonly<{
@@ -68,6 +70,12 @@ type WorldFactory = (name: string) => Promise<ScenarioWorld>
 const contextId = (context: ContextHandle): string =>
   context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id
 
+const scopedConfigContextId = (context: ContextHandle): string =>
+  toScopedContextId({ platformInstanceId: context.platformInstanceId, nativeContextId: contextId(context) })
+
+const scopedGroupId = (group: GroupHandle): string =>
+  toScopedContextId({ platformInstanceId: group.platformInstanceId, nativeContextId: group.id })
+
 function tracedAssertion(world: ScenarioWorld, assertion: () => void): void {
   try {
     assertion()
@@ -77,11 +85,11 @@ function tracedAssertion(world: ScenarioWorld, assertion: () => void): void {
   }
 }
 
-function replyAssertion(world: ScenarioWorld, id: string): ReplyAssertion {
+function replyAssertion(world: ScenarioWorld, replies: () => readonly { content?: string }[]): ReplyAssertion {
   return {
     equals(expected): void {
-      const replies = repliesForContext(world, id).filter(({ content }) => content !== undefined)
-      tracedAssertion(world, () => expect(replies.at(-1)?.content).toBe(expected))
+      const captured = replies().filter(({ content }) => content !== undefined)
+      tracedAssertion(world, () => expect(captured.at(-1)?.content).toBe(expected))
     },
   }
 }
@@ -99,12 +107,13 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     },
     group(id): GroupHandle {
       prerequisite('given.group')
-      world.fixtures.authorizeGroup({ groupId: id })
-      return makeGroupHandle(id)
+      const group = makeGroupHandle(id)
+      world.fixtures.authorizeGroup({ groupId: scopedGroupId(group) })
+      return group
     },
     member(group, user): void {
       prerequisite('given.member')
-      world.fixtures.addGroupMember({ groupId: group.id, userId: user.id })
+      world.fixtures.addGroupMember({ groupId: scopedGroupId(group), userId: user.id })
     },
     dm: makeDmHandle,
     thread: makeThreadHandle,
@@ -116,8 +125,8 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     assign(context, taskInstance): void {
       prerequisite('given.assign')
       world.fixtures.assignContext({
-        contextId: contextId(context),
-        platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID,
+        contextId: scopedConfigContextId(context),
+        platformInstanceId: context.platformInstanceId,
         taskInstanceId: taskInstance.id,
       })
     },
@@ -157,8 +166,11 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
 
 function createThen(world: ScenarioWorld): ScenarioThen {
   return {
-    replyTo: (user) => replyAssertion(world, user.id),
-    replyIn: (context) => replyAssertion(world, contextId(context)),
+    replyTo: (user) => replyAssertion(world, () => repliesForContext(world, user.id)),
+    replyIn: (context) =>
+      replyAssertion(world, () =>
+        context.kind === 'thread' ? repliesForThread(world, context) : repliesForContext(world, contextId(context)),
+      ),
     task: (title) => ({
       async exists(): Promise<void> {
         const matches = await world.tasks.searchTasks({ query: title })
@@ -176,7 +188,9 @@ export function createScenarioApi(world: ScenarioWorld): ScenarioApi {
 }
 
 function combineFailures(primary: unknown, teardown: unknown): AggregateError {
-  return new AggregateError([primary, teardown], 'Scenario execution and teardown failed', { cause: primary })
+  const teardownErrors: unknown[] =
+    teardown instanceof AggregateError ? teardown.errors.map((error: unknown): unknown => error) : [teardown]
+  return new AggregateError([primary, ...teardownErrors], 'Scenario execution and teardown failed', { cause: primary })
 }
 
 export async function executeScenario(

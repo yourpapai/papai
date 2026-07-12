@@ -5,11 +5,14 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { discoverPlugins } from '../../../src/plugins/discovery.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
+import { defaultTaskProviderResolver } from '../../../src/providers/resolver.js'
 import { toolCapabilityCatalog } from '../../../src/runtime/capability-catalog.js'
+import { DEFAULT_SCHEDULER_TASK_NAMES, scheduler } from '../../../src/scheduler-instance.js'
 import { answer } from './scripted-llm.js'
 import type { DmHandle, GroupHandle, PluginHandle, TaskInstanceHandle, ThreadHandle, UserHandle } from './world.js'
 import { createScenarioWorld } from './world.js'
@@ -24,6 +27,13 @@ const requireAggregateError = (value: unknown): AggregateError => {
   if (value instanceof AggregateError) return value
   throw new Error('Expected aggregate error')
 }
+
+const throwingCleanupObserver =
+  (steps: string[], failure: Error): ((kind: string) => void) =>
+  (kind): void => {
+    steps.push(kind)
+    if (kind === 'world.cleanup.plugins.deactivate') throw failure
+  }
 
 describe('scenario world', () => {
   test('composes the real runtime path with deterministic scenario boundaries', async () => {
@@ -55,6 +65,74 @@ describe('scenario world', () => {
     } finally {
       await world.stop()
     }
+  })
+
+  test('seeds canonical scoped ids for real group authorization and task resolution', async () => {
+    const world = await createScenarioWorld('scoped ids')
+
+    try {
+      const alice = world.api.given.user('alice')
+      const group = world.api.given.group('team')
+      world.api.given.member(group, alice)
+      const dm = world.api.given.dm(alice)
+      const taskInstance = world.api.given.taskInstance()
+      world.api.given.assign(dm, taskInstance)
+
+      const dmMessage = world.message(alice, dm, 'resolve')
+      const scopedDmId = getThreadScopedStorageContextId(
+        dmMessage.contextId,
+        dmMessage.contextType,
+        dmMessage.threadId,
+        dmMessage.platformInstanceId,
+      )
+      expect(await defaultTaskProviderResolver.resolveStrict(scopedDmId)).toBe(world.tasks)
+
+      world.api.given.llm([answer('Authorized group reply')])
+      await world.api.when.message(alice, group, 'hello group')
+      world.api.then.replyIn(group).equals('Authorized group reply')
+    } finally {
+      await world.stop()
+    }
+  })
+
+  test('keeps sibling thread replies isolated while group replies remain unthreaded', async () => {
+    const world = await createScenarioWorld('thread replies')
+
+    try {
+      const alice = world.api.given.user('alice')
+      const group = world.api.given.group('team')
+      world.api.given.member(group, alice)
+      const first = world.api.given.thread(group, 'first')
+      const second = world.api.given.thread(group, 'second')
+      world.api.given.llm([answer('First thread'), answer('Second thread'), answer('Main group')])
+
+      await world.api.when.message(alice, first, 'one')
+      await world.api.when.message(alice, second, 'two')
+      await world.api.when.message(alice, group, 'main')
+
+      world.api.then.replyIn(first).equals('First thread')
+      world.api.then.replyIn(second).equals('Second thread')
+      world.api.then.replyIn(group).equals('Main group')
+      expect(world.repliesForThread(first).every(({ threadId }) => threadId === first.id)).toBe(true)
+      expect(world.repliesForThread(first).map(({ content }) => content)).toContain('First thread')
+      expect(world.repliesForThread(first).map(({ content }) => content)).not.toContain('Second thread')
+      expect(world.repliesForThread(second).every(({ threadId }) => threadId === second.id)).toBe(true)
+      expect(world.repliesForThread(second).map(({ content }) => content)).toContain('Second thread')
+      expect(world.repliesForThread(second).map(({ content }) => content)).not.toContain('First thread')
+    } finally {
+      await world.stop()
+    }
+  })
+
+  test('does not register or run default scheduler tasks when background services are disabled', async () => {
+    for (const taskName of DEFAULT_SCHEDULER_TASK_NAMES) expect(scheduler.hasTask(taskName)).toBe(false)
+    const world = await createScenarioWorld('no scheduler')
+
+    await world.start()
+    for (const taskName of DEFAULT_SCHEDULER_TASK_NAMES) expect(scheduler.hasTask(taskName)).toBe(false)
+    expect(world.events.all().some(({ kind }) => kind.startsWith('scheduler.'))).toBe(false)
+    await world.stop()
+    for (const taskName of DEFAULT_SCHEDULER_TASK_NAMES) expect(scheduler.hasTask(taskName)).toBe(false)
   })
 
   test('creates sequential worlds without leaking database, tasks, replies, plugins, capabilities, or ids', async () => {
@@ -177,5 +255,27 @@ describe('scenario world', () => {
       'world.cleanup.http.verify',
       'world.cleanup.model.verify',
     ])
+  })
+
+  test('continues cleanup when the cleanup observer throws', async () => {
+    const cleanupSteps: string[] = []
+    const observerFailure = new Error('observer failed')
+    const world = await createScenarioWorld('cleanup observer', {
+      testHooks: {
+        onCleanupStep: throwingCleanupObserver(cleanupSteps, observerFailure),
+      },
+    })
+    await world.start()
+
+    await expect(world.stop()).rejects.toThrow('observer failed')
+    expect(cleanupSteps).toEqual([
+      'world.cleanup.runtime.stop',
+      'world.cleanup.plugins.deactivate',
+      'world.cleanup.provider.unregister',
+      'world.cleanup.database.reset',
+      'world.cleanup.http.verify',
+      'world.cleanup.model.verify',
+    ])
+    expect(world.events.all().some(({ kind }) => kind === 'chat.stop')).toBe(true)
   })
 })

@@ -5,6 +5,7 @@
 
 import { expect } from 'bun:test'
 
+import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { setupBot, type BotDeps } from '../../../src/bot.js'
 import { ChatRouter } from '../../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
@@ -45,14 +46,26 @@ export type UserHandle = Readonly<{
   platformInstanceId: string
   readonly [userHandleBrand]: true
 }>
-export type GroupHandle = Readonly<{ kind: 'group'; id: string; readonly [groupHandleBrand]: true }>
+export type GroupHandle = Readonly<{
+  kind: 'group'
+  id: string
+  platformInstanceId: string
+  readonly [groupHandleBrand]: true
+}>
 export type ThreadHandle = Readonly<{
   kind: 'thread'
   id: string
   group: GroupHandle
+  platformInstanceId: string
   readonly [threadHandleBrand]: true
 }>
-export type DmHandle = Readonly<{ kind: 'dm'; id: string; user: UserHandle; readonly [dmHandleBrand]: true }>
+export type DmHandle = Readonly<{
+  kind: 'dm'
+  id: string
+  user: UserHandle
+  platformInstanceId: string
+  readonly [dmHandleBrand]: true
+}>
 export type ContextHandle = DmHandle | GroupHandle | ThreadHandle
 export type TaskInstanceHandle = Readonly<{
   kind: 'task-instance'
@@ -92,6 +105,8 @@ export type ScenarioWorld = Readonly<{
   start(): Promise<void>
   ensureStarted(): Promise<void>
   assertPrerequisitesOpen(operation: string): void
+  message(user: UserHandle, context: ContextHandle, text: string): IncomingMessage
+  repliesForThread(thread: ThreadHandle): readonly ScenarioReply[]
   settle(): Promise<void>
   verify(): void
   stop(): Promise<void>
@@ -104,17 +119,24 @@ export const makeUserHandle = (id: string): UserHandle => ({
   platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID,
   [userHandleBrand]: true,
 })
-export const makeGroupHandle = (id: string): GroupHandle => ({ kind: 'group', id, [groupHandleBrand]: true })
+export const makeGroupHandle = (id: string): GroupHandle => ({
+  kind: 'group',
+  id,
+  platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID,
+  [groupHandleBrand]: true,
+})
 export const makeThreadHandle = (group: GroupHandle, id: string): ThreadHandle => ({
   kind: 'thread',
   id,
   group,
+  platformInstanceId: group.platformInstanceId,
   [threadHandleBrand]: true,
 })
 export const makeDmHandle = (user: UserHandle): DmHandle => ({
   kind: 'dm',
   id: user.id,
   user,
+  platformInstanceId: user.platformInstanceId,
   [dmHandleBrand]: true,
 })
 export const makeTaskInstanceHandle = (id: string, providerType: string): TaskInstanceHandle => ({
@@ -243,7 +265,11 @@ async function runCleanupStep(
   hooks: ScenarioWorldTestHooks,
 ): Promise<void> {
   events.record(kind, {})
-  hooks.onCleanupStep?.(kind)
+  try {
+    hooks.onCleanupStep?.(kind)
+  } catch (error) {
+    failures.push(error)
+  }
   try {
     await action()
   } catch (error) {
@@ -456,6 +482,8 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     assertPrerequisitesOpen(operation): void {
       if (state !== 'new') throw new Error(events.formatFailure(`${operation} requires an unstarted scenario world`))
     },
+    message: (user, context, text) => messageForContext(world, user, context, text),
+    repliesForThread: (thread) => repliesForThread(world, thread),
     settle: pending.settle,
     verify,
     stop,
@@ -468,7 +496,12 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
 }
 
 export const repliesForContext = (world: ScenarioWorld, contextId: string): readonly ScenarioReply[] =>
-  world.chat.allReplies().filter((reply) => reply.contextId === contextId)
+  world.chat
+    .allReplies()
+    .filter((reply) => reply.contextId === contextId && (reply.threadId === undefined || reply.threadId === null))
+
+export const repliesForThread = (world: ScenarioWorld, thread: ThreadHandle): readonly ScenarioReply[] =>
+  world.chat.allReplies().filter((reply) => reply.contextId === thread.group.id && reply.threadId === thread.id)
 
 export const messageForContext = (
   world: ScenarioWorld,
@@ -483,7 +516,7 @@ export const messageForContext = (
   isMentioned: context.kind !== 'dm',
   text,
   messageId: world.ids.next('message'),
-  platformInstanceId: user.platformInstanceId,
+  platformInstanceId: context.platformInstanceId,
 })
 
 export const interactionForContext = (
@@ -496,7 +529,12 @@ export const interactionForContext = (
   contextId: context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id,
   contextType: context.kind === 'dm' ? 'dm' : 'group',
   threadId: context.kind === 'thread' ? context.id : undefined,
-  platformInstanceId: user.platformInstanceId,
-  storageContextId: context.kind === 'thread' ? `${context.group.id}:${context.id}` : context.id,
+  platformInstanceId: context.platformInstanceId,
+  storageContextId: getThreadScopedStorageContextId(
+    context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id,
+    context.kind === 'dm' ? 'dm' : 'group',
+    context.kind === 'thread' ? context.id : undefined,
+    context.platformInstanceId,
+  ),
   callbackData,
 })
