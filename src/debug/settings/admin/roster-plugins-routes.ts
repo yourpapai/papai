@@ -80,9 +80,7 @@ async function handlePluginApproval(
       })
     }
   } else {
-    if (entry.state === 'active') {
-      await deactivatePluginById(body.data.pluginId)
-    }
+    await deactivatePluginById(body.data.pluginId)
     pluginRegistry.reject(body.data.pluginId)
   }
   log.info({ pluginId: body.data.pluginId, action: body.data.action }, 'Settings SA changed plugin approval')

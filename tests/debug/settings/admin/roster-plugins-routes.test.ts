@@ -70,6 +70,14 @@ function writeTempPluginModule(source: string): string {
   return modulePath
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 function makeRuntimeProviderPlugin(providerType: string): DiscoveredPlugin {
   const entryPoint = writeTempPluginModule(`
     export default function createPlugin() {
@@ -291,6 +299,72 @@ describe('settings admin roster/plugins routes', () => {
     expect(approved.status).toBe(200)
     expect(rejected.status).toBe(200)
     expect(urls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
+  })
+
+  test('concurrent plugin reject waits for approval activation and leaves the plugin rejected', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/activate') },
+          deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/deactivate') },
+        }
+      }
+    `)
+    const plugin = makePlugin({
+      entryPoint,
+      pluginDir: dirname(entryPoint),
+      manifest: {
+        ...makePlugin().manifest,
+        permissions: ['http'],
+        providerAllowedHosts: ['api.example.com'],
+      },
+    })
+    pluginRegistry.registerDiscovered(plugin)
+    const activationStarted = deferred<true>()
+    const activationResponse = deferred<Response>()
+    const urls: string[] = []
+    const responses = [activationResponse.promise, Promise.resolve(new Response('deactivated'))]
+    const options = {
+      pluginProviderRuntimeDeps: {
+        fetch: (url: string): Promise<Response> => {
+          urls.push(url)
+          activationStarted.resolve(true)
+          const response = responses.shift()
+          assert(response !== undefined, 'unexpected plugin lifecycle request')
+          return response
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    }
+    const url = new URL('https://x/settings/api/admin/plugin-approval')
+    const request = (action: 'approve' | 'reject'): Request =>
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(superSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: plugin.manifest.id, action }),
+      })
+
+    const approval = handleAdminRosterPluginsRoutes(
+      request('approve'),
+      url,
+      '/settings/api/admin/plugin-approval',
+      options,
+    )
+    await activationStarted.promise
+    const rejection = handleAdminRosterPluginsRoutes(
+      request('reject'),
+      url,
+      '/settings/api/admin/plugin-approval',
+      options,
+    )
+    activationResponse.resolve(new Response('activated'))
+    const [approvedResponse, rejectedResponse] = await Promise.all([approval, rejection])
+
+    expect(approvedResponse.status).toBe(200)
+    expect(rejectedResponse.status).toBe(200)
+    expect(urls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
+    expect(pluginRegistry.getEntry(plugin.manifest.id)?.state).toBe('rejected')
+    expect(getActivatedPluginIds()).not.toContain(plugin.manifest.id)
   })
 
   test('plugin reject as SA deactivates an active provider plugin immediately', async () => {

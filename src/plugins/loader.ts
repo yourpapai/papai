@@ -49,6 +49,16 @@ type ActivePluginInstance = Readonly<{
   plugin: DiscoveredPlugin
 }>
 const activeInstances = new Map<string, ActivePluginInstance>()
+let lifecycleTail: Promise<void> = Promise.resolve()
+
+function serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+  const result = lifecycleTail.then(operation)
+  lifecycleTail = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
 
 function removeActivatedPluginId(pluginId: string): void {
   const index = activationOrder.lastIndexOf(pluginId)
@@ -186,11 +196,7 @@ async function activateOne(plugin: DiscoveredPlugin, options: ActivatePluginsOpt
   }
 }
 
-/** Load and activate all approved+compatible plugins. Failures are isolated. */
-export async function activatePlugins(
-  plugins: DiscoveredPlugin[],
-  options: ActivatePluginsOptions = {},
-): Promise<void> {
+async function activatePluginsSerialized(plugins: DiscoveredPlugin[], options: ActivatePluginsOptions): Promise<void> {
   if (plugins.length === 0) {
     log.debug('No plugins to activate')
     return
@@ -202,6 +208,11 @@ export async function activatePlugins(
   const failed = results.length - activated
 
   log.info({ activated, failed, total: plugins.length }, 'Plugin activation complete')
+}
+
+/** Load and activate all approved+compatible plugins. Failures are isolated. */
+export function activatePlugins(plugins: DiscoveredPlugin[], options: ActivatePluginsOptions = {}): Promise<void> {
+  return serializeLifecycle(() => activatePluginsSerialized(plugins, options))
 }
 
 export type DeactivateAllPluginsOptions = Readonly<{
@@ -249,11 +260,11 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
   }
 }
 
-export async function deactivatePluginById(pluginId: string, options: DeactivateAllPluginsOptions = {}): Promise<void> {
-  await deactivateOne(pluginId, options)
+export function deactivatePluginById(pluginId: string, options: DeactivateAllPluginsOptions = {}): Promise<void> {
+  return serializeLifecycle(() => deactivateOne(pluginId, options))
 }
 
-export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}): Promise<void> {
+async function deactivateAllPluginsSerialized(options: DeactivateAllPluginsOptions): Promise<void> {
   const toDeactivate = [...activationOrder].reverse()
   if (toDeactivate.length === 0) return
 
@@ -264,6 +275,10 @@ export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions 
   activeInstances.clear()
   activationOrder.length = 0
   log.info('All plugins deactivated')
+}
+
+export function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}): Promise<void> {
+  return serializeLifecycle(() => deactivateAllPluginsSerialized(options))
 }
 
 export function getActivatedPluginIds(): string[] {
