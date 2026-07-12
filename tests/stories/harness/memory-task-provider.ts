@@ -242,11 +242,12 @@ export class MemoryTaskProvider implements TaskProvider {
   }
 
   getComments(taskId: string, params: Readonly<{ limit?: number; offset?: number }> = {}): Promise<Comment[]> {
+    const pagination = clone(params)
     return Promise.resolve().then(() => {
       this.requireTask(taskId)
       const comments = [...(this.comments.get(taskId)?.values() ?? [])]
-      const offset = Math.max(0, params.offset ?? 0)
-      const limit = Math.max(0, params.limit ?? comments.length)
+      const offset = Math.max(0, pagination.offset ?? 0)
+      const limit = Math.max(0, pagination.limit ?? comments.length)
       const result = comments.slice(offset, offset + limit)
       this.events?.record('comment.list', { taskId, count: result.length })
       return clone(result)

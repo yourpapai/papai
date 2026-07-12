@@ -132,6 +132,19 @@ describe('MemoryTaskProvider', () => {
     expect(await provider.getComments(secondTask.id)).toEqual([{ id: 'comment-3', body: 'other task comment' }])
   })
 
+  test('snapshots comment pagination before deferred listing', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'project-1', title: 'pagination' })
+    await provider.addComment(task.id, 'first comment')
+    await provider.addComment(task.id, 'second comment')
+    const params = { offset: 0, limit: 1 }
+
+    const comments = provider.getComments(task.id, params)
+    params.offset = 1
+
+    await expect(comments).resolves.toEqual([{ id: 'comment-1', body: 'first comment' }])
+  })
+
   test('manages reactions and removes them with their comment', async () => {
     const provider = new MemoryTaskProvider()
     const task = await provider.createTask({ projectId: 'project-1', title: 'react' })
