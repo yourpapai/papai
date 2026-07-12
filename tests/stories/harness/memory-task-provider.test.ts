@@ -238,6 +238,38 @@ describe('MemoryTaskProvider', () => {
     expect(await provider.listLabels()).toEqual([{ id: first.id, name: 'gamma', color: '#aabbcc' }])
   })
 
+  test('snapshots label creation input before asynchronous persistence', async () => {
+    const provider = new MemoryTaskProvider()
+    const input = { name: 'alpha', color: '#aabbcc' }
+    const created = provider.createLabel(input)
+    input.name = 'mutated label'
+    input.color = '#ddeeff'
+
+    await expect(created).resolves.toEqual({ id: 'label-1', name: 'alpha', color: '#aabbcc' })
+    await expect(provider.listLabels()).resolves.toEqual([{ id: 'label-1', name: 'alpha', color: '#aabbcc' }])
+  })
+
+  test('snapshots label update input before asynchronous persistence', async () => {
+    const provider = new MemoryTaskProvider()
+    const label = await provider.createLabel({ name: 'alpha', color: '#aabbcc' })
+    const input = { name: 'beta', color: '#ddeeff' }
+    const updated = provider.updateLabel(label.id, input)
+    input.name = 'mutated label'
+    input.color = '#112233'
+
+    await expect(updated).resolves.toEqual({ id: label.id, name: 'beta', color: '#ddeeff' })
+    await expect(provider.listLabels()).resolves.toEqual([{ id: label.id, name: 'beta', color: '#ddeeff' }])
+  })
+
+  test('rejects a label rename that collides with another label without mutating state', async () => {
+    const provider = new MemoryTaskProvider()
+    const first = await provider.createLabel({ name: 'alpha', color: '#aabbcc' })
+    const second = await provider.createLabel({ name: 'beta', color: '#ddeeff' })
+
+    await expect(provider.updateLabel(first.id, { name: second.name })).rejects.toThrow('Label already exists: beta')
+    await expect(provider.listLabels()).resolves.toEqual([first, second])
+  })
+
   test('assigns labels to tasks and removes the assignment', async () => {
     const provider = new MemoryTaskProvider()
     const task = await provider.createTask({ projectId: 'project-1', title: 'labeled task' })

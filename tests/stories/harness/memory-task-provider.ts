@@ -369,8 +369,8 @@ export class MemoryTaskProvider implements TaskProvider {
   }
 
   createLabel(params: CreateLabelInput): Promise<Label> {
+    const input = clone(params)
     return Promise.resolve().then(() => {
-      const input = clone(params)
       if ([...this.labels.values()].some((label) => label.name === input.name)) {
         throw new Error(`Label already exists: ${input.name}`)
       }
@@ -382,9 +382,17 @@ export class MemoryTaskProvider implements TaskProvider {
   }
 
   updateLabel(labelId: string, params: UpdateLabelInput): Promise<Label> {
+    const input = clone(params)
     return Promise.resolve().then(() => {
       const existing = this.requireLabel(labelId)
-      const patch = clone(definedLabelUpdate(params))
+      const patch = definedLabelUpdate(input)
+      if (
+        patch.name !== undefined &&
+        patch.name !== existing.name &&
+        [...this.labels.values()].some((label) => label.name === patch.name)
+      ) {
+        throw new Error(`Label already exists: ${patch.name}`)
+      }
       const updated: Label = { ...existing, ...patch, id: labelId }
       this.labels.set(labelId, clone(updated))
       this.events?.record('label.update', { labelId, fields: Object.keys(patch).sort() })
