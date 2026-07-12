@@ -32,14 +32,16 @@ export type ScenarioRuntimeExtension = Readonly<{
 }>
 
 export type ScenarioRuntimeExtensionLifecycle = Readonly<{
+  hasRegistered(): boolean
   start(): Promise<void>
   stop(): Promise<void>
 }>
 
 export const createScenarioRuntimeExtensionLifecycle = (
-  extensions: readonly ScenarioRuntimeExtension[],
+  getExtensions: () => readonly ScenarioRuntimeExtension[],
 ): ScenarioRuntimeExtensionLifecycle => {
   let cleanups: readonly RuntimeExtensionCleanup[] = []
+  let startInFlight: Promise<void> | undefined
   let stopInFlight: Promise<void> | undefined
 
   const stop = (): Promise<void> => {
@@ -56,19 +58,23 @@ export const createScenarioRuntimeExtensionLifecycle = (
     return stopInFlight
   }
 
-  const start = async (): Promise<void> => {
-    try {
-      for (const extension of extensions) {
-        const cleanup = await extension.start()
-        if (typeof cleanup === 'function') cleanups = [...cleanups, cleanup]
+  const start = (): Promise<void> => {
+    if (startInFlight !== undefined) return startInFlight
+    startInFlight = (async (): Promise<void> => {
+      try {
+        for (const extension of getExtensions()) {
+          const cleanup = await extension.start()
+          if (typeof cleanup === 'function') cleanups = [...cleanups, cleanup]
+        }
+      } catch (error) {
+        const rollback = stop()
+        await rollback.catch((): void => undefined)
+        if (stopInFlight === rollback) stopInFlight = Promise.resolve()
+        throw error
       }
-    } catch (error) {
-      const rollback = stop()
-      await rollback.catch((): void => undefined)
-      if (stopInFlight === rollback) stopInFlight = Promise.resolve()
-      throw error
-    }
+    })()
+    return startInFlight
   }
 
-  return { start, stop }
+  return { hasRegistered: (): boolean => getExtensions().length > 0, start, stop }
 }

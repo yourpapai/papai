@@ -116,6 +116,7 @@ export type ScenarioWorld = Readonly<{
   start(): Promise<void>
   ensureStarted(): Promise<void>
   assertPrerequisitesOpen(operation: string): void
+  registerRuntimeExtension(extension: ScenarioRuntimeExtension): void
   message(user: UserHandle, context: ContextHandle, text: string): IncomingMessage
   repliesForThread(thread: ThreadHandle): readonly ScenarioReply[]
   settle(): Promise<void>
@@ -328,7 +329,7 @@ function createCleanupCoordinator(
       const failures: unknown[] = []
       if (resources.runtime !== undefined)
         await runCleanupStep(events, 'world.cleanup.runtime.stop', () => resources.runtime?.stop(), failures, hooks)
-      if (runtimeExtensions !== undefined)
+      if (runtimeExtensions?.hasRegistered() === true)
         await runCleanupStep(events, 'world.cleanup.runtime-extensions.stop', runtimeExtensions.stop, failures, hooks)
       await runCleanupStep(events, 'world.cleanup.plugins.deactivate', deactivateAllPlugins, failures, hooks)
       if (resources.providerAttempted)
@@ -370,10 +371,12 @@ async function failAfterCleanup(primary: unknown, cleanup: CleanupCoordinator, e
 function wrapProductionExtensions(
   deps: PapaiRuntimeDeps,
   hooks: ScenarioWorldTestHooks,
+  runtimeExtensions: ScenarioRuntimeExtensionLifecycle,
 ): PapaiRuntimeDeps['extensions'] {
   return {
     ...deps.extensions,
     async start(router): Promise<readonly string[]> {
+      await runtimeExtensions.start()
       const activated = await deps.extensions.start(router)
       await hooks.afterProductionExtensionsStart?.()
       return activated
@@ -401,9 +404,8 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   const tasks = new MemoryTaskProvider({ events, nextId: (): string => ids.next('task') })
   const fixtures = createScenarioFixtures({ taskProvider: tasks })
   const resources: CleanupResources = { runtime: undefined, databaseAttempted: false, providerAttempted: false }
-  const runtimeExtensions = options.runtimeExtensions ?? []
-  const runtimeExtensionLifecycle =
-    runtimeExtensions.length === 0 ? undefined : createScenarioRuntimeExtensionLifecycle(runtimeExtensions)
+  let runtimeExtensions: readonly ScenarioRuntimeExtension[] = [...(options.runtimeExtensions ?? [])]
+  const runtimeExtensionLifecycle = createScenarioRuntimeExtensionLifecycle(() => runtimeExtensions)
   const cleanup = createCleanupCoordinator(resources, fixtures, events, http, model, hooks, runtimeExtensionLifecycle)
   const pending = createPendingWork(ids)
   const router = createRouter(chat)
@@ -417,7 +419,6 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     resources.databaseAttempted = true
     await fixtures.setupDatabase()
     await hooks.afterDatabaseSetup?.()
-    await runtimeExtensionLifecycle?.start()
     fixtures.seedPlatformInstance()
     fixtures.seedSystemLlmConfig()
     resources.providerAttempted = true
@@ -442,7 +443,10 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
       },
       { pluginProviderRuntimeDeps },
     )
-    const deps = { ...productionDeps, extensions: wrapProductionExtensions(productionDeps, hooks) }
+    const deps = {
+      ...productionDeps,
+      extensions: wrapProductionExtensions(productionDeps, hooks, runtimeExtensionLifecycle),
+    }
     runtime = createPapaiRuntime(
       {
         adminUserId: ADMIN_USER_ID,
@@ -500,6 +504,15 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     throwFailures(failures, 'Scenario verification failed', events)
   }
 
+  const assertPrerequisitesOpen = (operation: string): void => {
+    if (state !== 'new') throw new Error(events.formatFailure(`${operation} requires an unstarted scenario world`))
+  }
+
+  const registerRuntimeExtension = (extension: ScenarioRuntimeExtension): void => {
+    assertPrerequisitesOpen('registerRuntimeExtension')
+    runtimeExtensions = [...runtimeExtensions, extension]
+  }
+
   const world: ScenarioWorld = {
     name,
     runtime,
@@ -520,9 +533,8 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     },
     start,
     ensureStarted: start,
-    assertPrerequisitesOpen(operation): void {
-      if (state !== 'new') throw new Error(events.formatFailure(`${operation} requires an unstarted scenario world`))
-    },
+    assertPrerequisitesOpen,
+    registerRuntimeExtension,
     message: (user, context, text) => messageForContext(world, user, context, text),
     repliesForThread: (thread) => repliesForThread(world, thread),
     settle: pending.settle,

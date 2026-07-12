@@ -191,24 +191,6 @@ describe('scenario world', () => {
   test('starts configured runtime extensions FIFO before production extensions and stops them LIFO', async () => {
     const lifecycle: string[] = []
     const world = await createScenarioWorld('runtime extension order', {
-      runtimeExtensions: [
-        {
-          start: () => {
-            lifecycle.push('first.start')
-            return (): void => {
-              lifecycle.push('first.stop')
-            }
-          },
-        },
-        {
-          start: (): Promise<() => void> => {
-            lifecycle.push('second.start')
-            return Promise.resolve((): void => {
-              lifecycle.push('second.stop')
-            })
-          },
-        },
-      ],
       testHooks: {
         afterProductionExtensionsStart: (): void => {
           lifecycle.push('production.start')
@@ -216,16 +198,33 @@ describe('scenario world', () => {
       },
     })
 
-    expect(lifecycle).toEqual(['first.start', 'second.start'])
-    await world.start()
+    world.registerRuntimeExtension({
+      start: () => {
+        lifecycle.push('first.start')
+        return (): void => {
+          lifecycle.push('first.stop')
+        }
+      },
+    })
+    world.registerRuntimeExtension({
+      start: (): Promise<() => void> => {
+        lifecycle.push('second.start')
+        return Promise.resolve((): void => {
+          lifecycle.push('second.stop')
+        })
+      },
+    })
+
+    expect(lifecycle).toEqual([])
+    await Promise.all([world.start(), world.ensureStarted()])
     expect(lifecycle).toEqual(['first.start', 'second.start', 'production.start'])
 
     await world.stop()
     expect(lifecycle).toEqual(['first.start', 'second.start', 'production.start', 'second.stop', 'first.stop'])
   })
 
-  test('does not start runtime extensions when their configuration is empty', async () => {
-    const world = await createScenarioWorld('no runtime extensions', { runtimeExtensions: [] })
+  test('does not start runtime extensions when none are registered', async () => {
+    const world = await createScenarioWorld('no runtime extensions')
 
     await world.start()
     await world.stop()
@@ -233,28 +232,41 @@ describe('scenario world', () => {
     expect(world.events.all().some(({ kind }) => kind === 'world.cleanup.runtime-extensions.stop')).toBe(false)
   })
 
+  test('rejects runtime extension registration after startup through the prerequisites guard', async () => {
+    const world = await createScenarioWorld('late runtime extension registration')
+
+    await world.start()
+
+    expect(() =>
+      world.registerRuntimeExtension({
+        start: (): void => undefined,
+      }),
+    ).toThrow('registerRuntimeExtension requires an unstarted scenario world')
+
+    await world.stop()
+  })
+
   test('cleans started runtime extensions when a later runtime extension fails to start', async () => {
     const lifecycle: string[] = []
     const startFailure = new Error('second runtime extension failed')
 
-    const failure = await createScenarioWorld('runtime extension start failure', {
-      runtimeExtensions: [
-        {
-          start: () => {
-            lifecycle.push('first.start')
-            return (): void => {
-              lifecycle.push('first.stop')
-            }
-          },
-        },
-        {
-          start: (): void => {
-            lifecycle.push('second.start')
-            throw startFailure
-          },
-        },
-      ],
-    }).then(
+    const world = await createScenarioWorld('runtime extension start failure')
+    world.registerRuntimeExtension({
+      start: () => {
+        lifecycle.push('first.start')
+        return (): void => {
+          lifecycle.push('first.stop')
+        }
+      },
+    })
+    world.registerRuntimeExtension({
+      start: (): void => {
+        lifecycle.push('second.start')
+        throw startFailure
+      },
+    })
+
+    const failure = await world.start().then(
       () => undefined,
       (error: unknown) => error,
     )
@@ -268,33 +280,32 @@ describe('scenario world', () => {
     const cleanupFailure = new Error('second runtime extension cleanup failed')
     const startFailure = new Error('third runtime extension failed')
 
-    const failure = await createScenarioWorld('runtime extension rollback cleanup failure', {
-      runtimeExtensions: [
-        {
-          start: () => {
-            lifecycle.push('first.start')
-            return (): void => {
-              lifecycle.push('first.stop')
-            }
-          },
-        },
-        {
-          start: () => {
-            lifecycle.push('second.start')
-            return (): void => {
-              lifecycle.push('second.stop')
-              throw cleanupFailure
-            }
-          },
-        },
-        {
-          start: (): void => {
-            lifecycle.push('third.start')
-            throw startFailure
-          },
-        },
-      ],
-    }).then(
+    const world = await createScenarioWorld('runtime extension rollback cleanup failure')
+    world.registerRuntimeExtension({
+      start: () => {
+        lifecycle.push('first.start')
+        return (): void => {
+          lifecycle.push('first.stop')
+        }
+      },
+    })
+    world.registerRuntimeExtension({
+      start: () => {
+        lifecycle.push('second.start')
+        return (): void => {
+          lifecycle.push('second.stop')
+          throw cleanupFailure
+        }
+      },
+    })
+    world.registerRuntimeExtension({
+      start: (): void => {
+        lifecycle.push('third.start')
+        throw startFailure
+      },
+    })
+
+    const failure = await world.start().then(
       () => undefined,
       (error: unknown) => error,
     )
@@ -305,14 +316,11 @@ describe('scenario world', () => {
 
   test('runs runtime extension cleanup only once when world stop is repeated', async () => {
     let cleanupCount = 0
-    const world = await createScenarioWorld('runtime extension idempotent cleanup', {
-      runtimeExtensions: [
-        {
-          start: () => (): void => {
-            cleanupCount += 1
-          },
-        },
-      ],
+    const world = await createScenarioWorld('runtime extension idempotent cleanup')
+    world.registerRuntimeExtension({
+      start: () => (): void => {
+        cleanupCount += 1
+      },
     })
 
     await world.start()
