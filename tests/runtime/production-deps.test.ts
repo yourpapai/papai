@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../src/chat/types.js'
 import { subscribeCountForTest } from '../../src/debug/event-bus.js'
+import { armMemoryCapture, type ArmCaptureDeps } from '../../src/long-term-memory/capture-debounce.js'
 import { toolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { createPapaiRuntime } from '../../src/runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from '../../src/runtime/production-deps.js'
@@ -38,6 +39,37 @@ const interaction = {
 } as const satisfies IncomingInteraction
 
 describe('createProductionRuntimeDeps', () => {
+  test('cancels pending memory captures before flushing application work', async () => {
+    const events: string[] = []
+    const captureDeps: ArmCaptureDeps = {
+      markActivity: (): void => undefined,
+      runCapture: (): Promise<void> => Promise.resolve(),
+      schedule: (): ReturnType<typeof setTimeout> => setTimeout(() => undefined, 9_999_999),
+      clear: (timer): void => {
+        clearTimeout(timer)
+        events.push('capture:cancel')
+      },
+      debounceMs: 600_000,
+      now: (): string => '2026-06-16T00:00:00.000Z',
+    }
+    armMemoryCapture(
+      { storageContextId: 'group', configContextId: 'group', contextType: 'group', history: [] },
+      captureDeps,
+    )
+    const deps = createProductionRuntimeDeps({
+      application: {
+        flush: (): Promise<void> => {
+          events.push('application:flush')
+          return Promise.resolve()
+        },
+      },
+    })
+
+    await deps.application.flush()
+
+    expect(events).toEqual(['capture:cancel', 'application:flush'])
+  })
+
   test('starts and stops lazily loaded production background services when enabled', async () => {
     await setupTestDb()
     unregisterDefaultSchedulerTasks()

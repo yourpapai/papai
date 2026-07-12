@@ -48,6 +48,8 @@
     "test:mutate:changed-paired": "bun scripts/mutation/changed-files.ts",
     "test:e2e": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts",
     "test:e2e:watch": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts --watch",
+    "test:stories": "bun scripts/test-stories.ts",
+    "test:stories:stress": "bun scripts/test-stories.ts --rerun-each 10 --randomize",
     "check": "./scripts/check.sh --staged",
     "check:full": "./scripts/check.sh",
     "check:verbose": "bun run --parallel lint typecheck format:check knip test duplicates review-loop:lint review-loop:typecheck review-loop:format:check review-loop:test",

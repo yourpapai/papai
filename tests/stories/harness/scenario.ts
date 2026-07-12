@@ -8,6 +8,7 @@ import { expect, test } from 'bun:test'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
+import { runWithScenarioIoGuard } from './io-guard.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
   type ContextHandle,
@@ -281,32 +282,45 @@ function combineFailures(primary: unknown, teardown: unknown): AggregateError {
   return new AggregateError([primary, ...teardownErrors], 'Scenario execution and teardown failed', { cause: primary })
 }
 
-export async function executeScenario(
+export function executeScenario(
   name: string,
-  run: (api: ScenarioApi) => Promise<void>,
+  run: (api: ScenarioApi) => void | Promise<void>,
   createWorld?: WorldFactory,
 ): Promise<void> {
-  const factory =
-    createWorld ??
-    ((scenarioName): Promise<ScenarioWorld> =>
-      import('./world.js').then((module) => module.createScenarioWorld(scenarioName)))
-  const world = await factory(name)
-  let primaryFailure: Error | undefined
-  try {
-    await run(world.api)
-    world.verify()
-  } catch (error) {
-    primaryFailure = error instanceof Error ? error : new Error(String(error))
-  }
-  try {
-    await world.stop()
-  } catch (teardownFailure) {
-    if (primaryFailure !== undefined) throw combineFailures(primaryFailure, teardownFailure)
-    throw teardownFailure
-  }
-  if (primaryFailure !== undefined) return Promise.reject(primaryFailure)
+  return runWithScenarioIoGuard(name, async (guard): Promise<void> => {
+    const factory =
+      createWorld ??
+      ((scenarioName): Promise<ScenarioWorld> =>
+        import('./world.js').then((module) => module.createScenarioWorld(scenarioName, { tempRoot: guard?.tempRoot })))
+    const world = await factory(name)
+    guard?.bind({ events: world.events, http: world.http })
+    let primaryFailure: Error | undefined
+    try {
+      await run(world.api)
+      world.verify()
+    } catch (error) {
+      primaryFailure = error instanceof Error ? error : new Error(String(error))
+    }
+    let teardownFailure: Error | undefined
+    try {
+      await world.stop()
+    } catch (error) {
+      teardownFailure = error instanceof Error ? error : new Error(String(error))
+    }
+    try {
+      guard?.verify()
+    } catch (error) {
+      const guardFailure = error instanceof Error ? error : new Error(String(error))
+      teardownFailure = teardownFailure === undefined ? guardFailure : combineFailures(teardownFailure, guardFailure)
+    }
+    if (teardownFailure !== undefined) {
+      if (primaryFailure !== undefined) throw combineFailures(primaryFailure, teardownFailure)
+      return Promise.reject(teardownFailure)
+    }
+    if (primaryFailure !== undefined) return Promise.reject(primaryFailure)
+  })
 }
 
-export function scenario(name: string, run: (api: ScenarioApi) => Promise<void>): void {
+export function scenario(name: string, run: (api: ScenarioApi) => void | Promise<void>): void {
   test(name, () => executeScenario(name, run))
 }

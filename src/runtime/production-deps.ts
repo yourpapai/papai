@@ -18,6 +18,7 @@ import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-rout
 import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
 import { logger } from '../logger.js'
+import { cancelPendingMemoryCaptures } from '../long-term-memory/capture-debounce.js'
 import { initializeMessageCache } from '../message-cache/index.js'
 import { flushOnShutdown } from '../message-queue/index.js'
 import { deactivateAllPlugins } from '../plugins/loader.js'
@@ -255,11 +256,19 @@ export function createProductionRuntimeDeps(
     },
     options,
   )
+  const application = { ...defaults.application, ...overrides.application }
+  const flushApplication = application.flush
   return {
     database: { ...defaults.database, ...overrides.database },
     chat: { ...defaults.chat, ...overrides.chat },
     extensions: { ...defaults.extensions, ...overrides.extensions },
-    application: { ...defaults.application, ...overrides.application },
+    application: {
+      ...application,
+      async flush(): Promise<void> {
+        cancelPendingMemoryCaptures()
+        await flushApplication()
+      },
+    },
     background: { ...defaults.background, ...overrides.background },
     web: { ...defaults.web, ...overrides.web },
     capabilities:

@@ -20,7 +20,12 @@ export type ArmCaptureDeps = Readonly<{
   now: () => string
 }>
 
-const pending = new Map<string, ReturnType<typeof setTimeout>>()
+type PendingCapture = Readonly<{
+  timer: ReturnType<typeof setTimeout>
+  clear(timer: ReturnType<typeof setTimeout>): void
+}>
+
+const pending = new Map<string, PendingCapture>()
 
 const defaultDeps: ArmCaptureDeps = {
   markActivity: (input, historyLen, now) => {
@@ -51,7 +56,7 @@ export function armMemoryCapture(input: RunMemoryCaptureInput, deps: ArmCaptureD
   deps.markActivity(input, input.history.length, deps.now())
 
   const existing = pending.get(input.storageContextId)
-  if (existing !== undefined) deps.clear(existing)
+  if (existing !== undefined) existing.clear(existing.timer)
 
   const timer = deps.schedule(() => {
     pending.delete(input.storageContextId)
@@ -65,5 +70,11 @@ export function armMemoryCapture(input: RunMemoryCaptureInput, deps: ArmCaptureD
       )
     })
   }, deps.debounceMs)
-  pending.set(input.storageContextId, timer)
+  pending.set(input.storageContextId, { timer, clear: deps.clear })
+}
+
+/** Cancel deferred captures during runtime teardown and release their captured state. */
+export function cancelPendingMemoryCaptures(): void {
+  for (const { timer, clear } of pending.values()) clear(timer)
+  pending.clear()
 }

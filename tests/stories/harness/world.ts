@@ -87,7 +87,7 @@ export type ScenarioWorldTestHooks = Readonly<{
   onCleanupStep?(kind: string): void
 }>
 
-export type ScenarioWorldOptions = Readonly<{ testHooks?: ScenarioWorldTestHooks }>
+export type ScenarioWorldOptions = Readonly<{ testHooks?: ScenarioWorldTestHooks; tempRoot?: string }>
 
 export type ScenarioWorld = Readonly<{
   name: string
@@ -101,6 +101,7 @@ export type ScenarioWorld = Readonly<{
   fixtures: ScenarioFixtures
   clock: ScenarioClock
   ids: ScenarioIds
+  tempRoot: string
   startupEvents: readonly ScenarioEvent[]
   capabilityEntriesAtStart: ReadonlyArray<readonly [string, string]>
   start(): Promise<void>
@@ -494,6 +495,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     fixtures,
     clock,
     ids,
+    tempRoot: options.tempRoot ?? '',
     get startupEvents(): readonly ScenarioEvent[] {
       return startupEvents
     },

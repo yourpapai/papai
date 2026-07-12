@@ -15,6 +15,7 @@ export type ScenarioEvents = Readonly<{
   all(): readonly ScenarioEvent[]
   recent(limit: number): readonly ScenarioEvent[]
   setPhase(phase: string): void
+  currentPhase(): string
   formatFailure(message: string): string
 }>
 
@@ -181,6 +182,7 @@ export function createScenarioEvents(scenarioName: string): ScenarioEvents {
     setPhase(nextPhase): void {
       phase = nextPhase
     },
+    currentPhase: (): string => phase,
     formatFailure(message): string {
       return [
         message,
