@@ -71,9 +71,16 @@ export type FakeMagiStart = Readonly<{
   expected?: ExpectedStart
 }>
 
+export type FakeMagiStartFailure = Readonly<{
+  status: number
+  body: unknown
+  expected?: ExpectedStart
+}>
+
 export type FakeMagi = Readonly<{
   expectAgents(agents: readonly unknown[]): void
   expectStartSession(session: FakeMagiStart): void
+  expectStartFailure(failure: FakeMagiStartFailure): void
   expectSessions(filter: 'new' | 'active' | 'waiting' | 'done', sessions: readonly unknown[]): void
   expectSession(sessionId: string, session: unknown): void
   verifyConsumed(): void
@@ -168,6 +175,16 @@ export function createFakeMagi(options: FakeMagiOptions): FakeMagi {
           },
           202,
         )
+      })
+    },
+    expectStartFailure(failure): void {
+      options.http.expect({ method: 'POST', url: `${baseUrl}/sessions` }, async (request) => {
+        authorized(request)
+        assertJsonContentType(request)
+        const body = await parseStartBody(request)
+        assertExpected(body, failure.expected)
+        recordStart(options.events, body)
+        return jsonResponse(failure.body, failure.status)
       })
     },
     expectSessions(filter, sessions): void {

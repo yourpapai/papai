@@ -207,6 +207,24 @@ const ACP_COMMAND_STORY_IDS = [
   'tests/stories/integrations/runtime-extensions/command-prompt.story.test.ts#SCN-coding-acp-command: eligible and ineligible runtime extension command and prompt',
 ] as const satisfies NonEmptyReadonlyTuple<string>
 
+const QUALIFICATION_STORY_IDS: Partial<Record<CatalogScenarioId, NonEmptyReadonlyTuple<string>>> = {
+  'SCN-coding-acp-start-fresh': [
+    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-start-fresh: starts a configured session through the real ACP tool loop',
+  ],
+  'SCN-coding-acp-not-configured': [
+    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-not-configured: refuses an unconfigured start without creating a session',
+  ],
+  'SCN-coding-acp-whomayuse-denied': [
+    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-whomayuse-denied: hides session start from an operator-denied member',
+  ],
+  'SCN-coding-acp-guest-denied': [
+    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-guest-denied: hides session start from a guest group turn',
+  ],
+  'SCN-settings-coding-agent-provider': [
+    'tests/stories/settings/module-settings-qualification.story.test.ts#SCN-settings-coding-agent-provider: updates coding credentials through settings and changes the next chat turn',
+  ],
+}
+
 function pendingReasonFor(catalogStatus: CatalogStatus): PendingReason {
   if (catalogStatus === 'gap') return toPendingReason('Catalog gap: awaiting a local executable story.')
   if (catalogStatus === 'contract-only')
@@ -216,7 +234,7 @@ function pendingReasonFor(catalogStatus: CatalogStatus): PendingReason {
 
 function executableStoryIdsFor(scenarioId: CatalogScenarioId): NonEmptyReadonlyTuple<string> | undefined {
   if (scenarioId === 'SCN-coding-acp-command') return ACP_COMMAND_STORY_IDS
-  return undefined
+  return QUALIFICATION_STORY_IDS[scenarioId]
 }
 
 export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
