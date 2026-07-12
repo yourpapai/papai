@@ -78,6 +78,44 @@ describe('MemoryTaskProvider', () => {
     expect((await provider.getTask(created.id)).title).toBe('Immutable')
   })
 
+  test('ignores undefined keys from a real tool-shaped update', async () => {
+    const events = createScenarioEvents('tool update')
+    const provider = new MemoryTaskProvider({ events })
+    const created = await provider.createTask({
+      projectId: 'project-1',
+      title: 'Original title',
+      description: 'Keep this description',
+      status: 'open',
+      priority: 'medium',
+      dueDate: '2026-08-01',
+    })
+
+    const updated = await provider.updateTask(created.id, {
+      title: 'Changed title',
+      description: undefined,
+      status: undefined,
+      priority: undefined,
+      startDate: undefined,
+      dueDate: undefined,
+      projectId: undefined,
+      assignee: undefined,
+      customFields: undefined,
+    })
+
+    expect(updated).toMatchObject({
+      title: 'Changed title',
+      description: 'Keep this description',
+      status: 'open',
+      priority: 'medium',
+      dueDate: '2026-08-01',
+      projectId: 'project-1',
+    })
+    expect(events.all().at(-1)).toMatchObject({
+      kind: 'task.update',
+      data: { taskId: created.id, fields: ['title'] },
+    })
+  })
+
   test('starts each provider with fresh IDs and advertises only its implemented core', async () => {
     const first = new MemoryTaskProvider()
     const second = new MemoryTaskProvider()

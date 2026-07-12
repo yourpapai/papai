@@ -10,6 +10,8 @@ import type { PlatformInstanceType } from '../../../src/instances/types.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../../src/plugins/types.js'
 import {
+  createProvider,
+  getTaskProviderDescriptor,
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../../src/providers/registry.js'
@@ -148,6 +150,15 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
         instanceConfigSchema: [],
         contextConfigSchema: [],
       })
+      const descriptor = getTaskProviderDescriptor('kaneo')
+      const owner = descriptor?.source === 'builtin' ? 'builtin' : descriptor?.source.plugin
+      if (owner !== SCENARIO_PROVIDER_PLUGIN_ID) {
+        throw new Error(`Hermetic task provider registration failed: type 'kaneo' is owned by plugin '${owner}'`)
+      }
+      if (createProvider('kaneo', {}) !== taskProvider) {
+        unregisterContributedTaskProviderType(SCENARIO_PROVIDER_PLUGIN_ID)
+        throw new Error("Hermetic task provider registration failed: type 'kaneo' did not resolve the world provider")
+      }
     },
     teardown,
   }

@@ -76,6 +76,18 @@ const includesQuery = (task: Task, normalizedQuery: string): boolean =>
   task.title.toLowerCase().includes(normalizedQuery) ||
   (task.description ?? '').toLowerCase().includes(normalizedQuery)
 
+const definedUpdate = (params: UpdateTaskInput): UpdateTaskInput => ({
+  ...(params.title === undefined ? {} : { title: params.title }),
+  ...(params.description === undefined ? {} : { description: params.description }),
+  ...(params.status === undefined ? {} : { status: params.status }),
+  ...(params.priority === undefined ? {} : { priority: params.priority }),
+  ...(params.startDate === undefined ? {} : { startDate: params.startDate }),
+  ...(params.dueDate === undefined ? {} : { dueDate: params.dueDate }),
+  ...(params.projectId === undefined ? {} : { projectId: params.projectId }),
+  ...(params.assignee === undefined ? {} : { assignee: params.assignee }),
+  ...(params.customFields === undefined ? {} : { customFields: params.customFields }),
+})
+
 export class MemoryTaskProvider implements TaskProvider {
   readonly name = 'kaneo'
   readonly supportsCustomFields = true
@@ -116,9 +128,10 @@ export class MemoryTaskProvider implements TaskProvider {
   updateTask(taskId: string, params: UpdateTaskInput): Promise<Task> {
     return Promise.resolve().then(() => {
       const existing = this.requireTask(taskId)
-      const updated: Task = { ...existing, ...clone(params), id: taskId, url: existing.url }
+      const patch = clone(definedUpdate(params))
+      const updated: Task = { ...existing, ...patch, id: taskId, url: existing.url }
       this.tasks.set(taskId, clone(updated))
-      this.events?.record('task.update', { taskId, fields: Object.keys(params).sort() })
+      this.events?.record('task.update', { taskId, fields: Object.keys(patch).sort() })
       return clone(updated)
     })
   }

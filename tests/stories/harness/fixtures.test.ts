@@ -12,7 +12,12 @@ import { getPlatformInstance } from '../../../src/instances/platform-store.js'
 import { getTaskInstance } from '../../../src/instances/task-store.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { getPluginAdminState } from '../../../src/plugins/store.js'
-import { getTaskProviderDescriptor } from '../../../src/providers/registry.js'
+import {
+  createProvider,
+  getTaskProviderDescriptor,
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../../src/providers/registry.js'
 import { TaskProviderResolver } from '../../../src/providers/resolver.js'
 import { getSystemConfig, isSystemConfigComplete } from '../../../src/system-config.js'
 import { isAuthorized } from '../../../src/users.js'
@@ -74,6 +79,34 @@ describe('scenario fixtures', () => {
     expect(getTaskProviderDescriptor('kaneo')).toBeUndefined()
     fixtures.registerTaskProvider()
     expect(getTaskProviderDescriptor('kaneo')).toBeDefined()
+  })
+
+  test('fails fast on a foreign provider collision without removing the foreign owner', async () => {
+    await fixtures.setupDatabase()
+    const foreignProvider = new MemoryTaskProvider()
+    registerContributedTaskProviderType('kaneo', {
+      pluginId: 'other-owner',
+      factory: () => foreignProvider,
+      capabilities: foreignProvider.capabilities,
+      traits: foreignProvider.traits,
+      displayName: 'Other Owner',
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
+    })
+
+    try {
+      expect(() => fixtures.registerTaskProvider()).toThrow(
+        "Hermetic task provider registration failed: type 'kaneo' is owned by plugin 'other-owner'",
+      )
+      expect(getTaskProviderDescriptor('kaneo')?.source).toEqual({ plugin: 'other-owner' })
+      expect(createProvider('kaneo', {})).toBe(foreignProvider)
+
+      fixtures.teardown()
+      expect(getTaskProviderDescriptor('kaneo')?.source).toEqual({ plugin: 'other-owner' })
+      expect(createProvider('kaneo', {})).toBe(foreignProvider)
+    } finally {
+      unregisterContributedTaskProviderType('other-owner')
+    }
   })
 
   test('seeds authorized users, groups, and group membership through production stores', async () => {
