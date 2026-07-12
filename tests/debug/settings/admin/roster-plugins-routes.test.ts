@@ -16,7 +16,13 @@ import type { DeferredDeliveryTarget } from '../../../../src/chat/types.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../../../src/debug/chat-router-runtime.js'
 import { handleAdminRosterPluginsRoutes } from '../../../../src/debug/settings/admin/roster-plugins-routes.js'
 import { addAdmin, listAdmins, SUPER_ADMIN_PLATFORM_ID } from '../../../../src/instances/admin-store.js'
-import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from '../../../../src/plugins/loader.js'
+import { contributionRegistry } from '../../../../src/plugins/contributions.js'
+import {
+  activatePlugins,
+  deactivateAllPlugins,
+  deactivatePluginById,
+  getActivatedPluginIds,
+} from '../../../../src/plugins/loader.js'
 import { pluginRegistry } from '../../../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../../../src/plugins/types.js'
@@ -120,6 +126,34 @@ function makeRuntimeProviderPlugin(providerType: string): DiscoveredPlugin {
       providerContextConfigSchema: [],
       providerAllowedHosts: [],
       providerTraits: [],
+    },
+  })
+}
+
+function makeHttpLifecyclePlugin(id: string, owner: string): DiscoveredPlugin {
+  const entryPoint = writeTempPluginModule(`
+    export default function createPlugin() {
+      return {
+        activate(ctx) {
+          ctx.registration.registerPromptFragment({ name: 'owner', content: '${owner}' })
+          return ctx.providerRuntime.httpFetch('https://api.example.com/${owner}/activate')
+        },
+        deactivate(ctx) {
+          return ctx.providerRuntime.httpFetch('https://api.example.com/${owner}/deactivate')
+        },
+      }
+    }
+  `)
+  const base = makePlugin()
+  return makePlugin({
+    entryPoint,
+    pluginDir: dirname(entryPoint),
+    manifest: {
+      ...base.manifest,
+      id,
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+      contributes: { ...base.manifest.contributes, promptFragments: ['owner'] },
     },
   })
 }
@@ -365,6 +399,166 @@ describe('settings admin roster/plugins routes', () => {
     expect(urls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
     expect(pluginRegistry.getEntry(plugin.manifest.id)?.state).toBe('rejected')
     expect(getActivatedPluginIds()).not.toContain(plugin.manifest.id)
+  })
+
+  test('queued teardown removes the old owner before concurrent approval activates its replacement', async () => {
+    const oldPlugin = makeHttpLifecyclePlugin('test-plugin', 'old-owner')
+    pluginRegistry.registerDiscovered(oldPlugin)
+    pluginRegistry.approve(oldPlugin.manifest.id, 'admin', oldPlugin.manifestHash)
+    const sequence: string[] = []
+    const oldUrls: string[] = []
+    const oldEvents = ['old-activate', 'old-deactivate']
+    await activatePlugins([oldPlugin], {
+      providerRuntimeDeps: {
+        fetch: (url: string): Promise<Response> => {
+          oldUrls.push(url)
+          const event = oldEvents.shift()
+          assert(event !== undefined, 'unexpected old owner lifecycle request')
+          sequence.push(event)
+          return Promise.resolve(new Response('old'))
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    })
+    const blocker = makeHttpLifecyclePlugin('queue-blocker', 'blocker')
+    pluginRegistry.registerDiscovered(blocker)
+    pluginRegistry.approve(blocker.manifest.id, 'admin', blocker.manifestHash)
+    const blockerStarted = deferred<true>()
+    const blockerResponse = deferred<Response>()
+    const blockerResponses = [blockerResponse.promise, Promise.resolve(new Response('blocker-deactivated'))]
+    const blockerActivation = activatePlugins([blocker], {
+      providerRuntimeDeps: {
+        fetch: (): Promise<Response> => {
+          blockerStarted.resolve(true)
+          const response = blockerResponses.shift()
+          assert(response !== undefined, 'unexpected blocker lifecycle request')
+          return response
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    })
+    await blockerStarted.promise
+
+    const replacement = makeHttpLifecyclePlugin('test-plugin', 'new-owner')
+    pluginRegistry.registerDiscovered(replacement)
+    const teardown = deactivateAllPlugins()
+    const newUrls: string[] = []
+    const newEvents = ['new-activate', 'new-deactivate']
+    const url = new URL('https://x/settings/api/admin/plugin-approval')
+    const approval = handleAdminRosterPluginsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(superSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: replacement.manifest.id, action: 'approve' }),
+      }),
+      url,
+      '/settings/api/admin/plugin-approval',
+      {
+        pluginProviderRuntimeDeps: {
+          fetch: (requestUrl: string): Promise<Response> => {
+            newUrls.push(requestUrl)
+            const event = newEvents.shift()
+            assert(event !== undefined, 'unexpected new owner lifecycle request')
+            sequence.push(event)
+            return Promise.resolve(new Response('new'))
+          },
+          assertPublicUrl: (): Promise<void> => Promise.resolve(),
+        },
+      },
+    )
+    blockerResponse.resolve(new Response('blocker-activated'))
+    const [, , approvalResponse] = await Promise.all([blockerActivation, teardown, approval])
+
+    expect(approvalResponse.status).toBe(200)
+    expect(sequence).toEqual(['old-activate', 'old-deactivate', 'new-activate'])
+    expect(oldUrls).toEqual([
+      'https://api.example.com/old-owner/activate',
+      'https://api.example.com/old-owner/deactivate',
+    ])
+    expect(getActivatedPluginIds()).toEqual([replacement.manifest.id])
+    expect(contributionRegistry.getContributions(replacement.manifest.id)?.promptFragments).toEqual([
+      { name: 'owner', content: 'new-owner' },
+    ])
+    await deactivateAllPlugins()
+    expect(newUrls).toEqual([
+      'https://api.example.com/new-owner/activate',
+      'https://api.example.com/new-owner/deactivate',
+    ])
+  })
+
+  test('reject then approve race deactivates the old owner once and leaves one active replacement', async () => {
+    const oldPlugin = makeHttpLifecyclePlugin('test-plugin', 'reverse-old')
+    pluginRegistry.registerDiscovered(oldPlugin)
+    pluginRegistry.approve(oldPlugin.manifest.id, 'admin', oldPlugin.manifestHash)
+    const oldUrls: string[] = []
+    await activatePlugins([oldPlugin], {
+      providerRuntimeDeps: {
+        fetch: (url: string): Promise<Response> => {
+          oldUrls.push(url)
+          return Promise.resolve(new Response('old'))
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    })
+    const blocker = makeHttpLifecyclePlugin('reverse-blocker', 'reverse-blocker')
+    pluginRegistry.registerDiscovered(blocker)
+    pluginRegistry.approve(blocker.manifest.id, 'admin', blocker.manifestHash)
+    const blockerStarted = deferred<true>()
+    const blockerResponse = deferred<Response>()
+    const blockerActivation = activatePlugins([blocker], {
+      providerRuntimeDeps: {
+        fetch: (): Promise<Response> => {
+          blockerStarted.resolve(true)
+          return blockerResponse.promise
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    })
+    await blockerStarted.promise
+
+    const replacement = makeHttpLifecyclePlugin('test-plugin', 'reverse-new')
+    pluginRegistry.registerDiscovered(replacement)
+    const rejection = deactivatePluginById(oldPlugin.manifest.id).then(() => {
+      pluginRegistry.reject(oldPlugin.manifest.id)
+    })
+    const newUrls: string[] = []
+    const url = new URL('https://x/settings/api/admin/plugin-approval')
+    const approval = handleAdminRosterPluginsRoutes(
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(superSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: replacement.manifest.id, action: 'approve' }),
+      }),
+      url,
+      '/settings/api/admin/plugin-approval',
+      {
+        pluginProviderRuntimeDeps: {
+          fetch: (requestUrl: string): Promise<Response> => {
+            newUrls.push(requestUrl)
+            return Promise.resolve(new Response('new'))
+          },
+          assertPublicUrl: (): Promise<void> => Promise.resolve(),
+        },
+      },
+    )
+    blockerResponse.resolve(new Response('blocker-activated'))
+    await Promise.all([blockerActivation, rejection, approval])
+
+    expect(oldUrls).toEqual([
+      'https://api.example.com/reverse-old/activate',
+      'https://api.example.com/reverse-old/deactivate',
+    ])
+    expect(newUrls).toEqual(['https://api.example.com/reverse-new/activate'])
+    expect(getActivatedPluginIds().filter((id) => id === replacement.manifest.id)).toEqual([replacement.manifest.id])
+    expect(contributionRegistry.getContributions(replacement.manifest.id)?.promptFragments).toEqual([
+      { name: 'owner', content: 'reverse-new' },
+    ])
+    await deactivateAllPlugins()
+    expect(oldUrls).toHaveLength(2)
+    expect(newUrls).toEqual([
+      'https://api.example.com/reverse-new/activate',
+      'https://api.example.com/reverse-new/deactivate',
+    ])
   })
 
   test('plugin reject as SA deactivates an active provider plugin immediately', async () => {

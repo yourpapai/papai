@@ -228,10 +228,8 @@ const cleanupContributedTaskProviderTypes = (pluginId: string, options: Deactiva
 }
 
 async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOptions): Promise<void> {
-  const entry = pluginRegistry.getEntry(pluginId)
-  if (entry === undefined || entry.state !== 'active') return
-
   const active = activeInstances.get(pluginId)
+  if (active === undefined && !activationOrder.includes(pluginId)) return
 
   try {
     if (active !== undefined && typeof active.instance.deactivate === 'function') {
@@ -270,10 +268,7 @@ async function deactivateAllPluginsSerialized(options: DeactivateAllPluginsOptio
 
   log.info({ count: toDeactivate.length }, 'Deactivating plugins')
 
-  await toDeactivate.reduce((chain, id) => chain.then(() => deactivateOne(id, options)), Promise.resolve())
-
-  activeInstances.clear()
-  activationOrder.length = 0
+  await toDeactivate.reduce((chain, pluginId) => chain.then(() => deactivateOne(pluginId, options)), Promise.resolve())
   log.info('All plugins deactivated')
 }
 

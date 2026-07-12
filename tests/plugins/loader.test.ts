@@ -1176,6 +1176,51 @@ describe('activatePlugins', () => {
     expect(globalThis.papaiDeactivateOrder).toEqual(['activate', 'deactivate'])
   })
 
+  test('tears down loader-owned plugins after registry state changes without clobbering admin state', async () => {
+    const lifecyclePlugin = (id: string): DiscoveredPlugin => {
+      const entryPoint = writeTempPluginModule(`
+        export default function createPlugin() {
+          return {
+            activate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/${id}/activate') },
+            deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/${id}/deactivate') },
+          }
+        }
+      `)
+      return makePlugin(id, entryPoint, {
+        permissions: ['http'],
+        providerAllowedHosts: ['api.example.com'],
+      })
+    }
+    const approved = lifecyclePlugin('tracked-approved-plugin')
+    const rejected = lifecyclePlugin('tracked-rejected-plugin')
+    approvePlugin(approved)
+    approvePlugin(rejected)
+    const urls: string[] = []
+    await activatePlugins([approved, rejected], {
+      providerRuntimeDeps: {
+        fetch: (url: string): Promise<Response> => {
+          urls.push(url)
+          return Promise.resolve(new Response('ok'))
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    })
+
+    pluginRegistry.approve(approved.manifest.id, 'admin', approved.manifestHash)
+    pluginRegistry.reject(rejected.manifest.id)
+    await deactivateAllPlugins()
+
+    expect(urls).toEqual([
+      'https://api.example.com/tracked-approved-plugin/activate',
+      'https://api.example.com/tracked-rejected-plugin/activate',
+      'https://api.example.com/tracked-rejected-plugin/deactivate',
+      'https://api.example.com/tracked-approved-plugin/deactivate',
+    ])
+    expect(pluginRegistry.getEntry(approved.manifest.id)?.state).toBe('approved')
+    expect(pluginRegistry.getEntry(rejected.manifest.id)?.state).toBe('rejected')
+    expect(getActivatedPluginIds()).toEqual([])
+  })
+
   test('deactivation error still cleans framework-owned contributions', async () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
@@ -1210,6 +1255,40 @@ describe('activatePlugins', () => {
     expect(
       requireValue(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0], 'deactivate error runtime event').message,
     ).toContain('deactivate boom')
+  })
+
+  test('deactivation errors do not prevent deterministic teardown of remaining tracked plugins', async () => {
+    const firstEntryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate() {},
+          deactivate() { globalThis.papaiDeactivateOrder.push('first-ok') },
+        }
+      }
+    `)
+    const secondEntryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate() {},
+          deactivate() {
+            globalThis.papaiDeactivateOrder.push('second-error')
+            throw new Error('expected second teardown failure')
+          },
+        }
+      }
+    `)
+    const first = makePlugin('remaining-after-error', firstEntryPoint)
+    const second = makePlugin('error-before-remaining', secondEntryPoint)
+    approvePlugin(first)
+    approvePlugin(second)
+    await activatePlugins([first, second])
+
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiDeactivateOrder).toEqual(['second-error', 'first-ok'])
+    expect(getActivatedPluginIds()).toEqual([])
+    expect(contributionRegistry.getContributions(first.manifest.id)).toBeUndefined()
+    expect(contributionRegistry.getContributions(second.manifest.id)).toBeUndefined()
   })
 
   test('deactivate context rejects registration attempts', async () => {
