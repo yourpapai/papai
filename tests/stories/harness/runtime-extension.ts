@@ -6,6 +6,10 @@
 type RuntimeExtensionCleanup = () => void | Promise<void>
 type RuntimeExtensionNoCleanup = ReturnType<() => void>
 
+export type ScenarioRuntimeExtensionContext = Readonly<{
+  record(kind: string, data?: unknown): void
+}>
+
 const collectCleanupFailure = async (
   failures: readonly unknown[],
   cleanup: RuntimeExtensionCleanup,
@@ -25,10 +29,9 @@ const throwCleanupFailures = (failures: readonly unknown[]): void => {
 }
 
 export type ScenarioRuntimeExtension = Readonly<{
-  start():
-    | RuntimeExtensionNoCleanup
-    | RuntimeExtensionCleanup
-    | Promise<RuntimeExtensionNoCleanup | RuntimeExtensionCleanup>
+  start(
+    context: ScenarioRuntimeExtensionContext,
+  ): RuntimeExtensionNoCleanup | RuntimeExtensionCleanup | Promise<RuntimeExtensionNoCleanup | RuntimeExtensionCleanup>
 }>
 
 export type ScenarioRuntimeExtensionLifecycle = Readonly<{
@@ -39,6 +42,7 @@ export type ScenarioRuntimeExtensionLifecycle = Readonly<{
 
 export const createScenarioRuntimeExtensionLifecycle = (
   getExtensions: () => readonly ScenarioRuntimeExtension[],
+  context: ScenarioRuntimeExtensionContext,
 ): ScenarioRuntimeExtensionLifecycle => {
   let cleanups: readonly RuntimeExtensionCleanup[] = []
   let startInFlight: Promise<void> | undefined
@@ -72,7 +76,7 @@ export const createScenarioRuntimeExtensionLifecycle = (
     void (async (): Promise<void> => {
       try {
         for (const extension of getExtensions()) {
-          const cleanup = await extension.start()
+          const cleanup = await extension.start(context)
           if (typeof cleanup === 'function') cleanups = [...cleanups, cleanup]
         }
         deferred.resolve(undefined)

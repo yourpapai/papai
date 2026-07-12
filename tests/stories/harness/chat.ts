@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { checkAuthorizationExtended } from '../../../src/auth.js'
 import type {
   ButtonReplyOptions,
   ChatCapability,
@@ -245,9 +246,27 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
     },
     async dispatch(message): Promise<void> {
       assertDispatchable('message')
+      const normalized = cloneMessage(message)
+      const command = normalized.commandMatch === undefined ? undefined : commands.get(normalized.commandMatch)
+      if (command !== undefined) {
+        events.record('chat.message', normalized)
+        await command(
+          normalized,
+          createReply(normalized),
+          checkAuthorizationExtended(
+            normalized.user.id,
+            normalized.user.username,
+            normalized.contextId,
+            normalized.contextType,
+            normalized.threadId,
+            normalized.user.isAdmin,
+            normalized.platformInstanceId,
+          ),
+        )
+        return
+      }
       const handler = messageHandler
       if (handler === undefined) return
-      const normalized = cloneMessage(message)
       events.record('chat.message', normalized)
       await handler(normalized, createReply(normalized))
     },

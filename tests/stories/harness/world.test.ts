@@ -349,14 +349,17 @@ describe('scenario world', () => {
     const startGate = new Promise<() => void>((resolve) => {
       resolveStart = resolve
     })
-    const lifecycle = createScenarioRuntimeExtensionLifecycle(() => [
-      {
-        start: (): Promise<() => void> => {
-          markStartEntered?.()
-          return startGate
+    const lifecycle = createScenarioRuntimeExtensionLifecycle(
+      () => [
+        {
+          start: (): Promise<() => void> => {
+            markStartEntered?.()
+            return startGate
+          },
         },
-      },
-    ])
+      ],
+      { record: (): void => undefined },
+    )
 
     const starting = lifecycle.start()
     await startEntered
@@ -374,16 +377,19 @@ describe('scenario world', () => {
   test('stops an extension when its synchronous start re-enters the lifecycle', async () => {
     let cleanupCount = 0
     let stopping = Promise.resolve()
-    const lifecycle = createScenarioRuntimeExtensionLifecycle(() => [
-      {
-        start: () => {
-          stopping = lifecycle.stop()
-          return (): void => {
-            cleanupCount += 1
-          }
+    const lifecycle = createScenarioRuntimeExtensionLifecycle(
+      () => [
+        {
+          start: () => {
+            stopping = lifecycle.stop()
+            return (): void => {
+              cleanupCount += 1
+            }
+          },
         },
-      },
-    ])
+      ],
+      { record: (): void => undefined },
+    )
 
     await Promise.all([lifecycle.start(), stopping])
     await lifecycle.stop()

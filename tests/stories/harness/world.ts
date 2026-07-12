@@ -405,7 +405,11 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   const fixtures = createScenarioFixtures({ taskProvider: tasks })
   const resources: CleanupResources = { runtime: undefined, databaseAttempted: false, providerAttempted: false }
   let runtimeExtensions: readonly ScenarioRuntimeExtension[] = [...(options.runtimeExtensions ?? [])]
-  const runtimeExtensionLifecycle = createScenarioRuntimeExtensionLifecycle(() => runtimeExtensions)
+  const runtimeExtensionLifecycle = createScenarioRuntimeExtensionLifecycle(() => runtimeExtensions, {
+    record(kind, data): void {
+      events.record(kind, data)
+    },
+  })
   const cleanup = createCleanupCoordinator(resources, fixtures, events, http, model, hooks, runtimeExtensionLifecycle)
   const pending = createPendingWork(ids)
   const router = createRouter(chat)
@@ -561,16 +565,20 @@ export const messageForContext = (
   user: UserHandle,
   context: ContextHandle,
   text: string,
-): IncomingMessage => ({
-  user: { id: user.id, username: user.username, isAdmin: false },
-  contextId: context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id,
-  contextType: context.kind === 'dm' ? 'dm' : 'group',
-  threadId: context.kind === 'thread' ? context.id : undefined,
-  isMentioned: context.kind !== 'dm',
-  text,
-  messageId: world.ids.next('message'),
-  platformInstanceId: context.platformInstanceId,
-})
+): IncomingMessage => {
+  const commandMatch = /^\/([^\s@/]+)(?:@[^\s]+)?(?:\s|$)/u.exec(text)?.[1]
+  return {
+    user: { id: user.id, username: user.username, isAdmin: false },
+    contextId: context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id,
+    contextType: context.kind === 'dm' ? 'dm' : 'group',
+    threadId: context.kind === 'thread' ? context.id : undefined,
+    isMentioned: context.kind !== 'dm',
+    text,
+    ...(commandMatch === undefined ? {} : { commandMatch }),
+    messageId: world.ids.next('message'),
+    platformInstanceId: context.platformInstanceId,
+  }
+}
 
 export const interactionForContext = (
   user: UserHandle,
