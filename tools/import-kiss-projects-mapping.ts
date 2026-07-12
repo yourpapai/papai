@@ -38,6 +38,7 @@ export interface NervProjectRepoDoc {
   baseBranch?: string
   worktreeSubdir?: string
   description?: string
+  pipelineJobTrackList?: string[]
 }
 
 export interface NervProjectDoc {
@@ -79,24 +80,20 @@ function trimTrailingSlash(url: string): string {
 
 const DROPPED_PROJECT_FIELDS = ['proxy', 'ignoreFiles', 'ephemeralSessionsEnabled', 'ephemeralModelProvider'] as const
 
-function mapRepo(
-  repo: KissProjectRepoRef,
-  gitlabBaseUrl: string,
-  label: string,
-  warnings: string[],
-): NervProjectRepoDoc {
-  if (isSetValue(repo.pipelineJobTrackList)) {
-    warnings.push(
-      `project "${label}" repo "${repo.projectPath}": dropping kiss field "pipelineJobTrackList" ` +
-        '(nerv Project.repositories has no matching field yet)',
-    )
-  }
+/** Non-empty kiss `pipelineJobTrackList` to carry through; null/empty/absent → undefined (omit, no warning). */
+function carriedPipelineJobTrackList(list: string[] | null | undefined): string[] | undefined {
+  return list !== null && list !== undefined && list.length > 0 ? list : undefined
+}
+
+function mapRepo(repo: KissProjectRepoRef, gitlabBaseUrl: string): NervProjectRepoDoc {
+  const pipelineJobTrackList = carriedPipelineJobTrackList(repo.pipelineJobTrackList)
   return {
     projectPath: repo.projectPath,
     repoUrl: `${trimTrailingSlash(gitlabBaseUrl)}/${repo.projectPath}.git`,
     description: repo.description,
     ...(repo.defaultBranch === undefined ? {} : { baseBranch: repo.defaultBranch }),
     ...(repo.worktreeSubdir === undefined ? {} : { worktreeSubdir: repo.worktreeSubdir }),
+    ...(pipelineJobTrackList === undefined ? {} : { pipelineJobTrackList }),
   }
 }
 
@@ -107,7 +104,7 @@ export function mapKissProjectToNervProject(kiss: KissProjectDoc, opts: MapImpor
   for (const field of DROPPED_PROJECT_FIELDS) {
     if (isSetValue(kiss[field])) warnings.push(`project "${label}": dropping kiss field "${field}" (no nerv target)`)
   }
-  const repositories = (kiss.repositories ?? []).map((r) => mapRepo(r, opts.gitlabBaseUrl, label, warnings))
+  const repositories = (kiss.repositories ?? []).map((r) => mapRepo(r, opts.gitlabBaseUrl))
   const doc: NervProjectDoc = {
     contextIds: [],
     repositories,

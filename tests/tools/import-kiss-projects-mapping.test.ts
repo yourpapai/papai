@@ -93,8 +93,8 @@ describe('mapKissProjectToNervProject', () => {
     expect(warnings).toEqual([])
   })
 
-  test('warns per-repo when pipelineJobTrackList is set (nerv has no matching repo field yet)', () => {
-    const { warnings } = mapKissProjectToNervProject(
+  test('carries pipelineJobTrackList through when set', () => {
+    const { doc, warnings } = mapKissProjectToNervProject(
       {
         _id: 'p1',
         title: 'Demo',
@@ -102,14 +102,12 @@ describe('mapKissProjectToNervProject', () => {
       },
       OPTS,
     )
-    expect(warnings).toEqual([
-      'project "Demo" repo "team/demo": dropping kiss field "pipelineJobTrackList" ' +
-        '(nerv Project.repositories has no matching field yet)',
-    ])
+    expect(doc.repositories[0]?.pipelineJobTrackList).toEqual(['build', 'test'])
+    expect(warnings).toEqual([])
   })
 
-  test('does not warn about pipelineJobTrackList when null or empty', () => {
-    const { warnings } = mapKissProjectToNervProject(
+  test('omits pipelineJobTrackList (no warning) when null or empty', () => {
+    const { doc, warnings } = mapKissProjectToNervProject(
       {
         _id: 'p1',
         repositories: [
@@ -119,6 +117,8 @@ describe('mapKissProjectToNervProject', () => {
       },
       OPTS,
     )
+    expect(doc.repositories[0]?.pipelineJobTrackList).toBeUndefined()
+    expect(doc.repositories[1]?.pipelineJobTrackList).toBeUndefined()
     expect(warnings).toEqual([])
   })
 
