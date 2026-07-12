@@ -10,7 +10,12 @@ import { listActivePlatformInstancesSafe } from '../instances/platform-store.js'
 import { listTaskInstancesSafe } from '../instances/task-store.js'
 import type { PlatformInstance } from '../instances/types.js'
 import { discoverPlugins } from '../plugins/discovery.js'
-import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from '../plugins/loader.js'
+import {
+  activatePlugins,
+  deactivateAllPlugins,
+  getActivatedPluginIds,
+  type ActivatePluginsOptions,
+} from '../plugins/loader.js'
 import { pluginRegistry, syncRegistryFromDb } from '../plugins/registry.js'
 import { collectStartupCompatibilityInstances } from '../plugins/startup-compatibility.js'
 import { evaluateStartupGuard } from '../plugins/startup-guard.js'
@@ -87,9 +92,10 @@ async function compensatePluginStartup(startupFailure: unknown): Promise<never> 
 async function activateAndFinalizePlugins(
   requested: ReturnType<typeof pluginRegistry.getApprovedCompatiblePlugins>,
   log: ProductionExtensionLogger,
+  options: ActivatePluginsOptions,
 ): Promise<readonly string[]> {
   try {
-    await activatePlugins(requested)
+    await activatePlugins(requested, options)
     const activated = getActivatedPluginIds()
     log.info({ activeCount: activated.length, requestedCount: requested.length }, 'Plugin activation complete')
     if (activated.includes('task-provider-kaneo')) {
@@ -107,6 +113,7 @@ export function startProductionExtensions(
   router: ChatRouter,
   state: ProductionExtensionState,
   log: ProductionExtensionLogger,
+  options: ActivatePluginsOptions = {},
 ): Promise<readonly string[]> {
   loadActivePlatforms(router, state, log)
   const { plugins, errors, directoryMissing } = discoverPlugins('plugins')
@@ -122,5 +129,5 @@ export function startProductionExtensions(
   if (guard.action === 'warn') log.warn({ reason: guard.reason }, 'Starting in degraded mode')
   syncRegistryFromDb(plugins)
   evaluateCompatibility(router, state, log)
-  return activateAndFinalizePlugins(pluginRegistry.getApprovedCompatiblePlugins(), log)
+  return activateAndFinalizePlugins(pluginRegistry.getApprovedCompatiblePlugins(), log, options)
 }

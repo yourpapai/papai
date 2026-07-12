@@ -11,6 +11,7 @@ import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '
 import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { importPluginModule, resolveProviderConfigValidator, toPluginImportSpecifier } from './module-import.js'
+import type { ProviderRuntimeDeps } from './provider-runtime.js'
 import { pluginRegistry } from './registry.js'
 import { recordRuntimeEvent } from './store.js'
 import {
@@ -128,7 +129,9 @@ function handleActivationFailure(pluginId: string, msg: string): false {
   return false
 }
 
-async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
+export type ActivatePluginsOptions = Readonly<{ providerRuntimeDeps?: ProviderRuntimeDeps }>
+
+async function activateOne(plugin: DiscoveredPlugin, options: ActivatePluginsOptions): Promise<boolean> {
   const { manifest, entryPoint } = plugin
 
   log.info({ pluginId: manifest.id, entryPoint }, 'Activating plugin')
@@ -145,7 +148,9 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
         })
   if (entryPoint !== '' && importedModule === null) return false
 
-  const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
+  const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID, {
+    providerRuntimeDeps: options.providerRuntimeDeps,
+  })
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
@@ -171,14 +176,17 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
 }
 
 /** Load and activate all approved+compatible plugins. Failures are isolated. */
-export async function activatePlugins(plugins: DiscoveredPlugin[]): Promise<void> {
+export async function activatePlugins(
+  plugins: DiscoveredPlugin[],
+  options: ActivatePluginsOptions = {},
+): Promise<void> {
   if (plugins.length === 0) {
     log.debug('No plugins to activate')
     return
   }
 
   const limit = pLimit(PLUGIN_LIFECYCLE_CONCURRENCY)
-  const results = await Promise.all(plugins.map((p) => limit(() => activateOne(p))))
+  const results = await Promise.all(plugins.map((p) => limit(() => activateOne(p, options))))
   const activated = results.filter(Boolean).length
   const failed = results.length - activated
 

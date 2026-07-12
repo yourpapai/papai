@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -147,6 +147,41 @@ describe('activatePlugins', () => {
   test('does nothing when passed empty list', async () => {
     await activatePlugins([])
     expect(getActivatedPluginIds()).toEqual([])
+  })
+
+  test('passes owned provider runtime dependencies into plugin activation', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          async activate(ctx) {
+            const response = await ctx.providerRuntime.httpFetch('https://api.example.com/value')
+            ctx.registration.registerPromptFragment({ name: 'result', content: await response.text() })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('injected-http-plugin', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+      contributes: {
+        tools: [],
+        promptFragments: ['result'],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+        attachmentTransformers: [],
+      },
+    })
+    approvePlugin(plugin)
+    const fetch = mock(() => Promise.resolve(new Response('owned response')))
+
+    await activatePlugins([plugin], { providerRuntimeDeps: { fetch, assertPublicUrl: () => Promise.resolve() } })
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(contributionRegistry.getContributions(plugin.manifest.id)?.promptFragments).toEqual([
+      { name: 'result', content: 'owned response' },
+    ])
   })
 
   test('marks plugin as error when entry point cannot be imported', async () => {

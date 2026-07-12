@@ -21,6 +21,7 @@ import { logger } from '../logger.js'
 import { initializeMessageCache } from '../message-cache/index.js'
 import { flushOnShutdown } from '../message-queue/index.js'
 import { deactivateAllPlugins } from '../plugins/loader.js'
+import type { ProviderRuntimeDeps } from '../plugins/provider-runtime.js'
 import {
   defaultMembershipDeps,
   ensureWorkspaceMember,
@@ -194,7 +195,9 @@ function createBackgroundDeps(state: ProductionState): PapaiRuntimeDeps['backgro
   }
 }
 
-function createDefaultDeps(state: ProductionState): PapaiRuntimeDeps {
+export type ProductionRuntimeOptions = Readonly<{ pluginProviderRuntimeDeps?: ProviderRuntimeDeps }>
+
+function createDefaultDeps(state: ProductionState, options: ProductionRuntimeOptions): PapaiRuntimeDeps {
   return {
     database: { start: startDatabase, stop: stopDatabase },
     chat: {
@@ -211,7 +214,13 @@ function createDefaultDeps(state: ProductionState): PapaiRuntimeDeps {
         clearProductionChatRuntime(state)
       },
     },
-    extensions: { start: (router) => startProductionExtensions(router, state, log), stop: deactivateAllPlugins },
+    extensions: {
+      start: (router) =>
+        startProductionExtensions(router, state, log, {
+          providerRuntimeDeps: options.pluginProviderRuntimeDeps,
+        }),
+      stop: deactivateAllPlugins,
+    },
     application: createApplicationDeps(state),
     background: createBackgroundDeps(state),
     web: {
@@ -225,14 +234,20 @@ function createDefaultDeps(state: ProductionState): PapaiRuntimeDeps {
   }
 }
 
-export function createProductionRuntimeDeps(overrides: PartialRuntimeDeps = {}): PapaiRuntimeDeps {
-  const defaults = createDefaultDeps({
-    activePlatforms: [],
-    backgroundModules: null,
-    disposeMembershipSubscriber: null,
-    populateRouterFromInstances: overrides.chat?.createRouter === undefined,
-    stopSweeper: null,
-  })
+export function createProductionRuntimeDeps(
+  overrides: PartialRuntimeDeps = {},
+  options: ProductionRuntimeOptions = {},
+): PapaiRuntimeDeps {
+  const defaults = createDefaultDeps(
+    {
+      activePlatforms: [],
+      backgroundModules: null,
+      disposeMembershipSubscriber: null,
+      populateRouterFromInstances: overrides.chat?.createRouter === undefined,
+      stopSweeper: null,
+    },
+    options,
+  )
   return {
     database: { ...defaults.database, ...overrides.database },
     chat: { ...defaults.chat, ...overrides.chat },

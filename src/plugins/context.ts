@@ -14,7 +14,7 @@ import {
 } from './context-facade-builders.js'
 import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
-import type { PluginProviderRuntime } from './provider-runtime.js'
+import type { PluginProviderRuntime, ProviderRuntimeDeps } from './provider-runtime.js'
 import { buildActivationGuard, buildNamedRegistrationHandlers, type ActivationGuard } from './registration-support.js'
 import type { PluginAttachmentTransformer, PluginContributions } from './runtime-types.js'
 import type { PluginManifest, PluginCommand, PluginTool, PluginPromptFragment, PluginScheduledJob } from './types.js'
@@ -172,6 +172,7 @@ function buildRegistration(
 
 type BuildPluginContextOptions = {
   registrationInitiallyOpen?: boolean
+  providerRuntimeDeps?: ProviderRuntimeDeps
 }
 
 export type BuiltPluginContext = {
@@ -200,7 +201,7 @@ export function buildPluginContext(
   const log = buildPluginLogger(manifest.id)
   const providerRuntime =
     permissions.has('provider.task') || permissions.has('http')
-      ? buildManifestProviderRuntime(manifest, log)
+      ? buildManifestProviderRuntime(manifest, log, options.providerRuntimeDeps)
       : undefined
 
   const declaredTypes = manifest.contributes.taskProviderTypes
