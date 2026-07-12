@@ -67,15 +67,18 @@ export const createScenarioRuntimeExtensionLifecycle = (
 
   const start = (): Promise<void> => {
     if (startInFlight !== undefined) return startInFlight
-    startInFlight = (async (): Promise<void> => {
+    const deferred = Promise.withResolvers<undefined>()
+    startInFlight = deferred.promise
+    void (async (): Promise<void> => {
       try {
         for (const extension of getExtensions()) {
           const cleanup = await extension.start()
           if (typeof cleanup === 'function') cleanups = [...cleanups, cleanup]
         }
+        deferred.resolve(undefined)
       } catch (error) {
         if (stopInFlight === undefined) await Promise.allSettled([stopInternal(false)])
-        throw error
+        deferred.reject(error)
       }
     })()
     return startInFlight

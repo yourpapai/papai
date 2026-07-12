@@ -371,6 +371,26 @@ describe('scenario world', () => {
     expect(cleanupCount).toBe(1)
   })
 
+  test('stops an extension when its synchronous start re-enters the lifecycle', async () => {
+    let cleanupCount = 0
+    let stopping = Promise.resolve()
+    const lifecycle = createScenarioRuntimeExtensionLifecycle(() => [
+      {
+        start: () => {
+          stopping = lifecycle.stop()
+          return (): void => {
+            cleanupCount += 1
+          }
+        },
+      },
+    ])
+
+    await Promise.all([lifecycle.start(), stopping])
+    await lifecycle.stop()
+
+    expect(cleanupCount).toBe(1)
+  })
+
   test('approves discoverable plugin prerequisites before one production activation pass', async () => {
     const world = await createScenarioWorld('plugin prerequisite')
     const plugin = world.api.given.plugin(requireDiscoveredPlugin('synthetic-web-search'))
