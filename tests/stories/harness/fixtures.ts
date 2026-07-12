@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
+import { addAuthorizedGroup, setGuestMode } from '../../../src/authorized-groups.js'
 import { addGroupMember } from '../../../src/groups.js'
+import { setIdentityMapping } from '../../../src/identity/mapping.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import type { PlatformInstanceType } from '../../../src/instances/types.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
@@ -79,7 +80,17 @@ export type ScenarioFixtures = Readonly<{
   assignContext(input?: Readonly<{ contextId?: string; platformInstanceId?: string; taskInstanceId?: string }>): void
   authorizeUser(input?: Readonly<{ userId?: string; platformInstanceId?: string; username?: string }>): void
   authorizeGroup(input?: Readonly<{ groupId?: string }>): void
+  enableGuestMode(groupId: string): void
   addGroupMember(input?: Readonly<{ groupId?: string; userId?: string }>): void
+  seedIdentity(
+    input: Readonly<{
+      userId: string
+      providerName: string
+      providerUserId: string
+      login: string
+      displayName: string
+    }>,
+  ): void
   seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
   registerTaskProvider(): void
@@ -125,8 +136,22 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     authorizeGroup(input = {}): void {
       addAuthorizedGroup(input.groupId ?? SCENARIO_GROUP_ID, 'scenario-admin')
     },
+    enableGuestMode(groupId): void {
+      setGuestMode(groupId, true)
+    },
     addGroupMember(input = {}): void {
       addGroupMember(input.groupId ?? SCENARIO_GROUP_ID, input.userId ?? SCENARIO_USER_ID, 'scenario-admin')
+    },
+    seedIdentity(input): void {
+      setIdentityMapping({
+        contextId: input.userId,
+        providerName: input.providerName,
+        providerUserId: input.providerUserId,
+        providerUserLogin: input.login,
+        displayName: input.displayName,
+        matchMethod: 'manual_nl',
+        confidence: 1,
+      })
     },
     seedSystemLlmConfig(input = {}): void {
       setSystemConfig('llm_apikey', input.apiKey ?? 'scenario-api-key', 'scenario-admin')

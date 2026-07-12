@@ -32,8 +32,15 @@ import {
 
 type ScenarioGiven = Readonly<{
   user(id: string): UserHandle
+  guest(id: string): UserHandle
   group(id: string): GroupHandle
+  guestMode(group: GroupHandle, enabled: true): void
   member(group: GroupHandle, user: UserHandle): void
+  identity(
+    user: UserHandle,
+    identity: Readonly<{ providerUserId: string; login: string; displayName: string }>,
+    providerName?: string,
+  ): void
   dm(user: UserHandle): DmHandle
   thread(group: GroupHandle, id: string): ThreadHandle
   taskInstance(id?: string, providerType?: string): TaskInstanceHandle
@@ -105,15 +112,27 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       world.fixtures.authorizeUser({ userId: id, platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID, username: id })
       return makeUserHandle(id)
     },
+    guest(id): UserHandle {
+      prerequisite('given.guest')
+      return makeUserHandle(id)
+    },
     group(id): GroupHandle {
       prerequisite('given.group')
       const group = makeGroupHandle(id)
       world.fixtures.authorizeGroup({ groupId: scopedGroupId(group) })
       return group
     },
+    guestMode(group, enabled): void {
+      prerequisite('given.guestMode')
+      if (enabled) world.fixtures.enableGuestMode(scopedGroupId(group))
+    },
     member(group, user): void {
       prerequisite('given.member')
       world.fixtures.addGroupMember({ groupId: scopedGroupId(group), userId: user.id })
+    },
+    identity(user, identity, providerName = 'kaneo'): void {
+      prerequisite('given.identity')
+      world.fixtures.seedIdentity({ userId: user.id, providerName, ...identity })
     },
     dm: makeDmHandle,
     thread: makeThreadHandle,

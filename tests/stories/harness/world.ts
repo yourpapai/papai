@@ -368,6 +368,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   let runtime: PapaiRuntime | undefined
   const model = createScriptedModel({
     events,
+    autoLoadTools: true,
     nextId: (): string => ids.next('tool-call'),
     resolveCapability: (capabilityId) => {
       if (runtime === undefined) throw new Error('Scenario runtime is not ready')

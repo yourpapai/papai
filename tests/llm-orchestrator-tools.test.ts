@@ -23,6 +23,7 @@ import type { LlmInvocationOptions, InvocationSource } from '../src/llm-orchestr
 import { buildLlmInvocationOpts } from '../src/llm-orchestrator-tools.js'
 import { saveMemoryProfile } from '../src/long-term-memory/store.js'
 import type { TaskProvider } from '../src/providers/types.js'
+import { toolCapabilityCatalog } from '../src/runtime/capability-catalog.js'
 import { makeGetCurrentTimeTool } from '../src/tools/get-current-time.js'
 import { applyGuestReadOnlyFilter } from '../src/tools/index.js'
 import type { MakeToolsOptions } from '../src/tools/types.js'
@@ -88,6 +89,7 @@ describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () =
     mockLogger()
     await setupTestDb()
     userCachesForTesting.clear()
+    toolCapabilityCatalog.clear()
     buildToolDescriptorsSpy.mockClear()
     buildProviderlessToolDescriptorsSpy.mockClear()
 
@@ -226,6 +228,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
     expect(result.enabledToolNames instanceof Set).toBe(true)
     expect(result.enabledToolNames.has('create_task')).toBe(true)
     expect(result.enabledToolNames.has('save_memo')).toBe(true)
+    expect(toolCapabilityCatalog.resolve('tasks.create')).toBe('create_task')
     // Progressive disclosure injects the search_tools/load_tool meta-tools on every turn.
     expect(Object.keys(result.tools).toSorted()).toEqual(['create_task', 'load_tool', 'save_memo', 'search_tools'])
   })
@@ -307,6 +310,7 @@ describe('buildFullToolSet / guest actorRole branch', () => {
     mockLogger()
     await setupTestDb()
     userCachesForTesting.clear()
+    toolCapabilityCatalog.clear()
     buildToolDescriptorsSpy.mockClear()
     buildProviderlessToolDescriptorsSpy.mockClear()
 
@@ -342,6 +346,8 @@ describe('buildFullToolSet / guest actorRole branch', () => {
     expect(result.enabledToolNames.has('list_tasks')).toBe(true)
     expect(result.enabledToolNames.has('create_task')).toBe(false)
     expect(result.enabledToolNames.has('web_fetch')).toBe(false)
+    expect(toolCapabilityCatalog.resolve('tasks.list')).toBe('list_tasks')
+    expect(() => toolCapabilityCatalog.resolve('tasks.create')).toThrow("Unknown tool capability id 'tasks.create'")
   })
 })
 

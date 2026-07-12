@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
+
 import type { LanguageModelV3CallOptions, LanguageModelV3GenerateResult } from '@ai-sdk/provider'
 import { MockLanguageModelV3 } from 'ai/test'
 
@@ -14,6 +16,8 @@ export type ScriptedModelInspection = Readonly<{
   generation: number
   availableTools: readonly string[]
   hasToolResult: boolean
+  promptTextFingerprints: readonly string[]
+  promptTokenFingerprints: readonly string[]
 }>
 
 export type ScriptedModel = Readonly<{
@@ -25,6 +29,7 @@ export type ScriptedModel = Readonly<{
 
 type ScriptedModelOptions = Readonly<{
   resolveCapability(capabilityId: string): string
+  autoLoadTools?: boolean
   nextId?: () => string
   events?: ScenarioEvents
 }>
@@ -56,8 +61,23 @@ export const callCapability = (capabilityId: string, input: unknown): ModelDecis
 
 export const answer = (text: string): ModelDecision => ({ kind: 'answer', text })
 
+export const promptTextFingerprint = (text: string): string =>
+  createHash('sha256').update(text).digest('hex').slice(0, 16)
+
 const availableToolNames = (options: LanguageModelV3CallOptions): readonly string[] =>
   (options.tools ?? []).map(({ name }) => name).sort()
+
+const promptTexts = (options: LanguageModelV3CallOptions): readonly string[] =>
+  options.prompt.flatMap((message) => {
+    if (typeof message.content === 'string') return [message.content]
+    return message.content.flatMap((part) => (part.type === 'text' && 'text' in part ? [part.text] : []))
+  })
+
+const promptTextFingerprints = (options: LanguageModelV3CallOptions): readonly string[] =>
+  promptTexts(options).map(promptTextFingerprint)
+
+const promptTokenFingerprints = (options: LanguageModelV3CallOptions): readonly string[] =>
+  promptTexts(options).flatMap((text) => (text.match(/[\p{L}\p{N}_]+/gu) ?? []).map(promptTextFingerprint))
 
 const summarizePrompt = (options: LanguageModelV3CallOptions): readonly PromptPartSummary[] =>
   options.prompt.map((message): PromptPartSummary => {
@@ -142,13 +162,20 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
   let generation = 0
   let localId = 0
   let recordedInspections: readonly ScriptedModelInspection[] = []
+  const attemptedLoads = new Set<string>()
 
   const nextId = options.nextId ?? ((): string => `tool-call-${++localId}`)
   const runDecision = (callOptions: LanguageModelV3CallOptions): LanguageModelV3GenerateResult => {
     generation += 1
     const tools = availableToolNames(callOptions)
     const hasToolResult = pendingToolCall === undefined ? false : promptHasToolResult(callOptions, pendingToolCall)
-    const inspection = { generation, availableTools: tools, hasToolResult } as const
+    const inspection = {
+      generation,
+      availableTools: tools,
+      hasToolResult,
+      promptTextFingerprints: promptTextFingerprints(callOptions),
+      promptTokenFingerprints: promptTokenFingerprints(callOptions),
+    } as const
     recordedInspections = [...recordedInspections, inspection]
     options.events?.record('llm.generate', {
       generation,
@@ -168,11 +195,21 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
 
     if (decision.kind === 'answer') {
       decisions = decisions.slice(1)
+      attemptedLoads.clear()
       return generationResult([{ type: 'text', text: decision.text }], 'stop')
     }
 
     const toolName = resolveWireName(decision.capabilityId, options.resolveCapability, tools)
     if (!tools.includes(toolName)) {
+      if (options.autoLoadTools === true && tools.includes('load_tool') && !attemptedLoads.has(decision.capabilityId)) {
+        attemptedLoads.add(decision.capabilityId)
+        const toolCallId = nextId()
+        pendingToolCall = { capabilityId: decision.capabilityId, toolCallId, toolName: 'load_tool' }
+        return generationResult(
+          [{ type: 'tool-call', toolCallId, toolName: 'load_tool', input: JSON.stringify({ names: [toolName] }) }],
+          'tool-calls',
+        )
+      }
       const listedTools = tools.length === 0 ? '(none)' : tools.join(', ')
       throw new Error(
         `Capability '${decision.capabilityId}' resolved to '${toolName}', but it was not advertised; available tools: ${listedTools}`,
@@ -180,6 +217,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
     }
     const input = serializeToolInput(decision, generation)
     const toolCallId = nextId()
+    attemptedLoads.delete(decision.capabilityId)
     pendingToolCall = { capabilityId: decision.capabilityId, toolCallId, toolName }
     decisions = decisions.slice(1)
     return generationResult([{ type: 'tool-call', toolCallId, toolName, input }], 'tool-calls')
@@ -214,6 +252,8 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
       return recordedInspections.map((inspection) => ({
         ...inspection,
         availableTools: [...inspection.availableTools],
+        promptTextFingerprints: [...inspection.promptTextFingerprints],
+        promptTokenFingerprints: [...inspection.promptTokenFingerprints],
       }))
     },
   }

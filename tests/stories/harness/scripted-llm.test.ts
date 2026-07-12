@@ -10,7 +10,7 @@ import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod'
 
 import { createScenarioEvents } from './events.js'
-import { answer, callCapability, createScriptedModel } from './scripted-llm.js'
+import { answer, callCapability, createScriptedModel, promptTextFingerprint } from './scripted-llm.js'
 
 const resolveCapability = (capabilityId: string): string => {
   if (capabilityId === 'tasks.create') return 'provider_tasks__create_task'
@@ -163,6 +163,56 @@ describe('scripted language model', () => {
     )
   })
 
+  test('loads a disclosed capability before calling it when automatic disclosure is enabled', async () => {
+    const ids = ['load-call', 'task-call']
+    let idIndex = 0
+    const script = createScriptedModel({
+      resolveCapability,
+      autoLoadTools: true,
+      nextId: (): string => ids[idIndex++]!,
+    })
+    script.enqueue([callCapability('tasks.create', { title: 'Release 7' }), answer('done')])
+
+    const loading = await script.model.doGenerate({
+      prompt: promptWithoutToolResult,
+      tools: [{ ...advertisedTool, name: 'load_tool' }],
+    })
+    expect(loading.content[0]).toMatchObject({
+      type: 'tool-call',
+      toolCallId: 'load-call',
+      toolName: 'load_tool',
+      input: JSON.stringify({ names: ['provider_tasks__create_task'] }),
+    })
+
+    const calling = await script.model.doGenerate({
+      prompt: promptWithToolResult('load-call', 'load_tool'),
+      tools: [advertisedTool, { ...advertisedTool, name: 'load_tool' }],
+    })
+    expect(calling.content[0]).toMatchObject({
+      type: 'tool-call',
+      toolCallId: 'task-call',
+      toolName: 'provider_tasks__create_task',
+    })
+  })
+
+  test('rejects a stale capability after disclosure cannot load it for the current turn', async () => {
+    const script = createScriptedModel({ resolveCapability, autoLoadTools: true })
+    script.enqueue([callCapability('tasks.create', { title: 'forbidden' })])
+    await script.model.doGenerate({
+      prompt: promptWithoutToolResult,
+      tools: [{ ...advertisedTool, name: 'load_tool' }],
+    })
+
+    await expect(
+      script.model.doGenerate({
+        prompt: promptWithToolResult('tool-call-1', 'load_tool'),
+        tools: [{ ...advertisedTool, name: 'load_tool' }],
+      }),
+    ).rejects.toThrow(
+      "Capability 'tasks.create' resolved to 'provider_tasks__create_task', but it was not advertised; available tools: load_tool",
+    )
+  })
+
   test('includes capability context when resolution fails', async () => {
     const script = createScriptedModel({ resolveCapability })
     script.enqueue([callCapability('unknown.capability', {})])
@@ -260,6 +310,10 @@ describe('scripted language model', () => {
     expect(serialized).not.toContain('provider-secret')
     expect(serialized).not.toContain('schema-secret')
     expect(serialized).not.toContain('header-secret')
+    expect(script.inspections()[0]?.promptTextFingerprints).toContain(
+      promptTextFingerprint('password super-secret-value'),
+    )
+    expect(script.inspections()[0]?.promptTokenFingerprints).toContain(promptTextFingerprint('password'))
     expect(events.all()[0]?.data).toEqual({
       generation: 1,
       prompt: [
