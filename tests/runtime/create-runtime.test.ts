@@ -41,6 +41,9 @@ const interaction = {
 type FakeOptions = Readonly<{
   failAt?: string
   cleanupFailureAt?: string
+  failExtensionAfterGate?: boolean
+  extensionStartGate?: Promise<void>
+  onExtensionStart?: () => void
   stopGate?: Promise<void>
 }>
 
@@ -91,9 +94,12 @@ function createFakeRuntime(options: FakeOptions = {}): FakeRuntime {
       clearRuntime: (): void => record('chat:clear-runtime'),
     },
     extensions: {
-      start: (): Promise<readonly string[]> => {
+      start: async (): Promise<readonly string[]> => {
         record('extensions:start')
-        return Promise.resolve(['extension'])
+        options.onExtensionStart?.()
+        await options.extensionStartGate
+        if (options.failExtensionAfterGate === true) throw new Error('extensions:start failed after gate')
+        return ['extension']
       },
       stop: (): Promise<void> => {
         record('extensions:stop')
@@ -154,6 +160,11 @@ function requireAggregateError(value: unknown): AggregateError {
 }
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+function requireError(value: unknown): Error {
+  if (value instanceof Error) return value
+  throw new Error('Expected an Error')
+}
 
 describe('createPapaiRuntime', () => {
   test('starts required services in runtime order and clears stale capabilities first', async () => {
@@ -307,6 +318,73 @@ describe('createPapaiRuntime', () => {
     await firstStart
     await expect(runtime.start()).rejects.toThrow("Papai runtime cannot start from state 'started'")
     expect(fake.events.filter((event) => event === 'database:start')).toHaveLength(1)
+  })
+
+  test('finishes startup before a concurrent stop drains every acquired resource', async () => {
+    let releaseStart: (() => void) | undefined
+    let markExtensionStarted: (() => void) | undefined
+    const extensionStarted = new Promise<void>((resolve) => {
+      markExtensionStarted = resolve
+    })
+    const extensionStartGate = new Promise<void>((resolve) => {
+      releaseStart = resolve
+    })
+    const fake = createFakeRuntime({
+      extensionStartGate,
+      onExtensionStart: () => markExtensionStarted?.(),
+    })
+    const runtime = createPapaiRuntime(config, fake.deps)
+    const starting = runtime.start()
+    await extensionStarted
+
+    const stopping = runtime.stop()
+    releaseStart?.()
+
+    expect(await Promise.allSettled([starting, stopping])).toEqual([
+      { status: 'fulfilled', value: undefined },
+      { status: 'fulfilled', value: undefined },
+    ])
+    expect(fake.events.filter((event) => event === 'chat:clear-runtime')).toHaveLength(1)
+    expect(fake.events.filter((event) => event === 'stores:flush')).toHaveLength(1)
+    expect(fake.events.filter((event) => event === 'extensions:stop')).toHaveLength(1)
+    expect(fake.events.filter((event) => event === 'chat:stop')).toHaveLength(1)
+    expect(fake.events.filter((event) => event === 'capabilities:clear')).toHaveLength(2)
+    expect(fake.events.filter((event) => event === 'database:stop')).toHaveLength(1)
+    await expect(runtime.dispatch(message)).rejects.toThrow('Papai runtime is not started')
+    await expect(runtime.request(new Request('http://scenario.test'))).rejects.toThrow('Papai runtime is not started')
+    expect(() => runtime.resolveToolCapability('known')).toThrow('Papai runtime is not started')
+  })
+
+  test('shares a gated startup failure with a concurrent stop after rollback', async () => {
+    let releaseStart: (() => void) | undefined
+    let markExtensionStarted: (() => void) | undefined
+    const extensionStarted = new Promise<void>((resolve) => {
+      markExtensionStarted = resolve
+    })
+    const extensionStartGate = new Promise<void>((resolve) => {
+      releaseStart = resolve
+    })
+    const fake = createFakeRuntime({
+      extensionStartGate,
+      failExtensionAfterGate: true,
+      onExtensionStart: () => markExtensionStarted?.(),
+    })
+    const runtime = createPapaiRuntime(config, fake.deps)
+    const starting = runtime.start()
+    await extensionStarted
+    const stopping = runtime.stop()
+
+    releaseStart?.()
+    const startFailure = requireError(await starting.catch((error: unknown): unknown => error))
+    const stopFailure = requireError(await stopping.catch((error: unknown): unknown => error))
+
+    expect(startFailure.message).toBe('extensions:start failed after gate')
+    expect(stopFailure).toBe(startFailure)
+    expect(fake.events.filter((event) => event === 'chat:clear-runtime')).toHaveLength(1)
+    expect(fake.events.filter((event) => event === 'stores:flush')).toHaveLength(1)
+    expect(fake.events.filter((event) => event === 'capabilities:clear')).toHaveLength(2)
+    expect(fake.events.filter((event) => event === 'database:stop')).toHaveLength(1)
+    await expect(runtime.dispatch(message)).rejects.toThrow('Papai runtime is not started')
   })
 
   test('shares concurrent stop work and remains stopped after cleanup failure', async () => {

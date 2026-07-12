@@ -112,6 +112,36 @@ function startupError(startupFailure: unknown, rollbackFailure: unknown): Aggreg
   return new AggregateError([startupFailure, rollbackFailure], 'Papai runtime startup and rollback failed')
 }
 
+async function rollbackStartup(context: StartupContext, startupFailure: unknown): Promise<never> {
+  try {
+    await context.lifecycle.stop()
+  } catch (rollbackFailure) {
+    throw startupError(startupFailure, rollbackFailure)
+  }
+  throw startupFailure
+}
+
+type RuntimeStateReference = { current: RuntimeState }
+
+async function runRuntimeStart(context: StartupContext, state: RuntimeStateReference): Promise<void> {
+  try {
+    await startServices(context)
+    if (state.current === 'starting') state.current = 'started'
+  } catch (startupFailure) {
+    state.current = 'stopping'
+    try {
+      await rollbackStartup(context, startupFailure)
+    } finally {
+      state.current = 'stopped'
+    }
+  }
+}
+
+async function stopAfterStartup(starting: Promise<void> | undefined, lifecycle: RuntimeLifecycle): Promise<void> {
+  if (starting !== undefined) await starting
+  await lifecycle.stop()
+}
+
 type RuntimeStateController = Readonly<{
   assertStarted(): void
   start(): Promise<void>
@@ -119,37 +149,34 @@ type RuntimeStateController = Readonly<{
 }>
 
 function createRuntimeStateController(context: StartupContext): RuntimeStateController {
-  let state: RuntimeState = 'new'
+  const state: RuntimeStateReference = { current: 'new' }
+  let startInFlight: Promise<void> | undefined
   let stopInFlight: Promise<void> | undefined
 
   const assertStarted = (): void => {
-    if (state !== 'started') throw new Error('Papai runtime is not started')
+    if (state.current !== 'started') throw new Error('Papai runtime is not started')
   }
 
-  const start = async (): Promise<void> => {
-    if (state !== 'new') throw new Error(`Papai runtime cannot start from state '${state}'`)
-    state = 'starting'
-    try {
-      await startServices(context)
-      state = 'started'
-    } catch (startupFailure) {
-      try {
-        await context.lifecycle.stop()
-      } catch (rollbackFailure) {
-        state = 'stopped'
-        throw startupError(startupFailure, rollbackFailure)
-      }
-      state = 'stopped'
-      throw startupFailure
+  const start = (): Promise<void> => {
+    if (state.current !== 'new') {
+      return Promise.reject(new Error(`Papai runtime cannot start from state '${state.current}'`))
     }
+    state.current = 'starting'
+    const starting = runRuntimeStart(context, state)
+    startInFlight = starting
+    const clearStart = (): void => {
+      if (startInFlight === starting) startInFlight = undefined
+    }
+    void starting.then(clearStart, clearStart)
+    return starting
   }
 
   const stop = (): Promise<void> => {
-    if (state === 'stopped') return Promise.resolve()
+    if (state.current === 'stopped') return Promise.resolve()
     if (stopInFlight !== undefined) return stopInFlight
-    state = 'stopping'
-    const stopping = context.lifecycle.stop().finally(() => {
-      state = 'stopped'
+    state.current = 'stopping'
+    const stopping = stopAfterStartup(startInFlight, context.lifecycle).finally(() => {
+      state.current = 'stopped'
       if (stopInFlight === stopping) stopInFlight = undefined
     })
     stopInFlight = stopping
