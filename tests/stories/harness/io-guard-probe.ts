@@ -21,6 +21,8 @@ import {
 } from 'node:fs'
 import { open, writeFile } from 'node:fs/promises'
 import { connect, createServer, Socket } from 'node:net'
+import { clearInterval as clearNodeInterval, setInterval as setNodeInterval } from 'node:timers'
+import { setInterval as setPromiseInterval, setTimeout as setPromiseTimeout } from 'node:timers/promises'
 
 import { scenario } from './scenario.js'
 
@@ -168,9 +170,28 @@ scenario('rejects timer leak', ({ world }) => {
   setInterval(() => undefined, 60_000).unref()
 })
 
+scenario('rejects node timers interval leak', ({ world }) => {
+  phase(world)
+  setNodeInterval(() => undefined, 60_000).unref()
+})
+
+scenario('rejects node timers promises interval leak', ({ world }) => {
+  phase(world)
+  const iterator = setPromiseInterval(60_000)
+  void iterator.next()
+})
+
 scenario('rejects process listener leak', ({ world }) => {
   phase(world)
   process.on('papai-story-probe', () => undefined)
+})
+
+scenario('rejects one remaining duplicate process listener', ({ world }) => {
+  phase(world)
+  const listener = (): void => undefined
+  process.on('papai-story-probe-duplicate', listener)
+  process.on('papai-story-probe-duplicate', listener)
+  process.off('papai-story-probe-duplicate', listener)
 })
 
 scenario('rejects environment mutation', ({ world }) => {
@@ -244,6 +265,44 @@ scenario('allows fired process once listener', ({ world }) => {
   })
   process.emit('papai-story-probe-once')
   expect(calls).toBe(1)
+})
+
+scenario('allows removing process once listener by original function', ({ world }) => {
+  phase(world)
+  let calls = 0
+  const listener = (): void => {
+    calls += 1
+  }
+  process.once('papai-story-probe-once-removed', listener)
+  process.off('papai-story-probe-once-removed', listener)
+  process.emit('papai-story-probe-once-removed')
+  expect(calls).toBe(0)
+})
+
+scenario('allows cleared node timers interval', ({ world }) => {
+  phase(world)
+  const timer = setNodeInterval(() => undefined, 60_000)
+  clearNodeInterval(timer)
+})
+
+scenario('allows completed node timers promise timeout', async ({ world }) => {
+  phase(world)
+  await setPromiseTimeout(1)
+})
+
+scenario('allows returned node timers promises interval', async ({ world }) => {
+  phase(world)
+  const iterator = setPromiseInterval(60_000)
+  await iterator.return?.()
+})
+
+scenario('allows removing duplicate process listeners twice', ({ world }) => {
+  phase(world)
+  const listener = (): void => undefined
+  process.on('papai-story-probe-duplicate-removed', listener)
+  process.on('papai-story-probe-duplicate-removed', listener)
+  process.off('papai-story-probe-duplicate-removed', listener)
+  process.off('papai-story-probe-duplicate-removed', listener)
 })
 
 scenario('uses sanitized environment', () => {

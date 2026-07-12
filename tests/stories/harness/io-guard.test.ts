@@ -60,7 +60,10 @@ describe('hermetic story runner', () => {
     ['rejects fs removal outside root', 'fs.rmSync'],
     ['rejects symlink escape', 'fs.writeFileSync'],
     ['rejects timer leak', 'scenario leaks (active timers: 1)'],
+    ['rejects node timers interval leak', 'scenario leaks (active timers: 1)'],
+    ['rejects node timers promises interval leak', 'scenario leaks (active timers: 1)'],
     ['rejects process listener leak', 'scenario leaks (process listeners: 1)'],
+    ['rejects one remaining duplicate process listener', 'scenario leaks (process listeners: 1)'],
     ['rejects environment mutation', 'scenario leaks (environment mutations: PAPAI_MUTATED)'],
   ])('%s with a scenario-aware diagnostic', async (scenarioName, operation) => {
     const result = await runProbe(scenarioName)
@@ -80,6 +83,11 @@ describe('hermetic story runner', () => {
     'allows tracked raw fd write inside root',
     'allows removed process listener',
     'allows fired process once listener',
+    'allows removing process once listener by original function',
+    'allows cleared node timers interval',
+    'allows completed node timers promise timeout',
+    'allows returned node timers promises interval',
+    'allows removing duplicate process listeners twice',
   ])('%s', async (scenarioName) => {
     const result = await runProbe(scenarioName)
 

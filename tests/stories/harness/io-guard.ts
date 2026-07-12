@@ -13,6 +13,7 @@ import path from 'node:path'
 
 import type { ScenarioEvents } from './events.js'
 import { assertGuardedWritePath, type FilesystemBoundary, installFilesystemGuard } from './io-guard-filesystem.js'
+import { installTimerGuard, type InstalledTimerGuard } from './io-guard-timers.js'
 import type { StrictHttpDispatcher } from './strict-http.js'
 
 type BoundaryBindings = Readonly<{
@@ -45,6 +46,7 @@ export type IoGuardSession = Readonly<{
 
 const storage = new AsyncLocalStorage<Boundary>()
 let installed = false
+let timerGuard: InstalledTimerGuard | undefined
 
 const PROCESS_LISTENER_METHODS = [
   'on',
@@ -72,10 +74,6 @@ const processMethods = {
 
 const originals = {
   fetch: globalThis.fetch,
-  setTimeout: globalThis.setTimeout,
-  clearTimeout: globalThis.clearTimeout,
-  setInterval: globalThis.setInterval,
-  clearInterval: globalThis.clearInterval,
   bunSpawn: Bun.spawn,
   bunSpawnSync: Bun.spawnSync,
   bunServe: Bun.serve,
@@ -130,6 +128,7 @@ function installProcessListenerTracking(): void {
         boundary.listeners.delete(record)
         return Reflect.apply(listener, process, listenerArgs)
       }
+      Reflect.set(wrapped, 'listener', listener)
       record = { event, listener: wrapped, original: listener }
       boundary.listeners.add(record)
       return invoke(method, [event, wrapped, ...args])
@@ -137,14 +136,15 @@ function installProcessListenerTracking(): void {
   const remove =
     (method: CallableFunction) =>
     (event: unknown, listener: unknown, ...args: unknown[]): unknown => {
-      const result = invoke(method, [event, listener, ...args])
       const boundary = storage.getStore()
-      if (boundary === undefined) return result
-      for (const record of boundary.listeners) {
-        if (record.event === event && (record.listener === listener || record.original === listener)) {
-          boundary.listeners.delete(record)
-        }
-      }
+      const record = [...(boundary?.listeners ?? [])]
+        .reverse()
+        .find(
+          (candidate) =>
+            candidate.event === event && (candidate.listener === listener || candidate.original === listener),
+        )
+      const result = invoke(method, [event, record?.listener ?? listener, ...args])
+      if (record !== undefined) boundary?.listeners.delete(record)
       return result
     }
   Reflect.set(process, 'on', add(processMethods.on, false))
@@ -211,38 +211,6 @@ function installProcessAndNetworkMocks(): void {
   })
 }
 
-function installTimers(): void {
-  const guardedSetTimeout = (callback: TimerHandler, delay?: number, ...args: unknown[]): TimerHandle => {
-    const boundary = storage.getStore()
-    if (boundary === undefined) return originals.setTimeout(callback, delay, ...args)
-    let handle: TimerHandle
-    const wrapped = (...callbackArgs: unknown[]): void => {
-      boundary.timers.delete(handle)
-      if (typeof callback === 'function') Reflect.apply(callback, undefined, callbackArgs)
-    }
-    handle = originals.setTimeout(wrapped, delay, ...args)
-    boundary.timers.add(handle)
-    return handle
-  }
-  const guardedClearTimeout = (handle?: TimerHandle): void => {
-    storage.getStore()?.timers.delete(handle)
-    Reflect.apply(originals.clearTimeout, globalThis, [handle])
-  }
-  const guardedSetInterval = (callback: TimerHandler, delay?: number, ...args: unknown[]): TimerHandle => {
-    const handle = originals.setInterval(callback, delay, ...args)
-    storage.getStore()?.timers.add(handle)
-    return handle
-  }
-  const guardedClearInterval = (handle?: TimerHandle): void => {
-    storage.getStore()?.timers.delete(handle)
-    Reflect.apply(originals.clearInterval, globalThis, [handle])
-  }
-  Reflect.set(globalThis, 'setTimeout', guardedSetTimeout)
-  Reflect.set(globalThis, 'clearTimeout', guardedClearTimeout)
-  Reflect.set(globalThis, 'setInterval', guardedSetInterval)
-  Reflect.set(globalThis, 'clearInterval', guardedClearInterval)
-}
-
 export function installIoGuard(): void {
   if (installed) return
   installed = true
@@ -267,17 +235,15 @@ export function installIoGuard(): void {
     )
     return invoke(originals.bunWrite, args)
   })
-  installTimers()
+  timerGuard = installTimerGuard(() => storage.getStore())
 }
 
 export function restoreIoGuard(): void {
   if (!installed) return
   installed = false
   Reflect.set(globalThis, 'fetch', originals.fetch)
-  Reflect.set(globalThis, 'setTimeout', originals.setTimeout)
-  Reflect.set(globalThis, 'clearTimeout', originals.clearTimeout)
-  Reflect.set(globalThis, 'setInterval', originals.setInterval)
-  Reflect.set(globalThis, 'clearInterval', originals.clearInterval)
+  timerGuard?.restore()
+  timerGuard = undefined
   Reflect.set(Bun, 'spawn', originals.bunSpawn)
   Reflect.set(Bun, 'spawnSync', originals.bunSpawnSync)
   Reflect.set(Bun, 'serve', originals.bunServe)
@@ -383,8 +349,7 @@ export function runWithScenarioIoGuard<T>(
       throw primaryError
     } finally {
       for (const timer of boundary.timers) {
-        Reflect.apply(originals.clearTimeout, globalThis, [timer])
-        Reflect.apply(originals.clearInterval, globalThis, [timer])
+        timerGuard?.dispose(timer)
       }
       boundary.allowCleanup = true
       originals.fsRmSync(boundary.tempRoot, { recursive: true, force: true })
