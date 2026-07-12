@@ -24,7 +24,7 @@ describe('scenario execution', () => {
       const alice = given.user('alice')
       const dm = given.dm(alice)
       const taskInstance = given.taskInstance()
-      given.taskCapabilities(['tasks.delete'])
+      given.taskCapabilities([])
       given.assign(dm, taskInstance)
       given.llm([
         callCapability('tasks.create', { projectId: 'project-1', title: 'Release 7' }),
@@ -33,10 +33,23 @@ describe('scenario execution', () => {
 
       await when.message(alice, dm, 'Create task Release 7')
 
-      expect([...world.tasks.capabilities]).toEqual(['tasks.delete'])
+      expect([...world.tasks.capabilities]).toEqual([])
       then.replyTo(alice).equals('Created “Release 7”.')
       await then.task('Release 7').exists()
     })
+  })
+
+  test('task capability prerequisite rejects unsupported provider operations before startup', async () => {
+    const world = await createScenarioWorld('unsupported task capability')
+
+    try {
+      expect(() => world.api.given.taskCapabilities(['tasks.delete'])).toThrow(
+        'MemoryTaskProvider does not support task capabilities: tasks.delete',
+      )
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+    } finally {
+      await world.stop()
+    }
   })
 
   test('task capability prerequisite is blocked after startup', async () => {
@@ -45,7 +58,7 @@ describe('scenario execution', () => {
     try {
       await world.ensureStarted()
 
-      expect(() => world.api.given.taskCapabilities(['tasks.delete'])).toThrow(
+      expect(() => world.api.given.taskCapabilities([])).toThrow(
         'given.taskCapabilities requires an unstarted scenario world',
       )
     } finally {

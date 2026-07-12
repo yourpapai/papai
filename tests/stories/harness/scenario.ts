@@ -34,6 +34,7 @@ import {
 } from './world.js'
 
 const codingSessionHandleBrand: unique symbol = Symbol('scenario-coding-session')
+const supportedMemoryTaskCapabilities: readonly TaskCapability[] = []
 
 export type CodingSessionHandle = Readonly<{
   kind: 'coding-session'
@@ -120,6 +121,13 @@ const makeCodingSessionHandle = (storageContextId: string): CodingSessionHandle 
     contextId: storageContextId,
     [codingSessionHandleBrand]: true as const,
   })
+
+const assertSupportedTaskCapabilities = (capabilities: readonly TaskCapability[]): void => {
+  const unsupported = capabilities.filter((capability) => !supportedMemoryTaskCapabilities.includes(capability))
+  if (unsupported.length > 0) {
+    throw new Error(`MemoryTaskProvider does not support task capabilities: ${[...new Set(unsupported)].join(', ')}`)
+  }
+}
 
 const scenarioUrl = (path: string): URL => new URL(path, 'https://scenario.invalid')
 
@@ -228,6 +236,7 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     },
     taskCapabilities(capabilities): void {
       prerequisite('given.taskCapabilities')
+      assertSupportedTaskCapabilities(capabilities)
       world.tasks.setCapabilities(capabilities)
     },
     assign(context, taskInstance): void {

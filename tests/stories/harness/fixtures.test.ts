@@ -73,6 +73,22 @@ describe('scenario fixtures', () => {
     expect(await new TaskProviderResolver().resolveStrict(SCENARIO_CONTEXT_ID)).toBe(fixtures.taskProvider)
   })
 
+  test('keeps registered descriptor capabilities connected across provider reconfiguration', async () => {
+    const provider = new MemoryTaskProvider()
+    const configuredFixtures = createScenarioFixtures({ taskProvider: provider })
+    await configuredFixtures.setupDatabase()
+
+    try {
+      configuredFixtures.registerTaskProvider()
+      const descriptor = getTaskProviderDescriptor('kaneo')
+      provider.setCapabilities(['tasks.delete'])
+
+      expect([...descriptor!.capabilities]).toEqual(['tasks.delete'])
+    } finally {
+      configuredFixtures.teardown()
+    }
+  })
+
   test('teardown unregisters provider process state and supports repeated lifecycles', async () => {
     await fixtures.setupDatabase()
     fixtures.registerTaskProvider()

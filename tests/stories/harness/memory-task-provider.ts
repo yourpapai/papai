@@ -118,7 +118,7 @@ export class MemoryTaskProvider implements TaskProvider {
   private readonly identityUsers = new Map<string, IdentityUser>()
   private readonly events: ScenarioEvents | undefined
   private readonly nextId: () => string
-  private capabilitySet = new Set<TaskCapability>()
+  private readonly capabilitySet = new Set<TaskCapability>()
 
   get capabilities(): ReadonlySet<TaskCapability> {
     return this.capabilitySet
@@ -132,7 +132,8 @@ export class MemoryTaskProvider implements TaskProvider {
   }
 
   setCapabilities(capabilities: readonly TaskCapability[]): void {
-    this.capabilitySet = new Set(capabilities)
+    this.capabilitySet.clear()
+    for (const capability of capabilities) this.capabilitySet.add(capability)
   }
 
   addIdentityUser(identity: IdentityUser): void {
