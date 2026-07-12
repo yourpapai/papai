@@ -462,6 +462,126 @@ describe('createScheduler', () => {
 
       scheduler.stop('test-task')
     })
+
+    test('a synchronous stop cancels queued immediate execution before it begins', async () => {
+      const scheduler = createScheduler()
+      let executions = 0
+      scheduler.register('rapid-stop', {
+        interval: 1000,
+        handler: (): void => {
+          executions++
+        },
+        options: { immediate: true },
+      })
+
+      scheduler.stop('rapid-stop')
+      await scheduler.drainAll()
+      await Promise.resolve()
+
+      expect(executions).toBe(0)
+      expect(scheduler.getTaskState('rapid-stop')).toMatchObject({ running: false, nextRun: null })
+      scheduler.unregister('rapid-stop')
+    })
+
+    test('stop drains a gated immediate handler without scheduling a detached interval', async () => {
+      const scheduler = createScheduler()
+      let releaseHandler: (() => void) | undefined
+      let markStarted: (() => void) | undefined
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve
+      })
+      const gate = new Promise<void>((resolve) => {
+        releaseHandler = resolve
+      })
+      scheduler.register('gated-task', {
+        interval: 1000,
+        handler: async (): Promise<void> => {
+          markStarted?.()
+          await gate
+        },
+        options: { immediate: true },
+      })
+      await started
+
+      scheduler.stop('gated-task')
+      const drained = scheduler.drainAll()
+      let drainCompleted = false
+      void drained.then((): void => {
+        drainCompleted = true
+      })
+      await Promise.resolve()
+      expect(drainCompleted).toBe(false)
+
+      releaseHandler?.()
+      await drained
+      expect(scheduler.getTaskState('gated-task')).toMatchObject({ running: false, nextRun: null })
+      scheduler.unregister('gated-task')
+    })
+
+    test('a stopped in-flight rejection cannot schedule a detached retry timeout', async () => {
+      const scheduler = createScheduler({ defaultRetries: 3 })
+      let releaseHandler: (() => void) | undefined
+      let markStarted: (() => void) | undefined
+      let retryEvents = 0
+      scheduler.on('retry', () => {
+        retryEvents++
+      })
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve
+      })
+      const gate = new Promise<void>((resolve) => {
+        releaseHandler = resolve
+      })
+      scheduler.register('reject-after-stop', {
+        interval: 1000,
+        handler: async (): Promise<void> => {
+          markStarted?.()
+          await gate
+          throw new Error('late rejection')
+        },
+        options: { immediate: true },
+      })
+      await started
+
+      scheduler.stop('reject-after-stop')
+      releaseHandler?.()
+      await scheduler.drainAll()
+
+      expect(retryEvents).toBe(0)
+      expect(scheduler.getTaskState('reject-after-stop')).toMatchObject({ running: false, retryAttempt: 0 })
+      scheduler.unregister('reject-after-stop')
+    })
+
+    test('a stale fatal handler cannot stop a replacement task with the same name', async () => {
+      const scheduler = createScheduler()
+      let releaseHandler: (() => void) | undefined
+      let markStarted: (() => void) | undefined
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve
+      })
+      const gate = new Promise<void>((resolve) => {
+        releaseHandler = resolve
+      })
+      scheduler.register('replaceable', {
+        interval: 1000,
+        handler: async (): Promise<void> => {
+          markStarted?.()
+          await gate
+          throw new FatalError('old handler failed')
+        },
+        options: { immediate: true },
+      })
+      await started
+      scheduler.unregister('replaceable')
+      scheduler.register('replaceable', { interval: 1000, handler: (): void => {} })
+      scheduler.start('replaceable')
+
+      releaseHandler?.()
+      await scheduler.drainAll()
+
+      expect(scheduler.getTaskState('replaceable')?.running).toBe(true)
+      scheduler.unregister('replaceable')
+    })
   })
 
   describe('default options', () => {

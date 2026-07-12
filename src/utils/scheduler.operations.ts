@@ -20,6 +20,7 @@ const log = logger.child({ scope: 'scheduler:operations' })
  */
 export interface SchedulerContext {
   readonly tasks: Map<string, Task>
+  readonly activeExecutions: Set<Promise<void>>
   readonly events: EventEmitter
   readonly emitters: Emitters
   readonly schedulerOptions: Required<SchedulerOptions>
@@ -66,6 +67,7 @@ export const registerTask = (
     interval: config.interval ?? 0,
     cron: config.cron ?? null,
     options: mergedOptions,
+    registered: true,
     running: false,
     intervalId: null,
     timeoutId: null,
@@ -89,7 +91,7 @@ export const registerTask = (
  * Start a registered task.
  */
 export const startTask = (context: SchedulerContext, name: string, stopFn: (name: string) => void): void => {
-  const { tasks, emitters, schedulerOptions } = context
+  const { tasks, activeExecutions, emitters, schedulerOptions } = context
   const task = tasks.get(name)
 
   if (task === undefined) {
@@ -102,19 +104,23 @@ export const startTask = (context: SchedulerContext, name: string, stopFn: (name
   }
 
   task.running = true
+  const stopIfCurrent = (taskName: string): void => {
+    if (tasks.get(taskName) === task) stopFn(taskName)
+  }
 
   // Execute immediately if configured
   if (task.options.immediate) {
     queueMicrotask(() => {
-      void executeTask(task, schedulerOptions, emitters, stopFn).then(() => {
+      if (!task.running || tasks.get(name) !== task) return
+      void executeTask(task, schedulerOptions, emitters, stopIfCurrent, activeExecutions).then(() => {
         // For cron tasks, scheduling is handled after execution completes
-        if (task.cron === null) {
-          scheduleTask(task, schedulerOptions, emitters, stopFn)
+        if (task.running && tasks.get(name) === task && task.cron === null) {
+          scheduleTask(task, schedulerOptions, emitters, stopIfCurrent, activeExecutions)
         }
       })
     })
   } else {
-    scheduleTask(task, schedulerOptions, emitters, stopFn)
+    scheduleTask(task, schedulerOptions, emitters, stopIfCurrent, activeExecutions)
   }
 
   log.info({ taskName: name }, 'Task started')
@@ -131,11 +137,7 @@ export const stopTask = (context: SchedulerContext, name: string): void => {
     throw new TaskNotFoundError(name)
   }
 
-  if (!task.running) {
-    log.debug({ taskName: name }, 'Task already stopped, skipping stop')
-    return
-  }
-
+  if (!task.running) log.debug({ taskName: name }, 'Task already stopped, clearing residual timers')
   task.running = false
 
   // Clear interval for interval-based tasks
@@ -172,10 +174,8 @@ export const unregisterTask = (context: SchedulerContext, name: string, stopFn: 
     throw new TaskNotFoundError(name)
   }
 
-  // Stop the task first if it's running
-  if (task.running) {
-    stopFn(name)
-  }
+  task.registered = false
+  stopFn(name)
 
   tasks.delete(name)
 
@@ -215,6 +215,9 @@ export const stopAllTasks = (context: SchedulerContext, stopFn: (name: string) =
     }
   })
 }
+
+export const drainAllTasks = (context: SchedulerContext): Promise<void> =>
+  Promise.all([...context.activeExecutions]).then((): void => undefined)
 
 /**
  * Check if a task exists.

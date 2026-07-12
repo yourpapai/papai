@@ -161,11 +161,12 @@ function createApplicationDeps(state: ProductionState): PapaiRuntimeDeps['applic
 }
 
 function createBackgroundDeps(state: ProductionState): PapaiRuntimeDeps['background'] {
-  const stop = (): void => {
+  const stop = async (): Promise<void> => {
     const modules = state.backgroundModules
     if (modules !== null) {
-      modules.recurring.stopScheduler()
       modules.schedulerInstance.scheduler.stopAll()
+      await modules.schedulerInstance.scheduler.drainAll()
+      modules.recurring.stopScheduler()
       modules.pollers.stopPollers()
       modules.schedulerInstance.unregisterDefaultSchedulerTasks()
       state.backgroundModules = null
@@ -185,7 +186,7 @@ function createBackgroundDeps(state: ProductionState): PapaiRuntimeDeps['backgro
         modules.schedulerInstance.scheduler.startAll()
         state.stopSweeper = startSweeper()
       } catch (error) {
-        stop()
+        await stop()
         throw error
       }
     },

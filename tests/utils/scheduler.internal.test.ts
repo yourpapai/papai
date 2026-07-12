@@ -34,6 +34,7 @@ const makeTask = (handler: Task['handler']): Task => ({
   interval: 1000,
   cron: null,
   options: { ...DEFAULT_TASK_OPTIONS },
+  registered: true,
   running: true,
   intervalId: null,
   timeoutId: null,

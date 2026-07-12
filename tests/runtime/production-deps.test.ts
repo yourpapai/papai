@@ -49,8 +49,34 @@ describe('createProductionRuntimeDeps', () => {
     await deps.background.start(router)
     expect(DEFAULT_SCHEDULER_TASK_NAMES.every((name) => scheduler.getTaskState(name)?.running === true)).toBe(true)
 
-    await deps.background.stop()
+    let releaseHandler: (() => void) | undefined
+    let markStarted: (() => void) | undefined
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      releaseHandler = resolve
+    })
+    scheduler.register('background-drain-test', {
+      interval: 1000,
+      handler: async (): Promise<void> => {
+        markStarted?.()
+        await gate
+      },
+      options: { immediate: true },
+    })
+    await started
+    let stopCompleted = false
+    const stopping = Promise.resolve(deps.background.stop()).then((): void => {
+      stopCompleted = true
+    })
+    await Promise.resolve()
+    expect(stopCompleted).toBe(false)
+    releaseHandler?.()
+    await stopping
+
     expect(DEFAULT_SCHEDULER_TASK_NAMES.every((name) => !scheduler.hasTask(name))).toBe(true)
+    scheduler.unregister('background-drain-test')
   })
   test('uses the production capability catalog identity unless capabilities are overridden', () => {
     const defaults = createProductionRuntimeDeps()

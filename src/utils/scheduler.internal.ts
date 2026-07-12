@@ -13,6 +13,7 @@
 
 import { logger } from '../logger.js'
 import { FatalError, RetryableError, SchedulerError } from './scheduler.errors.js'
+import { trackSchedulerExecution } from './scheduler.executions.js'
 import { calculateBackoff, getErrorMessage, getErrorObject, type Emitters, type Task } from './scheduler.helpers.js'
 import type { SchedulerOptions } from './scheduler.types.js'
 
@@ -44,6 +45,7 @@ const scheduleRetry = (
   schedulerOptions: Required<SchedulerOptions>,
   emitters: Emitters,
   stopTask: (name: string) => void,
+  activeExecutions?: Set<Promise<void>>,
 ): void => {
   task.retryAttempt++
   const maxRetryDelay = schedulerOptions.maxRetryDelay
@@ -69,8 +71,8 @@ const scheduleRetry = (
   task.retryTimeoutId = setTimeout(() => {
     task.retryTimeoutId = null
     // Only execute if task is still running
-    if (task.running) {
-      void executeTask(task, schedulerOptions, emitters, stopTask)
+    if (task.running && task.registered) {
+      void executeTask(task, schedulerOptions, emitters, stopTask, activeExecutions)
     }
   }, delay)
 
@@ -133,6 +135,7 @@ const handleTaskFailure = (
   schedulerOptions: Required<SchedulerOptions>,
   emitters: Emitters,
   stopTask: (name: string) => void,
+  activeExecutions?: Set<Promise<void>>,
 ): void => {
   task.errorCount++
   const errorObj = logTaskError(task, error)
@@ -144,12 +147,14 @@ const handleTaskFailure = (
     timestamp,
   })
 
+  if (!task.running || !task.registered) return
+
   // Determine if we should retry
   const shouldRetry =
     error instanceof RetryableError || (!(error instanceof FatalError) && !(error instanceof SchedulerError))
 
   if (shouldRetry && task.retryAttempt < task.options.retries) {
-    scheduleRetry(task, schedulerOptions, emitters, stopTask)
+    scheduleRetry(task, schedulerOptions, emitters, stopTask, activeExecutions)
   } else if (error instanceof FatalError) {
     handleFatalError(task, error, 'Fatal error occurred, stopping task', emitters, stopTask)
   } else if (task.retryAttempt >= task.options.retries) {
@@ -160,11 +165,12 @@ const handleTaskFailure = (
 /**
  * Execute a single task with error handling and retries.
  */
-export const executeTask = async (
+const runTask = async (
   task: Task,
   schedulerOptions: Required<SchedulerOptions>,
   emitters: Emitters,
   stopTask: (name: string) => void,
+  activeExecutions?: Set<Promise<void>>,
 ): Promise<void> => {
   const startTime = Date.now()
   const timestamp = new Date(startTime)
@@ -179,7 +185,7 @@ export const executeTask = async (
   try {
     handlerResult = task.handler()
   } catch (error) {
-    handleTaskFailure(task, error, timestamp, schedulerOptions, emitters, stopTask)
+    handleTaskFailure(task, error, timestamp, schedulerOptions, emitters, stopTask, activeExecutions)
     return
   }
 
@@ -187,8 +193,19 @@ export const executeTask = async (
     await handlerResult
     handleTaskSuccess(task, startTime, emitters)
   } catch (error) {
-    handleTaskFailure(task, error, timestamp, schedulerOptions, emitters, stopTask)
+    handleTaskFailure(task, error, timestamp, schedulerOptions, emitters, stopTask, activeExecutions)
   }
+}
+
+export const executeTask = (
+  task: Task,
+  schedulerOptions: Required<SchedulerOptions>,
+  emitters: Emitters,
+  stopTask: (name: string) => void,
+  activeExecutions?: Set<Promise<void>>,
+): Promise<void> => {
+  const execution = runTask(task, schedulerOptions, emitters, stopTask, activeExecutions)
+  return trackSchedulerExecution(execution, activeExecutions)
 }
 
 /**
@@ -215,6 +232,7 @@ const scheduleCronTask = (
   schedulerOptions: Required<SchedulerOptions>,
   emitters: Emitters,
   stopTask: (name: string) => void,
+  activeExecutions?: Set<Promise<void>>,
 ): void => {
   if (task.cron === null) {
     return
@@ -224,10 +242,11 @@ const scheduleCronTask = (
   task.nextRun = new Date(Date.now() + delay)
 
   task.timeoutId = setTimeout(() => {
-    void executeTask(task, schedulerOptions, emitters, stopTask).then(() => {
+    if (!task.running || !task.registered) return
+    void executeTask(task, schedulerOptions, emitters, stopTask, activeExecutions).then(() => {
       // Reschedule after execution if still running
-      if (task.running && task.cron !== null) {
-        scheduleCronTask(task, schedulerOptions, emitters, stopTask)
+      if (task.running && task.registered && task.cron !== null) {
+        scheduleCronTask(task, schedulerOptions, emitters, stopTask, activeExecutions)
       }
     })
   }, delay)
@@ -247,10 +266,11 @@ export const scheduleTask = (
   schedulerOptions: Required<SchedulerOptions>,
   emitters: Emitters,
   stopTask: (name: string) => void,
+  activeExecutions?: Set<Promise<void>>,
 ): void => {
   // Cron-based tasks use setTimeout and reschedule
   if (task.cron !== null) {
-    scheduleCronTask(task, schedulerOptions, emitters, stopTask)
+    scheduleCronTask(task, schedulerOptions, emitters, stopTask, activeExecutions)
     return
   }
 
@@ -262,8 +282,9 @@ export const scheduleTask = (
   task.nextRun = new Date(Date.now() + task.interval)
 
   task.intervalId = setInterval(() => {
+    if (!task.running || !task.registered) return
     task.nextRun = new Date(Date.now() + task.interval)
-    void executeTask(task, schedulerOptions, emitters, stopTask)
+    void executeTask(task, schedulerOptions, emitters, stopTask, activeExecutions)
   }, task.interval)
 
   if (task.options.unref) {

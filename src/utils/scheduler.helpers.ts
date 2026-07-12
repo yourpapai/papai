@@ -32,6 +32,7 @@ export interface Task {
   readonly interval: number
   readonly cron: string | null
   readonly options: Required<TaskOptions>
+  registered: boolean
   running: boolean
   intervalId: ReturnType<typeof setInterval> | null
   timeoutId: ReturnType<typeof setTimeout> | null
