@@ -28,7 +28,7 @@ function capturingFetch(captured: Captured[], response: unknown, status = 200) {
 }
 
 describe('/nerv command', () => {
-  test('bare /nerv still returns the static help text', async () => {
+  test('bare /nerv still returns the static help text, now mentioning bind', async () => {
     const { command } = activate(() => Promise.resolve(new Response('{}', { status: 200 })))
     const msg = createGroupMessage('u1', '/nerv', false, 'g1')
     msg.commandMatch = ''
@@ -36,6 +36,39 @@ describe('/nerv command', () => {
     const auth = createAuth('u1', { allowed: true })
     await command!.execute(msg, reply, auth)
     expect(textCalls.join('\n')).toMatch(/supervised coding tasks/iu)
+    expect(textCalls.join('\n')).toMatch(/\/nerv bind <projectPath>/u)
+  })
+
+  test('/nerv bind with no path replies with a usage error and never calls nerv', async () => {
+    const calls: string[] = []
+    const httpFetch = (url: string): Promise<Response> => {
+      calls.push(url)
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    }
+    const { command } = activate(httpFetch, nervAdminConfig)
+    const msg = createGroupMessage('u1', '/nerv bind', true, 'g1')
+    msg.commandMatch = 'bind'
+    const { reply, textCalls } = createMockReply()
+    const auth = createAuth('g1', { allowed: true, isBotAdmin: true })
+    await command!.execute(msg, reply, auth)
+    expect(calls).toHaveLength(0)
+    expect(textCalls.join('\n')).toMatch(/usage: \/nerv bind <projectPath>/iu)
+  })
+
+  test('/nerv bind with extra tokens replies with a usage error and never calls nerv', async () => {
+    const calls: string[] = []
+    const httpFetch = (url: string): Promise<Response> => {
+      calls.push(url)
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    }
+    const { command } = activate(httpFetch, nervAdminConfig)
+    const msg = createGroupMessage('u1', '/nerv bind a b', true, 'g1')
+    msg.commandMatch = 'bind a b'
+    const { reply, textCalls } = createMockReply()
+    const auth = createAuth('g1', { allowed: true, isBotAdmin: true })
+    await command!.execute(msg, reply, auth)
+    expect(calls).toHaveLength(0)
+    expect(textCalls.join('\n')).toMatch(/usage: \/nerv bind <projectPath>/iu)
   })
 
   test('admin /nerv bind <projectPath> posts to nerv with storageContextId and replies success', async () => {

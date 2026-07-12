@@ -97,7 +97,11 @@ const NERV_PROMPT_FRAGMENT =
 const NERV_COMMAND_TEXT =
   'nerv supervised coding tasks are available. Ask me in natural language, e.g. "supervise an MR on demo to add ' +
   'retries and keep it green", "what’s the status of my coding task?", or "tell the task to address the review ' +
-  'comments".'
+  'comments".\n\n' +
+  '/nerv bind <projectPath> (admin only) binds this channel as the destination for that nerv project’s ' +
+  'forge-triggered (assign-the-bot) notifications.'
+
+const BIND_USAGE_TEXT = 'Usage: /nerv bind <projectPath>'
 
 const factory = (): { activate(ctx: unknown): void } => ({
   activate(rawCtx: unknown): void {
@@ -116,9 +120,13 @@ const factory = (): { activate(ctx: unknown): void } => ({
         reply: { text(s: string): Promise<void> | void },
         auth: unknown,
       ): Promise<void> => {
-        const bindPath = parseBindPath(commandArgOf(message))
-        if (bindPath !== null) {
-          await handleBindCommand(reply, auth, ctx.adminConfig, ctx.httpFetch, bindPath)
+        const parsed = parseBindPath(commandArgOf(message))
+        if (parsed.kind === 'path') {
+          await handleBindCommand(reply, auth, ctx.adminConfig, ctx.httpFetch, parsed.path)
+          return
+        }
+        if (parsed.kind === 'usage-error') {
+          await reply.text(BIND_USAGE_TEXT)
           return
         }
         await reply.text(NERV_COMMAND_TEXT)

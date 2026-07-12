@@ -35,11 +35,21 @@ test('commandArgOf trims commandMatch, empty when missing', () => {
   expect(commandArgOf(null)).toBe('')
 })
 
-test('parseBindPath extracts the path, null otherwise', () => {
-  expect(parseBindPath('bind foo/bar')).toBe('foo/bar')
-  expect(parseBindPath('bind')).toBeNull()
-  expect(parseBindPath('')).toBeNull()
-  expect(parseBindPath('projects')).toBeNull()
+test('parseBindPath extracts the path for a well-formed bind command', () => {
+  expect(parseBindPath('bind foo/bar')).toEqual({ kind: 'path', path: 'foo/bar' })
+})
+
+test('parseBindPath reports a usage error when the path is missing', () => {
+  expect(parseBindPath('bind')).toEqual({ kind: 'usage-error' })
+})
+
+test('parseBindPath reports a usage error when there are extra tokens', () => {
+  expect(parseBindPath('bind a b')).toEqual({ kind: 'usage-error' })
+})
+
+test('parseBindPath reports not-bind for unrelated or empty input', () => {
+  expect(parseBindPath('')).toEqual({ kind: 'not-bind' })
+  expect(parseBindPath('projects')).toEqual({ kind: 'not-bind' })
 })
 
 test('non-admin is refused and nerv is never called', async () => {

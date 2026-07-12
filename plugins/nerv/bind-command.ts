@@ -29,10 +29,23 @@ export function commandArgOf(message: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
 }
 
-/** Parses `bind <projectPath>` from a command argument string; null when it doesn't match. */
-export function parseBindPath(arg: string): string | null {
-  const match = /^bind\s+(\S+)$/u.exec(arg)
-  return match?.[1] ?? null
+/** Outcome of parsing a `/nerv` command argument for the `bind` subcommand. */
+export type BindParse = { kind: 'not-bind' } | { kind: 'usage-error' } | { kind: 'path'; path: string }
+
+const BIND_SUBCOMMAND = /^bind(?:\s|$)/u
+const BIND_WITH_PATH = /^bind\s+(\S+)$/u
+
+/**
+ * Parses `bind <projectPath>` from a command argument string.
+ * Returns `not-bind` when the argument isn't a `bind` subcommand at all, `usage-error` when it
+ * is a `bind` attempt with a missing or malformed argument (no path, or extra tokens), and
+ * `path` with the extracted project path otherwise.
+ */
+export function parseBindPath(arg: string): BindParse {
+  if (!BIND_SUBCOMMAND.test(arg)) return { kind: 'not-bind' }
+  const match = BIND_WITH_PATH.exec(arg)
+  if (match?.[1] === undefined) return { kind: 'usage-error' }
+  return { kind: 'path', path: match[1] }
 }
 
 /** Runs the admin-gated `/nerv bind <projectPath>` flow and replies with the outcome. */
