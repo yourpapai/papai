@@ -41,6 +41,7 @@ type ScenarioGiven = Readonly<{
     identity: Readonly<{ providerUserId: string; login: string; displayName: string }>,
     providerName?: string,
   ): void
+  providerUser(identity: Readonly<{ id: string; login: string; name?: string }>): void
   dm(user: UserHandle): DmHandle
   thread(group: GroupHandle, id: string): ThreadHandle
   taskInstance(id?: string, providerType?: string): TaskInstanceHandle
@@ -133,6 +134,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     identity(user, identity, providerName = 'kaneo'): void {
       prerequisite('given.identity')
       world.fixtures.seedIdentity({ userId: user.id, providerName, ...identity })
+    },
+    providerUser(identity): void {
+      prerequisite('given.providerUser')
+      world.tasks.addIdentityUser(identity)
     },
     dm: makeDmHandle,
     thread: makeThreadHandle,

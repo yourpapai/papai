@@ -6,6 +6,7 @@
 import { systemError, type AppError } from '../../../src/errors.js'
 import type {
   ListTasksParams,
+  IdentityUser,
   Task,
   TaskCapability,
   TaskListItem,
@@ -76,6 +77,11 @@ const includesQuery = (task: Task, normalizedQuery: string): boolean =>
   task.title.toLowerCase().includes(normalizedQuery) ||
   (task.description ?? '').toLowerCase().includes(normalizedQuery)
 
+const identityMatches = (identity: IdentityUser, query: string): boolean =>
+  identity.id.toLowerCase().includes(query) ||
+  identity.login.toLowerCase().includes(query) ||
+  (identity.name ?? '').toLowerCase().includes(query)
+
 const definedUpdate = (params: UpdateTaskInput): UpdateTaskInput => ({
   ...(params.title === undefined ? {} : { title: params.title }),
   ...(params.description === undefined ? {} : { description: params.description }),
@@ -94,8 +100,22 @@ export class MemoryTaskProvider implements TaskProvider {
   readonly capabilities: ReadonlySet<TaskCapability> = new Set<TaskCapability>()
   readonly traits: ReadonlySet<TaskProviderTrait> = new Set<TaskProviderTrait>()
   readonly preferredUserIdentifier = 'id' as const
+  readonly identityResolver = {
+    searchUsers: (query: string, limit = 10): Promise<IdentityUser[]> => {
+      const normalized = query.toLowerCase()
+      const matches = [...this.identityUsers.values()].filter((identity) => identityMatches(identity, normalized))
+      const result = matches.slice(0, limit).map(clone)
+      this.events?.record('identity.search', {
+        queryLength: query.length,
+        limit,
+        matchedUserIds: result.map(({ id }) => id),
+      })
+      return Promise.resolve(result)
+    },
+  }
 
   private readonly tasks = new Map<string, Task>()
+  private readonly identityUsers = new Map<string, IdentityUser>()
   private readonly events: ScenarioEvents | undefined
   private readonly nextId: () => string
 
@@ -103,6 +123,10 @@ export class MemoryTaskProvider implements TaskProvider {
     this.events = options.events
     let sequence = 0
     this.nextId = options.nextId ?? ((): string => `task-${++sequence}`)
+  }
+
+  addIdentityUser(identity: IdentityUser): void {
+    this.identityUsers.set(identity.id, clone(identity))
   }
 
   createTask(params: CreateTaskInput): Promise<Task> {
@@ -156,7 +180,11 @@ export class MemoryTaskProvider implements TaskProvider {
     const limit = params.limit ?? matching.length
     const offset = Math.max(0, ((params.page ?? 1) - 1) * limit)
     const result = matching.slice(offset, offset + limit).map(taskListItem)
-    this.events?.record('task.list', { projectId, count: result.length })
+    this.events?.record('task.list', {
+      projectId,
+      ...(params.assigneeId === undefined ? {} : { assigneeId: params.assigneeId }),
+      count: result.length,
+    })
     return Promise.resolve(clone(result))
   }
 

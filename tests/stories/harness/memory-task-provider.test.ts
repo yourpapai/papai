@@ -153,4 +153,21 @@ describe('MemoryTaskProvider', () => {
     expect(JSON.stringify(events.all())).not.toContain('Sensitive')
     expect(JSON.stringify(events.all())).not.toContain('secret body')
   })
+
+  test('resolves deterministic provider identities without advertising unrelated capabilities', async () => {
+    const events = createScenarioEvents('identity resolver')
+    const provider = new MemoryTaskProvider({ events })
+    provider.addIdentityUser({ id: 'tracker-alice', login: 'alice.dev', name: 'Alice' })
+    provider.addIdentityUser({ id: 'tracker-bob', login: 'bob.dev', name: 'Bob' })
+
+    const matches = await provider.identityResolver?.searchUsers('alice', 5)
+
+    expect(matches).toEqual([{ id: 'tracker-alice', login: 'alice.dev', name: 'Alice' }])
+    expect([...provider.capabilities]).toEqual([])
+    expect(events.all().find(({ kind }) => kind === 'identity.search')?.data).toEqual({
+      queryLength: 5,
+      limit: 5,
+      matchedUserIds: ['tracker-alice'],
+    })
+  })
 })
