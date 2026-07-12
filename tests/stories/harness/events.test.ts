@@ -112,6 +112,72 @@ describe('scenario events', () => {
     expect(events.formatFailure('failed')).not.toContain('password')
   })
 
+  test('redacts password, credential, private-key, and signature metadata without hiding descriptors', () => {
+    const events = createScenarioEvents('credential metadata')
+
+    events.record('auth.metadata', {
+      password: 'password-value',
+      db_passphrase: 'passphrase-value',
+      clientCredentials: 'credential-value',
+      private_key: 'private-key-value',
+      requestSignature: 'signature-value',
+      sig: 'short-signature-value',
+      'X-Amz-Credential': 'aws-credential-value',
+      'X-Amz-Signature': 'aws-signature-value',
+      'X-Amz-Security-Token': 'aws-token-value',
+      credentialType: 'assumed-role',
+      signatureAlgorithm: 'AWS4-HMAC-SHA256',
+      privateKeyAlgorithm: 'Ed25519',
+      passwordPolicy: 'minimum-12-characters',
+      publicKey: 'public-key-value',
+    })
+
+    expect(events.all()[0]?.data).toEqual({
+      password: '[REDACTED]',
+      db_passphrase: '[REDACTED]',
+      clientCredentials: '[REDACTED]',
+      private_key: '[REDACTED]',
+      requestSignature: '[REDACTED]',
+      sig: '[REDACTED]',
+      'X-Amz-Credential': '[REDACTED]',
+      'X-Amz-Signature': '[REDACTED]',
+      'X-Amz-Security-Token': '[REDACTED]',
+      credentialType: 'assumed-role',
+      signatureAlgorithm: 'AWS4-HMAC-SHA256',
+      privateKeyAlgorithm: 'Ed25519',
+      passwordPolicy: 'minimum-12-characters',
+      publicKey: 'public-key-value',
+    })
+  })
+
+  test('preserves duplicate credential query keys while redacting each value', () => {
+    const events = createScenarioEvents('credential query')
+
+    events.record('http.request', {
+      url: 'https://api.test/login?password=one&password=two&signature=signed&signature_algorithm=HMAC&credential_type=role',
+    })
+
+    expect(events.all()[0]?.data).toEqual({
+      url: 'https://api.test/login?password=%5BREDACTED%5D&password=%5BREDACTED%5D&signature=%5BREDACTED%5D&signature_algorithm=HMAC&credential_type=role',
+    })
+  })
+
+  test('redacts all credential fields in an AWS presigned URL', () => {
+    const events = createScenarioEvents('presigned url')
+    const presigned =
+      'https://bucket.s3.amazonaws.com/report.csv?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA%2F20260712%2Fregion%2Fs3%2Faws4_request&X-Amz-Date=20260712T120000Z&X-Amz-Expires=900&X-Amz-Security-Token=session-token&X-Amz-Signature=deadbeef'
+
+    events.record('storage.url', { presigned })
+
+    expect(events.all()[0]?.data).toEqual({
+      presigned:
+        'https://bucket.s3.amazonaws.com/report.csv?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%5BREDACTED%5D&X-Amz-Date=20260712T120000Z&X-Amz-Expires=900&X-Amz-Security-Token=%5BREDACTED%5D&X-Amz-Signature=%5BREDACTED%5D',
+    })
+    expect(events.formatFailure('failed')).not.toContain('deadbeef')
+    expect(events.formatFailure('failed')).not.toContain('AKIA')
+    expect(events.formatFailure('failed')).not.toContain('session-token')
+  })
+
   test('returns snapshots that cannot mutate recorded events', () => {
     const events = createScenarioEvents('snapshots')
     const source = { nested: { value: 'original' } }

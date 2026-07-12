@@ -22,6 +22,12 @@ const REDACTED = '[REDACTED]'
 
 const isSensitiveKey = (key: string): boolean => {
   const normalized = key.toLowerCase().replaceAll(/[^a-z0-9]/gu, '')
+  const isDescriptor = ['algorithm', 'policy', 'status', 'type', 'version'].some((suffix) =>
+    normalized.endsWith(suffix),
+  )
+  if (isDescriptor) return false
+  const isCredential = normalized.endsWith('credential') || normalized.endsWith('credentials')
+  const isSignature = normalized === 'sig' || normalized.endsWith('signature')
   return (
     normalized === 'authorization' ||
     normalized === 'proxyauthorization' ||
@@ -31,7 +37,12 @@ const isSensitiveKey = (key: string): boolean => {
     normalized === 'apikey' ||
     normalized === 'key' ||
     normalized.includes('token') ||
-    normalized.includes('secret')
+    normalized.includes('secret') ||
+    normalized.includes('password') ||
+    normalized.includes('passphrase') ||
+    normalized.includes('privatekey') ||
+    isCredential ||
+    isSignature
   )
 }
 
