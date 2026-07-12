@@ -20,6 +20,13 @@ async function loadProductionDeps(tag: string): Promise<ProductionDepsModule> {
   throw new Error('Production dependency module did not export createProductionRuntimeDeps')
 }
 
+function requireAggregateError(value: unknown): AggregateError {
+  if (value instanceof AggregateError) return value
+  throw new Error('Expected AggregateError')
+}
+
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
 const platformInstance = {
   id: 'telegram-a',
   type: 'telegram',
@@ -203,6 +210,68 @@ describe('production dependency composition', () => {
     await deps.extensions.start(deps.chat.createRouter())
 
     expect(warnings).toContain('Starting in degraded mode')
+  })
+
+  test('compensates post-activation failure and preserves dual failures deterministically', async () => {
+    let deactivations = 0
+    let deactivate = (): Promise<void> => Promise.resolve()
+    mockMembership()
+    void mock.module('../src/logger.js', () => ({
+      logger: {
+        child: (): unknown => ({
+          info: (): void => undefined,
+          error: (): void => undefined,
+          fatal: (): void => undefined,
+          warn: (): void => undefined,
+        }),
+      },
+    }))
+    void mock.module('../src/instances/platform-store.js', () => ({
+      listActivePlatformInstancesSafe: (): unknown => ({ instances: [], failures: [] }),
+    }))
+    void mock.module('../src/instances/task-store.js', () => ({
+      listTaskInstancesSafe: (): unknown => ({ instances: [], failures: [] }),
+    }))
+    void mock.module('../src/plugins/discovery.js', () => ({
+      discoverPlugins: (): unknown => ({ plugins: [], errors: [], directoryMissing: false }),
+    }))
+    void mock.module('../src/plugins/startup-guard.js', () => ({
+      evaluateStartupGuard: (): unknown => ({ action: 'continue' }),
+    }))
+    void mock.module('../src/plugins/registry.js', () => ({
+      syncRegistryFromDb: (): void => undefined,
+      pluginRegistry: {
+        evaluateCompatibilityAcrossInstances: (): void => undefined,
+        getApprovedCompatiblePlugins: (): readonly unknown[] => [],
+      },
+    }))
+    void mock.module('../src/plugins/loader.js', () => ({
+      activatePlugins: (): Promise<void> => Promise.resolve(),
+      deactivateAllPlugins: (): Promise<void> => {
+        deactivations += 1
+        return deactivate()
+      },
+      getActivatedPluginIds: (): readonly string[] => ['task-provider-kaneo'],
+    }))
+    void mock.module('../src/instances/kaneo-legacy-repair.js', () => ({
+      runKaneoLegacyRepair: (): never => {
+        throw new Error('repair failed')
+      },
+    }))
+    void mock.module('../src/instances/health.js', () => ({ warnUnresolvedTaskInstances: (): void => undefined }))
+    void mock.module('../src/startup-helpers.js', () => ({ warnIfLegacyDebugToken: (): void => undefined }))
+
+    const { createProductionRuntimeDeps } = await loadProductionDeps('activation-compensation')
+    const deps = createProductionRuntimeDeps()
+    await expect(deps.extensions.start(deps.chat.createRouter())).rejects.toThrow('repair failed')
+    expect(deactivations).toBe(1)
+
+    deactivate = (): Promise<void> => Promise.reject(new Error('deactivate failed'))
+    const failure: unknown = await deps.extensions.start(deps.chat.createRouter()).catch((error: unknown) => error)
+    const aggregate = requireAggregateError(failure)
+    expect(aggregate.message).toBe('Plugin startup and compensation failed')
+    expect(aggregate.errors.map(errorMessage)).toEqual(['repair failed', 'deactivate failed'])
+    expect(deactivations).toBe(2)
   })
 
   test('starts the always-on web boundary with debug routes disabled and shares its route function', async () => {

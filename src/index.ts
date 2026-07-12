@@ -30,28 +30,18 @@ const defaultShellDeps: ProductionShellDeps = {
   exit: (code) => process.exit(code),
   onSignal: (signal, handler) => {
     process.on(signal, () => {
-      void handler()
+      void handler().catch((error: unknown) => {
+        log.error({ error: error instanceof Error ? error.message : String(error) }, 'Papai signal handler failed')
+        process.exit(1)
+      })
     })
   },
 }
 
 const readAdminUserId = (): string => process.env['ADMIN_USER_ID']?.trim() ?? ''
 
-function productionConfig(adminUserId: string): PapaiRuntimeConfig {
+function createShellLogger(loggerOverride: Partial<ShellLogger>): ShellLogger {
   return {
-    adminUserId,
-    pluginDirectory: 'plugins',
-    startBackgroundServices: true,
-    startNetworkServer: true,
-    sendStartupAnnouncement: true,
-  }
-}
-
-export async function runProduction(
-  deps: ProductionShellDeps = defaultShellDeps,
-  loggerOverride: Partial<ShellLogger> = {},
-): Promise<void> {
-  const shellLog: ShellLogger = {
     error:
       loggerOverride.error ??
       ((data, message) => {
@@ -63,6 +53,43 @@ export async function runProduction(
         log.info(message)
       }),
   }
+}
+
+function productionConfig(adminUserId: string): PapaiRuntimeConfig {
+  return {
+    adminUserId,
+    pluginDirectory: 'plugins',
+    startBackgroundServices: true,
+    startNetworkServer: true,
+    sendStartupAnnouncement: true,
+  }
+}
+
+function registerShutdownHandlers(runtime: PapaiRuntime, deps: ProductionShellDeps, shellLog: ShellLogger): void {
+  let shutdownInFlight: Promise<void> | undefined
+  const shutdown = (signal: Signal): Promise<void> => {
+    if (shutdownInFlight !== undefined) return shutdownInFlight
+    shutdownInFlight = (async (): Promise<void> => {
+      shellLog.info(`${signal} received, starting graceful shutdown...`)
+      try {
+        await runtime.stop()
+        deps.exit(0)
+      } catch (error) {
+        shellLog.error({ error: error instanceof Error ? error.message : String(error) }, 'Papai shutdown failed')
+        deps.exit(1)
+      }
+    })()
+    return shutdownInFlight
+  }
+  deps.onSignal('SIGTERM', () => shutdown('SIGTERM'))
+  deps.onSignal('SIGINT', () => shutdown('SIGINT'))
+}
+
+export async function runProduction(
+  deps: ProductionShellDeps = defaultShellDeps,
+  loggerOverride: Partial<ShellLogger> = {},
+): Promise<void> {
+  const shellLog = createShellLogger(loggerOverride)
   const adminUserId = readAdminUserId()
   if (adminUserId === '') {
     shellLog.error({ variables: ['ADMIN_USER_ID'] }, 'Missing required environment variables')
@@ -80,13 +107,7 @@ export async function runProduction(
     return
   }
 
-  const shutdown = async (signal: Signal): Promise<void> => {
-    shellLog.info(`${signal} received, starting graceful shutdown...`)
-    await runtime.stop()
-    deps.exit(0)
-  }
-  deps.onSignal('SIGTERM', () => shutdown('SIGTERM'))
-  deps.onSignal('SIGINT', () => shutdown('SIGINT'))
+  registerShutdownHandlers(runtime, deps, shellLog)
 }
 
 if (import.meta.main) await runProduction()

@@ -18,19 +18,10 @@ import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-rout
 import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
 import { startPollers, stopPollers } from '../deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
-import { warnUnresolvedTaskInstances } from '../instances/health.js'
-import { runKaneoLegacyRepair } from '../instances/kaneo-legacy-repair.js'
-import { listActivePlatformInstancesSafe } from '../instances/platform-store.js'
-import { listTaskInstancesSafe } from '../instances/task-store.js'
-import type { PlatformInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { initializeMessageCache } from '../message-cache/index.js'
 import { flushOnShutdown } from '../message-queue/index.js'
-import { discoverPlugins } from '../plugins/discovery.js'
-import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from '../plugins/loader.js'
-import { pluginRegistry, syncRegistryFromDb } from '../plugins/registry.js'
-import { collectStartupCompatibilityInstances } from '../plugins/startup-compatibility.js'
-import { evaluateStartupGuard } from '../plugins/startup-guard.js'
+import { deactivateAllPlugins } from '../plugins/loader.js'
 import {
   defaultMembershipDeps,
   ensureWorkspaceMember,
@@ -41,18 +32,17 @@ import {
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
 import { scheduler } from '../scheduler-instance.js'
 import { startScheduler, stopScheduler } from '../scheduler.js'
-import { warnIfLegacyDebugToken } from '../startup-helpers.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from '../system-config.js'
 import { initUsageRecorder } from '../usage/index.js'
 import { toolCapabilityCatalog } from './capability-catalog.js'
+import { startProductionExtensions, type ProductionExtensionState } from './production-extensions.js'
 import type { PapaiRuntimeDeps, PartialRuntimeDeps } from './types.js'
 
 const log = logger.child({ scope: 'main' })
 const INGRESS_ERROR = 'Programmatic ingress is available only when configured'
 
-type ProductionState = {
-  activePlatforms: readonly PlatformInstance[]
-  populateRouterFromInstances: boolean
+type ProductionState = ProductionExtensionState & {
+  disposeMembershipSubscriber: (() => void) | null
   stopSweeper: (() => void) | null
 }
 
@@ -78,7 +68,7 @@ function stopDatabase(): void {
   closeMigrationDbInstance()
 }
 
-function configureMembership(router: ChatRouter): void {
+function configureMembership(router: ChatRouter, state: ProductionState): void {
   const membershipDeps = {
     ...defaultMembershipDeps,
     resolveUserLabel: (userId: string, groupContextId: string, platformInstanceId: string): Promise<string | null> =>
@@ -86,7 +76,9 @@ function configureMembership(router: ChatRouter): void {
   }
   const ensure = (groupContextId: string, chatUserId: string): ReturnType<typeof ensureWorkspaceMember> =>
     ensureWorkspaceMember(groupContextId, chatUserId, membershipDeps)
-  registerMembershipSubscriber({
+  state.disposeMembershipSubscriber?.()
+  state.disposeMembershipSubscriber = null
+  state.disposeMembershipSubscriber = registerMembershipSubscriber({
     ensure,
     markInactive: (groupContextId, chatUserId) => {
       markMemberInactive(groupContextId, chatUserId)
@@ -102,75 +94,17 @@ function configureMembership(router: ChatRouter): void {
     })
 }
 
+function clearProductionChatRuntime(state: ProductionState): void {
+  try {
+    clearRuntimeChatRouter()
+  } finally {
+    state.disposeMembershipSubscriber?.()
+    state.disposeMembershipSubscriber = null
+  }
+}
+
 function createProductionRouter(): ChatRouter {
   return new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
-}
-
-function loadActivePlatforms(router: ChatRouter, state: ProductionState): void {
-  const active = listActivePlatformInstancesSafe()
-  for (const failure of active.failures) {
-    log.warn(failure, 'Skipping unreadable active platform instance during startup')
-  }
-  if (state.populateRouterFromInstances) {
-    for (const instance of active.instances) {
-      try {
-        router.addInstance(instance.id, instance.type, instance.config)
-      } catch (error) {
-        log.error(
-          {
-            platformInstanceId: instance.id,
-            type: instance.type,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'Skipping invalid active platform instance during startup',
-        )
-      }
-    }
-  }
-  state.activePlatforms = active.instances
-}
-
-function evaluateCompatibility(router: ChatRouter, state: ProductionState): void {
-  try {
-    const taskInstances = listTaskInstancesSafe()
-    for (const failure of taskInstances.failures) {
-      log.warn(failure, 'Skipping unreadable task instance during plugin compatibility evaluation')
-    }
-    const instances = collectStartupCompatibilityInstances(router, taskInstances.instances, state.activePlatforms)
-    pluginRegistry.evaluateCompatibilityAcrossInstances(instances)
-  } catch (error) {
-    log.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Plugin compatibility evaluation skipped',
-    )
-  }
-}
-
-async function startExtensions(router: ChatRouter, state: ProductionState): Promise<readonly string[]> {
-  loadActivePlatforms(router, state)
-  const { plugins, errors, directoryMissing } = discoverPlugins('plugins')
-  if (errors.length > 0) log.warn({ errors: errors.map((error) => error.reason) }, 'Some plugins failed discovery')
-  const guard = evaluateStartupGuard({
-    directoryMissing,
-    debugServerEnabled: process.env['DEBUG_SERVER'] === 'true',
-  })
-  if (guard.action === 'exit') {
-    log.fatal({ reason: guard.reason }, 'Refusing to start: misconfigured deployment')
-    process.exit(1)
-  }
-  if (guard.action === 'warn') log.warn({ reason: guard.reason }, 'Starting in degraded mode')
-  syncRegistryFromDb(plugins)
-  evaluateCompatibility(router, state)
-  const requested = pluginRegistry.getApprovedCompatiblePlugins()
-  await activatePlugins(requested)
-  const activated = getActivatedPluginIds()
-  log.info({ activeCount: activated.length, requestedCount: requested.length }, 'Plugin activation complete')
-  if (activated.includes('task-provider-kaneo')) {
-    log.info({ kaneoRepairSummary: runKaneoLegacyRepair() }, 'Kaneo legacy repair evaluated')
-  }
-  warnUnresolvedTaskInstances()
-  warnIfLegacyDebugToken()
-  return activated
 }
 
 function setupProductionBot(router: ChatRouter, adminUserId: string): void {
@@ -244,11 +178,13 @@ function createDefaultDeps(state: ProductionState): PapaiRuntimeDeps {
       },
       setRuntime: (router) => {
         setRuntimeChatRouter(router)
-        configureMembership(router)
+        configureMembership(router, state)
       },
-      clearRuntime: clearRuntimeChatRouter,
+      clearRuntime: () => {
+        clearProductionChatRuntime(state)
+      },
     },
-    extensions: { start: (router) => startExtensions(router, state), stop: deactivateAllPlugins },
+    extensions: { start: (router) => startProductionExtensions(router, state, log), stop: deactivateAllPlugins },
     application: createApplicationDeps(state),
     background: createBackgroundDeps(state),
     web: {
@@ -265,6 +201,7 @@ function createDefaultDeps(state: ProductionState): PapaiRuntimeDeps {
 export function createProductionRuntimeDeps(overrides: PartialRuntimeDeps = {}): PapaiRuntimeDeps {
   const defaults = createDefaultDeps({
     activePlatforms: [],
+    disposeMembershipSubscriber: null,
     populateRouterFromInstances: overrides.chat?.createRouter === undefined,
     stopSweeper: null,
   })

@@ -63,6 +63,7 @@ import * as _pluginDiscovery from '../src/plugins/discovery.js'
 import * as _pluginLoader from '../src/plugins/loader.js'
 import * as _pluginRegistry from '../src/plugins/registry.js'
 import * as _pluginStartupGuard from '../src/plugins/startup-guard.js'
+import * as _providerMembership from '../src/providers/membership/index.js'
 import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
@@ -111,6 +112,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/plugins/loader.js', { ..._pluginLoader }],
   ['../src/plugins/registry.js', { ..._pluginRegistry }],
   ['../src/plugins/startup-guard.js', { ..._pluginStartupGuard }],
+  ['../src/providers/membership/index.js', { ..._providerMembership }],
   ['../src/providers/resolver.js', { ..._taskProviderResolver }],
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],

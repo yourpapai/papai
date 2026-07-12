@@ -7,9 +7,11 @@ import { describe, expect, test } from 'bun:test'
 
 import { ChatRouter } from '../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../src/chat/types.js'
+import { subscribeCountForTest } from '../../src/debug/event-bus.js'
 import { toolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { createPapaiRuntime } from '../../src/runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from '../../src/runtime/production-deps.js'
+import { setupTestDb } from '../utils/test-helpers.js'
 
 const message = {
   user: { id: 'user-1', username: 'tester', isAdmin: false },
@@ -147,5 +149,28 @@ describe('createProductionRuntimeDeps', () => {
       'chat:stop',
       'database:stop',
     ])
+  })
+
+  test('disposes membership subscribers across sequential production dependency runtimes', async () => {
+    await setupTestDb()
+    const baseline = subscribeCountForTest()
+    const first = createProductionRuntimeDeps()
+    const second = createProductionRuntimeDeps()
+    const firstRouter = new ChatRouter(() => {
+      throw new Error('No adapters are created by the membership lifecycle test')
+    })
+    const secondRouter = new ChatRouter(() => {
+      throw new Error('No adapters are created by the membership lifecycle test')
+    })
+
+    first.chat.setRuntime(firstRouter)
+    expect(subscribeCountForTest()).toBe(baseline + 1)
+    first.chat.clearRuntime()
+    expect(subscribeCountForTest()).toBe(baseline)
+
+    second.chat.setRuntime(secondRouter)
+    expect(subscribeCountForTest()).toBe(baseline + 1)
+    second.chat.clearRuntime()
+    expect(subscribeCountForTest()).toBe(baseline)
   })
 })

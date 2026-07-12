@@ -102,4 +102,46 @@ describe('production shell', () => {
     expect(error).toHaveBeenCalledWith({ error: 'startup boom' }, 'Papai startup failed')
     expect(events.at(-1)).toBe('exit:1')
   })
+
+  test('coalesces concurrent shutdown signals into one stop and exit', async () => {
+    process.env['ADMIN_USER_ID'] = 'admin-1'
+    const events: string[] = []
+    const handlers = new Map<string, () => Promise<void>>()
+    const deps = createShellDeps(events)
+    deps.onSignal = (signal, handler): void => {
+      handlers.set(signal, handler)
+    }
+
+    await runProduction(deps)
+    const sigterm = handlers.get('SIGTERM')
+    const sigint = handlers.get('SIGINT')
+    expect(sigterm).toBeDefined()
+    expect(sigint).toBeDefined()
+    await Promise.all([sigterm?.(), sigint?.()])
+
+    expect(events.filter((event) => event === 'runtime:stop')).toHaveLength(1)
+    expect(events.filter((event) => event === 'exit:0')).toHaveLength(1)
+  })
+
+  test('logs shutdown failure and exits nonzero without rejecting the signal handler', async () => {
+    process.env['ADMIN_USER_ID'] = 'admin-1'
+    const events: string[] = []
+    const handlers = new Map<string, () => Promise<void>>()
+    const deps = createShellDeps(events)
+    deps.createRuntime = (): PapaiRuntime =>
+      createRuntimeStub(
+        () => Promise.resolve(),
+        () => Promise.reject(new Error('stop boom')),
+      )
+    deps.onSignal = (signal, handler): void => {
+      handlers.set(signal, handler)
+    }
+    const error = mock(() => undefined)
+
+    await runProduction(deps, { error })
+    await expect(handlers.get('SIGTERM')?.()).resolves.toBeUndefined()
+
+    expect(error).toHaveBeenCalledWith({ error: 'stop boom' }, 'Papai shutdown failed')
+    expect(events.filter((event) => event === 'exit:1')).toHaveLength(1)
+  })
 })
