@@ -19,6 +19,7 @@ import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { defaultTaskProviderResolver } from '../../../src/providers/resolver.js'
 import { toolCapabilityCatalog } from '../../../src/runtime/capability-catalog.js'
 import { DEFAULT_SCHEDULER_TASK_NAMES, scheduler } from '../../../src/scheduler-instance.js'
+import { createScenarioRuntimeExtensionLifecycle } from './runtime-extension.js'
 import { answer, callCapability } from './scripted-llm.js'
 import type { DmHandle, GroupHandle, PluginHandle, TaskInstanceHandle, ThreadHandle, UserHandle } from './world.js'
 import { createScenarioWorld } from './world.js'
@@ -334,6 +335,38 @@ describe('scenario world', () => {
     await world.start()
     await Promise.all([world.stop(), world.stop()])
     await world.stop()
+
+    expect(cleanupCount).toBe(1)
+  })
+
+  test('stops an extension whose asynchronous start resolves after stop begins', async () => {
+    let cleanupCount = 0
+    let resolveStart: ((cleanup: () => void) => void) | undefined
+    let markStartEntered: (() => void) | undefined
+    const startEntered = new Promise<void>((resolve) => {
+      markStartEntered = resolve
+    })
+    const startGate = new Promise<() => void>((resolve) => {
+      resolveStart = resolve
+    })
+    const lifecycle = createScenarioRuntimeExtensionLifecycle(() => [
+      {
+        start: (): Promise<() => void> => {
+          markStartEntered?.()
+          return startGate
+        },
+      },
+    ])
+
+    const starting = lifecycle.start()
+    await startEntered
+    const stopping = lifecycle.stop()
+    resolveStart?.((): void => {
+      cleanupCount += 1
+    })
+
+    await Promise.all([starting, stopping])
+    await lifecycle.stop()
 
     expect(cleanupCount).toBe(1)
   })

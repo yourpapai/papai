@@ -44,19 +44,26 @@ export const createScenarioRuntimeExtensionLifecycle = (
   let startInFlight: Promise<void> | undefined
   let stopInFlight: Promise<void> | undefined
 
-  const stop = (): Promise<void> => {
+  const runCleanups = async (): Promise<void> => {
+    const failures = await [...cleanups]
+      .reverse()
+      .reduce(
+        async (pending, cleanup): Promise<readonly unknown[]> => collectCleanupFailure(await pending, cleanup),
+        Promise.resolve<readonly unknown[]>([]),
+      )
+    throwCleanupFailures(failures)
+  }
+
+  const stopInternal = (awaitStart: boolean): Promise<void> => {
     if (stopInFlight !== undefined) return stopInFlight
     stopInFlight = (async (): Promise<void> => {
-      const failures = await [...cleanups]
-        .reverse()
-        .reduce(
-          async (pending, cleanup): Promise<readonly unknown[]> => collectCleanupFailure(await pending, cleanup),
-          Promise.resolve<readonly unknown[]>([]),
-        )
-      throwCleanupFailures(failures)
+      if (awaitStart && startInFlight !== undefined) await Promise.allSettled([startInFlight])
+      await runCleanups()
     })()
     return stopInFlight
   }
+
+  const stop = (): Promise<void> => stopInternal(true)
 
   const start = (): Promise<void> => {
     if (startInFlight !== undefined) return startInFlight
@@ -67,7 +74,7 @@ export const createScenarioRuntimeExtensionLifecycle = (
           if (typeof cleanup === 'function') cleanups = [...cleanups, cleanup]
         }
       } catch (error) {
-        await Promise.allSettled([stop()])
+        if (stopInFlight === undefined) await Promise.allSettled([stopInternal(false)])
         throw error
       }
     })()
