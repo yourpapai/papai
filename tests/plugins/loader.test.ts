@@ -184,6 +184,89 @@ describe('activatePlugins', () => {
     ])
   })
 
+  test('uses each plugin activation HTTP dependency again during deactivation without crossing instances', async () => {
+    const lifecyclePlugin = (id: string): DiscoveredPlugin => {
+      const entryPoint = writeTempPluginModule(`
+        export default function createPlugin() {
+          return {
+            async activate(ctx) {
+              await ctx.providerRuntime.httpFetch('https://api.example.com/${id}/activate')
+            },
+            async deactivate(ctx) {
+              await ctx.providerRuntime.httpFetch('https://api.example.com/${id}/deactivate')
+            },
+          }
+        }
+      `)
+      return makePlugin(id, entryPoint, { permissions: ['http'], providerAllowedHosts: ['api.example.com'] })
+    }
+    const first = lifecyclePlugin('owned-first')
+    const second = lifecyclePlugin('owned-second')
+    approvePlugin(first)
+    approvePlugin(second)
+    const firstUrls: string[] = []
+    const secondUrls: string[] = []
+    const replacementUrls: string[] = []
+    const firstFetch = mock((url: string) => {
+      firstUrls.push(url)
+      return Promise.resolve(new Response('first'))
+    })
+    const secondFetch = mock((url: string) => {
+      secondUrls.push(url)
+      return Promise.resolve(new Response('second'))
+    })
+    const replacementFetch = mock((url: string) => {
+      replacementUrls.push(url)
+      return Promise.resolve(new Response('replacement'))
+    })
+    const publicUrl = (): Promise<void> => Promise.resolve()
+
+    await activatePlugins([first], { providerRuntimeDeps: { fetch: firstFetch, assertPublicUrl: publicUrl } })
+    await activatePlugins([second], { providerRuntimeDeps: { fetch: secondFetch, assertPublicUrl: publicUrl } })
+    await deactivateAllPlugins()
+    await activatePlugins([first], {
+      providerRuntimeDeps: { fetch: replacementFetch, assertPublicUrl: publicUrl },
+    })
+    await deactivateAllPlugins()
+
+    expect(firstUrls).toEqual([
+      'https://api.example.com/owned-first/activate',
+      'https://api.example.com/owned-first/deactivate',
+    ])
+    expect(secondUrls).toEqual([
+      'https://api.example.com/owned-second/activate',
+      'https://api.example.com/owned-second/deactivate',
+    ])
+    expect(replacementUrls).toEqual([
+      'https://api.example.com/owned-first/activate',
+      'https://api.example.com/owned-first/deactivate',
+    ])
+  })
+
+  test('builds the default provider runtime for both lifecycle phases when no dependencies are supplied', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            globalThis.papaiDeactivateOrder.push(ctx.providerRuntime.allowedHosts.has('api.example.com') ? 'activate' : 'missing')
+          },
+          deactivate(ctx) {
+            globalThis.papaiDeactivateOrder.push(ctx.providerRuntime.allowedHosts.has('api.example.com') ? 'deactivate' : 'missing')
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('default-http-plugin', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+    })
+    approvePlugin(plugin)
+    await activatePlugins([plugin])
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiDeactivateOrder).toEqual(['activate', 'deactivate'])
+  })
+
   test('marks plugin as error when entry point cannot be imported', async () => {
     const plugin = makePlugin('bad-plugin', '/nonexistent/path.ts')
     approvePlugin(plugin)
@@ -194,6 +277,44 @@ describe('activatePlugins', () => {
     expect(requireValue(getRecentRuntimeEvents('bad-plugin', 1)[0], 'bad plugin runtime event').message).toContain(
       'Import failed',
     )
+  })
+
+  test('failed reactivation clears the previous active instance and its owned dependencies', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/activate') },
+          deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/deactivate') },
+        }
+      }
+    `)
+    const plugin = makePlugin('failed-reactivation-plugin', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+    })
+    approvePlugin(plugin)
+    const urls: string[] = []
+    await activatePlugins([plugin], {
+      providerRuntimeDeps: {
+        fetch: (url) => {
+          urls.push(url)
+          return Promise.resolve(new Response('owned'))
+        },
+        assertPublicUrl: () => Promise.resolve(),
+      },
+    })
+    const broken = makePlugin(plugin.manifest.id, '/nonexistent/reactivation.ts', {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+    })
+    approvePlugin(broken)
+
+    await activatePlugins([broken])
+    await deactivateAllPlugins()
+
+    expect(getActivatedPluginIds()).toEqual([])
+    expect(contributionRegistry.getContributions(plugin.manifest.id)).toBeUndefined()
+    expect(urls).toEqual(['https://api.example.com/activate'])
   })
 
   test('converts entry point paths to portable file URLs before import', () => {

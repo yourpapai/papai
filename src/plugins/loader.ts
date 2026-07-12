@@ -41,8 +41,10 @@ function buildActivationTimeout(timeoutMs: number): {
 const log = logger.child({ scope: 'plugins:loader' })
 const PLUGIN_LIFECYCLE_CONCURRENCY = 1
 const SYSTEM_CONTEXT_ID = '__system__'
+export type ActivatePluginsOptions = Readonly<{ providerRuntimeDeps?: ProviderRuntimeDeps }>
 const activationOrder: string[] = []
-const activeInstances = new Map<string, PluginInstance>()
+type ActivePluginInstance = Readonly<{ instance: PluginInstance; options: ActivatePluginsOptions }>
+const activeInstances = new Map<string, ActivePluginInstance>()
 
 function removeActivatedPluginId(pluginId: string): void {
   const index = activationOrder.lastIndexOf(pluginId)
@@ -99,6 +101,7 @@ function finalizeSuccessfulActivation(
   plugin: DiscoveredPlugin,
   activationContext: ReturnType<typeof buildPluginContext>,
   instance: PluginInstance | null,
+  options: ActivatePluginsOptions,
   validateConfig?: TaskProviderConfigValidator,
 ): void {
   const { manifest } = plugin
@@ -107,7 +110,7 @@ function finalizeSuccessfulActivation(
   commitTaskProviderRegistration(plugin, activationContext, validateConfig)
   contributionRegistry.register(manifest.id, collected, manifest)
   if (instance !== null) {
-    activeInstances.set(manifest.id, instance)
+    activeInstances.set(manifest.id, { instance, options })
   }
   pluginRegistry.markActive(manifest.id)
   activationOrder.push(manifest.id)
@@ -122,14 +125,13 @@ function closeActivationRegistration(activationContext: ReturnType<typeof buildP
 function handleActivationFailure(pluginId: string, msg: string): false {
   log.error({ pluginId, error: msg }, 'Plugin activation failed')
   activeInstances.delete(pluginId)
+  removeActivatedPluginId(pluginId)
   contributionRegistry.deregister(pluginId)
   deactivateContributedTaskProviderTypes(pluginId)
   pluginRegistry.markError(pluginId, `Activation failed: ${msg}`)
   recordRuntimeEvent(pluginId, 'error', `Activation failed: ${msg}`)
   return false
 }
-
-export type ActivatePluginsOptions = Readonly<{ providerRuntimeDeps?: ProviderRuntimeDeps }>
 
 async function activateOne(plugin: DiscoveredPlugin, options: ActivatePluginsOptions): Promise<boolean> {
   const { manifest, entryPoint } = plugin
@@ -142,8 +144,7 @@ async function activateOne(plugin: DiscoveredPlugin, options: ActivatePluginsOpt
       : await importPluginModule(entryPoint).catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err)
           log.error({ pluginId: manifest.id, error: msg }, 'Failed to import plugin entry point')
-          pluginRegistry.markError(manifest.id, `Import failed: ${msg}`)
-          recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
+          handleActivationFailure(manifest.id, `Import failed: ${msg}`)
           return null
         })
   if (entryPoint !== '' && importedModule === null) return false
@@ -164,7 +165,7 @@ async function activateOne(plugin: DiscoveredPlugin, options: ActivatePluginsOpt
         `Plugin '${manifest.id}' declares providerConfigValidator but did not register task provider type '${manifest.contributes.taskProviderTypes[0] ?? 'unknown'}'`,
       )
     }
-    finalizeSuccessfulActivation(plugin, activationContext, importedModule?.instance ?? null, validateConfig)
+    finalizeSuccessfulActivation(plugin, activationContext, importedModule?.instance ?? null, options, validateConfig)
     return true
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -209,14 +210,15 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
   const entry = pluginRegistry.getEntry(pluginId)
   if (entry === undefined || entry.state !== 'active') return
 
-  const instance = activeInstances.get(pluginId)
+  const active = activeInstances.get(pluginId)
 
   try {
-    if (instance !== undefined && typeof instance.deactivate === 'function') {
+    if (active !== undefined && typeof active.instance.deactivate === 'function') {
       const { ctx } = buildPluginContext(entry.discoveredPlugin.manifest, SYSTEM_CONTEXT_ID, {
         registrationInitiallyOpen: false,
+        providerRuntimeDeps: active.options.providerRuntimeDeps,
       })
-      await Promise.resolve(instance.deactivate(ctx))
+      await Promise.resolve(active.instance.deactivate(ctx))
     }
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)

@@ -8,15 +8,41 @@ import { z } from 'zod'
 import type { ScenarioEvents } from './events.js'
 import type { StrictHttpDispatcher } from './strict-http.js'
 
-const projectSpecSchema = z.looseObject({
+const toolDecisionSchema = z.enum(['allow', 'ask', 'deny'])
+
+const toolPolicySchema = z.strictObject({
+  default: toolDecisionSchema,
+  tools: z.record(z.string(), toolDecisionSchema).optional(),
+})
+
+const mcpUpstreamSchema = z.strictObject({
+  id: z.string().min(1),
+  url: z.url(),
+  host: z.string().min(1),
+  header: z.string().min(1),
+  allowedHosts: z.array(z.string().min(1)),
+  toolPolicy: toolPolicySchema.optional(),
+})
+
+const forgeSchema = z.strictObject({
+  kind: z.enum(['github', 'gitlab']),
+  apiBaseUrl: z.url(),
+})
+
+const projectSpecSchema = z.strictObject({
   name: z.string().min(1),
   repoUrl: z.url(),
   baseBranch: z.string().min(1),
-  permissionPreset: z.string().min(1),
+  permissionPreset: z.enum(['autonomous', 'cautious', 'readonly']),
   agent: z.string().min(1),
+  additionalEgressDomains: z.array(z.string().min(1)).optional(),
+  forge: forgeSchema.optional(),
+  providerHost: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
+  mcp: z.array(mcpUpstreamSchema).optional(),
 })
 
-const startSessionSchema = z.looseObject({
+const startSessionSchema = z.strictObject({
   agent: z.string().min(1),
   contextId: z.string().min(1),
   prompt: z.string().min(1),
@@ -102,6 +128,8 @@ function recordStart(events: ScenarioEvents, body: StartSessionBody): void {
     projectSpec: body.projectSpec,
     environmentNames: Object.keys(body.secrets).sort(),
     forgeIncluded: body.forgeToken !== undefined,
+    ...(body.prNumber === undefined ? {} : { prNumber: body.prNumber }),
+    ...(body.mcpTokens === undefined ? {} : { mcpServerIds: Object.keys(body.mcpTokens).sort() }),
   })
 }
 

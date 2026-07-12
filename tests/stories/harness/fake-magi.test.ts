@@ -31,6 +31,38 @@ async function causeMessage(promise: Promise<unknown>): Promise<string> {
   return failure.cause.message
 }
 
+function validProjectSpec(): Record<string, unknown> {
+  return {
+    name: 'papai',
+    repoUrl: 'https://github.com/acme/papai.git',
+    baseBranch: 'main',
+    permissionPreset: 'cautious',
+    agent: 'claude',
+  }
+}
+
+function validStartBody(): Record<string, unknown> {
+  return {
+    agent: 'claude-code-acp',
+    contextId: 'pi:dm:user-1',
+    prompt: 'Add health check',
+    secrets: { ANTHROPIC_API_KEY: 'provider-secret' },
+    projectSpec: validProjectSpec(),
+  }
+}
+
+function rejectedStartMessage(body: unknown): Promise<string> {
+  const { http, magi } = setup()
+  magi.expectStartSession({ id: 'session-invalid' })
+  return causeMessage(
+    http.fetch(`${BASE_URL}/sessions`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
 describe('fake magi', () => {
   test('serves agents, session creation, filtered listing, and status in exact order', async () => {
     const { events, http, magi } = setup()
@@ -128,6 +160,90 @@ describe('fake magi', () => {
         }),
       ),
     ).toContain('rejected POST /sessions')
+  })
+
+  test('rejects unknown top-level, project, and nested project fields', async () => {
+    expect(await rejectedStartMessage({ ...validStartBody(), unexpected: true })).toContain('rejected POST /sessions')
+    expect(
+      await rejectedStartMessage({
+        ...validStartBody(),
+        projectSpec: { ...validProjectSpec(), unexpected: true },
+      }),
+    ).toContain('rejected POST /sessions')
+    expect(
+      await rejectedStartMessage({
+        ...validStartBody(),
+        projectSpec: {
+          ...validProjectSpec(),
+          forge: { kind: 'github', apiBaseUrl: 'https://api.github.com', unexpected: true },
+        },
+      }),
+    ).toContain('rejected POST /sessions')
+    expect(
+      await rejectedStartMessage({
+        ...validStartBody(),
+        projectSpec: {
+          ...validProjectSpec(),
+          mcp: [
+            {
+              id: 'docs',
+              url: 'https://mcp.invalid',
+              host: 'mcp.invalid',
+              header: 'authorization',
+              allowedHosts: ['mcp.invalid'],
+              unexpected: true,
+            },
+          ],
+        },
+      }),
+    ).toContain('rejected POST /sessions')
+  })
+
+  test('records the complete validated request shape without credential values', async () => {
+    const { events, http, magi } = setup()
+    magi.expectStartSession({ id: 'session-full' })
+    const projectSpec = {
+      ...validProjectSpec(),
+      additionalEgressDomains: ['packages.example.com'],
+      forge: { kind: 'github', apiBaseUrl: 'https://api.github.com' },
+      providerHost: 'api.anthropic.com',
+      model: 'claude-sonnet',
+      mcp: [
+        {
+          id: 'docs',
+          url: 'https://mcp.invalid',
+          host: 'mcp.invalid',
+          header: 'authorization',
+          allowedHosts: ['mcp.invalid'],
+          toolPolicy: { default: 'ask', tools: { read_docs: 'allow' } },
+        },
+      ],
+    }
+    await http.fetch(`${BASE_URL}/sessions`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...validStartBody(),
+        projectSpec,
+        forgeToken: 'forge-private',
+        prNumber: 42,
+        mcpTokens: { docs: 'mcp-private' },
+      }),
+    })
+
+    expect(events.all().find(({ kind }) => kind === 'magi.session.start')?.data).toEqual({
+      agent: 'claude-code-acp',
+      contextId: 'pi:dm:user-1',
+      prompt: 'Add health check',
+      projectSpec,
+      environmentNames: ['ANTHROPIC_API_KEY'],
+      forgeIncluded: true,
+      prNumber: 42,
+      mcpServerIds: ['docs'],
+    })
+    const trace = JSON.stringify(events.all())
+    expect(trace).not.toContain('forge-private')
+    expect(trace).not.toContain('mcp-private')
   })
 
   test('fails on wrong authorization without exposing the supplied token', async () => {
