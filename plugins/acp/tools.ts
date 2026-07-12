@@ -50,6 +50,9 @@ export type RuntimeContext = {
       additionalEgressDomains?: string[]
     } | null
   }
+  transcript: {
+    mintUrl(magiSessionId: string): string | null
+  }
 }
 type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
 export type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
@@ -77,6 +80,16 @@ export function shareFieldsOf(result: unknown): { shareToken?: string; transcrip
     ...(shareToken === undefined ? {} : { shareToken }),
     ...(transcriptUrl === undefined ? {} : { transcriptUrl }),
   }
+}
+
+// Mints a papai transcript URL for a freshly-started/continued magi session (via
+// runtimeContext.transcript.mintUrl) and merges it into the magi result, so callers get
+// transcriptUrl regardless of whether magi's own response already carried one. Returns `result`
+// unchanged when there's no session id or mintUrl declines (no public base URL/permission).
+export function withMintedTranscriptUrl(runtimeContext: RuntimeContext, result: unknown): unknown {
+  const sessionId = sessionIdOf(result)
+  const mintedUrl = sessionId === null ? null : runtimeContext.transcript.mintUrl(sessionId)
+  return mintedUrl === null ? result : { ...asObject(result), transcriptUrl: mintedUrl }
 }
 
 // magi auto-derives a forge for these SaaS hosts; any other host needs an

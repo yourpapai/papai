@@ -60,6 +60,9 @@ type FakeRuntimeContext = {
     list(): { name: string; baseBranch: string }[]
     get(name: string): { name: string; repoUrl: string; baseBranch: string; permissionPreset: string } | null
   }
+  transcript: {
+    mintUrl(magiSessionId: string): string | null
+  }
 }
 
 function ctx(
@@ -93,6 +96,7 @@ function ctx(
       list: () => [{ name: 'demo', baseBranch: 'main' }],
       get: (name: string) => (name === 'demo' ? DEMO_REPO : null),
     },
+    transcript: { mintUrl: (): null => null },
   }
 }
 

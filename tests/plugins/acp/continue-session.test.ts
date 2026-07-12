@@ -86,6 +86,24 @@ describe('acp continue_session tool', () => {
     expect(child['prUrl']).toBe('https://github.com/a/b/pull/5')
   })
 
+  test('includes a minted transcriptUrl in the result and stored child record when transcript.mintUrl resolves', async () => {
+    const calls: string[] = []
+    const httpFetch = followUpOnlyFetch('p1', { id: 'c-mint', status: 'queued', parentSessionId: 'p1' }, calls)
+    const store = new Map<string, string>()
+    writeRecord(runtimeCtxWithKv(store).kv, 'p1', { project: 'demo', title: 't', createdAt: 'x' })
+    const { tools } = activate(httpFetch)
+    const ctx = {
+      ...runtimeCtxWithKv(store),
+      transcript: { mintUrl: (magiSessionId: string): string => `https://papai.example/t/${magiSessionId}-tok` },
+    }
+    const res = asRecord(
+      await tools.get('continue_session')!.execute({ sessionId: 'p1', prompt: 'go' }, ctx, options()),
+    )
+    expect(res['transcriptUrl']).toBe('https://papai.example/t/c-mint-tok')
+    const child = readStoredRecord(store, 'c-mint')
+    expect(child['transcriptUrl']).toBe('https://papai.example/t/c-mint-tok')
+  })
+
   test('forwards the current thread contextId on the follow-up request', async () => {
     const sink = { body: {} as Record<string, unknown> }
     const httpFetch = capturingFollowUpFetch('p1', { id: 'c1', status: 'queued', parentSessionId: 'p1' }, sink)

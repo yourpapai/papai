@@ -160,6 +160,7 @@ describe('coding-credentials redaction — not-configured reference', () => {
             permissionPreset: 'cautious',
           }),
         },
+        transcript: { mintUrl: (): null => null },
       },
       {},
     )
