@@ -43,3 +43,7 @@ export function resolveCodingGuardrails(platformInstanceId: string): CodingGuard
 export function setCodingGuardrails(platformInstanceId: string, g: CodingGuardrails): void {
   setCachedConfig(adminCodingGuardrailsContextId(platformInstanceId), KEY, JSON.stringify(guardrailsSchema.parse(g)))
 }
+
+export function hasCodingGuardrails(platformInstanceId: string): boolean {
+  return getCachedConfig(adminCodingGuardrailsContextId(platformInstanceId), KEY) !== null
+}

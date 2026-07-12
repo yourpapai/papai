@@ -9,6 +9,7 @@ import { setCachedConfig } from '../../src/cache.js'
 import {
   adminCodingGuardrailsContextId,
   guardrailsSchema,
+  hasCodingGuardrails,
   resolveCodingGuardrails,
   setCodingGuardrails,
 } from '../../src/coding-credentials/guardrails.js'
@@ -56,5 +57,16 @@ describe('guardrails', () => {
     expect(guardrailsSchema.safeParse({ maxMcpServers: 9 }).success).toBe(false)
     expect(guardrailsSchema.safeParse({ maxMcpServers: 1 }).success).toBe(true)
     expect(guardrailsSchema.safeParse({ maxMcpServers: 8 }).success).toBe(true)
+  })
+
+  test('hasCodingGuardrails is false when unset and true after set', () => {
+    expect(hasCodingGuardrails('pi-1')).toBe(false)
+    setCodingGuardrails('pi-1', {
+      allowedAgents: ['claude'],
+      whoMayUse: 'members',
+      forceSharedKey: false,
+      maxMcpServers: 3,
+    })
+    expect(hasCodingGuardrails('pi-1')).toBe(true)
   })
 })
