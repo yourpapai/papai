@@ -7,20 +7,40 @@ export type CatalogStatus = 'confirmed' | 'forward-only' | 'gap' | 'contract-onl
 
 type CatalogScenarioId = (typeof CATALOG_SCENARIO_IDS)[number]
 
+export type NonEmptyReadonlyTuple<T> = readonly [T, ...T[]]
+
+export class PendingReason {
+  readonly #value: string
+
+  private constructor(value: string) {
+    this.#value = value
+  }
+
+  toString(): string {
+    return this.#value
+  }
+
+  static from(value: string): PendingReason {
+    const trimmed = value.trim()
+    if (trimmed === '') throw new Error('Pending reason must not be empty')
+    return new PendingReason(trimmed)
+  }
+}
+
 export type CatalogCoverage =
   | Readonly<{
       scenarioId: CatalogScenarioId
       catalogStatus: CatalogStatus
       kind: 'executable'
       verifiedAt: '2026-07-13'
-      storyIds: readonly string[]
+      storyIds: NonEmptyReadonlyTuple<string>
     }>
   | Readonly<{
       scenarioId: CatalogScenarioId
       catalogStatus: CatalogStatus
       kind: 'pending'
       verifiedAt: '2026-07-13'
-      reason: string
+      reason: PendingReason
       requiredSeam?: string
     }>
 
@@ -165,6 +185,10 @@ const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
 const FORWARD_ONLY_SCENARIO_IDS = new Set<CatalogScenarioId>([
   'SCN-coding-acp-whomayuse-denied',
   'SCN-coding-acp-guest-denied',
+  'SCN-interaction-discord-router-wrapped',
+  'SCN-interaction-discord-standalone-fallback',
+  'SCN-interaction-telegram-callback',
+  'SCN-interaction-permission-decision',
   'SCN-http-mattermost-action',
 ])
 
@@ -175,10 +199,15 @@ function catalogStatusFor(scenarioId: CatalogScenarioId): CatalogStatus {
   return 'confirmed'
 }
 
-function pendingReason(catalogStatus: CatalogStatus): string {
-  if (catalogStatus === 'gap') return 'Catalog gap: awaiting a local executable story.'
-  if (catalogStatus === 'contract-only') return 'Contract-only non-trigger: no executable story is expected.'
-  return 'Awaiting branch audit before classifying an executable story.'
+export function toPendingReason(value: string): PendingReason {
+  return PendingReason.from(value)
+}
+
+function pendingReasonFor(catalogStatus: CatalogStatus): PendingReason {
+  if (catalogStatus === 'gap') return toPendingReason('Catalog gap: awaiting a local executable story.')
+  if (catalogStatus === 'contract-only')
+    return toPendingReason('Contract-only non-trigger: no executable story is expected.')
+  return toPendingReason('Awaiting branch audit before classifying an executable story.')
 }
 
 export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
@@ -188,7 +217,7 @@ export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
       catalogStatus: catalogStatusFor(scenarioId),
       kind: 'pending' as const,
       verifiedAt: '2026-07-13' as const,
-      reason: pendingReason(catalogStatusFor(scenarioId)),
+      reason: pendingReasonFor(catalogStatusFor(scenarioId)),
     }),
   ),
 )
