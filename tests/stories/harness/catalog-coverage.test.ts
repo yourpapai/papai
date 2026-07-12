@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
+import nodePath from 'node:path'
 
 import { loadCandidateStoryFiles } from '../../../scripts/story-manifest-candidate.js'
 import { extractStoryScenarios } from '../../../scripts/story-manifest-scenarios.js'
@@ -13,7 +14,15 @@ function sorted(values: readonly string[]): readonly string[] {
   return [...values].sort()
 }
 
+function resolveStoryContractRoot(harnessDirectory: string): string {
+  return nodePath.resolve(harnessDirectory, '../../..')
+}
+
 describe('scenario catalog coverage', () => {
+  test('resolves the repository root from a nested harness snapshot path', () => {
+    expect(resolveStoryContractRoot('/tmp/story-snapshot/tests/stories/harness')).toBe('/tmp/story-snapshot')
+  })
+
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
@@ -40,7 +49,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('keeps pending reasons and executable references accountable to local literal stories', async () => {
-    const candidateFiles = await loadCandidateStoryFiles(process.cwd())
+    const candidateFiles = await loadCandidateStoryFiles(resolveStoryContractRoot(import.meta.dir))
     const extractedStoryIds = new Set(
       candidateFiles.flatMap(({ path, bytes }) => extractStoryScenarios(path, bytes).map(({ id }) => id)),
     )
