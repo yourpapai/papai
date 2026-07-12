@@ -9,8 +9,10 @@ import type {
   Comment,
   CommentReaction,
   IdentityUser,
+  Label,
   Task,
   TaskCapability,
+  TaskLabel,
   TaskListItem,
   TaskProvider,
   TaskProviderTrait,
@@ -24,6 +26,8 @@ type UpdateTaskInput = Parameters<TaskProvider['updateTask']>[1]
 type SearchTaskInput = Parameters<TaskProvider['searchTasks']>[0]
 type UpdateCommentInput = Parameters<NonNullable<TaskProvider['updateComment']>>[0]
 type RemoveCommentInput = Parameters<NonNullable<TaskProvider['removeComment']>>[0]
+type CreateLabelInput = Parameters<NonNullable<TaskProvider['createLabel']>>[0]
+type UpdateLabelInput = Parameters<NonNullable<TaskProvider['updateLabel']>>[1]
 
 const supportedMemoryTaskCapabilities: readonly TaskCapability[] = [
   'comments.read',
@@ -31,6 +35,11 @@ const supportedMemoryTaskCapabilities: readonly TaskCapability[] = [
   'comments.update',
   'comments.delete',
   'comments.reactions',
+  'labels.list',
+  'labels.create',
+  'labels.update',
+  'labels.delete',
+  'labels.assign',
 ]
 
 export type MemoryTaskProviderOptions = Readonly<{
@@ -107,6 +116,11 @@ const definedUpdate = (params: UpdateTaskInput): UpdateTaskInput => ({
   ...(params.customFields === undefined ? {} : { customFields: params.customFields }),
 })
 
+const definedLabelUpdate = (params: UpdateLabelInput): UpdateLabelInput => ({
+  ...(params.name === undefined ? {} : { name: params.name }),
+  ...(params.color === undefined ? {} : { color: params.color }),
+})
+
 export class MemoryTaskProvider implements TaskProvider {
   readonly name = 'kaneo'
   readonly supportsCustomFields = true
@@ -128,12 +142,15 @@ export class MemoryTaskProvider implements TaskProvider {
 
   private readonly tasks = new Map<string, Task>()
   private readonly comments = new Map<string, Map<string, Comment>>()
+  private readonly labels = new Map<string, Label>()
+  private readonly taskLabelIds = new Map<string, Set<string>>()
   private readonly identityUsers = new Map<string, IdentityUser>()
   private readonly events: ScenarioEvents | undefined
   private readonly nextId: () => string
   private readonly capabilitySet = new Set<TaskCapability>()
   private commentSequence = 0
   private reactionSequence = 0
+  private labelSequence = 0
 
   get capabilities(): ReadonlySet<TaskCapability> {
     return this.capabilitySet
@@ -324,6 +341,95 @@ export class MemoryTaskProvider implements TaskProvider {
     })
   }
 
+  listLabels(): Promise<Label[]> {
+    return Promise.resolve().then(() => {
+      const result = [...this.labels.values()]
+      this.events?.record('label.list', { count: result.length })
+      return clone(result)
+    })
+  }
+
+  listTaskLabels(taskId: string): Promise<TaskLabel[]> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const result = [...(this.taskLabelIds.get(taskId) ?? [])]
+        .map((labelId) => this.labels.get(labelId))
+        .filter((label): label is Label => label !== undefined)
+      this.events?.record('task.label.list', { taskId, count: result.length })
+      return clone(result)
+    })
+  }
+
+  getLabelByName(labelName: string): Promise<Label[]> {
+    return Promise.resolve().then(() => {
+      const result = [...this.labels.values()].filter((label) => label.name === labelName)
+      this.events?.record('label.find', { queryLength: labelName.length, count: result.length })
+      return clone(result)
+    })
+  }
+
+  createLabel(params: CreateLabelInput): Promise<Label> {
+    return Promise.resolve().then(() => {
+      const input = clone(params)
+      if ([...this.labels.values()].some((label) => label.name === input.name)) {
+        throw new Error(`Label already exists: ${input.name}`)
+      }
+      const label: Label = { ...input, id: `label-${++this.labelSequence}` }
+      this.labels.set(label.id, clone(label))
+      this.events?.record('label.create', { labelId: label.id })
+      return clone(label)
+    })
+  }
+
+  updateLabel(labelId: string, params: UpdateLabelInput): Promise<Label> {
+    return Promise.resolve().then(() => {
+      const existing = this.requireLabel(labelId)
+      const patch = clone(definedLabelUpdate(params))
+      const updated: Label = { ...existing, ...patch, id: labelId }
+      this.labels.set(labelId, clone(updated))
+      this.events?.record('label.update', { labelId, fields: Object.keys(patch).sort() })
+      return clone(updated)
+    })
+  }
+
+  removeLabel(labelId: string): Promise<{ id: string }> {
+    return Promise.resolve().then(() => {
+      this.requireLabel(labelId)
+      let taskAssignmentCount = 0
+      for (const labelIds of this.taskLabelIds.values()) {
+        if (labelIds.delete(labelId)) taskAssignmentCount += 1
+      }
+      this.labels.delete(labelId)
+      this.events?.record('label.delete', { labelId, taskAssignmentCount })
+      return { id: labelId }
+    })
+  }
+
+  addTaskLabel(taskId: string, labelId: string): Promise<{ taskId: string; labelId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      this.requireLabel(labelId)
+      const labelIds = this.taskLabelIds.get(taskId) ?? new Set<string>()
+      if (labelIds.has(labelId)) throw new Error(`Task label already exists: task ${taskId}, label ${labelId}`)
+      labelIds.add(labelId)
+      this.taskLabelIds.set(taskId, labelIds)
+      this.events?.record('task.label.create', { taskId, labelId })
+      return { taskId, labelId }
+    })
+  }
+
+  removeTaskLabel(taskId: string, labelId: string): Promise<{ taskId: string; labelId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const labelIds = this.taskLabelIds.get(taskId)
+      if (labelIds === undefined || !labelIds.delete(labelId)) {
+        throw new Error(`Task label not found: task ${taskId}, label ${labelId}`)
+      }
+      this.events?.record('task.label.delete', { taskId, labelId })
+      return { taskId, labelId }
+    })
+  }
+
   buildTaskUrl(taskId: string): string {
     return `memory://tasks/${taskId}`
   }
@@ -367,5 +473,11 @@ export class MemoryTaskProvider implements TaskProvider {
     const comment = this.requireCommentMap(taskId).get(commentId)
     if (comment === undefined) throw new Error(`Comment not found: task ${taskId}, comment ${commentId}`)
     return comment
+  }
+
+  private requireLabel(labelId: string): Label {
+    const label = this.labels.get(labelId)
+    if (label === undefined) throw new Error(`Label not found: ${labelId}`)
+    return label
   }
 }

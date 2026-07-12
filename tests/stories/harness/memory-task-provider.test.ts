@@ -50,6 +50,25 @@ describe('MemoryTaskProvider', () => {
     expect([...provider.capabilities]).toEqual(capabilities)
   })
 
+  test('advertises implemented label capabilities without accepting task deletion', () => {
+    const provider = new MemoryTaskProvider()
+    const capabilities: TaskCapability[] = [
+      'labels.list',
+      'labels.create',
+      'labels.update',
+      'labels.delete',
+      'labels.assign',
+    ]
+
+    provider.setCapabilities(capabilities)
+
+    expect([...provider.capabilities]).toEqual(capabilities)
+    expect(() => provider.setCapabilities(['tasks.delete'])).toThrow(
+      'MemoryTaskProvider does not support task capabilities: tasks.delete',
+    )
+    expect([...provider.capabilities]).toEqual(capabilities)
+  })
+
   test('creates, reads, lists, updates, and searches tasks deterministically', async () => {
     const provider = new MemoryTaskProvider()
     const first = await provider.createTask({ projectId: 'project-1', title: 'Release 7', description: 'Ship it' })
@@ -197,6 +216,100 @@ describe('MemoryTaskProvider', () => {
       body: 'unchanged comment',
       reactions: [{ id: 'reaction-1', reaction: 'party' }],
     })
+  })
+
+  test('creates, lists, finds, updates, and removes labels', async () => {
+    const provider = new MemoryTaskProvider()
+    const first = await provider.createLabel({ name: 'alpha', color: '#aabbcc' })
+    const second = await provider.createLabel({ name: 'beta' })
+
+    expect(first).toEqual({ id: 'label-1', name: 'alpha', color: '#aabbcc' })
+    expect(await provider.listLabels()).toEqual([
+      { id: 'label-1', name: 'alpha', color: '#aabbcc' },
+      { id: 'label-2', name: 'beta' },
+    ])
+    expect(await provider.getLabelByName('alpha')).toEqual([first])
+    expect(await provider.updateLabel(first.id, { name: 'gamma' })).toEqual({
+      id: first.id,
+      name: 'gamma',
+      color: '#aabbcc',
+    })
+    expect(await provider.removeLabel(second.id)).toEqual({ id: second.id })
+    expect(await provider.listLabels()).toEqual([{ id: first.id, name: 'gamma', color: '#aabbcc' }])
+  })
+
+  test('assigns labels to tasks and removes the assignment', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'project-1', title: 'labeled task' })
+    const label = await provider.createLabel({ name: 'alpha', color: '#aabbcc' })
+
+    expect(await provider.addTaskLabel(task.id, label.id)).toEqual({ taskId: task.id, labelId: label.id })
+    expect(await provider.listTaskLabels(task.id)).toEqual([label])
+    expect(await provider.removeTaskLabel(task.id, label.id)).toEqual({ taskId: task.id, labelId: label.id })
+    expect(await provider.listTaskLabels(task.id)).toEqual([])
+  })
+
+  test('rejects duplicate and missing labels without mutating label state', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'project-1', title: 'labeled task' })
+    const label = await provider.createLabel({ name: 'alpha' })
+    await provider.addTaskLabel(task.id, label.id)
+
+    await expect(provider.createLabel({ name: 'alpha' })).rejects.toThrow('Label already exists: alpha')
+    await expect(provider.updateLabel(label.id, { name: 'alpha' })).resolves.toEqual(label)
+    await expect(provider.createLabel({ name: 'beta' })).resolves.toEqual({ id: 'label-2', name: 'beta' })
+    await expect(provider.updateLabel('missing', { name: 'gamma' })).rejects.toThrow('Label not found: missing')
+    await expect(provider.removeLabel('missing')).rejects.toThrow('Label not found: missing')
+    await expect(provider.addTaskLabel(task.id, label.id)).rejects.toThrow(
+      `Task label already exists: task ${task.id}, label ${label.id}`,
+    )
+    await expect(provider.removeTaskLabel(task.id, 'missing')).rejects.toThrow(
+      `Task label not found: task ${task.id}, label missing`,
+    )
+    await expect(provider.addTaskLabel('missing', label.id)).rejects.toThrow('Task not found: missing')
+    expect(await provider.listLabels()).toEqual([label, { id: 'label-2', name: 'beta' }])
+    expect(await provider.listTaskLabels(task.id)).toEqual([label])
+  })
+
+  test('clones label state and emits sanitized label operation events', async () => {
+    const events = createScenarioEvents('label events')
+    const provider = new MemoryTaskProvider({ events })
+    const task = await provider.createTask({ projectId: 'project-1', title: 'labeled task' })
+    const created = await provider.createLabel({ name: 'classified label', color: '#aabbcc' })
+    created.name = 'mutated created label'
+    const listed = await provider.listLabels()
+    listed[0]!.name = 'mutated listed label'
+    const found = await provider.getLabelByName('classified label')
+    found[0]!.name = 'mutated found label'
+    await provider.addTaskLabel(task.id, created.id)
+    const taskLabels = await provider.listTaskLabels(task.id)
+    taskLabels[0]!.name = 'mutated task label'
+    await provider.updateLabel(created.id, { color: '#ddeeff' })
+    await provider.removeTaskLabel(task.id, created.id)
+    await provider.removeLabel(created.id)
+
+    expect(await provider.listLabels()).toEqual([])
+    expect(
+      events
+        .all()
+        .slice(1)
+        .map(({ kind, data }) => ({ kind, data })),
+    ).toEqual([
+      { kind: 'label.create', data: { labelId: created.id } },
+      { kind: 'label.list', data: { count: 1 } },
+      { kind: 'label.find', data: { queryLength: 16, count: 1 } },
+      { kind: 'task.label.create', data: { taskId: task.id, labelId: created.id } },
+      { kind: 'task.label.list', data: { taskId: task.id, count: 1 } },
+      { kind: 'label.update', data: { labelId: created.id, fields: ['color'] } },
+      { kind: 'task.label.delete', data: { taskId: task.id, labelId: created.id } },
+      { kind: 'label.delete', data: { labelId: created.id, taskAssignmentCount: 0 } },
+      { kind: 'label.list', data: { count: 0 } },
+    ])
+    const trace = JSON.stringify(events.all())
+    expect(trace).not.toContain('classified')
+    expect(trace).not.toContain('aabbcc')
+    expect(trace).not.toContain('ddeeff')
+    expect(trace).not.toContain('mutated')
   })
 
   test('isolates comment state and emits sanitized comment operation events', async () => {

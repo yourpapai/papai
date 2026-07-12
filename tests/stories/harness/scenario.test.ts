@@ -77,6 +77,30 @@ describe('scenario execution', () => {
     }
   })
 
+  test('task capability prerequisite accepts implemented label operations but rejects task deletion', async () => {
+    const world = await createScenarioWorld('label task capabilities')
+
+    try {
+      const capabilities: TaskCapability[] = [
+        'labels.list',
+        'labels.create',
+        'labels.update',
+        'labels.delete',
+        'labels.assign',
+      ]
+
+      world.api.given.taskCapabilities(capabilities)
+
+      expect([...world.tasks.capabilities]).toEqual(capabilities)
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+      expect(() => world.api.given.taskCapabilities(['tasks.delete'])).toThrow(
+        'MemoryTaskProvider does not support task capabilities: tasks.delete',
+      )
+    } finally {
+      await world.stop()
+    }
+  })
+
   test('task capability prerequisite is blocked after startup', async () => {
     const world = await createScenarioWorld('task capability startup guard')
 
