@@ -34,6 +34,11 @@ const requireAggregateError = (value: unknown): AggregateError => {
   throw new Error('Expected aggregate error')
 }
 
+const requireError = (value: unknown): Error => {
+  if (value instanceof Error) return value
+  throw new Error('Expected error')
+}
+
 const throwingCleanupObserver =
   (steps: string[], failure: Error): ((kind: string) => void) =>
   (kind): void => {
@@ -310,7 +315,10 @@ describe('scenario world', () => {
       (error: unknown) => error,
     )
 
-    expect(failure).toBe(startFailure)
+    const aggregate = requireAggregateError(failure)
+    expect(aggregate.errors[0]).toBe(startFailure)
+    expect(aggregate.errors[1]).toBeInstanceOf(Error)
+    expect(requireError(aggregate.errors[1]).cause).toBe(cleanupFailure)
     expect(lifecycle).toEqual(['first.start', 'second.start', 'third.start', 'second.stop', 'first.stop'])
   })
 

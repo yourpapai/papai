@@ -67,9 +67,7 @@ export const createScenarioRuntimeExtensionLifecycle = (
           if (typeof cleanup === 'function') cleanups = [...cleanups, cleanup]
         }
       } catch (error) {
-        const rollback = stop()
-        await rollback.catch((): void => undefined)
-        if (stopInFlight === rollback) stopInFlight = Promise.resolve()
+        await Promise.allSettled([stop()])
         throw error
       }
     })()
