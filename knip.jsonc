@@ -20,6 +20,8 @@
     "scripts/behavior-audit/migrate-trust.ts!",
     "playwright.config.ts!",
     "strybk.config.ts!",
+    // Standalone kiss->nerv/papai config importer CLI; run directly via `bun run`, no static importer.
+    "tools/import-kiss-projects.ts!",
     // First-party plugin entry points are loaded dynamically by the plugin loader,
     // so they have no static importer; declare them as entries.
     "plugins/*/index.ts!",
@@ -27,7 +29,14 @@
 
   // All source files (production only). plugins/** is included so knip tracks
   // plugin->src usage (e.g. clearCachedTools, consumed only by a provider plugin).
-  "project": ["src/**/*.ts!", "client/**/*.ts!", "scripts/behavior-audit/**/*.ts!", "plugins/**/*.ts!"],
+  // tools/** is the standalone kiss->nerv/papai config importer.
+  "project": [
+    "src/**/*.ts!",
+    "client/**/*.ts!",
+    "scripts/behavior-audit/**/*.ts!",
+    "plugins/**/*.ts!",
+    "tools/**/*.ts!",
+  ],
 
   // All issue types treated as hard errors
   "rules": {
@@ -54,7 +63,10 @@
   // ships in a production bundle.
   // @crvy/strybk is imported by strybk.config.ts but knip-bun cannot resolve the
   // package even though it is listed in devDependencies (runtime CLI config consumer).
-  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw", "@crvy/strybk"],
+  // mongodb backs tools/import-kiss-projects.ts, a standalone ops script (not part of the
+  // shipped runtime bundle), so it's intentionally a devDependency even though knip's
+  // production-file classification would otherwise expect a regular dependency.
+  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw", "@crvy/strybk", "mongodb"],
 
   "ignoreIssues": {
     // defaultBroadcastDepsForTest is a test-only seam.
