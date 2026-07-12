@@ -35,8 +35,10 @@ scenario(
   'SCN-settings-coding-agent-provider: updates coding credentials through settings and changes the next chat turn',
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
+    const bob = given.user('bob')
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
+    const bobContextId = toScopedContextId({ platformInstanceId: bob.platformInstanceId, nativeContextId: bob.id })
     given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
@@ -75,6 +77,40 @@ scenario(
     const before = await when.settingsRequest(session, '/settings/api/coding-credentials?namespace=agent-provider')
     then.responseStatus(before, 200)
     expect(credentialResponseSchema.parse(await before.json())).toMatchObject({ configured: false, complete: false })
+
+    const malformed = await when.settingsRequest(session, '/settings/api/coding-credentials', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{not valid json',
+    })
+    then.responseStatus(malformed, 400)
+
+    const afterMalformed = await when.settingsRequest(
+      session,
+      '/settings/api/coding-credentials?namespace=agent-provider',
+    )
+    then.responseStatus(afterMalformed, 200)
+    expect(credentialResponseSchema.parse(await afterMalformed.json())).toMatchObject({
+      configured: false,
+      complete: false,
+    })
+
+    const crossContext = await when.settingsRequest(session, '/settings/api/coding-credentials', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: agentProviderRequest(bobContextId),
+    })
+    then.responseStatus(crossContext, 403)
+
+    const afterCrossContext = await when.settingsRequest(
+      session,
+      '/settings/api/coding-credentials?namespace=agent-provider',
+    )
+    then.responseStatus(afterCrossContext, 200)
+    expect(credentialResponseSchema.parse(await afterCrossContext.json())).toMatchObject({
+      configured: false,
+      complete: false,
+    })
 
     const updated = await when.settingsRequest(session, '/settings/api/coding-credentials', {
       method: 'PATCH',
