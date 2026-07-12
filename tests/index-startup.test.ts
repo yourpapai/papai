@@ -5,446 +5,157 @@
 
 import { describe, expect, mock, test } from 'bun:test'
 
-import * as debugServerModule from '../src/debug/server.js'
+import type { ChatProvider } from '../src/chat/types.js'
+import type { PlatformInstance } from '../src/instances/types.js'
 
-const restoreAdminUserId = (originalValue: string | undefined): void => {
-  if (originalValue === undefined) {
-    delete process.env['ADMIN_USER_ID']
-    return
-  }
-  process.env['ADMIN_USER_ID'] = originalValue
+type ProductionDepsModule = typeof import('../src/runtime/production-deps.js')
+
+const isProductionDepsModule = (value: unknown): value is ProductionDepsModule =>
+  typeof value === 'object' && value !== null && typeof Reflect.get(value, 'createProductionRuntimeDeps') === 'function'
+
+async function loadProductionDeps(tag: string): Promise<ProductionDepsModule> {
+  const loaded: unknown = await import(`../src/runtime/production-deps.ts?${tag}=${crypto.randomUUID()}`)
+  if (isProductionDepsModule(loaded)) return loaded
+  throw new Error('Production dependency module did not export createProductionRuntimeDeps')
 }
 
-const restoreDebugServerModule = (): void => {
-  void mock.module('../src/debug/server.js', () => ({ ...debugServerModule }))
+const platformInstance = {
+  id: 'telegram-a',
+  type: 'telegram',
+  config: { token: 'token' },
+  status: 'active',
+  createdAt: 'now',
+} as const satisfies PlatformInstance
+
+const fakeProvider = (): ChatProvider => ({
+  name: 'mock',
+  threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+  capabilities: new Set(),
+  traits: { observedGroupMessages: 'all' },
+  configRequirements: [],
+  registerCommand: (): void => undefined,
+  onMessage: (): void => undefined,
+  sendMessage: (): Promise<void> => Promise.resolve(),
+  renderContext: (): ReturnType<ChatProvider['renderContext']> => ({ method: 'text', content: 'mock' }),
+  start: (): Promise<void> => Promise.resolve(),
+  stop: (): Promise<void> => Promise.resolve(),
+})
+
+const mockMembership = (): void => {
+  void mock.module('../src/providers/membership/index.js', () => ({
+    defaultMembershipDeps: {},
+    ensureWorkspaceMember: (): Promise<'skipped'> => Promise.resolve('skipped'),
+    markMemberInactive: (): void => undefined,
+    registerMembershipSubscriber: (): void => undefined,
+    runMembershipBackfill: (): Promise<{ processed: number }> => Promise.resolve({ processed: 0 }),
+  }))
 }
 
-const restoreDebugServerEnv = (originalValue: string | undefined): void => {
-  if (originalValue === undefined) {
-    delete process.env['DEBUG_SERVER']
-    return
-  }
-  process.env['DEBUG_SERVER'] = originalValue
-}
-
-describe('index.ts startup', () => {
-  const warnedUnreadableTaskMessage = (
-    calls: readonly { readonly data: unknown; readonly message?: string }[],
-  ): boolean =>
-    calls.some(
-      (call) =>
-        call.message === 'Skipping unreadable task instance during plugin compatibility evaluation' &&
-        typeof call.data === 'object' &&
-        call.data !== null &&
-        Reflect.get(call.data, 'id') === 'bad',
-    )
-
-  test('does not auto-add ADMIN_USER_ID to authorized users', async () => {
-    const source = await Bun.file('src/index.ts').text()
-
-    expect(source).not.toMatch(/import\s+\{[^}]*addUser/u)
-    expect(source).not.toMatch(/\baddUser\s*\(/u)
-  })
-
-  test('evaluates plugin compatibility across startup instances', async () => {
-    const originalAdminUserId = process.env['ADMIN_USER_ID']
-    process.env['ADMIN_USER_ID'] = 'admin-1'
-    let evaluatedCompatibilityInstances = 0
-    let resolverCalls = 0
-
-    void mock.module('../src/announcements.js', () => ({ announceNewVersion: (): void => {} }))
-    void mock.module('../src/attachments/index.js', () => ({ isS3Configured: (): boolean => false }))
-    void mock.module('../src/attachments/staged-download.js', () => ({
-      createStagedDownloader: (): (() => Promise<null>) => () => Promise.resolve(null),
-    }))
-    void mock.module('../src/bot.js', () => ({ setupBot: (): void => {} }))
-    void mock.module('../src/chat/registry.js', () => ({
-      createChatProviderFromConfig: (): unknown => ({
-        name: 'mock',
-        threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
-        capabilities: new Set(['messages.buttons']),
-        traits: { observedGroupMessages: 'all' },
-        configRequirements: [],
-        registerCommand: (): void => {},
-        onMessage: (): void => {},
-        sendMessage: (): Promise<void> => Promise.resolve(),
-        renderContext: (): unknown => ({ method: 'text', content: 'mock' }),
-        start: (): Promise<void> => Promise.resolve(),
-        stop: (): Promise<void> => Promise.resolve(),
-      }),
-    }))
-    void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
-    void mock.module('../src/chat/telegram/index.js', () => ({ getTelegramFileFetcher: (): undefined => undefined }))
-    void mock.module('../src/chat/mattermost/index.js', () => ({
-      getMattermostFileFetcher: (): undefined => undefined,
-    }))
-    void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
-    void mock.module('../src/db/drizzle.js', () => ({ closeDrizzleDb: (): void => {} }))
-    void mock.module('../src/debug/chat-router-runtime.js', () => ({
-      setRuntimeChatRouter: (): void => {},
-      clearRuntimeChatRouter: (): void => {},
-    }))
-    void mock.module('../src/debug/server.js', () => ({
-      startDebugServer: (): void => {},
-      stopDebugServer: (): void => {},
-    }))
-    void mock.module('../src/deferred-prompts/poller.js', () => ({
-      startPollers: (): void => {},
-      stopPollers: (): void => {},
-    }))
-    void mock.module('../src/instances/bootstrap.js', () => ({
-      bootstrapInstancesFromEnv: (): unknown => ({ bootstrapped: false, reason: 'already-bootstrapped' }),
-    }))
-    void mock.module('../src/instances/platform-store.js', () => ({
-      listActivePlatformInstancesSafe: (): unknown => ({
-        instances: [{ id: 'telegram-a', type: 'telegram', config: { token: 'x' }, status: 'active', createdAt: 'now' }],
-        failures: [],
-      }),
-    }))
-    void mock.module('../src/instances/task-store.js', () => ({
-      listTaskInstancesSafe: (): unknown => ({
-        instances: [
-          {
-            id: 'youtrack-a',
-            type: 'youtrack',
-            config: { baseUrl: 'https://youtrack.invalid' },
-            status: 'active',
-            createdAt: 'now',
-          },
-        ],
-        failures: [],
-      }),
-    }))
-    void mock.module('../src/message-cache/index.js', () => ({ initializeMessageCache: (): void => {} }))
-    void mock.module('../src/message-queue/index.js', () => ({
-      flushOnShutdown: (): Promise<void> => Promise.resolve(),
-    }))
-    void mock.module('../src/plugins/discovery.js', () => ({
-      discoverPlugins: (): unknown => ({ plugins: [], errors: [] }),
-    }))
-    void mock.module('../src/plugins/loader.js', () => ({
-      activatePlugins: (): Promise<void> => Promise.resolve(),
-      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
-      getActivatedPluginIds: (): unknown[] => [],
-    }))
-    void mock.module('../src/plugins/registry.js', () => ({
-      syncRegistryFromDb: (): void => {},
-      pluginRegistry: {
-        evaluateCompatibilityAcrossInstances: (instances: readonly unknown[]): void => {
-          evaluatedCompatibilityInstances = instances.length
-        },
-        getApprovedCompatiblePlugins: (): unknown[] => [],
-      },
-    }))
-    void mock.module('../src/providers/resolver.js', () => ({
-      defaultTaskProviderResolver: {
-        resolve: (): null => {
-          resolverCalls += 1
-          return null
-        },
-      },
-    }))
-    void mock.module('../src/scheduler-instance.js', () => ({
-      scheduler: { startAll: (): void => {}, stopAll: (): void => {} },
-    }))
-    void mock.module('../src/scheduler.js', () => ({ startScheduler: (): void => {}, stopScheduler: (): void => {} }))
-    void mock.module('../src/system-config.js', () => ({
-      seedSystemConfigFromEnv: (): void => {},
-      missingSystemConfigKeys: (): string[] => [],
-    }))
-    void mock.module('../src/usage/index.js', () => ({ initUsageRecorder: (): void => {} }))
-
-    try {
-      await import(`../src/index.ts?startup-compatibility=${Date.now()}`)
-    } finally {
-      restoreAdminUserId(originalAdminUserId)
-      restoreDebugServerModule()
-    }
-
-    expect(evaluatedCompatibilityInstances).toBeGreaterThan(0)
-    expect(resolverCalls).toBe(0)
-  })
-
-  test('unreadable task rows do not block plugin compatibility evaluation for readable task rows', async () => {
-    const originalAdminUserId = process.env['ADMIN_USER_ID']
-    process.env['ADMIN_USER_ID'] = 'admin-1'
-    let evaluatedCompatibilityInstances = 0
-    let compatibilityEvaluated = false
-    const warnCalls: Array<{ readonly data: unknown; readonly message?: string }> = []
-
-    void mock.module('../src/announcements.js', () => ({ announceNewVersion: (): void => {} }))
-    void mock.module('../src/attachments/index.js', () => ({ isS3Configured: (): boolean => false }))
-    void mock.module('../src/attachments/staged-download.js', () => ({
-      createStagedDownloader: (): (() => Promise<null>) => () => Promise.resolve(null),
-    }))
-    void mock.module('../src/bot.js', () => ({ setupBot: (): void => {} }))
-    void mock.module('../src/chat/registry.js', () => ({
-      createChatProviderFromConfig: (): unknown => ({
-        name: 'mock',
-        threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
-        capabilities: new Set(['messages.buttons']),
-        traits: { observedGroupMessages: 'all' },
-        configRequirements: [],
-        registerCommand: (): void => {},
-        onMessage: (): void => {},
-        sendMessage: (): Promise<void> => Promise.resolve(),
-        renderContext: (): unknown => ({ method: 'text', content: 'mock' }),
-        start: (): Promise<void> => Promise.resolve(),
-        stop: (): Promise<void> => Promise.resolve(),
-      }),
-    }))
-    void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
-    void mock.module('../src/chat/telegram/index.js', () => ({ getTelegramFileFetcher: (): undefined => undefined }))
-    void mock.module('../src/chat/mattermost/index.js', () => ({
-      getMattermostFileFetcher: (): undefined => undefined,
-    }))
-    void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
-    void mock.module('../src/db/drizzle.js', () => ({ closeDrizzleDb: (): void => {} }))
-    void mock.module('../src/debug/chat-router-runtime.js', () => ({
-      setRuntimeChatRouter: (): void => {},
-      clearRuntimeChatRouter: (): void => {},
-    }))
-    void mock.module('../src/debug/server.js', () => ({
-      startDebugServer: (): void => {},
-      stopDebugServer: (): void => {},
-    }))
-    void mock.module('../src/deferred-prompts/poller.js', () => ({
-      startPollers: (): void => {},
-      stopPollers: (): void => {},
-    }))
-    void mock.module('../src/instances/bootstrap.js', () => ({
-      bootstrapInstancesFromEnv: (): unknown => ({ bootstrapped: false, reason: 'already-bootstrapped' }),
-    }))
-    void mock.module('../src/instances/platform-store.js', () => ({
-      listActivePlatformInstancesSafe: (): unknown => ({
-        instances: [{ id: 'telegram-a', type: 'telegram', config: { token: 'x' }, status: 'active', createdAt: 'now' }],
-        failures: [],
-      }),
-    }))
-    void mock.module('../src/instances/task-store.js', () => ({
-      listTaskInstancesSafe: (): unknown => ({
-        instances: [
-          {
-            id: 'youtrack-a',
-            type: 'youtrack',
-            config: { baseUrl: 'https://youtrack.invalid' },
-            status: 'active',
-            createdAt: 'now',
-          },
-        ],
-        failures: [{ table: 'task_instances', id: 'bad', type: 'youtrack', error: 'Encrypted payload malformed' }],
-      }),
-    }))
+describe('production dependency composition', () => {
+  test('skips unreadable rows and evaluates plugin compatibility across readable instances', async () => {
+    const warnings: string[] = []
+    const events: string[] = []
+    mockMembership()
     void mock.module('../src/logger.js', () => ({
       logger: {
         child: (): unknown => ({
-          info: (): void => {},
-          error: (): void => {},
-          debug: (): void => {},
-          warn: (data: unknown, message?: string): void => {
-            warnCalls.push({ data, message })
+          info: (): void => undefined,
+          error: (): void => undefined,
+          fatal: (): void => undefined,
+          warn: (_data: unknown, message?: string): void => {
+            warnings.push(String(message))
           },
         }),
       },
     }))
-    void mock.module('../src/message-cache/index.js', () => ({ initializeMessageCache: (): void => {} }))
-    void mock.module('../src/message-queue/index.js', () => ({
-      flushOnShutdown: (): Promise<void> => Promise.resolve(),
-    }))
-    void mock.module('../src/plugins/discovery.js', () => ({
-      discoverPlugins: (): unknown => ({ plugins: [], errors: [] }),
-    }))
-    void mock.module('../src/plugins/loader.js', () => ({
-      activatePlugins: (): Promise<void> => Promise.resolve(),
-      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
-      getActivatedPluginIds: (): unknown[] => [],
-    }))
-    void mock.module('../src/plugins/registry.js', () => ({
-      syncRegistryFromDb: (): void => {},
-      pluginRegistry: {
-        evaluateCompatibilityAcrossInstances: (instances: readonly unknown[]): void => {
-          compatibilityEvaluated = true
-          evaluatedCompatibilityInstances = instances.length
-        },
-        getApprovedCompatiblePlugins: (): unknown[] => [],
-      },
-    }))
-    void mock.module('../src/providers/resolver.js', () => ({
-      defaultTaskProviderResolver: { resolve: (): null => null },
-    }))
-    void mock.module('../src/scheduler-instance.js', () => ({
-      scheduler: { startAll: (): void => {}, stopAll: (): void => {} },
-    }))
-    void mock.module('../src/scheduler.js', () => ({ startScheduler: (): void => {}, stopScheduler: (): void => {} }))
-    void mock.module('../src/system-config.js', () => ({
-      seedSystemConfigFromEnv: (): void => {},
-      missingSystemConfigKeys: (): string[] => [],
-    }))
-    void mock.module('../src/usage/index.js', () => ({ initUsageRecorder: (): void => {} }))
-
-    try {
-      await import(`../src/index.ts?startup-safe-task-compatibility=${Date.now()}`)
-    } finally {
-      restoreAdminUserId(originalAdminUserId)
-      restoreDebugServerModule()
-    }
-
-    expect(compatibilityEvaluated).toBe(true)
-    expect(evaluatedCompatibilityInstances).toBeGreaterThan(0)
-    expect(warnedUnreadableTaskMessage(warnCalls)).toBe(true)
-  })
-
-  test('startup health warnings do not require strict task-instance listing mocks', async () => {
-    const originalAdminUserId = process.env['ADMIN_USER_ID']
-    process.env['ADMIN_USER_ID'] = 'admin-1'
-    let compatibilityEvaluated = false
-
-    void mock.module('../src/announcements.js', () => ({ announceNewVersion: (): void => {} }))
-    void mock.module('../src/attachments/index.js', () => ({ isS3Configured: (): boolean => false }))
-    void mock.module('../src/attachments/staged-download.js', () => ({
-      createStagedDownloader: (): (() => Promise<null>) => () => Promise.resolve(null),
-    }))
-    void mock.module('../src/bot.js', () => ({ setupBot: (): void => {} }))
-    void mock.module('../src/chat/registry.js', () => ({
-      createChatProviderFromConfig: (): unknown => ({
-        name: 'mock',
-        threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
-        capabilities: new Set(['messages.buttons']),
-        traits: { observedGroupMessages: 'all' },
-        configRequirements: [],
-        registerCommand: (): void => {},
-        onMessage: (): void => {},
-        sendMessage: (): Promise<void> => Promise.resolve(),
-        renderContext: (): unknown => ({ method: 'text', content: 'mock' }),
-        start: (): Promise<void> => Promise.resolve(),
-        stop: (): Promise<void> => Promise.resolve(),
-      }),
-    }))
-    void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
-    void mock.module('../src/chat/telegram/index.js', () => ({ getTelegramFileFetcher: (): undefined => undefined }))
-    void mock.module('../src/chat/mattermost/index.js', () => ({
-      getMattermostFileFetcher: (): undefined => undefined,
-    }))
-    void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
-    void mock.module('../src/db/drizzle.js', () => ({ closeDrizzleDb: (): void => {} }))
-    void mock.module('../src/debug/chat-router-runtime.js', () => ({
-      setRuntimeChatRouter: (): void => {},
-      clearRuntimeChatRouter: (): void => {},
-    }))
-    void mock.module('../src/debug/server.js', () => ({
-      startDebugServer: (): void => {},
-      stopDebugServer: (): void => {},
-    }))
-    void mock.module('../src/deferred-prompts/poller.js', () => ({
-      startPollers: (): void => {},
-      stopPollers: (): void => {},
-    }))
-    void mock.module('../src/instances/bootstrap.js', () => ({
-      bootstrapInstancesFromEnv: (): unknown => ({ bootstrapped: false, reason: 'already-bootstrapped' }),
-    }))
     void mock.module('../src/instances/platform-store.js', () => ({
       listActivePlatformInstancesSafe: (): unknown => ({
-        instances: [{ id: 'telegram-a', type: 'telegram', config: { token: 'x' }, status: 'active', createdAt: 'now' }],
-        failures: [],
+        instances: [platformInstance],
+        failures: [{ id: 'bad-platform', error: 'unreadable' }],
       }),
     }))
     void mock.module('../src/instances/task-store.js', () => ({
       listTaskInstancesSafe: (): unknown => ({
-        instances: [],
-        failures: [],
+        instances: [{ id: 'task-a', type: 'youtrack', config: {}, status: 'active', createdAt: 'now' }],
+        failures: [{ id: 'bad-task', error: 'unreadable' }],
       }),
     }))
-    void mock.module('../src/message-cache/index.js', () => ({ initializeMessageCache: (): void => {} }))
-    void mock.module('../src/message-queue/index.js', () => ({
-      flushOnShutdown: (): Promise<void> => Promise.resolve(),
-    }))
+    void mock.module('../src/chat/registry.js', () => ({ createChatProviderFromConfig: fakeProvider }))
     void mock.module('../src/plugins/discovery.js', () => ({
-      discoverPlugins: (): unknown => ({ plugins: [], errors: [] }),
+      discoverPlugins: (): unknown => ({
+        plugins: [{ manifest: { id: 'plugin-a' } }],
+        errors: [],
+        directoryMissing: false,
+      }),
     }))
-    void mock.module('../src/plugins/loader.js', () => ({
-      activatePlugins: (): Promise<void> => Promise.resolve(),
-      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
-      getActivatedPluginIds: (): unknown[] => [],
+    void mock.module('../src/plugins/startup-guard.js', () => ({
+      evaluateStartupGuard: (input: unknown): { readonly action: 'continue' } => {
+        events.push(`guard:${JSON.stringify(input)}`)
+        return { action: 'continue' }
+      },
+    }))
+    void mock.module('../src/plugins/startup-compatibility.js', () => ({
+      collectStartupCompatibilityInstances: (
+        _router: unknown,
+        taskInstances: readonly unknown[],
+        platformInstances: readonly unknown[],
+      ): readonly unknown[] => {
+        events.push(`inputs:${String(platformInstances.length)}:${String(taskInstances.length)}`)
+        return [...platformInstances, ...taskInstances]
+      },
     }))
     void mock.module('../src/plugins/registry.js', () => ({
-      syncRegistryFromDb: (): void => {},
+      syncRegistryFromDb: (): void => {
+        events.push('registry:sync')
+      },
       pluginRegistry: {
-        evaluateCompatibilityAcrossInstances: (): void => {
-          compatibilityEvaluated = true
+        evaluateCompatibilityAcrossInstances: (instances: readonly unknown[]): void => {
+          events.push(`compatibility:${String(instances.length)}`)
         },
-        getApprovedCompatiblePlugins: (): unknown[] => [],
+        getApprovedCompatiblePlugins: (): readonly string[] => ['plugin-a'],
       },
     }))
-    void mock.module('../src/providers/resolver.js', () => ({
-      defaultTaskProviderResolver: { resolve: (): null => null },
+    void mock.module('../src/plugins/loader.js', () => ({
+      activatePlugins: (plugins: readonly unknown[]): Promise<void> => {
+        events.push(`activate:${String(plugins.length)}`)
+        return Promise.resolve()
+      },
+      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
+      getActivatedPluginIds: (): readonly string[] => ['plugin-a'],
     }))
-    void mock.module('../src/scheduler-instance.js', () => ({
-      scheduler: { startAll: (): void => {}, stopAll: (): void => {} },
-    }))
-    void mock.module('../src/scheduler.js', () => ({ startScheduler: (): void => {}, stopScheduler: (): void => {} }))
-    void mock.module('../src/system-config.js', () => ({
-      seedSystemConfigFromEnv: (): void => {},
-      missingSystemConfigKeys: (): string[] => [],
-    }))
-    void mock.module('../src/usage/index.js', () => ({ initUsageRecorder: (): void => {} }))
+    void mock.module('../src/instances/health.js', () => ({ warnUnresolvedTaskInstances: (): void => undefined }))
+    void mock.module('../src/startup-helpers.js', () => ({ warnIfLegacyDebugToken: (): void => undefined }))
 
-    try {
-      await import(`../src/index.ts?startup-health-safe=${Date.now()}`)
-    } finally {
-      restoreAdminUserId(originalAdminUserId)
-      restoreDebugServerModule()
-    }
+    const { createProductionRuntimeDeps } = await loadProductionDeps('compatibility')
+    const deps = createProductionRuntimeDeps()
+    const router = deps.chat.createRouter()
+    await deps.extensions.start(router)
 
-    expect(compatibilityEvaluated).toBe(true)
+    expect(warnings).toContain('Skipping unreadable active platform instance during startup')
+    expect(warnings).toContain('Skipping unreadable task instance during plugin compatibility evaluation')
+    expect(events).toEqual([
+      'guard:{"directoryMissing":false,"debugServerEnabled":false}',
+      'registry:sync',
+      'inputs:1:1',
+      'compatibility:2',
+      'activate:1',
+    ])
   })
 
-  test('starts web server even when DEBUG_SERVER is false', async () => {
-    const originalAdminUserId = process.env['ADMIN_USER_ID']
-    const originalDebugServer = process.env['DEBUG_SERVER']
-    process.env['ADMIN_USER_ID'] = 'admin-1'
-    delete process.env['DEBUG_SERVER']
-    let startWebServerArgs: unknown[] | null = null
-
-    void mock.module('../src/announcements.js', () => ({ announceNewVersion: (): void => {} }))
-    void mock.module('../src/attachments/index.js', () => ({ isS3Configured: (): boolean => false }))
-    void mock.module('../src/attachments/staged-download.js', () => ({
-      createStagedDownloader: (): (() => Promise<null>) => () => Promise.resolve(null),
-    }))
-    void mock.module('../src/bot.js', () => ({ setupBot: (): void => {} }))
-    void mock.module('../src/chat/registry.js', () => ({
-      createChatProviderFromConfig: (): unknown => ({
-        name: 'mock',
-        threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
-        capabilities: new Set(),
-        traits: { observedGroupMessages: 'all' },
-        configRequirements: [],
-        registerCommand: (): void => {},
-        onMessage: (): void => {},
-        sendMessage: (): Promise<void> => Promise.resolve(),
-        renderContext: (): unknown => ({ method: 'text', content: 'mock' }),
-        start: (): Promise<void> => Promise.resolve(),
-        stop: (): Promise<void> => Promise.resolve(),
-      }),
-    }))
-    void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
-    void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
-    void mock.module('../src/db/drizzle.js', () => ({ closeDrizzleDb: (): void => {} }))
-    void mock.module('../src/debug/chat-router-runtime.js', () => ({
-      setRuntimeChatRouter: (): void => {},
-      clearRuntimeChatRouter: (): void => {},
-    }))
-    void mock.module('../src/debug/server.js', () => ({
-      startDebugServer: (...args: unknown[]): void => {
-        startWebServerArgs = args
+  test('preserves degraded plugin discovery guard behavior', async () => {
+    const warnings: string[] = []
+    mockMembership()
+    void mock.module('../src/logger.js', () => ({
+      logger: {
+        child: (): unknown => ({
+          info: (): void => undefined,
+          error: (): void => undefined,
+          fatal: (): void => undefined,
+          warn: (_data: unknown, message?: string): void => {
+            warnings.push(String(message))
+          },
+        }),
       },
-      stopDebugServer: (): void => {},
-    }))
-    void mock.module('../src/deferred-prompts/poller.js', () => ({
-      startPollers: (): void => {},
-      stopPollers: (): void => {},
-    }))
-    void mock.module('../src/instances/bootstrap.js', () => ({
-      bootstrapInstancesFromEnv: (): unknown => ({ bootstrapped: false, reason: 'already-bootstrapped' }),
     }))
     void mock.module('../src/instances/platform-store.js', () => ({
       listActivePlatformInstancesSafe: (): unknown => ({ instances: [], failures: [] }),
@@ -452,62 +163,53 @@ describe('index.ts startup', () => {
     void mock.module('../src/instances/task-store.js', () => ({
       listTaskInstancesSafe: (): unknown => ({ instances: [], failures: [] }),
     }))
-    void mock.module('../src/logger.js', () => ({
-      logger: {
-        child: (): unknown => ({
-          info: (): void => {},
-          error: (): void => {},
-          debug: (): void => {},
-          warn: (): void => {},
-          fatal: (): void => {},
-        }),
-      },
-    }))
-    void mock.module('../src/message-cache/index.js', () => ({ initializeMessageCache: (): void => {} }))
-    void mock.module('../src/message-queue/index.js', () => ({
-      flushOnShutdown: (): Promise<void> => Promise.resolve(),
-    }))
     void mock.module('../src/plugins/discovery.js', () => ({
-      discoverPlugins: (): unknown => ({ plugins: [], errors: [] }),
+      discoverPlugins: (): unknown => ({ plugins: [], errors: [], directoryMissing: true }),
+    }))
+    void mock.module('../src/plugins/startup-guard.js', () => ({
+      evaluateStartupGuard: (): unknown => ({ action: 'warn', reason: 'plugins directory missing' }),
+    }))
+    void mock.module('../src/plugins/registry.js', () => ({
+      syncRegistryFromDb: (): void => undefined,
+      pluginRegistry: {
+        evaluateCompatibilityAcrossInstances: (): void => undefined,
+        getApprovedCompatiblePlugins: (): readonly unknown[] => [],
+      },
     }))
     void mock.module('../src/plugins/loader.js', () => ({
       activatePlugins: (): Promise<void> => Promise.resolve(),
       deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
-      getActivatedPluginIds: (): unknown[] => [],
+      getActivatedPluginIds: (): readonly string[] => [],
     }))
-    void mock.module('../src/plugins/registry.js', () => ({
-      syncRegistryFromDb: (): void => {},
-      pluginRegistry: {
-        evaluateCompatibilityAcrossInstances: (): void => {},
-        getApprovedCompatiblePlugins: (): unknown[] => [],
+    void mock.module('../src/instances/health.js', () => ({ warnUnresolvedTaskInstances: (): void => undefined }))
+    void mock.module('../src/startup-helpers.js', () => ({ warnIfLegacyDebugToken: (): void => undefined }))
+
+    const { createProductionRuntimeDeps } = await loadProductionDeps('guard')
+    const deps = createProductionRuntimeDeps()
+    await deps.extensions.start(deps.chat.createRouter())
+
+    expect(warnings).toContain('Starting in degraded mode')
+  })
+
+  test('starts the always-on web boundary with debug routes disabled and shares its route function', async () => {
+    const starts: unknown[][] = []
+    const route = mock(() => Promise.resolve(new Response('routed')))
+    void mock.module('../src/debug/server.js', () => ({
+      startDebugServer: (...args: unknown[]): void => {
+        starts.push(args)
       },
+      stopDebugServer: (): void => undefined,
+      routeRequest: route,
     }))
-    void mock.module('../src/plugins/startup-guard.js', () => ({
-      evaluateStartupGuard: (): unknown => ({ action: 'continue' }),
-    }))
-    void mock.module('../src/providers/resolver.js', () => ({
-      defaultTaskProviderResolver: { resolve: (): null => null },
-    }))
-    void mock.module('../src/scheduler-instance.js', () => ({
-      scheduler: { startAll: (): void => {}, stopAll: (): void => {} },
-    }))
-    void mock.module('../src/scheduler.js', () => ({ startScheduler: (): void => {}, stopScheduler: (): void => {} }))
-    void mock.module('../src/system-config.js', () => ({
-      seedSystemConfigFromEnv: (): void => {},
-      missingSystemConfigKeys: (): string[] => [],
-    }))
-    void mock.module('../src/usage/index.js', () => ({ initUsageRecorder: (): void => {} }))
 
-    const getStartWebServerArgs = (): unknown[] | null => startWebServerArgs
+    const { createProductionRuntimeDeps } = await loadProductionDeps('web')
+    const deps = createProductionRuntimeDeps()
+    delete process.env['DEBUG_SERVER']
+    deps.web.start('admin-1')
+    const response = await deps.web.route(new Request('http://scenario.test/health'))
 
-    try {
-      await import(`../src/index.ts?always-web-server=${Date.now()}`)
-    } finally {
-      restoreAdminUserId(originalAdminUserId)
-      restoreDebugServerEnv(originalDebugServer)
-      restoreDebugServerModule()
-    }
-
-    expect(getStartWebServerArgs()).toEqual(['admin-1', { debugEnabled: false }])
+    expect(starts).toEqual([['admin-1', { debugEnabled: false }]])
+    expect(await response.text()).toBe('routed')
+    expect(route).toHaveBeenCalledTimes(1)
   })
 })

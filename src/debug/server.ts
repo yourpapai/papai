@@ -214,7 +214,7 @@ async function routePublicCapabilityPaths(req: Request, url: URL): Promise<Respo
   return null
 }
 
-async function routeRequest(req: Request, options: WebServerRouteOptions = routeOptions): Promise<Response> {
+export async function routeRequest(req: Request, options: WebServerRouteOptions = routeOptions): Promise<Response> {
   const url = new URL(req.url)
   const settingsStatic = routeSettingsStatic(url.pathname)
   if (settingsStatic !== null) return settingsStatic

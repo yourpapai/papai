@@ -3,410 +3,103 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
-import assert from 'node:assert/strict'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 
-import type { BotDeps } from '../src/bot.js'
-import type { ChatProvider } from '../src/chat/types.js'
-import type {
-  InstanceConfig,
-  InstanceDecodeResult,
-  PlatformInstance,
-  PlatformInstanceType,
-  TaskInstance,
-} from '../src/instances/types.js'
-import type { TaskProvider } from '../src/providers/types.js'
+import { runProduction, type ProductionShellDeps } from '../src/index.js'
+import { createProductionRuntimeDeps } from '../src/runtime/production-deps.js'
+import type { PapaiRuntime } from '../src/runtime/types.js'
 
-const indexModuleCoverage: null | typeof import('../src/index.js') = null
-void indexModuleCoverage
+const originalAdminUserId = process.env['ADMIN_USER_ID']
 
-type LoggerMethods = {
-  info: (...args: readonly unknown[]) => void
-  error: (...args: readonly unknown[]) => void
-  warn: (...args: readonly unknown[]) => void
-  debug: (...args: readonly unknown[]) => void
-}
-
-type MessageQueueModule = Pick<
-  typeof import('../src/message-queue/index.js'),
-  'registry' | 'cleanupExpiredQueues' | 'flushOnShutdown'
->
-
-const countMatches = (source: string, pattern: RegExp): number => {
-  const matches = source.match(pattern)
-  return matches === null ? 0 : matches.length
-}
-
-const createMockChildLogger = (): LoggerMethods => ({
-  info: (): void => undefined,
-  error: (): void => undefined,
-  warn: (): void => undefined,
-  debug: (): void => undefined,
+afterEach(() => {
+  if (originalAdminUserId === undefined) delete process.env['ADMIN_USER_ID']
+  else process.env['ADMIN_USER_ID'] = originalAdminUserId
 })
 
-const isMessageQueueModule = (value: unknown): value is MessageQueueModule =>
-  typeof value === 'object' &&
-  value !== null &&
-  'registry' in value &&
-  'cleanupExpiredQueues' in value &&
-  typeof value.cleanupExpiredQueues === 'function' &&
-  'flushOnShutdown' in value &&
-  typeof value.flushOnShutdown === 'function'
+function createRuntimeStub(
+  start: () => Promise<void>,
+  stop: () => Promise<void> = (): Promise<void> => Promise.resolve(),
+): PapaiRuntime {
+  return {
+    start,
+    stop,
+    dispatch: (): Promise<void> => Promise.resolve(),
+    dispatchInteraction: (): Promise<void> => Promise.resolve(),
+    request: (): Promise<Response> => Promise.resolve(new Response()),
+    resolveToolCapability: (): string => 'wire-name',
+  }
+}
 
-describe('index.ts - graceful shutdown', () => {
-  beforeEach(() => {
-    process.env['CHAT_PROVIDER'] = 'telegram'
+function createShellDeps(events: string[]): ProductionShellDeps {
+  const runtime = createRuntimeStub(
+    (): Promise<void> => {
+      events.push('runtime:start')
+      return Promise.resolve()
+    },
+    (): Promise<void> => {
+      events.push('runtime:stop')
+      return Promise.resolve()
+    },
+  )
+  return {
+    createDeps: () => {
+      events.push('deps:create')
+      return createProductionRuntimeDeps()
+    },
+    createRuntime: (config) => {
+      events.push(
+        `runtime:create:${String(config.startBackgroundServices)}:${String(config.startNetworkServer)}:${String(config.sendStartupAnnouncement)}`,
+      )
+      return runtime
+    },
+    exit: (code) => {
+      events.push(`exit:${String(code)}`)
+    },
+    onSignal: (signal, handler) => {
+      events.push(`signal:${signal}`)
+      if (signal === 'SIGTERM') void handler()
+    },
+  }
+}
+
+describe('production shell', () => {
+  test('creates and starts one fully enabled production runtime', async () => {
     process.env['ADMIN_USER_ID'] = 'admin-1'
-    delete process.env['KANEO_CLIENT_URL']
-    delete process.env['DEBUG_SERVER']
-  })
-  test('message queue module exports a callable flushOnShutdown', () => {
-    const result = Bun.spawnSync({
-      cmd: [
-        'bun',
-        '-e',
-        `const mod = await import('./src/message-queue/index.js?index-test=${crypto.randomUUID()}'); if (typeof mod.flushOnShutdown !== 'function') process.exit(1); await mod.flushOnShutdown({ timeoutMs: 5000 });`,
-      ],
-      cwd: process.cwd(),
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
+    const events: string[] = []
 
-    expect(result.exitCode).toBe(0)
-  })
+    await runProduction(createShellDeps(events))
+    await Promise.resolve()
 
-  test('startup wires graceful shutdown for SIGTERM and SIGINT', async () => {
-    const source = await Bun.file('src/index.ts').text()
-
-    expect(source).toContain("process.on('SIGTERM'")
-    expect(source).toContain("process.on('SIGINT'")
-    expect(countMatches(source, /flushOnShutdown\(\s*\{\s*timeoutMs:\s*5000\s*\}\s*\)/gu)).toBe(1)
-    expect(source).toContain('clearRuntimeChatRouter()')
-    expect(countMatches(source, /clearRuntimeChatRouter\(\)/gu)).toBe(1)
-    expect(source.indexOf('clearRuntimeChatRouter()')).toBeLessThan(source.indexOf('chatProvider.stop()'))
-  })
-
-  test('startup registers bot wiring before provider start and passes a lazy staged downloader', async () => {
-    delete process.env['CHAT_PROVIDER']
-    const callOrder: string[] = []
-    const activePlatformInstance = {
-      id: 'telegram-default',
-      type: 'telegram',
-      config: { token: 'telegram-token' },
-      status: 'active',
-      createdAt: '2026-05-24T00:00:00.000Z',
-    } as const satisfies PlatformInstance
-    const invalidPlatformInstance = {
-      id: 'telegram-invalid',
-      type: 'telegram',
-      config: { token: '' },
-      status: 'active',
-      createdAt: '2026-05-24T00:00:01.000Z',
-    } as const satisfies PlatformInstance
-    const activePlatformInstances = [activePlatformInstance, invalidPlatformInstance] as const
-    const addedInstances: Array<Pick<PlatformInstance, 'id' | 'type' | 'config'>> = []
-    let capturedDeps: BotDeps | undefined
-    let capturedAnnouncementPlatformInstanceId: string | undefined
-    const resolverContexts: string[] = []
-    const loggedErrors: Array<readonly unknown[]> = []
-    let createChatProviderCalls = 0
-    let createChatProviderFromConfigCalls = 0
-    const runtimeRouterCalls: ChatProvider[] = []
-    let capturedDebugServerArgs: readonly unknown[] | undefined
-    const originalExit = process.exit.bind(process)
-
-    const chatProvider: ChatProvider = {
-      name: 'telegram',
-      threadCapabilities: {
-        supportsThreads: true,
-        canCreateThreads: true,
-        threadScope: 'message',
-      },
-      capabilities: new Set(),
-      traits: { observedGroupMessages: 'all' },
-      configRequirements: [],
-      registerCommand: (): void => undefined,
-      onMessage: (): void => undefined,
-      sendMessage: (): Promise<void> => Promise.resolve(),
-      renderContext: () => ({ method: 'text', content: 'mock' }),
-      start: (): Promise<void> => {
-        callOrder.push('start')
-        return Promise.resolve()
-      },
-      stop: (): Promise<void> => Promise.resolve(),
-    }
-
-    void mock.module('../src/announcements.js', () => ({
-      announceNewVersion: (_chat: ChatProvider, platformInstanceId: string): Promise<void> => {
-        capturedAnnouncementPlatformInstanceId = platformInstanceId
-        return Promise.resolve()
-      },
-    }))
-    void mock.module('../src/attachments/index.js', () => ({
-      isS3Configured: (): boolean => true,
-    }))
-    void mock.module('../src/attachments/staged-download.js', () => ({
-      createStagedDownloader:
-        (deps: {
-          downloadFileFromInstance: (
-            platformInstanceId: string,
-            sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown',
-            fileId: string,
-          ) => Promise<Buffer | null>
-        }) =>
-        (
-          fileId: string,
-          sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown',
-          platformInstanceId: string,
-        ): Promise<Buffer | null> =>
-          deps.downloadFileFromInstance(platformInstanceId, sourceProvider, fileId),
-    }))
-    void mock.module('../src/bot.js', () => ({
-      setupBot: (_chat: ChatProvider, _adminUserId: string, deps: BotDeps): void => {
-        callOrder.push('setupBot')
-        capturedDeps = deps
-      },
-    }))
-    const providerFactoriesById: Record<string, () => ChatProvider> = {
-      [activePlatformInstance.id]: (): ChatProvider => chatProvider,
-      [invalidPlatformInstance.id]: (): ChatProvider => {
-        throw new Error('invalid platform config')
-      },
-    }
-
-    void mock.module('../src/chat/registry.js', () => ({
-      createChatProvider: (): ChatProvider => {
-        createChatProviderCalls += 1
-        return chatProvider
-      },
-      createChatProviderFromConfig: (
-        id: string,
-        _type: PlatformInstanceType,
-        _config: InstanceConfig,
-      ): ChatProvider => {
-        createChatProviderFromConfigCalls += 1
-        return providerFactoriesById[id]!()
-      },
-    }))
-    void mock.module('../src/chat/router.js', () => ({
-      ChatRouter: class MockChatRouter implements ChatProvider {
-        readonly name = 'router'
-        readonly threadCapabilities = chatProvider.threadCapabilities
-        readonly capabilities = chatProvider.capabilities
-        readonly traits = chatProvider.traits
-        readonly configRequirements = []
-
-        constructor(
-          private readonly factory: (id: string, type: PlatformInstanceType, config: InstanceConfig) => ChatProvider,
-        ) {}
-
-        addInstance(id: string, type: PlatformInstanceType, config: InstanceConfig): void {
-          void this.factory(id, type, config)
-          addedInstances.push({ id, type, config })
-        }
-
-        registerCommand(name: string, handler: Parameters<ChatProvider['registerCommand']>[1]): void {
-          chatProvider.registerCommand(name, handler)
-        }
-
-        onMessage(handler: Parameters<ChatProvider['onMessage']>[0]): void {
-          chatProvider.onMessage(handler)
-        }
-
-        sendMessage(...args: Parameters<ChatProvider['sendMessage']>): ReturnType<ChatProvider['sendMessage']> {
-          return chatProvider.sendMessage(...args)
-        }
-
-        downloadFileFromInstance(
-          platformInstanceId: string,
-          sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown',
-          fileId: string,
-        ): Promise<Buffer | null> {
-          return Promise.resolve(Buffer.from(`${sourceProvider}:${platformInstanceId}:${fileId}`))
-        }
-
-        getPlatformInstanceCapabilities(): ReadonlySet<never> {
-          return new Set()
-        }
-
-        renderContext(
-          snapshot: Parameters<ChatProvider['renderContext']>[0],
-        ): ReturnType<ChatProvider['renderContext']> {
-          return chatProvider.renderContext(snapshot)
-        }
-
-        start(): Promise<void> {
-          callOrder.push('start')
-          return Promise.resolve()
-        }
-
-        stop(): Promise<void> {
-          return Promise.resolve()
-        }
-      },
-    }))
-    void mock.module('../src/chat/startup.js', () => ({
-      registerCommandMenuIfSupported: (): Promise<void> => Promise.resolve(),
-    }))
-    void mock.module('../src/db/drizzle.js', () => ({
-      closeDrizzleDb: (): void => undefined,
-    }))
-    void mock.module('../src/db/index.js', () => ({
-      closeMigrationDbInstance: (): void => undefined,
-      initDb: (): void => undefined,
-    }))
-    void mock.module('../src/system-config.js', () => ({
-      seedSystemConfigFromEnv: (): void => undefined,
-      primeSystemConfigCache: (): void => undefined,
-      missingSystemConfigKeys: (): readonly string[] => [],
-      isSystemConfigComplete: (): boolean => true,
-      getSystemConfig: (): string | null => null,
-      setSystemConfig: (): void => undefined,
-      SYSTEM_CONFIG_KEYS: [],
-      resetSystemConfigCacheForTesting: (): void => undefined,
-    }))
-    void mock.module('../src/instances/bootstrap.js', () => ({
-      bootstrapInstancesFromEnv: (): { bootstrapped: false; reason: 'no-env' } => ({
-        bootstrapped: false,
-        reason: 'no-env',
-      }),
-    }))
-    void mock.module('../src/instances/platform-store.js', () => ({
-      listActivePlatformInstancesSafe: (): InstanceDecodeResult<PlatformInstance> => ({
-        instances: [...activePlatformInstances],
-        failures: [],
-      }),
-    }))
-    void mock.module('../src/instances/task-store.js', () => ({
-      listTaskInstancesSafe: (): InstanceDecodeResult<TaskInstance> => ({
-        instances: [],
-        failures: [],
-      }),
-    }))
-    void mock.module('../src/deferred-prompts/poller.js', () => ({
-      startPollers: (_chat: ChatProvider, resolveProvider: (contextId: string) => TaskProvider | null): void => {
-        void resolveProvider('poller-context-1')
-      },
-      stopPollers: (): void => undefined,
-    }))
-    void mock.module('../src/debug/server.js', () => ({
-      startDebugServer: (...args: readonly unknown[]): void => {
-        capturedDebugServerArgs = args
-      },
-      stopDebugServer: (): void => undefined,
-    }))
-    void mock.module('../src/debug/chat-router-runtime.js', () => ({
-      setRuntimeChatRouter: (router: ChatProvider): void => {
-        runtimeRouterCalls.push(router)
-      },
-      getRuntimeChatRouter: (): ChatProvider | null => null,
-      clearRuntimeChatRouter: (): void => {
-        runtimeRouterCalls.length = 0
-      },
-    }))
-    void mock.module('../src/logger.js', () => ({
-      logger: {
-        child: (): LoggerMethods => ({
-          ...createMockChildLogger(),
-          error: (...args: readonly unknown[]): void => {
-            loggedErrors.push(args)
-          },
-        }),
-      },
-    }))
-    void mock.module('../src/message-cache/index.js', () => ({
-      initializeMessageCache: (): void => undefined,
-    }))
-    void mock.module('../src/message-queue/index.js', () => ({
-      flushOnShutdown: (): Promise<void> => Promise.resolve(),
-    }))
-    void mock.module('../src/plugins/discovery.js', () => ({
-      discoverPlugins: (): { plugins: []; errors: [] } => ({ plugins: [], errors: [] }),
-    }))
-    void mock.module('../src/plugins/loader.js', () => ({
-      activatePlugins: (): Promise<void> => Promise.resolve(),
-      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
-      getActivatedPluginIds: (): readonly [] => [],
-    }))
-    void mock.module('../src/plugins/registry.js', () => ({
-      syncRegistryFromDb: (): void => undefined,
-      pluginRegistry: {
-        evaluateCompatibilityAcrossInstances: (): void => undefined,
-        getApprovedCompatiblePlugins: (): readonly [] => [],
-      },
-    }))
-    void mock.module('../src/providers/resolver.js', () => ({
-      defaultTaskProviderResolver: {
-        resolve: (contextId: string): TaskProvider | null => {
-          resolverContexts.push(contextId)
-          return null
-        },
-      },
-    }))
-    void mock.module('../src/scheduler-instance.js', () => ({
-      scheduler: {
-        startAll: (): void => undefined,
-        stopAll: (): void => undefined,
-        hasTask: (): boolean => false,
-        register: (): void => undefined,
-        unregister: (): void => undefined,
-        start: (): void => undefined,
-        stop: (): void => undefined,
-        getTaskState: (): undefined => undefined,
-        on: (): void => undefined,
-        off: (): void => undefined,
-      },
-    }))
-    void mock.module('../src/scheduler.js', () => ({
-      startScheduler: (): void => undefined,
-      stopScheduler: (): void => undefined,
-    }))
-    void mock.module('../src/users.js', () => ({
-      addUser: (): void => undefined,
-    }))
-
-    process.exit = ((...args: [] | [code: string | number | null]): never => {
-      throw new Error(`process.exit:${String(args[0])}`)
-    }) as typeof process.exit
-
-    try {
-      await import(`../src/index.js?startup-order=${crypto.randomUUID()}`)
-    } finally {
-      process.exit = originalExit
-    }
-
-    expect(callOrder).toEqual(['setupBot', 'start'])
-    expect(addedInstances).toEqual([
-      {
-        id: activePlatformInstance.id,
-        type: activePlatformInstance.type,
-        config: activePlatformInstance.config,
-      },
+    expect(events).toEqual([
+      'deps:create',
+      'runtime:create:true:true:true',
+      'runtime:start',
+      'signal:SIGTERM',
+      'runtime:stop',
+      'signal:SIGINT',
+      'exit:0',
     ])
-    expect(createChatProviderCalls).toBe(0)
-    expect(createChatProviderFromConfigCalls).toBe(2)
-    expect(runtimeRouterCalls).toHaveLength(1)
-    expect(capturedDebugServerArgs).toEqual(['admin-1', { debugEnabled: false }])
-    expect(loggedErrors.length).toBeGreaterThan(0)
-    expect(capturedAnnouncementPlatformInstanceId).toBe(activePlatformInstance.id)
-    expect(resolverContexts).toEqual(['poller-context-1'])
-    assert.ok(capturedDeps !== undefined)
-    assert.ok(capturedDeps.stagedDownloadFn !== undefined)
-
-    const downloaded = await capturedDeps.stagedDownloadFn('file-123', 'telegram', 'telegram-active')
-
-    assert.ok(downloaded !== null)
-    expect(downloaded.toString()).toBe('telegram:telegram-active:file-123')
-
-    const mattermostDownloaded = await capturedDeps.stagedDownloadFn('file-456', 'mattermost', 'mattermost-active')
-
-    assert.ok(mattermostDownloaded !== null)
-    expect(mattermostDownloaded.toString()).toBe('mattermost:mattermost-active:file-456')
   })
 
-  test('global preload restores the real message queue module before the next test', async () => {
-    const messageQueueModule: unknown = await import(`../src/message-queue/index.js?post-reset=${crypto.randomUUID()}`)
+  test('exits before composition when ADMIN_USER_ID is missing', async () => {
+    delete process.env['ADMIN_USER_ID']
+    const events: string[] = []
 
-    expect(isMessageQueueModule(messageQueueModule)).toBe(true)
+    await runProduction(createShellDeps(events))
+
+    expect(events).toEqual(['exit:1'])
+  })
+
+  test('logs and exits when startup fails', async () => {
+    process.env['ADMIN_USER_ID'] = 'admin-1'
+    const events: string[] = []
+    const deps = createShellDeps(events)
+    const error = mock(() => undefined)
+    deps.createRuntime = (): PapaiRuntime => createRuntimeStub(() => Promise.reject(new Error('startup boom')))
+
+    await runProduction(deps, { error })
+
+    expect(error).toHaveBeenCalledWith({ error: 'startup boom' }, 'Papai startup failed')
+    expect(events.at(-1)).toBe('exit:1')
   })
 })
