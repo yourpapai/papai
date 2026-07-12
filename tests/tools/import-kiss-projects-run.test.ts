@@ -12,16 +12,23 @@ import type { RunImportPorts } from '../../tools/import-kiss-projects-run.js'
 
 const OPTS = { gitlabBaseUrl: 'https://gitlab.corp.example', platformInstanceId: 'pi-1' }
 
-function makeFakePorts(): RunImportPorts & { nervStore: Map<string, NervProjectDoc>; guardrailsSet: boolean } {
+function makeFakePorts(): RunImportPorts & {
+  nervStore: Map<string, NervProjectDoc>
+  guardrailsSet: boolean
+  nervUpsertCalls: string[]
+} {
   const nervStore = new Map<string, NervProjectDoc>()
+  const nervUpsertCalls: string[] = []
   let guardrailsSet = false
   return {
     nervStore,
+    nervUpsertCalls,
     get guardrailsSet(): boolean {
       return guardrailsSet
     },
     nervFindByRepoPath: (projectPath) => Promise.resolve(nervStore.has(projectPath) ? {} : null),
     nervUpsert: (projectPath, doc) => {
+      nervUpsertCalls.push(projectPath)
       nervStore.set(projectPath, doc)
       return Promise.resolve()
     },
@@ -29,7 +36,11 @@ function makeFakePorts(): RunImportPorts & { nervStore: Map<string, NervProjectD
     guardrailsSetDefault: () => {
       guardrailsSet = true
     },
-  } as RunImportPorts & { nervStore: Map<string, NervProjectDoc>; guardrailsSet: boolean }
+  } as RunImportPorts & {
+    nervStore: Map<string, NervProjectDoc>
+    guardrailsSet: boolean
+    nervUpsertCalls: string[]
+  }
 }
 
 const DEMO: KissProjectDoc = {
@@ -92,6 +103,29 @@ describe('runImport', () => {
     const withDroppedField: KissProjectDoc = { ...DEMO, proxy: 'http://proxy.internal' }
     const report = await runImport([withDroppedField], ports, { ...OPTS, apply: false })
     expect(report.projects[0]?.warnings).toEqual(['project "Demo": dropping kiss field "proxy" (no nerv target)'])
+  })
+
+  test('dedupes kiss projects that map to the same primary projectPath: one upsert, a duplicate warning', async () => {
+    const ports = makeFakePorts()
+    const dupe: KissProjectDoc = {
+      _id: 'p3',
+      title: 'Duplicate',
+      repositories: [{ projectPath: 'team/demo', description: 'Same repo, different kiss project' }],
+    }
+    const report = await runImport([DEMO, dupe], ports, { ...OPTS, apply: true })
+
+    expect(ports.nervUpsertCalls).toEqual(['team/demo'])
+    expect(ports.nervStore.size).toBe(1)
+    expect(report.projects).toEqual([
+      { label: 'Demo', primaryProjectPath: 'team/demo', warnings: [], action: 'created' },
+      {
+        label: 'Duplicate',
+        primaryProjectPath: 'team/demo',
+        warnings: ['duplicate projectPath "team/demo" across kiss projects — importing once'],
+        action: 'skipped-duplicate-path',
+      },
+    ])
+    expect(report.bindCommands).toEqual(['/nerv bind team/demo'])
   })
 
   test('prints one bind command per imported project, in order', async () => {

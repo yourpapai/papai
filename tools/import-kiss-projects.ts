@@ -42,6 +42,17 @@ function requiredEnv(name: string): string {
   return value
 }
 
+/**
+ * Cross-process backstop for the in-run dedupe in `runImport` (`tools/import-kiss-projects-run.ts`):
+ * even with intra-run duplicates eliminated, a unique index is the only thing that prevents two
+ * *separate* importer runs (or an importer run racing hand-authored nerv config) from creating two
+ * Project docs for the same repo. Only created under --apply — index creation is a schema write,
+ * and --dry-run must make no writes at all.
+ */
+async function ensureNervProjectPathIndex(nervCol: import('mongodb').Collection<Document>): Promise<void> {
+  await nervCol.createIndex({ 'repositories.projectPath': 1 }, { unique: true, sparse: true })
+}
+
 function makeNervPorts(
   nervCol: import('mongodb').Collection<Document>,
 ): Pick<RunImportPorts, 'nervFindByRepoPath' | 'nervUpsert'> {
@@ -52,14 +63,17 @@ function makeNervPorts(
       const notifyContextId = typeof existing['notifyContextId'] === 'string' ? existing['notifyContextId'] : undefined
       return { ...(notifyContextId === undefined ? {} : { notifyContextId }) }
     },
+    // Single atomic upsert (no find-then-write) so concurrent calls for distinct projectPaths can't
+    // race into a duplicate-insert TOCTOU window. $set never includes notifyContextId (not part of
+    // NervProjectDoc) so an existing channel binding survives re-imports; createdAt only applies on
+    // insert via $setOnInsert.
     async nervUpsert(projectPath: string, doc: NervProjectDoc): Promise<void> {
-      const existing = await nervCol.findOne({ 'repositories.projectPath': projectPath })
       const now = new Date()
-      if (existing === null) {
-        await nervCol.insertOne({ ...doc, createdAt: now, updatedAt: now })
-      } else {
-        await nervCol.updateOne({ _id: existing['_id'] }, { $set: { ...doc, updatedAt: now } })
-      }
+      await nervCol.updateOne(
+        { 'repositories.projectPath': projectPath },
+        { $set: { ...doc, updatedAt: now }, $setOnInsert: { createdAt: now } },
+        { upsert: true },
+      )
     },
   }
 }
@@ -90,6 +104,7 @@ async function main(): Promise<void> {
     const rawKissDocs: WithId<Document>[] = await kissClient.db().collection('projects').find().toArray()
     const kissProjects: KissProjectDoc[] = rawKissDocs.map((raw) => toKissProjectDoc(raw))
     const nervCol = nervClient.db().collection('projects')
+    if (apply) await ensureNervProjectPathIndex(nervCol)
 
     const ports: RunImportPorts = { ...makeNervPorts(nervCol), ...makeGuardrailsPorts() }
     const report = await runImport(kissProjects, ports, { apply, platformInstanceId, gitlabBaseUrl })
