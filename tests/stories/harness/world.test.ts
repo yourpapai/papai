@@ -263,6 +263,46 @@ describe('scenario world', () => {
     expect(lifecycle).toEqual(['first.start', 'second.start', 'first.stop'])
   })
 
+  test('rolls back every started runtime extension when cleanup fails during a later start failure', async () => {
+    const lifecycle: string[] = []
+    const cleanupFailure = new Error('second runtime extension cleanup failed')
+    const startFailure = new Error('third runtime extension failed')
+
+    const failure = await createScenarioWorld('runtime extension rollback cleanup failure', {
+      runtimeExtensions: [
+        {
+          start: () => {
+            lifecycle.push('first.start')
+            return (): void => {
+              lifecycle.push('first.stop')
+            }
+          },
+        },
+        {
+          start: () => {
+            lifecycle.push('second.start')
+            return (): void => {
+              lifecycle.push('second.stop')
+              throw cleanupFailure
+            }
+          },
+        },
+        {
+          start: (): void => {
+            lifecycle.push('third.start')
+            throw startFailure
+          },
+        },
+      ],
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+
+    expect(failure).toBe(startFailure)
+    expect(lifecycle).toEqual(['first.start', 'second.start', 'third.start', 'second.stop', 'first.stop'])
+  })
+
   test('runs runtime extension cleanup only once when world stop is repeated', async () => {
     let cleanupCount = 0
     const world = await createScenarioWorld('runtime extension idempotent cleanup', {
