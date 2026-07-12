@@ -203,6 +203,10 @@ export function toPendingReason(value: string): PendingReason {
   return PendingReason.from(value)
 }
 
+const ACP_COMMAND_STORY_IDS = [
+  'tests/stories/integrations/runtime-extensions/command-prompt.story.test.ts#SCN-coding-acp-command: eligible and ineligible runtime extension command and prompt',
+] as const satisfies NonEmptyReadonlyTuple<string>
+
 function pendingReasonFor(catalogStatus: CatalogStatus): PendingReason {
   if (catalogStatus === 'gap') return toPendingReason('Catalog gap: awaiting a local executable story.')
   if (catalogStatus === 'contract-only')
@@ -210,14 +214,28 @@ function pendingReasonFor(catalogStatus: CatalogStatus): PendingReason {
   return toPendingReason('Awaiting branch audit before classifying an executable story.')
 }
 
+function executableStoryIdsFor(scenarioId: CatalogScenarioId): NonEmptyReadonlyTuple<string> | undefined {
+  if (scenarioId === 'SCN-coding-acp-command') return ACP_COMMAND_STORY_IDS
+  return undefined
+}
+
 export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
-  CATALOG_SCENARIO_IDS.map((scenarioId) =>
-    Object.freeze({
+  CATALOG_SCENARIO_IDS.map((scenarioId) => {
+    const storyIds = executableStoryIdsFor(scenarioId)
+    if (storyIds !== undefined)
+      return Object.freeze({
+        scenarioId,
+        catalogStatus: catalogStatusFor(scenarioId),
+        kind: 'executable' as const,
+        verifiedAt: '2026-07-13' as const,
+        storyIds,
+      })
+    return Object.freeze({
       scenarioId,
       catalogStatus: catalogStatusFor(scenarioId),
       kind: 'pending' as const,
       verifiedAt: '2026-07-13' as const,
       reason: pendingReasonFor(catalogStatusFor(scenarioId)),
-    }),
-  ),
+    })
+  }),
 )

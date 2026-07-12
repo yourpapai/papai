@@ -18,6 +18,9 @@ function resolveStoryContractRoot(harnessDirectory: string): string {
   return nodePath.resolve(harnessDirectory, '../../..')
 }
 
+const ACP_COMMAND_STORY_ID =
+  'tests/stories/integrations/runtime-extensions/command-prompt.story.test.ts#SCN-coding-acp-command: eligible and ineligible runtime extension command and prompt'
+
 describe('scenario catalog coverage', () => {
   test('resolves the repository root from a nested harness snapshot path', () => {
     expect(resolveStoryContractRoot('/tmp/story-snapshot/tests/stories/harness')).toBe('/tmp/story-snapshot')
@@ -41,6 +44,16 @@ describe('scenario catalog coverage', () => {
       'forward-only',
       'forward-only',
     ])
+  })
+
+  test('maps the ACP command catalog record to its eligible and ineligible command story', () => {
+    expect(catalogCoverage.find(({ scenarioId }) => scenarioId === 'SCN-coding-acp-command')).toEqual({
+      scenarioId: 'SCN-coding-acp-command',
+      catalogStatus: 'confirmed',
+      kind: 'executable',
+      verifiedAt: '2026-07-13',
+      storyIds: [ACP_COMMAND_STORY_ID],
+    })
   })
 
   test('rejects blank pending reasons at the ledger boundary', () => {

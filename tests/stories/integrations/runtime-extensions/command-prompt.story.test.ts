@@ -21,7 +21,7 @@ const ACP_COMMAND_REPLY =
 const ACP_DISABLED_REPLY = 'Plugin `acp` is disabled for this context.'
 
 scenario(
-  'runtime extension ACP command and prompt are hidden outside its configured context',
+  'SCN-coding-acp-command: eligible and ineligible runtime extension command and prompt',
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const bob = given.user('bob')
