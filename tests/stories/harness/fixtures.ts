@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { z } from 'zod'
+
 import { addAuthorizedGroup, setGuestMode } from '../../../src/authorized-groups.js'
 import { addGroupMember } from '../../../src/groups.js'
 import { setIdentityMapping } from '../../../src/identity/mapping.js'
@@ -17,6 +19,9 @@ import {
   unregisterContributedTaskProviderType,
 } from '../../../src/providers/registry.js'
 import type { TaskProvider } from '../../../src/providers/types.js'
+import { issueAuthCode } from '../../../src/settings/auth-code-store.js'
+import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
+import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
 import { setSystemConfig } from '../../../src/system-config.js'
 import { addUser } from '../../../src/users.js'
 import {
@@ -33,6 +38,59 @@ export const SCENARIO_CONTEXT_ID = 'scenario-context'
 export const SCENARIO_GROUP_ID = 'scenario-group'
 export const SCENARIO_USER_ID = 'scenario-user'
 export const SCENARIO_PROVIDER_PLUGIN_ID = 'scenario-memory-provider'
+
+const settingsSessionBrand: unique symbol = Symbol('scenario-settings-session')
+
+export type SettingsSessionHandle = Readonly<{
+  kind: 'settings-session'
+  principal: Readonly<{ platformInstanceId: string; platformUserId: string }>
+  readonly [settingsSessionBrand]: true
+}>
+
+type SettingsSessionSecrets = Readonly<{ cookie: string; csrf: string }>
+
+const ExchangeResponseSchema = z.object({ csrfToken: z.string().min(1) })
+const settingsSessionSecrets = new WeakMap<SettingsSessionHandle, SettingsSessionSecrets>()
+
+const extractSessionCookie = (setCookie: string | null): string => {
+  const pair = setCookie?.split(';', 1)[0]
+  const prefix = `${SESSION_COOKIE_NAME}=`
+  if (pair === undefined || !pair.startsWith(prefix) || pair.length === prefix.length) {
+    throw new Error(`Missing ${SESSION_COOKIE_NAME} cookie`)
+  }
+  return pair.slice(prefix.length)
+}
+
+export async function parseSettingsSessionExchange(
+  principal: Readonly<{ platformInstanceId: string; platformUserId: string }>,
+  response: Response,
+): Promise<SettingsSessionHandle> {
+  if (response.status !== 200) throw new Error(`Settings auth exchange failed with status ${response.status}`)
+  const cookie = extractSessionCookie(response.headers.get('Set-Cookie'))
+  const { csrfToken } = ExchangeResponseSchema.parse(await response.json())
+  const handle: SettingsSessionHandle = Object.freeze({
+    kind: 'settings-session',
+    principal: Object.freeze({ ...principal }),
+    [settingsSessionBrand]: true as const,
+  })
+  settingsSessionSecrets.set(handle, { cookie, csrf: csrfToken })
+  return handle
+}
+
+export function buildSettingsSessionHeaders(
+  session: SettingsSessionHandle,
+  method: string,
+  initial?: HeadersInit,
+): Headers {
+  const secrets = settingsSessionSecrets.get(session)
+  if (secrets === undefined) throw new Error('Unknown settings session handle')
+  const headers = new Headers(initial)
+  if (!headers.has('Cookie')) headers.set('Cookie', `${SESSION_COOKIE_NAME}=${secrets.cookie}`)
+  const normalizedMethod = method.toUpperCase()
+  const requiresCsrf = !['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod)
+  if (requiresCsrf && !headers.has(CSRF_HEADER)) headers.set(CSRF_HEADER, secrets.csrf)
+  return headers
+}
 
 const SCENARIO_PLUGIN: DiscoveredPlugin = {
   manifest: {
@@ -92,6 +150,7 @@ export type ScenarioFixtures = Readonly<{
     }>,
   ): void
   seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
+  issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
   registerTaskProvider(): void
   teardown(): void
@@ -157,6 +216,9 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       setSystemConfig('llm_apikey', input.apiKey ?? 'scenario-api-key', 'scenario-admin')
       setSystemConfig('llm_baseurl', input.baseUrl ?? 'https://llm.invalid/v1', 'scenario-admin')
       setSystemConfig('main_model', input.mainModel ?? 'scenario-main-model', 'scenario-admin')
+    },
+    issueSettingsAuthCode(input): string {
+      return issueAuthCode(input)
     },
     approvePlugin(plugin = SCENARIO_PLUGIN): DiscoveredPlugin {
       pluginRegistry.registerDiscovered(plugin)

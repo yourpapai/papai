@@ -33,6 +33,7 @@ const isSensitiveKey = (key: string): boolean => {
     normalized === 'proxyauthorization' ||
     normalized === 'cookie' ||
     normalized === 'setcookie' ||
+    normalized.includes('csrf') ||
     normalized === 'xapikey' ||
     normalized === 'apikey' ||
     normalized === 'key' ||

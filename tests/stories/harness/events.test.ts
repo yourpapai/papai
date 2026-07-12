@@ -46,6 +46,21 @@ describe('scenario events', () => {
     })
   })
 
+  test('redacts settings session and CSRF metadata', () => {
+    const events = createScenarioEvents('settings secrets')
+
+    events.record('settings.request', {
+      cookie: 'papai_settings_session=session-secret',
+      csrf: 'csrf-secret',
+      headers: { 'X-Settings-CSRF': 'header-secret' },
+    })
+
+    const formatted = events.formatFailure('failed')
+    expect(formatted).not.toContain('session-secret')
+    expect(formatted).not.toContain('csrf-secret')
+    expect(formatted).not.toContain('header-secret')
+  })
+
   test('sanitizes nested Headers before snapshotting', () => {
     const events = createScenarioEvents('nested headers')
 

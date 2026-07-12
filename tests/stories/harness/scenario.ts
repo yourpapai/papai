@@ -7,7 +7,12 @@ import { expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
-import { SCENARIO_PLATFORM_INSTANCE_ID } from './fixtures.js'
+import {
+  SCENARIO_PLATFORM_INSTANCE_ID,
+  buildSettingsSessionHeaders,
+  parseSettingsSessionExchange,
+  type SettingsSessionHandle,
+} from './fixtures.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
   type ContextHandle,
@@ -46,6 +51,7 @@ type ScenarioGiven = Readonly<{
   thread(group: GroupHandle, id: string): ThreadHandle
   taskInstance(id?: string, providerType?: string): TaskInstanceHandle
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
+  settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
   plugin(plugin: DiscoveredPlugin): PluginHandle
   llm(decisions: readonly ModelDecision[]): void
 }>
@@ -54,6 +60,7 @@ type ScenarioWhen = Readonly<{
   message(user: UserHandle, context: ContextHandle, text: string): Promise<void>
   interaction(user: UserHandle, context: ContextHandle, callbackData: string): Promise<void>
   request(path: string, init?: RequestInit): Promise<Response>
+  settingsRequest(session: SettingsSessionHandle, path: string, init?: RequestInit): Promise<Response>
 }>
 
 type ReplyAssertion = Readonly<{ equals(expected: string): void }>
@@ -83,6 +90,25 @@ const scopedConfigContextId = (context: ContextHandle): string =>
 
 const scopedGroupId = (group: GroupHandle): string =>
   toScopedContextId({ platformInstanceId: group.platformInstanceId, nativeContextId: group.id })
+
+const scenarioUrl = (path: string): URL => new URL(path, 'https://scenario.invalid')
+
+async function runtimeRequest(
+  world: ScenarioWorld,
+  path: string,
+  init: RequestInit = {},
+  session?: SettingsSessionHandle,
+): Promise<Response> {
+  await world.ensureStarted()
+  const method = (init.method ?? 'GET').toUpperCase()
+  const headers =
+    session === undefined ? new Headers(init.headers) : buildSettingsSessionHeaders(session, method, init.headers)
+  const url = scenarioUrl(path)
+  world.events.record('settings.request', { method, url, headers, hasBody: init.body !== undefined })
+  const response = await world.runtime.request(new Request(url, { ...init, method, headers }))
+  world.events.record('settings.response', { method, url, status: response.status, headers: response.headers })
+  return response
+}
 
 function tracedAssertion(world: ScenarioWorld, assertion: () => void): void {
   try {
@@ -154,6 +180,17 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
         taskInstanceId: taskInstance.id,
       })
     },
+    async settingsSession(user): Promise<SettingsSessionHandle> {
+      prerequisite('given.settingsSession')
+      const principal = { platformInstanceId: user.platformInstanceId, platformUserId: user.id }
+      const code = world.fixtures.issueSettingsAuthCode(principal)
+      const response = await runtimeRequest(world, '/settings/auth/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      return parseSettingsSessionExchange(principal, response)
+    },
     plugin(plugin): PluginHandle {
       prerequisite('given.plugin')
       const approved = world.fixtures.approvePlugin(plugin)
@@ -180,10 +217,13 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
       await world.runtime.dispatchInteraction(interactionForContext(user, context, callbackData))
       await world.settle()
     },
-    async request(path, init): Promise<Response> {
+    request(path, init): Promise<Response> {
       world.events.setPhase('when.request')
-      await world.ensureStarted()
-      return world.runtime.request(new Request(new URL(path, 'http://scenario.invalid'), init))
+      return runtimeRequest(world, path, init)
+    },
+    settingsRequest(session, path, init): Promise<Response> {
+      world.events.setPhase('when.settingsRequest')
+      return runtimeRequest(world, path, init, session)
     },
   }
 }

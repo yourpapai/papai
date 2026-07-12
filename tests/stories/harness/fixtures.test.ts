@@ -19,6 +19,8 @@ import {
   unregisterContributedTaskProviderType,
 } from '../../../src/providers/registry.js'
 import { TaskProviderResolver } from '../../../src/providers/resolver.js'
+import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
+import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
 import { getSystemConfig, isSystemConfigComplete } from '../../../src/system-config.js'
 import { isAuthorized } from '../../../src/users.js'
 import {
@@ -27,7 +29,9 @@ import {
   SCENARIO_PLATFORM_INSTANCE_ID,
   SCENARIO_TASK_INSTANCE_ID,
   SCENARIO_USER_ID,
+  buildSettingsSessionHeaders,
   createScenarioFixtures,
+  parseSettingsSessionExchange,
 } from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 
@@ -153,5 +157,34 @@ describe('scenario fixtures', () => {
     expect(getPlatformInstance(SCENARIO_PLATFORM_INSTANCE_ID)).toBeNull()
     expect(pluginRegistry.getAllEntries()).toEqual([])
     expect(isSystemConfigComplete()).toBe(false)
+  })
+
+  test('parses an opaque settings session and builds authenticated write headers', async () => {
+    const session = await parseSettingsSessionExchange(
+      { platformInstanceId: 'pi-1', platformUserId: 'alice' },
+      new Response(JSON.stringify({ csrfToken: 'csrf-secret' }), {
+        status: 200,
+        headers: { 'Set-Cookie': `${SESSION_COOKIE_NAME}=session-secret; HttpOnly; Path=/settings` },
+      }),
+    )
+
+    expect(JSON.stringify(session)).not.toContain('secret')
+    const headers = buildSettingsSessionHeaders(session, 'PATCH', { 'Content-Type': 'application/json' })
+    expect(headers.get('Cookie')).toBe(`${SESSION_COOKIE_NAME}=session-secret`)
+    expect(headers.get(CSRF_HEADER)).toBe('csrf-secret')
+    expect(headers.get('Content-Type')).toBe('application/json')
+
+    const withoutCsrf = buildSettingsSessionHeaders(session, 'PATCH', { [CSRF_HEADER]: '' })
+    expect(withoutCsrf.get(CSRF_HEADER)).toBe('')
+    expect(buildSettingsSessionHeaders(session, 'GET').has(CSRF_HEADER)).toBe(false)
+  })
+
+  test('rejects a settings exchange response without the production session cookie', async () => {
+    const parsing = parseSettingsSessionExchange(
+      { platformInstanceId: 'pi-1', platformUserId: 'alice' },
+      new Response(JSON.stringify({ csrfToken: 'csrf-secret' }), { status: 200 }),
+    )
+
+    await expect(parsing).rejects.toThrow(`Missing ${SESSION_COOKIE_NAME} cookie`)
   })
 })
