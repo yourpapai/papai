@@ -26,7 +26,7 @@ export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
-export function activate(httpFetch: HttpFetch): ActivateResult {
+export function activate(httpFetch: HttpFetch, adminConfig?: { get(key: string): string | undefined }): ActivateResult {
   const tools = new Map<string, PluginTool>()
   let command: PluginCommand | undefined
   let fragment: PluginPromptFragment | undefined
@@ -55,7 +55,7 @@ export function activate(httpFetch: HttpFetch): ActivateResult {
       allowedHosts: new Set<string>(),
       logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
     },
-    adminConfig: { get: () => undefined },
+    adminConfig: adminConfig ?? { get: (): undefined => undefined },
   } as PluginContext
   factory().activate(ctx)
   return { tools, command, fragment }

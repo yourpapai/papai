@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { HttpFetch } from './client.js'
+import { commandArgOf, handleBindCommand, parseBindPath } from './bind-command.js'
+import type { AdminConfigReader, HttpFetch } from './client.js'
 import { cancelCodingTaskTool, followupCodingTaskTool } from './event-tools.js'
 import { codingTaskStatusTool, createCodingTaskTool, listCodingTasksTool } from './tools.js'
 import type { Tool } from './tools.js'
@@ -23,6 +24,7 @@ type ActivationContext = {
   registerCommand: RegisterCommand
   logInfo: LogInfo
   httpFetch: HttpFetch | undefined
+  adminConfig: AdminConfigReader
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,6 +56,10 @@ function isHttpFetch(value: unknown): value is HttpFetch {
   return typeof value === 'function'
 }
 
+function isAdminConfig(value: unknown): value is AdminConfigReader {
+  return isRecord(value) && typeof value['get'] === 'function'
+}
+
 function extractActivationContext(ctx: unknown): ActivationContext {
   const context = requireRecord(ctx, 'nerv: plugin context must be an object')
   const log = requireRecord(context['log'], 'nerv: plugin context log must be an object')
@@ -65,18 +71,20 @@ function extractActivationContext(ctx: unknown): ActivationContext {
   if (!isRegisterFragment(registration['registerPromptFragment']))
     throw new Error('nerv: registerPromptFragment must be a function')
   if (!isRegisterCommand(registration['registerCommand'])) throw new Error('nerv: registerCommand must be a function')
+  if (!isAdminConfig(context['adminConfig'])) throw new Error('nerv: adminConfig must be an object with get()')
 
   const logInfo = log['info']
   const registerTool = registration['registerTool']
   const registerFragment = registration['registerPromptFragment']
   const registerCommand = registration['registerCommand']
+  const adminConfig = context['adminConfig']
 
   let httpFetch: HttpFetch | undefined
   if (isRecord(providerRuntime) && isHttpFetch(providerRuntime['httpFetch'])) {
     httpFetch = providerRuntime['httpFetch']
   }
 
-  return { registerTool, registerFragment, registerCommand, logInfo, httpFetch }
+  return { registerTool, registerFragment, registerCommand, logInfo, httpFetch, adminConfig }
 }
 
 const NERV_PROMPT_FRAGMENT =
@@ -103,8 +111,18 @@ const factory = (): { activate(ctx: unknown): void } => ({
     ctx.registerCommand({
       name: 'nerv',
       description: 'About nerv supervised coding tasks',
-      execute: (_message: unknown, reply: { text(s: string): Promise<void> | void }): Promise<void> | void =>
-        reply.text(NERV_COMMAND_TEXT),
+      execute: async (
+        message: unknown,
+        reply: { text(s: string): Promise<void> | void },
+        auth: unknown,
+      ): Promise<void> => {
+        const bindPath = parseBindPath(commandArgOf(message))
+        if (bindPath !== null) {
+          await handleBindCommand(reply, auth, ctx.adminConfig, ctx.httpFetch, bindPath)
+          return
+        }
+        await reply.text(NERV_COMMAND_TEXT)
+      },
     })
     ctx.logInfo({}, 'nerv plugin activated')
   },
