@@ -67,6 +67,7 @@ describe('production dependency composition', () => {
     void mock.module('../src/logger.js', () => ({
       logger: {
         child: (): unknown => ({
+          debug: (): void => undefined,
           info: (): void => undefined,
           error: (): void => undefined,
           fatal: (): void => undefined,
@@ -169,6 +170,7 @@ describe('production dependency composition', () => {
     void mock.module('../src/logger.js', () => ({
       logger: {
         child: (): unknown => ({
+          debug: (): void => undefined,
           info: (): void => undefined,
           error: (): void => undefined,
           fatal: (): void => undefined,
@@ -219,6 +221,7 @@ describe('production dependency composition', () => {
     void mock.module('../src/logger.js', () => ({
       logger: {
         child: (): unknown => ({
+          debug: (): void => undefined,
           info: (): void => undefined,
           error: (): void => undefined,
           fatal: (): void => undefined,

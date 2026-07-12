@@ -47,6 +47,8 @@ import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
 import * as _identityMapping from '../src/identity/mapping.js'
 import * as _instancesBootstrap from '../src/instances/bootstrap.js'
+import * as _instanceHealth from '../src/instances/health.js'
+import * as _kaneoLegacyRepair from '../src/instances/kaneo-legacy-repair.js'
 import * as _platformStore from '../src/instances/platform-store.js'
 import * as _taskStore from '../src/instances/task-store.js'
 import * as _llmModelBuilder from '../src/llm-model-builder.js'
@@ -62,6 +64,7 @@ import * as _messageQueueIndex from '../src/message-queue/index.js'
 import * as _pluginDiscovery from '../src/plugins/discovery.js'
 import * as _pluginLoader from '../src/plugins/loader.js'
 import * as _pluginRegistry from '../src/plugins/registry.js'
+import * as _pluginStartupCompatibility from '../src/plugins/startup-compatibility.js'
 import * as _pluginStartupGuard from '../src/plugins/startup-guard.js'
 import * as _providerMembership from '../src/providers/membership/index.js'
 import * as _taskProviderResolver from '../src/providers/resolver.js'
@@ -99,6 +102,8 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/deferred-prompts/poller.js', { ..._poller }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
   ['../src/instances/bootstrap.js', { ..._instancesBootstrap }],
+  ['../src/instances/health.js', { ..._instanceHealth }],
+  ['../src/instances/kaneo-legacy-repair.js', { ..._kaneoLegacyRepair }],
   ['../src/instances/platform-store.js', { ..._platformStore }],
   ['../src/instances/task-store.js', { ..._taskStore }],
   ['../src/memos.js', { ..._memos }],
@@ -111,6 +116,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/plugins/discovery.js', { ..._pluginDiscovery }],
   ['../src/plugins/loader.js', { ..._pluginLoader }],
   ['../src/plugins/registry.js', { ..._pluginRegistry }],
+  ['../src/plugins/startup-compatibility.js', { ..._pluginStartupCompatibility }],
   ['../src/plugins/startup-guard.js', { ..._pluginStartupGuard }],
   ['../src/providers/membership/index.js', { ..._providerMembership }],
   ['../src/providers/resolver.js', { ..._taskProviderResolver }],
