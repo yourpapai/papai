@@ -84,3 +84,47 @@ export function verifyPluginMcpToken(raw: string, nowMs: number = Date.now()): P
     return null
   }
 }
+
+/** Claims carried by a papai transcript-viewer capability token (`/t/<token>`). */
+export interface TranscriptTokenClaims {
+  magiSessionId: string
+}
+
+interface TranscriptTokenEnvelope extends TranscriptTokenClaims {
+  v: 1
+  /** Discriminator so a plugin-MCP token can never be replayed as a transcript token or vice versa. */
+  kind: 'transcript'
+  exp: number
+}
+
+/**
+ * Mint a signed, time-bounded capability token binding papai's public `/t/<token>` route to a
+ * magi session id. Reuses the plugin-MCP token's signing secret (same HMAC key, distinct `kind`).
+ */
+export function mintTranscriptToken(magiSessionId: string, ttlSeconds: number = PLUGIN_MCP_TOKEN_TTL_SECONDS): string {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds
+  const envelope: TranscriptTokenEnvelope = { v: 1, kind: 'transcript', exp, magiSessionId }
+  const payload = Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64url')
+  return `${payload}.${sign(payload)}`
+}
+
+/** Verify a transcript token; returns the claims or null (invalid signature, expired, malformed, or wrong kind). Never throws. */
+export function verifyTranscriptToken(raw: string, nowMs: number = Date.now()): TranscriptTokenClaims | null {
+  const dot = raw.indexOf('.')
+  if (dot <= 0 || dot === raw.length - 1) return null
+  const payload = raw.slice(0, dot)
+  const sig = raw.slice(dot + 1)
+  try {
+    if (!signaturesMatch(sig, sign(payload))) return null
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown
+    if (typeof decoded !== 'object' || decoded === null) return null
+    const env = decoded as Partial<TranscriptTokenEnvelope>
+    if (env.v !== 1 || env.kind !== 'transcript' || typeof env.exp !== 'number') return null
+    if (typeof env.magiSessionId !== 'string' || env.magiSessionId.length === 0) return null
+    if (Math.floor(nowMs / 1000) >= env.exp) return null
+    return { magiSessionId: env.magiSessionId }
+  } catch (err) {
+    log.debug({ error: err instanceof Error ? err.message : String(err) }, 'failed to decode transcript token payload')
+    return null
+  }
+}
