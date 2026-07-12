@@ -18,6 +18,7 @@ const ACP_COMMAND_REPLY =
   'ACP coding sessions are available. Ask me in natural language, e.g. "start a session on demo to add a ' +
   'health check", "what sessions are running?", "review PR 42 on demo", or "continue PR 42 on demo and fix ' +
   'the failing tests".'
+const ACP_DISABLED_REPLY = 'Plugin `acp` is disabled for this context.'
 
 scenario(
   'runtime extension ACP command and prompt are hidden outside its configured context',
@@ -52,6 +53,9 @@ scenario(
     expect(world.model.inspections().at(-1)?.promptTokenFingerprints).toContain(
       promptTextFingerprint(ACP_PROMPT_MARKER),
     )
+
+    await when.message(bob, bobDm, ACP_COMMAND)
+    then.replyTo(bob).equals(ACP_DISABLED_REPLY)
 
     const beforeBob = world.model.inspections().length
     given.llm([answer('No ACP contribution is available here.')])
