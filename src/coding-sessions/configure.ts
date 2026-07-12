@@ -39,11 +39,16 @@ function discoverCurrentImplementation(pluginDirectory: string): DiscoveredPlugi
 }
 
 function ensureCurrentImplementation(pluginDirectory: string, updatedBy: string): void {
-  const existing = pluginRegistry.getEntry(CURRENT_IMPLEMENTATION_ID)
-  if (existing?.state === 'active') return
-  const implementation = existing?.discoveredPlugin ?? discoverCurrentImplementation(pluginDirectory)
-  if (existing === undefined) pluginRegistry.registerDiscovered(implementation)
-  const approved = pluginRegistry.approve(CURRENT_IMPLEMENTATION_ID, updatedBy, implementation.manifestHash)
+  let entry = pluginRegistry.getEntry(CURRENT_IMPLEMENTATION_ID)
+  if (entry === undefined) {
+    pluginRegistry.registerDiscovered(discoverCurrentImplementation(pluginDirectory))
+    entry = pluginRegistry.getEntry(CURRENT_IMPLEMENTATION_ID)
+  }
+  if (entry === undefined) throw unavailableImplementation('registration did not create a registry entry')
+  if (entry.state === 'active' || entry.state === 'approved') return
+  if (entry.state === 'rejected') throw unavailableImplementation('explicitly rejected')
+  if (entry.state !== 'discovered') throw unavailableImplementation(`current state is '${entry.state}'`)
+  const approved = pluginRegistry.approve(CURRENT_IMPLEMENTATION_ID, updatedBy, entry.discoveredPlugin.manifestHash)
   if (!approved) throw unavailableImplementation('registration could not be approved')
 }
 

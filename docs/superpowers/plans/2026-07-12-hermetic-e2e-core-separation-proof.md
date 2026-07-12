@@ -200,7 +200,7 @@ Assert shutdown reverses the extension portion: plugins deactivate before truste
 
 - [ ] **Step 2: Run and verify RED**
 
-Run: `bun test tests/runtime/production-deps.test.ts tests/index-startup.test.ts`
+Run: `bun test tests/runtime/production-deps.test.ts tests/index-startup.test.ts tests/coding-sessions/configure.test.ts`
 
 Expected: FAIL while `src/index.ts` or another branch-specific path loads modules outside runtime ownership.
 
@@ -217,7 +217,7 @@ Adapt only the internals of `configureCodingSessionCapability` to configure the 
 Run:
 
 ```bash
-bun test tests/runtime/production-deps.test.ts tests/index-startup.test.ts tests/architecture-guard.test.ts
+bun test tests/runtime/production-deps.test.ts tests/index-startup.test.ts tests/architecture-guard.test.ts tests/coding-sessions/configure.test.ts
 bun typecheck
 ```
 
@@ -228,7 +228,7 @@ Expected: exit 0.
 ```bash
 BASE_REF="$BASELINE_SHA" bun test:stories:compat --manifest-only
 git diff --exit-code "$BASELINE_SHA" -- tests/stories
-git add src/runtime/production-deps.ts src/composition/load-trusted-modules.ts src/index.ts tests/runtime/production-deps.test.ts tests/index-startup.test.ts
+git add src/runtime/production-deps.ts src/composition/load-trusted-modules.ts src/coding-sessions/configure.ts src/index.ts tests/runtime/production-deps.test.ts tests/index-startup.test.ts tests/coding-sessions/configure.test.ts
 git commit -m "refactor(composition): own modules in PapaiRuntime"
 ```
 
@@ -254,7 +254,7 @@ Assert that the coding module declares the same ids established on master, inclu
 
 - [ ] **Step 2: Run and verify RED**
 
-Run: `bun test tests/tools/module-tool-set.test.ts tests/modules/coding/acp/contributions.test.ts`
+Run: `bun test tests/tools/module-tool-set.test.ts tests/modules/coding/acp/contributions.test.ts tests/coding-sessions/store.test.ts`
 
 Expected: FAIL because `ModuleTool` lacks `capabilityId` and module tool assembly does not receive the catalog.
 
@@ -271,7 +271,7 @@ Route coding-module session history through the stable `src/coding-sessions/` re
 Run:
 
 ```bash
-bun test tests/tools/module-tool-set.test.ts tests/modules/coding/acp/contributions.test.ts
+bun test tests/tools/module-tool-set.test.ts tests/modules/coding/acp/contributions.test.ts tests/coding-sessions/store.test.ts
 BASE_REF="$BASELINE_SHA" bun test:stories:compat --test-name-pattern "coding session"
 ```
 
@@ -284,7 +284,7 @@ The story resolves the wire name dynamically from `coding-session.start` and rea
 ```bash
 BASE_REF="$BASELINE_SHA" bun test:stories:compat --manifest-only
 git diff --exit-code "$BASELINE_SHA" -- tests/stories
-git add src/ports/module-tools.ts src/tools/module-tool-set.ts src/modules/coding/acp tests/tools/module-tool-set.test.ts tests/modules/coding/acp/contributions.test.ts
+git add src/ports/module-tools.ts src/tools/module-tool-set.ts src/modules/coding/acp src/coding-sessions/session-record.ts src/coding-sessions/store.ts tests/tools/module-tool-set.test.ts tests/modules/coding/acp/contributions.test.ts tests/coding-sessions/store.test.ts
 git commit -m "feat(coding): preserve behavioral capability ids"
 ```
 
