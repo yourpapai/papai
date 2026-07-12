@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -33,7 +33,7 @@ async function run(
 }
 
 const runProbe = (name: string): Promise<ChildResult> => run(['--fixture', PROBE, '--test-name-pattern', `^${name}$`])
-const runTopLevelFixture = (file: string): Promise<ChildResult> => run(['--fixture', `tests/stories/harness/${file}`])
+const runTopLevelFixture = (file: string): Promise<ChildResult> => run(['--fixture', `tests/stories/fixtures/${file}`])
 
 function captureReadyOutput(stream: ReadableStream<Uint8Array>): Readonly<{
   ready: Promise<void>
@@ -57,6 +57,10 @@ function captureReadyOutput(stream: ReadableStream<Uint8Array>): Readonly<{
 }
 
 describe('hermetic story runner', () => {
+  test('repository discovery excludes the adversarial fixture subtree', () => {
+    expect(readFileSync(path.join(ROOT, 'bunfig.toml'), 'utf8')).toContain('"tests/stories/fixtures/**"')
+  })
+
   test.each([
     ['rejects undeclared fetch', 'fetch'],
     ['rejects Bun.spawn', 'Bun.spawn'],
@@ -171,7 +175,7 @@ describe('hermetic story runner', () => {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'papai-story-worker-'))
     const marker = path.join(tempRoot, 'worker-started')
     try {
-      const result = await run(['--fixture', 'tests/stories/harness/io-guard-top-level-node-worker.fixture.test.ts'], {
+      const result = await run(['--fixture', 'tests/stories/fixtures/io-guard-top-level-node-worker.fixture.test.ts'], {
         ...process.env,
         TMPDIR: tempRoot,
       })
@@ -185,21 +189,39 @@ describe('hermetic story runner', () => {
     }
   })
 
-  test('default story-directory discovery excludes special-preload story files', async () => {
-    const child = Bun.spawn(
-      ['bun', 'test', 'tests/stories', '--test-name-pattern', '^no-default-story-test-can-match-this$'],
-      { cwd: ROOT, env: process.env, stdout: 'pipe', stderr: 'pipe' },
-    )
-    const [exitCode, stdout, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ])
-    const output = `${stdout}\n${stderr}`
+  test('default story-directory discovery excludes story and adversarial fixture files', async () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'papai-story-discovery-'))
+    const marker = path.join(tempRoot, 'worker-started')
+    try {
+      const child = Bun.spawn(
+        ['bun', '--no-env-file', 'test', 'tests/stories', '--test-name-pattern', '^no-default-test-can-match$'],
+        {
+          cwd: ROOT,
+          env: {
+            PATH: process.env['PATH'],
+            HOME: process.env['HOME'],
+            TMPDIR: tempRoot,
+            TZ: 'UTC',
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      const output = `${stdout}\n${stderr}`
 
-    expect(exitCode).not.toBe(0)
-    expect(output).toContain('tests/stories/harness/io-guard.test.ts')
-    expect(output).not.toContain('.story.test.ts')
+      expect(exitCode).not.toBe(0)
+      expect(output).toContain('tests/stories/harness/io-guard.test.ts')
+      expect(output).not.toContain('.story.test.ts')
+      expect(output).not.toContain('.fixture.test.ts')
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true })
+    }
   })
 
   test('forwards SIGTERM to the story child and exits conventionally', async () => {
