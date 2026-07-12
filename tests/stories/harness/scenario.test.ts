@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
 import { executeScenario } from './scenario.js'
@@ -17,6 +18,31 @@ const requireAggregateError = (value: unknown): AggregateError => {
 }
 
 describe('scenario execution', () => {
+  test('coding-session prerequisite configures the semantic capability before lazy startup', async () => {
+    const world = await createScenarioWorld('coding-session prerequisite')
+
+    try {
+      const alice = world.api.given.user('alice')
+      const dm = world.api.given.dm(alice)
+      const configured = world.api.given.codingSession({
+        pluginDirectory: 'plugins',
+        context: dm,
+        magiBaseUrl: 'https://magi.invalid',
+        magiToken: 'scenario-token',
+        updatedBy: alice.id,
+      })
+
+      expect(configured.kind).toBe('coding-session')
+      expect(configured.capabilityId).toBe('coding-session.start')
+      expect(configured.contextId).toBe(
+        toScopedContextId({ platformInstanceId: 'scenario-platform', nativeContextId: 'alice' }),
+      )
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+    } finally {
+      await world.stop()
+    }
+  })
+
   test('settings requests reject unsafe URLs before dispatching and accept a settings query', async () => {
     await executeScenario('settings URL safety', async ({ given, when, world }) => {
       const alice = given.user('alice')

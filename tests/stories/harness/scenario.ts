@@ -6,6 +6,7 @@
 import { expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { configureCodingSessionCapability } from '../../../src/coding-sessions/configure.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
@@ -31,6 +32,15 @@ import {
   repliesForThread,
 } from './world.js'
 
+const codingSessionHandleBrand: unique symbol = Symbol('scenario-coding-session')
+
+export type CodingSessionHandle = Readonly<{
+  kind: 'coding-session'
+  capabilityId: 'coding-session.start'
+  contextId: string
+  readonly [codingSessionHandleBrand]: true
+}>
+
 type ScenarioGiven = Readonly<{
   user(id: string): UserHandle
   guest(id: string): UserHandle
@@ -49,6 +59,15 @@ type ScenarioGiven = Readonly<{
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
   settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
   plugin(plugin: DiscoveredPlugin): PluginHandle
+  codingSession(
+    config: Readonly<{
+      pluginDirectory: string
+      context: ContextHandle
+      magiBaseUrl: string
+      magiToken: string
+      updatedBy: string
+    }>,
+  ): CodingSessionHandle
   llm(decisions: readonly ModelDecision[]): void
 }>
 
@@ -91,6 +110,14 @@ const scopedConfigContextId = (context: ContextHandle): string =>
 
 const scopedGroupId = (group: GroupHandle): string =>
   toScopedContextId({ platformInstanceId: group.platformInstanceId, nativeContextId: group.id })
+
+const makeCodingSessionHandle = (storageContextId: string): CodingSessionHandle =>
+  Object.freeze({
+    kind: 'coding-session',
+    capabilityId: 'coding-session.start',
+    contextId: storageContextId,
+    [codingSessionHandleBrand]: true as const,
+  })
 
 const scenarioUrl = (path: string): URL => new URL(path, 'https://scenario.invalid')
 
@@ -220,6 +247,18 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.plugin')
       const approved = world.fixtures.approvePlugin(plugin)
       return makePluginHandle(approved)
+    },
+    codingSession(config): CodingSessionHandle {
+      prerequisite('given.codingSession')
+      const configContextId = scopedConfigContextId(config.context)
+      configureCodingSessionCapability({
+        pluginDirectory: config.pluginDirectory,
+        contextId: configContextId,
+        magiBaseUrl: config.magiBaseUrl,
+        magiToken: config.magiToken,
+        updatedBy: config.updatedBy,
+      })
+      return makeCodingSessionHandle(configContextId)
     },
     llm(decisions): void {
       world.events.setPhase('given.llm')

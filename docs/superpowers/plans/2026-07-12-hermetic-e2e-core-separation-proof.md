@@ -176,9 +176,11 @@ git commit -m "feat(modules): add symmetric trusted-module lifecycle"
 
 - Modify: `src/runtime/production-deps.ts`
 - Modify: `src/composition/load-trusted-modules.ts`
+- Modify: `src/coding-sessions/configure.ts`
 - Modify: `src/index.ts` only if rebase left direct module loading there
 - Modify: `tests/runtime/production-deps.test.ts`
 - Modify: `tests/index-startup.test.ts`
+- Verify unchanged: `tests/coding-sessions/configure.test.ts`
 
 - [ ] **Step 1: Write failing runtime-order tests**
 
@@ -207,6 +209,8 @@ Expected: FAIL while `src/index.ts` or another branch-specific path loads module
 The production `extensions.start` must call `loadTrustedModules()` first, retain its `LoadedTrustedModules`, then execute the existing plugin discovery/compatibility/activation phase. `extensions.stop` deactivates plugins and then calls `loadedModules.stop()`.
 
 Remove direct `loadTrustedModules()` from `src/index.ts`. Do not change `PapaiRuntime`, `ScenarioWorld`, or any file under `tests/stories/**`.
+
+Adapt only the internals of `configureCodingSessionCapability` to configure the trusted coding module. The stable API must no longer discover, register, or approve a plugin on this branch, while continuing to persist the legacy-compatible magi base URL/token configuration and context availability expected by existing installations. Keep its public input/result and production unit tests unchanged; the frozen story must not learn which implementation owns the capability.
 
 - [ ] **Step 4: Verify runtime and architecture guards**
 
@@ -238,8 +242,11 @@ git commit -m "refactor(composition): own modules in PapaiRuntime"
 - Modify: `src/modules/coding/acp/tools.ts`
 - Modify: `src/modules/coding/acp/session-tools.ts`
 - Modify: `src/modules/coding/acp/continue-tool.ts`
+- Modify: `src/coding-sessions/session-record.ts`
+- Modify: `src/coding-sessions/store.ts`
 - Modify: `tests/tools/module-tool-set.test.ts`
 - Modify: `tests/modules/coding/acp/contributions.test.ts`
+- Verify unchanged: `tests/coding-sessions/store.test.ts`
 
 - [ ] **Step 1: Write failing capability preservation tests**
 
@@ -257,6 +264,8 @@ Add optional `capabilityId?: string` to `ModuleTool`. Thread the same `ToolCapab
 
 Assign the exact `coding-session.*` ids from the master ACP implementation to corresponding coding-module tools. Do not restore `plugin_acp__*` wire names; focused preference-migration tests continue proving the intentional namespace migration.
 
+Route coding-module session history through the stable `src/coding-sessions/` record/store API. Preserve the retained legacy `acp` KV namespace so records written before and after the refactor remain readable. The stable store API and its tests stay unchanged; only its implementation adapter and coding-module callers may change.
+
 - [ ] **Step 4: Verify focused tests and the unchanged coding-session story**
 
 Run:
@@ -267,6 +276,8 @@ BASE_REF="$BASELINE_SHA" bun test:stories:compat --test-name-pattern "coding ses
 ```
 
 Expected: exit 0. The story source remains unchanged while fake magi observes the same semantic request.
+
+The story resolves the wire name dynamically from `coding-session.start` and reads durable history through the stable coding-session store. Do not add module names, plugin names, contribution-registry checks, or storage namespaces to `tests/stories/**`.
 
 - [ ] **Step 5: Verify frozen harness and commit**
 

@@ -8,11 +8,7 @@ import { expect } from 'bun:test'
 import { toScopedContextId } from '../../../../src/chat/scoped-context.js'
 import { updateCodingCredentials } from '../../../../src/coding-credentials/store.js'
 import { upsertRepo } from '../../../../src/coding-repos/store.js'
-import { contributionRegistry } from '../../../../src/plugins/contributions.js'
-import { discoverPlugins } from '../../../../src/plugins/discovery.js'
-import { setPluginEnabledForContext } from '../../../../src/plugins/registry.js'
-import { kvGet, setPluginAdminConfig } from '../../../../src/plugins/store.js'
-import type { DiscoveredPlugin } from '../../../../src/plugins/types.js'
+import { getCodingSessionRecord } from '../../../../src/coding-sessions/store.js'
 import { createFakeMagi } from '../../harness/fake-magi.js'
 import { scenario } from '../../harness/scenario.js'
 import { answer, callCapability } from '../../harness/scripted-llm.js'
@@ -21,20 +17,17 @@ const MAGI_URL = 'https://magi.invalid'
 const MAGI_TOKEN = 'scenario-magi-token'
 const PROVIDER_KEY = 'scenario-provider-key'
 
-function discovered(pluginId: string): DiscoveredPlugin {
-  const plugin = discoverPlugins('plugins').plugins.find(({ manifest }) => manifest.id === pluginId)
-  if (plugin === undefined) throw new Error(`Expected discovered plugin ${pluginId}`)
-  return plugin
-}
-
-scenario('starts an ACP coding session through the real plugin and tool loop', async ({ given, when, then, world }) => {
+scenario('starts a coding session through the real capability and tool loop', async ({ given, when, then, world }) => {
   const alice = given.user('alice')
   const dm = given.dm(alice)
   const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-  given.plugin(discovered('acp'))
-  setPluginAdminConfig('acp', 'magi_base_url', MAGI_URL, 'scenario-admin')
-  setPluginAdminConfig('acp', 'magi_token', MAGI_TOKEN, 'scenario-admin')
-  setPluginEnabledForContext('acp', contextId, true)
+  given.codingSession({
+    pluginDirectory: 'plugins',
+    context: dm,
+    magiBaseUrl: MAGI_URL,
+    magiToken: MAGI_TOKEN,
+    updatedBy: alice.id,
+  })
   updateCodingCredentials(
     contextId,
     'agent-provider',
@@ -64,20 +57,14 @@ scenario('starts an ACP coding session through the real plugin and tool loop', a
   await when.message(alice, dm, 'Add a health check to papai')
 
   then.replyTo(alice).equals('Session started: https://papai.invalid/t/share-session-1')
-  expect(world.runtime.resolveToolCapability('coding-session.start')).toBe('plugin_acp__start_session')
-  expect(
-    world.model.inspections().some(({ availableTools }) => availableTools.includes('plugin_acp__start_session')),
-  ).toBe(true)
-  expect(contributionRegistry.getContributions('acp')?.tools.map(({ name }) => name)).toContain('start_session')
-  const record = JSON.parse(kvGet('acp', contextId, 'session:session-1') ?? 'null') as unknown
-  expect(record).toEqual(
-    expect.objectContaining({
-      project: 'papai',
-      title: 'Add health check',
-      shareToken: 'share-session-1',
-      transcriptUrl: 'https://papai.invalid/t/share-session-1',
-    }),
-  )
+  const wire = world.runtime.resolveToolCapability('coding-session.start')
+  expect(wire).toBeString()
+  expect(world.model.inspections().some(({ availableTools }) => availableTools.includes(wire))).toBe(true)
+  const record = getCodingSessionRecord(contextId, 'session-1')
+  expect(record?.project).toBe('papai')
+  expect(record?.title).toBe('Add health check')
+  expect(record?.shareToken).toBe('share-session-1')
+  expect(record?.transcriptUrl).toBe('https://papai.invalid/t/share-session-1')
   const trace = JSON.stringify(world.events.all())
   expect(trace).not.toContain(MAGI_TOKEN)
   expect(trace).not.toContain(PROVIDER_KEY)
