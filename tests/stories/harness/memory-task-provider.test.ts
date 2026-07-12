@@ -15,20 +15,39 @@ describe('MemoryTaskProvider', () => {
   })
 
   test('copies constructor capabilities', () => {
-    const capabilities: TaskCapability[] = ['tasks.delete']
+    const capabilities: TaskCapability[] = ['comments.read']
     const provider = new MemoryTaskProvider({ capabilities })
     capabilities.push('projects.read')
 
-    expect([...provider.capabilities]).toEqual(['tasks.delete'])
+    expect([...provider.capabilities]).toEqual(['comments.read'])
   })
 
   test('replaces capabilities with a copy of the supplied values', () => {
-    const provider = new MemoryTaskProvider({ capabilities: ['tasks.delete'] })
+    const provider = new MemoryTaskProvider({ capabilities: ['comments.read'] })
     const capabilities: TaskCapability[] = ['comments.create']
     provider.setCapabilities(capabilities)
     capabilities.push('projects.read')
 
     expect([...provider.capabilities]).toEqual(['comments.create'])
+  })
+
+  test('advertises implemented comment capabilities alongside existing safe capabilities', () => {
+    const provider = new MemoryTaskProvider()
+    const capabilities: TaskCapability[] = [
+      'comments.read',
+      'comments.create',
+      'comments.update',
+      'comments.delete',
+      'comments.reactions',
+    ]
+
+    provider.setCapabilities(capabilities)
+
+    expect([...provider.capabilities]).toEqual(capabilities)
+    expect(() => provider.setCapabilities(['tasks.delete'])).toThrow(
+      'MemoryTaskProvider does not support task capabilities: tasks.delete',
+    )
+    expect([...provider.capabilities]).toEqual(capabilities)
   })
 
   test('creates, reads, lists, updates, and searches tasks deterministically', async () => {
@@ -85,6 +104,124 @@ describe('MemoryTaskProvider', () => {
     const provider = new MemoryTaskProvider()
     await expect(provider.getTask('missing')).rejects.toThrow('Task not found: missing')
     await expect(provider.updateTask('missing', { title: 'Nope' })).rejects.toThrow('Task not found: missing')
+  })
+
+  test('creates, lists, reads, updates, and removes comments per task', async () => {
+    const provider = new MemoryTaskProvider()
+    const firstTask = await provider.createTask({ projectId: 'project-1', title: 'first' })
+    const secondTask = await provider.createTask({ projectId: 'project-1', title: 'second' })
+    const first = await provider.addComment(firstTask.id, 'first comment')
+    const second = await provider.addComment(firstTask.id, 'second comment')
+    await provider.addComment(secondTask.id, 'other task comment')
+
+    expect(first).toEqual({ id: 'comment-1', body: 'first comment' })
+    expect(await provider.getComments(firstTask.id)).toEqual([
+      { id: 'comment-1', body: 'first comment' },
+      { id: 'comment-2', body: 'second comment' },
+    ])
+    expect(await provider.getComments(firstTask.id, { offset: 1, limit: 1 })).toEqual([
+      { id: 'comment-2', body: 'second comment' },
+    ])
+    expect(await provider.getComment(firstTask.id, first.id)).toEqual(first)
+
+    expect(
+      await provider.updateComment({ taskId: firstTask.id, commentId: first.id, body: 'updated comment' }),
+    ).toEqual({ id: 'comment-1', body: 'updated comment' })
+    expect(await provider.removeComment({ taskId: firstTask.id, commentId: second.id })).toEqual({ id: second.id })
+    expect(await provider.getComments(firstTask.id)).toEqual([{ id: first.id, body: 'updated comment' }])
+    expect(await provider.getComments(secondTask.id)).toEqual([{ id: 'comment-3', body: 'other task comment' }])
+  })
+
+  test('manages reactions and removes them with their comment', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'project-1', title: 'react' })
+    const comment = await provider.addComment(task.id, 'reaction owner')
+    const reaction = await provider.addCommentReaction(task.id, comment.id, 'party')
+
+    expect(reaction).toEqual({ id: 'reaction-1', reaction: 'party' })
+    expect(await provider.getComment(task.id, comment.id)).toEqual({
+      id: comment.id,
+      body: 'reaction owner',
+      reactions: [reaction],
+    })
+    expect(await provider.removeCommentReaction(task.id, comment.id, reaction.id)).toEqual({
+      id: reaction.id,
+      taskId: task.id,
+      commentId: comment.id,
+    })
+
+    const replacement = await provider.addCommentReaction(task.id, comment.id, 'agree')
+    await provider.removeComment({ taskId: task.id, commentId: comment.id })
+    await expect(provider.removeCommentReaction(task.id, comment.id, replacement.id)).rejects.toThrow(
+      `Comment not found: task ${task.id}, comment ${comment.id}`,
+    )
+  })
+
+  test('rejects missing comment objects without mutating stored comments', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'project-1', title: 'errors' })
+    const comment = await provider.addComment(task.id, 'unchanged comment')
+
+    await expect(provider.getComments('missing')).rejects.toThrow('Task not found: missing')
+    await expect(provider.getComment(task.id, 'missing')).rejects.toThrow(
+      `Comment not found: task ${task.id}, comment missing`,
+    )
+    await expect(
+      provider.updateComment({ taskId: task.id, commentId: 'missing', body: 'replacement body' }),
+    ).rejects.toThrow(`Comment not found: task ${task.id}, comment missing`)
+    await expect(provider.removeComment({ taskId: task.id, commentId: 'missing' })).rejects.toThrow(
+      `Comment not found: task ${task.id}, comment missing`,
+    )
+    await expect(provider.addCommentReaction(task.id, comment.id, 'party')).resolves.toEqual({
+      id: 'reaction-1',
+      reaction: 'party',
+    })
+    await expect(provider.removeCommentReaction(task.id, comment.id, 'missing')).rejects.toThrow(
+      `Comment reaction not found: task ${task.id}, comment ${comment.id}, reaction missing`,
+    )
+    expect(await provider.getComment(task.id, comment.id)).toEqual({
+      id: comment.id,
+      body: 'unchanged comment',
+      reactions: [{ id: 'reaction-1', reaction: 'party' }],
+    })
+  })
+
+  test('isolates comment state and emits sanitized comment operation events', async () => {
+    const events = createScenarioEvents('comment events')
+    const provider = new MemoryTaskProvider({ events })
+    const task = await provider.createTask({ projectId: 'project-1', title: 'comments' })
+    const created = await provider.addComment(task.id, 'classified comment body')
+    created.body = 'mutated output'
+    const reaction = await provider.addCommentReaction(task.id, created.id, 'confidential reaction')
+    reaction.reaction = 'mutated reaction output'
+    const read = await provider.getComment(task.id, created.id)
+    read.reactions![0]!.reaction = 'mutated read reaction'
+    const listed = await provider.getComments(task.id)
+    listed[0]!.body = 'mutated list output'
+    await provider.updateComment({ taskId: task.id, commentId: created.id, body: 'updated classified body' })
+    await provider.removeCommentReaction(task.id, created.id, reaction.id)
+    await provider.removeComment({ taskId: task.id, commentId: created.id })
+
+    expect(await provider.getComments(task.id)).toEqual([])
+    expect(
+      events
+        .all()
+        .slice(1)
+        .map(({ kind, data }) => ({ kind, data })),
+    ).toEqual([
+      { kind: 'comment.create', data: { taskId: task.id, commentId: created.id } },
+      { kind: 'comment.reaction.create', data: { taskId: task.id, commentId: created.id, reactionId: reaction.id } },
+      { kind: 'comment.get', data: { taskId: task.id, commentId: created.id } },
+      { kind: 'comment.list', data: { taskId: task.id, count: 1 } },
+      { kind: 'comment.update', data: { taskId: task.id, commentId: created.id } },
+      { kind: 'comment.reaction.delete', data: { taskId: task.id, commentId: created.id, reactionId: reaction.id } },
+      { kind: 'comment.delete', data: { taskId: task.id, commentId: created.id, reactionCount: 0 } },
+      { kind: 'comment.list', data: { taskId: task.id, count: 0 } },
+    ])
+    const trace = JSON.stringify(events.all())
+    expect(trace).not.toContain('classified')
+    expect(trace).not.toContain('confidential')
+    expect(trace).not.toContain('mutated')
   })
 
   test('isolates stored state and returned values from caller mutation', async () => {

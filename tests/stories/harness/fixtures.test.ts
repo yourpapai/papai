@@ -81,9 +81,9 @@ describe('scenario fixtures', () => {
     try {
       configuredFixtures.registerTaskProvider()
       const descriptor = getTaskProviderDescriptor('kaneo')
-      provider.setCapabilities(['tasks.delete'])
+      provider.setCapabilities(['comments.read'])
 
-      expect([...descriptor!.capabilities]).toEqual(['tasks.delete'])
+      expect([...descriptor!.capabilities]).toEqual(['comments.read'])
     } finally {
       configuredFixtures.teardown()
     }

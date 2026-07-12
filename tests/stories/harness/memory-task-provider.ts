@@ -6,6 +6,8 @@
 import { systemError, type AppError } from '../../../src/errors.js'
 import type {
   ListTasksParams,
+  Comment,
+  CommentReaction,
   IdentityUser,
   Task,
   TaskCapability,
@@ -20,6 +22,16 @@ import type { ScenarioEvents } from './events.js'
 type CreateTaskInput = Parameters<TaskProvider['createTask']>[0]
 type UpdateTaskInput = Parameters<TaskProvider['updateTask']>[1]
 type SearchTaskInput = Parameters<TaskProvider['searchTasks']>[0]
+type UpdateCommentInput = Parameters<NonNullable<TaskProvider['updateComment']>>[0]
+type RemoveCommentInput = Parameters<NonNullable<TaskProvider['removeComment']>>[0]
+
+const supportedMemoryTaskCapabilities: readonly TaskCapability[] = [
+  'comments.read',
+  'comments.create',
+  'comments.update',
+  'comments.delete',
+  'comments.reactions',
+]
 
 export type MemoryTaskProviderOptions = Readonly<{
   events?: ScenarioEvents
@@ -115,10 +127,13 @@ export class MemoryTaskProvider implements TaskProvider {
   }
 
   private readonly tasks = new Map<string, Task>()
+  private readonly comments = new Map<string, Map<string, Comment>>()
   private readonly identityUsers = new Map<string, IdentityUser>()
   private readonly events: ScenarioEvents | undefined
   private readonly nextId: () => string
   private readonly capabilitySet = new Set<TaskCapability>()
+  private commentSequence = 0
+  private reactionSequence = 0
 
   get capabilities(): ReadonlySet<TaskCapability> {
     return this.capabilitySet
@@ -132,6 +147,12 @@ export class MemoryTaskProvider implements TaskProvider {
   }
 
   setCapabilities(capabilities: readonly TaskCapability[]): void {
+    const unsupported = [...new Set(capabilities)].filter(
+      (capability) => !supportedMemoryTaskCapabilities.includes(capability),
+    )
+    if (unsupported.length > 0) {
+      throw new Error(`MemoryTaskProvider does not support task capabilities: ${unsupported.join(', ')}`)
+    }
     this.capabilitySet.clear()
     for (const capability of capabilities) this.capabilitySet.add(capability)
   }
@@ -212,6 +233,96 @@ export class MemoryTaskProvider implements TaskProvider {
     return Promise.resolve(clone(result))
   }
 
+  getComment(taskId: string, commentId: string): Promise<Comment> {
+    return Promise.resolve().then(() => {
+      const comment = this.requireComment(taskId, commentId)
+      this.events?.record('comment.get', { taskId, commentId })
+      return clone(comment)
+    })
+  }
+
+  getComments(taskId: string, params: Readonly<{ limit?: number; offset?: number }> = {}): Promise<Comment[]> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const comments = [...(this.comments.get(taskId)?.values() ?? [])]
+      const offset = Math.max(0, params.offset ?? 0)
+      const limit = Math.max(0, params.limit ?? comments.length)
+      const result = comments.slice(offset, offset + limit)
+      this.events?.record('comment.list', { taskId, count: result.length })
+      return clone(result)
+    })
+  }
+
+  addComment(taskId: string, body: string): Promise<Comment> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const comment: Comment = { id: `comment-${++this.commentSequence}`, body: clone(body) }
+      const comments = this.comments.get(taskId) ?? new Map<string, Comment>()
+      comments.set(comment.id, clone(comment))
+      this.comments.set(taskId, comments)
+      this.events?.record('comment.create', { taskId, commentId: comment.id })
+      return clone(comment)
+    })
+  }
+
+  updateComment(params: UpdateCommentInput): Promise<Comment> {
+    return Promise.resolve().then(() => {
+      const input = clone(params)
+      const existing = this.requireComment(input.taskId, input.commentId)
+      const updated: Comment = { ...existing, body: input.body }
+      this.requireCommentMap(input.taskId).set(input.commentId, clone(updated))
+      this.events?.record('comment.update', { taskId: input.taskId, commentId: input.commentId })
+      return clone(updated)
+    })
+  }
+
+  removeComment(params: RemoveCommentInput): Promise<{ id: string }> {
+    return Promise.resolve().then(() => {
+      const input = clone(params)
+      const comment = this.requireComment(input.taskId, input.commentId)
+      this.requireCommentMap(input.taskId).delete(input.commentId)
+      this.events?.record('comment.delete', {
+        taskId: input.taskId,
+        commentId: input.commentId,
+        reactionCount: comment.reactions?.length ?? 0,
+      })
+      return { id: input.commentId }
+    })
+  }
+
+  addCommentReaction(taskId: string, commentId: string, reaction: string): Promise<CommentReaction> {
+    return Promise.resolve().then(() => {
+      const comment = this.requireComment(taskId, commentId)
+      const added: CommentReaction = { id: `reaction-${++this.reactionSequence}`, reaction: clone(reaction) }
+      const updated: Comment = { ...comment, reactions: [...(comment.reactions ?? []), added] }
+      this.requireCommentMap(taskId).set(commentId, clone(updated))
+      this.events?.record('comment.reaction.create', { taskId, commentId, reactionId: added.id })
+      return clone(added)
+    })
+  }
+
+  removeCommentReaction(
+    taskId: string,
+    commentId: string,
+    reactionId: string,
+  ): Promise<{ id: string; taskId: string; commentId: string }> {
+    return Promise.resolve().then(() => {
+      const comment = this.requireComment(taskId, commentId)
+      const reactions = comment.reactions ?? []
+      const index = reactions.findIndex((reaction) => reaction.id === reactionId)
+      if (index < 0) {
+        throw new Error(`Comment reaction not found: task ${taskId}, comment ${commentId}, reaction ${reactionId}`)
+      }
+      const updated: Comment = {
+        ...comment,
+        reactions: reactions.filter((_, reactionIndex) => reactionIndex !== index),
+      }
+      this.requireCommentMap(taskId).set(commentId, clone(updated))
+      this.events?.record('comment.reaction.delete', { taskId, commentId, reactionId })
+      return { id: reactionId, taskId, commentId }
+    })
+  }
+
   buildTaskUrl(taskId: string): string {
     return `memory://tasks/${taskId}`
   }
@@ -244,5 +355,16 @@ export class MemoryTaskProvider implements TaskProvider {
     const task = this.tasks.get(taskId)
     if (task === undefined) throw new Error(`Task not found: ${taskId}`)
     return task
+  }
+
+  private requireCommentMap(taskId: string): Map<string, Comment> {
+    this.requireTask(taskId)
+    return this.comments.get(taskId) ?? new Map<string, Comment>()
+  }
+
+  private requireComment(taskId: string, commentId: string): Comment {
+    const comment = this.requireCommentMap(taskId).get(commentId)
+    if (comment === undefined) throw new Error(`Comment not found: task ${taskId}, comment ${commentId}`)
+    return comment
   }
 }

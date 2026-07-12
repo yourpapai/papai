@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
+import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
 import { executeScenario } from './scenario.js'
 import { answer, callCapability } from './scripted-llm.js'
@@ -47,6 +48,30 @@ describe('scenario execution', () => {
         'MemoryTaskProvider does not support task capabilities: tasks.delete',
       )
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+    } finally {
+      await world.stop()
+    }
+  })
+
+  test('task capability prerequisite accepts implemented comment operations before startup', async () => {
+    const world = await createScenarioWorld('comment task capabilities')
+
+    try {
+      const capabilities: TaskCapability[] = [
+        'comments.read',
+        'comments.create',
+        'comments.update',
+        'comments.delete',
+        'comments.reactions',
+      ]
+
+      world.api.given.taskCapabilities(capabilities)
+
+      expect([...world.tasks.capabilities]).toEqual(capabilities)
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+      expect(() => world.api.given.taskCapabilities(['projects.read'])).toThrow(
+        'MemoryTaskProvider does not support task capabilities: projects.read',
+      )
     } finally {
       await world.stop()
     }
