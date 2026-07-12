@@ -19,6 +19,11 @@ kiss is currently configured for (either by hand, or via the importer in
 Task 3-5). Do **not** disable kiss on these projects yet — both bots run in parallel during the
 shadow phase.
 
+To get working live-transcript links (the `/t/<token>` URLs surfaced on ACP replies and nerv
+task notifications), set **`MAGI_TRANSCRIPT_DIR`** on the magi deployment. If it's unset, magi
+does not record session transcripts, its transcript endpoint reports `recording: 'disabled'`,
+and the links will show nothing — with no obvious cause from the papai side.
+
 ## 2. Shadow by assigning the bot to kiss-created MRs
 
 papai's P1 assignee-watch sweep adopts MRs it's assigned to, even ones kiss opened first (see
