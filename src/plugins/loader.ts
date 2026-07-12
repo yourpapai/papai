@@ -43,7 +43,11 @@ const PLUGIN_LIFECYCLE_CONCURRENCY = 1
 const SYSTEM_CONTEXT_ID = '__system__'
 export type ActivatePluginsOptions = Readonly<{ providerRuntimeDeps?: ProviderRuntimeDeps }>
 const activationOrder: string[] = []
-type ActivePluginInstance = Readonly<{ instance: PluginInstance; options: ActivatePluginsOptions }>
+type ActivePluginInstance = Readonly<{
+  instance: PluginInstance
+  options: ActivatePluginsOptions
+  plugin: DiscoveredPlugin
+}>
 const activeInstances = new Map<string, ActivePluginInstance>()
 
 function removeActivatedPluginId(pluginId: string): void {
@@ -110,7 +114,7 @@ function finalizeSuccessfulActivation(
   commitTaskProviderRegistration(plugin, activationContext, validateConfig)
   contributionRegistry.register(manifest.id, collected, manifest)
   if (instance !== null) {
-    activeInstances.set(manifest.id, { instance, options })
+    activeInstances.set(manifest.id, { instance, options, plugin })
   }
   pluginRegistry.markActive(manifest.id)
   activationOrder.push(manifest.id)
@@ -135,6 +139,12 @@ function handleActivationFailure(pluginId: string, msg: string): false {
 
 async function activateOne(plugin: DiscoveredPlugin, options: ActivatePluginsOptions): Promise<boolean> {
   const { manifest, entryPoint } = plugin
+
+  if (activeInstances.has(manifest.id) || activationOrder.includes(manifest.id)) {
+    pluginRegistry.markActive(manifest.id)
+    log.debug({ pluginId: manifest.id }, 'Plugin is already active; skipping repeated activation')
+    return true
+  }
 
   log.info({ pluginId: manifest.id, entryPoint }, 'Activating plugin')
 
@@ -214,7 +224,7 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
 
   try {
     if (active !== undefined && typeof active.instance.deactivate === 'function') {
-      const { ctx } = buildPluginContext(entry.discoveredPlugin.manifest, SYSTEM_CONTEXT_ID, {
+      const { ctx } = buildPluginContext(active.plugin.manifest, SYSTEM_CONTEXT_ID, {
         registrationInitiallyOpen: false,
         providerRuntimeDeps: active.options.providerRuntimeDeps,
       })

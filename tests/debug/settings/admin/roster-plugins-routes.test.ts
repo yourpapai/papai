@@ -238,6 +238,61 @@ describe('settings admin roster/plugins routes', () => {
     expect(getActivatedPluginIds()).toContain('test-plugin')
   })
 
+  test('plugin approval owns the request-scoped HTTP dependencies through deactivation', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/activate') },
+          deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/deactivate') },
+        }
+      }
+    `)
+    const plugin = makePlugin({
+      entryPoint,
+      pluginDir: dirname(entryPoint),
+      manifest: {
+        ...makePlugin().manifest,
+        permissions: ['http'],
+        providerAllowedHosts: ['api.example.com'],
+      },
+    })
+    pluginRegistry.registerDiscovered(plugin)
+    const urls: string[] = []
+    const options = {
+      pluginProviderRuntimeDeps: {
+        fetch: (url: string): Promise<Response> => {
+          urls.push(url)
+          return Promise.resolve(new Response('owned'))
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    }
+    const url = new URL('https://x/settings/api/admin/plugin-approval')
+    const request = (action: 'approve' | 'reject'): Request =>
+      new Request(url, {
+        method: 'POST',
+        headers: { ...authHeaders(superSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: plugin.manifest.id, action }),
+      })
+
+    const approved = await handleAdminRosterPluginsRoutes(
+      request('approve'),
+      url,
+      '/settings/api/admin/plugin-approval',
+      options,
+    )
+    const rejected = await handleAdminRosterPluginsRoutes(
+      request('reject'),
+      url,
+      '/settings/api/admin/plugin-approval',
+      options,
+    )
+
+    expect(approved.status).toBe(200)
+    expect(rejected.status).toBe(200)
+    expect(urls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
+  })
+
   test('plugin reject as SA deactivates an active provider plugin immediately', async () => {
     const plugin = makeRuntimeProviderPlugin('runtime-provider')
     pluginRegistry.registerDiscovered(plugin)

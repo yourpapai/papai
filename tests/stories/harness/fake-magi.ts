@@ -52,6 +52,7 @@ const startSessionSchema = z.strictObject({
   projectSpec: projectSpecSchema,
   mcpTokens: z.record(z.string(), z.string()).optional(),
 })
+const JSON_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset\s*=\s*(?:"[^"]+"|[^;\s]+))?$/iu
 
 type StartSessionBody = z.infer<typeof startSessionSchema>
 
@@ -91,6 +92,13 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 function assertAuthorization(request: Request, token: string): void {
   if (request.headers.get('authorization') !== `Bearer ${token}`) {
     throw new Error('Fake magi rejected authorization')
+  }
+}
+
+function assertJsonContentType(request: Request): void {
+  const contentType = request.headers.get('content-type')
+  if (contentType === null || !JSON_CONTENT_TYPE.test(contentType.trim())) {
+    throw new Error('Fake magi expected Content-Type application/json')
   }
 }
 
@@ -146,6 +154,7 @@ export function createFakeMagi(options: FakeMagiOptions): FakeMagi {
     expectStartSession(session): void {
       options.http.expect({ method: 'POST', url: `${baseUrl}/sessions` }, async (request) => {
         authorized(request)
+        assertJsonContentType(request)
         const body = await parseStartBody(request)
         assertExpected(body, session.expected)
         recordStart(options.events, body)

@@ -4,16 +4,22 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
+import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../../src/instances/admin-store.js'
 import { discoverPlugins } from '../../../src/plugins/discovery.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
+import { pluginRegistry, setPluginEnabledForContext } from '../../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { defaultTaskProviderResolver } from '../../../src/providers/resolver.js'
 import { toolCapabilityCatalog } from '../../../src/runtime/capability-catalog.js'
 import { DEFAULT_SCHEDULER_TASK_NAMES, scheduler } from '../../../src/scheduler-instance.js'
-import { answer } from './scripted-llm.js'
+import { answer, callCapability } from './scripted-llm.js'
 import type { DmHandle, GroupHandle, PluginHandle, TaskInstanceHandle, ThreadHandle, UserHandle } from './world.js'
 import { createScenarioWorld } from './world.js'
 
@@ -194,6 +200,100 @@ describe('scenario world', () => {
 
     await world.stop()
     expect(getActivatedPluginIds()).toEqual([])
+  })
+
+  test('settings approval uses the world-owned HTTP boundary for the full plugin lifecycle', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'papai-scenario-settings-plugin-'))
+    const entryPoint = join(directory, 'index.mjs')
+    writeFileSync(
+      entryPoint,
+      `
+        export default function createPlugin() {
+          let httpFetch
+          return {
+            async activate(ctx) {
+              httpFetch = ctx.providerRuntime.httpFetch
+              await httpFetch('https://scenario-plugin.invalid/activate')
+              ctx.registration.registerTool({
+                name: 'probe',
+                capabilityId: 'scenario.lifecycle.probe',
+                description: 'Probe the scenario HTTP boundary',
+                execute: async () => (await httpFetch('https://scenario-plugin.invalid/tool')).text(),
+              })
+            },
+            deactivate() {
+              return httpFetch('https://scenario-plugin.invalid/deactivate')
+            },
+          }
+        }
+      `,
+    )
+    const source = requireDiscoveredPlugin('synthetic-web-search')
+    const plugin: DiscoveredPlugin = {
+      ...source,
+      pluginDir: directory,
+      entryPoint,
+      manifestHash: 'scenario-settings-http-plugin-hash',
+      manifest: {
+        ...source.manifest,
+        id: 'scenario-settings-http-plugin',
+        name: 'Scenario Settings HTTP Plugin',
+        contributes: {
+          tools: ['probe'],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+          attachmentTransformers: [],
+        },
+        permissions: ['http'],
+        defaultEnabled: false,
+        configRequirements: [],
+        providerAllowedHosts: ['scenario-plugin.invalid'],
+        providerAllowedHostsFromConfig: [],
+      },
+    }
+    const world = await createScenarioWorld('settings activation HTTP ownership')
+
+    try {
+      const alice = world.api.given.user('alice')
+      const dm = world.api.given.dm(alice)
+      addAdmin(alice.id, SUPER_ADMIN_PLATFORM_ID)
+      const session = await world.api.given.settingsSession(alice)
+      pluginRegistry.registerDiscovered(plugin)
+      const contextId = toScopedContextId({
+        platformInstanceId: alice.platformInstanceId,
+        nativeContextId: alice.id,
+      })
+      setPluginEnabledForContext(plugin.manifest.id, contextId, true)
+      world.http.expect({ method: 'GET', url: 'https://scenario-plugin.invalid/activate' }, () => new Response('ok'))
+      world.http.expect({ method: 'GET', url: 'https://scenario-plugin.invalid/tool' }, () => new Response('tool-ok'))
+      world.http.expect({ method: 'GET', url: 'https://scenario-plugin.invalid/deactivate' }, () => new Response('ok'))
+
+      const approval = await world.api.when.settingsRequest(session, '/settings/api/admin/plugin-approval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: plugin.manifest.id, action: 'approve' }),
+      })
+      expect(approval.status).toBe(200)
+      expect(pluginRegistry.getEntry(plugin.manifest.id)?.state).toBe('active')
+
+      world.api.given.llm([callCapability('scenario.lifecycle.probe', {}), answer('Plugin request completed.')])
+      await world.api.when.message(alice, dm, 'Run the plugin probe')
+      world.api.then.replyTo(alice).equals('Plugin request completed.')
+
+      const rejection = await world.api.when.settingsRequest(session, '/settings/api/admin/plugin-approval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: plugin.manifest.id, action: 'reject' }),
+      })
+      expect(rejection.status).toBe(200)
+      world.verify()
+    } finally {
+      await world.stop()
+      rmSync(directory, { recursive: true, force: true })
+    }
   })
 
   test('aggregates startup failure first and attempts every applicable cleanup step', async () => {

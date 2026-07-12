@@ -225,10 +225,17 @@ function createDefaultDeps(state: ProductionState, options: ProductionRuntimeOpt
     background: createBackgroundDeps(state),
     web: {
       start: (adminUserId) => {
-        startDebugServer(adminUserId, { debugEnabled: process.env['DEBUG_SERVER'] === 'true' })
+        startDebugServer(adminUserId, {
+          debugEnabled: process.env['DEBUG_SERVER'] === 'true',
+          pluginProviderRuntimeDeps: options.pluginProviderRuntimeDeps,
+        })
       },
       stop: stopDebugServer,
-      route: routeRequest,
+      route: (request) =>
+        routeRequest(request, {
+          debugEnabled: process.env['DEBUG_SERVER'] === 'true',
+          pluginProviderRuntimeDeps: options.pluginProviderRuntimeDeps,
+        }),
     },
     capabilities: toolCapabilityCatalog,
   }

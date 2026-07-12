@@ -279,7 +279,8 @@ describe('activatePlugins', () => {
     )
   })
 
-  test('failed reactivation clears the previous active instance and its owned dependencies', async () => {
+  test('active plugin reapproval is idempotent and retains its original instance and dependencies', async () => {
+    globalThis.papaiLateRegistrationError = undefined
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
         return {
@@ -303,18 +304,52 @@ describe('activatePlugins', () => {
         assertPublicUrl: () => Promise.resolve(),
       },
     })
-    const broken = makePlugin(plugin.manifest.id, '/nonexistent/reactivation.ts', {
+    const replacementEntry = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = 'replacement module imported'
+      export default function createPlugin() {
+        throw new Error('replacement factory must not run')
+      }
+    `)
+    const replacement = makePlugin(plugin.manifest.id, replacementEntry, {
       permissions: ['http'],
       providerAllowedHosts: ['api.example.com'],
     })
-    approvePlugin(broken)
+    approvePlugin(replacement)
 
-    await activatePlugins([broken])
+    await activatePlugins([replacement])
     await deactivateAllPlugins()
 
     expect(getActivatedPluginIds()).toEqual([])
     expect(contributionRegistry.getContributions(plugin.manifest.id)).toBeUndefined()
-    expect(urls).toEqual(['https://api.example.com/activate'])
+    expect(globalThis.papaiLateRegistrationError).toBeUndefined()
+    expect(urls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
+  })
+
+  test('first activation failure leaves no lifecycle record and a later retry activates normally', async () => {
+    const failingEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return { activate() { throw new Error('first activation failed') } }
+      }
+    `)
+    const retryEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate() { globalThis.papaiDeactivateOrder.push('retry-activate') },
+          deactivate() { globalThis.papaiDeactivateOrder.push('retry-deactivate') },
+        }
+      }
+    `)
+    const failing = makePlugin('retry-plugin', failingEntry)
+    approvePlugin(failing)
+    await activatePlugins([failing])
+    expect(getActivatedPluginIds()).toEqual([])
+
+    const retry = makePlugin('retry-plugin', retryEntry)
+    approvePlugin(retry)
+    await activatePlugins([retry])
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiDeactivateOrder).toEqual(['retry-activate', 'retry-deactivate'])
   })
 
   test('converts entry point paths to portable file URLs before import', () => {
@@ -957,9 +992,11 @@ describe('activatePlugins', () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
         return {
-          activate() {},
+          activate() {
+            globalThis.papaiDeactivateOrder = [...(globalThis.papaiDeactivateOrder ?? []), 'activate']
+          },
           deactivate() {
-            globalThis.papaiDeactivateOrder = [...(globalThis.papaiDeactivateOrder ?? []), 'single-pass']
+            globalThis.papaiDeactivateOrder = [...(globalThis.papaiDeactivateOrder ?? []), 'deactivate']
           },
         }
       }
@@ -971,7 +1008,7 @@ describe('activatePlugins', () => {
     await activatePlugins([plugin])
     await deactivateAllPlugins()
 
-    expect(globalThis.papaiDeactivateOrder).toEqual(['single-pass'])
+    expect(globalThis.papaiDeactivateOrder).toEqual(['activate', 'deactivate'])
   })
 
   test('deactivation error still cleans framework-owned contributions', async () => {

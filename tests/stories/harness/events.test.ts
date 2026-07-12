@@ -193,6 +193,28 @@ describe('scenario events', () => {
     expect(events.formatFailure('failed')).not.toContain('session-token')
   })
 
+  test('redacts transcript bearer paths in URLs, relative paths, text, and failure traces', () => {
+    const events = createScenarioEvents('transcript bearer')
+
+    events.record('chat.reply', {
+      absolute: new URL('https://papai.invalid/t/share-session-1'),
+      relative: '/t/share-session-2/stream?cursor=7',
+      text: 'Watch https://papai.invalid/t/share-session-3/transcript now.',
+      ordinary: 'https://papai.invalid/tasks/t/not-a-transcript',
+    })
+
+    expect(events.all()[0]?.data).toEqual({
+      absolute: 'https://papai.invalid/t/[REDACTED]',
+      relative: '/t/[REDACTED]/stream?cursor=7',
+      text: 'Watch https://papai.invalid/t/[REDACTED]/transcript now.',
+      ordinary: 'https://papai.invalid/tasks/t/not-a-transcript',
+    })
+    const failure = events.formatFailure('failed')
+    expect(failure).not.toContain('share-session-1')
+    expect(failure).not.toContain('share-session-2')
+    expect(failure).not.toContain('share-session-3')
+  })
+
   test('returns snapshots that cannot mutate recorded events', () => {
     const events = createScenarioEvents('snapshots')
     const source = { nested: { value: 'original' } }

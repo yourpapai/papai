@@ -143,7 +143,7 @@ describe('fake magi', () => {
       await causeMessage(
         invalidJson.http.fetch(`${BASE_URL}/sessions`, {
           method: 'POST',
-          headers: { authorization: `Bearer ${TOKEN}` },
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
           body: '{',
         }),
       ),
@@ -155,11 +155,46 @@ describe('fake magi', () => {
       await causeMessage(
         invalidShape.http.fetch(`${BASE_URL}/sessions`, {
           method: 'POST',
-          headers: { authorization: `Bearer ${TOKEN}` },
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
           body: JSON.stringify({ contextId: 'ctx', prompt: 'work', projectSpec: {} }),
         }),
       ),
     ).toContain('rejected POST /sessions')
+  })
+
+  test('requires application/json while accepting a case-insensitive charset parameter', async () => {
+    const missing = setup()
+    missing.magi.expectStartSession({ id: 'missing-content-type' })
+    expect(
+      await causeMessage(
+        missing.http.fetch(`${BASE_URL}/sessions`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${TOKEN}` },
+          body: JSON.stringify(validStartBody()),
+        }),
+      ),
+    ).toContain('Content-Type application/json')
+
+    const wrong = setup()
+    wrong.magi.expectStartSession({ id: 'wrong-content-type' })
+    expect(
+      await causeMessage(
+        wrong.http.fetch(`${BASE_URL}/sessions`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'text/plain' },
+          body: JSON.stringify(validStartBody()),
+        }),
+      ),
+    ).toContain('Content-Type application/json')
+
+    const accepted = setup()
+    accepted.magi.expectStartSession({ id: 'accepted-content-type' })
+    const response = await accepted.http.fetch(`${BASE_URL}/sessions`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'Application/JSON; Charset=UTF-8' },
+      body: JSON.stringify(validStartBody()),
+    })
+    expect(response.status).toBe(202)
   })
 
   test('rejects unknown top-level, project, and nested project fields', async () => {

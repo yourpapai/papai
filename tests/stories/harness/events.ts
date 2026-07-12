@@ -19,6 +19,10 @@ export type ScenarioEvents = Readonly<{
 }>
 
 const REDACTED = '[REDACTED]'
+const ENCODED_REDACTED = '%5BREDACTED%5D'
+const TRANSCRIPT_PATH = /^\/t\/[^/]+(\/(?:transcript|stream))?$/u
+const ABSOLUTE_URL_IN_TEXT = /https?:\/\/[^\s"'<>]+/giu
+const RELATIVE_TRANSCRIPT_IN_TEXT = /(^|[^A-Za-z0-9_/-])\/t\/[^/\s?#]+(\/(?:transcript|stream))?(?=$|[\s?#)"'<.,;!])/gu
 
 const isSensitiveKey = (key: string): boolean => {
   const normalized = key.toLowerCase().replaceAll(/[^a-z0-9]/gu, '')
@@ -47,8 +51,17 @@ const isSensitiveKey = (key: string): boolean => {
   )
 }
 
+const redactTranscriptPathname = (pathname: string): string => {
+  const match = TRANSCRIPT_PATH.exec(pathname)
+  if (match === null) return pathname
+  return `/t/${REDACTED}${match[1] ?? ''}`
+}
+
 const sanitizeUrl = (url: URL): string => {
   const sanitized = new URL(url.toString())
+  const redactedPathname = redactTranscriptPathname(sanitized.pathname)
+  const hasTranscriptBearer = redactedPathname !== sanitized.pathname
+  sanitized.pathname = redactedPathname
   if (sanitized.username !== '') sanitized.username = REDACTED
   if (sanitized.password !== '') sanitized.password = REDACTED
   const query = [...sanitized.searchParams.entries()].map(([key, value]): string[] => [
@@ -56,18 +69,42 @@ const sanitizeUrl = (url: URL): string => {
     isSensitiveKey(key) ? REDACTED : value,
   ])
   sanitized.search = new URLSearchParams(query).toString()
-  return sanitized.toString()
+  const serialized = sanitized.toString()
+  return hasTranscriptBearer ? serialized.replace(`/t/${ENCODED_REDACTED}`, `/t/${REDACTED}`) : serialized
 }
+
+const shouldSanitizeUrl = (url: URL): boolean =>
+  url.username !== '' ||
+  url.password !== '' ||
+  [...url.searchParams.keys()].some(isSensitiveKey) ||
+  TRANSCRIPT_PATH.test(url.pathname)
+
+const sanitizeAbsoluteUrlsInText = (value: string): string =>
+  value.replace(ABSOLUTE_URL_IN_TEXT, (candidate): string => {
+    const punctuation = /[.,;!]+$/u.exec(candidate)?.[0] ?? ''
+    const rawUrl = punctuation === '' ? candidate : candidate.slice(0, -punctuation.length)
+    try {
+      const parsed = new URL(rawUrl)
+      return shouldSanitizeUrl(parsed) ? `${sanitizeUrl(parsed)}${punctuation}` : candidate
+    } catch {
+      return candidate
+    }
+  })
+
+const sanitizeRelativeTranscriptPaths = (value: string): string =>
+  value.replace(
+    RELATIVE_TRANSCRIPT_IN_TEXT,
+    (_match, prefix: string, suffix: string | undefined): string => `${prefix}/t/${REDACTED}${suffix ?? ''}`,
+  )
 
 const sanitizeString = (value: string): string => {
   try {
     const parsed = new URL(value)
-    const hasCredentials = parsed.username !== '' || parsed.password !== ''
-    const hasSensitiveQuery = [...parsed.searchParams.keys()].some(isSensitiveKey)
-    return hasCredentials || hasSensitiveQuery ? sanitizeUrl(parsed) : value
+    if (shouldSanitizeUrl(parsed)) return sanitizeUrl(parsed)
   } catch {
-    return value
+    // Non-URL text may still contain absolute or relative transcript bearer links.
   }
+  return sanitizeRelativeTranscriptPaths(sanitizeAbsoluteUrlsInText(value))
 }
 
 const sanitizeObject = (value: object, seen: ReadonlySet<object>): unknown => {

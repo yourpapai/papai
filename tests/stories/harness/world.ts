@@ -405,6 +405,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     fixtures.seedSystemLlmConfig()
     resources.providerAttempted = true
     fixtures.registerTaskProvider()
+    const pluginProviderRuntimeDeps = { fetch: http.fetch, assertPublicUrl: (): Promise<void> => Promise.resolve() }
     const productionDeps = createProductionRuntimeDeps(
       {
         database: { start: () => undefined, stop: () => undefined },
@@ -414,10 +415,15 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
           flush: pending.settle,
         },
         web: {
-          route: (request) => routeRequest(request, { debugEnabled: false, nowMs: clock.now().getTime() }),
+          route: (request) =>
+            routeRequest(request, {
+              debugEnabled: false,
+              nowMs: clock.now().getTime(),
+              pluginProviderRuntimeDeps,
+            }),
         },
       },
-      { pluginProviderRuntimeDeps: { fetch: http.fetch, assertPublicUrl: () => Promise.resolve() } },
+      { pluginProviderRuntimeDeps },
     )
     const deps = { ...productionDeps, extensions: wrapProductionExtensions(productionDeps, hooks) }
     runtime = createPapaiRuntime(

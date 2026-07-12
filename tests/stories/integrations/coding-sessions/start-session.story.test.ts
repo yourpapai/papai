@@ -81,6 +81,7 @@ scenario('starts an ACP coding session through the real plugin and tool loop', a
   const trace = JSON.stringify(world.events.all())
   expect(trace).not.toContain(MAGI_TOKEN)
   expect(trace).not.toContain(PROVIDER_KEY)
+  expect(trace).not.toContain('share-session-1')
   expect(world.events.all().find(({ kind }) => kind === 'magi.session.start')?.data).toEqual(
     expect.objectContaining({
       agent: 'claude-code-acp',
