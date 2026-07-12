@@ -62,6 +62,7 @@ describe('hermetic story runner', () => {
     ['rejects timer leak', 'scenario leaks (active timers: 1)'],
     ['rejects node timers interval leak', 'scenario leaks (active timers: 1)'],
     ['rejects node timers promises interval leak', 'scenario leaks (active timers: 1)'],
+    ['rejects node timers promises scheduler wait leak', 'scenario leaks (active timers: 1)'],
     ['rejects process listener leak', 'scenario leaks (process listeners: 1)'],
     ['rejects one remaining duplicate process listener', 'scenario leaks (process listeners: 1)'],
     ['rejects environment mutation', 'scenario leaks (environment mutations: PAPAI_MUTATED)'],
@@ -87,6 +88,9 @@ describe('hermetic story runner', () => {
     'allows cleared node timers interval',
     'allows completed node timers promise timeout',
     'allows returned node timers promises interval',
+    'allows completed node timers promises scheduler wait',
+    'allows aborted node timers promises scheduler wait',
+    'allows completed node timers promises scheduler yield',
     'allows removing duplicate process listeners twice',
   ])('%s', async (scenarioName) => {
     const result = await runProbe(scenarioName)

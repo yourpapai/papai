@@ -177,6 +177,15 @@ export function installTimerGuard(current: CurrentBoundary): InstalledTimerGuard
     }
   }
 
+  const guardedScheduler = Object.freeze({
+    wait(delay: number, options: PromiseTimerOptions = {}): Promise<undefined> {
+      return promiseTimeout(delay, undefined, options)
+    },
+    yield(): Promise<undefined> {
+      return promiseImmediate(undefined)
+    },
+  })
+
   const timerOverrides = {
     setTimeout: setTimeoutGuarded,
     clearTimeout: clearTimeoutGuarded,
@@ -189,6 +198,7 @@ export function installTimerGuard(current: CurrentBoundary): InstalledTimerGuard
     setTimeout: promiseTimeout,
     setImmediate: promiseImmediate,
     setInterval: promiseInterval,
+    scheduler: guardedScheduler,
   }
   void mock.module('node:timers', () => ({
     ...originalTimers,

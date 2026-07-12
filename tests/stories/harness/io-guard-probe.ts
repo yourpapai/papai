@@ -22,11 +22,16 @@ import {
 import { open, writeFile } from 'node:fs/promises'
 import { connect, createServer, Socket } from 'node:net'
 import { clearInterval as clearNodeInterval, setInterval as setNodeInterval } from 'node:timers'
-import { setInterval as setPromiseInterval, setTimeout as setPromiseTimeout } from 'node:timers/promises'
+import {
+  scheduler as promiseScheduler,
+  setInterval as setPromiseInterval,
+  setTimeout as setPromiseTimeout,
+} from 'node:timers/promises'
 
 import { scenario } from './scenario.js'
 
 const phase = (world: { events: { setPhase(value: string): void } }): void => world.events.setPhase('when.ioProbe')
+const invoke = (fn: CallableFunction, args: readonly unknown[]): unknown => Reflect.apply(fn, undefined, args)
 
 scenario('rejects undeclared fetch', async ({ world }) => {
   phase(world)
@@ -181,6 +186,13 @@ scenario('rejects node timers promises interval leak', ({ world }) => {
   void iterator.next()
 })
 
+scenario('rejects node timers promises scheduler wait leak', ({ world }) => {
+  phase(world)
+  const wait = Reflect.get(promiseScheduler, 'wait') as unknown
+  if (typeof wait !== 'function') throw new Error('guarded scheduler.wait is unavailable')
+  void invoke(wait, [60_000, { ref: false }])
+})
+
 scenario('rejects process listener leak', ({ world }) => {
   phase(world)
   process.on('papai-story-probe', () => undefined)
@@ -294,6 +306,27 @@ scenario('allows returned node timers promises interval', async ({ world }) => {
   phase(world)
   const iterator = setPromiseInterval(60_000)
   await iterator.return?.()
+})
+
+scenario('allows completed node timers promises scheduler wait', async ({ world }) => {
+  phase(world)
+  expect(Object.isFrozen(promiseScheduler)).toBe(true)
+  const wait = Reflect.get(promiseScheduler, 'wait') as unknown
+  if (typeof wait !== 'function') throw new Error('guarded scheduler.wait is unavailable')
+  await invoke(wait, [1])
+})
+
+scenario('allows aborted node timers promises scheduler wait', async ({ world }) => {
+  phase(world)
+  const controller = new AbortController()
+  const waiting = promiseScheduler.wait(60_000, { signal: controller.signal })
+  controller.abort()
+  await expect(waiting).rejects.toHaveProperty('name', 'AbortError')
+})
+
+scenario('allows completed node timers promises scheduler yield', async ({ world }) => {
+  phase(world)
+  await promiseScheduler.yield()
 })
 
 scenario('allows removing duplicate process listeners twice', ({ world }) => {
