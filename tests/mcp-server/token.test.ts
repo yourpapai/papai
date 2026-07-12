@@ -87,6 +87,11 @@ describe('transcript token', () => {
     expect(verifyTranscriptToken(pluginToken)).toBeNull()
   })
 
+  test('rejects a transcript token presented as a plugin-mcp token (wrong kind)', () => {
+    const transcriptToken = mintTranscriptToken('sess-42')
+    expect(verifyPluginMcpToken(transcriptToken)).toBeNull()
+  })
+
   test('rejects a malformed token', () => {
     expect(verifyTranscriptToken('not-a-token')).toBeNull()
     expect(verifyTranscriptToken('')).toBeNull()
