@@ -60,7 +60,7 @@ export type PapaiRuntimeDeps = Readonly<{
     announceStartup(router: ChatRouter, adminUserId: string): Promise<void>
     flush(): Promise<void>
   }
-  background: { start(router: ChatRouter): void; stop(): void }
+  background: { start(router: ChatRouter): void | Promise<void>; stop(): void | Promise<void> }
   web: { start(adminUserId: string): void; stop(): void; route(request: Request): Promise<Response> }
   capabilities: ToolCapabilityCatalog
 }>

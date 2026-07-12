@@ -5,18 +5,21 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { scheduler } from '../src/scheduler-instance.js'
+import {
+  DEFAULT_SCHEDULER_TASK_NAMES,
+  registerDefaultSchedulerTasks,
+  scheduler,
+  unregisterDefaultSchedulerTasks,
+} from '../src/scheduler-instance.js'
 
 describe('scheduler-instance', () => {
-  test('registers staged-files-purge task', () => {
-    expect(scheduler.hasTask('staged-files-purge')).toBe(true)
-  })
+  test('keeps defaults absent until the background lifecycle registers them', () => {
+    for (const taskName of DEFAULT_SCHEDULER_TASK_NAMES) expect(scheduler.hasTask(taskName)).toBe(false)
 
-  test('registers memory-capture-sweep task', () => {
-    expect(scheduler.hasTask('memory-capture-sweep')).toBe(true)
-  })
+    registerDefaultSchedulerTasks()
+    for (const taskName of DEFAULT_SCHEDULER_TASK_NAMES) expect(scheduler.hasTask(taskName)).toBe(true)
 
-  test('registers memory-promotion-sweep task', () => {
-    expect(scheduler.hasTask('memory-promotion-sweep')).toBe(true)
+    unregisterDefaultSchedulerTasks()
+    for (const taskName of DEFAULT_SCHEDULER_TASK_NAMES) expect(scheduler.hasTask(taskName)).toBe(false)
   })
 })

@@ -11,6 +11,11 @@ import { subscribeCountForTest } from '../../src/debug/event-bus.js'
 import { toolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { createPapaiRuntime } from '../../src/runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from '../../src/runtime/production-deps.js'
+import {
+  DEFAULT_SCHEDULER_TASK_NAMES,
+  scheduler,
+  unregisterDefaultSchedulerTasks,
+} from '../../src/scheduler-instance.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
 const message = {
@@ -33,6 +38,20 @@ const interaction = {
 } as const satisfies IncomingInteraction
 
 describe('createProductionRuntimeDeps', () => {
+  test('starts and stops lazily loaded production background services when enabled', async () => {
+    await setupTestDb()
+    unregisterDefaultSchedulerTasks()
+    const router = new ChatRouter(() => {
+      throw new Error('No adapters are created by the background lifecycle test')
+    })
+    const deps = createProductionRuntimeDeps()
+
+    await deps.background.start(router)
+    expect(DEFAULT_SCHEDULER_TASK_NAMES.every((name) => scheduler.getTaskState(name)?.running === true)).toBe(true)
+
+    await deps.background.stop()
+    expect(DEFAULT_SCHEDULER_TASK_NAMES.every((name) => !scheduler.hasTask(name))).toBe(true)
+  })
   test('uses the production capability catalog identity unless capabilities are overridden', () => {
     const defaults = createProductionRuntimeDeps()
     let cleared = false

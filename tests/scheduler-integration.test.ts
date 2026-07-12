@@ -10,11 +10,11 @@
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { scheduler } from '../src/scheduler-instance.js'
+import { registerDefaultSchedulerTasks, scheduler, unregisterDefaultSchedulerTasks } from '../src/scheduler-instance.js'
 
 describe('Scheduler Integration', () => {
   beforeEach(() => {
-    // Stop all tasks before each test
+    registerDefaultSchedulerTasks()
     scheduler.stopAll()
   })
 
@@ -23,8 +23,8 @@ describe('Scheduler Integration', () => {
   })
 
   afterAll(() => {
-    // Ensure cleanup
     scheduler.stopAll()
+    unregisterDefaultSchedulerTasks()
   })
 
   test('should have cleanup tasks registered', () => {

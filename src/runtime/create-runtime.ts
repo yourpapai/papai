@@ -80,15 +80,8 @@ async function startOptionalServices(context: StartupContext, router: ChatRouter
     await deps.application.announceStartup(router, config.adminUserId)
   }
   if (config.startBackgroundServices) {
-    deps.background.start(router)
-    registerCleanup(
-      context,
-      'background',
-      () => {
-        deps.background.stop()
-      },
-      CLEANUP_PRIORITY.background,
-    )
+    await deps.background.start(router)
+    registerCleanup(context, 'background', () => deps.background.stop(), CLEANUP_PRIORITY.background)
   }
   if (config.startNetworkServer) {
     deps.web.start(config.adminUserId)

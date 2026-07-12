@@ -16,7 +16,6 @@ import { closeDrizzleDb } from '../db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from '../db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-router-runtime.js'
 import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
-import { startPollers, stopPollers } from '../deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
 import { logger } from '../logger.js'
 import { initializeMessageCache } from '../message-cache/index.js'
@@ -30,8 +29,6 @@ import {
   runMembershipBackfill,
 } from '../providers/membership/index.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
-import { scheduler } from '../scheduler-instance.js'
-import { startScheduler, stopScheduler } from '../scheduler.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from '../system-config.js'
 import { initUsageRecorder } from '../usage/index.js'
 import { toolCapabilityCatalog } from './capability-catalog.js'
@@ -42,8 +39,22 @@ const log = logger.child({ scope: 'main' })
 const INGRESS_ERROR = 'Programmatic ingress is available only when configured'
 
 type ProductionState = ProductionExtensionState & {
+  backgroundModules: ProductionBackgroundModules | null
   disposeMembershipSubscriber: (() => void) | null
   stopSweeper: (() => void) | null
+}
+
+type ProductionBackgroundModules = Readonly<{
+  pollers: typeof import('../deferred-prompts/poller.js')
+  recurring: typeof import('../scheduler.js')
+  schedulerInstance: typeof import('../scheduler-instance.js')
+}>
+
+async function loadProductionBackgroundModules(): Promise<ProductionBackgroundModules> {
+  const schedulerInstance = await import('../scheduler-instance.js')
+  const recurring = await import('../scheduler.js')
+  const pollers = await import('../deferred-prompts/poller.js')
+  return { schedulerInstance, recurring, pollers }
 }
 
 function startDatabase(): void {
@@ -150,20 +161,35 @@ function createApplicationDeps(state: ProductionState): PapaiRuntimeDeps['applic
 }
 
 function createBackgroundDeps(state: ProductionState): PapaiRuntimeDeps['background'] {
+  const stop = (): void => {
+    const modules = state.backgroundModules
+    if (modules !== null) {
+      modules.recurring.stopScheduler()
+      modules.schedulerInstance.scheduler.stopAll()
+      modules.pollers.stopPollers()
+      modules.schedulerInstance.unregisterDefaultSchedulerTasks()
+      state.backgroundModules = null
+    }
+    state.stopSweeper?.()
+    state.stopSweeper = null
+  }
   return {
-    start: (router) => {
-      startScheduler(router)
-      startPollers(router, (contextId) => defaultTaskProviderResolver.resolve(contextId))
-      scheduler.startAll()
-      state.stopSweeper = startSweeper()
+    async start(router): Promise<void> {
+      if (state.backgroundModules !== null) return
+      const modules = await loadProductionBackgroundModules()
+      state.backgroundModules = modules
+      try {
+        modules.schedulerInstance.registerDefaultSchedulerTasks()
+        modules.recurring.startScheduler(router)
+        modules.pollers.startPollers(router, (contextId) => defaultTaskProviderResolver.resolve(contextId))
+        modules.schedulerInstance.scheduler.startAll()
+        state.stopSweeper = startSweeper()
+      } catch (error) {
+        stop()
+        throw error
+      }
     },
-    stop: () => {
-      stopScheduler()
-      scheduler.stopAll()
-      stopPollers()
-      state.stopSweeper?.()
-      state.stopSweeper = null
-    },
+    stop,
   }
 }
 
@@ -201,6 +227,7 @@ function createDefaultDeps(state: ProductionState): PapaiRuntimeDeps {
 export function createProductionRuntimeDeps(overrides: PartialRuntimeDeps = {}): PapaiRuntimeDeps {
   const defaults = createDefaultDeps({
     activePlatforms: [],
+    backgroundModules: null,
     disposeMembershipSubscriber: null,
     populateRouterFromInstances: overrides.chat?.createRouter === undefined,
     stopSweeper: null,
