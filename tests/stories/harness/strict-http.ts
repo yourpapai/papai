@@ -27,6 +27,21 @@ type PendingExpectation = Readonly<{
 const normalizeUrl = (url: string): string => new URL(url).toString()
 const normalizeMethod = (method: string): string => method.toUpperCase()
 const describe = (request: Readonly<{ method: string; url: string }>): string => `${request.method} ${request.url}`
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
+
+const runResponder = async (
+  expectation: PendingExpectation,
+  request: Request,
+  events: ScenarioEvents,
+  actual: Readonly<{ method: string; url: string }>,
+): Promise<Response> => {
+  try {
+    return await expectation.respond(request)
+  } catch (error) {
+    const message = events.formatFailure(`HTTP responder failed for ${describe(actual)}`)
+    throw error instanceof Error ? new Error(message, { cause: error }) : new Error(message)
+  }
+}
 
 export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDispatcher {
   let expectations: readonly PendingExpectation[] = []
@@ -63,8 +78,8 @@ export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDi
       }
 
       consumed += 1
-      const response = await pending.respond(request)
-      const isRedirect = response.status >= 300 && response.status < 400 && response.headers.has('location')
+      const response = await runResponder(pending, request, events, actual)
+      const isRedirect = REDIRECT_STATUSES.has(response.status)
       if (isRedirect && !pending.request.allowRedirect) {
         throw new Error(
           events.formatFailure(

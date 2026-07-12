@@ -46,6 +46,72 @@ describe('scenario events', () => {
     })
   })
 
+  test('sanitizes nested Headers before snapshotting', () => {
+    const events = createScenarioEvents('nested headers')
+
+    expect(() =>
+      events.record('http.request', {
+        metadata: new Headers({ authorization: 'Bearer hidden', accept: 'application/json' }),
+      }),
+    ).not.toThrow()
+    expect(events.all()[0]?.data).toEqual({
+      metadata: { accept: 'application/json', authorization: '[REDACTED]' },
+    })
+  })
+
+  test('replaces cycles with a deterministic marker', () => {
+    const events = createScenarioEvents('cycles')
+    const cyclic: Record<string, unknown> = { label: 'root' }
+    cyclic['self'] = cyclic
+
+    events.record('custom', cyclic)
+
+    expect(events.all()[0]?.data).toEqual({ label: 'root', self: '[Circular]' })
+    expect(events.formatFailure('failed')).toContain('"self": "[Circular]"')
+  })
+
+  test('snapshots custom prototypes without invoking accessors', () => {
+    const events = createScenarioEvents('custom objects')
+    let getterCalls = 0
+    const custom = { safe: 'kept' }
+    Reflect.setPrototypeOf(custom, { inherited: 'ignored' })
+    Object.defineProperties(custom, {
+      dangerous: {
+        enumerable: true,
+        get: () => {
+          getterCalls += 1
+          throw new Error('getter must not run')
+        },
+      },
+    })
+
+    events.record('custom', custom)
+
+    expect(getterCalls).toBe(0)
+    expect(events.all()[0]?.data).toEqual({ safe: 'kept', dangerous: '[Accessor]' })
+  })
+
+  test('redacts credential-like URL query values while preserving non-sensitive shape', () => {
+    const events = createScenarioEvents('query secrets')
+
+    events.record('http.request', {
+      url: new URL('https://api.test/tasks?access_token=hidden&project=one#section'),
+      callback: 'https://app.test/callback?api-key=also-hidden&state=kept',
+      credentialUrl: 'https://user:password@api.test/private?view=full',
+      duplicateKeys: 'https://api.test/tasks?token=one&token=two&view=all',
+    })
+
+    const data = events.all()[0]?.data
+    expect(data).toEqual({
+      url: 'https://api.test/tasks?access_token=%5BREDACTED%5D&project=one#section',
+      callback: 'https://app.test/callback?api-key=%5BREDACTED%5D&state=kept',
+      credentialUrl: 'https://%5BREDACTED%5D:%5BREDACTED%5D@api.test/private?view=full',
+      duplicateKeys: 'https://api.test/tasks?token=%5BREDACTED%5D&token=%5BREDACTED%5D&view=all',
+    })
+    expect(events.formatFailure('failed')).not.toContain('hidden')
+    expect(events.formatFailure('failed')).not.toContain('password')
+  })
+
   test('returns snapshots that cannot mutate recorded events', () => {
     const events = createScenarioEvents('snapshots')
     const source = { nested: { value: 'original' } }

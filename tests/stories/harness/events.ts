@@ -29,21 +29,79 @@ const isSensitiveKey = (key: string): boolean => {
     normalized === 'setcookie' ||
     normalized === 'xapikey' ||
     normalized === 'apikey' ||
+    normalized === 'key' ||
     normalized.includes('token') ||
     normalized.includes('secret')
   )
 }
 
-const sanitize = (value: unknown, key = ''): unknown => {
-  if (isSensitiveKey(key)) return REDACTED
-  if (Array.isArray(value)) return value.map((item) => sanitize(item))
+const sanitizeUrl = (url: URL): string => {
+  const sanitized = new URL(url.toString())
+  if (sanitized.username !== '') sanitized.username = REDACTED
+  if (sanitized.password !== '') sanitized.password = REDACTED
+  const query = [...sanitized.searchParams.entries()].map(([key, value]): string[] => [
+    key,
+    isSensitiveKey(key) ? REDACTED : value,
+  ])
+  sanitized.search = new URLSearchParams(query).toString()
+  return sanitized.toString()
+}
+
+const sanitizeString = (value: string): string => {
+  try {
+    const parsed = new URL(value)
+    const hasCredentials = parsed.username !== '' || parsed.password !== ''
+    const hasSensitiveQuery = [...parsed.searchParams.keys()].some(isSensitiveKey)
+    return hasCredentials || hasSensitiveQuery ? sanitizeUrl(parsed) : value
+  } catch {
+    return value
+  }
+}
+
+const sanitizeObject = (value: object, seen: ReadonlySet<object>): unknown => {
+  if (seen.has(value)) return '[Circular]'
+  const descendants = new Set(seen)
+  descendants.add(value)
+
   if (value instanceof Headers) {
-    return Object.fromEntries([...value.entries()].map(([name, item]) => [name, sanitize(item, name)]))
+    return Object.fromEntries(
+      [...value.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([name, item]) => [name, sanitize(item, name, descendants)]),
+    )
   }
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, sanitize(item, name)]))
+  if (value instanceof URL) return sanitizeUrl(value)
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? 'Invalid Date' : value.toISOString()
+  if (Buffer.isBuffer(value)) return { type: 'Buffer', byteLength: value.byteLength, data: '[Binary]' }
+  if (value instanceof ArrayBuffer) return { type: 'ArrayBuffer', byteLength: value.byteLength, data: '[Binary]' }
+  if (ArrayBuffer.isView(value)) {
+    return {
+      type: Object.prototype.toString.call(value).slice(8, -1),
+      byteLength: value.byteLength,
+      data: '[Binary]',
+    }
   }
-  return value
+  if (Array.isArray(value)) return value.map((item) => sanitize(item, '', descendants))
+
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  return Object.fromEntries(
+    Object.entries(descriptors)
+      .filter(([, descriptor]) => descriptor.enumerable === true)
+      .map(([name, descriptor]) => [
+        name,
+        'value' in descriptor ? sanitize(descriptor.value, name, descendants) : '[Accessor]',
+      ]),
+  )
+}
+
+const sanitize = (value: unknown, key = '', seen: ReadonlySet<object> = new Set<object>()): unknown => {
+  if (isSensitiveKey(key)) return REDACTED
+  if (typeof value === 'string') return sanitizeString(value)
+  if (typeof value === 'bigint') return `${value}n`
+  if (typeof value === 'function') return '[Function]'
+  if (typeof value === 'symbol') return '[Symbol]'
+  if (value !== null && typeof value === 'object') return sanitizeObject(value, seen)
+  return value === undefined ? '[Undefined]' : value
 }
 
 const snapshot = <T>(value: T): T => structuredClone(value)
@@ -64,7 +122,7 @@ export function createScenarioEvents(scenarioName: string): ScenarioEvents {
         seq: recorded.length + 1,
         phase,
         kind,
-        data: sanitize(snapshot(data)),
+        data: sanitize(data),
       } as const satisfies ScenarioEvent
       recorded = [...recorded, event]
       return snapshot(event)

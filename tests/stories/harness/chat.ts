@@ -43,6 +43,29 @@ export type ScenarioChat = Omit<ChatProvider, 'onInteraction'> &
 const clone = <T>(value: T): T => structuredClone(value)
 const complete = (): Promise<void> => Promise.resolve()
 
+const cloneMessage = (message: IncomingMessage): IncomingMessage => {
+  const { files, fileCandidates, replyContext, user, ...fields } = message
+  return {
+    ...fields,
+    user: { ...user },
+    ...(replyContext === undefined ? {} : { replyContext: clone(replyContext) }),
+    ...(files === undefined
+      ? {}
+      : {
+          files: files.map((file) => ({
+            ...file,
+            content: Buffer.from(file.content),
+          })),
+        }),
+    ...(fileCandidates === undefined ? {} : { fileCandidates: fileCandidates.map((candidate) => ({ ...candidate })) }),
+  }
+}
+
+const cloneInteraction = (interaction: IncomingInteraction): IncomingInteraction => ({
+  ...interaction,
+  user: { ...interaction.user },
+})
+
 export function createScenarioChat(scenarioName: string, events: ScenarioEvents): ScenarioChat {
   let state: LifecycleState = 'new'
   let messageHandler: MessageHandler | undefined
@@ -224,7 +247,7 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
       assertDispatchable('message')
       const handler = messageHandler
       if (handler === undefined) return
-      const normalized = clone(message)
+      const normalized = cloneMessage(message)
       events.record('chat.message', normalized)
       await handler(normalized, createReply(normalized))
     },
@@ -232,7 +255,7 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
       assertDispatchable('interaction')
       const handler = interactionHandler
       if (handler === undefined) return
-      const normalized = clone(interaction)
+      const normalized = cloneInteraction(interaction)
       events.record('chat.interaction', normalized)
       await handler(normalized, createReply(normalized))
     },

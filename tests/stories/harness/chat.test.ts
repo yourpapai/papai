@@ -143,6 +143,41 @@ describe('scenario chat', () => {
     expect(chat.resolveUserId).toBeUndefined()
   })
 
+  test('preserves attachment Buffers while isolating handler mutations', async () => {
+    const events = createScenarioEvents('attachments')
+    const chat = createScenarioChat('attachments', events)
+    const content = Buffer.from('original')
+    const message: IncomingMessage = {
+      ...MESSAGE,
+      files: [{ fileId: 'file-1', filename: 'notes.txt', content }],
+      fileCandidates: [{ fileId: 'file-2', filename: 'later.txt', size: 12 }],
+    }
+    let handlerReceivedBuffer = false
+    chat.onMessage((received) => {
+      const attachment = received.files?.[0]
+      handlerReceivedBuffer = Buffer.isBuffer(attachment?.content)
+      attachment?.content.fill(120)
+      return Promise.resolve()
+    })
+    await chat.start()
+
+    await chat.dispatch(message)
+
+    expect(handlerReceivedBuffer).toBeTrue()
+    expect(content.toString()).toBe('original')
+    expect(message.files?.[0]?.content).toBe(content)
+    expect(events.all().find(({ kind }) => kind === 'chat.message')?.data).toMatchObject({
+      files: [
+        {
+          content: { type: 'Buffer', byteLength: 8, data: '[Binary]' },
+          fileId: 'file-1',
+          filename: 'notes.txt',
+        },
+      ],
+      fileCandidates: [{ fileId: 'file-2', filename: 'later.txt', size: 12 }],
+    })
+  })
+
   test('reply snapshots do not leak mutations', async () => {
     const chat = createScenarioChat('snapshots', createScenarioEvents('snapshots'))
     chat.onMessage((_message, reply) => reply.text('safe', { threadId: 'thread-1' }))
