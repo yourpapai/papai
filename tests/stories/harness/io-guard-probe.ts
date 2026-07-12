@@ -38,7 +38,6 @@ const phase = (world: { events: { setPhase(value: string): void } }): void => wo
 const invoke = (fn: CallableFunction, args: readonly unknown[]): unknown => Reflect.apply(fn, undefined, args)
 const preExistingListener = (): void => undefined
 process.on('papai-story-pre-existing', preExistingListener)
-const preExistingDgramSocket = createSocket('udp4')
 
 scenario('rejects undeclared fetch', async ({ world }) => {
   phase(world)
@@ -113,16 +112,6 @@ scenario('rejects Bun.udpSocket', async ({ world }) => {
 scenario('rejects dgram socket creation', ({ world }) => {
   phase(world)
   createSocket('udp4')
-})
-
-scenario('rejects dgram socket bind', ({ world }) => {
-  phase(world)
-  preExistingDgramSocket.bind(0)
-})
-
-scenario('rejects dgram socket send', ({ world }) => {
-  phase(world)
-  preExistingDgramSocket.send('no', 9, '127.0.0.1')
 })
 
 scenario('rejects worker construction', ({ world }) => {
@@ -435,6 +424,16 @@ scenario('rejects overlapping scenario boundary without corrupting the owner', a
 
 scenario('waits for launcher signal forwarding', async ({ world }) => {
   phase(world)
+  const sendToLauncher = (message: string): void => {
+    const send = Reflect.get(process, 'send')
+    if (typeof send !== 'function') throw new Error('story launcher IPC is unavailable')
+    Reflect.apply(send, process, [message])
+  }
+  process.once('SIGTERM', () => {
+    sendToLauncher('PAPAI_STORY_CHILD_SIGTERM')
+    process.exit(143)
+  })
+  sendToLauncher('PAPAI_STORY_CHILD_READY')
   await new Promise<void>(() => {
     // The launcher signal must terminate this intentionally pending story.
   })

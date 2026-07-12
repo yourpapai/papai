@@ -123,7 +123,17 @@ async function main(): Promise<number> {
       ...parsed.forwarded,
       ...files,
     ],
-    { cwd: process.cwd(), env: sanitizedEnvironment(), stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' },
+    {
+      cwd: process.cwd(),
+      env: sanitizedEnvironment(),
+      stdin: 'inherit',
+      stdout: 'inherit',
+      stderr: 'inherit',
+      ipc(message) {
+        if (message === 'PAPAI_STORY_CHILD_READY') console.log('CHILD_READY')
+        if (message === 'PAPAI_STORY_CHILD_SIGTERM') console.log('CHILD_SIGTERM')
+      },
+    },
   )
   return waitForChild(child)
 }

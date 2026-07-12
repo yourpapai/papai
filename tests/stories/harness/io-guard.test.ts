@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dir, '../../..')
@@ -31,6 +33,28 @@ async function run(
 }
 
 const runProbe = (name: string): Promise<ChildResult> => run(['--fixture', PROBE, '--test-name-pattern', `^${name}$`])
+const runTopLevelFixture = (file: string): Promise<ChildResult> => run(['--fixture', `tests/stories/harness/${file}`])
+
+function captureReadyOutput(stream: ReadableStream<Uint8Array>): Readonly<{
+  ready: Promise<void>
+  completed: Promise<void>
+  output(): string
+}> {
+  let markReady: (() => void) | undefined
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve
+  })
+  let captured = ''
+  const completed = (async (): Promise<void> => {
+    const decoder = new TextDecoder()
+    for await (const chunk of stream) {
+      captured += decoder.decode(chunk, { stream: true })
+      if (captured.includes('CHILD_READY')) markReady?.()
+    }
+    captured += decoder.decode()
+  })()
+  return { ready, completed, output: () => captured }
+}
 
 describe('hermetic story runner', () => {
   test.each([
@@ -49,8 +73,6 @@ describe('hermetic story runner', () => {
     ['rejects Bun.connect', 'Bun.connect'],
     ['rejects Bun.udpSocket', 'Bun.udpSocket'],
     ['rejects dgram socket creation', 'dgram.createSocket'],
-    ['rejects dgram socket bind', 'dgram.Socket.bind'],
-    ['rejects dgram socket send', 'dgram.Socket.send'],
     ['rejects worker construction', 'worker_threads.Worker'],
     ['rejects Bun.write outside root', 'Bun.write'],
     ['rejects Bun.write symlink escape', 'Bun.write'],
@@ -132,6 +154,37 @@ describe('hermetic story runner', () => {
     expect(result.output).toContain('Unsupported story runner argument: --watch')
   })
 
+  test.each([
+    ['io-guard-top-level-worker.fixture.test.ts', 'global.Worker'],
+    ['io-guard-top-level-dgram.fixture.test.ts', 'dgram.createSocket'],
+    ['io-guard-top-level-shell.fixture.test.ts', 'bun.$'],
+    ['io-guard-top-level-websocket.fixture.test.ts', 'global.WebSocket'],
+  ])('blocks %s before an active scenario exists', async (file, operation) => {
+    const result = await runTopLevelFixture(file)
+
+    expect(result.exitCode).not.toBe(0)
+    expect(result.output).toContain('outside an active scenario')
+    expect(result.output).toContain(operation)
+  })
+
+  test('blocks a node worker before its side effect can start', async () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'papai-story-worker-'))
+    const marker = path.join(tempRoot, 'worker-started')
+    try {
+      const result = await run(['--fixture', 'tests/stories/harness/io-guard-top-level-node-worker.fixture.test.ts'], {
+        ...process.env,
+        TMPDIR: tempRoot,
+      })
+
+      expect(result.exitCode).not.toBe(0)
+      expect(result.output).toContain('outside an active scenario')
+      expect(result.output).toContain('worker_threads.Worker')
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true })
+    }
+  })
+
   test('default story-directory discovery excludes special-preload story files', async () => {
     const child = Bun.spawn(
       ['bun', 'test', 'tests/stories', '--test-name-pattern', '^no-default-story-test-can-match-this$'],
@@ -154,10 +207,13 @@ describe('hermetic story runner', () => {
       ['bun', RUNNER, '--fixture', PROBE, '--test-name-pattern', '^waits for launcher signal forwarding$'],
       { cwd: ROOT, env: process.env, stdout: 'pipe', stderr: 'pipe' },
     )
-    await Bun.sleep(500)
+    const captured = captureReadyOutput(child.stdout)
+    await captured.ready
     child.kill('SIGTERM')
 
     expect(await child.exited).toBe(143)
+    await captured.completed
+    expect(captured.output()).toContain('CHILD_SIGTERM')
   })
 
   test('preload refuses direct use without the story launcher marker', async () => {

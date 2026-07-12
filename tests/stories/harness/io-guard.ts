@@ -13,6 +13,8 @@ import os from 'node:os'
 import path from 'node:path'
 import workerThreads from 'node:worker_threads'
 
+import * as bunModule from 'bun'
+
 import type { ScenarioEvents } from './events.js'
 import {
   assertGuardedWritePath,
@@ -104,6 +106,9 @@ const originalDgram = { ...dgram }
 const originalWorkerThreads = { ...workerThreads }
 const originalChildProcess = { ...childProcess }
 const originalNet = { ...net }
+const originalBunModule = { ...bunModule }
+const globalWorkerDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'Worker')
+const globalWebSocketDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket')
 
 function active(operation: string): Boundary {
   const boundary = storage.getStore()
@@ -223,18 +228,15 @@ function installProcessAndNetworkMocks(): void {
     createConnection: (): never => deny('net.createConnection'),
   }
   void mock.module('node:net', () => ({ ...net, ...deniedNet, default: { ...net, ...deniedNet } }))
-  const createSocket = (...args: unknown[]): unknown => {
-    if (storage.getStore() !== undefined) return deny('dgram.createSocket')
-    return invoke(originalDgram.createSocket, args)
-  }
+  const createSocket = (): never => deny('dgram.createSocket')
   void mock.module('node:dgram', () => ({
     ...originalDgram,
     createSocket,
     default: { ...originalDgram, createSocket },
   }))
   const GuardedWorker = function guardedWorker(...args: unknown[]): unknown {
-    if (storage.getStore() !== undefined) return deny('worker_threads.Worker')
-    return Reflect.construct(originalWorkerThreads.Worker, args)
+    void args
+    return deny('worker_threads.Worker')
   }
   Reflect.set(GuardedWorker, 'prototype', originalWorkerThreads.Worker.prototype)
   void mock.module('node:worker_threads', () => ({
@@ -249,16 +251,22 @@ function installProcessAndNetworkMocks(): void {
     return deny('net.Socket.connect')
   })
   Reflect.set(dgram.Socket.prototype, 'bind', function guardedDgramBind(this: object, ...args: unknown[]): unknown {
-    if (storage.getStore() !== undefined) return deny('dgram.Socket.bind')
-    const method = originals.dgramBindDescriptor?.value as unknown
-    if (typeof method !== 'function') throw new Error('Original dgram bind is unavailable')
-    return invokeOn(method, this, args)
+    void this
+    void args
+    return deny('dgram.Socket.bind')
   })
   Reflect.set(dgram.Socket.prototype, 'send', function guardedDgramSend(this: object, ...args: unknown[]): void {
-    if (storage.getStore() !== undefined) return deny('dgram.Socket.send')
-    const method = originals.dgramSendDescriptor?.value as unknown
-    if (typeof method !== 'function') throw new Error('Original dgram send is unavailable')
-    invokeOn(method, this, args)
+    void this
+    void args
+    deny('dgram.Socket.send')
+  })
+}
+
+function throwingShellFacade(): CallableFunction {
+  const blocked = (): never => deny('bun.$')
+  return new Proxy(blocked, {
+    apply: (): never => deny('bun.$'),
+    get: (): never => deny('bun.$'),
   })
 }
 
@@ -292,6 +300,15 @@ export function installIoGuard(): void {
     (operation) => diagnostic(active(operation), operation),
   )
   installProcessAndNetworkMocks()
+  const shell = throwingShellFacade()
+  void mock.module('bun', () => ({ ...originalBunModule, $: shell, default: { ...originalBunModule, $: shell } }))
+  Reflect.set(Bun, '$', shell)
+  Reflect.set(globalThis, 'Worker', function guardedGlobalWorker(): never {
+    return deny('global.Worker')
+  })
+  Reflect.set(globalThis, 'WebSocket', function guardedWebSocket(): never {
+    return deny('global.WebSocket')
+  })
   installProcessListenerTracking()
   Reflect.set(globalThis, 'fetch', (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const boundary = active('fetch')
@@ -336,6 +353,12 @@ export function restoreIoGuard(): void {
   Reflect.set(Bun, 'udpSocket', originals.bunUdpSocket)
   Reflect.set(Bun, 'file', originals.bunFile)
   Reflect.set(Bun, 'write', originals.bunWrite)
+  Reflect.set(Bun, '$', originalBunModule.$)
+  void mock.module('bun', () => ({ ...originalBunModule, default: { ...originalBunModule } }))
+  if (globalWorkerDescriptor === undefined) Reflect.deleteProperty(globalThis, 'Worker')
+  else Object.defineProperty(globalThis, 'Worker', globalWorkerDescriptor)
+  if (globalWebSocketDescriptor === undefined) Reflect.deleteProperty(globalThis, 'WebSocket')
+  else Object.defineProperty(globalThis, 'WebSocket', globalWebSocketDescriptor)
   if (originals.serverListenDescriptor !== undefined) {
     Object.defineProperty(net.Server.prototype, 'listen', originals.serverListenDescriptor)
   }
