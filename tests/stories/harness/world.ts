@@ -566,7 +566,6 @@ export const messageForContext = (
   context: ContextHandle,
   text: string,
 ): IncomingMessage => {
-  const commandMatch = /^\/([^\s@/]+)(?:@[^\s]+)?(?:\s|$)/u.exec(text)?.[1]
   return {
     user: { id: user.id, username: user.username, isAdmin: false },
     contextId: context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id,
@@ -574,7 +573,6 @@ export const messageForContext = (
     threadId: context.kind === 'thread' ? context.id : undefined,
     isMentioned: context.kind !== 'dm',
     text,
-    ...(commandMatch === undefined ? {} : { commandMatch }),
     messageId: world.ids.next('message'),
     platformInstanceId: context.platformInstanceId,
   }

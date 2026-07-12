@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { checkAuthorizationExtended } from '../../../src/auth.js'
+import { buildScopedCommandAuth } from '../../../src/chat/command-auth.js'
 import type {
   ButtonReplyOptions,
   ChatCapability,
@@ -66,6 +66,21 @@ const cloneInteraction = (interaction: IncomingInteraction): IncomingInteraction
   ...interaction,
   user: { ...interaction.user },
 })
+
+type RegisteredCommand = Readonly<{ handler: CommandHandler; match: string }>
+
+const registeredCommandFor = (
+  text: string,
+  commands: ReadonlyMap<string, CommandHandler>,
+): RegisteredCommand | undefined => {
+  const parsed = /^\/([^\s@/]+)(?:@[^\s]+)?([\s\S]*)$/u.exec(text)
+  if (parsed === null) return undefined
+  const name = parsed[1]
+  if (name === undefined) return undefined
+  const handler = commands.get(name)
+  if (handler === undefined) return undefined
+  return { handler, match: (parsed[2] ?? '').trim() }
+}
 
 export function createScenarioChat(scenarioName: string, events: ScenarioEvents): ScenarioChat {
   let state: LifecycleState = 'new'
@@ -247,21 +262,14 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
     async dispatch(message): Promise<void> {
       assertDispatchable('message')
       const normalized = cloneMessage(message)
-      const command = normalized.commandMatch === undefined ? undefined : commands.get(normalized.commandMatch)
+      const command = registeredCommandFor(normalized.text, commands)
       if (command !== undefined) {
-        events.record('chat.message', normalized)
-        await command(
-          normalized,
-          createReply(normalized),
-          checkAuthorizationExtended(
-            normalized.user.id,
-            normalized.user.username,
-            normalized.contextId,
-            normalized.contextType,
-            normalized.threadId,
-            normalized.user.isAdmin,
-            normalized.platformInstanceId,
-          ),
+        const commandMessage = { ...normalized, commandMatch: command.match }
+        events.record('chat.message', commandMessage)
+        await command.handler(
+          commandMessage,
+          createReply(commandMessage),
+          buildScopedCommandAuth(commandMessage, commandMessage.user.isAdmin, commandMessage.platformInstanceId),
         )
         return
       }

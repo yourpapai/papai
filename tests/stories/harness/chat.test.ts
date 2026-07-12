@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
+import type { AuthorizationResult, IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
 import { dmTarget } from '../../../src/chat/types.js'
 import { createScenarioChat } from './chat.js'
 import { createScenarioEvents } from './events.js'
@@ -31,7 +31,62 @@ const INTERACTION = {
   threadId: 'thread-7',
 } as const satisfies IncomingInteraction
 
+const GROUP_COMMAND_MESSAGE = {
+  ...MESSAGE,
+  contextId: 'group-1',
+  text: '/clear   victim-user  ',
+} as const satisfies IncomingMessage
+
 describe('scenario chat', () => {
+  test('routes registered Telegram commands with trimmed arguments and scoped command auth', async () => {
+    const chat = createScenarioChat('telegram command routing', createScenarioEvents('telegram command routing'))
+    let receivedMessage: IncomingMessage | undefined
+    let receivedAuth: AuthorizationResult | undefined
+    let normalMessageCalls = 0
+    chat.registerCommand('clear', (message, _reply, auth) => {
+      receivedMessage = message
+      receivedAuth = auth
+      return Promise.resolve()
+    })
+    chat.onMessage(() => {
+      normalMessageCalls += 1
+      return Promise.resolve()
+    })
+    await chat.start()
+
+    await chat.dispatch(GROUP_COMMAND_MESSAGE)
+
+    expect(normalMessageCalls).toBe(0)
+    expect(receivedMessage?.commandMatch).toBe('victim-user')
+    expect(receivedAuth).toEqual({
+      allowed: true,
+      isBotAdmin: false,
+      isGroupAdmin: false,
+      storageContextId: 'pi:cGxhdGZvcm0tMQ:ctx:Z3JvdXAtMQ:thread:dGhyZWFkLTc',
+      configContextId: 'pi:cGxhdGZvcm0tMQ:ctx:Z3JvdXAtMQ',
+    })
+  })
+
+  test('sends unknown slash input through the normal message handler without a command match', async () => {
+    const chat = createScenarioChat('unknown command routing', createScenarioEvents('unknown command routing'))
+    let commandCalls = 0
+    let receivedMessage: IncomingMessage | undefined
+    chat.registerCommand('clear', () => {
+      commandCalls += 1
+      return Promise.resolve()
+    })
+    chat.onMessage((message) => {
+      receivedMessage = message
+      return Promise.resolve()
+    })
+    await chat.start()
+
+    await chat.dispatch({ ...GROUP_COMMAND_MESSAGE, text: '/foo ignored' })
+
+    expect(commandCalls).toBe(0)
+    expect(receivedMessage?.commandMatch).toBeUndefined()
+  })
+
   test('dispatch before handler registration names the scenario and phase', async () => {
     const events = createScenarioEvents('task creation')
     events.setPhase('when message')

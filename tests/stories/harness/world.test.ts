@@ -107,6 +107,50 @@ describe('scenario world', () => {
     }
   })
 
+  test('routes Telegram guest, unauthorized, and authorized commands through production bot policies', async () => {
+    const world = await createScenarioWorld('telegram command authorization')
+
+    try {
+      const member = world.api.given.user('member')
+      const guest = world.api.given.guest('guest')
+      const unauthorized = world.api.given.guest('unauthorized')
+      const group = world.api.given.group('team')
+      const memberDm = world.api.given.dm(member)
+      const unauthorizedDm = world.api.given.dm(unauthorized)
+      world.api.given.member(group, member)
+      world.api.given.guestMode(group, true)
+
+      await world.api.when.message(guest, group, '/help')
+      expect(world.chat.allReplies().at(-1)?.content).toContain('Group commands:')
+
+      await world.api.when.message(unauthorized, unauthorizedDm, '/help')
+      world.api.then.replyTo(unauthorized).equals('You are not authorized to use this bot.')
+
+      await world.api.when.message(member, memberDm, '/help')
+      expect(world.chat.allReplies().at(-1)?.content).toContain('Commands:')
+    } finally {
+      await world.stop()
+    }
+  })
+
+  test('leaves an unknown Telegram group slash input to normal non-mentioned queue policy', async () => {
+    const world = await createScenarioWorld('unknown Telegram group command')
+
+    try {
+      const member = world.api.given.user('member')
+      const group = world.api.given.group('team')
+      world.api.given.member(group, member)
+      await world.start()
+
+      await world.runtime.dispatch({ ...world.message(member, group, '/foo ignored'), isMentioned: false })
+      await world.settle()
+
+      expect(world.model.inspections()).toEqual([])
+    } finally {
+      await world.stop()
+    }
+  })
+
   test('keeps sibling thread replies isolated while group replies remain unthreaded', async () => {
     const world = await createScenarioWorld('thread replies')
 
