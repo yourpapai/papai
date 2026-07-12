@@ -142,8 +142,10 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
     providerMetadata: undefined,
   })
 
-const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
-  realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
+const buildMockModel: LlmOrchestratorDeps['buildModel'] = ({ llmApiKey, llmBaseUrl, mainModel }) =>
+  realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey: llmApiKey, baseURL: llmBaseUrl })(
+    mainModel,
+  )
 
 import { KaneoClassifiedError } from '../plugins/task-provider-kaneo/classify-error.js'
 import {
@@ -380,7 +382,7 @@ describe('processMessage', () => {
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: () => {
           maybeProvisionCalls++
@@ -433,12 +435,9 @@ describe('processMessage', () => {
           return defaultDeps.generateText(...args)
         },
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: (apiKey, baseURL) => {
-          const provider = buildMockOpenAI(apiKey, baseURL)
-          return Object.assign((model: string) => {
-            buildCalls.push({ apiKey, baseURL, model })
-            return provider(model)
-          }, provider)
+        buildModel: (config) => {
+          buildCalls.push({ apiKey: config.llmApiKey, baseURL: config.llmBaseUrl, model: config.mainModel })
+          return buildMockModel(config)
         },
         resolve: () => null,
         maybeAutoProvision: () => Promise.resolve(false),
@@ -526,7 +525,7 @@ describe('processMessage', () => {
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: () => Promise.resolve(false),
       }
@@ -553,7 +552,7 @@ describe('processMessage', () => {
           return defaultDeps.generateText(...args)
         },
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: () => Promise.resolve(false),
       }
@@ -577,7 +576,7 @@ describe('processMessage', () => {
           return defaultDeps.generateText(...args)
         },
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: () => Promise.resolve(false),
       }
@@ -597,7 +596,7 @@ describe('processMessage', () => {
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: () => Promise.resolve(false),
       }
@@ -622,7 +621,7 @@ describe('processMessage', () => {
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => {
           resolverCalls++
           return null
@@ -645,7 +644,7 @@ describe('processMessage', () => {
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: () => Promise.resolve(false),
       }
@@ -679,7 +678,7 @@ describe('processMessage', () => {
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: () => Promise.resolve(false),
       }
@@ -697,7 +696,7 @@ describe('processMessage', () => {
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: (_reply, contextId, chatUserId, username) => {
           autoProvisionCalls.push({ contextId, chatUserId, username })
@@ -738,7 +737,7 @@ describe('processMessage', () => {
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
-        buildOpenAI: buildMockOpenAI,
+        buildModel: buildMockModel,
         resolve: () => null,
         maybeAutoProvision: defaultDeps.maybeAutoProvision,
       }
@@ -1804,7 +1803,7 @@ describe('processMessage', () => {
 
     const deps: LlmOrchestratorDeps = {
       ...defaultDeps,
-      buildOpenAI: buildMockOpenAI,
+      buildModel: buildMockModel,
       resolve: () => createMockProvider(),
     }
 
