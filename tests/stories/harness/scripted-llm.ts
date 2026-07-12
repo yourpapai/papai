@@ -116,6 +116,26 @@ function resolveWireName(
   }
 }
 
+function serializeToolInput(decision: Extract<ModelDecision, { kind: 'tool' }>, generation: number): string {
+  let serialized: string | undefined
+  try {
+    serialized = JSON.stringify(decision.input)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(
+      `Could not serialize input for capability '${decision.capabilityId}' at generation ${generation} (tool decision): ${message}`,
+      { cause: error },
+    )
+  }
+  if (serialized !== undefined) return serialized
+
+  const cause = new TypeError('JSON.stringify returned undefined')
+  throw new Error(
+    `Could not serialize input for capability '${decision.capabilityId}' at generation ${generation} (tool decision): ${cause.message}`,
+    { cause },
+  )
+}
+
 export function createScriptedModel(options: ScriptedModelOptions): ScriptedModel {
   let decisions: readonly ModelDecision[] = []
   let pendingToolCall: PendingToolCall | undefined
@@ -139,14 +159,15 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
     const decision = decisions[0]
     if (decision === undefined) throw new Error(`Scripted model has no queued decisions for generation ${generation}`)
 
+    if (pendingToolCall !== undefined && !hasToolResult) {
+      throw new Error(
+        `Next ${decision.kind} decision expected tool result for '${pendingToolCall.toolName}' (${pendingToolCall.toolCallId})`,
+      )
+    }
+    pendingToolCall = undefined
+
     if (decision.kind === 'answer') {
-      if (pendingToolCall !== undefined && !hasToolResult) {
-        throw new Error(
-          `Answer decision expected tool result for '${pendingToolCall.toolName}' (${pendingToolCall.toolCallId})`,
-        )
-      }
       decisions = decisions.slice(1)
-      pendingToolCall = undefined
       return generationResult([{ type: 'text', text: decision.text }], 'stop')
     }
 
@@ -157,9 +178,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
         `Capability '${decision.capabilityId}' resolved to '${toolName}', but it was not advertised; available tools: ${listedTools}`,
       )
     }
-    const input = JSON.stringify(decision.input)
-    if (input === undefined)
-      throw new Error(`Capability '${decision.capabilityId}' has input that is not JSON serializable`)
+    const input = serializeToolInput(decision, generation)
     const toolCallId = nextId()
     pendingToolCall = { capabilityId: decision.capabilityId, toolCallId, toolName }
     decisions = decisions.slice(1)
@@ -176,6 +195,15 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
       decisions = [...decisions, ...nextDecisions]
     },
     verifyConsumed(): void {
+      if (pendingToolCall !== undefined) {
+        const queued =
+          decisions.length === 0
+            ? ''
+            : `; ${decisions.length} queued ${decisions.length === 1 ? 'decision remains' : 'decisions remain'}`
+        throw new Error(
+          `Scripted model is awaiting tool result for '${pendingToolCall.toolName}' (${pendingToolCall.toolCallId}, capability '${pendingToolCall.capabilityId}')${queued}`,
+        )
+      }
       if (decisions.length === 0) return
       const suffix = decisions.length === 1 ? 'decision' : 'decisions'
       throw new Error(

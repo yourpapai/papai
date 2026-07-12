@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import type { LanguageModelV3Prompt } from '@ai-sdk/provider'
 import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod'
 
@@ -23,6 +24,27 @@ const advertisedTool = {
 }
 
 const promptWithoutToolResult = [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'create it' }] }]
+
+const promptWithToolResult = (toolCallId: string, toolName = 'provider_tasks__create_task'): LanguageModelV3Prompt => [
+  ...promptWithoutToolResult,
+  {
+    role: 'tool' as const,
+    content: [
+      {
+        type: 'tool-result' as const,
+        toolCallId,
+        toolName,
+        output: { type: 'json' as const, value: { id: 'task-1' } },
+      },
+    ],
+  },
+]
+
+const captureError = (operation: PromiseLike<unknown>): Promise<Error> =>
+  Promise.resolve(operation).then(
+    () => Promise.reject(new Error('Expected operation to fail')),
+    (error: unknown) => Promise.resolve(error instanceof Error ? error : new Error(String(error))),
+  )
 
 describe('scripted language model', () => {
   test('emits deterministic V3 tool calls and then an answer after seeing the tool result', async () => {
@@ -90,11 +112,41 @@ describe('scripted language model', () => {
     script.enqueue([callCapability('tasks.create', { title: 'two' })])
 
     const first = await script.model.doGenerate({ prompt: promptWithoutToolResult, tools: [advertisedTool] })
-    const second = await script.model.doGenerate({ prompt: promptWithoutToolResult, tools: [advertisedTool] })
+    const second = await script.model.doGenerate({
+      prompt: promptWithToolResult('tool-call-1'),
+      tools: [advertisedTool],
+    })
 
     expect(first.content[0]).toMatchObject({ toolCallId: 'tool-call-1' })
     expect(second.content[0]).toMatchObject({ toolCallId: 'tool-call-2' })
-    expect(() => script.verifyConsumed()).not.toThrow()
+    expect(() => script.verifyConsumed()).toThrow(
+      "Scripted model is awaiting tool result for 'provider_tasks__create_task' (tool-call-2, capability 'tasks.create')",
+    )
+  })
+
+  test('keeps the pending call and next decision intact until both result id and name match', async () => {
+    const script = createScriptedModel({ resolveCapability })
+    script.enqueue([callCapability('tasks.create', { title: 'one' }), callCapability('tasks.create', { title: 'two' })])
+    await script.model.doGenerate({ prompt: promptWithoutToolResult, tools: [advertisedTool] })
+
+    await expect(
+      script.model.doGenerate({ prompt: promptWithToolResult('wrong-id'), tools: [advertisedTool] }),
+    ).rejects.toThrow("Next tool decision expected tool result for 'provider_tasks__create_task' (tool-call-1)")
+    await expect(
+      script.model.doGenerate({ prompt: promptWithToolResult('tool-call-1', 'wrong_name'), tools: [advertisedTool] }),
+    ).rejects.toThrow("Next tool decision expected tool result for 'provider_tasks__create_task' (tool-call-1)")
+    expect(() => script.verifyConsumed()).toThrow(
+      "Scripted model is awaiting tool result for 'provider_tasks__create_task' (tool-call-1, capability 'tasks.create'); 1 queued decision remains",
+    )
+
+    const next = await script.model.doGenerate({
+      prompt: promptWithToolResult('tool-call-1'),
+      tools: [advertisedTool],
+    })
+    expect(next.content[0]).toMatchObject({
+      toolCallId: 'tool-call-2',
+      input: JSON.stringify({ title: 'two' }),
+    })
   })
 
   test('fails when a resolved tool is not advertised', async () => {
@@ -120,14 +172,54 @@ describe('scripted language model', () => {
     )
   })
 
-  test('requires an answer step to observe the preceding tool result', async () => {
+  test('requires an answer step to observe the preceding tool result without consuming the answer', async () => {
     const script = createScriptedModel({ resolveCapability })
     script.enqueue([callCapability('tasks.create', {}), answer('done')])
     await script.model.doGenerate({ prompt: promptWithoutToolResult, tools: [advertisedTool] })
 
     await expect(script.model.doGenerate({ prompt: promptWithoutToolResult, tools: [advertisedTool] })).rejects.toThrow(
-      "Answer decision expected tool result for 'provider_tasks__create_task' (tool-call-1)",
+      "Next answer decision expected tool result for 'provider_tasks__create_task' (tool-call-1)",
     )
+    expect(() => script.verifyConsumed()).toThrow(
+      "Scripted model is awaiting tool result for 'provider_tasks__create_task' (tool-call-1, capability 'tasks.create'); 1 queued decision remains",
+    )
+
+    const result = await script.model.doGenerate({
+      prompt: promptWithToolResult('tool-call-1'),
+      tools: [advertisedTool],
+    })
+    expect(result.content).toEqual([{ type: 'text', text: 'done' }])
+    expect(() => script.verifyConsumed()).not.toThrow()
+  })
+
+  test('preserves a cyclic-input decision and deterministic id when serialization fails', async () => {
+    const cyclic: { title: string; self?: unknown } = { title: 'Release 7' }
+    cyclic.self = cyclic
+    const script = createScriptedModel({ resolveCapability })
+    script.enqueue([callCapability('tasks.create', cyclic)])
+
+    const failure = await captureError(
+      script.model.doGenerate({ prompt: promptWithoutToolResult, tools: [advertisedTool] }),
+    )
+    expect(failure.message).toContain(
+      "Could not serialize input for capability 'tasks.create' at generation 1 (tool decision)",
+    )
+    expect(failure.cause).toBeInstanceOf(TypeError)
+    expect(() => script.verifyConsumed()).toThrow('Scripted model has 1 unused decision: tool')
+
+    delete cyclic.self
+    const retried = await script.model.doGenerate({ prompt: promptWithoutToolResult, tools: [advertisedTool] })
+    expect(retried.content[0]).toMatchObject({ toolCallId: 'tool-call-1' })
+  })
+
+  test('wraps BigInt serialization failures without consuming the decision', async () => {
+    const script = createScriptedModel({ resolveCapability })
+    script.enqueue([callCapability('tasks.create', { sequence: 1n })])
+
+    await expect(script.model.doGenerate({ prompt: promptWithoutToolResult, tools: [advertisedTool] })).rejects.toThrow(
+      "Could not serialize input for capability 'tasks.create' at generation 1 (tool decision)",
+    )
+    expect(() => script.verifyConsumed()).toThrow('Scripted model has 1 unused decision: tool')
   })
 
   test('reports empty and unused scripts with actionable diagnostics', async () => {
