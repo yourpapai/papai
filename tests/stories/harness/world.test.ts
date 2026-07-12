@@ -188,6 +188,100 @@ describe('scenario world', () => {
     expect(world.events.all().filter(({ kind }) => kind === 'world.cleanup.runtime.stop')).toHaveLength(1)
   })
 
+  test('starts configured runtime extensions FIFO before production extensions and stops them LIFO', async () => {
+    const lifecycle: string[] = []
+    const world = await createScenarioWorld('runtime extension order', {
+      runtimeExtensions: [
+        {
+          start: () => {
+            lifecycle.push('first.start')
+            return (): void => {
+              lifecycle.push('first.stop')
+            }
+          },
+        },
+        {
+          start: (): Promise<() => void> => {
+            lifecycle.push('second.start')
+            return Promise.resolve((): void => {
+              lifecycle.push('second.stop')
+            })
+          },
+        },
+      ],
+      testHooks: {
+        afterProductionExtensionsStart: (): void => {
+          lifecycle.push('production.start')
+        },
+      },
+    })
+
+    expect(lifecycle).toEqual(['first.start', 'second.start'])
+    await world.start()
+    expect(lifecycle).toEqual(['first.start', 'second.start', 'production.start'])
+
+    await world.stop()
+    expect(lifecycle).toEqual(['first.start', 'second.start', 'production.start', 'second.stop', 'first.stop'])
+  })
+
+  test('does not start runtime extensions when their configuration is empty', async () => {
+    const world = await createScenarioWorld('no runtime extensions', { runtimeExtensions: [] })
+
+    await world.start()
+    await world.stop()
+
+    expect(world.events.all().some(({ kind }) => kind === 'world.cleanup.runtime-extensions.stop')).toBe(false)
+  })
+
+  test('cleans started runtime extensions when a later runtime extension fails to start', async () => {
+    const lifecycle: string[] = []
+    const startFailure = new Error('second runtime extension failed')
+
+    const failure = await createScenarioWorld('runtime extension start failure', {
+      runtimeExtensions: [
+        {
+          start: () => {
+            lifecycle.push('first.start')
+            return (): void => {
+              lifecycle.push('first.stop')
+            }
+          },
+        },
+        {
+          start: (): void => {
+            lifecycle.push('second.start')
+            throw startFailure
+          },
+        },
+      ],
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+
+    expect(failure).toBe(startFailure)
+    expect(lifecycle).toEqual(['first.start', 'second.start', 'first.stop'])
+  })
+
+  test('runs runtime extension cleanup only once when world stop is repeated', async () => {
+    let cleanupCount = 0
+    const world = await createScenarioWorld('runtime extension idempotent cleanup', {
+      runtimeExtensions: [
+        {
+          start: () => (): void => {
+            cleanupCount += 1
+          },
+        },
+      ],
+    })
+
+    await world.start()
+    await Promise.all([world.stop(), world.stop()])
+    await world.stop()
+
+    expect(cleanupCount).toBe(1)
+  })
+
   test('approves discoverable plugin prerequisites before one production activation pass', async () => {
     const world = await createScenarioWorld('plugin prerequisite')
     const plugin = world.api.given.plugin(requireDiscoveredPlugin('synthetic-web-search'))

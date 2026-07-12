@@ -23,6 +23,11 @@ import { createScenarioChat, type ScenarioChat, type ScenarioReply } from './cha
 import { createScenarioEvents, type ScenarioEvent, type ScenarioEvents } from './events.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, createScenarioFixtures, type ScenarioFixtures } from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
+import {
+  createScenarioRuntimeExtensionLifecycle,
+  type ScenarioRuntimeExtensionLifecycle,
+  type ScenarioRuntimeExtension,
+} from './runtime-extension.js'
 import { createScenarioApi, type ScenarioApi } from './scenario.js'
 import { createScriptedModel, type ScriptedModel } from './scripted-llm.js'
 import { createStrictHttpDispatcher, type StrictHttpDispatcher } from './strict-http.js'
@@ -87,7 +92,11 @@ export type ScenarioWorldTestHooks = Readonly<{
   onCleanupStep?(kind: string): void
 }>
 
-export type ScenarioWorldOptions = Readonly<{ testHooks?: ScenarioWorldTestHooks; tempRoot?: string }>
+export type ScenarioWorldOptions = Readonly<{
+  runtimeExtensions?: readonly ScenarioRuntimeExtension[]
+  testHooks?: ScenarioWorldTestHooks
+  tempRoot?: string
+}>
 
 export type ScenarioWorld = Readonly<{
   name: string
@@ -310,6 +319,7 @@ function createCleanupCoordinator(
   http: StrictHttpDispatcher,
   model: ScriptedModel,
   hooks: ScenarioWorldTestHooks,
+  runtimeExtensions: ScenarioRuntimeExtensionLifecycle | undefined,
 ): CleanupCoordinator {
   let cleanupInFlight: Promise<void> | undefined
   const run = (): Promise<void> => {
@@ -318,6 +328,8 @@ function createCleanupCoordinator(
       const failures: unknown[] = []
       if (resources.runtime !== undefined)
         await runCleanupStep(events, 'world.cleanup.runtime.stop', () => resources.runtime?.stop(), failures, hooks)
+      if (runtimeExtensions !== undefined)
+        await runCleanupStep(events, 'world.cleanup.runtime-extensions.stop', runtimeExtensions.stop, failures, hooks)
       await runCleanupStep(events, 'world.cleanup.plugins.deactivate', deactivateAllPlugins, failures, hooks)
       if (resources.providerAttempted)
         await runCleanupStep(events, 'world.cleanup.provider.unregister', fixtures.teardown, failures, hooks)
@@ -389,7 +401,10 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   const tasks = new MemoryTaskProvider({ events, nextId: (): string => ids.next('task') })
   const fixtures = createScenarioFixtures({ taskProvider: tasks })
   const resources: CleanupResources = { runtime: undefined, databaseAttempted: false, providerAttempted: false }
-  const cleanup = createCleanupCoordinator(resources, fixtures, events, http, model, hooks)
+  const runtimeExtensions = options.runtimeExtensions ?? []
+  const runtimeExtensionLifecycle =
+    runtimeExtensions.length === 0 ? undefined : createScenarioRuntimeExtensionLifecycle(runtimeExtensions)
+  const cleanup = createCleanupCoordinator(resources, fixtures, events, http, model, hooks, runtimeExtensionLifecycle)
   const pending = createPendingWork(ids)
   const router = createRouter(chat)
   let startupEvents: readonly ScenarioEvent[] = []
@@ -402,6 +417,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     resources.databaseAttempted = true
     await fixtures.setupDatabase()
     await hooks.afterDatabaseSetup?.()
+    await runtimeExtensionLifecycle?.start()
     fixtures.seedPlatformInstance()
     fixtures.seedSystemLlmConfig()
     resources.providerAttempted = true
