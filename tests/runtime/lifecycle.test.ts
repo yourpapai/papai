@@ -90,6 +90,63 @@ describe('RuntimeLifecycle', () => {
     expect(attempts).toBe(1)
   })
 
+  test('shares in-flight cleanup completion across concurrent stop calls', async () => {
+    let releaseCleanup: (() => void) | undefined
+    let markCleanupStarted: (() => void) | undefined
+    const cleanupStarted = new Promise<void>((resolve) => {
+      markCleanupStarted = resolve
+    })
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve
+    })
+    const lifecycle = createRuntimeLifecycle()
+    lifecycle.add('gated', async () => {
+      markCleanupStarted?.()
+      await cleanupGate
+    })
+
+    const firstStop = lifecycle.stop()
+    const secondStop = lifecycle.stop()
+    let secondStopped = false
+    void secondStop.then(() => {
+      secondStopped = true
+    })
+
+    await cleanupStarted
+    await Promise.resolve()
+
+    expect(secondStop).toBe(firstStop)
+    expect(secondStopped).toBeFalse()
+
+    releaseCleanup?.()
+    await Promise.all([firstStop, secondStop])
+
+    expect(secondStopped).toBeTrue()
+  })
+
+  test('shares an aggregate cleanup failure across concurrent stop calls', async () => {
+    let attempts = 0
+    let releaseCleanup: (() => void) | undefined
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve
+    })
+    const lifecycle = createRuntimeLifecycle()
+    lifecycle.add('failing', async () => {
+      attempts += 1
+      await cleanupGate
+      throw new Error('failed')
+    })
+
+    const firstStop = lifecycle.stop()
+    const secondStop = lifecycle.stop()
+    releaseCleanup?.()
+
+    expect(secondStop).toBe(firstStop)
+    await expect(firstStop).rejects.toThrow('Runtime cleanup failed: failing: failed')
+    await expect(secondStop).rejects.toThrow('Runtime cleanup failed: failing: failed')
+    expect(attempts).toBe(1)
+  })
+
   test('rolls back registered resources after partial startup failure', async () => {
     const calls: string[] = []
     const lifecycle = createRuntimeLifecycle()

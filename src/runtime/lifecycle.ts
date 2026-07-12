@@ -32,25 +32,40 @@ async function cleanupFailure(entry: CleanupEntry): Promise<string | undefined> 
   }
 }
 
+async function runCleanups(entries: readonly CleanupEntry[]): Promise<void> {
+  const failures = await entries.reduce<Promise<readonly string[]>>(async (previous, entry) => {
+    const previousFailures = await previous
+    const failure = await cleanupFailure(entry)
+    return failure === undefined ? previousFailures : [...previousFailures, failure]
+  }, Promise.resolve([]))
+
+  if (failures.length > 0) throw new Error(`Runtime cleanup failed: ${failures.join('; ')}`)
+}
+
 export function createRuntimeLifecycle(): RuntimeLifecycle {
   let nextRegistrationIndex = 0
   let entries: readonly CleanupEntry[] = []
+  let stopInFlight: Promise<void> | undefined
 
   return {
     add(name, cleanup, priority = 0): void {
       entries = [...entries, { name, cleanup, priority, registrationIndex: nextRegistrationIndex }]
       nextRegistrationIndex += 1
     },
-    async stop(): Promise<void> {
+    stop(): Promise<void> {
+      if (stopInFlight !== undefined) return stopInFlight
+
       const pendingEntries = inCleanupOrder(entries)
       entries = []
-      const failures = await pendingEntries.reduce<Promise<readonly string[]>>(async (previous, entry) => {
-        const previousFailures = await previous
-        const failure = await cleanupFailure(entry)
-        return failure === undefined ? previousFailures : [...previousFailures, failure]
-      }, Promise.resolve([]))
+      const stopPromise = runCleanups(pendingEntries)
+      stopInFlight = stopPromise
 
-      if (failures.length > 0) throw new Error(`Runtime cleanup failed: ${failures.join('; ')}`)
+      const clearInFlight = (): void => {
+        if (stopInFlight === stopPromise) stopInFlight = undefined
+      }
+      void stopPromise.then(clearInFlight, clearInFlight)
+
+      return stopPromise
     },
     pending(): readonly string[] {
       return inCleanupOrder(entries).map((entry) => entry.name)
