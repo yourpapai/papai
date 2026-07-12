@@ -11,7 +11,6 @@ import { resolveChatParticipant } from '../chat/participants/roster.js'
 import { createChatProviderFromConfig } from '../chat/registry.js'
 import { ChatRouter } from '../chat/router.js'
 import { registerCommandMenuIfSupported } from '../chat/startup.js'
-import { startSweeper } from '../dashboard-auth/sweeper.js'
 import { closeDrizzleDb } from '../db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from '../db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-router-runtime.js'
@@ -30,10 +29,10 @@ import {
   registerMembershipSubscriber,
   runMembershipBackfill,
 } from '../providers/membership/index.js'
-import { defaultTaskProviderResolver } from '../providers/resolver.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from '../system-config.js'
 import { initUsageRecorder } from '../usage/index.js'
 import { toolCapabilityCatalog } from './capability-catalog.js'
+import type { ProductionBackgroundHandle } from './production-background.js'
 import { startProductionExtensions, type ProductionExtensionState } from './production-extensions.js'
 import type { PapaiRuntimeDeps, PartialRuntimeDeps } from './types.js'
 
@@ -41,22 +40,8 @@ const log = logger.child({ scope: 'main' })
 const INGRESS_ERROR = 'Programmatic ingress is available only when configured'
 
 type ProductionState = ProductionExtensionState & {
-  backgroundModules: ProductionBackgroundModules | null
+  background: ProductionBackgroundHandle | null
   disposeMembershipSubscriber: (() => void) | null
-  stopSweeper: (() => void) | null
-}
-
-type ProductionBackgroundModules = Readonly<{
-  pollers: typeof import('../deferred-prompts/poller.js')
-  recurring: typeof import('../scheduler.js')
-  schedulerInstance: typeof import('../scheduler-instance.js')
-}>
-
-async function loadProductionBackgroundModules(): Promise<ProductionBackgroundModules> {
-  const schedulerInstance = await import('../scheduler-instance.js')
-  const recurring = await import('../scheduler.js')
-  const pollers = await import('../deferred-prompts/poller.js')
-  return { schedulerInstance, recurring, pollers }
 }
 
 function startDatabase(): void {
@@ -164,33 +149,15 @@ function createApplicationDeps(state: ProductionState): PapaiRuntimeDeps['applic
 
 function createBackgroundDeps(state: ProductionState): PapaiRuntimeDeps['background'] {
   const stop = async (): Promise<void> => {
-    const modules = state.backgroundModules
-    if (modules !== null) {
-      modules.schedulerInstance.scheduler.stopAll()
-      await modules.schedulerInstance.scheduler.drainAll()
-      modules.recurring.stopScheduler()
-      modules.pollers.stopPollers()
-      modules.schedulerInstance.unregisterDefaultSchedulerTasks()
-      state.backgroundModules = null
-    }
-    state.stopSweeper?.()
-    state.stopSweeper = null
+    const background = state.background
+    state.background = null
+    await background?.stop()
   }
   return {
     async start(router): Promise<void> {
-      if (state.backgroundModules !== null) return
-      const modules = await loadProductionBackgroundModules()
-      state.backgroundModules = modules
-      try {
-        modules.schedulerInstance.registerDefaultSchedulerTasks()
-        modules.recurring.startScheduler(router)
-        modules.pollers.startPollers(router, (contextId) => defaultTaskProviderResolver.resolve(contextId))
-        modules.schedulerInstance.scheduler.startAll()
-        state.stopSweeper = startSweeper()
-      } catch (error) {
-        await stop()
-        throw error
-      }
+      if (state.background !== null) return
+      const { startProductionBackground } = await import('./production-background.js')
+      state.background = await startProductionBackground(router)
     },
     stop,
   }
@@ -249,10 +216,9 @@ export function createProductionRuntimeDeps(
   const defaults = createDefaultDeps(
     {
       activePlatforms: [],
-      backgroundModules: null,
+      background: null,
       disposeMembershipSubscriber: null,
       populateRouterFromInstances: overrides.chat?.createRouter === undefined,
-      stopSweeper: null,
     },
     options,
   )

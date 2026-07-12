@@ -115,8 +115,14 @@ When DI is not available and module evaluation order matters:
 
 ## E2E Testing
 
+- `bun test:stories` is **Tier 0: Hermetic Full-Stack Stories**. It exercises real in-process application composition from chat input through the scripted LLM/tool loop, task operations, settings, context scopes, and plugin integrations. Fake transports and strict declared HTTP routes replace live providers; use it as the fast architecture-refactor regression gate.
+- Default `bun run test` excludes all of `tests/stories/**`. Run `bun test:stories:contracts` explicitly for every harness unit/contract test, then `bun test:stories` for user stories; CI runs both commands so harness coverage is not lost.
+- The story child starts with `--no-env-file` and inherits only `PATH`, `HOME`, `TMPDIR`, and `CI`, plus `TZ=UTC` and its launcher marker. Live network/process access, undeclared HTTP, active timer/listener leaks, and writes outside the scenario temp root fail immediately. Do not weaken these guards or add retries. Failures should be diagnosed from the recent sanitized event trace.
+- `bun test:stories:stress` repeats/randomizes with deterministic seed `41021`. `bun test:stories:manifest` is manifest-only: it removes stale JUnit output and never discovers or spawns stories. `BASE_REF=<sha> bun test:stories:compat --manifest-only` is the preflight-only refactor proof. An explicit `--baseline-ref=<sha>` also activates compatibility; missing or invalid refs and mismatches fail before child spawn.
+- Manifest scenario IDs cover literal `scenario(...)` and nested `executeScenario(...)` calls in story files, so logical scenario count can exceed the number of Bun/JUnit test cases. Their callback `then` chains are frozen checkpoint metadata.
+- Refactor qualification freezes **every regular file** under `tests/stories/**` plus `scripts/test-stories.ts`, `scripts/story-manifest*.ts`, `scripts/story-runner*.ts`, and `scripts/story-reports.ts` byte-for-byte. The candidate may change production/runtime composition only. Establish and commit the harness and enforcement files on master, record the manifest `treeHash` and baseline SHA, rebase the refactor onto it, and run compatibility against that SHA. A ref predating the enforcement files is incompatible and reports them as added. Reports are generated under ignored `reports/stories/` as `manifest.json` and `junit.xml`.
 - Run E2E with `bun test:e2e`.
-- The current Docker-backed Kaneo harness is **Tier 1: Provider-Real E2E**.
+- The Docker-backed Kaneo harness is **Tier 1: Provider-Real E2E**. Tier 0 does not replace it; provider-real tests remain responsible for Kaneo/container/API behavior.
 - Prefer `KaneoTestClient` for new resource-management-heavy suites.
 - Track resources created outside the test client with `testClient.trackTask(...)` or the matching tracker helper when the suite uses `KaneoTestClient`.
 - The suite is in transition: many files already rely on shared preload/setup, but some older E2E files still use local `beforeAll`/`afterAll` hooks or manual cleanup. Follow the local pattern unless you are intentionally modernizing that suite.

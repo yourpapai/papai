@@ -2,16 +2,10 @@
 # https://bun.com/docs/runtime/bunfig
 
 [test]
-# Exclude E2E and client tests from default test discovery
+# Exclude E2E, client, and hermetic story tests from default test discovery
 # E2E tests require Docker setup; run with: bun test:e2e
 # Client tests require happy-dom DOM environment; run with: bun test:client
-pathIgnorePatterns = [
-  "tests/e2e/**",
-  "tests/client/**",
-  "tests/visual/**",
-  "tests/stories/**/*.story.test.ts",
-  "tests/stories/fixtures/**",
-]
+pathIgnorePatterns = ["tests/e2e/**", "tests/client/**", "tests/visual/**", "tests/stories/**"]
 
 # Per-test timeout (default 5000ms). The default suite runs with `--parallel`
 # (one worker process per file = CPU-core count). Under that load the event

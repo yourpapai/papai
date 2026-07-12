@@ -57,8 +57,8 @@ function captureReadyOutput(stream: ReadableStream<Uint8Array>): Readonly<{
 }
 
 describe('hermetic story runner', () => {
-  test('repository discovery excludes the adversarial fixture subtree', () => {
-    expect(readFileSync(path.join(ROOT, 'bunfig.toml'), 'utf8')).toContain('"tests/stories/fixtures/**"')
+  test('repository discovery excludes the entire hermetic story tree', () => {
+    expect(readFileSync(path.join(ROOT, 'bunfig.toml'), 'utf8')).toContain('"tests/stories/**"')
   })
 
   test.each([
@@ -189,7 +189,7 @@ describe('hermetic story runner', () => {
     }
   })
 
-  test('default story-directory discovery excludes story and adversarial fixture files', async () => {
+  test('default story-directory discovery excludes the entire hermetic story tree', async () => {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'papai-story-discovery-'))
     const marker = path.join(tempRoot, 'worker-started')
     try {
@@ -215,7 +215,8 @@ describe('hermetic story runner', () => {
       const output = `${stdout}\n${stderr}`
 
       expect(exitCode).not.toBe(0)
-      expect(output).toContain('tests/stories/harness/io-guard.test.ts')
+      expect(output).toContain('filters did not match any test files')
+      expect(output).not.toContain('tests/stories/harness/io-guard.test.ts')
       expect(output).not.toContain('.story.test.ts')
       expect(output).not.toContain('.fixture.test.ts')
       expect(existsSync(marker)).toBe(false)

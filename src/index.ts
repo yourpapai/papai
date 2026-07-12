@@ -6,7 +6,12 @@
 import { logger } from './logger.js'
 import { createPapaiRuntime } from './runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from './runtime/production-deps.js'
-import type { PapaiRuntime, PapaiRuntimeConfig, PapaiRuntimeDeps } from './runtime/types.js'
+import {
+  normalizePapaiRuntimeConfig,
+  type PapaiRuntime,
+  type PapaiRuntimeConfig,
+  type PapaiRuntimeDeps,
+} from './runtime/types.js'
 
 const log = logger.child({ scope: 'main' })
 
@@ -56,13 +61,10 @@ function createShellLogger(loggerOverride: Partial<ShellLogger>): ShellLogger {
 }
 
 function productionConfig(adminUserId: string): PapaiRuntimeConfig {
-  return {
+  return normalizePapaiRuntimeConfig({
     adminUserId,
     pluginDirectory: 'plugins',
-    startBackgroundServices: true,
-    startNetworkServer: true,
-    sendStartupAnnouncement: true,
-  }
+  })
 }
 
 function registerShutdownHandlers(runtime: PapaiRuntime, deps: ProductionShellDeps, shellLog: ShellLogger): void {

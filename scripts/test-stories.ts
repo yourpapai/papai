@@ -5,71 +5,51 @@
 
 import path from 'node:path'
 
-const VALUE_FLAGS = new Set([
-  '--seed',
-  '--rerun-each',
-  '--test-name-pattern',
-  '--reporter',
-  '--reporter-outfile',
-  '--coverage-reporter',
-])
-const BOOLEAN_FLAGS = new Set(['--randomize'])
+import {
+  buildBaselineStoryManifest,
+  buildCandidateStoryManifest,
+  compareStoryManifests,
+  type StoryManifest,
+  writeStoryManifest,
+} from './story-manifest.js'
+import { removeStoryReport, STORY_JUNIT_REPORT_PATH, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
+import { type ParsedStoryRunnerArguments, parseStoryRunnerArguments, STORY_SEED } from './story-runner-arguments.js'
+import { sanitizedStoryEnvironment } from './story-runner-environment.js'
 
-type ParsedArguments = Readonly<{ forwarded: readonly string[]; fixture?: string }>
+export { parseStoryRunnerArguments, STORY_SEED }
 
-function parseArguments(args: readonly string[]): ParsedArguments {
-  const forwarded: string[] = []
-  let fixture: string | undefined
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index]
-    if (argument === undefined) continue
-    if (argument === '--fixture') {
-      const value = args[index + 1]
-      if (value === undefined || value.startsWith('-')) throw new Error('--fixture requires a path')
-      fixture = value
-      index += 1
-      continue
-    }
-    const [flag] = argument.split('=', 1)
-    if (flag !== undefined && VALUE_FLAGS.has(flag)) {
-      forwarded.push(argument)
-      if (!argument.includes('=')) {
-        const value = args[index + 1]
-        if (value === undefined || value.startsWith('-')) throw new Error(`${flag} requires a value`)
-        forwarded.push(value)
-        index += 1
-      }
-      continue
-    }
-    if (BOOLEAN_FLAGS.has(argument)) {
-      forwarded.push(argument)
-      continue
-    }
-    throw new Error(`Unsupported story runner argument: ${argument}`)
-  }
-  return { forwarded, ...(fixture === undefined ? {} : { fixture }) }
-}
+type SpawnedChild = Readonly<{
+  exited: Promise<number>
+  kill(signal: NodeJS.Signals): void
+}>
 
-function sanitizedEnvironment(): Record<string, string> {
-  const allowed = ['PATH', 'HOME', 'TMPDIR', 'CI'] as const
-  const env = Object.fromEntries(
-    allowed.flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]] as const])),
-  )
-  env['TZ'] = 'UTC'
-  env['PAPAI_STORY_RUNNER'] = '1'
-  return env
-}
+type RunnerDependencies = Readonly<{
+  cwd: string
+  env: Record<string, string | undefined>
+  spawn(command: readonly string[], options: Parameters<typeof Bun.spawn>[1]): SpawnedChild
+  discoverStories(): Promise<readonly string[]>
+  discoverContracts(): Promise<readonly string[]>
+  buildCandidateManifest(options: Readonly<{ root: string; seed: number }>): Promise<StoryManifest>
+  buildBaselineManifest(options: Readonly<{ root: string; ref: string; seed: number }>): Promise<StoryManifest>
+  writeManifest(manifest: StoryManifest, outputPath: string): Promise<void>
+  removeReport(reportPath: string): Promise<void>
+}>
 
-async function discoverStories(): Promise<readonly string[]> {
+async function discoverStories(root: string): Promise<readonly string[]> {
   const files: string[] = []
   const glob = new Bun.Glob('tests/stories/**/*.story.test.ts')
-  for await (const file of glob.scan({ cwd: process.cwd(), onlyFiles: true })) files.push(file)
+  for await (const file of glob.scan({ cwd: root, onlyFiles: true })) files.push(file)
   return files.sort()
 }
 
-async function waitForChild(
-  child: Readonly<{ exited: Promise<number>; kill(signal: NodeJS.Signals): void }>,
-): Promise<number> {
+async function discoverContracts(root: string): Promise<readonly string[]> {
+  const files: string[] = []
+  const glob = new Bun.Glob('tests/stories/harness/**/*.test.ts')
+  for await (const file of glob.scan({ cwd: root, onlyFiles: true })) files.push(file)
+  return files.sort()
+}
+
+async function waitForChild(child: SpawnedChild): Promise<number> {
   let forwardedSignal: 'SIGINT' | 'SIGTERM' | undefined
   const forward = (signal: 'SIGINT' | 'SIGTERM'): void => {
     if (forwardedSignal !== undefined) return
@@ -95,37 +75,108 @@ async function waitForChild(
   }
 }
 
-async function main(): Promise<number> {
-  let parsed: ParsedArguments
+function defaultDependencies(): RunnerDependencies {
+  const cwd = process.cwd()
+  return {
+    cwd,
+    env: process.env,
+    spawn: (command, options) => Bun.spawn([...command], options),
+    discoverStories: () => discoverStories(cwd),
+    discoverContracts: () => discoverContracts(cwd),
+    buildCandidateManifest: buildCandidateStoryManifest,
+    buildBaselineManifest: buildBaselineStoryManifest,
+    writeManifest: writeStoryManifest,
+    removeReport: removeStoryReport,
+  }
+}
+
+export async function runStoryTests(
+  args: readonly string[],
+  dependencies: RunnerDependencies = defaultDependencies(),
+): Promise<number> {
   try {
-    parsed = parseArguments(process.argv.slice(2))
+    await clearStandardReports(dependencies)
+    return await executeStoryTests(parseStoryRunnerArguments(args), dependencies)
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     return 2
   }
+}
+
+async function clearStandardReports(dependencies: RunnerDependencies): Promise<void> {
+  const reportPaths = [STORY_MANIFEST_REPORT_PATH, STORY_JUNIT_REPORT_PATH]
+  const results = await Promise.allSettled(
+    reportPaths.map((reportPath) =>
+      Promise.resolve().then(() => dependencies.removeReport(path.join(dependencies.cwd, reportPath))),
+    ),
+  )
+  const failedPaths = reportPaths.filter((_, index) => results[index]?.status === 'rejected')
+  const failures: unknown[] = []
+  for (const result of results) {
+    if (result.status === 'rejected') failures.push(result.reason as unknown)
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Unable to clear standard story reports: ${failedPaths.join(', ')}`)
+  }
+}
+
+function explicitBaselineRef(parsed: ParsedStoryRunnerArguments, dependencies: RunnerDependencies): string | undefined {
+  const baselineRef = parsed.baselineRef ?? (parsed.compat ? dependencies.env['BASE_REF'] : undefined)
+  if (parsed.compat && (baselineRef === undefined || baselineRef.trim() === '')) {
+    throw new Error('Compatibility mode requires --baseline-ref=<ref> or an explicit BASE_REF')
+  }
+  return baselineRef
+}
+
+async function verifyCompatibility(
+  parsed: ParsedStoryRunnerArguments,
+  dependencies: RunnerDependencies,
+): Promise<void> {
+  const baselineRef = explicitBaselineRef(parsed, dependencies)
+  const candidate = await dependencies.buildCandidateManifest({ root: dependencies.cwd, seed: parsed.seed })
+  await dependencies.writeManifest(candidate, path.join(dependencies.cwd, STORY_MANIFEST_REPORT_PATH))
+  if (!parsed.compat || baselineRef === undefined) return
+  const baseline = await dependencies.buildBaselineManifest({
+    root: dependencies.cwd,
+    ref: baselineRef,
+    seed: parsed.seed,
+  })
+  compareStoryManifests(candidate, baseline)
+}
+
+async function storyFiles(
+  parsed: ParsedStoryRunnerArguments,
+  dependencies: RunnerDependencies,
+): Promise<readonly string[]> {
   const files =
     parsed.fixture === undefined
-      ? await discoverStories()
-      : [`./${path.relative(process.cwd(), path.resolve(parsed.fixture))}`]
-  if (files.length === 0) {
-    console.error('No story tests found')
-    return 2
-  }
-  const child = Bun.spawn(
+      ? await (parsed.contracts ? dependencies.discoverContracts() : dependencies.discoverStories())
+      : [`./${path.relative(dependencies.cwd, path.resolve(dependencies.cwd, parsed.fixture))}`]
+  if (files.length === 0) throw new Error('No story tests found')
+  return files
+}
+
+async function executeStoryTests(
+  parsed: ParsedStoryRunnerArguments,
+  dependencies: RunnerDependencies,
+): Promise<number> {
+  await verifyCompatibility(parsed, dependencies)
+  if (parsed.manifestOnly) return 0
+  const files = await storyFiles(parsed, dependencies)
+  const child = dependencies.spawn(
     [
       'bun',
       '--no-env-file',
       'test',
-      '--preload',
-      './tests/stories/preload.ts',
       '--path-ignore-patterns',
       '',
+      ...(parsed.contracts ? [] : ['--preload', './tests/stories/preload.ts']),
       ...parsed.forwarded,
       ...files,
     ],
     {
-      cwd: process.cwd(),
-      env: sanitizedEnvironment(),
+      cwd: dependencies.cwd,
+      env: sanitizedStoryEnvironment(dependencies.env),
       stdin: 'inherit',
       stdout: 'inherit',
       stderr: 'inherit',
@@ -138,4 +189,4 @@ async function main(): Promise<number> {
   return waitForChild(child)
 }
 
-process.exitCode = await main()
+if (import.meta.main) process.exitCode = await runStoryTests(process.argv.slice(2))
