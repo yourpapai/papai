@@ -5,6 +5,7 @@
 
 import { describe, expect, mock, test } from 'bun:test'
 
+import { ChatRouter } from '../src/chat/router.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import type { PlatformInstance } from '../src/instances/types.js'
 
@@ -127,7 +128,20 @@ describe('production dependency composition', () => {
     void mock.module('../src/startup-helpers.js', () => ({ warnIfLegacyDebugToken: (): void => undefined }))
 
     const { createProductionRuntimeDeps } = await loadProductionDeps('compatibility')
-    const deps = createProductionRuntimeDeps()
+    const scenarioRouter = new ChatRouter(() => {
+      throw new Error('Scenario chat composition must not construct production adapters')
+    })
+    const deps = createProductionRuntimeDeps({
+      chat: {
+        createRouter: () => scenarioRouter,
+        ingress: {
+          dispatch: (): Promise<void> => Promise.resolve(),
+          dispatchInteraction: (): Promise<void> => Promise.resolve(),
+        },
+        setRuntime: (): void => undefined,
+        clearRuntime: (): void => undefined,
+      },
+    })
     const router = deps.chat.createRouter()
     await deps.extensions.start(router)
 

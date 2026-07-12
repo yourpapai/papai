@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { ChatRouter } from '../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../src/chat/types.js'
+import { toolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { createPapaiRuntime } from '../../src/runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from '../../src/runtime/production-deps.js'
 
@@ -30,6 +31,24 @@ const interaction = {
 } as const satisfies IncomingInteraction
 
 describe('createProductionRuntimeDeps', () => {
+  test('uses the production capability catalog identity unless capabilities are overridden', () => {
+    const defaults = createProductionRuntimeDeps()
+    let cleared = false
+    const overridden = createProductionRuntimeDeps({
+      capabilities: {
+        clear: (): void => {
+          cleared = true
+        },
+      },
+    })
+
+    expect(Object.is(defaults.capabilities, toolCapabilityCatalog)).toBe(true)
+    expect(Object.is(overridden.capabilities, toolCapabilityCatalog)).toBe(false)
+    overridden.capabilities.clear()
+    expect(cleared).toBe(true)
+    expect(typeof overridden.capabilities.resolve).toBe('function')
+  })
+
   test('shallow-merges overrides within each dependency group', async () => {
     let started = false
     const start = (): void => {

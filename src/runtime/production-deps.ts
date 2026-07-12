@@ -52,6 +52,7 @@ const INGRESS_ERROR = 'Programmatic ingress is available only when configured'
 
 type ProductionState = {
   activePlatforms: readonly PlatformInstance[]
+  populateRouterFromInstances: boolean
   stopSweeper: (() => void) | null
 }
 
@@ -101,28 +102,32 @@ function configureMembership(router: ChatRouter): void {
     })
 }
 
-function createProductionRouter(state: ProductionState): ChatRouter {
+function createProductionRouter(): ChatRouter {
+  return new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
+}
+
+function loadActivePlatforms(router: ChatRouter, state: ProductionState): void {
   const active = listActivePlatformInstancesSafe()
   for (const failure of active.failures) {
     log.warn(failure, 'Skipping unreadable active platform instance during startup')
   }
-  const router = new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
-  for (const instance of active.instances) {
-    try {
-      router.addInstance(instance.id, instance.type, instance.config)
-    } catch (error) {
-      log.error(
-        {
-          platformInstanceId: instance.id,
-          type: instance.type,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Skipping invalid active platform instance during startup',
-      )
+  if (state.populateRouterFromInstances) {
+    for (const instance of active.instances) {
+      try {
+        router.addInstance(instance.id, instance.type, instance.config)
+      } catch (error) {
+        log.error(
+          {
+            platformInstanceId: instance.id,
+            type: instance.type,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Skipping invalid active platform instance during startup',
+        )
+      }
     }
   }
   state.activePlatforms = active.instances
-  return router
 }
 
 function evaluateCompatibility(router: ChatRouter, state: ProductionState): void {
@@ -142,6 +147,7 @@ function evaluateCompatibility(router: ChatRouter, state: ProductionState): void
 }
 
 async function startExtensions(router: ChatRouter, state: ProductionState): Promise<readonly string[]> {
+  loadActivePlatforms(router, state)
   const { plugins, errors, directoryMissing } = discoverPlugins('plugins')
   if (errors.length > 0) log.warn({ errors: errors.map((error) => error.reason) }, 'Some plugins failed discovery')
   const guard = evaluateStartupGuard({
@@ -231,7 +237,7 @@ function createDefaultDeps(state: ProductionState): PapaiRuntimeDeps {
   return {
     database: { start: startDatabase, stop: stopDatabase },
     chat: {
-      createRouter: () => createProductionRouter(state),
+      createRouter: createProductionRouter,
       ingress: {
         dispatch: () => Promise.reject(new Error(INGRESS_ERROR)),
         dispatchInteraction: () => Promise.reject(new Error(INGRESS_ERROR)),
@@ -257,7 +263,11 @@ function createDefaultDeps(state: ProductionState): PapaiRuntimeDeps {
 }
 
 export function createProductionRuntimeDeps(overrides: PartialRuntimeDeps = {}): PapaiRuntimeDeps {
-  const defaults = createDefaultDeps({ activePlatforms: [], stopSweeper: null })
+  const defaults = createDefaultDeps({
+    activePlatforms: [],
+    populateRouterFromInstances: overrides.chat?.createRouter === undefined,
+    stopSweeper: null,
+  })
   return {
     database: { ...defaults.database, ...overrides.database },
     chat: { ...defaults.chat, ...overrides.chat },
@@ -265,6 +275,9 @@ export function createProductionRuntimeDeps(overrides: PartialRuntimeDeps = {}):
     application: { ...defaults.application, ...overrides.application },
     background: { ...defaults.background, ...overrides.background },
     web: { ...defaults.web, ...overrides.web },
-    capabilities: { ...defaults.capabilities, ...overrides.capabilities },
+    capabilities:
+      overrides.capabilities === undefined
+        ? defaults.capabilities
+        : { ...defaults.capabilities, ...overrides.capabilities },
   }
 }
