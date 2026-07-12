@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -185,6 +185,25 @@ describe('proxyTranscriptStream', () => {
 
     expect(response.headers.get('set-cookie')).toBeNull()
     expect(response.headers.get('x-powered-by')).toBeNull()
+  })
+
+  test('cancels the upstream body when the upstream response is non-ok', async () => {
+    const clientSignal = new AbortController().signal
+    const cancelSpy = mock((_reason?: unknown) => {})
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        controller.enqueue(new TextEncoder().encode('error body'))
+      },
+      cancel(reason): void {
+        cancelSpy(reason)
+      },
+    })
+    const fetchImpl = (): Promise<Response> => Promise.resolve(new Response(stream, { status: 500 }))
+
+    const response = await proxyTranscriptStream('sess-42', cfg, clientSignal, fetchImpl)
+
+    expect(response.status).toBe(500)
+    expect(cancelSpy).toHaveBeenCalledTimes(1)
   })
 })
 

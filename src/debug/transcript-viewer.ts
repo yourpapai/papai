@@ -77,6 +77,7 @@ export async function proxyTranscriptStream(
     return new Response('upstream unavailable', { status: 502 })
   }
   if (!upstream.ok || upstream.body === null) {
+    void upstream.body?.cancel()
     return new Response('upstream stream unavailable', { status: upstream.ok ? 502 : upstream.status })
   }
   return new Response(upstream.body, {
