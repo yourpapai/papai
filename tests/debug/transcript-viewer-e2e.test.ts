@@ -7,23 +7,26 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { HistoryResponseSchema } from '../../client/transcript/fetcher-schemas.js'
 import { routeTranscriptPaths } from '../../src/debug/transcript-viewer.js'
+import { mintTranscriptToken } from '../../src/mcp-server/token.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
-const STUB_TOKEN = 'stub-tok'
+const STUB_SESSION_ID = 'stub-session-id'
 
 describe('transcript viewer end-to-end against a stub magi', () => {
   let server: ReturnType<typeof Bun.serve> | null = null
   let baseUrl = ''
+  let token = ''
 
   beforeEach(async () => {
     await setupTestDb()
+    token = mintTranscriptToken(STUB_SESSION_ID)
 
     server = Bun.serve({
       port: 0,
       fetch(request) {
         const url = new URL(request.url)
-        if (url.pathname === `/t/${STUB_TOKEN}/transcript`) {
+        if (url.pathname === `/sessions/${STUB_SESSION_ID}/transcript`) {
           return new Response(
             JSON.stringify({
               events: [
@@ -39,7 +42,7 @@ describe('transcript viewer end-to-end against a stub magi', () => {
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           )
         }
-        if (url.pathname === `/t/${STUB_TOKEN}/stream`) {
+        if (url.pathname === `/sessions/${STUB_SESSION_ID}/stream`) {
           const body = new ReadableStream<Uint8Array>({
             start(controller): void {
               controller.enqueue(
@@ -74,7 +77,7 @@ describe('transcript viewer end-to-end against a stub magi', () => {
   })
 
   test('proxies paginated history from the stub magi transcript endpoint', async () => {
-    const url = new URL(`https://papai.example/t/${STUB_TOKEN}/transcript`)
+    const url = new URL(`https://papai.example/t/${token}/transcript`)
     const response = await routeTranscriptPaths(new Request(url), url)
 
     expect(response).not.toBeNull()
@@ -90,7 +93,7 @@ describe('transcript viewer end-to-end against a stub magi', () => {
   })
 
   test('proxies the SSE stream byte-for-byte from the stub magi stream endpoint', async () => {
-    const url = new URL(`https://papai.example/t/${STUB_TOKEN}/stream`)
+    const url = new URL(`https://papai.example/t/${token}/stream`)
     const response = await routeTranscriptPaths(new Request(url), url)
 
     expect(response).not.toBeNull()

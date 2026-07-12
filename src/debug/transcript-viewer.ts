@@ -6,6 +6,7 @@
 import path from 'node:path'
 
 import { logger } from '../logger.js'
+import { verifyTranscriptToken } from '../mcp-server/token.js'
 import { getPluginAdminConfig } from '../plugins/store.js'
 
 const log = logger.child({ scope: 'debug:transcript-viewer' })
@@ -27,7 +28,7 @@ const ALLOWED_QUERY = new Set(['after', 'limit'])
 
 export async function proxyTranscriptHistory(
   url: URL,
-  token: string,
+  magiSessionId: string,
   cfg: ViewerMagiConfig,
   clientSignal: AbortSignal,
   fetchImpl: FetchImpl = fetch,
@@ -35,7 +36,7 @@ export async function proxyTranscriptHistory(
   const params = new URLSearchParams()
   for (const [k, v] of url.searchParams) if (ALLOWED_QUERY.has(k)) params.set(k, v)
   const qs = params.toString()
-  const target = `${cfg.baseUrl}/t/${encodeURIComponent(token)}/transcript${qs === '' ? '' : `?${qs}`}`
+  const target = `${cfg.baseUrl}/sessions/${encodeURIComponent(magiSessionId)}/transcript${qs === '' ? '' : `?${qs}`}`
   let upstream: Response
   try {
     upstream = await fetchImpl(target, {
@@ -56,12 +57,12 @@ export async function proxyTranscriptHistory(
 }
 
 export async function proxyTranscriptStream(
-  token: string,
+  magiSessionId: string,
   cfg: ViewerMagiConfig,
   clientSignal: AbortSignal,
   fetchImpl: FetchImpl = fetch,
 ): Promise<Response> {
-  const target = `${cfg.baseUrl}/t/${encodeURIComponent(token)}/stream`
+  const target = `${cfg.baseUrl}/sessions/${encodeURIComponent(magiSessionId)}/stream`
   let upstream: Response
   try {
     upstream = await fetchImpl(target, {
@@ -108,8 +109,9 @@ function decodeToken(rawToken: string): string {
 
 /**
  * Deliberately PUBLIC, no-auth capability-token routes: possession of the
- * opaque `/t/<token>` token is the access control, mirrored from magi. Mounted
- * before the debug-server auth gate — do not move this behind it.
+ * opaque `/t/<token>` token is the access control. Mounted before the
+ * debug-server auth gate — do not move this behind it. The token itself is
+ * verified here (via `verifyTranscriptToken`) before any proxy call is made.
  */
 export async function routeTranscriptPaths(req: Request, url: URL): Promise<Response | null> {
   if (url.pathname === '/t.js') return serveAsset('transcript.js', 'text/javascript')
@@ -123,12 +125,14 @@ export async function routeTranscriptPaths(req: Request, url: URL): Promise<Resp
   const token = decodeToken(rawToken)
   if (sub === '') return serveShell()
   if (sub === 'stream' || sub === 'transcript') {
+    const claims = verifyTranscriptToken(token)
+    if (claims === null) return new Response('Not found', { status: 404 })
     const cfg = getViewerMagiConfig()
     if (cfg === null) return new Response('transcript viewer not configured', { status: 503 })
     const response =
       sub === 'stream'
-        ? await proxyTranscriptStream(token, cfg, req.signal)
-        : await proxyTranscriptHistory(url, token, cfg, req.signal)
+        ? await proxyTranscriptStream(claims.magiSessionId, cfg, req.signal)
+        : await proxyTranscriptHistory(url, claims.magiSessionId, cfg, req.signal)
     return response
   }
   return new Response('Not found', { status: 404 })
