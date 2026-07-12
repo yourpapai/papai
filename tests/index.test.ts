@@ -112,6 +112,7 @@ describe('index.ts - graceful shutdown', () => {
     let createChatProviderCalls = 0
     let createChatProviderFromConfigCalls = 0
     const runtimeRouterCalls: ChatProvider[] = []
+    let capturedDebugServerArgs: readonly unknown[] | undefined
     const originalExit = process.exit.bind(process)
 
     const chatProvider: ChatProvider = {
@@ -288,6 +289,12 @@ describe('index.ts - graceful shutdown', () => {
       },
       stopPollers: (): void => undefined,
     }))
+    void mock.module('../src/debug/server.js', () => ({
+      startDebugServer: (...args: readonly unknown[]): void => {
+        capturedDebugServerArgs = args
+      },
+      stopDebugServer: (): void => undefined,
+    }))
     void mock.module('../src/debug/chat-router-runtime.js', () => ({
       setRuntimeChatRouter: (router: ChatProvider): void => {
         runtimeRouterCalls.push(router)
@@ -379,6 +386,7 @@ describe('index.ts - graceful shutdown', () => {
     expect(createChatProviderCalls).toBe(0)
     expect(createChatProviderFromConfigCalls).toBe(2)
     expect(runtimeRouterCalls).toHaveLength(1)
+    expect(capturedDebugServerArgs).toEqual(['admin-1', { debugEnabled: false }])
     expect(loggedErrors.length).toBeGreaterThan(0)
     expect(capturedAnnouncementPlatformInstanceId).toBe(activePlatformInstance.id)
     expect(resolverContexts).toEqual(['poller-context-1'])
