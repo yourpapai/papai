@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -14,6 +14,7 @@ import {
   compareStoryManifests,
   parseStoryManifestArguments,
   StoryManifestSchema,
+  writeStoryManifest,
 } from '../../scripts/story-manifest.js'
 
 const roots: string[] = []
@@ -38,7 +39,9 @@ function fixture(): string {
   git(root, 'config', 'commit.gpgsign', 'false')
   mkdirSync(path.join(root, 'tests/stories/harness'), { recursive: true })
   mkdirSync(path.join(root, 'tests/stories/user stories'), { recursive: true })
+  mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
   mkdirSync(path.join(root, 'scripts'), { recursive: true })
+  writeFileSync(path.join(root, 'bunfig.toml'), '[test]')
   writeFileSync(path.join(root, 'tests/stories/harness/helper.ts'), Buffer.from([0, 10, 255]))
   writeFileSync(
     path.join(root, 'tests/stories/user stories/example.story.test.ts'),
@@ -49,7 +52,11 @@ function fixture(): string {
   writeFileSync(path.join(root, 'scripts/story-manifest.ts'), 'manifest enforcement')
   writeFileSync(path.join(root, 'scripts/story-reports.ts'), 'report enforcement')
   writeFileSync(path.join(root, 'scripts/story-runner-arguments.ts'), 'argument enforcement')
-  git(root, 'add', '--', 'tests/stories', 'scripts')
+  writeFileSync(path.join(root, 'tests/setup.ts'), 'test setup')
+  writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'test reset')
+  writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), `export * from './logger-mock.js'`)
+  writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger mock')
+  git(root, 'add', '--', 'bunfig.toml', 'tests', 'scripts')
   git(root, 'commit', '-qm', 'baseline')
   return root
 }
@@ -64,12 +71,17 @@ describe('story manifest', () => {
     expect(StoryManifestSchema.parse(manifest)).toEqual(manifest)
     expect(repeated.treeHash).toBe(manifest.treeHash)
     expect(manifest.files.map(({ path: filePath }) => filePath)).toEqual([
+      'bunfig.toml',
       'scripts/story-manifest.ts',
       'scripts/story-reports.ts',
       'scripts/story-runner-arguments.ts',
       'scripts/test-stories.ts',
+      'tests/mock-reset.ts',
+      'tests/setup.ts',
       'tests/stories/harness/helper.ts',
       'tests/stories/user stories/example.story.test.ts',
+      'tests/utils/logger-mock.ts',
+      'tests/utils/test-helpers.ts',
     ])
     expect(manifest.files.find(({ path: filePath }) => filePath.endsWith('harness/helper.ts'))?.sha256).toBe(
       'a0956176ad28cadf4a54b314f9fcd6143d7007957454286ff24580445304b558',
@@ -84,6 +96,43 @@ describe('story manifest', () => {
         checkpoints: ['then.responseStatus'],
       },
     ])
+  })
+
+  test('removes the temporary manifest when atomic publication fails', async () => {
+    const root = fixture()
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021 })
+    const reportDirectory = path.join(root, 'reports/stories')
+    const outputPath = path.join(reportDirectory, 'manifest.json')
+    mkdirSync(outputPath, { recursive: true })
+
+    await expect(writeStoryManifest(manifest, outputPath)).rejects.toThrow()
+
+    expect(readdirSync(reportDirectory)).toEqual(['manifest.json'])
+  })
+
+  test('removes a partial temporary manifest when writing fails', async () => {
+    const root = fixture()
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021 })
+    const outputPath = path.join(root, 'reports/stories/manifest.json')
+    let temporary = ''
+
+    await expect(
+      writeStoryManifest(manifest, outputPath, {
+        write: (temporaryPath): Promise<void> => {
+          temporary = temporaryPath
+          writeFileSync(temporaryPath, 'partial')
+          return Promise.reject(new Error('write failed'))
+        },
+        rename: (): Promise<void> => Promise.reject(new Error('rename must not run')),
+        removeTemporary: (temporaryPath): Promise<void> => {
+          rmSync(temporaryPath, { force: true })
+          return Promise.resolve()
+        },
+      }),
+    ).rejects.toThrow('write failed')
+
+    expect(temporary).not.toBe('')
+    expect(existsSync(temporary)).toBe(false)
   })
 
   test('reads committed baseline blobs rather than worktree bytes and handles spaces', async () => {

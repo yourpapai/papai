@@ -89,7 +89,13 @@ export async function startProductionBackground(
     stopSweeper = deps.startSweeper()
     return { stop }
   } catch (error) {
-    await stop()
+    try {
+      await stop()
+    } catch (rollbackError) {
+      const aggregate = new AggregateError([error, rollbackError], 'Production background startup and rollback failed')
+      aggregate.cause = error
+      throw aggregate
+    }
     throw error
   }
 }

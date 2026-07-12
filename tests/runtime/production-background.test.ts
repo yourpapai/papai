@@ -37,6 +37,11 @@ const router = (): ChatRouter =>
     throw new Error('No adapters are created by the production background contract')
   })
 
+function requireAggregateError(value: unknown): AggregateError {
+  if (value instanceof AggregateError) return value
+  throw new Error('Expected an AggregateError')
+}
+
 describe('production background composition', () => {
   test('starts static production services and stops them in safety order once', async () => {
     const events: string[] = []
@@ -70,6 +75,28 @@ describe('production background composition', () => {
 
     await expect(startProductionBackground(router(), deps)).rejects.toThrow('poller boom')
     expect(events).toContain('tasks:unregister')
+  })
+
+  test('preserves startup failure before rollback failure', async () => {
+    const events: string[] = []
+    const deps = fixture(events)
+    const startupFailure = new Error('poller boom')
+    const rollbackFailure = new Error('stop boom')
+    deps.startPollers = (): void => {
+      throw startupFailure
+    }
+    deps.stopTasks = (): void => {
+      throw rollbackFailure
+    }
+
+    const caught = await startProductionBackground(router(), deps).catch((error: unknown): unknown => error)
+    const aggregate = requireAggregateError(caught)
+
+    expect(aggregate.message).toBe('Production background startup and rollback failed')
+    expect(aggregate.errors[0]).toBe(startupFailure)
+    const rollbackAggregate = requireAggregateError(aggregate.errors[1])
+    expect(rollbackAggregate.errors[0]).toBe(rollbackFailure)
+    expect(aggregate.cause).toBe(startupFailure)
   })
 
   test('attempts every cleanup step and reports all shutdown failures', async () => {

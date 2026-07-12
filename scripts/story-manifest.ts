@@ -4,11 +4,17 @@
 // See LICENSE in the project root for details.
 
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, mkdir, readdir, readFile, rename } from 'node:fs/promises'
+import { mkdir, rename } from 'node:fs/promises'
 import path from 'node:path'
 
 import { z } from 'zod'
 
+import {
+  isFrozenEnforcementPath,
+  isFrozenTestSupportPath,
+  loadCandidateStoryFiles,
+  type LoadedStoryFile,
+} from './story-manifest-candidate.js'
 import { extractStoryScenarios } from './story-manifest-scenarios.js'
 import { removeStoryReport, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
 import { parseBunInteger } from './story-runner-integers.js'
@@ -34,7 +40,24 @@ type StoryFile = z.infer<typeof StoryFileSchema>
 type StoryScenario = z.infer<typeof StoryScenarioSchema>
 type ManifestOptions = Readonly<{ root: string; seed: number; bunVersion?: string }>
 type BaselineOptions = ManifestOptions & Readonly<{ ref: string }>
-type LoadedFile = Readonly<{ path: string; bytes: Uint8Array }>
+export type { LoadedStoryFile } from './story-manifest-candidate.js'
+export type CapturedCandidateStoryInputs = Readonly<{
+  manifest: StoryManifest
+  files: readonly LoadedStoryFile[]
+}>
+export type StoryManifestWriteDeps = Readonly<{
+  write(temporaryPath: string, contents: string): Promise<void>
+  rename(temporaryPath: string, outputPath: string): Promise<void>
+  removeTemporary(temporaryPath: string): Promise<void>
+}>
+
+const defaultWriteDeps: StoryManifestWriteDeps = {
+  write: async (temporaryPath, contents): Promise<void> => {
+    await Bun.write(temporaryPath, contents)
+  },
+  rename,
+  removeTemporary: removeStoryReport,
+}
 
 function sha256(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex')
@@ -85,66 +108,14 @@ async function currentCommit(root: string): Promise<string> {
   return new TextDecoder().decode(bytes).trim()
 }
 
-function toPosix(relativePath: string): string {
-  return relativePath.split(path.sep).join('/')
-}
-
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-function isFrozenEnforcementPath(filePath: string): boolean {
-  return (
-    filePath === 'scripts/test-stories.ts' ||
-    filePath === 'scripts/story-reports.ts' ||
-    /^scripts\/story-(?:manifest|runner).*\.ts$/u.test(filePath)
-  )
-}
-
 function isFrozenPath(filePath: string): boolean {
-  return filePath.startsWith(`${STORIES_PREFIX}/`) || isFrozenEnforcementPath(filePath)
-}
-
-async function loadCandidateFiles(root: string): Promise<readonly LoadedFile[]> {
-  const storiesRoot = path.join(root, STORIES_PREFIX)
-  const rootEntry = await lstat(storiesRoot).catch((error: unknown) => {
-    throw new Error(`Unsupported story manifest root: ${STORIES_PREFIX} (missing)`, { cause: error })
-  })
-  if (rootEntry.isSymbolicLink()) {
-    throw new Error(`Unsupported story manifest root: ${STORIES_PREFIX} (symbolic link)`)
-  }
-  if (!rootEntry.isDirectory()) throw new Error(`Unsupported story manifest root: ${STORIES_PREFIX} (not a directory)`)
-  const files: LoadedFile[] = []
-  async function visit(directory: string): Promise<void> {
-    const entries = await readdir(directory, { withFileTypes: true })
-    entries.sort((left, right) => compareText(left.name, right.name))
-    await Promise.all(
-      entries.map(async (entry): Promise<void> => {
-        const absolute = path.join(directory, entry.name)
-        const relative = toPosix(path.relative(root, absolute))
-        if (entry.isDirectory()) await visit(absolute)
-        else if (entry.isFile()) files.push({ path: relative, bytes: await readFile(absolute) })
-        else {
-          const kind = entry.isSymbolicLink() ? 'symbolic link' : 'special file'
-          throw new Error(`Unsupported story manifest entry: ${relative} (${kind})`)
-        }
-      }),
-    )
-  }
-  await visit(storiesRoot)
-  const scriptEntries = await readdir(path.join(root, 'scripts'), { withFileTypes: true })
-  await Promise.all(
-    scriptEntries.map(async (entry): Promise<void> => {
-      const relative = `scripts/${entry.name}`
-      if (!isFrozenEnforcementPath(relative)) return
-      if (!entry.isFile()) {
-        const kind = entry.isSymbolicLink() ? 'symbolic link' : 'special file'
-        throw new Error(`Unsupported story manifest entry: ${relative} (${kind})`)
-      }
-      files.push({ path: relative, bytes: await readFile(path.join(root, relative)) })
-    }),
+  return (
+    filePath.startsWith(`${STORIES_PREFIX}/`) || isFrozenEnforcementPath(filePath) || isFrozenTestSupportPath(filePath)
   )
-  return files.sort((left, right) => compareText(left.path, right.path))
 }
 
 type GitTreeEntry = Readonly<{ mode: string; object: string; path: string }>
@@ -169,16 +140,16 @@ function parseGitTree(bytes: Uint8Array): readonly GitTreeEntry[] {
   })
 }
 
-async function loadBaselineFiles(root: string, commit: string): Promise<readonly LoadedFile[]> {
+async function loadBaselineFiles(root: string, commit: string): Promise<readonly LoadedStoryFile[]> {
   const tree = await gitBytes(
     root,
-    ['ls-tree', '-rz', '--full-tree', commit, '--', STORIES_PREFIX, 'scripts'],
+    ['ls-tree', '-rz', '--full-tree', commit, '--', 'bunfig.toml', 'tests', 'scripts'],
     `Cannot read frozen story inputs at ${commit}`,
   )
   const entries = [...parseGitTree(tree)].sort((left, right) => compareText(left.path, right.path))
   return Promise.all(
     entries.map(
-      async (entry): Promise<LoadedFile> => ({
+      async (entry): Promise<LoadedStoryFile> => ({
         path: entry.path,
         bytes: await gitBytes(root, ['cat-file', 'blob', entry.object], `Cannot read baseline blob ${entry.path}`),
       }),
@@ -187,7 +158,7 @@ async function loadBaselineFiles(root: string, commit: string): Promise<readonly
 }
 
 function assembleManifest(
-  loaded: readonly LoadedFile[],
+  loaded: readonly LoadedStoryFile[],
   metadata: Readonly<{ commit: string; bunVersion: string; seed: number }>,
 ): StoryManifest {
   const files = loaded.map((file): StoryFile => ({ path: file.path, sha256: sha256(file.bytes) }))
@@ -209,8 +180,17 @@ function assembleManifest(
 }
 
 export async function buildCandidateStoryManifest(options: ManifestOptions): Promise<StoryManifest> {
-  const [commit, files] = await Promise.all([currentCommit(options.root), loadCandidateFiles(options.root)])
-  return assembleManifest(files, { commit, bunVersion: options.bunVersion ?? Bun.version, seed: options.seed })
+  return (await captureCandidateStoryInputs(options)).manifest
+}
+
+export async function captureCandidateStoryInputs(options: ManifestOptions): Promise<CapturedCandidateStoryInputs> {
+  const [commit, files] = await Promise.all([currentCommit(options.root), loadCandidateStoryFiles(options.root)])
+  const manifest = assembleManifest(files, {
+    commit,
+    bunVersion: options.bunVersion ?? Bun.version,
+    seed: options.seed,
+  })
+  return { manifest, files }
 }
 
 export async function buildBaselineStoryManifest(options: BaselineOptions): Promise<StoryManifest> {
@@ -246,12 +226,27 @@ export function compareStoryManifests(candidate: StoryManifest, baseline: StoryM
   throw new Error(`Story compatibility check failed against ${baseline.commit}: ${details.join('; ')}`)
 }
 
-export async function writeStoryManifest(manifest: StoryManifest, outputPath: string): Promise<void> {
+export async function writeStoryManifest(
+  manifest: StoryManifest,
+  outputPath: string,
+  deps: StoryManifestWriteDeps = defaultWriteDeps,
+): Promise<void> {
   StoryManifestSchema.parse(manifest)
   await mkdir(path.dirname(outputPath), { recursive: true })
   const temporary = `${outputPath}.${process.pid}.${randomUUID()}.tmp`
-  await Bun.write(temporary, `${JSON.stringify(manifest, null, 2)}\n`)
-  await rename(temporary, outputPath)
+  try {
+    await deps.write(temporary, `${JSON.stringify(manifest, null, 2)}\n`)
+    await deps.rename(temporary, outputPath)
+  } catch (error) {
+    try {
+      await deps.removeTemporary(temporary)
+    } catch (cleanupError) {
+      const aggregate = new AggregateError([error, cleanupError], 'Story manifest publication and cleanup failed')
+      aggregate.cause = error
+      throw aggregate
+    }
+    throw error
+  }
 }
 
 export function parseStoryManifestArguments(args: readonly string[]): Readonly<{ seed: number }> {
