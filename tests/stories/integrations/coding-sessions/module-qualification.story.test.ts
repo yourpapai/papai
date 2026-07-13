@@ -129,6 +129,11 @@ scenario(
       true,
     )
     expect(world.events.all().some(({ kind }) => kind === 'http.request')).toBe(false)
+    const groupContextId = toScopedContextId({
+      platformInstanceId: group.platformInstanceId,
+      nativeContextId: group.id,
+    })
+    expect(getCodingSessionRecord(groupContextId, 'guest-denied-session')).toBeNull()
   },
 )
 
@@ -163,6 +168,7 @@ scenario(
       true,
     )
     expect(world.events.all().some(({ kind }) => kind === 'http.request')).toBe(false)
+    expect(getCodingSessionRecord(contextId, 'operator-denied-session')).toBeNull()
   },
 )
 
