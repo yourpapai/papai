@@ -51,6 +51,7 @@ describe('mcp-gitlab schemas', () => {
     expect(gitlabGetMrsSchema.properties.orderBy.enum).toEqual(['created_at', 'updated_at'])
     expect(gitlabGetMrsSchema.properties.sort.enum).toEqual(['asc', 'desc'])
     expect(gitlabGetMrsSchema.properties.perPage.maximum).toBe(100)
+    expect(gitlabGetMrsSchema.properties.all.type).toBe('boolean')
   })
 
   test('get_job accepts either jobUrl or projectPath+jobId, has no required array, and rejects unknown properties', () => {
