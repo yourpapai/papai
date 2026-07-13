@@ -6,6 +6,7 @@
 import { clearCachedConfig, clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from '../cache.js'
 import { logger } from '../logger.js'
 import { getToolMetadata, TOOL_DOMAINS, type ToolDomain, type ToolRisk } from './tool-metadata.js'
+import { equivalentToolPreferenceNames } from './tool-preference-aliases.js'
 
 const log = logger.child({ scope: 'tools:preferences' })
 
@@ -57,8 +58,14 @@ function isToolRisk(value: string): value is ToolRisk {
   return TOOL_RISK_SET.has(value)
 }
 
+function resolveToolOverride(prefs: ToolPrefs, toolName: string): Permission | undefined {
+  return equivalentToolPreferenceNames(toolName)
+    .map((name) => prefs.toolOverrides[name])
+    .find((permission): permission is Permission => permission !== undefined)
+}
+
 export function resolveToolPermission(prefs: ToolPrefs, toolName: string): Permission {
-  const override = prefs.toolOverrides[toolName]
+  const override = resolveToolOverride(prefs, toolName)
   if (override !== undefined) return override
   const meta = getToolMetadata(toolName)
   if (meta === undefined) return 'allow'

@@ -238,6 +238,15 @@ describe('applyToolPreferences (ask integration)', () => {
     expect(Object.keys(result).toSorted()).toEqual(['list_tasks'])
   })
 
+  test('canonical ACP deny override removes the legacy ACP wire alias', () => {
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { module_coding__start_session: 'deny' } })
+    const tools: ToolSet = { plugin_acp__start_session: fakeTool('plugin_acp__start_session') }
+
+    const result = applyToolPreferences(tools, contextId, undefined)
+
+    expect(result).not.toHaveProperty('plugin_acp__start_session')
+  })
+
   test('allow leaves tool unwrapped', () => {
     setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: {} })
     const tools: ToolSet = { create_task: fakeTool('create_task') }
@@ -259,6 +268,23 @@ describe('applyToolPreferences (ask integration)', () => {
     expect(executeFn).toBeDefined()
     const out: unknown = await executeFn!({ id: 'X', _permission_reason: 'r' }, { toolCallId: 't1', messages: [] })
     expect(out).toBe('create_task:X')
+  })
+
+  test('canonical ACP ask override gates the legacy ACP wire alias', async () => {
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { module_coding__start_session: 'ask' } })
+    const tools: ToolSet = { plugin_acp__start_session: fakeTool('plugin_acp__start_session') }
+
+    const result = applyToolPreferences(tools, contextId, undefined)
+    const wrapped = result['plugin_acp__start_session']
+    const execute = wrapped?.execute
+
+    expect(wrapped?.inputSchema).not.toBe(tools['plugin_acp__start_session']?.inputSchema)
+    expect(execute).toBeDefined()
+    await expect(
+      execute!({ id: 'X', _permission_reason: 'r' }, { toolCallId: 't1', messages: [] }),
+    ).resolves.toMatchObject({
+      status: 'permission_denied',
+    })
   })
 
   test('ask denies when no askPermission provided', async () => {
