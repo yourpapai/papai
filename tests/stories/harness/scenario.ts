@@ -154,6 +154,7 @@ type ReplyHistoryAssertion = Readonly<{ equal(expected: readonly string[]): void
 type TaskAssertion = Readonly<{ exists(): Promise<void> }>
 type CodingSessionAssertion = Readonly<{
   matches(expected: Partial<SessionRecord>): void
+  equals(expected: SessionRecord): void
   absent(): void
 }>
 type CodingSessionsAssertion = Readonly<{
@@ -293,6 +294,9 @@ function codingSessionsAssertion(world: ScenarioWorld, context: ContextHandle): 
       return {
         matches(expected): void {
           tracedAssertion(world, () => expect(recordFor(sessionId)).toMatchObject(expected))
+        },
+        equals(expected): void {
+          tracedAssertion(world, () => expect(recordFor(sessionId)).toEqual(expected))
         },
         absent(): void {
           tracedAssertion(world, () => expect(recordFor(sessionId)).toBeNull())

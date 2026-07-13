@@ -208,6 +208,11 @@ describe('scenario execution', () => {
 
       then.codingSessions(dm).count(1)
       then.codingSessions(dm).session('known-session').matches({ project: 'papai', title: 'Known coding work' })
+      then.codingSessions(dm).session('known-session').equals({
+        project: 'papai',
+        title: 'Known coding work',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      })
       then.codingSessions(dm).session('missing-session').absent()
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
     })
