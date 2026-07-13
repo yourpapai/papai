@@ -233,6 +233,8 @@
     "plugins/mcp-figma/simplify-util.ts": ["files"],
     "plugins/mcp-figma/simplify-types.ts": ["files"],
     "plugins/mcp-figma/simplify-layout.ts": ["files"],
+    // TEMP F1 T2: consumed by simplify.ts in Task 3
+    "plugins/mcp-figma/simplify-text.ts": ["files"],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     "strybk.config.ts": ["exports"],

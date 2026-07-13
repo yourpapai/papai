@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { layoutExtractor } from '../../plugins/mcp-figma/simplify-layout.js'
+import { textExtractor } from '../../plugins/mcp-figma/simplify-text.js'
 import type { SimplifiedNode, TraversalContext } from '../../plugins/mcp-figma/simplify-types.js'
 import { generateCSSShorthand, hasFlexLayout, isInAutoLayoutFlow } from '../../plugins/mcp-figma/simplify-util.js'
 
@@ -121,5 +122,66 @@ describe('layoutExtractor', () => {
     const layout = runLayout(node).layout
     expect(layout).toContain('gap:8.01px')
     expect(layout).toContain('padding:4.01px')
+  })
+})
+
+describe('textExtractor + globalVars dedup', () => {
+  test('extracts text + maps a de-duplicated style reference', () => {
+    const ctx = freshContext()
+    const a: SimplifiedNode = { id: 'a', name: 'A', type: 'TEXT' }
+    textExtractor(
+      { type: 'TEXT', characters: 'Hello', style: { fontFamily: 'Inter', fontSize: 14, fontWeight: 600 } },
+      a,
+      ctx,
+    )
+    const b: SimplifiedNode = { id: 'b', name: 'B', type: 'TEXT' }
+    textExtractor(
+      { type: 'TEXT', characters: 'World', style: { fontFamily: 'Inter', fontSize: 14, fontWeight: 600 } },
+      b,
+      ctx,
+    )
+    expect(a.text).toBe('Hello')
+    expect(a.textStyle).toBe('s1')
+    // identical style → same id (deduped)
+    expect(b.textStyle).toBe('s1')
+    expect(Object.keys(ctx.globalVars.styles)).toEqual(['s1'])
+    expect(ctx.globalVars.styles['s1']).toEqual({ fontFamily: 'Inter', fontSize: 14, fontWeight: 600 })
+  })
+
+  test('distinct styles get distinct ids; default values dropped', () => {
+    const ctx = freshContext()
+    const n: SimplifiedNode = { id: 'n', name: 'N', type: 'TEXT' }
+    textExtractor(
+      {
+        type: 'TEXT',
+        characters: 'x',
+        style: {
+          fontFamily: 'Inter',
+          // dropped (default)
+          fontStyle: 'Regular',
+          // dropped (default)
+          textCase: 'ORIGINAL',
+          // kept → textAlign
+          textAlignHorizontal: 'CENTER',
+          // dropped (0)
+          letterSpacing: 0,
+          // kept, rounded
+          lineHeightPx: 20.004,
+        },
+      },
+      n,
+      ctx,
+    )
+    expect(n.textStyle).toBe('s1')
+    expect(ctx.globalVars.styles['s1']).toEqual({ fontFamily: 'Inter', textAlign: 'CENTER', lineHeightPx: 20 })
+  })
+
+  test('non-TEXT node is untouched', () => {
+    const ctx = freshContext()
+    const r: SimplifiedNode = { id: 'r', name: 'R', type: 'RECTANGLE' }
+    textExtractor({ type: 'RECTANGLE', characters: 'nope' }, r, ctx)
+    expect(r.text).toBeUndefined()
+    expect(r.textStyle).toBeUndefined()
+    expect(Object.keys(ctx.globalVars.styles)).toEqual([])
   })
 })
