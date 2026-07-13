@@ -55,6 +55,11 @@ function readToken(runtimeContext: PluginToolRuntimeContextLike): string | undef
   return runtimeContext.contextConfig.get('token')
 }
 
+function hasUsableToken(token: string | undefined): token is string {
+  if (token === undefined) return false
+  return token.split(',').some((t) => t.trim().length > 0)
+}
+
 function toImageFormat(value: string | undefined): FigmaImageFormat {
   if (value === 'svg') return 'svg'
   if (value === 'pdf') return 'pdf'
@@ -83,7 +88,7 @@ async function withFigmaGuards(
   }
 
   const token = readToken(runtimeContext)
-  if (token === undefined || httpFetch === undefined) {
+  if (!hasUsableToken(token) || httpFetch === undefined) {
     return { error: 'not_configured', message: 'Figma token is not configured' }
   }
 

@@ -9,6 +9,7 @@ import { layoutExtractor } from '../../plugins/mcp-figma/simplify-layout.js'
 import { textExtractor } from '../../plugins/mcp-figma/simplify-text.js'
 import type { SimplifiedNode, TraversalContext } from '../../plugins/mcp-figma/simplify-types.js'
 import { generateCSSShorthand, hasFlexLayout, isInAutoLayoutFlow } from '../../plugins/mcp-figma/simplify-util.js'
+import { simplifyFigmaResponse } from '../../plugins/mcp-figma/simplify.js'
 
 function freshContext(parent?: Record<string, unknown>): TraversalContext {
   return { globalVars: { styles: {} }, styleIndex: new Map<string, string>(), counter: { n: 0 }, parent }
@@ -183,5 +184,49 @@ describe('textExtractor + globalVars dedup', () => {
     expect(r.text).toBeUndefined()
     expect(r.textStyle).toBeUndefined()
     expect(Object.keys(ctx.globalVars.styles)).toEqual([])
+  })
+
+  test('style dedup is global across nested subtrees, not per-subtree', () => {
+    const shared = { fontFamily: 'Inter', fontSize: 14 }
+    const apiResponse = {
+      name: 'Doc',
+      document: {
+        children: [
+          {
+            id: '1',
+            name: 'A',
+            type: 'FRAME',
+            layoutMode: 'VERTICAL',
+            children: [
+              { id: '1a', name: 'T1', type: 'TEXT', characters: 'x', style: shared },
+              {
+                id: '1b',
+                name: 'B',
+                type: 'FRAME',
+                children: [{ id: '1b1', name: 'T2', type: 'TEXT', characters: 'y', style: shared }],
+              },
+            ],
+          },
+          { id: '2', name: 'T3', type: 'TEXT', characters: 'z', style: { fontFamily: 'Roboto', fontSize: 20 } },
+        ],
+      },
+    }
+
+    const out = simplifyFigmaResponse(apiResponse)
+
+    const frameA = out.nodes[0]
+    const frameB = frameA?.children?.[1]
+    const textT1 = frameA?.children?.[0]
+    const textT2 = frameB?.children?.[0]
+    const textT3 = out.nodes[1]
+
+    expect(textT1?.textStyle).toBe('s1')
+    expect(textT2?.textStyle).toBe('s1')
+    expect(textT3?.textStyle).toBe('s2')
+    expect(textT1?.textStyle).toBe(textT2?.textStyle)
+    expect(textT3?.textStyle).not.toBe(textT1?.textStyle)
+    expect(Object.keys(out.globalVars.styles)).toEqual(['s1', 's2'])
+    expect(out.globalVars.styles['s1']).toEqual(shared)
+    expect(out.globalVars.styles['s2']).toEqual({ fontFamily: 'Roboto', fontSize: 20 })
   })
 })

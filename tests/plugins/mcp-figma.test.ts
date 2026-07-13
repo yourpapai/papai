@@ -420,6 +420,21 @@ describe('mcp-figma plugin', () => {
     expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
   })
 
+  test('returns not_configured when the context token is empty or has no usable entries', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('figma_get_file')!
+    const options = createMockOptions()
+
+    const emptyResult = await tool.execute({ fileKey: 'abc' }, createMockRuntimeContext({ token: '' }), options)
+    expect(emptyResult).toEqual({ error: 'not_configured', message: 'Figma token is not configured' })
+
+    const blankPoolResult = await tool.execute({ fileKey: 'abc' }, createMockRuntimeContext({ token: ',,' }), options)
+    expect(blankPoolResult).toEqual({ error: 'not_configured', message: 'Figma token is not configured' })
+  })
+
   test('returns figma_error when httpFetch throws a non-abort error', async () => {
     const httpFetch = (): Promise<Response> => Promise.reject(new Error('Connection refused'))
 

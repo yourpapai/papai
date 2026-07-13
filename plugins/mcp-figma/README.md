@@ -84,7 +84,8 @@ including CSS-layout extraction and cross-node text-style dedup — see
   (`layoutMode`, alignment, padding, gap, wrap, relative position for
   non-auto-layout children), e.g.
   `display:flex;flex-direction:row;justify-content:center;gap:8px;padding:16px`
-  — omitted when the node has no layout-relevant properties;
+  — omitted when the node has no layout-relevant properties; `gap` and
+  `padding` values are rounded to 2 decimals;
 - `width`/`height` (rounded to 2 decimals) from `absoluteBoundingBox`, plus
   `layoutSizingHorizontal`/`layoutSizingVertical` when Figma reports them
   (`FIXED` sizing along an auto-layout axis also fixes the corresponding
@@ -114,11 +115,24 @@ Figma comments should account for this when granting access to the plugin.
 
 ## Deviations
 
-None of note against the reference `kiss`-derived Figma MCP implementation:
-output shape (CSS `layout` string + `globalVars.styles` text-style dedup)
-and token pooling/429 rotation (see above) both match it. `{ error:
-'rate_limited', retryAfterSec }` from papai's own per-actor rate limiter is
-still layered on top and is checked before any Figma API call is made.
+Output shape (CSS `layout` string + `globalVars.styles` text-style dedup)
+and token pooling/429 rotation (see above) match the reference
+`kiss`-derived Figma MCP implementation, with a few intentional
+divergences:
+
+- Traversal is synchronous — kiss yields via `setImmediate` every ~100
+  nodes. Fine for typical Figma documents, but a very large document will
+  block the event loop for the duration of the walk.
+- `layoutSizingHorizontal`/`layoutSizingVertical` (and `FIXED`-size
+  width/height) are carried for leaf children of auto-layout parents too,
+  not only for flex-container nodes as in kiss — a deliberate, more-useful
+  widening.
+- `gap` and `padding` values are rounded to 2 decimals (consistent with
+  width/height/left/top), which kiss does not do.
+
+`{ error: 'rate_limited', retryAfterSec }` from papai's own per-actor rate
+limiter is still layered on top and is checked before any Figma API call is
+made.
 
 ## Failure handling
 
