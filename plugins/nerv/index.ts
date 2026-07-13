@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { commandArgOf, handleBindCommand, parseBindPath } from './bind-command.js'
 import type { AdminConfigReader, HttpFetch } from './client.js'
 import { cancelCodingTaskTool, followupCodingTaskTool } from './event-tools.js'
 import { codingTaskStatusTool, createCodingTaskTool, listCodingTasksTool } from './tools.js'
@@ -97,11 +96,7 @@ const NERV_PROMPT_FRAGMENT =
 const NERV_COMMAND_TEXT =
   'nerv supervised coding tasks are available. Ask me in natural language, e.g. "supervise an MR on demo to add ' +
   'retries and keep it green", "what’s the status of my coding task?", or "tell the task to address the review ' +
-  'comments".\n\n' +
-  '/nerv bind <projectPath> (admin only) binds this channel as the destination for that nerv project’s ' +
-  'forge-triggered (assign-the-bot) notifications.'
-
-const BIND_USAGE_TEXT = 'Usage: /nerv bind <projectPath>'
+  'comments". Manage which repos a channel supervises in Settings → Supervised Projects.'
 
 const factory = (): { activate(ctx: unknown): void } => ({
   activate(rawCtx: unknown): void {
@@ -116,19 +111,10 @@ const factory = (): { activate(ctx: unknown): void } => ({
       name: 'nerv',
       description: 'About nerv supervised coding tasks',
       execute: async (
-        message: unknown,
+        _message: unknown,
         reply: { text(s: string): Promise<void> | void },
-        auth: unknown,
+        _auth: unknown,
       ): Promise<void> => {
-        const parsed = parseBindPath(commandArgOf(message))
-        if (parsed.kind === 'path') {
-          await handleBindCommand(reply, auth, ctx.adminConfig, ctx.httpFetch, parsed.path)
-          return
-        }
-        if (parsed.kind === 'usage-error') {
-          await reply.text(BIND_USAGE_TEXT)
-          return
-        }
         await reply.text(NERV_COMMAND_TEXT)
       },
     })
