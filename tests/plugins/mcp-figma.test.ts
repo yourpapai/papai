@@ -71,20 +71,21 @@ describe('mcp-figma simplify', () => {
           id: '1:1',
           name: 'Frame',
           type: 'FRAME',
+          layout: 'display:flex;flex-direction:column',
           width: 100.13,
           height: 50,
-          layoutMode: 'VERTICAL',
           children: [
             {
               id: '1:2',
               name: 'Label',
               type: 'TEXT',
               text: 'Hi',
-              textStyle: { fontFamily: 'Inter', fontSize: 14, fontWeight: 600 },
+              textStyle: 's1',
             },
           ],
         },
       ],
+      globalVars: { styles: { s1: { fontFamily: 'Inter', fontSize: 14, fontWeight: 600, lineHeightPx: 20 } } },
     })
   })
 
@@ -98,17 +99,18 @@ describe('mcp-figma simplify', () => {
     expect(simplifyFigmaResponse(apiResponse)).toEqual({
       name: '',
       nodes: [{ id: '1:1', name: 'N', type: 'IMAGE-SVG' }],
+      globalVars: { styles: {} },
     })
   })
 
   test('non-record input yields empty result', () => {
-    expect(simplifyFigmaResponse(null)).toEqual({ name: '', nodes: [] })
-    expect(simplifyFigmaResponse('x')).toEqual({ name: '', nodes: [] })
-    expect(simplifyFigmaResponse(42)).toEqual({ name: '', nodes: [] })
+    expect(simplifyFigmaResponse(null)).toEqual({ name: '', nodes: [], globalVars: { styles: {} } })
+    expect(simplifyFigmaResponse('x')).toEqual({ name: '', nodes: [], globalVars: { styles: {} } })
+    expect(simplifyFigmaResponse(42)).toEqual({ name: '', nodes: [], globalVars: { styles: {} } })
   })
 
   test('GetFileNodes shape with empty nodes map yields empty result', () => {
-    expect(simplifyFigmaResponse({ nodes: {} })).toEqual({ name: '', nodes: [] })
+    expect(simplifyFigmaResponse({ nodes: {} })).toEqual({ name: '', nodes: [], globalVars: { styles: {} } })
   })
 
   test('parseIds splits on commas/semicolons, trims, strips leading I, drops empties', () => {
@@ -136,6 +138,7 @@ describe('FigmaClient', () => {
     expect(result).toEqual({
       name: 'Doc',
       nodes: [{ id: '1:1', name: 'Frame', type: 'FRAME' }],
+      globalVars: { styles: {} },
     })
   })
 
