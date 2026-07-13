@@ -8,21 +8,37 @@ import { execFile, execFileSync } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
 import { createSocket } from 'node:dgram'
 import {
+  accessSync,
   closeSync,
   chmodSync,
   constants,
   copyFileSync,
+  createReadStream,
   createWriteStream,
+  glob,
+  globSync,
+  lstatSync,
+  open as openCallback,
   openSync,
+  readFile as readFileCallback,
+  readFileSync,
+  readdirSync,
   rmSync,
+  statSync,
+  statfs as statfsCallback,
+  statfsSync,
   symlinkSync,
   truncateSync,
+  unwatchFile,
+  watch,
+  watchFile,
   writeFile as writeFileCallback,
   writeFileSync,
   writeSync,
 } from 'node:fs'
-import { open, writeFile } from 'node:fs/promises'
+import { access, glob as globPromise, open, readFile, statfs, watch as watchPromise, writeFile } from 'node:fs/promises'
 import { connect, createServer, Socket } from 'node:net'
+import nodePath from 'node:path'
 import { clearInterval as clearNodeInterval, setInterval as setNodeInterval } from 'node:timers'
 import {
   scheduler as promiseScheduler,
@@ -144,6 +160,154 @@ scenario('rejects Bun.file writer outside root', ({ world }) => {
 scenario('rejects Bun.file delete outside root', async ({ world }) => {
   phase(world)
   await Bun.file(`${world.tempRoot}/../delete.txt`).delete()
+})
+
+scenario('rejects Bun.file content reads outside root', async ({ world }) => {
+  phase(world)
+  await Bun.file(nodePath.join(world.tempRoot, '..', 'outside-read.txt')).text()
+})
+
+scenario('rejects Bun.file streams outside root', ({ world }) => {
+  phase(world)
+  Bun.file(nodePath.join(world.tempRoot, '..', 'outside-read.txt')).stream()
+})
+
+scenario('rejects Bun.file slices outside root', async ({ world }) => {
+  phase(world)
+  await Bun.file(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+    .slice()
+    .text()
+})
+
+scenario('rejects fs sync reads outside root', ({ world }) => {
+  phase(world)
+  readFileSync(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects fs callback reads outside root', ({ world }) => {
+  phase(world)
+  readFileCallback(nodePath.join(world.tempRoot, '..', 'outside-read.txt'), () => undefined)
+})
+
+scenario('rejects fs promise reads outside root', async ({ world }) => {
+  phase(world)
+  await readFile(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects fs metadata reads outside root', ({ world }) => {
+  phase(world)
+  statSync(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects fs statfs reads outside root', ({ world }) => {
+  phase(world)
+  statfsSync(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects fs promise statfs reads outside root', async ({ world }) => {
+  phase(world)
+  await statfs(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects fs callback statfs reads from HOME', ({ world }) => {
+  phase(world)
+  const home = process.env['HOME']
+  if (home === undefined) throw new Error('HOME is unavailable')
+  statfsCallback(home, () => undefined)
+})
+
+scenario('rejects fs read streams outside root', ({ world }) => {
+  phase(world)
+  createReadStream(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects fs glob traversal outside root', ({ world }) => {
+  phase(world)
+  globSync('../*')
+})
+
+scenario('rejects fs glob dynamic symlink traversal', ({ world }) => {
+  phase(world)
+  symlinkSync('/etc', nodePath.join(world.tempRoot, 'link'))
+  globSync('*/*', { cwd: world.tempRoot })
+})
+
+scenario('rejects fs glob bracketed symlink traversal', ({ world }) => {
+  phase(world)
+  symlinkSync('/etc', nodePath.join(world.tempRoot, 'link'))
+  globSync('[l]ink/*', { cwd: world.tempRoot })
+})
+
+scenario('rejects fs glob terminal recursive symlink traversal', ({ world }) => {
+  phase(world)
+  symlinkSync('/etc', nodePath.join(world.tempRoot, 'link'))
+  globSync('**', { cwd: world.tempRoot })
+})
+
+scenario('rejects fs glob external cwd', ({ world }) => {
+  phase(world)
+  globSync('../*', { cwd: '/etc' })
+})
+
+scenario('rejects fs callback glob external cwd', ({ world }) => {
+  phase(world)
+  glob('../*', { cwd: '/etc' }, (): void => undefined)
+})
+
+scenario('rejects fs promise glob external cwd', ({ world }) => {
+  phase(world)
+  globPromise('../*', { cwd: '/etc' })
+})
+
+scenario('rejects fs watch outside root', ({ world }) => {
+  phase(world)
+  watch(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects fs watchFile from HOME', ({ world }) => {
+  phase(world)
+  const home = process.env['HOME']
+  if (home === undefined) throw new Error('HOME is unavailable')
+  watchFile(home, (): void => undefined)
+})
+
+scenario('rejects fs promise watch outside root', ({ world }) => {
+  phase(world)
+  watchPromise(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects read-only fs open outside root', ({ world }) => {
+  phase(world)
+  openSync(nodePath.join(world.tempRoot, '..', 'outside-read.txt'), 'r')
+})
+
+scenario('rejects default fs open outside root', ({ world }) => {
+  phase(world)
+  invoke(openSync, [nodePath.join(world.tempRoot, '..', 'outside-read.txt')])
+})
+
+scenario('rejects default fs callback open outside root', ({ world }) => {
+  phase(world)
+  invoke(openCallback, [nodePath.join(world.tempRoot, '..', 'outside-read.txt'), (): void => undefined])
+})
+
+scenario('rejects default fs promise open outside root', async ({ world }) => {
+  phase(world)
+  await open(nodePath.join(world.tempRoot, '..', 'outside-read.txt'))
+})
+
+scenario('rejects reads from the execution-root parent', ({ world }) => {
+  phase(world)
+  const executionRoot = process.env['PAPAI_STORY_EXECUTION_ROOT']
+  if (executionRoot === undefined) throw new Error('story execution root is unavailable')
+  readFileSync(nodePath.join(executionRoot, '..', 'live-root-sentinel.txt'))
+})
+
+scenario('rejects reads from HOME', ({ world }) => {
+  phase(world)
+  const home = process.env['HOME']
+  if (home === undefined) throw new Error('HOME is unavailable')
+  lstatSync(nodePath.join(home, 'papai-story-home-sentinel'))
 })
 
 scenario('rejects fs write outside root', ({ world }) => {
@@ -316,9 +480,81 @@ scenario('allows Bun.file writer inside root', async ({ world }) => {
   expect(await Bun.file(path).text()).toBe('ok')
 })
 
-scenario('allows Bun.file outside-root reads', async ({ world }) => {
+scenario('allows snapshot and scoped-temp reads', async ({ world }) => {
   phase(world)
-  expect(await Bun.file('package.json').text()).toContain('"name"')
+  expect(readFileSync('package.json', 'utf8')).toContain('"name"')
+  expect(readdirSync('.')).toContain('package.json')
+  expect(statSync('package.json').isFile()).toBe(true)
+  expect(accessSync('package.json')).toBeNull()
+  expect(await readFile('package.json', 'utf8')).toContain('"name"')
+  expect(await access('package.json')).toBeNull()
+  let streamed = ''
+  for await (const chunk of createReadStream('package.json')) streamed += String(chunk)
+  expect(streamed).toContain('"name"')
+  expect(await Bun.file('package.json').json()).toHaveProperty('name')
+  expect(await new Response(Bun.file('package.json').stream()).text()).toContain('"name"')
+  expect(await Bun.file('package.json').slice(0, 16).text()).toContain('{')
+  expect(globSync('package.json')).toContain('package.json')
+  expect(globSync('*.json')).toContain('package.json')
+  const terminalGlob = nodePath.join(world.tempRoot, 'terminal-glob.txt')
+  writeFileSync(terminalGlob, 'ok')
+  expect(globSync('*.txt', { cwd: world.tempRoot })).toContain('terminal-glob.txt')
+  await new Promise<void>((resolve, reject) => {
+    glob('package.json', (error, matches): void => {
+      if (error !== null) {
+        reject(error)
+        return
+      }
+      expect(matches).toContain('package.json')
+      resolve()
+    })
+  })
+  const globbed = await Array.fromAsync(globPromise('package.json'))
+  expect(globbed).toContain('package.json')
+  const watcher = watch('package.json')
+  watcher.close()
+  watchFile('package.json', (): void => undefined)
+  unwatchFile('package.json')
+  const promisedWatcher = watchPromise('package.json')
+  await promisedWatcher.return?.()
+  expect(statfsSync('package.json').bsize).toBeGreaterThan(0)
+  expect((await statfs('package.json')).bsize).toBeGreaterThan(0)
+  await new Promise<void>((resolve, reject) => {
+    statfsCallback('package.json', (error, stats) => {
+      if (error !== null) return reject(error)
+      expect(stats?.bsize).toBeGreaterThan(0)
+      resolve()
+    })
+  })
+  const syncOpen = invoke(openSync, ['package.json'])
+  if (typeof syncOpen !== 'number') throw new Error('default sync open did not return a descriptor')
+  closeSync(syncOpen)
+  await new Promise<void>((resolve, reject) => {
+    invoke(openCallback, [
+      'package.json',
+      (error: unknown, fd: unknown): void => {
+        if (error !== null) {
+          const message =
+            error instanceof Error ? error.message : typeof error === 'string' ? error : 'default callback open failed'
+          reject(new Error(message))
+          return
+        }
+        if (typeof fd !== 'number') {
+          reject(new Error('default callback open did not return a descriptor'))
+          return
+        }
+        closeSync(fd)
+        resolve()
+      },
+    ])
+  })
+  const promiseOpen = await open('package.json')
+  await promiseOpen.close()
+  const file = nodePath.join(world.tempRoot, 'readable.txt')
+  writeFileSync(file, 'ok')
+  expect(await Bun.file(file).text()).toBe('ok')
+  expect(new TextDecoder().decode(await Bun.file(file).arrayBuffer())).toBe('ok')
+  expect(new TextDecoder().decode(await Bun.file(file).bytes())).toBe('ok')
 })
 
 scenario('allows fs metadata inside root', ({ world }) => {
@@ -445,6 +681,7 @@ scenario('restores mocked builtin module identities', async ({ world }) => {
   const [restoredTimers, restoredFs] = await Promise.all([import('node:timers'), import('node:fs')])
   expect(restoredTimers.setInterval).toBe(globalThis.setInterval)
   expect(restoredFs.writeFileSync).toBe((await import('node:fs')).writeFileSync)
+  expect(restoredFs.readFileSync((await import('node:os')).devNull).byteLength).toBe(0)
 })
 
 scenario('uses sanitized environment', () => {
