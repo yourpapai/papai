@@ -85,6 +85,18 @@
   async function save(): Promise<void> {
     error = null
     status = null
+
+    const trimmedBudget = costBudget.trim()
+    let costBudgetUsd: number | null = null
+    if (trimmedBudget !== '') {
+      const parsed = Number(trimmedBudget)
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        error = 'Cost budget must be a number.'
+        return
+      }
+      costBudgetUsd = parsed
+    }
+
     saving = true
     try {
       await saveSupervisedProject({
@@ -96,7 +108,7 @@
         })),
         autoReview,
         selfReviewEnabled,
-        costBudgetUsd: costBudget.trim() === '' ? null : Number(costBudget),
+        costBudgetUsd,
       })
       status = 'Saved.'
       await load(contextId)

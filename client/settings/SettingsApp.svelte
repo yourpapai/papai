@@ -60,6 +60,7 @@
     'coding-mcp',
     'code-host',
     'repos',
+    'supervised-projects',
     'mcp',
     'plugins',
   ]
@@ -131,6 +132,7 @@
           { id: 'coding-mcp', label: 'Coding MCP servers' },
           { id: 'code-host', label: 'Code host' },
           { id: 'repos', label: 'Repositories' },
+          { id: 'supervised-projects', label: 'Supervised Projects' },
           { id: 'mcp', label: 'MCP' },
           { id: 'plugins', label: 'Plugins' },
         ],
