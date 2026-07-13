@@ -167,6 +167,17 @@ async function runtimeRequest(
   return response
 }
 
+async function createSettingsSession(world: ScenarioWorld, user: UserHandle): Promise<SettingsSessionHandle> {
+  const principal = { platformInstanceId: user.platformInstanceId, platformUserId: user.id }
+  const code = world.fixtures.issueSettingsAuthCode(principal, world.clock.now().getTime())
+  const response = await runtimeRequest(world, '/settings/auth/exchange', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+  return world.fixtures.settingsSessions.parseExchange(principal, response)
+}
+
 function tracedAssertion(world: ScenarioWorld, assertion: () => void): void {
   try {
     assertion()
@@ -241,16 +252,9 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
         taskInstanceId: taskInstance.id,
       })
     },
-    async settingsSession(user): Promise<SettingsSessionHandle> {
+    settingsSession(user): Promise<SettingsSessionHandle> {
       prerequisite('given.settingsSession')
-      const principal = { platformInstanceId: user.platformInstanceId, platformUserId: user.id }
-      const code = world.fixtures.issueSettingsAuthCode(principal, world.clock.now().getTime())
-      const response = await runtimeRequest(world, '/settings/auth/exchange', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      })
-      return world.fixtures.settingsSessions.parseExchange(principal, response)
+      return createSettingsSession(world, user)
     },
     plugin(plugin): PluginHandle {
       prerequisite('given.plugin')
@@ -294,16 +298,9 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
       await world.runtime.dispatchInteraction(interactionForContext(user, context, callbackData))
       await world.settle()
     },
-    async settingsSession(user): Promise<SettingsSessionHandle> {
+    settingsSession(user): Promise<SettingsSessionHandle> {
       world.events.setPhase('when.settingsSession')
-      const principal = { platformInstanceId: user.platformInstanceId, platformUserId: user.id }
-      const code = world.fixtures.issueSettingsAuthCode(principal, world.clock.now().getTime())
-      const response = await runtimeRequest(world, '/settings/auth/exchange', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      })
-      return world.fixtures.settingsSessions.parseExchange(principal, response)
+      return createSettingsSession(world, user)
     },
     request(path, init): Promise<Response> {
       world.events.setPhase('when.request')

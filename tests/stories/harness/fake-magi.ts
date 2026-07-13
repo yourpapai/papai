@@ -178,6 +178,9 @@ export function createFakeMagi(options: FakeMagiOptions): FakeMagi {
       })
     },
     expectStartFailure(failure): void {
+      if (failure.status >= 200 && failure.status < 300) {
+        throw new Error('Fake magi start failure must use a non-2xx status')
+      }
       options.http.expect({ method: 'POST', url: `${baseUrl}/sessions` }, async (request) => {
         authorized(request)
         assertJsonContentType(request)

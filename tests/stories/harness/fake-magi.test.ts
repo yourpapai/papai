@@ -64,6 +64,14 @@ function rejectedStartMessage(body: unknown): Promise<string> {
 }
 
 describe('fake magi', () => {
+  test('rejects successful statuses declared for a start failure', () => {
+    const { magi } = setup()
+
+    expect(() => magi.expectStartFailure({ status: 202, body: { error: 'not a failure' } })).toThrow(
+      'Fake magi start failure must use a non-2xx status',
+    )
+  })
+
   test('serves agents, session creation, filtered listing, and status in exact order', async () => {
     const { events, http, magi } = setup()
     magi.expectAgents([{ id: 'claude-code-acp', name: 'Claude' }])
