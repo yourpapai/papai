@@ -7,18 +7,14 @@ import { tool, type ToolSet } from 'ai'
 
 import { logger } from '../logger.js'
 import { moduleEligibilityRegistry } from '../ports/module-eligibility.js'
-import { moduleToolRegistry, type ModuleToolRuntimeContext } from '../ports/module-tools.js'
+import { moduleToolRegistry, namespacedModuleToolName, type ModuleToolRuntimeContext } from '../ports/module-tools.js'
 import { toolGateRegistry } from '../ports/tool-gate.js'
 import { toolCapabilityCatalog, type ToolCapabilityCatalog } from '../runtime/capability-catalog.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
 
 const log = logger.child({ scope: 'tools:module' })
 
-const sanitizeModuleId = (moduleId: string): string => moduleId.replace(/-/gu, '_')
-
-/** Namespace a module tool name: `module_<sanitized-id>__<tool>` (parallel to plugin tools). */
-export const namespacedModuleToolName = (moduleId: string, toolName: string): string =>
-  `module_${sanitizeModuleId(moduleId)}__${toolName}`
+export { namespacedModuleToolName } from '../ports/module-tools.js'
 
 /**
  * Assemble the tools contributed by trusted modules into a `ToolSet`, namespaced and wrapped like

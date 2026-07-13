@@ -33,6 +33,14 @@ describe('ModuleToolRegistry', () => {
     expect(reg.list()).toEqual([])
   })
 
+  test('orders a module tool canonical preference name before its deprecated wire name', () => {
+    const reg = createModuleToolRegistry()
+    reg.register('example', [{ ...fakeTool('run'), legacyWireName: 'plugin_legacy__run' }])
+
+    expect(reg.equivalentPreferenceNames('plugin_legacy__run')).toEqual(['module_example__run', 'plugin_legacy__run'])
+    expect(reg.equivalentPreferenceNames('module_example__run')).toEqual(['module_example__run', 'plugin_legacy__run'])
+  })
+
   test('exposes a shared singleton', () => {
     expect(typeof moduleToolRegistry.list).toBe('function')
   })

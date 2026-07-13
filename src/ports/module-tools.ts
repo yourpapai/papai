@@ -29,6 +29,12 @@ export type ModuleTool = {
   execute: (input: unknown, runtimeContext: ModuleToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
 }
 
+const sanitizeModuleId = (moduleId: string): string => moduleId.replace(/-/gu, '_')
+
+/** Stable wire name for a tool contributed by a trusted module. */
+export const namespacedModuleToolName = (moduleId: string, toolName: string): string =>
+  `module_${sanitizeModuleId(moduleId)}__${toolName}`
+
 /** Process-wide registry of tools contributed by trusted modules, populated at the composition
  * root from each module's `tools`. Read by `buildModuleToolSet` at tool assembly.
  *
@@ -37,6 +43,12 @@ export type ModuleTool = {
 export interface ModuleToolRegistry {
   register(moduleId: string, tools: readonly ModuleTool[]): void
   list(): readonly { moduleId: string; tool: ModuleTool }[]
+  /**
+   * All persisted-preference names for a contributed tool, ordered with its current wire name
+   * first. This lets the preference boundary honor deprecated wire names without knowing any
+   * module-specific namespace.
+   */
+  equivalentPreferenceNames(toolName: string): readonly string[]
   clear(): void
 }
 
@@ -48,6 +60,15 @@ export function createModuleToolRegistry(): ModuleToolRegistry {
       for (const tool of tools) entries.push({ moduleId, tool })
     },
     list: () => entries,
+    equivalentPreferenceNames: (toolName) => {
+      const entry = entries.find(({ moduleId, tool }) => {
+        const canonicalName = namespacedModuleToolName(moduleId, tool.name)
+        return canonicalName === toolName || tool.legacyWireName === toolName
+      })
+      if (entry === undefined) return [toolName]
+      const canonicalName = namespacedModuleToolName(entry.moduleId, entry.tool.name)
+      return entry.tool.legacyWireName === undefined ? [canonicalName] : [canonicalName, entry.tool.legacyWireName]
+    },
     clear: () => {
       entries.length = 0
     },

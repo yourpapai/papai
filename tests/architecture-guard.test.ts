@@ -36,6 +36,11 @@ describe('architecture guard: core never names a feature', () => {
     expect(/coding-credentials|resolveCodingGuardrails/u.test(text)).toBe(false)
   })
 
+  test('tool-preferences.ts delegates deprecated tool names to module metadata', () => {
+    const source = readFileSync('src/tools/tool-preferences.ts', 'utf8')
+    expect(FEATURE_NAMES.test(source)).toBe(false)
+  })
+
   test('src/index.ts does not import the membership feature directly', () => {
     const source = readFileSync('src/index.ts', 'utf8')
     expect(source).not.toContain('providers/membership')
