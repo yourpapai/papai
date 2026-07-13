@@ -403,16 +403,16 @@ describe('fake magi', () => {
     ).toContain('rejected POST /sessions')
   })
 
-  test('requires declared PR and forge-token fields without exposing their values', async () => {
+  test('requires declared PR and exact forge-token fields without exposing their values', async () => {
     const { events, http, magi } = setup()
-    magi.expectStartSession({ id: 'session-pr', expected: { prNumber: 42, hasForgeToken: true } })
+    magi.expectStartSession({ id: 'session-pr', expected: { prNumber: 42, forgeToken: 'forge-secret' } })
 
     expect(
       await causeMessage(
         http.fetch(`${BASE_URL}/sessions`, {
           method: 'POST',
           headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ ...validStartBody(), prNumber: 42 }),
+          body: JSON.stringify({ ...validStartBody(), forgeToken: 'wrong-forge-secret', prNumber: 42 }),
         }),
       ),
     ).toContain('forgeToken')

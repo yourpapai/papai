@@ -73,17 +73,9 @@ scenario('starts a coding session through the real capability and tool loop', as
     expect.objectContaining({
       agent: 'claude-code-acp',
       contextId,
-      prompt: 'Add health check',
-      environmentNames: ['ANTHROPIC_API_KEY'],
-      forgeIncluded: false,
-      projectSpec: {
-        name: 'papai',
-        repoUrl: 'https://github.com/acme/papai.git',
-        baseBranch: 'main',
-        permissionPreset: 'cautious',
-        agent: 'claude',
-        providerHost: 'api.anthropic.com',
-      },
+      hasPr: false,
+      project: 'papai',
+      status: 202,
     }),
   )
 })

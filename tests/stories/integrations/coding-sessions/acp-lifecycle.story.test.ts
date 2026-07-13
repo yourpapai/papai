@@ -9,6 +9,7 @@ import { toScopedContextId } from '../../../../src/chat/scoped-context.js'
 import { updateCodingCredentials } from '../../../../src/coding-credentials/store.js'
 import { upsertRepo } from '../../../../src/coding-repos/store.js'
 import { getCodingSessionRecord, setCodingSessionRecord } from '../../../../src/coding-sessions/store.js'
+import { kvList } from '../../../../src/plugins/store.js'
 import { createFakeMagi } from '../../harness/fake-magi.js'
 import { scenario } from '../../harness/scenario.js'
 import { answer, callCapability, promptTextFingerprint } from '../../harness/scripted-llm.js'
@@ -82,7 +83,7 @@ scenario(
         prompt: 'Review the failing tests',
         agent: 'claude',
         prNumber: 42,
-        hasForgeToken: true,
+        forgeToken: FORGE_TOKEN,
       },
     })
     given.llm([
@@ -119,6 +120,7 @@ scenario(
     configureProject(contextId, alice.id, { repoUrl: 'https://git.acme.invalid/platform/papai.git' })
     configureCredentials(contextId, alice.id)
     createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
+    const recordCountBefore = kvList('acp', contextId, 'session:').length
     given.llm([
       callCapability('coding-session.start', { project: 'papai', prompt: 'Add a health check' }),
       answer('Configure the self-hosted code host before starting a session.'),
@@ -127,7 +129,7 @@ scenario(
     await when.message(alice, dm, 'Add a health check')
 
     then.replyTo(alice).equals('Configure the self-hosted code host before starting a session.')
-    expect(getCodingSessionRecord(contextId, 'self-hosted-session')).toBeNull()
+    expect(kvList('acp', contextId, 'session:')).toHaveLength(recordCountBefore)
     expect(world.events.all().some(({ kind }) => kind === 'http.request')).toBe(false)
     expectTraceRedacted(JSON.stringify(world.events.all()))
   },
@@ -232,12 +234,13 @@ scenario(
       magiToken: MAGI_TOKEN,
       updatedBy: alice.id,
     })
-    setCodingSessionRecord(contextId, 'missing-session', {
+    const recordBefore = {
       project: 'papai',
       title: 'Existing local history',
       createdAt: '2026-01-01T00:00:00.000Z',
       status: 'active',
-    })
+    }
+    setCodingSessionRecord(contextId, 'missing-session', recordBefore)
     const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     magi.expectSession('missing-session', { error: 'not found' }, { status: 404 })
     given.llm([
@@ -248,7 +251,7 @@ scenario(
     await when.message(alice, dm, 'What is the status of missing-session?')
 
     then.replyTo(alice).equals('That coding session no longer exists in Magi.')
-    expect(getCodingSessionRecord(contextId, 'missing-session')).toMatchObject({ status: 'active' })
+    expect(getCodingSessionRecord(contextId, 'missing-session')).toEqual(recordBefore)
     expect(world.events.all().some(({ kind }) => kind === 'magi.session.status')).toBe(true)
     expectTraceRedacted(JSON.stringify(world.events.all()))
   },
