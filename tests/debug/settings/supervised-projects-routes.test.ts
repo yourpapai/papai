@@ -91,4 +91,102 @@ describe('settings supervised-projects routes', () => {
     )
     expect(res.status).toBe(502)
   })
+
+  test('PUT to unmanageable context is forbidden and does not call nerv', async () => {
+    setPluginAdminConfig('nerv', 'nerv_base_url', 'http://nerv:8080', 'admin-1')
+    setPluginAdminConfig('nerv', 'nerv_token', 'tok', 'admin-1')
+    let calls = 0
+    setMockFetch(() => {
+      calls++
+      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    })
+    const url = new URL(PATH)
+    const res = await handleSupervisedProjectsRoutes(
+      new Request(url, {
+        method: 'PUT',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contextId: 'pi:telegram:ctx:stranger',
+          repositories: [{ projectPath: 'g/r', repoUrl: 'http://f/g/r.git' }],
+        }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(403)
+    expect(calls).toBe(0)
+  })
+
+  test('DELETE proxies to nerv and forwards status+data', async () => {
+    setPluginAdminConfig('nerv', 'nerv_base_url', 'http://nerv:8080', 'admin-1')
+    setPluginAdminConfig('nerv', 'nerv_token', 'tok', 'admin-1')
+    const captured: string[] = []
+    setMockFetch((fetchUrl) => {
+      captured.push(fetchUrl)
+      return Promise.resolve(new Response(JSON.stringify({ ok: true, deleted: true }), { status: 200 }))
+    })
+    const url = new URL(PATH)
+    const res = await handleSupervisedProjectsRoutes(
+      new Request(url, {
+        method: 'DELETE',
+        headers: authHeaders(adminSession, true),
+      }),
+      url,
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, deleted: true })
+    expect(captured[0]).toContain('/projects/self?contextId=')
+  })
+
+  test('PUT with invalid body returns 422 and does not call nerv', async () => {
+    setPluginAdminConfig('nerv', 'nerv_base_url', 'http://nerv:8080', 'admin-1')
+    setPluginAdminConfig('nerv', 'nerv_token', 'tok', 'admin-1')
+    let calls = 0
+    setMockFetch(() => {
+      calls++
+      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    })
+    const url = new URL(PATH)
+    const res = await handleSupervisedProjectsRoutes(
+      new Request(url, {
+        method: 'PUT',
+        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repositories: 'nope' }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({ error: 'invalid request' })
+    expect(calls).toBe(0)
+  })
+
+  test('PUT without CSRF returns 403 and does not call nerv', async () => {
+    setPluginAdminConfig('nerv', 'nerv_base_url', 'http://nerv:8080', 'admin-1')
+    setPluginAdminConfig('nerv', 'nerv_token', 'tok', 'admin-1')
+    let calls = 0
+    setMockFetch(() => {
+      calls++
+      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    })
+    const url = new URL(PATH)
+    const res = await handleSupervisedProjectsRoutes(
+      new Request(url, {
+        method: 'PUT',
+        headers: { ...authHeaders(adminSession), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repositories: [{ projectPath: 'g/r', repoUrl: 'http://f/g/r.git' }] }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(403)
+    expect(calls).toBe(0)
+  })
+
+  test('GET returns 502 nerv_auth_failed when nerv responds 401', async () => {
+    setPluginAdminConfig('nerv', 'nerv_base_url', 'http://nerv:8080', 'admin-1')
+    setPluginAdminConfig('nerv', 'nerv_token', 'tok', 'admin-1')
+    setMockFetch(() => Promise.resolve(new Response('', { status: 401 })))
+    const url = new URL(PATH)
+    const res = await handleSupervisedProjectsRoutes(new Request(url, { headers: authHeaders(adminSession) }), url)
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: 'nerv_auth_failed' })
+  })
 })

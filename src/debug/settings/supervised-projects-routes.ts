@@ -19,6 +19,10 @@ const RepoSchema = z
   .object({ projectPath: z.string(), repoUrl: z.string().optional(), baseBranch: z.string().optional() })
   .strict()
 
+// Content validation of the repo list (non-empty, repoUrl derivation, projectPath
+// uniqueness, etc.) is intentionally deferred to nerv's PUT /projects/self — this
+// schema only validates shape so we can proxy the request, so it's deliberately
+// looser than nerv's own validation (e.g. no `.min(1)` on `repositories` here).
 const PutSchema = z
   .object({
     contextId: z.string().optional(),
@@ -34,6 +38,9 @@ function mapResult(result: NervAdminResult): Response {
     if (result.reason === 'not_configured') return settingsJson(422, { error: 'nerv_not_configured' })
     return settingsJson(502, { error: 'nerv_unreachable' })
   }
+  // A 401/403 from nerv means papai's configured nerv_token is invalid — surface it as a
+  // deployment/config failure, not as a papai-session auth error (which a bare 401 would look like).
+  if (result.status === 401 || result.status === 403) return settingsJson(502, { error: 'nerv_auth_failed' })
   return settingsJson(result.status, result.data)
 }
 
