@@ -211,8 +211,47 @@ const QUALIFICATION_STORY_IDS: Partial<Record<CatalogScenarioId, NonEmptyReadonl
   'SCN-coding-acp-start-fresh': [
     'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-start-fresh: starts a configured session through the real ACP tool loop',
   ],
+  'SCN-coding-acp-start-on-pr': [
+    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-start-on-pr: starts a configured session with PR and forge token',
+  ],
+  'SCN-coding-acp-cautious-permission-roundtrip': [
+    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-cautious-permission-roundtrip: resolves matching cautious decisions and leaves empty queues untouched',
+  ],
+  'SCN-coding-acp-list-sessions': [
+    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-sessions: returns only sessions known to this chat',
+  ],
+  'SCN-coding-acp-session-status': [
+    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-session-status: preserves a declared missing-session response without local mutation',
+  ],
+  'SCN-coding-acp-list-projects': [
+    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-projects: lists the local repository catalogue without Magi',
+  ],
+  'SCN-coding-acp-list-agents': [
+    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-agents: gets available agents through guarded Magi HTTP',
+  ],
+  'SCN-coding-acp-finish-push': [
+    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-finish-push: pushes with the exact requested finish payload',
+  ],
+  'SCN-coding-acp-finish-pr': [
+    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-finish-pr: opens a PR with the exact requested title and body',
+  ],
+  'SCN-coding-acp-cancel': [
+    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-cancel: cancels exactly the selected coding session',
+  ],
+  'SCN-coding-acp-continue-followup': [
+    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-continue-followup: continues a locally known session and records its child',
+  ],
+  'SCN-coding-acp-continue-by-pr': [
+    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-continue-by-pr: follows up only the locally known matching PR session',
+  ],
+  'SCN-coding-acp-mcp-session': [
+    'tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#SCN-coding-acp-mcp-session: starts a session with an exact configured MCP upstream and credential map',
+  ],
   'SCN-coding-acp-not-configured': [
     'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-not-configured: refuses an unconfigured start without creating a session',
+  ],
+  'SCN-coding-acp-self-hosted-forge-preflight': [
+    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-self-hosted-forge-preflight: refuses a self-hosted repository without forge settings',
   ],
   'SCN-coding-acp-whomayuse-denied': [
     'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-whomayuse-denied: hides session start from an operator-denied member',
