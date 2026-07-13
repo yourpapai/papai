@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { subscribeCountForTest } from '../../../src/debug/event-bus.js'
 import { taskTrackerModule } from '../../../src/modules/task-tracker/module.js'
 
 describe('task-tracker module', () => {
@@ -21,5 +22,15 @@ describe('task-tracker module', () => {
 
   test('has an onActivate hook', () => {
     expect(typeof taskTrackerModule.onActivate).toBe('function')
+  })
+
+  test('removes its membership subscriber when runtime state is reset', () => {
+    const baseline = subscribeCountForTest()
+
+    void taskTrackerModule.onActivate?.()
+
+    expect(subscribeCountForTest()).toBe(baseline + 1)
+    taskTrackerModule.resetRuntime?.()
+    expect(subscribeCountForTest()).toBe(baseline)
   })
 })

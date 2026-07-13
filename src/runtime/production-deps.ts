@@ -21,7 +21,6 @@ import { logger } from '../logger.js'
 import { cancelAndDrainPendingMemoryCaptures } from '../long-term-memory/capture-debounce.js'
 import { initializeMessageCache } from '../message-cache/index.js'
 import { flushOnShutdown } from '../message-queue/index.js'
-import { deactivateAllPlugins } from '../plugins/loader.js'
 import type { ProviderRuntimeDeps } from '../plugins/provider-runtime.js'
 import {
   defaultMembershipDeps,
@@ -34,7 +33,11 @@ import { missingSystemConfigKeys, seedSystemConfigFromEnv } from '../system-conf
 import { initUsageRecorder } from '../usage/index.js'
 import { toolCapabilityCatalog } from './capability-catalog.js'
 import type { ProductionBackgroundHandle } from './production-background.js'
-import { startProductionExtensions, type ProductionExtensionState } from './production-extensions.js'
+import {
+  startProductionExtensions,
+  stopProductionExtensions,
+  type ProductionExtensionState,
+} from './production-extensions.js'
 import type { PapaiRuntimeDeps, PartialRuntimeDeps } from './types.js'
 
 const log = logger.child({ scope: 'main' })
@@ -193,7 +196,7 @@ function createDefaultDeps(state: ProductionState, options: ProductionRuntimeOpt
         startProductionExtensions(router, state, log, {
           providerRuntimeDeps: options.pluginProviderRuntimeDeps,
         }),
-      stop: deactivateAllPlugins,
+      stop: stopProductionExtensions,
     },
     application: createApplicationDeps(state),
     background: createBackgroundDeps(state),

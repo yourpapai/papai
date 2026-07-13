@@ -10,6 +10,8 @@ import type { TrustedModule } from '../../ports/module.js'
 import { taskProviderMembershipStore } from './membership-store.js'
 import { registerMembershipSubscriber } from './membership/index.js'
 
+let unregisterMembershipSubscriber: (() => void) | undefined
+
 /**
  * The task-tracker trusted module. It owns the host-side membership store (`task_provider_members`)
  * via `migrations`, and on activation registers the membership provisioning behavior into
@@ -21,12 +23,17 @@ export const taskTrackerModule: TrustedModule = {
   migrations: [migration060KaneoWorkspaceMembers, migration068TaskProviderMembers],
   onActivate(): void {
     membershipStorePort.register(taskProviderMembershipStore)
-    registerMembershipSubscriber({
+    unregisterMembershipSubscriber?.()
+    unregisterMembershipSubscriber = registerMembershipSubscriber({
       ensure: (groupContextId, chatUserId) => membershipStorePort.ensureMember(groupContextId, chatUserId),
       markInactive: (groupContextId, chatUserId) => {
         membershipStorePort.markMemberInactive(groupContextId, chatUserId)
         return Promise.resolve()
       },
     })
+  },
+  resetRuntime(): void {
+    unregisterMembershipSubscriber?.()
+    unregisterMembershipSubscriber = undefined
   },
 }

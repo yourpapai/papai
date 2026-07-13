@@ -7,8 +7,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { loadTrustedModules } from '../../src/composition/load-trusted-modules.js'
+import { loadTrustedModules, unloadTrustedModules } from '../../src/composition/load-trusted-modules.js'
 import type { Migration } from '../../src/db/migrate.js'
+import { subscribeCountForTest } from '../../src/debug/event-bus.js'
+import { taskTrackerModule } from '../../src/modules/task-tracker/module.js'
 import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../../src/ports/module-contributions.js'
 import { moduleEligibilityRegistry } from '../../src/ports/module-eligibility.js'
 import { moduleToolRegistry } from '../../src/ports/module-tools.js'
@@ -165,5 +167,16 @@ describe('loadTrustedModules', () => {
 
     expect(moduleToolRegistry.list()).toEqual([])
     expect(operatorAllowlistPort.resolve('pi')).toBe('members')
+  })
+
+  test('unloads active module runtime state explicitly', async () => {
+    const baseline = subscribeCountForTest()
+
+    await loadTrustedModules([taskTrackerModule], () => {})
+    expect(subscribeCountForTest()).toBe(baseline + 1)
+
+    unloadTrustedModules()
+
+    expect(subscribeCountForTest()).toBe(baseline)
   })
 })

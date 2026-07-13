@@ -30,6 +30,14 @@ function resetModuleRuntime(modules: readonly TrustedModule[]): void {
   toolGateRegistry.clear()
 }
 
+/** Remove every active module's process-wide runtime state and contributed surface. */
+export function unloadTrustedModules(): void {
+  const modules = activeModules
+  activeModules = []
+  resetModuleRuntime(modules)
+  clearModuleContributions()
+}
+
 /**
  * Load trusted modules: run every module's migrations first (so any module's `onActivate` can
  * assume all module tables exist), then call each `onActivate` in registry order. `runMigrationsFn`
@@ -42,10 +50,7 @@ export async function loadTrustedModules(
 ): Promise<void> {
   // Modules are process-wide contributions. A new runtime must replace, rather
   // than append to, the previous runtime's registry entries.
-  const previousModules = activeModules
-  activeModules = []
-  resetModuleRuntime(previousModules)
-  clearModuleContributions()
+  unloadTrustedModules()
   try {
     for (const mod of modules) {
       if (mod.migrations !== undefined && mod.migrations.length > 0) {
@@ -76,6 +81,7 @@ export async function loadTrustedModules(
     }, Promise.resolve())
     activeModules = modules
   } catch (error) {
+    activeModules = []
     resetModuleRuntime(modules)
     clearModuleContributions()
     throw error
