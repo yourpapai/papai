@@ -276,7 +276,11 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   fetches, responses redacted the same way as `mcp-sentry`/`mcp-confluence`. `mcp-gitlab`
   (`plugins/mcp-gitlab/`) is the seventh — 5 read-only GitLab repo/MR/job tools authenticated via
   the `PRIVATE-TOKEN` header, no `mcpResponseRedaction`; write tools (comments, MR state, job
-  retry/cancel) are deferred to magi's forge-write domain. `mcp-youtrack`
+  retry/cancel) are deferred to magi's forge-write domain. Read completeness: repository tree and
+  MR listing both auto-paginate via `x-total-pages` (parallel `Promise.all` fan-out — plugin code
+  cannot import `p-limit` — capped at 50 pages, `capped: true` flags truncation — MR listing only
+  when `all: true` is requested), and `gitlab_get_job` accepts a full `jobUrl` as an alternative to
+  `projectPath`+`jobId`. `mcp-youtrack`
   (`plugins/mcp-youtrack/`) is the eighth — 14 YouTrack tools (7 reads, comment, and 6 further
   write tools: issue creation, field updates, tag management, issue links) authenticated via
   Bearer token over a context-scoped (per-team) permanent token, responses redacted the same way

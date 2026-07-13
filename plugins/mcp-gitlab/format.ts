@@ -166,6 +166,7 @@ export interface MrQueryOptions {
   sort?: string
   perPage?: number
   page?: number
+  all?: boolean
 }
 
 export function parseJobUrl(jobUrl: string): { projectPath: string; jobId: string } {
@@ -182,9 +183,8 @@ export function parseJobUrl(jobUrl: string): { projectPath: string; jobId: strin
   return { projectPath: decodeURIComponent(match[1] ?? ''), jobId: match[2] ?? '' }
 }
 
-export function buildMrQuery(opts: MrQueryOptions): string {
+export function buildMrFilterParams(opts: MrQueryOptions): URLSearchParams {
   const params = new URLSearchParams()
-
   if (opts.state !== undefined && opts.state !== 'all') params.set('state', opts.state)
   if (opts.search !== undefined) params.set('search', opts.search)
   if (opts.labels !== undefined) params.set('labels', opts.labels)
@@ -192,8 +192,12 @@ export function buildMrQuery(opts: MrQueryOptions): string {
   if (opts.targetBranch !== undefined) params.set('target_branch', opts.targetBranch)
   if (opts.orderBy !== undefined) params.set('order_by', opts.orderBy)
   if (opts.sort !== undefined) params.set('sort', opts.sort)
+  return params
+}
+
+export function buildMrQuery(opts: MrQueryOptions): string {
+  const params = buildMrFilterParams(opts)
   params.set('per_page', String(Math.min(opts.perPage ?? 20, 100)))
   params.set('page', String(opts.page ?? 1))
-
   return params.toString()
 }

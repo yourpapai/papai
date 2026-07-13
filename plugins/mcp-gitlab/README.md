@@ -61,13 +61,22 @@ customer data.
   (posting MR comments/discussions, changing MR state, retrying/canceling
   jobs) are deferred — that surface belongs to magi's forge-write domain, not
   this plugin.
-- **Single-page pagination.** `gitlab_get_mrs` does not auto-paginate; it
-  returns one GitLab API page (`perPage`/`page` passed through, `total`/
-  `totalPages`/`page`/`perPage` echoed back from response headers) and leaves
-  it to the calling agent to request further pages.
+- **Pagination.** `gitlab_get_repository_tree` always returns the full tree
+  as `{ entries, capped }`. `gitlab_get_mrs` returns a single GitLab API page
+  by default (`perPage`/`page` passed through, `total`/`totalPages`/`page`/
+  `perPage` echoed back from response headers, `capped: false`), or fetches
+  every matching MR when `all: true` is passed (ignoring `page`/`perPage`).
+  Both follow GitLab's `x-total-pages` response header, fetching the
+  remaining pages in parallel (`Promise.all` — plugin code cannot import
+  `p-limit`, matching the `nerv`/`acp` fan-out precedent), hard-capped at 50
+  pages (5000 items); `capped: true` in the response flags that the result
+  was truncated at that cap.
 - **`gitlab_get_job` returns a structured object** (id, name, status, stage,
   `web_url`, ref, timestamps, duration) plus the job's trace log inline as
-  `log`/`logTruncated`, rather than two separate tool calls.
+  `log`/`logTruncated`, rather than two separate tool calls. It accepts
+  either `projectPath` + `jobId`, or a full `jobUrl` (e.g.
+  `https://gitlab.example.com/group/project/-/jobs/123`) as an alternative —
+  the URL is parsed into `projectPath`/`jobId` internally.
 - **Truncation.** File content (`gitlab_get_file_content`) and job trace logs
   (`gitlab_get_job`) are truncated at ~1MB (`truncateText` in `format.ts`);
   truncated file content is prefixed with a `[WARNING: file truncated to

@@ -334,7 +334,7 @@ describe('GitLabClient', () => {
       expect(parsed.searchParams.get('state')).toBe('opened')
       expect(parsed.searchParams.get('per_page')).toBe('100')
       expect(parsed.searchParams.get('page')).toBe('1')
-      expect(result).toEqual({ items: [shapeMr(rawMr)], total: 7, totalPages: 2, page: 1, perPage: 100 })
+      expect(result).toEqual({ items: [shapeMr(rawMr)], total: 7, totalPages: 2, page: 1, perPage: 100, capped: false })
     })
 
     test('omits the state param for state=all', async () => {

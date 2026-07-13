@@ -51,6 +51,7 @@ export const gitlabGetMrsSchema = {
     sort: { type: 'string', enum: ['asc', 'desc'] },
     perPage: { type: 'integer', minimum: 1, maximum: 100 },
     page: { type: 'integer', minimum: 1 },
+    all: { type: 'boolean', description: 'Fetch ALL pages (ignores page/perPage; capped at 50 pages)' },
   },
   required: ['projectPath'],
   additionalProperties: false,

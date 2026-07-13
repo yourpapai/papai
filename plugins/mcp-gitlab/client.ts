@@ -3,10 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import pLimit from 'p-limit'
-
 import type { HttpFetch } from './context.js'
 import {
+  buildMrFilterParams,
   buildMrQuery,
   shapeJob,
   shapeMr,
@@ -40,6 +39,7 @@ export interface MrListResult {
   totalPages: number
   page: number
   perPage: number
+  capped: boolean
 }
 
 export interface RepositoryTreeResult {
@@ -49,7 +49,6 @@ export interface RepositoryTreeResult {
 
 const PER_PAGE = 100
 const MAX_PAGES = 50
-const PAGE_CONCURRENCY = 5
 
 function readIntHeader(res: Response, name: string, fallback: number): number {
   const v = res.headers.get(name)
@@ -114,9 +113,12 @@ export class GitLabClient {
     if (lastPage <= 1) {
       return { items: first.items, capped }
     }
-    const limit = pLimit(PAGE_CONCURRENCY)
     const restPages = Array.from({ length: lastPage - 1 }, (_unused, i) => i + 2)
-    const rest = await Promise.all(restPages.map((page) => limit(() => this.fetchPage(basePath, params, page))))
+    // Unbounded Promise.all over the remaining (MAX_PAGES-capped, so <= 49) pages: plugin code
+    // cannot import p-limit (bare-module imports are rejected by discovery) and a hand-rolled
+    // worker pool trips oxlint's no-await-in-loop; this matches nerv's list_coding_tasks and
+    // acp's answer_permission fan-out precedent.
+    const rest = await Promise.all(restPages.map((page) => this.fetchPage(basePath, params, page)))
     return { items: [...first.items, ...rest.flatMap((r) => r.items)], capped }
   }
 
@@ -149,20 +151,25 @@ export class GitLabClient {
   }
 
   async getMrs(projectPath: string, opts: MrQueryOptions): Promise<MrListResult> {
-    const query = buildMrQuery(opts)
-    const res = await this.request(`/projects/${encodeURIComponent(projectPath)}/merge_requests?${query}`)
+    const basePath = `/projects/${encodeURIComponent(projectPath)}/merge_requests`
+    if (opts.all === true) {
+      const { items: raw, capped } = await this.getAllPages(basePath, buildMrFilterParams(opts))
+      const items = raw.map(shapeMr)
+      return { items, total: items.length, totalPages: 1, page: 1, perPage: PER_PAGE, capped }
+    }
+    const res = await this.request(`${basePath}?${buildMrQuery(opts)}`)
     if (!res.ok) {
       throw new Error(`GitLab API ${res.status} for merge_requests`)
     }
     const json: unknown = await res.json()
     const items = Array.isArray(json) ? json.map(shapeMr) : []
-
     return {
       items,
       total: readIntHeader(res, 'x-total', items.length),
       totalPages: readIntHeader(res, 'x-total-pages', 1),
       page: readIntHeader(res, 'x-page', opts.page ?? 1),
       perPage: readIntHeader(res, 'x-per-page', Math.min(opts.perPage ?? 20, 100)),
+      capped: false,
     }
   }
 

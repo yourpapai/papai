@@ -159,6 +159,7 @@ function executeGetMrs(
       sort: readOptionalString(record, 'sort'),
       perPage: readOptionalNumber(record, 'perPage'),
       page: readOptionalNumber(record, 'page'),
+      all: readOptionalBoolean(record, 'all'),
     })
   })
 }

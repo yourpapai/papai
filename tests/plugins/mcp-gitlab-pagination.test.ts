@@ -61,3 +61,36 @@ describe('GitLabClient.getRepositoryTree pagination', () => {
     expect(captured).toHaveLength(50)
   })
 })
+
+function pagedMrFetch(totalPages: number): {
+  httpFetch: (url: string, init: RequestInit | undefined) => Promise<Response>
+  captured: Captured[]
+} {
+  const captured: Captured[] = []
+  const httpFetch = (url: string, _init: RequestInit | undefined): Promise<Response> => {
+    captured.push({ url })
+    const page = new URL(url).searchParams.get('page') ?? '1'
+    const body = JSON.stringify([{ title: `mr${page}`, state: 'opened' }])
+    return Promise.resolve(new Response(body, { status: 200, headers: { 'x-total-pages': String(totalPages) } }))
+  }
+  return { httpFetch, captured }
+}
+
+describe('GitLabClient.getMrs all mode', () => {
+  test('all:true fetches every page and concatenates, capped:false', async () => {
+    const { httpFetch, captured } = pagedMrFetch(2)
+    const client = new GitLabClient({ baseUrl: 'https://gl.example.com', token: 't', httpFetch })
+    const out = await client.getMrs('group/proj', { all: true })
+    expect(out.items.map((m) => m.title)).toEqual(['mr1', 'mr2'])
+    expect(out.capped).toBe(false)
+    expect(out.total).toBe(2)
+    expect(captured).toHaveLength(2)
+  })
+
+  test('all:true ignores caller page and starts at page 1', async () => {
+    const { httpFetch, captured } = pagedMrFetch(1)
+    const client = new GitLabClient({ baseUrl: 'https://gl.example.com', token: 't', httpFetch })
+    await client.getMrs('group/proj', { all: true, page: 7 })
+    expect(new URL(firstUrl(captured)).searchParams.get('page')).toBe('1')
+  })
+})
