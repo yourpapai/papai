@@ -9,6 +9,7 @@ import { logger } from '../logger.js'
 import { moduleEligibilityRegistry } from '../ports/module-eligibility.js'
 import { moduleToolRegistry, type ModuleToolRuntimeContext } from '../ports/module-tools.js'
 import { toolGateRegistry } from '../ports/tool-gate.js'
+import { toolCapabilityCatalog, type ToolCapabilityCatalog } from '../runtime/capability-catalog.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
 
 const log = logger.child({ scope: 'tools:module' })
@@ -24,7 +25,11 @@ export const namespacedModuleToolName = (moduleId: string, toolName: string): st
  * plugin tools. Records each tool's gate into the ToolGatePort so operator-gating works via the
  * existing who-may-use filter. Names colliding with an already-assembled tool are skipped.
  */
-export function buildModuleToolSet(existingToolNames: ReadonlySet<string>, runtime: ModuleToolRuntimeContext): ToolSet {
+export function buildModuleToolSet(
+  existingToolNames: ReadonlySet<string>,
+  runtime: ModuleToolRuntimeContext,
+  capabilityCatalog: ToolCapabilityCatalog = toolCapabilityCatalog,
+): ToolSet {
   const out: ToolSet = {}
   const used = new Set(existingToolNames)
   for (const { moduleId, tool: moduleTool } of moduleToolRegistry.list()) {
@@ -35,8 +40,20 @@ export function buildModuleToolSet(existingToolNames: ReadonlySet<string>, runti
       continue
     }
     used.add(name)
-    toolGateRegistry.setGate(name, moduleTool.gate ?? 'default')
     const wrapped = wrapToolExecution((input, options) => moduleTool.execute(input, runtime, options), name)
+    const legacyName = moduleTool.legacyWireName
+    const capabilityName = legacyName ?? name
+    if (legacyName !== undefined && !used.has(legacyName)) {
+      used.add(legacyName)
+      out[legacyName] = tool({
+        description: moduleTool.description,
+        inputSchema: moduleTool.inputSchema,
+        execute: wrapped,
+      })
+    }
+    if (moduleTool.capabilityId !== undefined) capabilityCatalog.register(moduleTool.capabilityId, capabilityName)
+    toolGateRegistry.setGate(name, moduleTool.gate ?? 'default')
+    if (legacyName !== undefined) toolGateRegistry.setGate(legacyName, moduleTool.gate ?? 'default')
     out[name] = tool({ description: moduleTool.description, inputSchema: moduleTool.inputSchema, execute: wrapped })
   }
   return out

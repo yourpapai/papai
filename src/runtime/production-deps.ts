@@ -11,8 +11,9 @@ import { resolveChatParticipant } from '../chat/participants/roster.js'
 import { createChatProviderFromConfig } from '../chat/registry.js'
 import { ChatRouter } from '../chat/router.js'
 import { registerCommandMenuIfSupported } from '../chat/startup.js'
+import { TRUSTED_MODULES } from '../composition/trusted-modules.js'
 import { closeDrizzleDb } from '../db/drizzle.js'
-import { closeMigrationDbInstance, initDb } from '../db/index.js'
+import { applyModuleMigrations, closeMigrationDbInstance, initDb } from '../db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-router-runtime.js'
 import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
@@ -47,6 +48,11 @@ type ProductionState = ProductionExtensionState & {
 function startDatabase(): void {
   try {
     initDb()
+    for (const module of TRUSTED_MODULES) {
+      if (module.migrations !== undefined && module.migrations.length > 0) {
+        applyModuleMigrations(module.migrations)
+      }
+    }
   } catch (error) {
     log.error({ error: error instanceof Error ? error.message : String(error) }, 'Database migration failed')
     process.exit(1)

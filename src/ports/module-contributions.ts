@@ -8,7 +8,11 @@ import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../chat/type
 /** A chat command contributed by a trusted module (mirrors PluginCommand, no eligibility gating). */
 export type ModuleCommand = {
   name: string
+  /** Deprecated command wire name kept available while callers migrate to the module namespace. */
+  legacyWireName?: string
   description: string
+  /** Reply sent when this command is registered but unavailable in the current context. */
+  ineligibleMessage?: string
   execute: (message: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void> | void
 }
 

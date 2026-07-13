@@ -34,12 +34,22 @@ describe('coding module', () => {
   })
 
   test('codingWhoMayUseResolver returns the configured allowlist', () => {
-    setCodingGuardrails('pi-x', { allowedAgents: ['claude'], whoMayUse: ['op-1'], forceSharedKey: false })
+    setCodingGuardrails('pi-x', {
+      allowedAgents: ['claude'],
+      whoMayUse: ['op-1'],
+      forceSharedKey: false,
+      maxMcpServers: 3,
+    })
     expect(codingWhoMayUseResolver('pi-x')).toEqual(['op-1'])
   })
 
   test('onActivate registers the resolver into the operator-allowlist singleton', () => {
-    setCodingGuardrails('pi-y', { allowedAgents: ['claude'], whoMayUse: ['op-2'], forceSharedKey: false })
+    setCodingGuardrails('pi-y', {
+      allowedAgents: ['claude'],
+      whoMayUse: ['op-2'],
+      forceSharedKey: false,
+      maxMcpServers: 3,
+    })
     void codingModule.onActivate?.()
     expect(operatorAllowlistPort.resolve('pi-y')).toEqual(['op-2'])
   })

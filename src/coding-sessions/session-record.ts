@@ -5,4 +5,10 @@
 
 // Current-master compatibility adapter. The core-separation implementation
 // replaces this backing module while preserving this production-owned API.
-export { deriveTitle, parsePrNumber, readRecord, writeRecord, type SessionRecord } from '../../plugins/acp/history.js'
+export {
+  deriveTitle,
+  parsePrNumber,
+  readRecord,
+  writeRecord,
+  type SessionRecord,
+} from '../modules/coding/acp/history.js'

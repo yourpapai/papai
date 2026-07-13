@@ -19,6 +19,10 @@ export type ModuleToolRuntimeContext = {
  * via the who-may-use filter through the ToolGatePort, exactly like plugin tools. */
 export type ModuleTool = {
   name: string
+  /** Stable capability id resolved by scripted callers to this module's wire name. */
+  capabilityId?: string
+  /** Deprecated wire name kept available while callers migrate to the module namespace. */
+  legacyWireName?: string
   description: string
   inputSchema: z.ZodType
   gate?: 'operator'

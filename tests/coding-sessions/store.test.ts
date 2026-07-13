@@ -5,9 +5,9 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { readRecord as readLegacyRecord } from '../../plugins/acp/history.js'
 import { readRecord as readStableRecord } from '../../src/coding-sessions/session-record.js'
 import { getCodingSessionRecord, setCodingSessionRecord } from '../../src/coding-sessions/store.js'
+import { readRecord as readLegacyRecord } from '../../src/modules/coding/acp/history.js'
 import { kvGet } from '../../src/plugins/store.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 

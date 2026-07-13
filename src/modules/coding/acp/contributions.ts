@@ -5,6 +5,7 @@
 
 import type { ToolExecutionOptions } from 'ai'
 
+import { kvGet } from '../../../plugins/store.js'
 import type { ModuleCommand, ModulePromptFragment } from '../../../ports/module-contributions.js'
 import type { ModuleEligibilityPredicate } from '../../../ports/module-eligibility.js'
 import type { ModuleTool, ModuleToolRuntimeContext } from '../../../ports/module-tools.js'
@@ -25,11 +26,27 @@ import {
 import { getTool, listProjectsTool } from './tools.js'
 import type { Tool } from './tools.js'
 
+const ACP_TOOL_CAPABILITIES: Readonly<Record<string, string>> = {
+  list_projects: 'coding-session.projects.list',
+  list_agents: 'coding-session.agents.list',
+  start_session: 'coding-session.start',
+  list_sessions: 'coding-session.list',
+  session_status: 'coding-session.status',
+  finish_session: 'coding-session.finish',
+  cancel_session: 'coding-session.cancel',
+  answer_permission: 'coding-session.permission.answer',
+  continue_session: 'coding-session.continue',
+}
+const ACP_NAMESPACE = 'acp'
+const ENABLED_CONTEXT_KEY = 'capability:enabled'
+
 /** Wrap an acp `Tool` (RuntimeContext-based) into a `ModuleTool` (identity-based), building the
  * RuntimeContext per call from the acting `(storageContextId, chatUserId)`. */
 function toModuleTool(t: Tool): ModuleTool {
   return {
     name: t.name,
+    ...(ACP_TOOL_CAPABILITIES[t.name] === undefined ? {} : { capabilityId: ACP_TOOL_CAPABILITIES[t.name] }),
+    legacyWireName: `plugin_acp__${t.name}`,
     description: t.description,
     inputSchema: t.inputSchema,
     ...(t.gate === undefined ? {} : { gate: t.gate }),
@@ -71,6 +88,8 @@ export const codingAcpPromptFragment: ModulePromptFragment = { name: 'acp-hint',
 
 export const codingAcpCommand: ModuleCommand = {
   name: 'acp',
+  legacyWireName: 'plugin_acp_acp',
+  ineligibleMessage: 'Plugin `acp` is disabled for this context.',
   description: 'About ACP coding sessions',
   execute: (_message, reply): Promise<void> => reply.text(ACP_COMMAND_TEXT),
 }
@@ -89,4 +108,5 @@ export const codingAcpSettingsSection: SettingsSection = {
 /** Per-context eligibility: coding contributions surface only where the group's repo catalogue is
  * non-empty (the same "is anything configured to run against" signal `list_projects` returns). */
 export const isCodingContextEligible: ModuleEligibilityPredicate = (storageContextId: string): boolean =>
-  listRepos(configContextOf(storageContextId)).length > 0
+  listRepos(configContextOf(storageContextId)).length > 0 ||
+  kvGet(ACP_NAMESPACE, configContextOf(storageContextId), ENABLED_CONTEXT_KEY) === '1'

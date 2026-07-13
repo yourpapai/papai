@@ -6,7 +6,10 @@
 import { logger } from '../../../logger.js'
 import { buildPluginLogger } from '../../../plugins/context-facade-builders.js'
 import { buildProviderRuntime, type DynamicHostsFn } from '../../../plugins/provider-runtime.js'
+import type { ProviderRuntimeDeps } from '../../../plugins/provider-runtime.js'
 import { getPluginAdminConfig } from '../../../plugins/store.js'
+
+type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
 
 const log = logger.child({ scope: 'modules:coding:acp:http' })
 
@@ -29,10 +32,17 @@ export const magiDynamicHosts: DynamicHostsFn = (): ReadonlySet<string> => {
   return hosts
 }
 
-/** The magi HTTP client used by every acp tool. Built once; the dynamic-hosts thunk is live. */
-export const magiHttpFetch = buildProviderRuntime(
-  [],
-  buildPluginLogger('coding'),
-  undefined,
-  magiDynamicHosts,
-).httpFetch
+const buildMagiHttpFetch = (deps?: ProviderRuntimeDeps): HttpFetch =>
+  buildProviderRuntime([], buildPluginLogger('coding'), deps, magiDynamicHosts).httpFetch
+
+// The tools retain this delegating function, while composition replaces its
+// implementation before module contributions are registered. That lets ACP use
+// the same guarded HTTP dependencies as plugins in production and the strict
+// dispatcher in hermetic worlds without coupling tool code to either runtime.
+let currentMagiHttpFetch = buildMagiHttpFetch()
+
+export function configureMagiHttpFetch(deps?: ProviderRuntimeDeps): void {
+  currentMagiHttpFetch = buildMagiHttpFetch(deps)
+}
+
+export const magiHttpFetch = (url: string, init?: RequestInit): Promise<Response> => currentMagiHttpFetch(url, init)

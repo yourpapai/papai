@@ -9,6 +9,14 @@ import type { ModuleEligibilityPredicate } from './module-eligibility.js'
 import type { ModuleTool } from './module-tools.js'
 import type { SettingsSection } from './settings-sections.js'
 
+/** Runtime-owned collaborators available to trusted modules during composition. */
+export type TrustedModuleRuntime = Readonly<{
+  http?: Readonly<{
+    fetch: (url: string, init?: RequestInit) => Promise<Response>
+    assertPublicUrl: (url: URL) => Promise<void>
+  }>
+}>
+
 /**
  * A privileged, in-repo **Trusted Module** (Tier 1). Unlike a sandboxed plugin, a module may
  * own DB tables (via `migrations`) and bind directly to ports. Modules are wired once at the
@@ -36,6 +44,8 @@ export interface TrustedModule {
   readonly settingsSections?: readonly SettingsSection[]
   /** Per-context eligibility predicate; when present, this module's contributions surface only where it returns true. */
   readonly isEligibleForContext?: ModuleEligibilityPredicate
+  /** Receives runtime collaborators before this module's contributions are registered. */
+  configureRuntime?(runtime: TrustedModuleRuntime): void
   /** Called once after all modules' migrations have run. Registers resolvers/adapters into ports. */
   onActivate?(): void | Promise<void>
 }

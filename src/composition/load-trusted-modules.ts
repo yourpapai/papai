@@ -8,7 +8,7 @@ import type { Migration } from '../db/migrate.js'
 import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../ports/module-contributions.js'
 import { moduleEligibilityRegistry } from '../ports/module-eligibility.js'
 import { moduleToolRegistry } from '../ports/module-tools.js'
-import type { TrustedModule } from '../ports/module.js'
+import type { TrustedModule, TrustedModuleRuntime } from '../ports/module.js'
 import { moduleSettingsRegistry } from '../ports/settings-sections.js'
 import { TRUSTED_MODULES } from './trusted-modules.js'
 
@@ -20,13 +20,22 @@ import { TRUSTED_MODULES } from './trusted-modules.js'
 export async function loadTrustedModules(
   modules: readonly TrustedModule[] = TRUSTED_MODULES,
   runMigrationsFn: (migrations: readonly Migration[]) => void = applyModuleMigrations,
+  runtime: TrustedModuleRuntime = {},
 ): Promise<void> {
+  // Modules are process-wide contributions. A new runtime must replace, rather
+  // than append to, the previous runtime's registry entries.
+  moduleToolRegistry.clear()
+  moduleCommandRegistry.clear()
+  modulePromptFragmentRegistry.clear()
+  moduleSettingsRegistry.clear()
+  moduleEligibilityRegistry.clear()
   for (const mod of modules) {
     if (mod.migrations !== undefined && mod.migrations.length > 0) {
       runMigrationsFn(mod.migrations)
     }
   }
   for (const mod of modules) {
+    mod.configureRuntime?.(runtime)
     if (mod.tools !== undefined && mod.tools.length > 0) {
       moduleToolRegistry.register(mod.id, mod.tools)
     }

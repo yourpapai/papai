@@ -143,8 +143,8 @@ describe('coding-credentials redaction — not-configured reference', () => {
           resolveForge: (): null => null,
           resolveProviderHost: (): null => null,
           resolveModel: (): null => null,
-          resolveMcpServers: (): { ok: true; servers: never[] } => ({ ok: true, servers: [] }),
-          resolveMcpTokens: (): Record<string, string> => ({}),
+          resolveMcp: (): null => null,
+          resolveMcpToken: (): undefined => undefined,
         },
         codingRepos: {
           list: (): { name: string; baseBranch: string }[] => [{ name: 'demo', baseBranch: 'main' }],

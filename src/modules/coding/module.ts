@@ -16,6 +16,7 @@ import {
   codingAcpTools,
   isCodingContextEligible,
 } from './acp/contributions.js'
+import { configureMagiHttpFetch } from './acp/http-fetch.js'
 import { resolveCodingGuardrails } from './credentials/guardrails.js'
 
 /** Who-may-use resolver for coding sessions: the platform-instance guardrail policy's allowlist. */
@@ -41,6 +42,9 @@ export const codingModule: TrustedModule = {
   promptFragments: [codingAcpPromptFragment],
   settingsSections: [codingAcpSettingsSection],
   isEligibleForContext: isCodingContextEligible,
+  configureRuntime(runtime): void {
+    configureMagiHttpFetch(runtime.http)
+  },
   onActivate(): void {
     operatorAllowlistPort.register(codingWhoMayUseResolver)
   },

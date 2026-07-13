@@ -10,6 +10,7 @@ import {
   toScopedContextId,
 } from '../../../chat/scoped-context.js'
 import { adminCodingGuardrailsContextId, resolveCodingGuardrails } from './guardrails.js'
+import { resolveMcpServers, resolveMcpTokens } from './resolve-mcp-servers.js'
 import { getCodingCredentials } from './store.js'
 import { deriveApiBaseUrl, deriveProviderHost, forgeMagiKind, isProvider, type Provider } from './types.js'
 
@@ -159,4 +160,30 @@ export function resolveForge(
   } catch {
     return null
   }
+}
+
+/**
+ * Legacy single-server ACP facade. New credential storage permits a selected
+ * set of MCP servers; ACP's current magi payload still accepts one server, so
+ * retain the first validated selection until that payload is widened.
+ */
+export function resolveMcp(
+  storageContextId: string,
+  chatUserId: string,
+): {
+  url: string
+  host: string
+  header: string
+  allowedHosts: string[]
+  toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
+} | null {
+  const resolved = resolveMcpServers(storageContextId, chatUserId)
+  return resolved.ok ? (resolved.servers[0] ?? null) : null
+}
+
+/** Corresponding credential for the legacy single-server ACP payload. */
+export function resolveMcpToken(storageContextId: string, chatUserId: string): string | undefined {
+  const resolved = resolveMcpServers(storageContextId, chatUserId)
+  if (!resolved.ok || resolved.servers[0] === undefined) return undefined
+  return resolveMcpTokens(storageContextId, chatUserId)[resolved.servers[0].id]
 }

@@ -21,14 +21,16 @@ export function namespacedModuleCommandName(moduleId: string, commandName: strin
  */
 export function registerModuleCommands(chat: ChatProvider): void {
   for (const { moduleId, command } of moduleCommandRegistry.list()) {
-    const name = namespacedModuleCommandName(moduleId, command.name)
+    const names = [namespacedModuleCommandName(moduleId, command.name), command.legacyWireName].filter(
+      (name): name is string => name !== undefined,
+    )
     const handler: CommandHandler = async (message, reply, auth) => {
       if (!moduleEligibilityRegistry.isEligible(moduleId, auth.storageContextId)) {
-        await reply.text('This command is not available in this context.')
+        await reply.text(command.ineligibleMessage ?? 'This command is not available in this context.')
         return
       }
       await Promise.resolve(command.execute(message, reply, auth))
     }
-    chat.registerCommand(name, handler)
+    for (const name of names) chat.registerCommand(name, handler)
   }
 }
