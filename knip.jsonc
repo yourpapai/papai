@@ -229,6 +229,10 @@
     "plugins/audio-transcribe/transcription.ts": ["files"],
     "src/cache.ts": ["exports"],
     "src/types/config.ts": ["exports"],
+    // TEMP F1 T1: consumed by format.ts in Task 3
+    "plugins/mcp-figma/simplify-util.ts": ["files"],
+    "plugins/mcp-figma/simplify-types.ts": ["files"],
+    "plugins/mcp-figma/simplify-layout.ts": ["files"],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     "strybk.config.ts": ["exports"],
