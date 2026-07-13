@@ -10,6 +10,7 @@ import { setCodingGuardrails } from '../../../../src/coding-credentials/guardrai
 import { updateCodingCredentials } from '../../../../src/coding-credentials/store.js'
 import { upsertRepo } from '../../../../src/coding-repos/store.js'
 import { getCodingSessionRecord } from '../../../../src/coding-sessions/store.js'
+import { kvList } from '../../../../src/plugins/store.js'
 import { createFakeMagi } from '../../harness/fake-magi.js'
 import { scenario } from '../../harness/scenario.js'
 import { answer, callCapability } from '../../harness/scripted-llm.js'
@@ -17,6 +18,7 @@ import { answer, callCapability } from '../../harness/scripted-llm.js'
 const MAGI_URL = 'https://magi.invalid'
 const MAGI_TOKEN = 'scenario-qualification-magi-token'
 const PROVIDER_KEY = 'scenario-qualification-provider-key'
+const FORGE_TOKEN = 'scenario-qualification-forge-token'
 const START_WIRE_NAME = 'plugin_acp__start_session'
 
 const configureProject = (contextId: string, userId: string): void => {
@@ -39,6 +41,18 @@ const configureCredentials = (contextId: string, userId: string): void => {
     { agent: 'claude', provider: 'anthropic', provider_api_key: PROVIDER_KEY },
     userId,
   )
+}
+
+const configureForge = (contextId: string, userId: string): void => {
+  updateCodingCredentials(contextId, 'forge', { kind: 'github', forge_token: FORGE_TOKEN }, userId)
+}
+
+const persistedSessionRecordCount = (contextId: string): number => kvList('acp', contextId, 'session:').length
+
+const expectTraceRedacted = (trace: string): void => {
+  expect(trace).not.toContain(MAGI_TOKEN)
+  expect(trace).not.toContain(PROVIDER_KEY)
+  expect(trace).not.toContain(FORGE_TOKEN)
 }
 
 scenario(
@@ -89,6 +103,7 @@ scenario(
       updatedBy: alice.id,
     })
     configureProject(contextId, alice.id)
+    configureForge(contextId, alice.id)
     createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     given.llm([
       callCapability('coding-session.start', { project: 'papai', prompt: 'Add health check' }),
@@ -98,9 +113,10 @@ scenario(
     await when.message(alice, dm, 'Add a health check')
 
     then.replyTo(alice).equals('Coding credentials are not configured.')
-    expect(getCodingSessionRecord(contextId, 'missing-config-session')).toBeNull()
+    expect(persistedSessionRecordCount(contextId)).toBe(0)
     expect(world.events.all().some(({ kind }) => kind === 'magi.session.start')).toBe(false)
     expect(world.events.all().some(({ kind }) => kind === 'http.request')).toBe(false)
+    expectTraceRedacted(JSON.stringify(world.events.all()))
   },
 )
 
@@ -119,6 +135,12 @@ scenario(
       magiToken: MAGI_TOKEN,
       updatedBy: member.id,
     })
+    const groupContextId = toScopedContextId({
+      platformInstanceId: group.platformInstanceId,
+      nativeContextId: group.id,
+    })
+    configureCredentials(groupContextId, member.id)
+    configureForge(groupContextId, member.id)
     createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     given.llm([answer('Coding sessions are unavailable to guests.')])
 
@@ -129,11 +151,8 @@ scenario(
       true,
     )
     expect(world.events.all().some(({ kind }) => kind === 'http.request')).toBe(false)
-    const groupContextId = toScopedContextId({
-      platformInstanceId: group.platformInstanceId,
-      nativeContextId: group.id,
-    })
-    expect(getCodingSessionRecord(groupContextId, 'guest-denied-session')).toBeNull()
+    expect(persistedSessionRecordCount(groupContextId)).toBe(0)
+    expectTraceRedacted(JSON.stringify(world.events.all()))
   },
 )
 
@@ -158,6 +177,7 @@ scenario(
     })
     configureProject(contextId, alice.id)
     configureCredentials(contextId, alice.id)
+    configureForge(contextId, alice.id)
     createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     given.llm([answer('Coding sessions are not permitted for this member.')])
 
@@ -168,7 +188,8 @@ scenario(
       true,
     )
     expect(world.events.all().some(({ kind }) => kind === 'http.request')).toBe(false)
-    expect(getCodingSessionRecord(contextId, 'operator-denied-session')).toBeNull()
+    expect(persistedSessionRecordCount(contextId)).toBe(0)
+    expectTraceRedacted(JSON.stringify(world.events.all()))
   },
 )
 
@@ -187,6 +208,7 @@ scenario(
     })
     configureProject(contextId, alice.id)
     configureCredentials(contextId, alice.id)
+    configureForge(contextId, alice.id)
     const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     magi.expectStartFailure({
       status: 503,
@@ -201,10 +223,8 @@ scenario(
     await when.message(alice, dm, 'Add a health check')
 
     then.replyTo(alice).equals('The coding session service is temporarily unavailable.')
-    expect(getCodingSessionRecord(contextId, 'failed-session')).toBeNull()
+    expect(persistedSessionRecordCount(contextId)).toBe(0)
     expect(world.events.all().some(({ kind }) => kind === 'magi.session.start')).toBe(true)
-    const trace = JSON.stringify(world.events.all())
-    expect(trace).not.toContain(MAGI_TOKEN)
-    expect(trace).not.toContain(PROVIDER_KEY)
+    expectTraceRedacted(JSON.stringify(world.events.all()))
   },
 )

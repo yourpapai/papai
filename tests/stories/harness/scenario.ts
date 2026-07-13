@@ -78,6 +78,7 @@ type ScenarioGiven = Readonly<{
 type ScenarioWhen = Readonly<{
   message(user: UserHandle, context: ContextHandle, text: string): Promise<void>
   interaction(user: UserHandle, context: ContextHandle, callbackData: string): Promise<void>
+  settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
   request(path: string, init?: RequestInit): Promise<Response>
   settingsRequest(
     session: SettingsSessionHandle,
@@ -292,6 +293,17 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
       await world.ensureStarted()
       await world.runtime.dispatchInteraction(interactionForContext(user, context, callbackData))
       await world.settle()
+    },
+    async settingsSession(user): Promise<SettingsSessionHandle> {
+      world.events.setPhase('when.settingsSession')
+      const principal = { platformInstanceId: user.platformInstanceId, platformUserId: user.id }
+      const code = world.fixtures.issueSettingsAuthCode(principal, world.clock.now().getTime())
+      const response = await runtimeRequest(world, '/settings/auth/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      return world.fixtures.settingsSessions.parseExchange(principal, response)
     },
     request(path, init): Promise<Response> {
       world.events.setPhase('when.request')

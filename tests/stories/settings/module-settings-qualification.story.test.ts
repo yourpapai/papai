@@ -31,6 +31,10 @@ const agentProviderRequest = (contextId: string): string =>
     values: { agent: 'claude', provider: 'anthropic', provider_api_key: PROVIDER_KEY },
   })
 
+const expectUnconfigured = async (response: Response): Promise<void> => {
+  expect(credentialResponseSchema.parse(await response.json())).toMatchObject({ configured: false, complete: false })
+}
+
 scenario(
   'SCN-settings-coding-agent-provider: updates coding credentials through settings and changes the next chat turn',
   async ({ given, when, then, world }) => {
@@ -57,6 +61,7 @@ scenario(
       alice.id,
     )
     const session = await given.settingsSession(alice)
+    const bobSession = await when.settingsSession(bob)
     const body = agentProviderRequest(contextId)
 
     const unauthenticated = await when.request('/settings/api/coding-credentials', {
@@ -66,6 +71,13 @@ scenario(
     })
     then.responseStatus(unauthenticated, 401)
 
+    const afterUnauthenticated = await when.settingsRequest(
+      session,
+      '/settings/api/coding-credentials?namespace=agent-provider',
+    )
+    then.responseStatus(afterUnauthenticated, 200)
+    await expectUnconfigured(afterUnauthenticated)
+
     const csrfRejected = await when.settingsRequest(
       session,
       '/settings/api/coding-credentials',
@@ -74,9 +86,16 @@ scenario(
     )
     then.responseStatus(csrfRejected, 403)
 
+    const afterCsrfRejected = await when.settingsRequest(
+      session,
+      '/settings/api/coding-credentials?namespace=agent-provider',
+    )
+    then.responseStatus(afterCsrfRejected, 200)
+    await expectUnconfigured(afterCsrfRejected)
+
     const before = await when.settingsRequest(session, '/settings/api/coding-credentials?namespace=agent-provider')
     then.responseStatus(before, 200)
-    expect(credentialResponseSchema.parse(await before.json())).toMatchObject({ configured: false, complete: false })
+    await expectUnconfigured(before)
 
     const malformed = await when.settingsRequest(session, '/settings/api/coding-credentials', {
       method: 'PATCH',
@@ -90,10 +109,7 @@ scenario(
       '/settings/api/coding-credentials?namespace=agent-provider',
     )
     then.responseStatus(afterMalformed, 200)
-    expect(credentialResponseSchema.parse(await afterMalformed.json())).toMatchObject({
-      configured: false,
-      complete: false,
-    })
+    await expectUnconfigured(afterMalformed)
 
     const crossContext = await when.settingsRequest(session, '/settings/api/coding-credentials', {
       method: 'PATCH',
@@ -107,10 +123,14 @@ scenario(
       '/settings/api/coding-credentials?namespace=agent-provider',
     )
     then.responseStatus(afterCrossContext, 200)
-    expect(credentialResponseSchema.parse(await afterCrossContext.json())).toMatchObject({
-      configured: false,
-      complete: false,
-    })
+    await expectUnconfigured(afterCrossContext)
+
+    const bobAfterCrossContext = await when.settingsRequest(
+      bobSession,
+      '/settings/api/coding-credentials?namespace=agent-provider',
+    )
+    then.responseStatus(bobAfterCrossContext, 200)
+    await expectUnconfigured(bobAfterCrossContext)
 
     const updated = await when.settingsRequest(session, '/settings/api/coding-credentials', {
       method: 'PATCH',
