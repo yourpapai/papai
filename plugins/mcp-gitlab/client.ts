@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import pLimit from 'p-limit'
+
 import type { HttpFetch } from './context.js'
 import {
   buildMrQuery,
@@ -39,6 +41,15 @@ export interface MrListResult {
   page: number
   perPage: number
 }
+
+export interface RepositoryTreeResult {
+  entries: ShapedTreeEntry[]
+  capped: boolean
+}
+
+const PER_PAGE = 100
+const MAX_PAGES = 50
+const PAGE_CONCURRENCY = 5
 
 function readIntHeader(res: Response, name: string, fallback: number): number {
   const v = res.headers.get(name)
@@ -79,15 +90,46 @@ export class GitLabClient {
     return res.text()
   }
 
-  async getRepositoryTree(projectPath: string, opts: RepositoryTreeOptions): Promise<ShapedTreeEntry[]> {
+  private async fetchPage(
+    basePath: string,
+    params: URLSearchParams,
+    page: number,
+  ): Promise<{ items: unknown[]; res: Response }> {
+    const p = new URLSearchParams(params)
+    p.set('per_page', String(PER_PAGE))
+    p.set('page', String(page))
+    const res = await this.request(`${basePath}?${p.toString()}`)
+    if (!res.ok) {
+      throw new Error(`GitLab API ${res.status} for ${basePath}`)
+    }
+    const json: unknown = await res.json()
+    return { items: Array.isArray(json) ? json : [], res }
+  }
+
+  private async getAllPages(basePath: string, params: URLSearchParams): Promise<{ items: unknown[]; capped: boolean }> {
+    const first = await this.fetchPage(basePath, params, 1)
+    const totalPages = readIntHeader(first.res, 'x-total-pages', 1)
+    const capped = totalPages > MAX_PAGES
+    const lastPage = Math.min(totalPages, MAX_PAGES)
+    if (lastPage <= 1) {
+      return { items: first.items, capped }
+    }
+    const limit = pLimit(PAGE_CONCURRENCY)
+    const restPages = Array.from({ length: lastPage - 1 }, (_unused, i) => i + 2)
+    const rest = await Promise.all(restPages.map((page) => limit(() => this.fetchPage(basePath, params, page))))
+    return { items: [...first.items, ...rest.flatMap((r) => r.items)], capped }
+  }
+
+  async getRepositoryTree(projectPath: string, opts: RepositoryTreeOptions): Promise<RepositoryTreeResult> {
     const params = new URLSearchParams()
     if (opts.path !== undefined) params.set('path', opts.path)
     if (opts.ref !== undefined) params.set('ref', opts.ref)
     if (opts.recursive === true) params.set('recursive', 'true')
-    params.set('per_page', '100')
-
-    const json = await this.getJson(`/projects/${encodeURIComponent(projectPath)}/repository/tree?${params}`)
-    return Array.isArray(json) ? json.map(shapeTreeEntry) : []
+    const { items, capped } = await this.getAllPages(
+      `/projects/${encodeURIComponent(projectPath)}/repository/tree`,
+      params,
+    )
+    return { entries: items.map(shapeTreeEntry), capped }
   }
 
   async getFileContent(projectPath: string, filePath: string, opts?: FileContentOptions): Promise<string> {

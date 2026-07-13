@@ -227,7 +227,7 @@ describe('GitLabClient', () => {
     const headers = new Headers(capturedInit?.headers)
     expect(headers.get('PRIVATE-TOKEN')).toBe('tok')
     expect(headers.get('Accept')).toBe('application/json')
-    expect(result).toEqual([shapeTreeEntry(rawEntry)])
+    expect(result).toEqual({ entries: [shapeTreeEntry(rawEntry)], capped: false })
   })
 
   test('getRepositoryTree returns an empty array when the response body is not an array', async () => {
@@ -236,7 +236,7 @@ describe('GitLabClient', () => {
 
     const result = await client.getRepositoryTree('group/proj', {})
 
-    expect(result).toEqual([])
+    expect(result).toEqual({ entries: [], capped: false })
   })
 
   test('getFileContent requests the raw file at ref=HEAD by default and returns the text', async () => {
