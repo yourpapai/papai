@@ -3,7 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { asNumber, asObject, asString, callNerv, NOT_CONFIGURED, optionalString, readNervConfig } from './client.js'
+import {
+  asNumber,
+  asObject,
+  asString,
+  callNerv,
+  NOT_CONFIGURED,
+  optionalString,
+  readNervConfig,
+  resolveActiveTaskId,
+} from './client.js'
 import type { HttpFetch } from './client.js'
 import {
   clearActive,
@@ -223,8 +232,13 @@ export function codingTaskStatusTool(httpFetch: HttpFetch | undefined): Tool {
     execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
       const cfg = readNervConfig(runtimeContext.adminConfig)
       if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
-      const taskId =
-        asString(asObject(input), 'taskId') ?? getActiveTaskId(runtimeContext.kv, runtimeContext.storageContextId)
+      const taskId = await resolveActiveTaskId(
+        httpFetch,
+        cfg,
+        runtimeContext.kv,
+        runtimeContext.storageContextId,
+        asString(asObject(input), 'taskId'),
+      )
       if (taskId === null) return { error: 'not_found', message: 'No coding task is running in this thread.' }
       const result = await callNerv(httpFetch, cfg, 'GET', `/tasks/${encodeURIComponent(taskId)}`)
       if (asObject(result)['error'] === undefined) refreshFromTaskDoc(runtimeContext, taskId, result)

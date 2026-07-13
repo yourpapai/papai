@@ -3,14 +3,25 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { asObject, asString, callNerv, NOT_CONFIGURED, readNervConfig } from './client.js'
-import type { HttpFetch } from './client.js'
-import { clearActive, getActiveTaskId } from './history.js'
+import { asObject, asString, callNerv, NOT_CONFIGURED, readNervConfig, resolveActiveTaskId } from './client.js'
+import type { HttpFetch, NervConfig } from './client.js'
+import { clearActive } from './history.js'
 import { cancelSchema, followupSchema } from './schemas.js'
 import type { RuntimeContext, Tool } from './tools.js'
 
-function resolveTaskId(runtimeContext: RuntimeContext, args: Record<string, unknown>): string | null {
-  return asString(args, 'taskId') ?? getActiveTaskId(runtimeContext.kv, runtimeContext.storageContextId)
+function resolveTaskId(
+  runtimeContext: RuntimeContext,
+  args: Record<string, unknown>,
+  httpFetch: HttpFetch,
+  cfg: NervConfig,
+): Promise<string | null> {
+  return resolveActiveTaskId(
+    httpFetch,
+    cfg,
+    runtimeContext.kv,
+    runtimeContext.storageContextId,
+    asString(args, 'taskId'),
+  )
 }
 
 function eventTool(httpFetch: HttpFetch | undefined, name: string, description: string, type: 'chat_followup'): Tool {
@@ -24,7 +35,7 @@ function eventTool(httpFetch: HttpFetch | undefined, name: string, description: 
       const args = asObject(input)
       const text = asString(args, 'text')
       if (text === null) return { error: 'invalid_input', message: 'text is required' }
-      const taskId = resolveTaskId(runtimeContext, args)
+      const taskId = await resolveTaskId(runtimeContext, args, httpFetch, cfg)
       if (taskId === null) return { error: 'not_found', message: 'No coding task is running in this thread.' }
       const result = await callNerv(httpFetch, cfg, 'POST', `/tasks/${encodeURIComponent(taskId)}/events`, {
         type,
@@ -52,7 +63,7 @@ export function cancelCodingTaskTool(httpFetch: HttpFetch | undefined): Tool {
     execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
       const cfg = readNervConfig(runtimeContext.adminConfig)
       if (cfg === null || httpFetch === undefined) return NOT_CONFIGURED
-      const taskId = resolveTaskId(runtimeContext, asObject(input))
+      const taskId = await resolveTaskId(runtimeContext, asObject(input), httpFetch, cfg)
       if (taskId === null) return { error: 'not_found', message: 'No coding task is running in this thread.' }
       const result = await callNerv(httpFetch, cfg, 'POST', `/tasks/${encodeURIComponent(taskId)}/events`, {
         type: 'cancel',
