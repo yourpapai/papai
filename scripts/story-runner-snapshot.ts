@@ -5,10 +5,16 @@
 
 import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
-import { chmod, lstat, mkdir, mkdtemp, open, readdir, rm, symlink } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 
-import { captureCandidateStoryInputs, type LoadedStoryFile, type StoryManifest } from './story-manifest.js'
+import {
+  captureCandidateStoryInputs,
+  type LoadedRuntimeInput,
+  type LoadedStoryFile,
+  type StoryManifest,
+} from './story-manifest.js'
+import { verifySnapshotTopology } from './story-runner-snapshot-topology.js'
 
 export type CandidateStorySnapshot = Readonly<{
   root: string
@@ -94,8 +100,17 @@ function createCleanup(snapshotRoot: string): () => Promise<void> {
   }
 }
 
-async function addLiveBridge(snapshotRoot: string, candidateRoot: string, name: string): Promise<void> {
-  await symlink(path.join(candidateRoot, name), path.join(snapshotRoot, name))
+async function writeCapturedSymlink(
+  root: string,
+  file: Extract<LoadedRuntimeInput, Readonly<{ kind: 'symlink' }>>,
+): Promise<void> {
+  const output = path.join(root, file.path)
+  await mkdir(path.dirname(output), { recursive: true })
+  await symlink(file.target, output)
+}
+
+async function writeCapturedDirectory(root: string, directory: string): Promise<void> {
+  await mkdir(path.join(root, directory), { recursive: true })
 }
 
 type ConstructionSignals = Readonly<{
@@ -124,37 +139,46 @@ function captureConstructionSignals(): ConstructionSignals {
 
 async function materializeSnapshot(
   snapshotRoot: string,
-  candidateRoot: string,
   files: readonly LoadedStoryFile[],
+  runtimeDirectories: readonly string[],
+  runtimeInputs: readonly LoadedRuntimeInput[],
   dependencies: SnapshotDependencies,
   signals: ConstructionSignals,
 ): Promise<LoadedStoryFile> {
   await dependencies.afterRootCreated?.(snapshotRoot)
   throwIfInterrupted(signals.current())
   const writeFile = dependencies.writeCapturedFile ?? writeCapturedFile
+  const runtimeFiles = runtimeInputs.filter(
+    (input): input is Extract<LoadedRuntimeInput, Readonly<{ kind: 'file' }>> => input.kind === 'file',
+  )
   await settleStarted(
-    files.map((file) => writeFile(snapshotRoot, file)),
+    runtimeDirectories.map((directory) => writeCapturedDirectory(snapshotRoot, directory)),
+    'Story snapshot directory materialization failed',
+  )
+  throwIfInterrupted(signals.current())
+  await settleStarted(
+    [...files, ...runtimeFiles].map((file) => writeFile(snapshotRoot, file)),
     'Story snapshot materialization failed',
   )
   throwIfInterrupted(signals.current())
   const controlFile = { path: SNAPSHOT_BUNFIG_PATH, bytes: new TextEncoder().encode(SNAPSHOT_BUNFIG) }
   await writeCapturedFile(snapshotRoot, controlFile)
   throwIfInterrupted(signals.current())
+  const runtimeSymlinks = runtimeInputs.filter(
+    (input): input is Extract<LoadedRuntimeInput, Readonly<{ kind: 'symlink' }>> => input.kind === 'symlink',
+  )
   await settleStarted(
-    ['src', 'plugins', 'package.json'].map((name) => addLiveBridge(snapshotRoot, candidateRoot, name)),
-    'Story snapshot bridge creation failed',
+    runtimeSymlinks.map((file) => writeCapturedSymlink(snapshotRoot, file)),
+    'Story snapshot symlink creation failed',
   )
   throwIfInterrupted(signals.current())
   const changeMode = dependencies.changeMode ?? ((target, mode): Promise<void> => chmod(target, mode))
-  await settleStarted(
-    ['scripts', 'tests'].map((directory) => makeTreeReadOnly(path.join(snapshotRoot, directory), changeMode)),
-    'Story snapshot permission hardening failed',
-  )
+  await makeTreeReadOnly(snapshotRoot, changeMode)
   throwIfInterrupted(signals.current())
   return controlFile
 }
 
-function sha256(bytes: Uint8Array): string {
+function sha256(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
@@ -192,6 +216,28 @@ async function verifySnapshotFile(snapshotRoot: string, file: StoryManifest['fil
   }
 }
 
+async function verifySnapshotRuntimeInput(
+  snapshotRoot: string,
+  input: StoryManifest['runtimeInputs']['files'][number],
+): Promise<void> {
+  if (input.kind === 'file') {
+    await verifySnapshotFile(snapshotRoot, input)
+    return
+  }
+  await assertSnapshotDirectories(snapshotRoot, input.path)
+  const absolute = path.join(snapshotRoot, input.path)
+  const entry = await lstat(absolute).catch(() => undefined)
+  if (entry === undefined || !entry.isSymbolicLink()) {
+    throw new Error(`Snapshot integrity check failed: ${input.path} is not a symbolic link`)
+  }
+  const target = await readlink(absolute).catch((error: unknown) => {
+    throw new Error(`Snapshot integrity check failed: ${input.path} cannot be read safely`, { cause: error })
+  })
+  if (target !== input.target || sha256(target) !== input.sha256) {
+    throw new Error(`Snapshot integrity check failed: ${input.path} symlink target changed`)
+  }
+}
+
 export async function createCandidateStorySnapshot(
   options: SnapshotOptions,
   dependencies: SnapshotDependencies = {},
@@ -201,11 +247,20 @@ export async function createCandidateStorySnapshot(
   const cleanup = createCleanup(snapshotRoot)
   const signals = captureConstructionSignals()
   try {
-    const controlFile = await materializeSnapshot(snapshotRoot, options.root, captured.files, dependencies, signals)
+    const controlFile = await materializeSnapshot(
+      snapshotRoot,
+      captured.files,
+      captured.runtimeInputs.directories,
+      captured.runtimeInputs.files,
+      dependencies,
+      signals,
+    )
     const controlManifestFile = { path: controlFile.path, sha256: sha256(controlFile.bytes) }
     const verifyIntegrity = (): Promise<void> =>
       Promise.all([
+        verifySnapshotTopology(snapshotRoot, captured.manifest, controlManifestFile),
         ...captured.manifest.files.map((file) => verifySnapshotFile(snapshotRoot, file)),
+        ...captured.manifest.runtimeInputs.files.map((input) => verifySnapshotRuntimeInput(snapshotRoot, input)),
         verifySnapshotFile(snapshotRoot, controlManifestFile),
       ]).then(() => undefined)
     return { root: snapshotRoot, manifest: captured.manifest, verifyIntegrity, cleanup }

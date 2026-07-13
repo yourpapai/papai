@@ -11,6 +11,7 @@ import {
   REQUIRED_RUNTIME_DIRECTORY_ROOTS,
   REQUIRED_RUNTIME_FILE_ROOTS,
   type LoadedRuntimeInput,
+  type LoadedRuntimeInputTree,
   type LoadedStoryFile,
 } from './story-manifest-candidate.js'
 
@@ -114,7 +115,16 @@ export function loadBaselineStoryFiles(root: string, commit: string): Promise<re
   )
 }
 
-export async function loadBaselineRuntimeInputs(root: string, commit: string): Promise<readonly LoadedRuntimeInput[]> {
+function runtimeDirectories(paths: readonly string[]): readonly string[] {
+  const directories = new Set<string>()
+  for (const filePath of paths) {
+    const parts = filePath.split('/').slice(0, -1)
+    for (let index = 1; index <= parts.length; index += 1) directories.add(parts.slice(0, index).join('/'))
+  }
+  return [...directories].sort(compareText)
+}
+
+export async function loadBaselineRuntimeInputs(root: string, commit: string): Promise<LoadedRuntimeInputTree> {
   const tree = await gitBytes(
     root,
     ['ls-tree', '-rz', '--full-tree', commit, '--', 'src', 'plugins', 'package.json', 'bun.lock', 'public'],
@@ -131,7 +141,7 @@ export async function loadBaselineRuntimeInputs(root: string, commit: string): P
     ...REQUIRED_RUNTIME_FILE_ROOTS.filter((filePath) => !paths.includes(filePath)),
   ]
   if (missing.length > 0) throw new Error(`Baseline runtime inputs missing: ${missing.join(', ')}`)
-  return Promise.all(
+  const files = await Promise.all(
     entries.map(async (entry): Promise<LoadedRuntimeInput> => {
       const bytes = await gitBytes(root, ['cat-file', 'blob', entry.object], `Cannot read baseline blob ${entry.path}`)
       if (entry.mode !== '120000') return { kind: 'file', path: entry.path, bytes }
@@ -140,4 +150,5 @@ export async function loadBaselineRuntimeInputs(root: string, commit: string): P
       return { kind: 'symlink', path: entry.path, target }
     }),
   )
+  return { directories: runtimeDirectories(paths), files }
 }

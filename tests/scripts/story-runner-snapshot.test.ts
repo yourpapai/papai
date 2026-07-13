@@ -7,9 +7,11 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -47,6 +49,8 @@ function fixture(): string {
   mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
   mkdirSync(path.join(root, 'scripts'), { recursive: true })
   mkdirSync(path.join(root, 'src'), { recursive: true })
+  mkdirSync(path.join(root, 'plugins/example'), { recursive: true })
+  mkdirSync(path.join(root, 'public'), { recursive: true })
   writeFileSync(path.join(root, 'tests/stories/preload.ts'), 'captured preload')
   writeFileSync(path.join(root, 'tests/stories/example.story.test.ts'), `scenario('captured', async () => {})\n`)
   writeFileSync(path.join(root, 'tests/setup.ts'), 'setup')
@@ -55,18 +59,35 @@ function fixture(): string {
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger')
   writeFileSync(path.join(root, 'scripts/test-stories.ts'), 'captured runner')
   writeFileSync(path.join(root, 'src/live.ts'), 'production v1')
+  symlinkSync('live.ts', path.join(root, 'src/alias.ts'))
+  writeFileSync(path.join(root, 'plugins/example/plugin.json'), '{"name":"example"}')
+  writeFileSync(path.join(root, 'public/settings.js'), 'settings asset')
+  writeFileSync(path.join(root, 'package.json'), '{"name":"story-fixture"}')
+  writeFileSync(path.join(root, 'bun.lock'), 'lockfile')
   writeFileSync(path.join(root, 'bunfig.toml'), '')
   git(root, 'init', '-q')
   git(root, 'config', 'user.email', 'stories@example.invalid')
   git(root, 'config', 'user.name', 'Story Tests')
   git(root, 'config', 'commit.gpgsign', 'false')
-  git(root, 'add', '--', 'tests/stories', 'scripts', 'src', 'bunfig.toml')
+  git(
+    root,
+    'add',
+    '--',
+    'tests/stories',
+    'scripts',
+    'src',
+    'plugins',
+    'public',
+    'package.json',
+    'bun.lock',
+    'bunfig.toml',
+  )
   git(root, 'commit', '-qm', 'candidate')
   return root
 }
 
 describe('candidate story snapshot', () => {
-  test('freezes captured harness bytes while production source remains live', async () => {
+  test('materializes captured runtime inputs without live-worktree bridges', async () => {
     const root = fixture()
     const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
     const capturedStory = path.join(snapshot.root, 'tests/stories/example.story.test.ts')
@@ -76,11 +97,90 @@ describe('candidate story snapshot', () => {
 
       expect(readFileSync(capturedStory, 'utf8')).toBe(`scenario('captured', async () => {})\n`)
       expect(statSync(capturedStory).mode & 0o222).toBe(0)
-      expect(readFileSync(path.join(snapshot.root, 'src/live.ts'), 'utf8')).toBe('production v2')
+      expect(lstatSync(path.join(snapshot.root, 'src')).isSymbolicLink()).toBe(false)
+      expect(lstatSync(path.join(snapshot.root, 'plugins')).isSymbolicLink()).toBe(false)
+      expect(lstatSync(path.join(snapshot.root, 'package.json')).isSymbolicLink()).toBe(false)
+      expect(lstatSync(path.join(snapshot.root, 'bun.lock')).isSymbolicLink()).toBe(false)
+      expect(lstatSync(path.join(snapshot.root, 'public')).isSymbolicLink()).toBe(false)
+      expect(readFileSync(path.join(snapshot.root, 'src/live.ts'), 'utf8')).toBe('production v1')
+      expect(readFileSync(path.join(snapshot.root, 'src/alias.ts'), 'utf8')).toBe('production v1')
+      expect(readlinkSync(path.join(snapshot.root, 'src/alias.ts'))).toBe('live.ts')
+      expect(readFileSync(path.join(snapshot.root, 'plugins/example/plugin.json'), 'utf8')).toBe('{"name":"example"}')
+      expect(readFileSync(path.join(snapshot.root, 'package.json'), 'utf8')).toBe('{"name":"story-fixture"}')
+      expect(readFileSync(path.join(snapshot.root, 'bun.lock'), 'utf8')).toBe('lockfile')
+      expect(readFileSync(path.join(snapshot.root, 'public/settings.js'), 'utf8')).toBe('settings asset')
+      await snapshot.verifyIntegrity()
     } finally {
       await snapshot.cleanup()
     }
     expect(existsSync(snapshot.root)).toBe(false)
+  })
+
+  test('materializes empty captured runtime directories', async () => {
+    const root = fixture()
+    rmSync(path.join(root, 'src', 'alias.ts'))
+    rmSync(path.join(root, 'src', 'live.ts'))
+    rmSync(path.join(root, 'plugins', 'example'), { recursive: true })
+    rmSync(path.join(root, 'public', 'settings.js'))
+    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    try {
+      expect(lstatSync(path.join(snapshot.root, 'src')).isDirectory()).toBe(true)
+      expect(lstatSync(path.join(snapshot.root, 'plugins')).isDirectory()).toBe(true)
+      expect(lstatSync(path.join(snapshot.root, 'public')).isDirectory()).toBe(true)
+      await snapshot.verifyIntegrity()
+    } finally {
+      await snapshot.cleanup()
+    }
+  })
+
+  test('rejects a removed empty captured runtime directory before execution', async () => {
+    const root = fixture()
+    rmSync(path.join(root, 'src', 'alias.ts'))
+    rmSync(path.join(root, 'src', 'live.ts'))
+    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    try {
+      chmodSync(snapshot.root, 0o700)
+      rmSync(path.join(snapshot.root, 'src'), { recursive: true })
+
+      await expect(snapshot.verifyIntegrity()).rejects.toThrow(
+        'Snapshot integrity check failed: src is not a directory',
+      )
+    } finally {
+      await snapshot.cleanup()
+    }
+  })
+
+  test('rejects a tampered captured runtime file before execution', async () => {
+    const root = fixture()
+    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    const runtimeDirectory = path.join(snapshot.root, 'src')
+    try {
+      const runtimeFile = path.join(runtimeDirectory, 'live.ts')
+      chmodSync(runtimeDirectory, 0o700)
+      chmodSync(runtimeFile, 0o600)
+      writeFileSync(runtimeFile, 'tampered runtime')
+      await expect(snapshot.verifyIntegrity()).rejects.toThrow(
+        'Snapshot integrity check failed: src/live.ts hash changed',
+      )
+    } finally {
+      await snapshot.cleanup()
+    }
+  })
+
+  test('rejects an unexpected runtime path before execution', async () => {
+    const root = fixture()
+    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    const runtimeDirectory = path.join(snapshot.root, 'src')
+    try {
+      chmodSync(runtimeDirectory, 0o700)
+      writeFileSync(path.join(runtimeDirectory, 'unexpected.ts'), 'unexpected runtime input')
+
+      await expect(snapshot.verifyIntegrity()).rejects.toThrow(
+        'Snapshot integrity check failed: unexpected entry: src/unexpected.ts',
+      )
+    } finally {
+      await snapshot.cleanup()
+    }
   })
 
   test.each([

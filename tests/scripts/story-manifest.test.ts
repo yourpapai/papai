@@ -140,7 +140,7 @@ describe('story manifest', () => {
     expect(rebuilt.treeHash).toBe(manifest.treeHash)
   })
 
-  test('emits schema version 2 for candidate and baseline manifests', async () => {
+  test('emits schema version 3 and runtime directory topology for candidate and baseline manifests', async () => {
     const root = fixture()
     const ref = git(root, 'rev-parse', 'HEAD')
     const [candidate, baseline] = await Promise.all([
@@ -148,9 +148,26 @@ describe('story manifest', () => {
       buildBaselineStoryManifest({ root, ref, seed: 41021 }),
     ])
 
-    expect(candidate.version).toBe(2)
-    expect(baseline.version).toBe(2)
-    expect(StoryManifestSchema.safeParse({ ...candidate, version: 1 }).success).toBe(false)
+    expect(candidate.version).toBe(3)
+    expect(baseline.version).toBe(3)
+    expect(candidate.runtimeInputs.directories).toEqual(['plugins', 'plugins/example', 'public', 'src'])
+    expect(baseline.runtimeInputs.directories).toEqual(['plugins', 'plugins/example', 'public', 'src'])
+    expect(StoryManifestSchema.safeParse({ ...candidate, version: 2 }).success).toBe(false)
+  })
+
+  test('captures empty required and present optional runtime directories', async () => {
+    const root = fixture()
+    rmSync(path.join(root, 'src'), { recursive: true })
+    rmSync(path.join(root, 'plugins'), { recursive: true })
+    rmSync(path.join(root, 'public'), { recursive: true })
+    mkdirSync(path.join(root, 'src'))
+    mkdirSync(path.join(root, 'plugins'))
+    mkdirSync(path.join(root, 'public'))
+
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(manifest.version).toBe(3)
+    expect(manifest.runtimeInputs.directories).toEqual(['plugins', 'public', 'src'])
   })
 
   test('omits an absent optional public root deterministically', async () => {

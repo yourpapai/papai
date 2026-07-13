@@ -16,11 +16,12 @@ import {
   resolveStoryManifestCommit,
 } from './story-manifest-baseline.js'
 import {
-  loadCandidateRuntimeInputFiles,
+  loadCandidateRuntimeInputTree,
   loadCandidateStoryFiles,
   type LoadedRuntimeInput,
   type LoadedStoryFile,
 } from './story-manifest-candidate.js'
+import { hashRuntimeTree } from './story-manifest-runtime.js'
 import { extractStoryScenarios } from './story-manifest-scenarios.js'
 import { removeStoryReport, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
 import { parseBunInteger } from './story-runner-integers.js'
@@ -41,13 +42,22 @@ const RuntimeSymlinkSchema = z.strictObject({
   target: z.string(),
 })
 const RuntimeInputSchema = z.discriminatedUnion('kind', [RuntimeFileSchema, RuntimeSymlinkSchema])
+const RuntimeDirectoriesSchema = z.array(z.string().regex(/^(?:src|plugins|public)(?:\/[^/\\]+)*$/u)).refine(
+  (directories) =>
+    directories.every((directory, index) => {
+      const previous = directories[index - 1]
+      return index === 0 || (previous !== undefined && previous < directory)
+    }),
+  'Runtime directories must be unique and sorted',
+)
 const RuntimeInputManifestSchema = z.strictObject({
   treeHash: z.string().regex(FILE_HASH),
+  directories: RuntimeDirectoriesSchema,
   files: z.array(RuntimeInputSchema),
 })
 
 export const StoryManifestSchema = z.strictObject({
-  version: z.literal(2),
+  version: z.literal(3),
   commit: z.string().min(7),
   bunVersion: z.string().min(1),
   seed: z.number().int(),
@@ -58,17 +68,19 @@ export const StoryManifestSchema = z.strictObject({
 })
 
 export type StoryManifest = z.infer<typeof StoryManifestSchema>
-export type RuntimeInputManifest = z.infer<typeof RuntimeInputManifestSchema>
 type StoryFile = z.infer<typeof StoryFileSchema>
 type StoryScenario = z.infer<typeof StoryScenarioSchema>
-type RuntimeInput = z.infer<typeof RuntimeInputSchema>
 type ManifestOptions = Readonly<{ root: string; seed: number; bunVersion?: string }>
 type BaselineOptions = ManifestOptions & Readonly<{ ref: string }>
-export type { LoadedStoryFile } from './story-manifest-candidate.js'
+export type { LoadedRuntimeInput, LoadedStoryFile } from './story-manifest-candidate.js'
 export type CapturedCandidateStoryInputs = Readonly<{
   manifest: StoryManifest
   files: readonly LoadedStoryFile[]
-  runtimeInputs: Readonly<{ manifest: RuntimeInputManifest; files: readonly LoadedRuntimeInput[] }>
+  runtimeInputs: Readonly<{
+    manifest: StoryManifest['runtimeInputs']
+    directories: readonly string[]
+    files: readonly LoadedRuntimeInput[]
+  }>
 }>
 export type StoryManifestWriteDeps = Readonly<{
   write(temporaryPath: string, contents: string): Promise<void>
@@ -102,26 +114,6 @@ function hashTree(files: readonly StoryFile[], namespace: string): string {
   return hash.digest('hex')
 }
 
-function hashRuntimeTree(files: readonly RuntimeInput[]): string {
-  const hash = createHash('sha256')
-  hash.update('papai-story-runtime-inputs-v1\0')
-  for (const file of files) {
-    const pathname = Buffer.from(file.path)
-    hash.update(file.kind)
-    hash.update('\0')
-    hash.update(`${pathname.byteLength}:`)
-    hash.update(pathname)
-    hash.update('\0')
-    hash.update(file.sha256)
-    hash.update('\0')
-    if (file.kind === 'symlink') {
-      hash.update(file.target)
-      hash.update('\0')
-    }
-  }
-  return hash.digest('hex')
-}
-
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
@@ -129,10 +121,11 @@ function compareText(left: string, right: string): number {
 function assembleManifest(
   loaded: readonly LoadedStoryFile[],
   runtimeInputFiles: readonly LoadedRuntimeInput[],
+  runtimeDirectories: readonly string[],
   metadata: Readonly<{ commit: string; bunVersion: string; seed: number }>,
 ): StoryManifest {
   const files = loaded.map((file): StoryFile => ({ path: file.path, sha256: sha256(file.bytes) }))
-  const runtimeFiles = runtimeInputFiles.map((file): RuntimeInput => {
+  const runtimeFiles = runtimeInputFiles.map((file): StoryManifest['runtimeInputs']['files'][number] => {
     if (file.kind === 'file') return { kind: 'file', path: file.path, sha256: sha256(file.bytes) }
     return { kind: 'symlink', path: file.path, sha256: sha256(file.target), target: file.target }
   })
@@ -145,12 +138,13 @@ function assembleManifest(
       throw new Error(`Duplicate scenario id: ${scenarios[index]?.id}`)
   }
   return StoryManifestSchema.parse({
-    version: 2,
+    version: 3,
     ...metadata,
     treeHash: hashTree(files, 'papai-story-tree-v1\0'),
     files,
     runtimeInputs: {
-      treeHash: hashRuntimeTree(runtimeFiles),
+      treeHash: hashRuntimeTree(runtimeFiles, runtimeDirectories),
+      directories: runtimeDirectories,
       files: runtimeFiles,
     },
     scenarios,
@@ -162,26 +156,26 @@ export async function buildCandidateStoryManifest(options: ManifestOptions): Pro
 }
 
 export async function captureCandidateStoryInputs(options: ManifestOptions): Promise<CapturedCandidateStoryInputs> {
-  const [commit, files, runtimeFiles] = await Promise.all([
+  const [commit, files, runtimeInputs] = await Promise.all([
     currentStoryManifestCommit(options.root),
     loadCandidateStoryFiles(options.root),
-    loadCandidateRuntimeInputFiles(options.root),
+    loadCandidateRuntimeInputTree(options.root),
   ])
-  const manifest = assembleManifest(files, runtimeFiles, {
+  const manifest = assembleManifest(files, runtimeInputs.files, runtimeInputs.directories, {
     commit,
     bunVersion: options.bunVersion ?? Bun.version,
     seed: options.seed,
   })
-  return { manifest, files, runtimeInputs: { manifest: manifest.runtimeInputs, files: runtimeFiles } }
+  return { manifest, files, runtimeInputs: { manifest: manifest.runtimeInputs, ...runtimeInputs } }
 }
 
 export async function buildBaselineStoryManifest(options: BaselineOptions): Promise<StoryManifest> {
   const commit = await resolveStoryManifestCommit(options.root, options.ref)
-  const [files, runtimeFiles] = await Promise.all([
+  const [files, runtimeInputs] = await Promise.all([
     loadBaselineStoryFiles(options.root, commit),
     loadBaselineRuntimeInputs(options.root, commit),
   ])
-  return assembleManifest(files, runtimeFiles, {
+  return assembleManifest(files, runtimeInputs.files, runtimeInputs.directories, {
     commit,
     bunVersion: options.bunVersion ?? Bun.version,
     seed: options.seed,

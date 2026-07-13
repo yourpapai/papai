@@ -24,6 +24,7 @@ export type LoadedStoryFile = Readonly<{ path: string; bytes: Uint8Array }>
 export type LoadedRuntimeFile = Readonly<{ kind: 'file'; path: string; bytes: Uint8Array }>
 export type LoadedRuntimeSymlink = Readonly<{ kind: 'symlink'; path: string; target: string }>
 export type LoadedRuntimeInput = LoadedRuntimeFile | LoadedRuntimeSymlink
+export type LoadedRuntimeInputTree = Readonly<{ directories: readonly string[]; files: readonly LoadedRuntimeInput[] }>
 export type CandidateCaptureDependencies = Readonly<{
   afterDirectoryRead?(directory: string): Promise<void>
 }>
@@ -224,10 +225,12 @@ async function visitRuntimeDirectory(
   root: string,
   directory: string,
   expected: DirectoryIdentity,
+  directories: string[],
   inputs: LoadedRuntimeInput[],
   dependencies: CandidateCaptureDependencies,
 ): Promise<void> {
   await assertDirectoryIdentity(root, directory, expected)
+  directories.push(toPosix(path.relative(root, directory)))
   const entries = await readdir(directory, { withFileTypes: true })
   entries.sort((left, right) => compareText(left.name, right.name))
   const capturedEntries = await Promise.all(
@@ -239,7 +242,7 @@ async function visitRuntimeDirectory(
       const absolute = path.join(directory, entry.name)
       const relative = toPosix(path.relative(root, absolute))
       if (stats.isDirectory()) {
-        await visitRuntimeDirectory(root, absolute, directoryIdentity(stats), inputs, dependencies)
+        await visitRuntimeDirectory(root, absolute, directoryIdentity(stats), directories, inputs, dependencies)
       } else inputs.push(await readRuntimeInput(root, relative))
     }),
   )
@@ -251,26 +254,27 @@ async function loadRuntimeDirectory(
   relativeDirectory: string,
   required: boolean,
   dependencies: CandidateCaptureDependencies,
-): Promise<readonly LoadedRuntimeInput[]> {
+): Promise<LoadedRuntimeInputTree> {
   const directory = path.join(root, relativeDirectory)
   const entry = await lstat(directory).catch((error: unknown) => {
     if (!required && errorCode(error) === 'ENOENT') return undefined
     throw new Error(`Unsupported story runtime root: ${relativeDirectory} (missing)`, { cause: error })
   })
-  if (entry === undefined) return []
+  if (entry === undefined) return { directories: [], files: [] }
   if (entry.isSymbolicLink()) {
     throw new Error(`Unsupported story runtime root: ${relativeDirectory} (symbolic link)`)
   }
   if (!entry.isDirectory()) throw new Error(`Unsupported story runtime root: ${relativeDirectory} (not a directory)`)
   const inputs: LoadedRuntimeInput[] = []
-  await visitRuntimeDirectory(root, directory, directoryIdentity(entry), inputs, dependencies)
-  return inputs
+  const directories: string[] = []
+  await visitRuntimeDirectory(root, directory, directoryIdentity(entry), directories, inputs, dependencies)
+  return { directories: directories.sort(compareText), files: inputs }
 }
 
-export async function loadCandidateRuntimeInputFiles(
+export async function loadCandidateRuntimeInputTree(
   root: string,
   dependencies: CandidateCaptureDependencies = {},
-): Promise<readonly LoadedRuntimeInput[]> {
+): Promise<LoadedRuntimeInputTree> {
   const directories = await Promise.all([
     ...REQUIRED_RUNTIME_DIRECTORY_ROOTS.map((relativeDirectory) =>
       loadRuntimeDirectory(root, relativeDirectory, true, dependencies),
@@ -282,5 +286,10 @@ export async function loadCandidateRuntimeInputFiles(
   const files = await Promise.all(
     [...RUNTIME_FILE_ROOTS].sort(compareText).map((relative) => readRuntimeInput(root, relative)),
   )
-  return [...directories.flat(), ...files].sort((left, right) => compareText(left.path, right.path))
+  return {
+    directories: directories.flatMap((tree) => tree.directories).sort(compareText),
+    files: [...directories.flatMap((tree) => tree.files), ...files].sort((left, right) =>
+      compareText(left.path, right.path),
+    ),
+  }
 }

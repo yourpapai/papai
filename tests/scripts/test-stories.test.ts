@@ -13,13 +13,13 @@ import { buildCandidateStoryManifest, type StoryManifest, writeStoryManifest } f
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/test-stories.js'
 
 const manifest = (treeHash: string): StoryManifest => ({
-  version: 2,
+  version: 3,
   commit: '1234567',
   bunVersion: '1.0.0',
   seed: STORY_SEED,
   treeHash,
   files: [],
-  runtimeInputs: { treeHash: '0'.repeat(64), files: [] },
+  runtimeInputs: { treeHash: '0'.repeat(64), directories: [], files: [] },
   scenarios: [],
 })
 
