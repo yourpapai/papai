@@ -22,7 +22,7 @@ import {
 } from './schemas.js'
 import { enrichSession, recordStartedSession } from './session-records.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { buildSessionProjectSpec, canDeriveForge, sessionIdOf } from './tools.js'
+import { ACP_CAPABILITIES, buildSessionProjectSpec, canDeriveForge, sessionIdOf } from './tools.js'
 
 const DEFAULT_AGENT = 'claude-code-acp'
 const SESSION_FILTERS = ['new', 'active', 'waiting', 'done']
@@ -64,6 +64,7 @@ function resolveStartSessionAccess(
 export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'start_session',
+    capabilityId: ACP_CAPABILITIES.start,
     description:
       'Start a sandboxed coding-agent session on a configured project. Pass prNumber to start on an ' +
       'existing PR/MR (to review it or work on its branch); the project permission policy decides whether ' +
@@ -113,6 +114,7 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
 export function listSessionsTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'list_sessions',
+    capabilityId: ACP_CAPABILITIES.list,
     description: 'List coding sessions started from this chat (filter: new|active|waiting|done).',
     inputSchema: listSessionsSchema,
     execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
@@ -137,6 +139,7 @@ export function listSessionsTool(httpFetch: HttpFetch | undefined): Tool {
 export function sessionStatusTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'session_status',
+    capabilityId: ACP_CAPABILITIES.status,
     description: 'Get the status and metadata of a coding session.',
     inputSchema: sessionIdSchema,
     execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
@@ -152,6 +155,7 @@ export function sessionStatusTool(httpFetch: HttpFetch | undefined): Tool {
 export function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'finish_session',
+    capabilityId: ACP_CAPABILITIES.finish,
     description: 'Finish a session: commit + push the branch, or open a PR.',
     inputSchema: finishSessionSchema,
     execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
@@ -186,6 +190,7 @@ export function finishSessionTool(httpFetch: HttpFetch | undefined): Tool {
 export function cancelSessionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'cancel_session',
+    capabilityId: ACP_CAPABILITIES.cancel,
     description: 'Cancel a running coding session and tear down its sandbox.',
     inputSchema: sessionIdSchema,
     execute: (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
@@ -201,6 +206,7 @@ export function cancelSessionTool(httpFetch: HttpFetch | undefined): Tool {
 export function answerPermissionTool(httpFetch: HttpFetch | undefined): Tool {
   return {
     name: 'answer_permission',
+    capabilityId: ACP_CAPABILITIES.answerPermission,
     description: 'Answer a coding agent pending permission request (allow or deny).',
     inputSchema: answerPermissionSchema,
     execute: async (input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {

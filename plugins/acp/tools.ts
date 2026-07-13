@@ -52,7 +52,25 @@ export type RuntimeContext = {
   }
 }
 type ToolExecute = (input: unknown, runtimeContext: RuntimeContext, options: unknown) => Promise<unknown>
-export type Tool = { name: string; description: string; inputSchema: unknown; execute: ToolExecute }
+export type Tool = {
+  name: string
+  capabilityId: string
+  description: string
+  inputSchema: unknown
+  execute: ToolExecute
+}
+
+export const ACP_CAPABILITIES = {
+  listProjects: 'coding-session.projects.list',
+  listAgents: 'coding-session.agents.list',
+  start: 'coding-session.start',
+  list: 'coding-session.list',
+  status: 'coding-session.status',
+  finish: 'coding-session.finish',
+  cancel: 'coding-session.cancel',
+  answerPermission: 'coding-session.permission.answer',
+  continue: 'coding-session.continue',
+} as const
 
 export type RepoEntry = {
   name: string
@@ -140,9 +158,16 @@ export function buildSessionProjectSpec(
   }
 }
 
-export function getTool(name: string, description: string, path: string, httpFetch: HttpFetch | undefined): Tool {
+export function getTool(
+  name: string,
+  capabilityId: string,
+  description: string,
+  path: string,
+  httpFetch: HttpFetch | undefined,
+): Tool {
   return {
     name,
+    capabilityId,
     description,
     inputSchema: emptySchema,
     execute: (_input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {
@@ -156,6 +181,7 @@ export function getTool(name: string, description: string, path: string, httpFet
 export function listProjectsTool(): Tool {
   return {
     name: 'list_projects',
+    capabilityId: ACP_CAPABILITIES.listProjects,
     description: 'List coding projects configured in your repository catalogue.',
     inputSchema: emptySchema,
     execute: (_input: unknown, runtimeContext: RuntimeContext): Promise<unknown> => {

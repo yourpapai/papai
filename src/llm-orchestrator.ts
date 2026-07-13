@@ -45,7 +45,7 @@ export const resolveAiOutputSettingsContextId = (contextId: string): string =>
 export const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => stepCountIs(...args),
-  buildOpenAI: (apiKey: string, baseURL: string) => getOpenAICompatibleProvider(apiKey, baseURL),
+  buildModel: ({ llmApiKey, llmBaseUrl, mainModel }) => getOpenAICompatibleProvider(llmApiKey, llmBaseUrl)(mainModel),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   maybeAutoProvision: (reply, contextId, chatUserId, username) =>
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
@@ -151,8 +151,8 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
       // Auto-provision is opportunistic; missing or broken hooks should fall through to normal setup guidance.
     }
   }
-  const { llmApiKey, llmBaseUrl, mainModel } = resolvedLlm
-  const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
+  const { mainModel } = resolvedLlm
+  const model = deps.buildModel(resolvedLlm)
   const provider = await deps.resolve(configId)
   if (provider === null) {
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn; using providerless fallback')

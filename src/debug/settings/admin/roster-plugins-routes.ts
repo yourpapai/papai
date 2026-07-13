@@ -9,6 +9,7 @@ import { broadcastMessage } from '../../../commands/announce-broadcast.js'
 import { addAdmin, listAdmins, removeAdmin } from '../../../instances/admin-store.js'
 import { logger } from '../../../logger.js'
 import { activatePlugins, deactivatePluginById } from '../../../plugins/loader.js'
+import type { ProviderRuntimeDeps } from '../../../plugins/provider-runtime.js'
 import { pluginRegistry } from '../../../plugins/registry.js'
 import { getPluginAdminState } from '../../../plugins/store.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
@@ -50,7 +51,13 @@ async function handleRoster(req: Request, authed: AuthenticatedSettingsRequest):
 
 const PluginActionSchema = z.object({ pluginId: z.string().min(1), action: z.enum(['approve', 'reject']) })
 
-async function handlePluginApproval(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
+export type AdminRosterPluginRouteOptions = Readonly<{ pluginProviderRuntimeDeps?: ProviderRuntimeDeps }>
+
+async function handlePluginApproval(
+  req: Request,
+  authed: AuthenticatedSettingsRequest,
+  options: AdminRosterPluginRouteOptions,
+): Promise<Response> {
   if (req.method !== 'POST') return settingsJson(405, { error: 'method not allowed' })
   const guard = requireSuperAdmin(authed, 'write')
   if (guard !== null) return guard
@@ -68,12 +75,12 @@ async function handlePluginApproval(req: Request, authed: AuthenticatedSettingsR
     pluginRegistry.approve(body.data.pluginId, authed.principal.platformUserId, entry.discoveredPlugin.manifestHash)
     const approvedEntry = pluginRegistry.getEntry(body.data.pluginId)
     if (approvedEntry !== undefined && approvedEntry.state === 'approved') {
-      await activatePlugins([approvedEntry.discoveredPlugin])
+      await activatePlugins([approvedEntry.discoveredPlugin], {
+        providerRuntimeDeps: options.pluginProviderRuntimeDeps,
+      })
     }
   } else {
-    if (entry.state === 'active') {
-      await deactivatePluginById(body.data.pluginId)
-    }
+    await deactivatePluginById(body.data.pluginId)
     pluginRegistry.reject(body.data.pluginId)
   }
   log.info({ pluginId: body.data.pluginId, action: body.data.action }, 'Settings SA changed plugin approval')
@@ -99,11 +106,16 @@ async function handleAnnounce(req: Request, authed: AuthenticatedSettingsRequest
   return settingsJson(200, result)
 }
 
-export function handleAdminRosterPluginsRoutes(req: Request, _url: URL, pathname: string): Promise<Response> {
+export function handleAdminRosterPluginsRoutes(
+  req: Request,
+  _url: URL,
+  pathname: string,
+  options: AdminRosterPluginRouteOptions = {},
+): Promise<Response> {
   const auth = authenticate(req)
   if (!auth.ok) return Promise.resolve(auth.response)
   if (pathname === '/settings/api/admin/admins') return handleRoster(req, auth.authed)
-  if (pathname === '/settings/api/admin/plugin-approval') return handlePluginApproval(req, auth.authed)
+  if (pathname === '/settings/api/admin/plugin-approval') return handlePluginApproval(req, auth.authed, options)
   if (pathname === '/settings/api/admin/announce') return handleAnnounce(req, auth.authed)
   return Promise.resolve(settingsJson(404, { error: 'not found' }))
 }

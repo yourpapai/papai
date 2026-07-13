@@ -197,6 +197,14 @@ test('resolveMcpServers/resolveMcpTokens return empty for an empty selection', (
   expect(resolveMcpTokens(MCP_CTX, 'user-int')).toEqual({})
 })
 
+test('resolveMcpServers fails closed when stored MCP selections are malformed', () => {
+  updateCodingCredentials(MCP_CTX, 'mcp', { servers: '{not-json' }, 'user-int')
+
+  const result = resolveMcpServers(MCP_CTX, 'user-int')
+  expect(result).toEqual({ ok: false, error: 'MCP settings are malformed' })
+  expect(resolveMcpTokens(MCP_CTX, 'user-int')).toEqual({})
+})
+
 test('resolveMcpServers fails closed when SETTINGS_PUBLIC_BASE_URL is unset (internal server not eligible)', () => {
   activatePlugin()
   setMcpPluginServerConfigs(MCP_PI, [{ plugin_id: PLUGIN_ID, enabled: true, default_tool_policy: 'allow' }])

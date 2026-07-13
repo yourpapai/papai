@@ -5,7 +5,6 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import * as realOpenAICompatible from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
@@ -40,11 +39,6 @@ const mockModel = new MockLanguageModelV3({
 type GenerateResult = Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
 const okResult: GenerateResult = await generateText({ model: mockModel, prompt: 'hi' })
 
-// buildOpenAI must return a value typed as ReturnType<typeof createOpenAICompatible>.
-// Using the real factory (no HTTP calls happen because generateText is stubbed).
-const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
-  realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
-
 const seedSystemLlmConfig = (): void => {
   setSystemConfig('llm_apikey', 'test-key', 'env')
   setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
@@ -72,7 +66,7 @@ describe('processMessage run lifecycle', () => {
         return Promise.resolve(okResult)
       },
       stepCountIs: (...args) => stepCountIs(...args),
-      buildOpenAI: buildMockOpenAI,
+      buildModel: () => mockModel,
       resolve: () => null,
       maybeAutoProvision: () => Promise.resolve(false),
     }
@@ -91,7 +85,7 @@ describe('processMessage run lifecycle', () => {
         return Promise.reject(new Error('boom'))
       },
       stepCountIs: (...args) => stepCountIs(...args),
-      buildOpenAI: buildMockOpenAI,
+      buildModel: () => mockModel,
       resolve: () => null,
       maybeAutoProvision: () => Promise.resolve(false),
     }

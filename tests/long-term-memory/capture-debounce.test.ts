@@ -5,7 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { armMemoryCapture, type ArmCaptureDeps } from '../../src/long-term-memory/capture-debounce.js'
+import {
+  armMemoryCapture,
+  cancelAndDrainPendingMemoryCaptures,
+  cancelPendingMemoryCaptures,
+  type ArmCaptureDeps,
+} from '../../src/long-term-memory/capture-debounce.js'
 import type { RunMemoryCaptureInput } from '../../src/long-term-memory/capture.js'
 
 const makeInput = (storageContextId = 'g:thread:a'): RunMemoryCaptureInput => ({
@@ -43,5 +48,64 @@ describe('armMemoryCapture', () => {
     capturedFn!()
     await Promise.resolve()
     expect(captures).toBe(1)
+  })
+
+  test('cancels every pending capture and permits clean reuse', () => {
+    let cleared = 0
+    const deps: ArmCaptureDeps = {
+      markActivity: (): void => undefined,
+      runCapture: (): Promise<void> => Promise.resolve(),
+      schedule: (): ReturnType<typeof setTimeout> => setTimeout(() => undefined, 9_999_999),
+      clear: (timer): void => {
+        clearTimeout(timer)
+        cleared += 1
+      },
+      debounceMs: 600_000,
+      now: (): string => '2026-06-16T00:00:00.000Z',
+    }
+
+    armMemoryCapture(makeInput('group-a'), deps)
+    armMemoryCapture(makeInput('group-b'), deps)
+    cancelPendingMemoryCaptures()
+    cancelPendingMemoryCaptures()
+    armMemoryCapture(makeInput('group-c'), deps)
+    cancelPendingMemoryCaptures()
+
+    expect(cleared).toBe(3)
+  })
+
+  test('drain waits for an in-flight capture before permitting reuse', async () => {
+    let scheduled: (() => void) | undefined
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const deps: ArmCaptureDeps = {
+      markActivity: (): void => undefined,
+      runCapture: (): Promise<void> => gate,
+      schedule: (fn): ReturnType<typeof setTimeout> => {
+        scheduled = fn
+        return setTimeout(() => undefined, 9_999_999)
+      },
+      clear: clearTimeout,
+      debounceMs: 600_000,
+      now: (): string => '2026-06-16T00:00:00.000Z',
+    }
+    armMemoryCapture(makeInput('in-flight'), deps)
+    scheduled?.()
+    let drained = false
+    const draining = cancelAndDrainPendingMemoryCaptures().then((): void => {
+      drained = true
+    })
+
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    release?.()
+    await draining
+    expect(drained).toBe(true)
+
+    armMemoryCapture(makeInput('reuse'), deps)
+    expect(scheduled).toBeDefined()
+    cancelPendingMemoryCaptures()
   })
 })

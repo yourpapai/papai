@@ -94,6 +94,35 @@ jobs:
       - name: Run all checks
         run: bun check:full
 
+  stories:
+    name: Hermetic Full-Stack Stories
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Download build output
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: public/
+      - name: Run hermetic harness contracts
+        run: bun test:stories:contracts --reporter=junit --reporter-outfile=reports/stories/contracts-junit.xml
+      - name: Run hermetic full-stack stories
+        run: bun test:stories
+      - name: Upload story reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hermetic-story-reports
+          path: reports/stories/**
+          if-no-files-found: warn
+          retention-days: 14
+
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest

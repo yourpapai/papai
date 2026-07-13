@@ -11,6 +11,7 @@ import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '
 import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { importPluginModule, resolveProviderConfigValidator, toPluginImportSpecifier } from './module-import.js'
+import type { ProviderRuntimeDeps } from './provider-runtime.js'
 import { pluginRegistry } from './registry.js'
 import { recordRuntimeEvent } from './store.js'
 import {
@@ -40,8 +41,24 @@ function buildActivationTimeout(timeoutMs: number): {
 const log = logger.child({ scope: 'plugins:loader' })
 const PLUGIN_LIFECYCLE_CONCURRENCY = 1
 const SYSTEM_CONTEXT_ID = '__system__'
+export type ActivatePluginsOptions = Readonly<{ providerRuntimeDeps?: ProviderRuntimeDeps }>
 const activationOrder: string[] = []
-const activeInstances = new Map<string, PluginInstance>()
+type ActivePluginInstance = Readonly<{
+  instance: PluginInstance
+  options: ActivatePluginsOptions
+  plugin: DiscoveredPlugin
+}>
+const activeInstances = new Map<string, ActivePluginInstance>()
+let lifecycleTail: Promise<void> = Promise.resolve()
+
+function serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+  const result = lifecycleTail.then(operation)
+  lifecycleTail = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
 
 function removeActivatedPluginId(pluginId: string): void {
   const index = activationOrder.lastIndexOf(pluginId)
@@ -98,6 +115,7 @@ function finalizeSuccessfulActivation(
   plugin: DiscoveredPlugin,
   activationContext: ReturnType<typeof buildPluginContext>,
   instance: PluginInstance | null,
+  options: ActivatePluginsOptions,
   validateConfig?: TaskProviderConfigValidator,
 ): void {
   const { manifest } = plugin
@@ -106,7 +124,7 @@ function finalizeSuccessfulActivation(
   commitTaskProviderRegistration(plugin, activationContext, validateConfig)
   contributionRegistry.register(manifest.id, collected, manifest)
   if (instance !== null) {
-    activeInstances.set(manifest.id, instance)
+    activeInstances.set(manifest.id, { instance, options, plugin })
   }
   pluginRegistry.markActive(manifest.id)
   activationOrder.push(manifest.id)
@@ -121,6 +139,7 @@ function closeActivationRegistration(activationContext: ReturnType<typeof buildP
 function handleActivationFailure(pluginId: string, msg: string): false {
   log.error({ pluginId, error: msg }, 'Plugin activation failed')
   activeInstances.delete(pluginId)
+  removeActivatedPluginId(pluginId)
   contributionRegistry.deregister(pluginId)
   deactivateContributedTaskProviderTypes(pluginId)
   pluginRegistry.markError(pluginId, `Activation failed: ${msg}`)
@@ -128,8 +147,14 @@ function handleActivationFailure(pluginId: string, msg: string): false {
   return false
 }
 
-async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
+async function activateOne(plugin: DiscoveredPlugin, options: ActivatePluginsOptions): Promise<boolean> {
   const { manifest, entryPoint } = plugin
+
+  if (activeInstances.has(manifest.id) || activationOrder.includes(manifest.id)) {
+    pluginRegistry.markActive(manifest.id)
+    log.debug({ pluginId: manifest.id }, 'Plugin is already active; skipping repeated activation')
+    return true
+  }
 
   log.info({ pluginId: manifest.id, entryPoint }, 'Activating plugin')
 
@@ -139,13 +164,14 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
       : await importPluginModule(entryPoint).catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err)
           log.error({ pluginId: manifest.id, error: msg }, 'Failed to import plugin entry point')
-          pluginRegistry.markError(manifest.id, `Import failed: ${msg}`)
-          recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
+          handleActivationFailure(manifest.id, `Import failed: ${msg}`)
           return null
         })
   if (entryPoint !== '' && importedModule === null) return false
 
-  const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
+  const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID, {
+    providerRuntimeDeps: options.providerRuntimeDeps,
+  })
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
@@ -159,7 +185,7 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
         `Plugin '${manifest.id}' declares providerConfigValidator but did not register task provider type '${manifest.contributes.taskProviderTypes[0] ?? 'unknown'}'`,
       )
     }
-    finalizeSuccessfulActivation(plugin, activationContext, importedModule?.instance ?? null, validateConfig)
+    finalizeSuccessfulActivation(plugin, activationContext, importedModule?.instance ?? null, options, validateConfig)
     return true
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -170,19 +196,23 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   }
 }
 
-/** Load and activate all approved+compatible plugins. Failures are isolated. */
-export async function activatePlugins(plugins: DiscoveredPlugin[]): Promise<void> {
+async function activatePluginsSerialized(plugins: DiscoveredPlugin[], options: ActivatePluginsOptions): Promise<void> {
   if (plugins.length === 0) {
     log.debug('No plugins to activate')
     return
   }
 
   const limit = pLimit(PLUGIN_LIFECYCLE_CONCURRENCY)
-  const results = await Promise.all(plugins.map((p) => limit(() => activateOne(p))))
+  const results = await Promise.all(plugins.map((p) => limit(() => activateOne(p, options))))
   const activated = results.filter(Boolean).length
   const failed = results.length - activated
 
   log.info({ activated, failed, total: plugins.length }, 'Plugin activation complete')
+}
+
+/** Load and activate all approved+compatible plugins. Failures are isolated. */
+export function activatePlugins(plugins: DiscoveredPlugin[], options: ActivatePluginsOptions = {}): Promise<void> {
+  return serializeLifecycle(() => activatePluginsSerialized(plugins, options))
 }
 
 export type DeactivateAllPluginsOptions = Readonly<{
@@ -198,17 +228,16 @@ const cleanupContributedTaskProviderTypes = (pluginId: string, options: Deactiva
 }
 
 async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOptions): Promise<void> {
-  const entry = pluginRegistry.getEntry(pluginId)
-  if (entry === undefined || entry.state !== 'active') return
-
-  const instance = activeInstances.get(pluginId)
+  const active = activeInstances.get(pluginId)
+  if (active === undefined && !activationOrder.includes(pluginId)) return
 
   try {
-    if (instance !== undefined && typeof instance.deactivate === 'function') {
-      const { ctx } = buildPluginContext(entry.discoveredPlugin.manifest, SYSTEM_CONTEXT_ID, {
+    if (active !== undefined && typeof active.instance.deactivate === 'function') {
+      const { ctx } = buildPluginContext(active.plugin.manifest, SYSTEM_CONTEXT_ID, {
         registrationInitiallyOpen: false,
+        providerRuntimeDeps: active.options.providerRuntimeDeps,
       })
-      await Promise.resolve(instance.deactivate(ctx))
+      await Promise.resolve(active.instance.deactivate(ctx))
     }
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
@@ -229,21 +258,22 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
   }
 }
 
-export async function deactivatePluginById(pluginId: string, options: DeactivateAllPluginsOptions = {}): Promise<void> {
-  await deactivateOne(pluginId, options)
+export function deactivatePluginById(pluginId: string, options: DeactivateAllPluginsOptions = {}): Promise<void> {
+  return serializeLifecycle(() => deactivateOne(pluginId, options))
 }
 
-export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}): Promise<void> {
+async function deactivateAllPluginsSerialized(options: DeactivateAllPluginsOptions): Promise<void> {
   const toDeactivate = [...activationOrder].reverse()
   if (toDeactivate.length === 0) return
 
   log.info({ count: toDeactivate.length }, 'Deactivating plugins')
 
-  await toDeactivate.reduce((chain, id) => chain.then(() => deactivateOne(id, options)), Promise.resolve())
-
-  activeInstances.clear()
-  activationOrder.length = 0
+  await toDeactivate.reduce((chain, pluginId) => chain.then(() => deactivateOne(pluginId, options)), Promise.resolve())
   log.info('All plugins deactivated')
+}
+
+export function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}): Promise<void> {
+  return serializeLifecycle(() => deactivateAllPluginsSerialized(options))
 }
 
 export function getActivatedPluginIds(): string[] {

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ProviderRuntimeDeps } from '../plugins/provider-runtime.js'
 import { handleAdminByokRoutes } from './settings/admin/byok-routes.js'
 import { handleAdminCodingGuardrailsRoutes } from './settings/admin/coding-guardrails-routes.js'
 import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
@@ -29,7 +30,9 @@ import { handleProvisionKaneo } from './settings/provision-routes.js'
 import { handleReleaseSubscriptionRoutes } from './settings/release-subscription-routes.js'
 import { handleToolsRoutes } from './settings/tools-routes.js'
 
-function routeAdminApi(req: Request, url: URL): Promise<Response> | null {
+export type SettingsApiRouteOptions = Readonly<{ pluginProviderRuntimeDeps?: ProviderRuntimeDeps }>
+
+function routeAdminApi(req: Request, url: URL, options: SettingsApiRouteOptions): Promise<Response> | null {
   const p = url.pathname
   if (
     p.startsWith('/settings/api/admin/platform-instances') ||
@@ -51,7 +54,7 @@ function routeAdminApi(req: Request, url: URL): Promise<Response> | null {
     p === '/settings/api/admin/plugin-approval' ||
     p === '/settings/api/admin/announce'
   )
-    return handleAdminRosterPluginsRoutes(req, url, p)
+    return handleAdminRosterPluginsRoutes(req, url, p, options)
   if (p === '/settings/api/admin/plugin-config') return handleAdminPluginConfigRoutes(req, url, p)
   if (p === '/settings/api/admin/byok') return handleAdminByokRoutes(req, url)
   if (p === '/settings/api/admin/tool-defaults') return handleAdminToolDefaultsRoutes(req, url, p)
@@ -67,9 +70,13 @@ function routeAdminApi(req: Request, url: URL): Promise<Response> | null {
  * settings-router.ts). Returns a Response for owned paths, or null to fall through
  * to the 404 handler. Never consults DEBUG_TOKEN.
  */
-export function routeSettingsApi(req: Request, url: URL): Promise<Response | null> {
+export function routeSettingsApi(
+  req: Request,
+  url: URL,
+  options: SettingsApiRouteOptions = {},
+): Promise<Response | null> {
   if (url.pathname.startsWith('/settings/api/admin/')) {
-    const adminResult = routeAdminApi(req, url)
+    const adminResult = routeAdminApi(req, url, options)
     if (adminResult !== null) return adminResult
   }
   if (url.pathname === '/settings/api/byok') return handleByokRoutes(req, url)

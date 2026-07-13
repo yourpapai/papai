@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { buildPluginContext } from '../../src/plugins/context.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
@@ -236,6 +236,22 @@ describe('buildPluginContext', () => {
     test('does not provide providerRuntime without http or provider.task permission', () => {
       const { ctx } = buildPluginContext(makeManifest({ permissions: [] }), 'ctx-1')
       expect(ctx.providerRuntime).toBeUndefined()
+    })
+
+    test('uses request-scoped provider runtime dependencies when supplied', async () => {
+      const fetch = mock(() => Promise.resolve(new Response('fixture')))
+      const assertPublicUrl = mock(() => Promise.resolve())
+      const { ctx } = buildPluginContext(
+        makeManifest({ permissions: ['http'], providerAllowedHosts: ['api.example.com'] }),
+        'ctx-1',
+        { providerRuntimeDeps: { fetch, assertPublicUrl } },
+      )
+
+      expect(
+        await ctx.providerRuntime!.httpFetch('https://api.example.com/value').then((response) => response.text()),
+      ).toBe('fixture')
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(assertPublicUrl).toHaveBeenCalledTimes(1)
     })
   })
 

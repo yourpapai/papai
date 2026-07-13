@@ -20,7 +20,14 @@ export type ArmCaptureDeps = Readonly<{
   now: () => string
 }>
 
-const pending = new Map<string, ReturnType<typeof setTimeout>>()
+type PendingCapture = Readonly<{
+  timer: ReturnType<typeof setTimeout>
+  clear(timer: ReturnType<typeof setTimeout>): void
+}>
+
+const pending = new Map<string, PendingCapture>()
+const inFlight = new Set<Promise<void>>()
+let drainInFlight: Promise<void> | undefined
 
 const defaultDeps: ArmCaptureDeps = {
   markActivity: (input, historyLen, now) => {
@@ -47,23 +54,53 @@ const defaultDeps: ArmCaptureDeps = {
 export function armMemoryCapture(input: RunMemoryCaptureInput, deps: ArmCaptureDeps = defaultDeps): void {
   if (input.actorRole === 'guest') return
   if (input.contextType !== 'group') return
+  if (drainInFlight !== undefined) return
 
   deps.markActivity(input, input.history.length, deps.now())
 
   const existing = pending.get(input.storageContextId)
-  if (existing !== undefined) deps.clear(existing)
+  if (existing !== undefined) existing.clear(existing.timer)
 
   const timer = deps.schedule(() => {
     pending.delete(input.storageContextId)
-    void deps.runCapture(input).catch((error: unknown) => {
-      log.warn(
-        {
-          contextId: input.storageContextId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Debounced capture failed',
-      )
-    })
+    const capture = deps
+      .runCapture(input)
+      .catch((error: unknown) => {
+        log.warn(
+          {
+            contextId: input.storageContextId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Debounced capture failed',
+        )
+      })
+      .finally(() => {
+        inFlight.delete(capture)
+      })
+    inFlight.add(capture)
   }, deps.debounceMs)
-  pending.set(input.storageContextId, timer)
+  pending.set(input.storageContextId, { timer, clear: deps.clear })
+}
+
+/** Cancel deferred captures during runtime teardown and release their captured state. */
+export function cancelPendingMemoryCaptures(): void {
+  for (const { timer, clear } of pending.values()) clear(timer)
+  pending.clear()
+}
+
+/** Cancel deferred captures and wait until every already-started capture settles. */
+export function cancelAndDrainPendingMemoryCaptures(): Promise<void> {
+  if (drainInFlight !== undefined) return drainInFlight
+  cancelPendingMemoryCaptures()
+  const drainCaptures = async (): Promise<void> => {
+    const captures = [...inFlight]
+    if (captures.length === 0) return
+    await Promise.all(captures)
+    return drainCaptures()
+  }
+  const draining = drainCaptures().finally(() => {
+    if (drainInFlight === draining) drainInFlight = undefined
+  })
+  drainInFlight = draining
+  return draining
 }

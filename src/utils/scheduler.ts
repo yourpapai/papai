@@ -14,6 +14,7 @@ import { createEmitters } from './scheduler.events.js'
 import { type EventEmitter, mergeOptions, type Task } from './scheduler.helpers.js'
 import {
   type SchedulerContext,
+  drainAllTasks,
   getTaskState,
   registerTask,
   startAllTasks,
@@ -53,6 +54,7 @@ export interface Scheduler {
   unregister: (name: string) => void
   startAll: () => void
   stopAll: () => void
+  drainAll: () => Promise<void>
   hasTask: (name: string) => boolean
   getTaskState: (name: string) => TaskState | null
   on: <E extends keyof EventHandlerMap>(event: E, handler: EventHandlerMap[E]) => void
@@ -83,6 +85,7 @@ interface SchedulerMethods {
   unregister: (name: string) => void
   startAll: () => void
   stopAll: () => void
+  drainAll: () => Promise<void>
   hasTask: (name: string) => boolean
   getState: (name: string) => TaskState | null
   on: <E extends keyof EventHandlerMap>(event: E, handler: EventHandlerMap[E]) => void
@@ -110,6 +113,8 @@ const createSchedulerMethods = (
     stopAllTasks(context, stop)
   }
 
+  const drainAll = (): Promise<void> => drainAllTasks(context)
+
   const hasTask = (name: string): boolean => taskExists(context, name)
 
   const getState = (name: string): TaskState | null => getTaskState(context, name)
@@ -119,7 +124,7 @@ const createSchedulerMethods = (
     handlerSets[event].add(handler)
   }
 
-  return { register, unregister, startAll, stopAll, hasTask, getState, on }
+  return { register, unregister, startAll, stopAll, drainAll, hasTask, getState, on }
 }
 
 /**
@@ -141,6 +146,7 @@ export const createScheduler = (options?: SchedulerOptions): Scheduler => {
   const emitters = createEmitters(events)
   const context: SchedulerContext = {
     tasks,
+    activeExecutions: new Set<Promise<void>>(),
     events,
     emitters,
     schedulerOptions,
@@ -157,6 +163,7 @@ export const createScheduler = (options?: SchedulerOptions): Scheduler => {
     unregister: methods.unregister,
     startAll: methods.startAll,
     stopAll: methods.stopAll,
+    drainAll: methods.drainAll,
     hasTask: methods.hasTask,
     getTaskState: methods.getState,
     on: methods.on,

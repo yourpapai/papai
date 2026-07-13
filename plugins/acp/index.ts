@@ -13,7 +13,7 @@ import {
   sessionStatusTool,
   startSessionTool,
 } from './session-tools.js'
-import { getTool, listProjectsTool } from './tools.js'
+import { ACP_CAPABILITIES, getTool, listProjectsTool } from './tools.js'
 import type { Tool } from './tools.js'
 
 // Local structural plugin-context types: plugins cannot static-import src/ or zod
@@ -110,7 +110,15 @@ const factory = (): { activate(ctx: unknown): void } => ({
   activate(rawCtx: unknown): void {
     const ctx = extractActivationContext(rawCtx)
     ctx.registerTool(listProjectsTool())
-    ctx.registerTool(getTool('list_agents', 'List coding agents available in magi.', '/agents', ctx.httpFetch))
+    ctx.registerTool(
+      getTool(
+        'list_agents',
+        ACP_CAPABILITIES.listAgents,
+        'List coding agents available in magi.',
+        '/agents',
+        ctx.httpFetch,
+      ),
+    )
     ctx.registerTool(startSessionTool(ctx.httpFetch))
     ctx.registerTool(listSessionsTool(ctx.httpFetch))
     ctx.registerTool(sessionStatusTool(ctx.httpFetch))

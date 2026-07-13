@@ -10,7 +10,7 @@ import type { Permission } from '../tools/tool-preferences.js'
 import { resolveCodingGuardrails } from './guardrails.js'
 import { resolveMcpCatalog, type McpCatalogEntry } from './mcp-catalog.js'
 import { INTERNAL_SERVER_PREFIX, listEnabledInternalMcpServers } from './mcp-plugin-servers.js'
-import { parseMcpSelections } from './mcp-selections.js'
+import { hasMalformedMcpSelections, parseMcpSelections } from './mcp-selections.js'
 import { configContextOf, identityContext } from './resolve-agent-secrets.js'
 import { getCodingCredentials } from './store.js'
 
@@ -98,7 +98,12 @@ function resolveOneMcpServer(
  */
 export function resolveMcpServers(storageContextId: string, chatUserId: string): ResolveMcpResult {
   const ctx = identityContext(storageContextId, chatUserId)
-  const selections = parseMcpSelections(getCodingCredentials(ctx, 'mcp'))
+  const credentials = getCodingCredentials(ctx, 'mcp')
+  if (hasMalformedMcpSelections(credentials)) {
+    log.warn({ contextId: ctx }, 'mcp selection settings are malformed; refusing (fail-closed)')
+    return { ok: false, error: 'MCP settings are malformed' }
+  }
+  const selections = parseMcpSelections(credentials)
   if (selections.length === 0) return { ok: true, servers: [] }
   const pi = parseScopedContextId(storageContextId)?.platformInstanceId
   if (pi === undefined) {

@@ -18,6 +18,12 @@
     "scripts/behavior-audit/tune-embedding.ts!",
     "scripts/behavior-audit/reset.ts!",
     "scripts/behavior-audit/migrate-trust.ts!",
+    // Stable production/public compatibility boundaries consumed by the
+    // plugin-core-separation refactor. They intentionally remain independent
+    // entries so current master and the refactor share the same API surface.
+    "src/coding-sessions/configure.ts!",
+    "src/coding-sessions/session-record.ts!",
+    "src/coding-sessions/store.ts!",
     "playwright.config.ts!",
     "strybk.config.ts!",
     // First-party plugin entry points are loaded dynamically by the plugin loader,
@@ -57,6 +63,11 @@
   "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw", "@crvy/strybk"],
 
   "ignoreIssues": {
+    // Intentional public seam for plugin-core-separation. Current master uses
+    // it from frozen qualification stories; the refactor consumes it from the
+    // production integration while preserving this exact API.
+    "src/coding-sessions/configure.ts": ["exports"],
+    "src/coding-sessions/store.ts": ["exports"],
     // defaultBroadcastDepsForTest is a test-only seam.
     "src/announcements/broadcast.ts": ["exports"],
     // applyVisibility is unused; turn-assembly re-exports are consumed only by .svelte files.

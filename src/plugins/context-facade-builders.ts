@@ -6,7 +6,7 @@
 import { logger } from '../logger.js'
 import type { PluginAdminConfig, PluginKvStore, PluginLogger } from './context.js'
 import { buildContextDynamicHosts, buildDynamicHosts } from './dynamic-hosts.js'
-import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
+import { buildProviderRuntime, type PluginProviderRuntime, type ProviderRuntimeDeps } from './provider-runtime.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type { PluginManifest } from './types.js'
 
@@ -57,11 +57,15 @@ export function buildPluginLogger(pluginId: string): PluginLogger {
 }
 
 /** Build the provider runtime for a manifest, wiring both admin and context dynamic host tiers. */
-export function buildManifestProviderRuntime(manifest: PluginManifest, log: PluginLogger): PluginProviderRuntime {
+export function buildManifestProviderRuntime(
+  manifest: PluginManifest,
+  log: PluginLogger,
+  deps?: ProviderRuntimeDeps,
+): PluginProviderRuntime {
   return buildProviderRuntime(
     manifest.providerAllowedHosts,
     log,
-    undefined,
+    deps,
     buildDynamicHosts(manifest),
     buildContextDynamicHosts(manifest),
   )

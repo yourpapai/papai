@@ -33,6 +33,17 @@ export function parseMcpSelections(config: CodingCredentialConfig | null): Codin
   }
 }
 
+/** Whether a stored non-empty MCP selection payload cannot be parsed as the expected array. */
+export function hasMalformedMcpSelections(config: CodingCredentialConfig | null): boolean {
+  const raw = config?.servers
+  if (raw === undefined || raw.length === 0) return false
+  try {
+    return !codingMcpSelectionsSchema.safeParse(JSON.parse(raw)).success
+  } catch {
+    return true
+  }
+}
+
 /**
  * Token-preserving merge for a PATCH to the `servers` vault field. The client never receives
  * upstream tokens back (see the GET `selections` view), so a kept external row is submitted with

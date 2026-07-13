@@ -28,65 +28,82 @@ export const scheduler = createScheduler({
   maxRetryDelay: 60_000,
 })
 
-// Register cleanup tasks
-scheduler.register('user-cache-cleanup', {
-  // 5 minutes
-  interval: 5 * 60 * 1000,
-  handler: cleanupExpiredCaches,
-  options: { immediate: true },
-})
+export const DEFAULT_SCHEDULER_TASK_NAMES = [
+  'user-cache-cleanup',
+  'message-cache-sweep',
+  'message-cleanup',
+  'message-queue-cleanup',
+  'staged-files-purge',
+  'long-term-memory-maintenance',
+  'memory-capture-sweep',
+  'memory-promotion-sweep',
+] as const
 
-scheduler.register('message-cache-sweep', {
-  // Daily
-  interval: 24 * 60 * 60 * 1000,
-  handler: sweepExpiredMessages,
-  options: { immediate: true },
-})
+function registerImmediateDefaultTasks(): void {
+  scheduler.register('user-cache-cleanup', {
+    interval: 5 * 60 * 1000,
+    handler: cleanupExpiredCaches,
+    options: { immediate: true },
+  })
+  scheduler.register('message-cache-sweep', {
+    interval: 24 * 60 * 60 * 1000,
+    handler: sweepExpiredMessages,
+    options: { immediate: true },
+  })
+  scheduler.register('message-cleanup', {
+    interval: 60 * 60 * 1000,
+    handler: cleanupExpiredMessages,
+    options: { immediate: true },
+  })
+  scheduler.register('message-queue-cleanup', {
+    interval: 5 * 60 * 1000,
+    handler: cleanupExpiredQueues,
+    options: { immediate: true },
+  })
+  scheduler.register('staged-files-purge', {
+    interval: 60 * 60 * 1000,
+    handler: () => {
+      purgeExpiredStagedFiles()
+    },
+    options: { immediate: true },
+  })
+  scheduler.register('long-term-memory-maintenance', {
+    interval: 60 * 60 * 1000,
+    handler: () => {
+      runMemoryMaintenance()
+    },
+    options: { immediate: true },
+  })
+}
 
-scheduler.register('message-cleanup', {
-  // Hourly
-  interval: 60 * 60 * 1000,
-  handler: cleanupExpiredMessages,
-  options: { immediate: true },
-})
+function registerDeferredDefaultTasks(): void {
+  scheduler.register('memory-capture-sweep', {
+    interval: 5 * 60 * 1000,
+    handler: () => {
+      void sweepDirtyContexts(new Date().toISOString())
+    },
+    options: { immediate: false },
+  })
+  scheduler.register('memory-promotion-sweep', {
+    interval: 30 * 60 * 1000,
+    handler: () => {
+      void sweepPromotions()
+    },
+    options: { immediate: false },
+  })
+}
 
-scheduler.register('message-queue-cleanup', {
-  interval: 5 * 60 * 1000,
-  handler: cleanupExpiredQueues,
-  options: { immediate: true },
-})
+export function registerDefaultSchedulerTasks(): void {
+  if (scheduler.hasTask('user-cache-cleanup')) return
+  registerImmediateDefaultTasks()
+  registerDeferredDefaultTasks()
+}
 
-scheduler.register('staged-files-purge', {
-  interval: 60 * 60 * 1000,
-  handler: () => {
-    purgeExpiredStagedFiles()
-  },
-  options: { immediate: true },
-})
-
-scheduler.register('long-term-memory-maintenance', {
-  interval: 60 * 60 * 1000,
-  handler: () => {
-    runMemoryMaintenance()
-  },
-  options: { immediate: true },
-})
-
-scheduler.register('memory-capture-sweep', {
-  interval: 5 * 60 * 1000,
-  handler: () => {
-    void sweepDirtyContexts(new Date().toISOString())
-  },
-  options: { immediate: false },
-})
-
-scheduler.register('memory-promotion-sweep', {
-  interval: 30 * 60 * 1000,
-  handler: () => {
-    void sweepPromotions()
-  },
-  options: { immediate: false },
-})
+export function unregisterDefaultSchedulerTasks(): void {
+  for (const taskName of DEFAULT_SCHEDULER_TASK_NAMES) {
+    if (scheduler.hasTask(taskName)) scheduler.unregister(taskName)
+  }
+}
 
 // Event hooks
 scheduler.on('error', ({ name, error, attempt }: ErrorEvent) => {

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -34,6 +34,7 @@ import { mockLogger, setupTestDb, waitFor } from '../utils/test-helpers.js'
 declare global {
   var papaiDeactivateOrder: string[] | undefined
   var papaiLateRegistrationError: string | undefined
+  var papaiPluginFactoryCount: number | undefined
 }
 
 const tempDirs: string[] = []
@@ -41,6 +42,20 @@ const tempDirs: string[] = []
 function requireValue<T>(value: T | null | undefined, label: string): T {
   if (value === undefined || value === null) throw new Error(`${label} was unexpectedly absent`)
   return value
+}
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 function getRecentRuntimeEvents(
@@ -136,17 +151,137 @@ describe('activatePlugins', () => {
     await setupTestDb()
     await deactivateAllPlugins()
     globalThis.papaiDeactivateOrder = []
+    globalThis.papaiPluginFactoryCount = 0
   })
 
   afterEach(async () => {
     await deactivateAllPlugins()
     tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }))
     globalThis.papaiDeactivateOrder = undefined
+    globalThis.papaiPluginFactoryCount = undefined
   })
 
   test('does nothing when passed empty list', async () => {
     await activatePlugins([])
     expect(getActivatedPluginIds()).toEqual([])
+  })
+
+  test('passes owned provider runtime dependencies into plugin activation', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          async activate(ctx) {
+            const response = await ctx.providerRuntime.httpFetch('https://api.example.com/value')
+            ctx.registration.registerPromptFragment({ name: 'result', content: await response.text() })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('injected-http-plugin', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+      contributes: {
+        tools: [],
+        promptFragments: ['result'],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+        attachmentTransformers: [],
+      },
+    })
+    approvePlugin(plugin)
+    const fetch = mock(() => Promise.resolve(new Response('owned response')))
+
+    await activatePlugins([plugin], { providerRuntimeDeps: { fetch, assertPublicUrl: () => Promise.resolve() } })
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(contributionRegistry.getContributions(plugin.manifest.id)?.promptFragments).toEqual([
+      { name: 'result', content: 'owned response' },
+    ])
+  })
+
+  test('uses each plugin activation HTTP dependency again during deactivation without crossing instances', async () => {
+    const lifecyclePlugin = (id: string): DiscoveredPlugin => {
+      const entryPoint = writeTempPluginModule(`
+        export default function createPlugin() {
+          return {
+            async activate(ctx) {
+              await ctx.providerRuntime.httpFetch('https://api.example.com/${id}/activate')
+            },
+            async deactivate(ctx) {
+              await ctx.providerRuntime.httpFetch('https://api.example.com/${id}/deactivate')
+            },
+          }
+        }
+      `)
+      return makePlugin(id, entryPoint, { permissions: ['http'], providerAllowedHosts: ['api.example.com'] })
+    }
+    const first = lifecyclePlugin('owned-first')
+    const second = lifecyclePlugin('owned-second')
+    approvePlugin(first)
+    approvePlugin(second)
+    const firstUrls: string[] = []
+    const secondUrls: string[] = []
+    const replacementUrls: string[] = []
+    const firstFetch = mock((url: string) => {
+      firstUrls.push(url)
+      return Promise.resolve(new Response('first'))
+    })
+    const secondFetch = mock((url: string) => {
+      secondUrls.push(url)
+      return Promise.resolve(new Response('second'))
+    })
+    const replacementFetch = mock((url: string) => {
+      replacementUrls.push(url)
+      return Promise.resolve(new Response('replacement'))
+    })
+    const publicUrl = (): Promise<void> => Promise.resolve()
+
+    await activatePlugins([first], { providerRuntimeDeps: { fetch: firstFetch, assertPublicUrl: publicUrl } })
+    await activatePlugins([second], { providerRuntimeDeps: { fetch: secondFetch, assertPublicUrl: publicUrl } })
+    await deactivateAllPlugins()
+    await activatePlugins([first], {
+      providerRuntimeDeps: { fetch: replacementFetch, assertPublicUrl: publicUrl },
+    })
+    await deactivateAllPlugins()
+
+    expect(firstUrls).toEqual([
+      'https://api.example.com/owned-first/activate',
+      'https://api.example.com/owned-first/deactivate',
+    ])
+    expect(secondUrls).toEqual([
+      'https://api.example.com/owned-second/activate',
+      'https://api.example.com/owned-second/deactivate',
+    ])
+    expect(replacementUrls).toEqual([
+      'https://api.example.com/owned-first/activate',
+      'https://api.example.com/owned-first/deactivate',
+    ])
+  })
+
+  test('builds the default provider runtime for both lifecycle phases when no dependencies are supplied', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            globalThis.papaiDeactivateOrder.push(ctx.providerRuntime.allowedHosts.has('api.example.com') ? 'activate' : 'missing')
+          },
+          deactivate(ctx) {
+            globalThis.papaiDeactivateOrder.push(ctx.providerRuntime.allowedHosts.has('api.example.com') ? 'deactivate' : 'missing')
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('default-http-plugin', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+    })
+    approvePlugin(plugin)
+    await activatePlugins([plugin])
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiDeactivateOrder).toEqual(['activate', 'deactivate'])
   })
 
   test('marks plugin as error when entry point cannot be imported', async () => {
@@ -159,6 +294,227 @@ describe('activatePlugins', () => {
     expect(requireValue(getRecentRuntimeEvents('bad-plugin', 1)[0], 'bad plugin runtime event').message).toContain(
       'Import failed',
     )
+  })
+
+  test('active plugin reapproval is idempotent and retains its original instance and dependencies', async () => {
+    globalThis.papaiLateRegistrationError = undefined
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/activate') },
+          deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/deactivate') },
+        }
+      }
+    `)
+    const plugin = makePlugin('failed-reactivation-plugin', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+    })
+    approvePlugin(plugin)
+    const urls: string[] = []
+    await activatePlugins([plugin], {
+      providerRuntimeDeps: {
+        fetch: (url) => {
+          urls.push(url)
+          return Promise.resolve(new Response('owned'))
+        },
+        assertPublicUrl: () => Promise.resolve(),
+      },
+    })
+    const replacementEntry = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = 'replacement module imported'
+      export default function createPlugin() {
+        throw new Error('replacement factory must not run')
+      }
+    `)
+    const replacement = makePlugin(plugin.manifest.id, replacementEntry, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+    })
+    approvePlugin(replacement)
+
+    await activatePlugins([replacement])
+    await deactivateAllPlugins()
+
+    expect(getActivatedPluginIds()).toEqual([])
+    expect(contributionRegistry.getContributions(plugin.manifest.id)).toBeUndefined()
+    expect(globalThis.papaiLateRegistrationError).toBeUndefined()
+    expect(urls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
+  })
+
+  test('serializes concurrent activation calls for the same plugin and retains the first dependencies', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        globalThis.papaiPluginFactoryCount = (globalThis.papaiPluginFactoryCount ?? 0) + 1
+        return {
+          activate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/activate') },
+          deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/deactivate') },
+        }
+      }
+    `)
+    const plugin = makePlugin('concurrent-same-plugin', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+    })
+    approvePlugin(plugin)
+    const activationStarted = deferred<true>()
+    const activationResponse = deferred<Response>()
+    const firstUrls: string[] = []
+    const secondUrls: string[] = []
+    const firstResponses = [activationResponse.promise, Promise.resolve(new Response('deactivated'))]
+    const publicUrl = (): Promise<void> => Promise.resolve()
+    const firstFetch = (url: string): Promise<Response> => {
+      firstUrls.push(url)
+      activationStarted.resolve(true)
+      return requireValue(firstResponses.shift(), 'first lifecycle response')
+    }
+    const secondFetch = (url: string): Promise<Response> => {
+      secondUrls.push(url)
+      return activationResponse.promise
+    }
+
+    const first = activatePlugins([plugin], {
+      providerRuntimeDeps: { fetch: firstFetch, assertPublicUrl: publicUrl },
+    })
+    const second = activatePlugins([plugin], {
+      providerRuntimeDeps: { fetch: secondFetch, assertPublicUrl: publicUrl },
+    })
+    await activationStarted.promise
+    activationResponse.resolve(new Response('activated'))
+    await Promise.all([first, second])
+
+    expect(globalThis.papaiPluginFactoryCount).toBe(1)
+    expect(getActivatedPluginIds()).toEqual([plugin.manifest.id])
+    await deactivateAllPlugins()
+
+    expect(firstUrls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
+    expect(secondUrls).toEqual([])
+    expect(getActivatedPluginIds()).toEqual([])
+  })
+
+  test('waits for in-flight activation before deactivating and leaves no published lifecycle state', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerPromptFragment({ name: 'gate', content: 'active' })
+            return ctx.providerRuntime.httpFetch('https://api.example.com/activate')
+          },
+          deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/deactivate') },
+        }
+      }
+    `)
+    const plugin = makePlugin('activation-teardown-race', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+      contributes: {
+        tools: [],
+        promptFragments: ['gate'],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+        attachmentTransformers: [],
+      },
+    })
+    approvePlugin(plugin)
+    const activationStarted = deferred<true>()
+    const activationResponse = deferred<Response>()
+    const urls: string[] = []
+    const responses = [activationResponse.promise, Promise.resolve(new Response('deactivated'))]
+    const activation = activatePlugins([plugin], {
+      providerRuntimeDeps: {
+        fetch: (url: string): Promise<Response> => {
+          urls.push(url)
+          activationStarted.resolve(true)
+          return requireValue(responses.shift(), 'activation teardown response')
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    })
+
+    await activationStarted.promise
+    const teardown = deactivateAllPlugins()
+    activationResponse.resolve(new Response('activated'))
+    await Promise.all([activation, teardown])
+
+    expect(urls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
+    expect(getActivatedPluginIds()).toEqual([])
+    expect(contributionRegistry.getContributions(plugin.manifest.id)).toBeUndefined()
+  })
+
+  test('serializes a concurrent retry after failed activation without retaining stale lifecycle state', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/activate') },
+          deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/deactivate') },
+        }
+      }
+    `)
+    const plugin = makePlugin('concurrent-retry-plugin', entryPoint, {
+      permissions: ['http'],
+      providerAllowedHosts: ['api.example.com'],
+    })
+    approvePlugin(plugin)
+    const firstStarted = deferred<true>()
+    const firstResponse = deferred<Response>()
+    const retryUrls: string[] = []
+    const publicUrl = (): Promise<void> => Promise.resolve()
+    const first = activatePlugins([plugin], {
+      providerRuntimeDeps: {
+        fetch: (): Promise<Response> => {
+          firstStarted.resolve(true)
+          return firstResponse.promise
+        },
+        assertPublicUrl: publicUrl,
+      },
+    })
+    await firstStarted.promise
+    const retry = activatePlugins([plugin], {
+      providerRuntimeDeps: {
+        fetch: (url: string): Promise<Response> => {
+          retryUrls.push(url)
+          return Promise.resolve(new Response('retry'))
+        },
+        assertPublicUrl: publicUrl,
+      },
+    })
+    firstResponse.reject(new Error('first activation failed'))
+
+    await Promise.all([first, retry])
+    expect(getActivatedPluginIds()).toEqual([plugin.manifest.id])
+    await deactivateAllPlugins()
+
+    expect(retryUrls).toEqual(['https://api.example.com/activate', 'https://api.example.com/deactivate'])
+    expect(getActivatedPluginIds()).toEqual([])
+  })
+
+  test('first activation failure leaves no lifecycle record and a later retry activates normally', async () => {
+    const failingEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return { activate() { throw new Error('first activation failed') } }
+      }
+    `)
+    const retryEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate() { globalThis.papaiDeactivateOrder.push('retry-activate') },
+          deactivate() { globalThis.papaiDeactivateOrder.push('retry-deactivate') },
+        }
+      }
+    `)
+    const failing = makePlugin('retry-plugin', failingEntry)
+    approvePlugin(failing)
+    await activatePlugins([failing])
+    expect(getActivatedPluginIds()).toEqual([])
+
+    const retry = makePlugin('retry-plugin', retryEntry)
+    approvePlugin(retry)
+    await activatePlugins([retry])
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiDeactivateOrder).toEqual(['retry-activate', 'retry-deactivate'])
   })
 
   test('converts entry point paths to portable file URLs before import', () => {
@@ -801,9 +1157,11 @@ describe('activatePlugins', () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
         return {
-          activate() {},
+          activate() {
+            globalThis.papaiDeactivateOrder = [...(globalThis.papaiDeactivateOrder ?? []), 'activate']
+          },
           deactivate() {
-            globalThis.papaiDeactivateOrder = [...(globalThis.papaiDeactivateOrder ?? []), 'single-pass']
+            globalThis.papaiDeactivateOrder = [...(globalThis.papaiDeactivateOrder ?? []), 'deactivate']
           },
         }
       }
@@ -815,7 +1173,52 @@ describe('activatePlugins', () => {
     await activatePlugins([plugin])
     await deactivateAllPlugins()
 
-    expect(globalThis.papaiDeactivateOrder).toEqual(['single-pass'])
+    expect(globalThis.papaiDeactivateOrder).toEqual(['activate', 'deactivate'])
+  })
+
+  test('tears down loader-owned plugins after registry state changes without clobbering admin state', async () => {
+    const lifecyclePlugin = (id: string): DiscoveredPlugin => {
+      const entryPoint = writeTempPluginModule(`
+        export default function createPlugin() {
+          return {
+            activate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/${id}/activate') },
+            deactivate(ctx) { return ctx.providerRuntime.httpFetch('https://api.example.com/${id}/deactivate') },
+          }
+        }
+      `)
+      return makePlugin(id, entryPoint, {
+        permissions: ['http'],
+        providerAllowedHosts: ['api.example.com'],
+      })
+    }
+    const approved = lifecyclePlugin('tracked-approved-plugin')
+    const rejected = lifecyclePlugin('tracked-rejected-plugin')
+    approvePlugin(approved)
+    approvePlugin(rejected)
+    const urls: string[] = []
+    await activatePlugins([approved, rejected], {
+      providerRuntimeDeps: {
+        fetch: (url: string): Promise<Response> => {
+          urls.push(url)
+          return Promise.resolve(new Response('ok'))
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    })
+
+    pluginRegistry.approve(approved.manifest.id, 'admin', approved.manifestHash)
+    pluginRegistry.reject(rejected.manifest.id)
+    await deactivateAllPlugins()
+
+    expect(urls).toEqual([
+      'https://api.example.com/tracked-approved-plugin/activate',
+      'https://api.example.com/tracked-rejected-plugin/activate',
+      'https://api.example.com/tracked-rejected-plugin/deactivate',
+      'https://api.example.com/tracked-approved-plugin/deactivate',
+    ])
+    expect(pluginRegistry.getEntry(approved.manifest.id)?.state).toBe('approved')
+    expect(pluginRegistry.getEntry(rejected.manifest.id)?.state).toBe('rejected')
+    expect(getActivatedPluginIds()).toEqual([])
   })
 
   test('deactivation error still cleans framework-owned contributions', async () => {
@@ -852,6 +1255,40 @@ describe('activatePlugins', () => {
     expect(
       requireValue(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0], 'deactivate error runtime event').message,
     ).toContain('deactivate boom')
+  })
+
+  test('deactivation errors do not prevent deterministic teardown of remaining tracked plugins', async () => {
+    const firstEntryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate() {},
+          deactivate() { globalThis.papaiDeactivateOrder.push('first-ok') },
+        }
+      }
+    `)
+    const secondEntryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate() {},
+          deactivate() {
+            globalThis.papaiDeactivateOrder.push('second-error')
+            throw new Error('expected second teardown failure')
+          },
+        }
+      }
+    `)
+    const first = makePlugin('remaining-after-error', firstEntryPoint)
+    const second = makePlugin('error-before-remaining', secondEntryPoint)
+    approvePlugin(first)
+    approvePlugin(second)
+    await activatePlugins([first, second])
+
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiDeactivateOrder).toEqual(['second-error', 'first-ok'])
+    expect(getActivatedPluginIds()).toEqual([])
+    expect(contributionRegistry.getContributions(first.manifest.id)).toBeUndefined()
+    expect(contributionRegistry.getContributions(second.manifest.id)).toBeUndefined()
   })
 
   test('deactivate context rejects registration attempts', async () => {
