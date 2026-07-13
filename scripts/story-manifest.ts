@@ -10,9 +10,15 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import {
-  isFrozenEnforcementPath,
-  isFrozenTestSupportPath,
+  currentStoryManifestCommit,
+  loadBaselineRuntimeInputs,
+  loadBaselineStoryFiles,
+  resolveStoryManifestCommit,
+} from './story-manifest-baseline.js'
+import {
+  loadCandidateRuntimeInputFiles,
   loadCandidateStoryFiles,
+  type LoadedRuntimeInput,
   type LoadedStoryFile,
 } from './story-manifest-candidate.js'
 import { extractStoryScenarios } from './story-manifest-scenarios.js'
@@ -20,30 +26,49 @@ import { removeStoryReport, STORY_MANIFEST_REPORT_PATH } from './story-reports.j
 import { parseBunInteger } from './story-runner-integers.js'
 
 const FILE_HASH = /^[a-f0-9]{64}$/u
-const STORIES_PREFIX = 'tests/stories'
 
 const StoryFileSchema = z.strictObject({ path: z.string(), sha256: z.string().regex(FILE_HASH) })
 const StoryScenarioSchema = z.strictObject({ id: z.string(), checkpoints: z.array(z.string()) })
+const RuntimeFileSchema = z.strictObject({
+  kind: z.literal('file'),
+  path: z.string(),
+  sha256: z.string().regex(FILE_HASH),
+})
+const RuntimeSymlinkSchema = z.strictObject({
+  kind: z.literal('symlink'),
+  path: z.string(),
+  sha256: z.string().regex(FILE_HASH),
+  target: z.string(),
+})
+const RuntimeInputSchema = z.discriminatedUnion('kind', [RuntimeFileSchema, RuntimeSymlinkSchema])
+const RuntimeInputManifestSchema = z.strictObject({
+  treeHash: z.string().regex(FILE_HASH),
+  files: z.array(RuntimeInputSchema),
+})
 
 export const StoryManifestSchema = z.strictObject({
-  version: z.literal(1),
+  version: z.literal(2),
   commit: z.string().min(7),
   bunVersion: z.string().min(1),
   seed: z.number().int(),
   treeHash: z.string().regex(FILE_HASH),
   files: z.array(StoryFileSchema),
+  runtimeInputs: RuntimeInputManifestSchema,
   scenarios: z.array(StoryScenarioSchema),
 })
 
 export type StoryManifest = z.infer<typeof StoryManifestSchema>
+export type RuntimeInputManifest = z.infer<typeof RuntimeInputManifestSchema>
 type StoryFile = z.infer<typeof StoryFileSchema>
 type StoryScenario = z.infer<typeof StoryScenarioSchema>
+type RuntimeInput = z.infer<typeof RuntimeInputSchema>
 type ManifestOptions = Readonly<{ root: string; seed: number; bunVersion?: string }>
 type BaselineOptions = ManifestOptions & Readonly<{ ref: string }>
 export type { LoadedStoryFile } from './story-manifest-candidate.js'
 export type CapturedCandidateStoryInputs = Readonly<{
   manifest: StoryManifest
   files: readonly LoadedStoryFile[]
+  runtimeInputs: Readonly<{ manifest: RuntimeInputManifest; files: readonly LoadedRuntimeInput[] }>
 }>
 export type StoryManifestWriteDeps = Readonly<{
   write(temporaryPath: string, contents: string): Promise<void>
@@ -63,9 +88,9 @@ function sha256(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-function hashTree(files: readonly StoryFile[]): string {
+function hashTree(files: readonly StoryFile[], namespace: string): string {
   const hash = createHash('sha256')
-  hash.update('papai-story-tree-v1\0')
+  hash.update(namespace)
   for (const file of files) {
     const pathname = Buffer.from(file.path)
     hash.update(`${pathname.byteLength}:`)
@@ -77,91 +102,40 @@ function hashTree(files: readonly StoryFile[]): string {
   return hash.digest('hex')
 }
 
-async function gitBytes(root: string, args: readonly string[], context: string): Promise<Uint8Array> {
-  const child = Bun.spawn(['git', ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).arrayBuffer(),
-    new Response(child.stderr).text(),
-  ])
-  if (exitCode !== 0) throw new Error(`${context}: ${stderr.trim() || `git exited ${exitCode}`}`)
-  return new Uint8Array(stdout)
-}
-
-async function resolveCommit(root: string, ref: string): Promise<string> {
-  if (ref.trim() === '') throw new Error('Compatibility mode requires an explicit baseline ref')
-  try {
-    const bytes = await gitBytes(
-      root,
-      ['rev-parse', '--verify', `${ref}^{commit}`],
-      `Cannot resolve baseline ref "${ref}"`,
-    )
-    return new TextDecoder().decode(bytes).trim()
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Cannot resolve baseline ref')) throw error
-    throw new Error(`Cannot resolve baseline ref "${ref}"`, { cause: error })
+function hashRuntimeTree(files: readonly RuntimeInput[]): string {
+  const hash = createHash('sha256')
+  hash.update('papai-story-runtime-inputs-v1\0')
+  for (const file of files) {
+    const pathname = Buffer.from(file.path)
+    hash.update(file.kind)
+    hash.update('\0')
+    hash.update(`${pathname.byteLength}:`)
+    hash.update(pathname)
+    hash.update('\0')
+    hash.update(file.sha256)
+    hash.update('\0')
+    if (file.kind === 'symlink') {
+      hash.update(file.target)
+      hash.update('\0')
+    }
   }
-}
-
-async function currentCommit(root: string): Promise<string> {
-  const bytes = await gitBytes(root, ['rev-parse', '--verify', 'HEAD^{commit}'], 'Cannot resolve candidate HEAD')
-  return new TextDecoder().decode(bytes).trim()
+  return hash.digest('hex')
 }
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-function isFrozenPath(filePath: string): boolean {
-  return (
-    filePath.startsWith(`${STORIES_PREFIX}/`) || isFrozenEnforcementPath(filePath) || isFrozenTestSupportPath(filePath)
-  )
-}
-
-type GitTreeEntry = Readonly<{ mode: string; object: string; path: string }>
-
-function parseGitTree(bytes: Uint8Array): readonly GitTreeEntry[] {
-  const records = new TextDecoder().decode(bytes).split('\0').filter(Boolean)
-  return records.flatMap((record): readonly GitTreeEntry[] => {
-    const tab = record.indexOf('\t')
-    const metadata = record.slice(0, tab).split(' ')
-    const mode = metadata[0]
-    const type = metadata[1]
-    const object = metadata[2]
-    const pathname = record.slice(tab + 1)
-    if (!isFrozenPath(pathname)) return []
-    if (tab < 0 || mode === undefined || object === undefined || type !== 'blob') {
-      throw new Error(`Malformed Git tree entry for ${pathname || STORIES_PREFIX}`)
-    }
-    if (mode !== '100644' && mode !== '100755') {
-      throw new Error(`Unsupported story manifest entry at baseline: ${pathname} (mode ${mode})`)
-    }
-    return [{ mode, object, path: pathname }]
-  })
-}
-
-async function loadBaselineFiles(root: string, commit: string): Promise<readonly LoadedStoryFile[]> {
-  const tree = await gitBytes(
-    root,
-    ['ls-tree', '-rz', '--full-tree', commit, '--', 'bunfig.toml', 'tests', 'scripts'],
-    `Cannot read frozen story inputs at ${commit}`,
-  )
-  const entries = [...parseGitTree(tree)].sort((left, right) => compareText(left.path, right.path))
-  return Promise.all(
-    entries.map(
-      async (entry): Promise<LoadedStoryFile> => ({
-        path: entry.path,
-        bytes: await gitBytes(root, ['cat-file', 'blob', entry.object], `Cannot read baseline blob ${entry.path}`),
-      }),
-    ),
-  )
-}
-
 function assembleManifest(
   loaded: readonly LoadedStoryFile[],
+  runtimeInputFiles: readonly LoadedRuntimeInput[],
   metadata: Readonly<{ commit: string; bunVersion: string; seed: number }>,
 ): StoryManifest {
   const files = loaded.map((file): StoryFile => ({ path: file.path, sha256: sha256(file.bytes) }))
+  const runtimeFiles = runtimeInputFiles.map((file): RuntimeInput => {
+    if (file.kind === 'file') return { kind: 'file', path: file.path, sha256: sha256(file.bytes) }
+    return { kind: 'symlink', path: file.path, sha256: sha256(file.target), target: file.target }
+  })
   const scenarios: StoryScenario[] = loaded
     .flatMap((file) => extractStoryScenarios(file.path, file.bytes))
     .map((scenario) => ({ ...scenario, checkpoints: [...scenario.checkpoints] }))
@@ -171,10 +145,14 @@ function assembleManifest(
       throw new Error(`Duplicate scenario id: ${scenarios[index]?.id}`)
   }
   return StoryManifestSchema.parse({
-    version: 1,
+    version: 2,
     ...metadata,
-    treeHash: hashTree(files),
+    treeHash: hashTree(files, 'papai-story-tree-v1\0'),
     files,
+    runtimeInputs: {
+      treeHash: hashRuntimeTree(runtimeFiles),
+      files: runtimeFiles,
+    },
     scenarios,
   })
 }
@@ -184,19 +162,30 @@ export async function buildCandidateStoryManifest(options: ManifestOptions): Pro
 }
 
 export async function captureCandidateStoryInputs(options: ManifestOptions): Promise<CapturedCandidateStoryInputs> {
-  const [commit, files] = await Promise.all([currentCommit(options.root), loadCandidateStoryFiles(options.root)])
-  const manifest = assembleManifest(files, {
+  const [commit, files, runtimeFiles] = await Promise.all([
+    currentStoryManifestCommit(options.root),
+    loadCandidateStoryFiles(options.root),
+    loadCandidateRuntimeInputFiles(options.root),
+  ])
+  const manifest = assembleManifest(files, runtimeFiles, {
     commit,
     bunVersion: options.bunVersion ?? Bun.version,
     seed: options.seed,
   })
-  return { manifest, files }
+  return { manifest, files, runtimeInputs: { manifest: manifest.runtimeInputs, files: runtimeFiles } }
 }
 
 export async function buildBaselineStoryManifest(options: BaselineOptions): Promise<StoryManifest> {
-  const commit = await resolveCommit(options.root, options.ref)
-  const files = await loadBaselineFiles(options.root, commit)
-  return assembleManifest(files, { commit, bunVersion: options.bunVersion ?? Bun.version, seed: options.seed })
+  const commit = await resolveStoryManifestCommit(options.root, options.ref)
+  const [files, runtimeFiles] = await Promise.all([
+    loadBaselineStoryFiles(options.root, commit),
+    loadBaselineRuntimeInputs(options.root, commit),
+  ])
+  return assembleManifest(files, runtimeFiles, {
+    commit,
+    bunVersion: options.bunVersion ?? Bun.version,
+    seed: options.seed,
+  })
 }
 
 export function compareStoryManifests(candidate: StoryManifest, baseline: StoryManifest): void {

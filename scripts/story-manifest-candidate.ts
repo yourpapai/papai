@@ -4,10 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { constants } from 'node:fs'
-import { lstat, open, readdir } from 'node:fs/promises'
+import { lstat, open, readdir, readlink } from 'node:fs/promises'
 import path from 'node:path'
 
 const STORIES_PREFIX = 'tests/stories'
+export const REQUIRED_RUNTIME_DIRECTORY_ROOTS = ['src', 'plugins'] as const
+const OPTIONAL_RUNTIME_DIRECTORY_ROOTS = ['public'] as const
+export const REQUIRED_RUNTIME_FILE_ROOTS = ['package.json', 'bun.lock'] as const
+const RUNTIME_FILE_ROOTS = new Set<string>(REQUIRED_RUNTIME_FILE_ROOTS)
 const FROZEN_TEST_SUPPORT = new Set([
   'bunfig.toml',
   'tests/mock-reset.ts',
@@ -17,6 +21,9 @@ const FROZEN_TEST_SUPPORT = new Set([
 ])
 
 export type LoadedStoryFile = Readonly<{ path: string; bytes: Uint8Array }>
+export type LoadedRuntimeFile = Readonly<{ kind: 'file'; path: string; bytes: Uint8Array }>
+export type LoadedRuntimeSymlink = Readonly<{ kind: 'symlink'; path: string; target: string }>
+export type LoadedRuntimeInput = LoadedRuntimeFile | LoadedRuntimeSymlink
 export type CandidateCaptureDependencies = Readonly<{
   afterDirectoryRead?(directory: string): Promise<void>
 }>
@@ -31,6 +38,32 @@ export function isFrozenEnforcementPath(filePath: string): boolean {
 
 export function isFrozenTestSupportPath(filePath: string): boolean {
   return FROZEN_TEST_SUPPORT.has(filePath)
+}
+
+export function isRuntimeInputPath(filePath: string): boolean {
+  return (
+    RUNTIME_FILE_ROOTS.has(filePath) ||
+    [...REQUIRED_RUNTIME_DIRECTORY_ROOTS, ...OPTIONAL_RUNTIME_DIRECTORY_ROOTS].some((root) =>
+      filePath.startsWith(`${root}/`),
+    )
+  )
+}
+
+export function assertRuntimeSymlinkTarget(root: string, filePath: string, target: string): void {
+  const source = path.resolve(root, filePath)
+  const resolved = path.resolve(path.dirname(source), target)
+  const relative = path.relative(root, resolved)
+  if (
+    target.includes('\\') ||
+    path.isAbsolute(target) ||
+    path.win32.isAbsolute(target) ||
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative) ||
+    !isRuntimeInputPath(toPosix(relative))
+  ) {
+    throw new Error(`Unsupported story runtime symlink: ${filePath} -> ${target}`)
+  }
 }
 
 function errorCode(error: unknown): unknown {
@@ -87,7 +120,7 @@ async function assertDirectoryIdentity(root: string, directory: string, expected
   }
 }
 
-async function visitStories(
+async function visitDirectory(
   root: string,
   directory: string,
   expected: DirectoryIdentity,
@@ -106,7 +139,7 @@ async function visitStories(
       const absolute = path.join(directory, entry.name)
       const relative = toPosix(path.relative(root, absolute))
       if (stats.isDirectory()) {
-        await visitStories(root, absolute, directoryIdentity(stats), files, dependencies)
+        await visitDirectory(root, absolute, directoryIdentity(stats), files, dependencies)
       } else if (stats.isFile()) files.push({ path: relative, bytes: await readCandidateFile(absolute, relative) })
       else {
         const kind = stats.isSymbolicLink() ? 'symbolic link' : 'special file'
@@ -162,7 +195,7 @@ export async function loadCandidateStoryFiles(
   }
   if (!rootEntry.isDirectory()) throw new Error(`Unsupported story manifest root: ${STORIES_PREFIX} (not a directory)`)
   const files: LoadedStoryFile[] = []
-  await visitStories(root, storiesRoot, directoryIdentity(rootEntry), files, dependencies)
+  await visitDirectory(root, storiesRoot, directoryIdentity(rootEntry), files, dependencies)
   const selected = await Promise.all([
     loadSelectedDirectoryFiles(root, '', isFrozenTestSupportPath, dependencies),
     loadSelectedDirectoryFiles(root, 'scripts', isFrozenEnforcementPath, dependencies),
@@ -171,4 +204,83 @@ export async function loadCandidateStoryFiles(
   ])
   files.push(...selected.flat())
   return files.sort((left, right) => compareText(left.path, right.path))
+}
+
+async function readRuntimeInput(root: string, relative: string): Promise<LoadedRuntimeInput> {
+  const absolute = path.join(root, relative)
+  const before = await lstat(absolute)
+  if (before.isFile()) return { kind: 'file', path: relative, bytes: await readCandidateFile(absolute, relative) }
+  if (!before.isSymbolicLink()) throw new Error(`Unsupported story manifest entry: ${relative} (special file)`)
+  const target = await readlink(absolute)
+  const after = await lstat(absolute)
+  if (!after.isSymbolicLink() || before.dev !== after.dev || before.ino !== after.ino) {
+    throw new Error(`Story manifest runtime entry changed during capture: ${relative}`)
+  }
+  assertRuntimeSymlinkTarget(root, relative, target)
+  return { kind: 'symlink', path: relative, target }
+}
+
+async function visitRuntimeDirectory(
+  root: string,
+  directory: string,
+  expected: DirectoryIdentity,
+  inputs: LoadedRuntimeInput[],
+  dependencies: CandidateCaptureDependencies,
+): Promise<void> {
+  await assertDirectoryIdentity(root, directory, expected)
+  const entries = await readdir(directory, { withFileTypes: true })
+  entries.sort((left, right) => compareText(left.name, right.name))
+  const capturedEntries = await Promise.all(
+    entries.map(async (entry) => ({ entry, stats: await lstat(path.join(directory, entry.name)) })),
+  )
+  await dependencies.afterDirectoryRead?.(directory)
+  await Promise.all(
+    capturedEntries.map(async ({ entry, stats }): Promise<void> => {
+      const absolute = path.join(directory, entry.name)
+      const relative = toPosix(path.relative(root, absolute))
+      if (stats.isDirectory()) {
+        await visitRuntimeDirectory(root, absolute, directoryIdentity(stats), inputs, dependencies)
+      } else inputs.push(await readRuntimeInput(root, relative))
+    }),
+  )
+  await assertDirectoryIdentity(root, directory, expected)
+}
+
+async function loadRuntimeDirectory(
+  root: string,
+  relativeDirectory: string,
+  required: boolean,
+  dependencies: CandidateCaptureDependencies,
+): Promise<readonly LoadedRuntimeInput[]> {
+  const directory = path.join(root, relativeDirectory)
+  const entry = await lstat(directory).catch((error: unknown) => {
+    if (!required && errorCode(error) === 'ENOENT') return undefined
+    throw new Error(`Unsupported story runtime root: ${relativeDirectory} (missing)`, { cause: error })
+  })
+  if (entry === undefined) return []
+  if (entry.isSymbolicLink()) {
+    throw new Error(`Unsupported story runtime root: ${relativeDirectory} (symbolic link)`)
+  }
+  if (!entry.isDirectory()) throw new Error(`Unsupported story runtime root: ${relativeDirectory} (not a directory)`)
+  const inputs: LoadedRuntimeInput[] = []
+  await visitRuntimeDirectory(root, directory, directoryIdentity(entry), inputs, dependencies)
+  return inputs
+}
+
+export async function loadCandidateRuntimeInputFiles(
+  root: string,
+  dependencies: CandidateCaptureDependencies = {},
+): Promise<readonly LoadedRuntimeInput[]> {
+  const directories = await Promise.all([
+    ...REQUIRED_RUNTIME_DIRECTORY_ROOTS.map((relativeDirectory) =>
+      loadRuntimeDirectory(root, relativeDirectory, true, dependencies),
+    ),
+    ...OPTIONAL_RUNTIME_DIRECTORY_ROOTS.map((relativeDirectory) =>
+      loadRuntimeDirectory(root, relativeDirectory, false, dependencies),
+    ),
+  ])
+  const files = await Promise.all(
+    [...RUNTIME_FILE_ROOTS].sort(compareText).map((relative) => readRuntimeInput(root, relative)),
+  )
+  return [...directories.flat(), ...files].sort((left, right) => compareText(left.path, right.path))
 }

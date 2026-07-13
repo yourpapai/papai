@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -30,8 +31,9 @@ function git(root: string, ...args: readonly string[]): string {
   return result.stdout.toString().trim()
 }
 
-function fixture(): string {
+function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
   const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-manifest-'))
+  const includesPublic = options.includePublic ?? true
   roots.push(root)
   git(root, 'init', '-q')
   git(root, 'config', 'user.email', 'stories@example.invalid')
@@ -41,6 +43,9 @@ function fixture(): string {
   mkdirSync(path.join(root, 'tests/stories/user stories'), { recursive: true })
   mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
   mkdirSync(path.join(root, 'scripts'), { recursive: true })
+  mkdirSync(path.join(root, 'src'), { recursive: true })
+  mkdirSync(path.join(root, 'plugins/example'), { recursive: true })
+  if (includesPublic) mkdirSync(path.join(root, 'public'), { recursive: true })
   writeFileSync(path.join(root, 'bunfig.toml'), '[test]')
   writeFileSync(path.join(root, 'tests/stories/harness/helper.ts'), Buffer.from([0, 10, 255]))
   writeFileSync(
@@ -56,7 +61,24 @@ function fixture(): string {
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'test reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), `export * from './logger-mock.js'`)
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger mock')
-  git(root, 'add', '--', 'bunfig.toml', 'tests', 'scripts')
+  writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime source')
+  writeFileSync(path.join(root, 'plugins/example/plugin.json'), '{"name":"example"}')
+  writeFileSync(path.join(root, 'package.json'), '{"name":"story-fixture"}')
+  writeFileSync(path.join(root, 'bun.lock'), 'lockfile')
+  if (includesPublic) writeFileSync(path.join(root, 'public/settings.js'), 'settings asset')
+  git(
+    root,
+    'add',
+    '--',
+    'bunfig.toml',
+    'tests',
+    'scripts',
+    'src',
+    'plugins',
+    'package.json',
+    'bun.lock',
+    ...(includesPublic ? ['public'] : []),
+  )
   git(root, 'commit', '-qm', 'baseline')
   return root
 }
@@ -96,6 +118,53 @@ describe('story manifest', () => {
         checkpoints: ['then.responseStatus'],
       },
     ])
+  })
+
+  test('captures runtime inputs separately from frozen harness inputs', async () => {
+    const root = fixture()
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+    writeFileSync(path.join(root, 'src/runtime.ts'), 'changed runtime source')
+    const rebuilt = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
+      'bun.lock',
+      'package.json',
+      'plugins/example/plugin.json',
+      'public/settings.js',
+      'src/runtime.ts',
+    ])
+    expect(manifest.runtimeInputs.files.find(({ path: filePath }) => filePath === 'src/runtime.ts')?.sha256).toBe(
+      'c66ab3c24521ad1065019facb8f0ec2727e8cae52d4e1f1f21108bd3abdb7a65',
+    )
+    expect(rebuilt.runtimeInputs.treeHash).not.toBe(manifest.runtimeInputs.treeHash)
+    expect(rebuilt.treeHash).toBe(manifest.treeHash)
+  })
+
+  test('emits schema version 2 for candidate and baseline manifests', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const [candidate, baseline] = await Promise.all([
+      buildCandidateStoryManifest({ root, seed: 41021 }),
+      buildBaselineStoryManifest({ root, ref, seed: 41021 }),
+    ])
+
+    expect(candidate.version).toBe(2)
+    expect(baseline.version).toBe(2)
+    expect(StoryManifestSchema.safeParse({ ...candidate, version: 1 }).success).toBe(false)
+  })
+
+  test('omits an absent optional public root deterministically', async () => {
+    const root = fixture({ includePublic: false })
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+    const repeated = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
+      'bun.lock',
+      'package.json',
+      'plugins/example/plugin.json',
+      'src/runtime.ts',
+    ])
+    expect(repeated.runtimeInputs).toEqual(manifest.runtimeInputs)
   })
 
   test('removes the temporary manifest when atomic publication fails', async () => {
@@ -147,7 +216,26 @@ describe('story manifest', () => {
       'changed: tests/stories/user stories/example.story.test.ts',
     )
     expect(baseline.commit).toBe(baselineRef)
+    expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
+    expect(baseline.runtimeInputs.files.map(({ kind, path: filePath }) => ({ kind, path: filePath }))).toEqual([
+      { kind: 'file', path: 'bun.lock' },
+      { kind: 'file', path: 'package.json' },
+      { kind: 'file', path: 'plugins/example/plugin.json' },
+      { kind: 'file', path: 'public/settings.js' },
+      { kind: 'file', path: 'src/runtime.ts' },
+    ])
     expect(baseline.scenarios[0]?.id).toContain('#alpha story')
+  })
+
+  test('rejects a baseline ref without every required runtime input', async () => {
+    const root = fixture()
+    rmSync(path.join(root, 'package.json'))
+    git(root, 'rm', '--', 'package.json')
+    git(root, 'commit', '-qm', 'remove runtime metadata')
+
+    await expect(buildBaselineStoryManifest({ root, ref: 'HEAD', seed: 41021 })).rejects.toThrow(
+      'Baseline runtime inputs missing: package.json',
+    )
   })
 
   test('accepts identical frozen content across different run metadata', async () => {
@@ -156,6 +244,17 @@ describe('story manifest', () => {
     const baseline = await buildBaselineStoryManifest({ root, ref, seed: 1, bunVersion: 'old' })
     const candidate = await buildCandidateStoryManifest({ root, seed: 999, bunVersion: 'new' })
 
+    expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
+  })
+
+  test('ignores runtime input changes during compatibility comparison', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021 })
+    writeFileSync(path.join(root, 'src/runtime.ts'), 'changed runtime source')
+    const candidate = await buildCandidateStoryManifest({ root, seed: 41021 })
+
+    expect(candidate.runtimeInputs.treeHash).not.toBe(baseline.runtimeInputs.treeHash)
     expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
   })
 
@@ -207,6 +306,27 @@ describe('story manifest', () => {
 
     await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
       'Unsupported story manifest entry: tests/stories/link.ts (symbolic link)',
+    )
+  })
+
+  test('rejects runtime symlinks that escape declared inputs', async () => {
+    const root = fixture()
+    symlinkSync('../../external', path.join(root, 'src/escaped.ts'))
+
+    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+      'Unsupported story runtime symlink: src/escaped.ts -> ../../external',
+    )
+  })
+
+  test.each([
+    ['backslash traversal', '..\\..\\external'],
+    ['drive-root target', 'C:\\external'],
+  ])('rejects runtime symlinks with %s', async (_description, target) => {
+    const root = fixture()
+    symlinkSync(target, path.join(root, 'src/escaped.ts'))
+
+    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+      `Unsupported story runtime symlink: src/escaped.ts -> ${target}`,
     )
   })
 
@@ -302,6 +422,13 @@ describe('story manifest', () => {
     ]
 
     expect(enforcementPaths.filter((enforcementPath) => !filePaths.includes(enforcementPath))).toEqual([])
+    const target = 'CLAUDE.md'
+    expect(manifest.runtimeInputs.files).toContainEqual({
+      kind: 'symlink',
+      path: 'src/tools/AGENTS.md',
+      sha256: createHash('sha256').update(target).digest('hex'),
+      target,
+    })
     expect(eligibility).toEqual([
       {
         id: 'tests/stories/integrations/plugins/eligibility.story.test.ts#plugin context eligibility',

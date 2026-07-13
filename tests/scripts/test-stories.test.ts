@@ -13,12 +13,13 @@ import { buildCandidateStoryManifest, type StoryManifest, writeStoryManifest } f
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/test-stories.js'
 
 const manifest = (treeHash: string): StoryManifest => ({
-  version: 1,
+  version: 2,
   commit: '1234567',
   bunVersion: '1.0.0',
   seed: STORY_SEED,
   treeHash,
   files: [],
+  runtimeInputs: { treeHash: '0'.repeat(64), files: [] },
   scenarios: [],
 })
 
@@ -354,12 +355,17 @@ describe('story runner reports and compatibility', () => {
       mkdirSync(path.join(root, 'tests/stories'), { recursive: true })
       mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
       mkdirSync(path.join(root, 'scripts'), { recursive: true })
+      mkdirSync(path.join(root, 'src'), { recursive: true })
+      mkdirSync(path.join(root, 'plugins'), { recursive: true })
       writeFileSync(path.join(root, 'bunfig.toml'), '[test]')
       writeFileSync(path.join(root, 'tests/stories/example.story.test.ts'), `scenario('example', async () => {})\n`)
       writeFileSync(path.join(root, 'tests/setup.ts'), '')
       writeFileSync(path.join(root, 'tests/mock-reset.ts'), '')
       writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), '')
       writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), '')
+      writeFileSync(path.join(root, 'src/runtime.ts'), '')
+      writeFileSync(path.join(root, 'package.json'), '{}')
+      writeFileSync(path.join(root, 'bun.lock'), '')
       runGit(root, 'init', '-q')
       runGit(root, 'config', 'user.email', 'stories@example.invalid')
       runGit(root, 'config', 'user.name', 'Story Tests')
