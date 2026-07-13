@@ -18,8 +18,10 @@ import {
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
 import { logger } from '../logger.js'
+import { mintTranscriptToken } from '../mcp-server/token.js'
 import { getNotifyToken } from '../notify-token.js'
 import { recordProactiveInHistory } from '../proactive-history.js'
+import { getSettingsPublicBaseUrl } from '../settings/config.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { jsonResponse } from './json-response.js'
 
@@ -30,6 +32,8 @@ const NotifyBodySchema = z.object({
   contextType: z.enum(['dm', 'group']).optional(),
   threadId: z.string().min(1).optional(),
   markdown: z.string().min(1),
+  /** magi session id (from nerv's PapaiTaskNotifier); when present, papai mints and appends a `/t/<token>` transcript link. */
+  magiSessionId: z.string().min(1).optional(),
 })
 
 export type NotifyBody = z.infer<typeof NotifyBodySchema>
@@ -94,6 +98,15 @@ export const buildNotifyTarget = (body: NotifyBody, isKnownGroup = false): Defer
   }
 }
 
+/** Appends a `/t/<token>` transcript link when `magiSessionId` is present and a public base URL is configured. No-op otherwise (fail-safe — never crashes a notify). */
+const appendTranscriptLink = (markdown: string, magiSessionId: string | undefined): string => {
+  if (magiSessionId === undefined) return markdown
+  const base = getSettingsPublicBaseUrl()
+  if (base === null) return markdown
+  const url = `${base}/t/${encodeURIComponent(mintTranscriptToken(magiSessionId))}`
+  return `${markdown}\n\n[Watch the session live](${url})`
+}
+
 const checkAuth = (req: Request): Response | null => {
   const provided = bearerToken(req)
   if (provided === null) {
@@ -156,5 +169,6 @@ export const handleNotifyRoute = async (req: Request): Promise<Response> => {
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
   if (platformInstanceId === null) return jsonResponse({ error: 'context not deliverable' }, { status: 404 })
 
-  return sendNotify(chat, platformInstanceId, target, parsed.data.contextId, parsed.data.markdown)
+  const markdown = appendTranscriptLink(parsed.data.markdown, parsed.data.magiSessionId)
+  return sendNotify(chat, platformInstanceId, target, parsed.data.contextId, markdown)
 }

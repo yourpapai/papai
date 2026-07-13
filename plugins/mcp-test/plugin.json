@@ -1,0 +1,14 @@
+{
+  "id": "mcp-test",
+  "name": "MCP Test Canary (coding agent)",
+  "version": "1.0.0",
+  "description": "Canary MCP tool that confirms the plugin MCP-server path is reachable",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "contributes": { "tools": ["test"], "promptFragments": [], "configKeys": [] },
+  "permissions": [],
+  "defaultEnabled": false,
+  "configRequirements": [],
+  "activationTimeoutMs": 3000
+}

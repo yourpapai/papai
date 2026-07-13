@@ -9,6 +9,7 @@ import { getCachedConfig, setCachedConfig } from '../cache.js'
 import { logger } from '../logger.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import { getSettingsPublicBaseUrl } from '../settings/config.js'
+import { resolveMcpRedactionConfig } from './mcp-redaction.js'
 import type { ToolPolicy } from './resolve-mcp-servers.js'
 
 const log = logger.child({ scope: 'coding-credentials:mcp-plugin-servers' })
@@ -82,11 +83,16 @@ export function listEnabledInternalMcpServers(
     log.debug({ configContextId }, 'SETTINGS_PUBLIC_BASE_URL unset; no internal MCP servers')
     return []
   }
+  const redactionConfigured = resolveMcpRedactionConfig(platformInstanceId) !== null
   const configs = new Map(resolveMcpPluginServerConfigs(platformInstanceId).map((c) => [c.plugin_id, c]))
   const eligible = getPluginsForContext(configContextId)
   const servers: InternalMcpServer[] = []
   for (const plugin of eligible) {
     if (plugin.manifest.mcpServer !== true) continue
+    if (plugin.manifest.mcpResponseRedaction === true && !redactionConfigured) {
+      log.debug({ pluginId: plugin.manifest.id }, 'redacting plugin excluded: mcp_redaction unconfigured (fail-closed)')
+      continue
+    }
     const config = configs.get(plugin.manifest.id)
     if (config === undefined || !config.enabled) continue
     servers.push({

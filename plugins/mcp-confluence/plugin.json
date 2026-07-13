@@ -1,0 +1,30 @@
+{
+  "id": "mcp-confluence",
+  "name": "Confluence (coding agent)",
+  "version": "1.0.0",
+  "description": "Agent-facing Confluence wiki read/comment tools exposed as an MCP server",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "mcpResponseRedaction": true,
+  "contributes": {
+    "tools": [
+      "confluence_get_page",
+      "confluence_get_page_by_title",
+      "confluence_get_comments",
+      "confluence_add_comment",
+      "confluence_resolve_short_link"
+    ],
+    "promptFragments": [],
+    "configKeys": []
+  },
+  "permissions": ["http"],
+  "providerAllowedHostsFromConfig": ["base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "base_url", "label": "Confluence Base URL", "required": true, "scope": "admin" },
+    { "key": "username", "label": "Confluence Username", "required": true, "scope": "admin" },
+    { "key": "password", "label": "Confluence Password/Token", "required": true, "sensitive": true, "scope": "admin" }
+  ],
+  "activationTimeoutMs": 3000
+}

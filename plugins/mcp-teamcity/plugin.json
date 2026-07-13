@@ -1,0 +1,27 @@
+{
+  "id": "mcp-teamcity",
+  "name": "TeamCity (coding agent)",
+  "version": "1.0.0",
+  "description": "Agent-facing TeamCity project/pipeline config tools exposed as an MCP server",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "contributes": {
+    "tools": [
+      "teamcity_get_projects",
+      "teamcity_get_project_config",
+      "teamcity_get_project_pipelines",
+      "teamcity_get_pipeline_config"
+    ],
+    "promptFragments": [],
+    "configKeys": []
+  },
+  "permissions": ["http"],
+  "providerAllowedHostsFromConfig": ["base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "base_url", "label": "TeamCity Base URL", "required": true, "scope": "admin" },
+    { "key": "token", "label": "TeamCity API Token", "required": true, "sensitive": true, "scope": "admin" }
+  ],
+  "activationTimeoutMs": 3000
+}

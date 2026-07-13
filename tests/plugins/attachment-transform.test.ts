@@ -124,6 +124,7 @@ function makeStubRuntimeContext(): PluginToolRuntimeContext {
       resolveMcpTokens: () => ({}),
     },
     codingRepos: { list: () => [], get: () => null },
+    transcript: { mintUrl: () => null },
   }
 }
 

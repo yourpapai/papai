@@ -245,6 +245,50 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   `MCP_SERVER_SIGNING_SECRET`). Selecting `mcp.server = 'plugin:<id>'` stores no
   `upstream_token`. Exposure is re-checked on every redemption, so disabling a plugin server
   takes effect immediately regardless of the token's TTL.
+- A plugin can additionally opt into **bridge-level response redaction** with manifest flag
+  `mcpResponseRedaction: true`: `callPluginMcpTool` (`src/mcp-server/plugin-bridge.ts`) runs the
+  tool's JSON result through `src/mcp-server/redaction.ts` before it reaches the coding agent.
+  This requires operator `mcp_redaction` admin config (`src/coding-credentials/mcp-redaction.ts`)
+  and is fail-closed at both call time (a redacting plugin without config returns a blocked
+  result) and at server-selection time (`listEnabledInternalMcpServers` in
+  `src/coding-credentials/mcp-plugin-servers.ts` excludes the plugin until configured). The
+  `mcp-sentry` plugin (`plugins/mcp-sentry/`) is the first first-party MCP plugin migrated onto
+  this pattern — 7 read-only Sentry issue-diagnosis tools. `mcp-confluence`
+  (`plugins/mcp-confluence/`) is the second — 5 Confluence wiki read/comment tools over HTTP
+  Basic auth, responses redacted the same way. `mcp-figma` (`plugins/mcp-figma/`) is the
+  third — 7 Figma file/node/style/component/comment tools authenticated via `X-Figma-Token`;
+  it does not opt into `mcpResponseRedaction` (design metadata, not customer data) and is the
+  first of the three with a context-scoped (per-team) rather than admin-scoped credential.
+  It ships the reference `kiss`-derived simplifier's **full simplify**: a compact CSS
+  `layout` string per node plus a de-duplicated `globalVars.styles` text-style table, and
+  its `token` config accepts a comma-separated pool rotated on HTTP 429 — Figma parity with
+  the reference implementation is complete, not a moderate subset.
+  `mcp-teamcity` (`plugins/mcp-teamcity/`) is the fourth — 4 TeamCity project/pipeline config
+  tools authenticated via Bearer token; it also skips `mcpResponseRedaction`, relying solely on
+  a static `name`/`value`-pattern sanitizer (`sanitizeTeamCityConfig` in `format.ts`) to redact
+  secret-shaped config properties before responses reach the coding agent. `mcp-rag`
+  (`plugins/mcp-rag/`) is the fifth — a single `rag_search` tool that fans out a query to one or
+  more corporate knowledge-base contexts (`X-Kontur-ApiKey` auth, semicolon-separated
+  `context_code` admin config queried in parallel, per-context failures reported inline rather
+  than failing the call) and also skips `mcpResponseRedaction`. `mcp-mattermost`
+  (`plugins/mcp-mattermost/`) is the sixth — 5 Mattermost read/post tools authenticated via
+  Bearer token, posts enriched with author username and attachment metadata via deduped extra
+  fetches, responses redacted the same way as `mcp-sentry`/`mcp-confluence`. `mcp-gitlab`
+  (`plugins/mcp-gitlab/`) is the seventh — 5 read-only GitLab repo/MR/job tools authenticated via
+  the `PRIVATE-TOKEN` header, no `mcpResponseRedaction`; write tools (comments, MR state, job
+  retry/cancel) are deferred to magi's forge-write domain. Read completeness: repository tree and
+  MR listing both auto-paginate via `x-total-pages` (parallel `Promise.all` fan-out — plugin code
+  cannot import `p-limit` — capped at 50 pages, `capped: true` flags truncation — MR listing only
+  when `all: true` is requested), and `gitlab_get_job` accepts a full `jobUrl` as an alternative to
+  `projectPath`+`jobId`. `mcp-youtrack`
+  (`plugins/mcp-youtrack/`) is the eighth — 14 YouTrack tools (7 reads, comment, and 6 further
+  write tools: issue creation, field updates, tag management, issue links) authenticated via
+  Bearer token over a context-scoped (per-team) permanent token, responses redacted the same way
+  as `mcp-sentry`/`mcp-confluence`. `mcp-test`
+  (`plugins/mcp-test/`) is the ninth and last — a canary with a single no-input `test` tool that
+  returns a fixed confirmation string, used as a live per-deploy probe of the
+  `/mcp/plugin/<id>` path; it completes the migrated first-party MCP plugin fleet (`mcp-npm`
+  remains the documented sandbox-side exception — it belongs in magi, not papai).
 
 ### 3.7 Transcript viewer (papai-side)
 
@@ -261,6 +305,43 @@ magi's URL/token never reach the browser. The stream proxy binds directly to the
 > code** has no `/t/:token` route and no `shareToken` — its transcript endpoints are the
 > bearer-gated `GET /sessions/:id/transcript` and `GET /sessions/:id/stream` (§7.7). Treat any
 > `transcriptUrl` as a bearer secret regardless; the log is raw and unredacted.
+
+### 3.8 The `plugins/nerv/` plugin (supervised coding tasks)
+
+A sibling of `plugins/acp/` and a stateless HTTP client of **nerv**, the stateful supervisor tier
+(`papai → nerv → magi → geofront`). Where acp runs a **one-shot** coding session, nerv drives a
+**long-running, supervised** GitLab-MR task: it opens/updates a merge request and watches it until CI
+is green, ingesting review comments and iterating. The plugin exposes five LLM tools —
+`create_coding_task`, `coding_task_status`, `list_coding_tasks`, `followup_coding_task`,
+`cancel_coding_task` — mapping to nerv's `POST /tasks`, `GET /tasks/:id`, and
+`POST /tasks/:id/events`. Admin config `nerv_base_url`/`nerv_token` (bearer, allowlisted via
+`providerAllowedHostsFromConfig`), same shape as acp's `magi_*`. Context-scoped config
+`output_language` (optional; read via `runtimeContext.contextConfig.get('output_language')`) is
+forwarded as `outputLanguage` on `POST /tasks` when set; unset defaults to English on the nerv side.
+There is no separate "steer" tool —
+`followup_coding_task` is the single honest entry point (queued, applied at the next checkpoint); a
+prior dedicated `steer_coding_task` tool was removed since both hit the identical nerv-side
+`chat_instruction` path and implied a distinction that did not exist.
+
+- **contextId round-trip**: the chat's thread-scoped `storageContextId` is sent as
+  `contextRef.contextId`; nerv stores it, forwards it to magi, and relays milestones back through
+  papai's **existing** `/api/notify` (papai `NOTIFY_TOKEN` == nerv `PAPAI_NOTIFY_TOKEN`). magi's
+  `MAGI_NOTIFY_URL` points at **nerv**, not papai — so papai only ever hears from nerv for
+  supervised tasks. No papai inbound code changed.
+- **One task per thread**: nerv correlates a task 1:1 by `contextId`, so the plugin keeps a
+  group-scoped local record (`task:<id>`) plus an `active:<thread>` pointer; follow-up/cancel
+  auto-resolve the thread's task. `create_coding_task` refuses while a non-terminal task is live.
+- **projectPath** is derived from the reuse of papai's coding-repo catalogue (`codingRepos`, gated by
+  `coding.secrets` — used **only** for the repo lookup; nerv owns the forge/magi credentials, so the
+  plugin passes no user secrets). GitHub repos are refused (nerv is GitLab-only today).
+- **Gating**: the three nerv action tools join acp's in the operator `whoMayUse` guardrail via
+  `CODING_ACTION_TOOLS` (`src/llm-orchestrator-tools.ts`); status/list stay ungated.
+
+Operator enablement (config keys, `MAGI_NOTIFY_URL`, smoke test): see
+[`docs/deployment/nerv-enablement.md`](../deployment/nerv-enablement.md).
+
+Design + plan: `docs/superpowers/specs/2026-07-09-papai-nerv-plugin-design.md`,
+`docs/superpowers/plans/2026-07-09-papai-nerv-plugin.md`.
 
 ---
 

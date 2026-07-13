@@ -217,6 +217,7 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
       resolveMcpTokens: () => ({}),
     },
     codingRepos: { list: () => [], get: () => null },
+    transcript: { mintUrl: () => null },
   }
 }
 

@@ -17,7 +17,7 @@ import { deriveTitle, parsePrNumber, readRecord, writeRecord } from './history.j
 import type { SessionRecord } from './history.js'
 import { continueSessionSchema } from './schemas.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { sessionIdOf, shareFieldsOf } from './tools.js'
+import { sessionIdOf, shareFieldsOf, withMintedTranscriptUrl } from './tools.js'
 
 type AccessError = { error: string; message: string }
 type AccessOk = { secrets: Record<string, string>; forgeToken: string; mcpTokens: Record<string, string> }
@@ -128,12 +128,13 @@ export function continueSessionTool(httpFetch: HttpFetch | undefined): Tool {
         ...(Object.keys(mcpTokens).length === 0 ? {} : { mcpTokens }),
       })
       const childId = sessionIdOf(result)
+      const withTranscript = withMintedTranscriptUrl(runtimeContext, result)
       if (childId !== null)
         writeRecord(runtimeContext.kv, childId, {
           ...buildChildRecord(parentId, parentRecord, prompt),
-          ...shareFieldsOf(result),
+          ...shareFieldsOf(withTranscript),
         })
-      return result
+      return withTranscript
     },
   }
 }

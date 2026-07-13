@@ -1,0 +1,38 @@
+{
+  "id": "mcp-youtrack",
+  "name": "YouTrack (coding agent)",
+  "version": "1.0.0",
+  "description": "Agent-facing YouTrack issue/comment/attachment tools exposed as an MCP server",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "mcpServer": true,
+  "mcpResponseRedaction": true,
+  "contributes": {
+    "tools": [
+      "youtrack_get_issue",
+      "youtrack_get_state_activities",
+      "youtrack_get_comments",
+      "youtrack_get_issue_tags",
+      "youtrack_get_field_options",
+      "youtrack_get_attachments",
+      "youtrack_read_attachment",
+      "youtrack_add_comment",
+      "youtrack_create_issue",
+      "youtrack_update_fields",
+      "youtrack_add_issue_tag",
+      "youtrack_remove_issue_tag",
+      "youtrack_set_tags",
+      "youtrack_set_issue_link"
+    ],
+    "promptFragments": [],
+    "configKeys": ["token"]
+  },
+  "permissions": ["http"],
+  "providerAllowedHostsFromConfig": ["base_url"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    { "key": "base_url", "label": "YouTrack Base URL", "required": true, "scope": "admin" },
+    { "key": "token", "label": "YouTrack Permanent Token", "required": true, "sensitive": true, "scope": "context" }
+  ],
+  "activationTimeoutMs": 3000
+}

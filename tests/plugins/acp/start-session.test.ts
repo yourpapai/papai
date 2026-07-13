@@ -80,6 +80,20 @@ describe('acp start_session tool', () => {
     expect(rec['transcriptUrl']).toBe('https://papai.example/t/tok_z')
   })
 
+  test('includes a minted transcriptUrl in the result and stored record when transcript.mintUrl resolves', async () => {
+    const httpFetch: HttpFetch = () => Promise.resolve(jsonResponse({ id: 'sess-mint', status: 'queued' }, 202))
+    const store = new Map<string, string>()
+    const { tools } = activate(httpFetch)
+    const ctx = {
+      ...runtimeCtxWithKv(store),
+      transcript: { mintUrl: (magiSessionId: string): string => `https://papai.example/t/${magiSessionId}-tok` },
+    }
+    const result = await tools.get('start_session')!.execute({ project: 'demo', prompt: 'do it' }, ctx, options())
+    expect(asRecord(result)['transcriptUrl']).toBe('https://papai.example/t/sess-mint-tok')
+    const rec = readStoredRecord(store, 'sess-mint')
+    expect(rec['transcriptUrl']).toBe('https://papai.example/t/sess-mint-tok')
+  })
+
   test('prNumber forwarded to POST /sessions body and recorded', async () => {
     let capturedBody: unknown = null
     const httpFetch: HttpFetch = (_url, init) => {

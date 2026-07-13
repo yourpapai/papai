@@ -22,7 +22,7 @@ import {
 } from './schemas.js'
 import { enrichSession, recordStartedSession } from './session-records.js'
 import type { RuntimeContext, Tool } from './tools.js'
-import { buildSessionProjectSpec, canDeriveForge, sessionIdOf } from './tools.js'
+import { buildSessionProjectSpec, canDeriveForge, sessionIdOf, withMintedTranscriptUrl } from './tools.js'
 
 const DEFAULT_AGENT = 'claude-code-acp'
 const SESSION_FILTERS = ['new', 'active', 'waiting', 'done']
@@ -104,8 +104,9 @@ export function startSessionTool(httpFetch: HttpFetch | undefined): Tool {
         projectSpec,
         ...(Object.keys(mcpTokens).length === 0 ? {} : { mcpTokens }),
       })
-      recordStartedSession(runtimeContext, result, project, prompt, prNumber ?? undefined)
-      return result
+      const withTranscript = withMintedTranscriptUrl(runtimeContext, result)
+      recordStartedSession(runtimeContext, withTranscript, project, prompt, prNumber ?? undefined)
+      return withTranscript
     },
   }
 }

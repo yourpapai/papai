@@ -55,6 +55,7 @@ describe('handleNotifyRoute', () => {
   })
   afterEach(() => {
     delete process.env['NOTIFY_TOKEN']
+    delete process.env['SETTINGS_PUBLIC_BASE_URL']
     resetNotifyTokenCacheForTesting()
     clearRuntimeChatRouter()
   })
@@ -148,6 +149,37 @@ describe('handleNotifyRoute', () => {
     setRuntimeChatRouter(throwingRouter)
     const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'user-1', markdown: 'x' }))
     expect(res.status).toBe(502)
+  })
+
+  test('appends a transcript link when magiSessionId is present and a public base URL is configured', async () => {
+    process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://papai.example'
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'done', magiSessionId: 'sess-1' }),
+    )
+    expect(res.status).toBe(200)
+    expect(router.sent[0]?.markdown).toContain('done')
+    expect(router.sent[0]?.markdown).toMatch(/https:\/\/papai\.example\/t\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/u)
+  })
+
+  test('leaves markdown unchanged when magiSessionId is absent (backward compat)', async () => {
+    process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://papai.example'
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'user-1', markdown: 'done' }))
+    expect(res.status).toBe(200)
+    expect(router.sent[0]?.markdown).toBe('done')
+  })
+
+  test('leaves markdown unchanged when magiSessionId is present but no public base URL is configured', async () => {
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'done', magiSessionId: 'sess-1' }),
+    )
+    expect(res.status).toBe(200)
+    expect(router.sent[0]?.markdown).toBe('done')
   })
 })
 

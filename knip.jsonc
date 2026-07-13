@@ -20,6 +20,8 @@
     "scripts/behavior-audit/migrate-trust.ts!",
     "playwright.config.ts!",
     "strybk.config.ts!",
+    // Standalone kiss->nerv/papai config importer CLI; run directly via `bun run`, no static importer.
+    "tools/import-kiss-projects.ts!",
     // First-party plugin entry points are loaded dynamically by the plugin loader,
     // so they have no static importer; declare them as entries.
     "plugins/*/index.ts!",
@@ -27,7 +29,14 @@
 
   // All source files (production only). plugins/** is included so knip tracks
   // plugin->src usage (e.g. clearCachedTools, consumed only by a provider plugin).
-  "project": ["src/**/*.ts!", "client/**/*.ts!", "scripts/behavior-audit/**/*.ts!", "plugins/**/*.ts!"],
+  // tools/** is the standalone kiss->nerv/papai config importer.
+  "project": [
+    "src/**/*.ts!",
+    "client/**/*.ts!",
+    "scripts/behavior-audit/**/*.ts!",
+    "plugins/**/*.ts!",
+    "tools/**/*.ts!",
+  ],
 
   // All issue types treated as hard errors
   "rules": {
@@ -54,7 +63,10 @@
   // ships in a production bundle.
   // @crvy/strybk is imported by strybk.config.ts but knip-bun cannot resolve the
   // package even though it is listed in devDependencies (runtime CLI config consumer).
-  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw", "@crvy/strybk"],
+  // mongodb backs tools/import-kiss-projects.ts, a standalone ops script (not part of the
+  // shipped runtime bundle), so it's intentionally a devDependency even though knip's
+  // production-file classification would otherwise expect a regular dependency.
+  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw", "@crvy/strybk", "mongodb"],
 
   "ignoreIssues": {
     // defaultBroadcastDepsForTest is a test-only seam.
@@ -101,6 +113,8 @@
     // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
     "src/byok-llm/store.ts": ["files", "exports"],
     "src/byok-llm/types.ts": ["files", "types"],
+    // isBlockedResult is a test-only seam.
+    "src/mcp-server/redaction.ts": ["exports"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
@@ -183,6 +197,16 @@
     "plugins/synthetic-web-search/index.ts": ["exports"],
     "plugins/task-provider-kaneo/index.ts": ["exports"],
     "plugins/task-provider-youtrack/index.ts": ["exports"],
+    "plugins/nerv/index.ts": ["exports"],
+    "plugins/mcp-sentry/index.ts": ["exports"],
+    "plugins/mcp-confluence/index.ts": ["exports"],
+    "plugins/mcp-figma/index.ts": ["exports"],
+    "plugins/mcp-teamcity/index.ts": ["exports"],
+    "plugins/mcp-rag/index.ts": ["exports"],
+    "plugins/mcp-mattermost/index.ts": ["exports"],
+    "plugins/mcp-gitlab/index.ts": ["exports"],
+    "plugins/mcp-youtrack/index.ts": ["exports"],
+    "plugins/mcp-test/index.ts": ["exports"],
     // validateConfig is resolved dynamically by the loader from the manifest's
     // `providerConfigValidator` named export (re-exported through index.ts), so knip
     // sees no static consumer of the implementation.

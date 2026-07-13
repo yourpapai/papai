@@ -6,8 +6,8 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
-  import { fetchAdminCodingGuardrails, postAdminCodingGuardrails } from '../../admin-fetchers.js'
-  import type { AdminCodingGuardrailsResponse } from '../../fetcher-schemas-coding-guardrails.js'
+  import { fetchAdminCodingGuardrails, fetchAdminNervHealth, postAdminCodingGuardrails } from '../../admin-fetchers.js'
+  import type { AdminCodingGuardrailsResponse, NervHealthResponse } from '../../fetcher-schemas-coding-guardrails.js'
   import Btn from '../../../shared/ui/Btn.svelte'
   import IconButton from '../../../shared/ui/IconButton.svelte'
   import Input from '../../../shared/ui/Input.svelte'
@@ -17,6 +17,15 @@
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
+
+  let nervHealth: NervHealthResponse | null = $state(null)
+  let nervHealthLoading = $state(false)
+
+  const NERV_HEALTH_LABEL: Record<NervHealthResponse['status'], string> = {
+    connected: 'Connected',
+    misconfigured: 'Not configured',
+    unreachable: 'Unreachable',
+  }
 
   let draftAllowedAgents: string[] = $state(['claude', 'codex', 'opencode'])
   let draftWhoMayUse: 'members' | 'allowlist' = $state('members')
@@ -50,6 +59,17 @@
       error = err instanceof Error ? err.message : String(err)
     } finally {
       loading = false
+    }
+  }
+
+  async function loadNervHealth(): Promise<void> {
+    nervHealthLoading = true
+    try {
+      nervHealth = await fetchAdminNervHealth()
+    } catch {
+      nervHealth = null
+    } finally {
+      nervHealthLoading = false
     }
   }
 
@@ -130,6 +150,7 @@
   $effect(() => {
     untrack(() => {
       void load()
+      void loadNervHealth()
     })
   })
 </script>
@@ -140,6 +161,11 @@
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="guardrails-refresh" />
     {/snippet}
   </PageHeader>
+
+  <p class="nerv-health" data-testid="nerv-health-status">
+    nerv coding tasks:
+    {#if nervHealthLoading}Checking…{:else if nervHealth === null}Unknown{:else}{NERV_HEALTH_LABEL[nervHealth.status]}{/if}
+  </p>
 
   {#if error !== null}<p class="status-error">{error}</p>{/if}
   {#if status !== null}<p class="status-success">{status}</p>{/if}
@@ -327,6 +353,11 @@
 </section>
 
 <style>
+  .nerv-health {
+    font-size: 13px;
+    color: var(--fg2);
+    margin: 0 0 8px;
+  }
   .guardrails-section {
     display: grid;
     gap: 16px;
