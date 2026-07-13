@@ -536,6 +536,51 @@ describe('fake magi', () => {
     expect(trace).not.toContain('mcp-private')
   })
 
+  test('requires declared MCP upstream identity and token map exactly', async () => {
+    const { http, magi } = setup()
+    magi.expectStartSession({
+      id: 'mcp-session',
+      expected: {
+        mcp: [
+          {
+            id: 'docs',
+            url: 'https://mcp.example.invalid/v1',
+            host: 'mcp.example.invalid',
+            header: 'X-Docs-Key',
+            allowedHosts: ['mcp.example.invalid'],
+            toolPolicy: { default: 'ask', tools: { search: 'allow' } },
+          },
+        ],
+        mcpTokens: { docs: 'declared-mcp-token' },
+      },
+    })
+
+    expect(
+      await causeMessage(
+        http.fetch(`${BASE_URL}/sessions`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            ...validStartBody(),
+            projectSpec: {
+              ...validProjectSpec(),
+              mcp: [
+                {
+                  id: 'docs',
+                  url: 'https://mcp.example.invalid/v1',
+                  host: 'mcp.example.invalid',
+                  header: 'Authorization',
+                  allowedHosts: ['mcp.example.invalid'],
+                },
+              ],
+            },
+            mcpTokens: { docs: 'wrong-mcp-token' },
+          }),
+        }),
+      ),
+    ).toContain('expected exact MCP upstreams')
+  })
+
   test('fails on wrong authorization without exposing the supplied token', async () => {
     const { http, magi } = setup()
     magi.expectAgents([])

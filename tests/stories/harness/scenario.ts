@@ -6,7 +6,10 @@
 import { expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { setMcpCatalog } from '../../../src/coding-credentials/mcp-catalog.js'
+import { serializeMcpSelections } from '../../../src/coding-credentials/mcp-selections.js'
 import { updateCodingCredentials } from '../../../src/coding-credentials/store.js'
+import { upsertRepo } from '../../../src/coding-repos/store.js'
 import { configureCodingSessionCapability } from '../../../src/coding-sessions/configure.js'
 import {
   getCodingSessionRecord,
@@ -88,6 +91,31 @@ type ScenarioGiven = Readonly<{
         apiKey: string
       }>
       forge?: Readonly<{ kind: 'github' | 'gitlab'; token: string }>
+    }>,
+  ): void
+  codingMcp(
+    config: Readonly<{
+      context: ContextHandle
+      updatedBy: string
+      catalog: readonly Readonly<{
+        name: string
+        upstreamUrl: string
+        header?: string
+        defaultToolPolicy: 'allow' | 'ask' | 'deny'
+        toolPolicy?: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>
+      }>[]
+      selections: readonly Readonly<{ server: string; upstreamToken?: string }>[]
+    }>,
+  ): void
+  codingProject(
+    config: Readonly<{
+      context: ContextHandle
+      updatedBy: string
+      name: string
+      repoUrl: string
+      baseBranch?: string
+      permissionPreset?: 'autonomous' | 'cautious' | 'readonly'
+      additionalEgressDomains?: readonly string[]
     }>,
   ): void
   knownCodingSession(context: ContextHandle, sessionId: string, record: SessionRecord): void
@@ -361,6 +389,48 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
           config.updatedBy,
         )
       }
+    },
+    codingMcp(config): void {
+      prerequisite('given.codingMcp')
+      setMcpCatalog(
+        config.context.platformInstanceId,
+        config.catalog.map((entry) => ({
+          name: entry.name,
+          upstream_url: entry.upstreamUrl,
+          ...(entry.header === undefined ? {} : { header: entry.header }),
+          default_tool_policy: entry.defaultToolPolicy,
+          ...(entry.toolPolicy === undefined ? {} : { tool_policy: { ...entry.toolPolicy } }),
+        })),
+      )
+      updateCodingCredentials(
+        scopedConfigContextId(config.context),
+        'mcp',
+        {
+          servers: serializeMcpSelections(
+            config.selections.map((selection) => ({
+              server: selection.server,
+              ...(selection.upstreamToken === undefined ? {} : { upstream_token: selection.upstreamToken }),
+            })),
+          ),
+        },
+        config.updatedBy,
+      )
+    },
+    codingProject(config): void {
+      prerequisite('given.codingProject')
+      upsertRepo(
+        scopedConfigContextId(config.context),
+        {
+          name: config.name,
+          repoUrl: config.repoUrl,
+          baseBranch: config.baseBranch ?? 'main',
+          permissionPreset: config.permissionPreset ?? 'cautious',
+          ...(config.additionalEgressDomains === undefined
+            ? {}
+            : { additionalEgressDomains: [...config.additionalEgressDomains] }),
+        },
+        config.updatedBy,
+      )
     },
     knownCodingSession(context, sessionId, record): void {
       prerequisite('given.knownCodingSession')

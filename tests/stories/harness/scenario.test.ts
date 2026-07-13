@@ -6,6 +6,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { resolveMcpServers } from '../../../src/coding-credentials/resolve-mcp-servers.js'
+import { getRepoByName } from '../../../src/coding-repos/store.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
@@ -207,6 +209,69 @@ describe('scenario execution', () => {
       then.codingSessions(dm).count(1)
       then.codingSessions(dm).session('known-session').matches({ project: 'papai', title: 'Known coding work' })
       then.codingSessions(dm).session('missing-session').absent()
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+    })
+  })
+
+  test('coding MCP prerequisite writes an external catalog selection without starting the runtime', async () => {
+    await executeScenario('coding MCP fixture prerequisite', ({ given, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+
+      given.codingMcp({
+        context: dm,
+        updatedBy: alice.id,
+        catalog: [
+          {
+            name: 'docs',
+            upstreamUrl: 'https://mcp.example.invalid/v1',
+            header: 'X-Docs-Key',
+            defaultToolPolicy: 'ask',
+            toolPolicy: { search: 'allow' },
+          },
+        ],
+        selections: [{ server: 'docs', upstreamToken: 'scenario-mcp-token' }],
+      })
+
+      const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
+      expect(resolveMcpServers(contextId, alice.id)).toEqual({
+        ok: true,
+        servers: [
+          {
+            id: 'docs',
+            url: 'https://mcp.example.invalid/v1',
+            host: 'mcp.example.invalid',
+            header: 'X-Docs-Key',
+            allowedHosts: ['mcp.example.invalid'],
+            toolPolicy: { default: 'ask', tools: { search: 'allow' } },
+          },
+        ],
+      })
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+    })
+  })
+
+  test('coding project prerequisite writes a scoped project without starting the runtime', async () => {
+    await executeScenario('coding project fixture prerequisite', ({ given, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+
+      given.codingProject({
+        context: dm,
+        updatedBy: alice.id,
+        name: 'papai',
+        repoUrl: 'https://github.com/acme/papai.git',
+        additionalEgressDomains: ['packages.acme.invalid'],
+      })
+
+      const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
+      expect(getRepoByName(contextId, 'papai')).toMatchObject({
+        name: 'papai',
+        repoUrl: 'https://github.com/acme/papai.git',
+        baseBranch: 'main',
+        permissionPreset: 'cautious',
+        additionalEgressDomains: ['packages.acme.invalid'],
+      })
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
     })
   })

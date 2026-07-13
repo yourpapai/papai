@@ -86,6 +86,8 @@ type ExpectedStart = Readonly<{
   agent?: string
   prNumber?: number
   forgeToken?: string
+  mcp?: StartSessionBody['projectSpec']['mcp']
+  mcpTokens?: StartSessionBody['mcpTokens']
 }>
 
 export type FakeMagiStart = Readonly<{
@@ -226,6 +228,10 @@ function assertExpected(body: StartSessionBody, expected: ExpectedStart | undefi
     throw new Error(`Fake magi expected prNumber=${expected.prNumber}`)
   if (expected.forgeToken !== undefined && body.forgeToken !== expected.forgeToken)
     throw new Error('Fake magi expected exact forgeToken')
+  if (expected.mcp !== undefined && !isDeepStrictEqual(body.projectSpec.mcp, expected.mcp))
+    throw new Error('Fake magi expected exact MCP upstreams')
+  if (expected.mcpTokens !== undefined && !isDeepStrictEqual(body.mcpTokens, expected.mcpTokens))
+    throw new Error('Fake magi expected exact MCP token map')
 }
 
 function recordStart(events: ScenarioEvents, body: StartSessionBody, status: number): void {
