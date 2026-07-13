@@ -29,6 +29,7 @@ import { handleMemoryRoutes } from './settings/memory-routes.js'
 import { handlePluginsRoutes } from './settings/plugins-routes.js'
 import { handleProvisionKaneo } from './settings/provision-routes.js'
 import { handleReleaseSubscriptionRoutes } from './settings/release-subscription-routes.js'
+import { handleSupervisedProjectsRoutes } from './settings/supervised-projects-routes.js'
 import { handleToolsRoutes } from './settings/tools-routes.js'
 
 function routeAdminApi(req: Request, url: URL): Promise<Response> | null {
@@ -80,6 +81,7 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   if (url.pathname === '/settings/api/coding-credentials/models') return handleCodingCredentialsModelsRoute(req, url)
   if (url.pathname === '/settings/api/coding-credentials') return handleCodingCredentialsRoutes(req, url)
   if (url.pathname === '/settings/api/coding-repos') return handleCodingReposRoutes(req, url)
+  if (url.pathname === '/settings/api/supervised-projects') return handleSupervisedProjectsRoutes(req, url)
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
   if (url.pathname === '/settings/api/context/task-instance') return handleContextTaskInstanceRoutes(req, url)
   if (url.pathname === '/settings/api/tools' || url.pathname === '/settings/api/tools/toggle') {
