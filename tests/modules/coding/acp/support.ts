@@ -50,8 +50,8 @@ export function runtimeCtx(
       resolveForge: () => null,
       resolveProviderHost: () => null,
       resolveModel: () => null,
-      resolveMcp: () => null,
-      resolveMcpToken: () => undefined,
+      resolveMcpServers: () => ({ ok: true as const, servers: [] }),
+      resolveMcpTokens: () => ({}),
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
   }
@@ -91,8 +91,8 @@ export function runtimeCtxWithKv(
       resolveForge: () => null,
       resolveProviderHost: () => null,
       resolveModel: () => null,
-      resolveMcp: () => null,
-      resolveMcpToken: () => undefined,
+      resolveMcpServers: () => ({ ok: true as const, servers: [] }),
+      resolveMcpTokens: () => ({}),
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
   }

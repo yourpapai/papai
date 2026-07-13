@@ -10,11 +10,10 @@ import {
   resolveAgentSecrets,
   resolveForge,
   resolveForgeToken,
-  resolveMcp,
-  resolveMcpToken,
   resolveModel,
   resolveProviderHost,
 } from '../credentials/resolve-agent-secrets.js'
+import { resolveMcpServers, resolveMcpTokens } from '../credentials/resolve-mcp-servers.js'
 import { getRepoByName, listRepos } from '../repos/store.js'
 import type { RuntimeContext } from './tools.js'
 
@@ -61,8 +60,8 @@ export function buildRuntimeContext(storageContextId: string, chatUserId: string
       resolveForge: () => resolveForge(storageContextId, chatUserId),
       resolveProviderHost: (): string | null => resolveProviderHost(storageContextId, chatUserId),
       resolveModel: (): string | null => resolveModel(storageContextId, chatUserId),
-      resolveMcp: () => resolveMcp(storageContextId, chatUserId),
-      resolveMcpToken: (): string | undefined => resolveMcpToken(storageContextId, chatUserId),
+      resolveMcpServers: () => resolveMcpServers(storageContextId, chatUserId),
+      resolveMcpTokens: () => resolveMcpTokens(storageContextId, chatUserId),
     },
     codingRepos: {
       list: () => listRepos(cfgCtx),
