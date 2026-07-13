@@ -247,7 +247,11 @@
           {#snippet children()}Delete project{/snippet}
         </Btn>
       {/if}
-      <Btn variant="primary" testid="supervised-projects-save" disabled={saving} onClick={() => void save()}>
+      <Btn
+        variant="primary"
+        testid="supervised-projects-save"
+        disabled={saving || rows.length === 0}
+        onClick={() => void save()}>
         {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
       </Btn>
     </div>
