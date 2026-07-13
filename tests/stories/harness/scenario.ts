@@ -6,7 +6,14 @@
 import { expect, test } from 'bun:test'
 
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { updateCodingCredentials } from '../../../src/coding-credentials/store.js'
 import { configureCodingSessionCapability } from '../../../src/coding-sessions/configure.js'
+import {
+  getCodingSessionRecord,
+  setCodingSessionRecord,
+  type SessionRecord,
+} from '../../../src/coding-sessions/store.js'
+import { kvList } from '../../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
@@ -71,6 +78,19 @@ type ScenarioGiven = Readonly<{
       updatedBy: string
     }>,
   ): CodingSessionHandle
+  codingCredentials(
+    config: Readonly<{
+      context: ContextHandle
+      updatedBy: string
+      agentProvider?: Readonly<{
+        agent: string
+        provider: 'anthropic' | 'openai' | 'openai-compatible'
+        apiKey: string
+      }>
+      forge?: Readonly<{ kind: 'github' | 'gitlab'; token: string }>
+    }>,
+  ): void
+  knownCodingSession(context: ContextHandle, sessionId: string, record: SessionRecord): void
   runtimeExtension(extension: ScenarioRuntimeExtension): void
   llm(decisions: readonly ModelDecision[]): void
 }>
@@ -89,11 +109,22 @@ type ScenarioWhen = Readonly<{
 }>
 
 type ReplyAssertion = Readonly<{ equals(expected: string): void }>
+type ReplyHistoryAssertion = Readonly<{ equal(expected: readonly string[]): void }>
 type TaskAssertion = Readonly<{ exists(): Promise<void> }>
+type CodingSessionAssertion = Readonly<{
+  matches(expected: Partial<SessionRecord>): void
+  absent(): void
+}>
+type CodingSessionsAssertion = Readonly<{
+  count(expected: number): void
+  session(sessionId: string): CodingSessionAssertion
+}>
 
 type ScenarioThen = Readonly<{
   replyTo(user: UserHandle): ReplyAssertion
+  repliesTo(user: UserHandle): ReplyHistoryAssertion
   replyIn(context: ContextHandle): ReplyAssertion
+  codingSessions(context: ContextHandle): CodingSessionsAssertion
   task(title: string): TaskAssertion
   responseStatus(response: Response, expected: number): void
 }>
@@ -196,6 +227,40 @@ function replyAssertion(world: ScenarioWorld, replies: () => readonly { content?
   }
 }
 
+function replyHistoryAssertion(
+  world: ScenarioWorld,
+  replies: () => readonly { kind: string; content?: string }[],
+): ReplyHistoryAssertion {
+  return {
+    equal(expected): void {
+      const captured = replies().flatMap(({ content, kind }) =>
+        content === undefined || !['formatted', 'text', 'replace-text', 'buttons'].includes(kind) ? [] : [content],
+      )
+      tracedAssertion(world, () => expect(captured).toEqual([...expected]))
+    },
+  }
+}
+
+function codingSessionsAssertion(world: ScenarioWorld, context: ContextHandle): CodingSessionsAssertion {
+  const storageContextId = scopedConfigContextId(context)
+  const recordFor = (sessionId: string): SessionRecord | null => getCodingSessionRecord(storageContextId, sessionId)
+  return {
+    count(expected): void {
+      tracedAssertion(world, () => expect(kvList('acp', storageContextId, 'session:')).toHaveLength(expected))
+    },
+    session(sessionId): CodingSessionAssertion {
+      return {
+        matches(expected): void {
+          tracedAssertion(world, () => expect(recordFor(sessionId)).toMatchObject(expected))
+        },
+        absent(): void {
+          tracedAssertion(world, () => expect(recordFor(sessionId)).toBeNull())
+        },
+      }
+    },
+  }
+}
+
 function createGiven(world: ScenarioWorld): ScenarioGiven {
   const prerequisite = (operation: string): void => {
     world.events.setPhase(operation)
@@ -273,6 +338,34 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       })
       return makeCodingSessionHandle(configContextId)
     },
+    codingCredentials(config): void {
+      prerequisite('given.codingCredentials')
+      const storageContextId = scopedConfigContextId(config.context)
+      if (config.agentProvider !== undefined) {
+        updateCodingCredentials(
+          storageContextId,
+          'agent-provider',
+          {
+            agent: config.agentProvider.agent,
+            provider: config.agentProvider.provider,
+            provider_api_key: config.agentProvider.apiKey,
+          },
+          config.updatedBy,
+        )
+      }
+      if (config.forge !== undefined) {
+        updateCodingCredentials(
+          storageContextId,
+          'forge',
+          { kind: config.forge.kind, forge_token: config.forge.token },
+          config.updatedBy,
+        )
+      }
+    },
+    knownCodingSession(context, sessionId, record): void {
+      prerequisite('given.knownCodingSession')
+      setCodingSessionRecord(scopedConfigContextId(context), sessionId, record)
+    },
     runtimeExtension(extension): void {
       prerequisite('given.runtimeExtension')
       world.registerRuntimeExtension(extension)
@@ -316,6 +409,7 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
 function createThen(world: ScenarioWorld): ScenarioThen {
   return {
     replyTo: (user) => replyAssertion(world, () => repliesForContext(world, user.id)),
+    repliesTo: (user) => replyHistoryAssertion(world, () => repliesForContext(world, user.id)),
     replyIn: (context) =>
       replyAssertion(world, () =>
         context.kind === 'thread' ? repliesForThread(world, context) : repliesForContext(world, contextId(context)),
@@ -326,6 +420,7 @@ function createThen(world: ScenarioWorld): ScenarioThen {
         tracedAssertion(world, () => expect(matches.some((task) => task.title === title)).toBe(true))
       },
     }),
+    codingSessions: (context) => codingSessionsAssertion(world, context),
     responseStatus(response, expected): void {
       tracedAssertion(world, () => expect(response.status).toBe(expected))
     },

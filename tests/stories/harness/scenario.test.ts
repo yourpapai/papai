@@ -187,6 +187,43 @@ describe('scenario execution', () => {
     }
   })
 
+  test('coding credential and known-session prerequisites expose scoped setup through public assertions', async () => {
+    await executeScenario('coding session fixture prerequisites', ({ given, then, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+
+      given.codingCredentials({
+        context: dm,
+        updatedBy: alice.id,
+        agentProvider: { agent: 'claude', provider: 'anthropic', apiKey: 'scenario-provider-key' },
+        forge: { kind: 'github', token: 'scenario-forge-token' },
+      })
+      given.knownCodingSession(dm, 'known-session', {
+        project: 'papai',
+        title: 'Known coding work',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      })
+
+      then.codingSessions(dm).count(1)
+      then.codingSessions(dm).session('known-session').matches({ project: 'papai', title: 'Known coding work' })
+      then.codingSessions(dm).session('missing-session').absent()
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+    })
+  })
+
+  test('reply history assertion preserves all replies from a multi-turn conversation', async () => {
+    await executeScenario('reply history assertion', async ({ given, when, then }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      given.llm([answer('First reply.'), answer('Second reply.')])
+
+      await when.message(alice, dm, 'First turn')
+      await when.message(alice, dm, 'Second turn')
+
+      then.repliesTo(alice).equal(['First reply.', 'Second reply.'])
+    })
+  })
+
   test('settings requests reject unsafe URLs before dispatching and accept a settings query', async () => {
     await executeScenario('settings URL safety', async ({ given, when, world }) => {
       const alice = given.user('alice')

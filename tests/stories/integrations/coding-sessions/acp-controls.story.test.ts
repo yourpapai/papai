@@ -5,10 +5,6 @@
 
 import { expect } from 'bun:test'
 
-import { toScopedContextId } from '../../../../src/chat/scoped-context.js'
-import { updateCodingCredentials } from '../../../../src/coding-credentials/store.js'
-import { getCodingSessionRecord, setCodingSessionRecord } from '../../../../src/coding-sessions/store.js'
-import { kvList } from '../../../../src/plugins/store.js'
 import { createFakeMagi } from '../../harness/fake-magi.js'
 import { scenario } from '../../harness/scenario.js'
 import { answer, callCapability } from '../../harness/scripted-llm.js'
@@ -17,19 +13,6 @@ const MAGI_URL = 'https://magi.invalid'
 const MAGI_TOKEN = 'scenario-controls-magi-token'
 const PROVIDER_KEY = 'scenario-controls-provider-key'
 const FORGE_TOKEN = 'scenario-controls-forge-token'
-
-const contextIdFor = (user: { id: string; platformInstanceId: string }): string =>
-  toScopedContextId({ platformInstanceId: user.platformInstanceId, nativeContextId: user.id })
-
-const configureCredentials = (contextId: string, userId: string): void => {
-  updateCodingCredentials(
-    contextId,
-    'agent-provider',
-    { agent: 'claude', provider: 'anthropic', provider_api_key: PROVIDER_KEY },
-    userId,
-  )
-  updateCodingCredentials(contextId, 'forge', { kind: 'github', forge_token: FORGE_TOKEN }, userId)
-}
 
 const expectTraceRedacted = (trace: string): void => {
   expect(trace).not.toContain(MAGI_TOKEN)
@@ -70,7 +53,13 @@ scenario(
     await when.message(alice, dm, 'Deny the next pending coding actions')
     await when.message(alice, dm, 'Approve anything still pending')
 
-    then.replyTo(alice).equals('There are no pending coding permissions.')
+    then
+      .repliesTo(alice)
+      .equal([
+        'Approved both pending coding actions.',
+        'Denied both pending coding actions.',
+        'There are no pending coding permissions.',
+      ])
     const permissionEvents = world.events.all().filter(({ kind }) => kind === 'magi.permission.answer')
     expect(permissionEvents.map(({ data }) => data)).toEqual([
       { decision: 'allow', sessionId: 'allow-session', status: 200, toolCallId: 'allow-1' },
@@ -88,7 +77,6 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    const contextId = contextIdFor(alice)
     given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
@@ -96,7 +84,12 @@ scenario(
       magiToken: MAGI_TOKEN,
       updatedBy: alice.id,
     })
-    configureCredentials(contextId, alice.id)
+    given.codingCredentials({
+      context: dm,
+      updatedBy: alice.id,
+      agentProvider: { agent: 'claude', provider: 'anthropic', apiKey: PROVIDER_KEY },
+      forge: { kind: 'github', token: FORGE_TOKEN },
+    })
     const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     magi.expectFinish('push-session', {
       action: 'push',
@@ -130,7 +123,6 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    const contextId = contextIdFor(alice)
     given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
@@ -138,7 +130,12 @@ scenario(
       magiToken: MAGI_TOKEN,
       updatedBy: alice.id,
     })
-    configureCredentials(contextId, alice.id)
+    given.codingCredentials({
+      context: dm,
+      updatedBy: alice.id,
+      agentProvider: { agent: 'claude', provider: 'anthropic', apiKey: PROVIDER_KEY },
+      forge: { kind: 'github', token: FORGE_TOKEN },
+    })
     const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     magi.expectFinish(
       'pr-session',
@@ -207,16 +204,20 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    const contextId = contextIdFor(alice)
-    given.codingSession({
+    const coding = given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
       magiToken: MAGI_TOKEN,
       updatedBy: alice.id,
     })
-    configureCredentials(contextId, alice.id)
-    setCodingSessionRecord(contextId, 'parent-session', {
+    given.codingCredentials({
+      context: dm,
+      updatedBy: alice.id,
+      agentProvider: { agent: 'claude', provider: 'anthropic', apiKey: PROVIDER_KEY },
+      forge: { kind: 'github', token: FORGE_TOKEN },
+    })
+    given.knownCodingSession(dm, 'parent-session', {
       project: 'papai',
       title: 'Original health check',
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -226,7 +227,7 @@ scenario(
       'parent-session',
       {
         prompt: 'Fix the flaky health-check test',
-        contextId,
+        contextId: coding.contextId,
         secrets: { ANTHROPIC_API_KEY: PROVIDER_KEY },
         forgeToken: FORGE_TOKEN,
       },
@@ -248,7 +249,7 @@ scenario(
     await when.message(alice, dm, 'Continue the original coding session')
 
     then.replyTo(alice).equals('The original coding session is continuing.')
-    expect(getCodingSessionRecord(contextId, 'child-session')).toMatchObject({
+    then.codingSessions(dm).session('child-session').matches({
       project: 'papai',
       parentSessionId: 'parent-session',
       title: 'Fix the flaky health-check test',
@@ -263,16 +264,20 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    const contextId = contextIdFor(alice)
-    given.codingSession({
+    const coding = given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
       magiToken: MAGI_TOKEN,
       updatedBy: alice.id,
     })
-    configureCredentials(contextId, alice.id)
-    setCodingSessionRecord(contextId, 'local-parent', {
+    given.codingCredentials({
+      context: dm,
+      updatedBy: alice.id,
+      agentProvider: { agent: 'claude', provider: 'anthropic', apiKey: PROVIDER_KEY },
+      forge: { kind: 'github', token: FORGE_TOKEN },
+    })
+    given.knownCodingSession(dm, 'local-parent', {
       project: 'papai',
       title: 'PR health check',
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -288,7 +293,7 @@ scenario(
       'local-parent',
       {
         prompt: 'Address the review notes',
-        contextId,
+        contextId: coding.contextId,
         secrets: { ANTHROPIC_API_KEY: PROVIDER_KEY },
         forgeToken: FORGE_TOKEN,
       },
@@ -315,14 +320,20 @@ scenario(
     await when.message(alice, dm, 'Continue PR 99')
     await when.message(alice, dm, 'Continue the foreign PR 42 session')
 
-    then.replyTo(alice).equals('The foreign coding session was not continued.')
-    expect(getCodingSessionRecord(contextId, 'pr-child')).toMatchObject({
+    then
+      .repliesTo(alice)
+      .equal([
+        'The PR coding session is continuing.',
+        'No known coding session exists for PR 99.',
+        'The foreign coding session was not continued.',
+      ])
+    then.codingSessions(dm).session('pr-child').matches({
       project: 'papai',
       parentSessionId: 'local-parent',
       prNumber: 42,
     })
-    expect(getCodingSessionRecord(contextId, 'foreign-parent')).toBeNull()
-    expect(kvList('acp', contextId, 'session:')).toHaveLength(2)
+    then.codingSessions(dm).session('foreign-parent').absent()
+    then.codingSessions(dm).count(2)
     expect(world.events.all().filter(({ kind }) => kind === 'magi.session.follow_up')).toHaveLength(1)
     expectTraceRedacted(JSON.stringify(world.events.all()))
   },
