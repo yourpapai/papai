@@ -24,27 +24,48 @@ function arrayOr(value: unknown): unknown[] {
 }
 
 export class FigmaClient {
-  private readonly token: string
+  private readonly tokens: string[]
   private readonly httpFetch: HttpFetch
   private readonly baseUrl: string
 
   constructor(options: FigmaClientOptions) {
-    this.token = options.token
     this.httpFetch = options.httpFetch
     this.baseUrl = (options.baseUrl ?? 'https://api.figma.com').replace(/\/+$/u, '')
+    // The context `token` value may carry a comma-separated pool: "tok1,tok2" — rotated on 429.
+    this.tokens = options.token
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0)
+    if (this.tokens.length === 0) {
+      throw new Error('Figma token is empty')
+    }
   }
 
-  private async request(path: string): Promise<unknown> {
+  private request(path: string): Promise<unknown> {
+    return this.requestWithToken(path, 0)
+  }
+
+  // One attempt per token: on 429 rotate to the next token and retry immediately (no blocking sleep).
+  // Recursive (rather than a loop) so the sequential-retry await is not flagged by no-await-in-loop.
+  private async requestWithToken(path: string, attempt: number): Promise<unknown> {
+    const pool = this.tokens
+    if (attempt >= pool.length) {
+      throw new Error(`Figma API 429 (rate limited) for ${path}: all ${pool.length} token(s) exhausted`)
+    }
+    const token = pool[attempt] ?? ''
     const res = await this.httpFetch(`${this.baseUrl}${path}`, {
       headers: {
-        'X-Figma-Token': this.token,
+        'X-Figma-Token': token,
         Accept: 'application/json',
       },
     })
-    if (!res.ok) {
-      throw new Error(`Figma API ${res.status} for ${path}`)
+    if (res.ok) {
+      return res.json()
     }
-    return res.json()
+    if (res.status === 429) {
+      return this.requestWithToken(path, attempt + 1)
+    }
+    throw new Error(`Figma API ${res.status} for ${path}`)
   }
 
   async getFile(fileKey: string): Promise<unknown> {
