@@ -168,6 +168,20 @@ export interface MrQueryOptions {
   page?: number
 }
 
+export function parseJobUrl(jobUrl: string): { projectPath: string; jobId: string } {
+  let url: URL
+  try {
+    url = new URL(jobUrl)
+  } catch {
+    throw new Error('Invalid GitLab job URL')
+  }
+  const match = /^\/(.+)\/-\/jobs\/(\d+)(?:\/.*)?$/u.exec(url.pathname)
+  if (match === null) {
+    throw new Error('GitLab job URL must look like https://gitlab.example.com/group/project/-/jobs/123')
+  }
+  return { projectPath: decodeURIComponent(match[1] ?? ''), jobId: match[2] ?? '' }
+}
+
 export function buildMrQuery(opts: MrQueryOptions): string {
   const params = new URLSearchParams()
 

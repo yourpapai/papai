@@ -53,8 +53,11 @@ describe('mcp-gitlab schemas', () => {
     expect(gitlabGetMrsSchema.properties.perPage.maximum).toBe(100)
   })
 
-  test('get_job requires projectPath and jobId', () => {
-    expect(gitlabGetJobSchema.required).toContain('projectPath')
-    expect(gitlabGetJobSchema.required).toContain('jobId')
+  test('get_job accepts either jobUrl or projectPath+jobId, has no required array, and rejects unknown properties', () => {
+    expect(gitlabGetJobSchema).not.toHaveProperty('required')
+    expect(gitlabGetJobSchema.properties.projectPath.type).toBe('string')
+    expect(gitlabGetJobSchema.properties.jobId.type).toBe('string')
+    expect(gitlabGetJobSchema.properties.jobUrl.type).toBe('string')
+    expect(gitlabGetJobSchema.additionalProperties).toBe(false)
   })
 })

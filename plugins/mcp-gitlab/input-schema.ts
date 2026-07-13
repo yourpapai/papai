@@ -59,9 +59,14 @@ export const gitlabGetMrsSchema = {
 export const gitlabGetJobSchema = {
   type: 'object',
   properties: {
-    projectPath,
-    jobId: { type: 'string', minLength: 1, description: 'Numeric job id' },
+    projectPath: { type: 'string', minLength: 1, description: 'Project path, e.g. "group/project" (with jobId)' },
+    jobId: { type: 'string', minLength: 1, description: 'Numeric job id (with projectPath)' },
+    jobUrl: {
+      type: 'string',
+      minLength: 1,
+      description:
+        'Full job URL, e.g. https://gitlab.example.com/group/project/-/jobs/123 (alternative to projectPath+jobId)',
+    },
   },
-  required: ['projectPath', 'jobId'],
   additionalProperties: false,
 } as const

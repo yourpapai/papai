@@ -10,6 +10,7 @@ import type { ToolExecutionOptions } from 'ai'
 import { GitLabClient } from '../../plugins/mcp-gitlab/client.js'
 import {
   buildMrQuery,
+  parseJobUrl,
   shapeJob,
   shapeMr,
   shapeTreeEntry,
@@ -147,6 +148,37 @@ describe('mcp-gitlab format', () => {
     const params = new URLSearchParams(buildMrQuery({ sourceBranch: 'dev', page: 3 }))
     expect(params.get('source_branch')).toBe('dev')
     expect(params.get('page')).toBe('3')
+  })
+})
+
+describe('parseJobUrl', () => {
+  test('extracts projectPath + jobId from a job URL', () => {
+    expect(parseJobUrl('https://gitlab.example.com/group/proj/-/jobs/123')).toEqual({
+      projectPath: 'group/proj',
+      jobId: '123',
+    })
+  })
+
+  test('handles nested subgroups', () => {
+    expect(parseJobUrl('https://gitlab.example.com/group/subgroup/proj/-/jobs/456')).toEqual({
+      projectPath: 'group/subgroup/proj',
+      jobId: '456',
+    })
+  })
+
+  test('ignores trailing path segments after the job id', () => {
+    expect(parseJobUrl('https://gitlab.example.com/group/proj/-/jobs/123/artifacts')).toEqual({
+      projectPath: 'group/proj',
+      jobId: '123',
+    })
+  })
+
+  test('rejects a non-job URL', () => {
+    expect(() => parseJobUrl('https://gitlab.example.com/group/proj/-/pipelines/9')).toThrow(/job URL/u)
+  })
+
+  test('rejects a malformed URL', () => {
+    expect(() => parseJobUrl('not a url')).toThrow(/Invalid GitLab job URL/u)
   })
 })
 
@@ -568,5 +600,45 @@ describe('mcp-gitlab plugin', () => {
     const result = await tool.execute({ projectPath: 'group/proj', mrIid: '42' }, runtimeCtx, options)
 
     expect(result).toEqual({ error: 'gitlab_error', message: 'Connection refused' })
+  })
+
+  test('gitlab_get_job accepts a full jobUrl and requests the parsed project/job endpoints', async () => {
+    const calls: string[] = []
+    const rawJob = { id: 123, name: 'build', status: 'success' }
+    const routes: Record<string, Response> = {
+      'https://gl.test/api/v4/projects/group%2Fproj/jobs/123': jsonResponse(rawJob),
+      'https://gl.test/api/v4/projects/group%2Fproj/jobs/123/trace': textResponse('LOG OUTPUT'),
+    }
+    const httpFetch = createRoutedFetch(routes, calls)
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('gitlab_get_job')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute(
+      { jobUrl: 'https://gitlab.example.com/group/proj/-/jobs/123' },
+      runtimeCtx,
+      options,
+    )
+
+    expect(calls.some((url) => url.includes('/projects/group%2Fproj/jobs/123'))).toBe(true)
+    expect(result).toEqual(shapeJob(rawJob, 'LOG OUTPUT', false))
+  })
+
+  test('gitlab_get_job returns validation_error when neither jobUrl nor projectPath+jobId are given', async () => {
+    const { ctx, registeredTools } = createMockContext()
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('gitlab_get_job')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({}, runtimeCtx, options)
+
+    expect(result).toHaveProperty('error', 'validation_error')
+    expect(result).toHaveProperty('message', expect.stringContaining('either jobUrl'))
   })
 })

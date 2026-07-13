@@ -5,6 +5,7 @@
 
 import { GitLabClient } from './client.js'
 import { requirePluginContext, type HttpFetch, type PluginToolRuntimeContextLike } from './context.js'
+import { parseJobUrl } from './format.js'
 import {
   gitlabGetFileContentSchema,
   gitlabGetJobSchema,
@@ -169,7 +170,17 @@ function executeGetJob(
 ): Promise<unknown> {
   return withGitLabGuards(runtimeContext, httpFetch, (client) => {
     const record = toRecord(input)
-    return client.getJob(readRequiredString(record, 'projectPath'), readRequiredString(record, 'jobId'))
+    const jobUrl = readOptionalString(record, 'jobUrl')
+    if (jobUrl !== undefined && jobUrl !== '') {
+      const parsed = parseJobUrl(jobUrl)
+      return client.getJob(parsed.projectPath, parsed.jobId)
+    }
+    const projectPath = readOptionalString(record, 'projectPath')
+    const jobId = readOptionalString(record, 'jobId')
+    if (projectPath === undefined || projectPath === '' || jobId === undefined || jobId === '') {
+      throw new ValidationError('provide either jobUrl, or both projectPath and jobId')
+    }
+    return client.getJob(projectPath, jobId)
   })
 }
 
