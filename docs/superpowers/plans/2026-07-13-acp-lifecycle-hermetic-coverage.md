@@ -65,7 +65,7 @@ expect(JSON.stringify(events.all())).not.toContain('forge-secret')
 
 - [ ] **Step 2: Verify RED**
 
-Run: `bun test tests/stories/harness/fake-magi.test.ts`
+Run: `bun scripts/test-stories.ts --contracts --fixture tests/stories/harness/fake-magi.test.ts`
 
 Expected: FAIL because lifecycle expectation methods do not exist.
 
@@ -88,7 +88,7 @@ Validate request JSON with Zod schemas, record only IDs/action/count/status/PR p
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `bun test tests/stories/harness/fake-magi.test.ts`
+Run: `bun scripts/test-stories.ts --contracts --fixture tests/stories/harness/fake-magi.test.ts`
 
 Expected: PASS with declarations consumed and no secret-bearing event payload.
 
