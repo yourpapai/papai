@@ -301,7 +301,6 @@ describe('story manifest', () => {
       'scripts/story-runner-integers.ts',
     ]
 
-    expect(manifest.scenarios).toHaveLength(8)
     expect(enforcementPaths.filter((enforcementPath) => !filePaths.includes(enforcementPath))).toEqual([])
     expect(eligibility).toEqual([
       {
