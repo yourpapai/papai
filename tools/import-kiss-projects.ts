@@ -12,7 +12,8 @@
  *     bun run tools/import-kiss-projects.ts [--apply]
  *
  * Default is --dry-run (no writes): prints the full nerv Project docs + guardrails decision it
- * would write, and the `/nerv bind` commands the operator will need afterward. Pass --apply to
+ * would write, and the per-project binding instructions the operator will need afterward (bind
+ * each imported project to its chat channel via Settings → Supervised Projects). Pass --apply to
  * perform the writes. Mongo I/O here is intentionally thin and NOT unit-tested — the pure mapping
  * (tools/import-kiss-projects-mapping.ts) and orchestration (tools/import-kiss-projects-run.ts)
  * modules carry the test coverage; verify this file by running --dry-run against a real staging
@@ -115,7 +116,7 @@ async function main(): Promise<void> {
       for (const w of p.warnings) console.log(`    ! ${w}`)
     }
     console.log(`\nGuardrails: ${report.guardrailsAction}`)
-    console.log('\nAfter this run, bind each project to its chat channel by running (in that channel):\n')
+    console.log('\nAfter this run, bind each project to its chat channel via Settings → Supervised Projects:\n')
     for (const cmd of report.bindCommands) console.log(`  ${cmd}`)
   } finally {
     await kissClient.close()

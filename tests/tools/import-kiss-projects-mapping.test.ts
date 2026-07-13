@@ -127,7 +127,7 @@ describe('mapKissProjectToNervProject', () => {
     expect(warnings).toEqual(['project "raw-id-123": dropping kiss field "proxy" (no nerv target)'])
   })
 
-  test('contextIds always starts empty (binding happens later via /nerv bind)', () => {
+  test('contextIds always starts empty (binding happens later via Settings → Supervised Projects)', () => {
     const { doc } = mapKissProjectToNervProject({ _id: 'p1' }, OPTS)
     expect(doc.contextIds).toEqual([])
   })

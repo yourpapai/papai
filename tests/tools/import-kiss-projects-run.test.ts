@@ -59,7 +59,9 @@ describe('runImport', () => {
       { label: 'Demo', primaryProjectPath: 'team/demo', warnings: [], action: 'would-create' },
     ])
     expect(report.guardrailsAction).toBe('would-set-default')
-    expect(report.bindCommands).toEqual(['/nerv bind team/demo'])
+    expect(report.bindCommands).toEqual([
+      'team/demo: open Settings → Supervised Projects in its chat channel to bind it.',
+    ])
   })
 
   test('apply creates a new project and sets default guardrails', async () => {
@@ -125,10 +127,12 @@ describe('runImport', () => {
         action: 'skipped-duplicate-path',
       },
     ])
-    expect(report.bindCommands).toEqual(['/nerv bind team/demo'])
+    expect(report.bindCommands).toEqual([
+      'team/demo: open Settings → Supervised Projects in its chat channel to bind it.',
+    ])
   })
 
-  test('prints one bind command per imported project, in order', async () => {
+  test('prints one bind instruction per imported project, in order', async () => {
     const ports = makeFakePorts()
     const second: KissProjectDoc = {
       _id: 'p2',
@@ -136,6 +140,9 @@ describe('runImport', () => {
       repositories: [{ projectPath: 'team/second', description: 'd' }],
     }
     const report = await runImport([DEMO, second], ports, { ...OPTS, apply: false })
-    expect(report.bindCommands).toEqual(['/nerv bind team/demo', '/nerv bind team/second'])
+    expect(report.bindCommands).toEqual([
+      'team/demo: open Settings → Supervised Projects in its chat channel to bind it.',
+      'team/second: open Settings → Supervised Projects in its chat channel to bind it.',
+    ])
   })
 })

@@ -43,7 +43,12 @@ export interface ImportedProjectReport {
 export interface RunImportReport {
   projects: ImportedProjectReport[]
   guardrailsAction: 'would-set-default' | 'set-default' | 'left-existing' | 'no-op-dry-run-existing'
-  /** One `/nerv bind <projectPath>` line per successfully-mapped project, for the operator to run. */
+  /**
+   * One human-readable "bind this project" instruction per successfully-mapped project, for the
+   * operator to act on. Supervised projects are now bound to a chat channel from papai's settings
+   * UI (Settings → Supervised Projects), not via a chat command — these strings are printed
+   * as-is, never parsed or executed.
+   */
   bindCommands: string[]
 }
 
@@ -84,7 +89,7 @@ async function processProject(
   if (opts.apply) await ports.nervUpsert(primaryProjectPath, doc)
   return {
     report: { label, primaryProjectPath, warnings, action },
-    bindCommand: `/nerv bind ${primaryProjectPath}`,
+    bindCommand: `${primaryProjectPath}: open Settings → Supervised Projects in its chat channel to bind it.`,
   }
 }
 
