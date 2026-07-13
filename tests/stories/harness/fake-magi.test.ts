@@ -78,21 +78,30 @@ describe('fake magi', () => {
     magi.expectPermissions(sessionId, [{ toolCallId: 'call-1' }, { toolCallId: 'call-2' }])
     magi.expectPermissionDecision(sessionId, { toolCallId: 'call-1', decision: 'allow' })
     magi.expectPermissionDecision(sessionId, { toolCallId: 'call-2', decision: 'deny' })
-    magi.expectFinish(sessionId, {
-      action: 'pr',
-      message: 'create pull request',
-      title: 'private title',
-      body: 'private body',
-      forgeToken: forgeSecret,
-    })
-    magi.expectCancel(sessionId)
-    magi.expectFollowUp(sessionId, {
-      prompt: 'private follow-up prompt',
-      contextId: 'pi:dm:alice',
-      secrets: { ANTHROPIC_API_KEY: lifecycleSecret },
-      forgeToken: forgeSecret,
-      mcpTokens: { docs: mcpSecret },
-    })
+    magi.expectFinish(
+      sessionId,
+      {
+        action: 'pr',
+        message: 'create pull request',
+        title: 'private title',
+        body: 'private body',
+        forgeToken: forgeSecret,
+      },
+      { prUrl: 'https://github.com/acme/papai/pull/42' },
+      201,
+    )
+    magi.expectCancel(sessionId, { cancelled: true })
+    magi.expectFollowUp(
+      sessionId,
+      {
+        prompt: 'private follow-up prompt',
+        contextId: 'pi:dm:alice',
+        secrets: { ANTHROPIC_API_KEY: lifecycleSecret },
+        forgeToken: forgeSecret,
+        mcpTokens: { docs: mcpSecret },
+      },
+      { id: 'child-session', status: 'queued' },
+    )
 
     await http.fetch(`${BASE_URL}/agents`, { headers: { authorization: `Bearer ${TOKEN}` } })
     await http.fetch(`${BASE_URL}/sessions?filter=active`, { headers: { authorization: `Bearer ${TOKEN}` } })
@@ -110,7 +119,7 @@ describe('fake magi', () => {
       headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
       body: JSON.stringify({ toolCallId: 'call-2', decision: 'deny' }),
     })
-    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/finish`, {
+    const finishResponse = await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/finish`, {
       method: 'POST',
       headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -121,11 +130,14 @@ describe('fake magi', () => {
         forgeToken: forgeSecret,
       }),
     })
-    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/cancel`, {
+    expect(finishResponse.status).toBe(201)
+    expect(await finishResponse.json()).toEqual({ prUrl: 'https://github.com/acme/papai/pull/42' })
+    const cancelResponse = await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/cancel`, {
       method: 'POST',
       headers: { authorization: `Bearer ${TOKEN}` },
     })
-    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/follow-up`, {
+    expect(await cancelResponse.json()).toEqual({ cancelled: true })
+    const followUpResponse = await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/follow-up`, {
       method: 'POST',
       headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -136,6 +148,7 @@ describe('fake magi', () => {
         mcpTokens: { docs: mcpSecret },
       }),
     })
+    expect(await followUpResponse.json()).toEqual({ id: 'child-session', status: 'queued' })
 
     magi.verifyConsumed()
     expect(
@@ -150,7 +163,7 @@ describe('fake magi', () => {
       { kind: 'magi.permissions.list', data: { count: 2, sessionId, status: 200 } },
       { kind: 'magi.permission.answer', data: { decision: 'allow', sessionId, status: 200, toolCallId: 'call-1' } },
       { kind: 'magi.permission.answer', data: { decision: 'deny', sessionId, status: 200, toolCallId: 'call-2' } },
-      { kind: 'magi.session.finish', data: { action: 'pr', sessionId, status: 200 } },
+      { kind: 'magi.session.finish', data: { action: 'pr', hasPr: true, sessionId, status: 201 } },
       { kind: 'magi.session.cancel', data: { sessionId, status: 200 } },
       { kind: 'magi.session.follow_up', data: { sessionId, status: 202 } },
     ])
@@ -162,6 +175,7 @@ describe('fake magi', () => {
     expect(trace).not.toContain('private follow-up prompt')
     expect(trace).not.toContain('private title')
     expect(trace).not.toContain('private body')
+    expect(trace).not.toContain('https://github.com/acme/papai/pull/42')
   })
 
   test('rejects unencoded session IDs, invalid authorization, and lifecycle body mismatches', async () => {
@@ -205,6 +219,67 @@ describe('fake magi', () => {
         }),
       ),
     ).toContain('expected no Content-Type')
+  })
+
+  test('rejects invalid permission, finish, and follow-up bodies before exact-body comparison', async () => {
+    const invalidPermission = setup()
+    invalidPermission.magi.expectPermissionDecision('session-1', { toolCallId: 'call-1', decision: 'allow' })
+    expect(
+      await causeMessage(
+        invalidPermission.http.fetch(`${BASE_URL}/sessions/session-1/permission`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ toolCallId: '', decision: 'allow' }),
+        }),
+      ),
+    ).toContain('rejected POST /sessions/session-1/permission')
+
+    const invalidFinish = setup()
+    invalidFinish.magi.expectFinish(
+      'session-1',
+      {
+        action: 'push',
+        message: 'apply changes',
+        forgeToken: 'forge-secret',
+      },
+      {},
+    )
+    expect(
+      await causeMessage(
+        invalidFinish.http.fetch(`${BASE_URL}/sessions/session-1/finish`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'merge', message: 'apply changes', forgeToken: 'forge-secret' }),
+        }),
+      ),
+    ).toContain('rejected POST /sessions/session-1/finish')
+
+    const invalidFollowUp = setup()
+    invalidFollowUp.magi.expectFollowUp(
+      'session-1',
+      {
+        prompt: 'continue work',
+        contextId: 'pi:dm:alice',
+        secrets: { ANTHROPIC_API_KEY: 'provider-secret' },
+        forgeToken: 'forge-secret',
+      },
+      {},
+    )
+    expect(
+      await causeMessage(
+        invalidFollowUp.http.fetch(`${BASE_URL}/sessions/session-1/follow-up`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            prompt: 'continue work',
+            contextId: 'pi:dm:alice',
+            secrets: { ANTHROPIC_API_KEY: 'provider-secret' },
+            forgeToken: 'forge-secret',
+            unexpected: true,
+          }),
+        }),
+      ),
+    ).toContain('rejected POST /sessions/session-1/follow-up')
   })
 
   test('returns declared lifecycle failure responses without recording their payloads', async () => {
@@ -296,6 +371,7 @@ describe('fake magi', () => {
     expect(events.all().find(({ kind }) => kind === 'magi.session.start')?.data).toEqual({
       agent: 'claude-code-acp',
       contextId: 'pi:dm:user-1',
+      hasPr: false,
       project: 'papai',
       status: 202,
     })
@@ -434,6 +510,8 @@ describe('fake magi', () => {
     expect(events.all().find(({ kind }) => kind === 'magi.session.start')?.data).toEqual({
       agent: 'claude-code-acp',
       contextId: 'pi:dm:user-1',
+      hasPr: true,
+      prNumber: 42,
       project: 'papai',
       status: 202,
     })
