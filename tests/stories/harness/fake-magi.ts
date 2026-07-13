@@ -84,6 +84,8 @@ type ExpectedStart = Readonly<{
   prompt?: string
   project?: string
   agent?: string
+  prNumber?: number
+  hasForgeToken?: boolean
 }>
 
 export type FakeMagiStart = Readonly<{
@@ -220,6 +222,10 @@ function assertExpected(body: StartSessionBody, expected: ExpectedStart | undefi
     throw new Error(`Fake magi expected project=${expected.project}`)
   if (expected.agent !== undefined && body.projectSpec.agent !== expected.agent)
     throw new Error(`Fake magi expected agent=${expected.agent}`)
+  if (expected.prNumber !== undefined && body.prNumber !== expected.prNumber)
+    throw new Error(`Fake magi expected prNumber=${expected.prNumber}`)
+  if (expected.hasForgeToken !== undefined && (body.forgeToken !== undefined) !== expected.hasForgeToken)
+    throw new Error(`Fake magi expected forgeToken=${expected.hasForgeToken ? 'present' : 'absent'}`)
 }
 
 function recordStart(events: ScenarioEvents, body: StartSessionBody, status: number): void {
