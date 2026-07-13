@@ -25,11 +25,16 @@ export type CandidateStorySnapshot = Readonly<{
 }>
 
 type SnapshotOptions = Readonly<{ root: string; seed: number; bunVersion?: string }>
-type SnapshotDependencies = Readonly<{
+export type SnapshotDependencies = Readonly<{
   afterRootCreated?(snapshotRoot: string): Promise<void>
   candidateCaptureDependencies?: CandidateStoryManifestDependencies
   changeMode?(target: string, mode: number): Promise<void>
   writeCapturedFile?(snapshotRoot: string, file: LoadedStoryFile): Promise<void>
+}>
+
+export type CandidateStorySnapshotSource = Readonly<{
+  manifest: StoryManifest
+  materialize(snapshotRoot: string): Promise<Readonly<{ verifyIntegrity(): Promise<void> }>>
 }>
 
 export class StorySnapshotInterruptedError extends Error {
@@ -240,36 +245,52 @@ async function verifySnapshotRuntimeInput(
   }
 }
 
+export async function createCandidateStorySnapshotSource(
+  options: SnapshotOptions,
+  dependencies: SnapshotDependencies = {},
+): Promise<CandidateStorySnapshotSource> {
+  const captured = await captureCandidateStoryInputs(options, dependencies.candidateCaptureDependencies)
+  return {
+    manifest: captured.manifest,
+    materialize: async (snapshotRoot) => {
+      const signals = captureConstructionSignals()
+      try {
+        const controlFile = await materializeSnapshot(
+          snapshotRoot,
+          captured.files,
+          captured.runtimeInputs.directories,
+          captured.runtimeInputs.files,
+          dependencies,
+          signals,
+        )
+        const controlManifestFile = { path: controlFile.path, sha256: sha256(controlFile.bytes) }
+        const verifyIntegrity = (): Promise<void> =>
+          Promise.all([
+            verifySnapshotTopology(snapshotRoot, captured.manifest, controlManifestFile),
+            ...captured.manifest.files.map((file) => verifySnapshotFile(snapshotRoot, file)),
+            ...captured.manifest.runtimeInputs.files.map((input) => verifySnapshotRuntimeInput(snapshotRoot, input)),
+            verifySnapshotFile(snapshotRoot, controlManifestFile),
+          ]).then(() => undefined)
+        return { verifyIntegrity }
+      } finally {
+        signals.dispose()
+      }
+    },
+  }
+}
+
 export async function createCandidateStorySnapshot(
   options: SnapshotOptions,
   dependencies: SnapshotDependencies = {},
 ): Promise<CandidateStorySnapshot> {
-  const captured = await captureCandidateStoryInputs(options, dependencies.candidateCaptureDependencies)
+  const source = await createCandidateStorySnapshotSource(options, dependencies)
   const snapshotRoot = await mkdtemp(path.join(options.root, '.papai-story-snapshot-'))
   const cleanup = createCleanup(snapshotRoot)
-  const signals = captureConstructionSignals()
   try {
-    const controlFile = await materializeSnapshot(
-      snapshotRoot,
-      captured.files,
-      captured.runtimeInputs.directories,
-      captured.runtimeInputs.files,
-      dependencies,
-      signals,
-    )
-    const controlManifestFile = { path: controlFile.path, sha256: sha256(controlFile.bytes) }
-    const verifyIntegrity = (): Promise<void> =>
-      Promise.all([
-        verifySnapshotTopology(snapshotRoot, captured.manifest, controlManifestFile),
-        ...captured.manifest.files.map((file) => verifySnapshotFile(snapshotRoot, file)),
-        ...captured.manifest.runtimeInputs.files.map((input) => verifySnapshotRuntimeInput(snapshotRoot, input)),
-        verifySnapshotFile(snapshotRoot, controlManifestFile),
-      ]).then(() => undefined)
-    return { root: snapshotRoot, manifest: captured.manifest, verifyIntegrity, cleanup }
+    const materialized = await source.materialize(snapshotRoot)
+    return { root: snapshotRoot, manifest: source.manifest, ...materialized, cleanup }
   } catch (error) {
     await cleanup()
     throw error
-  } finally {
-    signals.dispose()
   }
 }
