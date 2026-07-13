@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getActiveTaskId, setActive, type KvStore } from './history.js'
+
 export type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
 export type AdminConfigReader = { get(key: string): string | undefined }
 export type NervConfig = { baseUrl: string; token: string }
@@ -54,4 +56,26 @@ export async function callNerv(
   const data: unknown = text === '' ? null : JSON.parse(text)
   if (!res.ok) return { error: 'nerv_error', status: res.status, body: data }
   return data
+}
+
+/**
+ * Resolve which nerv task a chat action targets:
+ *   explicit taskId  →  kv "active" pointer  →  nerv lookup by (thread-scoped) context (cached).
+ * The nerv fallback makes forge-adopted tasks — created inside nerv, never seen by create_coding_task
+ * — resolvable from a chat follow-up in their thread.
+ */
+export async function resolveActiveTaskId(
+  httpFetch: HttpFetch,
+  cfg: NervConfig,
+  kv: KvStore,
+  storageContextId: string,
+  explicitTaskId: string | null,
+): Promise<string | null> {
+  if (explicitTaskId !== null) return explicitTaskId
+  const cached = getActiveTaskId(kv, storageContextId)
+  if (cached !== null) return cached
+  const result = await callNerv(httpFetch, cfg, 'GET', `/tasks?contextId=${encodeURIComponent(storageContextId)}`)
+  const taskId = asString(asObject(result), 'taskId')
+  if (taskId !== null) setActive(kv, storageContextId, taskId)
+  return taskId
 }
