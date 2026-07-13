@@ -145,3 +145,48 @@ scenario(
     expectTraceRedacted(JSON.stringify(world.events.all()))
   },
 )
+
+scenario('malformed MCP settings fail closed before Magi session startup', async ({ given, when, then, world }) => {
+  const alice = given.user('alice')
+  const dm = given.dm(alice)
+  given.codingSession({
+    pluginDirectory: 'plugins',
+    context: dm,
+    magiBaseUrl: MAGI_URL,
+    magiToken: MAGI_TOKEN,
+    updatedBy: alice.id,
+  })
+  given.codingProject({
+    context: dm,
+    updatedBy: alice.id,
+    name: 'papai',
+    repoUrl: 'https://github.com/acme/papai.git',
+  })
+  given.codingCredentials({
+    context: dm,
+    updatedBy: alice.id,
+    agentProvider: { agent: 'claude', provider: 'anthropic', apiKey: PROVIDER_KEY },
+  })
+  given.codingMcp({
+    context: dm,
+    updatedBy: alice.id,
+    catalog: [],
+    malformedSettings: `{not-json:${MCP_TOKEN}`,
+  })
+  createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
+  given.llm([
+    callCapability('coding-session.start', {
+      project: 'papai',
+      prompt: 'Find the documented API for the health check',
+    }),
+    answer('The selected documentation MCP settings are invalid.'),
+  ])
+
+  await when.message(alice, dm, 'Start a coding session with malformed MCP settings')
+
+  then.replyTo(alice).equals('The selected documentation MCP settings are invalid.')
+  then.codingSessions(dm).count(0)
+  expect(world.events.all().some(({ kind }) => kind === 'http.request')).toBe(false)
+  expect(world.events.all().some(({ kind }) => kind === 'magi.session.start')).toBe(false)
+  expectTraceRedacted(JSON.stringify(world.events.all()))
+})

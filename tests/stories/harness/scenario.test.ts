@@ -251,6 +251,24 @@ describe('scenario execution', () => {
     })
   })
 
+  test('coding MCP prerequisite preserves deliberately malformed settings for fail-closed coverage', async () => {
+    await executeScenario('malformed coding MCP fixture prerequisite', ({ given, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+
+      given.codingMcp({
+        context: dm,
+        updatedBy: alice.id,
+        catalog: [],
+        malformedSettings: '{not-valid-json',
+      })
+
+      const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
+      expect(resolveMcpServers(contextId, alice.id)).toEqual({ ok: false, error: 'MCP settings are malformed' })
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+    })
+  })
+
   test('coding project prerequisite writes a scoped project without starting the runtime', async () => {
     await executeScenario('coding project fixture prerequisite', ({ given, world }) => {
       const alice = given.user('alice')

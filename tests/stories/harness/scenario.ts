@@ -46,6 +46,32 @@ import {
 
 const codingSessionHandleBrand: unique symbol = Symbol('scenario-coding-session')
 
+type CodingMcpCatalogEntry = Readonly<{
+  name: string
+  upstreamUrl: string
+  header?: string
+  defaultToolPolicy: 'allow' | 'ask' | 'deny'
+  toolPolicy?: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>
+}>
+
+type CodingMcpSelection = Readonly<{ server: string; upstreamToken?: string }>
+
+type CodingMcpConfig =
+  | Readonly<{
+      context: ContextHandle
+      updatedBy: string
+      catalog: readonly CodingMcpCatalogEntry[]
+      selections: readonly CodingMcpSelection[]
+      malformedSettings?: never
+    }>
+  | Readonly<{
+      context: ContextHandle
+      updatedBy: string
+      catalog: readonly CodingMcpCatalogEntry[]
+      selections?: never
+      malformedSettings: string
+    }>
+
 export type CodingSessionHandle = Readonly<{
   kind: 'coding-session'
   capabilityId: 'coding-session.start'
@@ -93,20 +119,7 @@ type ScenarioGiven = Readonly<{
       forge?: Readonly<{ kind: 'github' | 'gitlab'; token: string }>
     }>,
   ): void
-  codingMcp(
-    config: Readonly<{
-      context: ContextHandle
-      updatedBy: string
-      catalog: readonly Readonly<{
-        name: string
-        upstreamUrl: string
-        header?: string
-        defaultToolPolicy: 'allow' | 'ask' | 'deny'
-        toolPolicy?: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>
-      }>[]
-      selections: readonly Readonly<{ server: string; upstreamToken?: string }>[]
-    }>,
-  ): void
+  codingMcp(config: CodingMcpConfig): void
   codingProject(
     config: Readonly<{
       context: ContextHandle
@@ -406,12 +419,14 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
         scopedConfigContextId(config.context),
         'mcp',
         {
-          servers: serializeMcpSelections(
-            config.selections.map((selection) => ({
-              server: selection.server,
-              ...(selection.upstreamToken === undefined ? {} : { upstream_token: selection.upstreamToken }),
-            })),
-          ),
+          servers:
+            config.malformedSettings ??
+            serializeMcpSelections(
+              config.selections.map((selection) => ({
+                server: selection.server,
+                ...(selection.upstreamToken === undefined ? {} : { upstream_token: selection.upstreamToken }),
+              })),
+            ),
         },
         config.updatedBy,
       )
