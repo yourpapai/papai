@@ -274,4 +274,10 @@ export type ChatProvider = {
   isInstanceActive: (platformInstanceId: string) => boolean
   /** Register the bot's command list with the platform (for command menus). */
   setCommands: (adminUserId: string) => Promise<void>
+  /** Like sendMessage, but returns the created root post's id when the platform surfaces one (else null). Used to thread-scope proactive adoptions. */
+  sendMessageReturningId: (
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+  ) => Promise<string | null>
 }>

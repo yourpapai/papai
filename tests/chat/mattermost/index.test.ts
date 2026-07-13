@@ -307,6 +307,28 @@ describe('MattermostChatProvider', () => {
   })
 
   describe('sendMessage', () => {
+    test('sendMessageReturningId returns the created post id for a group delivery', async () => {
+      const requests: Array<{ readonly path: string; readonly body: unknown }> = []
+      provider = createMattermostProvider()
+      Reflect.set(provider, 'apiFetch', makeApiFetchPostOnly(requests))
+      Reflect.set(provider, 'botUserId', 'bot-1')
+
+      const id = await provider.sendMessageReturningId(
+        'mattermost-default',
+        {
+          contextId: 'chan-1',
+          contextType: 'group',
+          threadId: null,
+          audience: 'shared',
+          mentionUserIds: [],
+          createdByUserId: '',
+          createdByUsername: null,
+        },
+        'hello',
+      )
+      expect(id).toBe('post-1')
+    })
+
     test('mentions stored target usernames for personal group delivery', async () => {
       const requests: Array<{ readonly path: string; readonly body: unknown }> = []
 

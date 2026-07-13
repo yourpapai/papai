@@ -102,6 +102,10 @@ export class MattermostChatProvider implements ChatProvider {
     await sendMattermostDeferredMessage(this.botUserId, target, markdown, this.apiFetch.bind(this))
   }
 
+  async sendMessageReturningId(_pi: string, target: DeferredDeliveryTarget, markdown: string): Promise<string | null> {
+    return (await sendMattermostDeferredMessage(this.botUserId, target, markdown, this.apiFetch.bind(this))) ?? null
+  }
+
   isGroupAdmin(_platformInstanceId: string, groupId: string, userId: string): Promise<boolean> {
     return checkChannelAdmin(groupId, userId, this.apiFetch.bind(this))
   }

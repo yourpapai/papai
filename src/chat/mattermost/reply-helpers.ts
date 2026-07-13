@@ -215,21 +215,22 @@ export async function sendMattermostDeferredMessage(
   target: DeferredDeliveryTarget,
   markdown: string,
   apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
-): Promise<void> {
+): Promise<string | undefined> {
   if (target.contextType === 'dm') {
     if (botUserId === null) throw new Error('Bot not started')
     const dmData = await apiFetch('POST', '/api/v4/channels/direct', [botUserId, target.contextId])
     const channelId = ChannelSchema.parse(dmData).id
-    await apiFetch('POST', '/api/v4/posts', { channel_id: channelId, message: markdown })
-    return
+    const created = await apiFetch('POST', '/api/v4/posts', { channel_id: channelId, message: markdown })
+    return extractPostId(created)
   }
   const mention =
     target.audience === 'personal'
       ? await buildMattermostMentionPrefix(target.mentionUserIds, target.createdByUsername, apiFetch)
       : ''
-  await apiFetch('POST', '/api/v4/posts', {
+  const created = await apiFetch('POST', '/api/v4/posts', {
     channel_id: target.contextId,
     message: `${mention}${markdown}`,
     ...(target.threadId === null ? {} : { root_id: target.threadId }),
   })
+  return extractPostId(created)
 }
