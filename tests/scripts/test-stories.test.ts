@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { buildCandidateStoryManifest, type StoryManifest, writeStoryManifest } from '../../scripts/story-manifest.js'
+import { resolveReporterOutfiles } from '../../scripts/story-runner-arguments.js'
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/test-stories.js'
 
 const manifest = (treeHash: string): StoryManifest => ({
@@ -102,6 +103,83 @@ describe('story runner reports and compatibility', () => {
     },
   )
 
+  test('runs the child from the snapshot with captured relative inputs and live report output', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-snapshot-cwd-'))
+    const snapshotRoot = path.join(root, '.story-snapshot')
+    const storyPath = 'tests/stories/example.story.test.ts'
+    const runtimeInputPath = 'runtime/input.txt'
+    const reportPath = path.join(root, 'reports/stories/junit.xml')
+    const candidate = { ...manifest('a'.repeat(64)), files: [{ path: storyPath, sha256: 'b'.repeat(64) }] }
+    try {
+      for (const directory of ['tests/stories', 'runtime', 'reports/stories']) {
+        mkdirSync(path.join(root, directory), { recursive: true })
+        mkdirSync(path.join(snapshotRoot, directory), { recursive: true })
+      }
+      writeFileSync(path.join(root, runtimeInputPath), 'live runtime input')
+      writeFileSync(path.join(snapshotRoot, runtimeInputPath), 'captured runtime input')
+      writeFileSync(path.join(snapshotRoot, storyPath), 'captured story')
+      writeFileSync(path.join(snapshotRoot, 'tests/setup.ts'), '')
+      writeFileSync(path.join(snapshotRoot, 'tests/mock-reset.ts'), '')
+      writeFileSync(path.join(snapshotRoot, 'tests/stories/preload.ts'), '')
+
+      const exitCode = await runStoryTests([], {
+        cwd: root,
+        env: {},
+        spawn: (command, options) => {
+          expect(options).toBeDefined()
+          const childOptions = options!
+          expect(childOptions.cwd).toBe(snapshotRoot)
+          expect(childOptions.env?.['PAPAI_STORY_EXECUTION_ROOT']).toBe(snapshotRoot)
+          expect(readFileSync(path.join(String(childOptions.cwd), runtimeInputPath), 'utf8')).toBe(
+            'captured runtime input',
+          )
+
+          const setupPreload = path.join(snapshotRoot, 'tests/setup.ts')
+          const mockResetPreload = path.join(snapshotRoot, 'tests/mock-reset.ts')
+          const storyPreload = path.join(snapshotRoot, 'tests/stories/preload.ts')
+          const storyFile = path.join(snapshotRoot, storyPath)
+          const storyFileIndex = command.indexOf(storyFile)
+          const setupPreloadIndex = command.indexOf(setupPreload)
+          const mockResetPreloadIndex = command.indexOf(mockResetPreload)
+          const storyPreloadIndex = command.indexOf(storyPreload)
+          expect(setupPreloadIndex).toBeGreaterThanOrEqual(0)
+          expect(mockResetPreloadIndex).toBeGreaterThanOrEqual(0)
+          expect(storyPreloadIndex).toBeGreaterThanOrEqual(0)
+          expect(setupPreloadIndex).toBeLessThan(storyFileIndex)
+          expect(mockResetPreloadIndex).toBeLessThan(storyFileIndex)
+          expect(storyPreloadIndex).toBeLessThan(storyFileIndex)
+
+          const reportArgument = command.indexOf('--reporter-outfile')
+          expect(command[reportArgument + 1]).toBe(reportPath)
+          writeFileSync(reportPath, 'current junit')
+          return { exited: Promise.resolve(0), kill: (): void => undefined }
+        },
+        buildCandidateManifest: () => Promise.resolve(candidate),
+        buildCandidateSnapshot: () =>
+          Promise.resolve({
+            manifest: candidate,
+            root: snapshotRoot,
+            verifyIntegrity: () => Promise.resolve(),
+            cleanup: () => rm(snapshotRoot, { recursive: true }),
+          }),
+        buildBaselineManifest: () => Promise.resolve(candidate),
+        writeManifest: (_manifest, outputPath) => {
+          writeFileSync(outputPath, 'current manifest')
+          writeFileSync(path.join(root, runtimeInputPath), 'mutated live runtime input')
+          return Promise.resolve()
+        },
+        removeReport: () => Promise.resolve(),
+        discoverStories: () => Promise.reject(new Error('live discovery must not run')),
+        discoverContracts: () => Promise.reject(new Error('live discovery must not run')),
+      })
+
+      expect(exitCode).toBe(0)
+      expect(readFileSync(reportPath, 'utf8')).toBe('current junit')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test('consumes compatibility options and forwards a stable default seed and JUnit reporter', () => {
     expect(parseStoryRunnerArguments(['--compat', '--baseline-ref', 'abc1234'])).toEqual({
       baselineRef: 'abc1234',
@@ -168,6 +246,68 @@ describe('story runner reports and compatibility', () => {
 
     expect(parsed.seed).toBe(7)
     expect(parsed.forwarded).toEqual(['--seed=7', '--reporter', 'dots'])
+  })
+
+  test.each([
+    ['split', ['--reporter-outfile', '../../outside.xml']],
+    ['equals', ['--reporter-outfile=/tmp/outside.xml']],
+  ])('rejects a %s reporter outfile outside the live report directory', (_form, argv) => {
+    const parsed = parseStoryRunnerArguments(argv)
+
+    expect(() => resolveReporterOutfiles(parsed.forwarded, '/repo')).toThrow(
+      'Story reporter outfile must stay within /repo/reports/stories',
+    )
+  })
+
+  test.each([
+    ['split', ['--reporter-outfile', 'reports/stories/custom.xml']],
+    ['equals', ['--reporter-outfile=./reports/stories/custom.xml']],
+  ])('resolves a %s canonical reporter outfile within the live report directory', (_form, argv) => {
+    const parsed = parseStoryRunnerArguments(argv)
+
+    expect(resolveReporterOutfiles(parsed.forwarded, '/repo').join(' ')).toContain('/repo/reports/stories/custom.xml')
+  })
+
+  test('rejects a bare reporter outfile instead of resolving it outside the live report directory', () => {
+    const parsed = parseStoryRunnerArguments(['--reporter-outfile', 'custom.xml'])
+
+    expect(() => resolveReporterOutfiles(parsed.forwarded, '/repo')).toThrow(
+      'Story reporter outfile must stay within /repo/reports/stories',
+    )
+  })
+
+  test('rejects a reporter outfile through an existing report-directory symlink', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-reporter-link-'))
+    const outside = mkdtempSync(path.join(os.tmpdir(), 'papai-story-reporter-outside-'))
+    try {
+      mkdirSync(path.join(root, 'reports/stories'), { recursive: true })
+      symlinkSync(outside, path.join(root, 'reports/stories/external'))
+      const parsed = parseStoryRunnerArguments(['--reporter-outfile', 'reports/stories/external/custom.xml'])
+
+      expect(() => resolveReporterOutfiles(parsed.forwarded, root)).toThrow(
+        'Story reporter outfile must not traverse symbolic links',
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  test('rejects a reporter outfile through an existing reports ancestor symlink', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-reporter-root-link-'))
+    const outside = mkdtempSync(path.join(os.tmpdir(), 'papai-story-reporter-root-outside-'))
+    try {
+      mkdirSync(path.join(outside, 'stories'), { recursive: true })
+      symlinkSync(outside, path.join(root, 'reports'))
+      const parsed = parseStoryRunnerArguments(['--reporter-outfile', 'reports/stories/custom.xml'])
+
+      expect(() => resolveReporterOutfiles(parsed.forwarded, root)).toThrow(
+        'Story reporter outfile must not traverse symbolic links',
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+      rmSync(outside, { recursive: true, force: true })
+    }
   })
 
   test('an explicit baseline ref implies compatibility without a separate flag', () => {

@@ -13,7 +13,12 @@ import {
   writeStoryManifest,
 } from './story-manifest.js'
 import { removeStoryReport, STORY_JUNIT_REPORT_PATH, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
-import { type ParsedStoryRunnerArguments, parseStoryRunnerArguments, STORY_SEED } from './story-runner-arguments.js'
+import {
+  type ParsedStoryRunnerArguments,
+  parseStoryRunnerArguments,
+  resolveReporterOutfiles,
+  STORY_SEED,
+} from './story-runner-arguments.js'
 import { sanitizedStoryEnvironment } from './story-runner-environment.js'
 import {
   type CandidateStorySnapshot,
@@ -241,6 +246,7 @@ function spawnStoryChild(
   files: readonly string[],
   snapshot?: CandidateStorySnapshot,
 ): SpawnedChild {
+  const childRoot = snapshot?.root ?? dependencies.cwd
   return dependencies.spawn(
     [
       'bun',
@@ -260,12 +266,15 @@ function spawnStoryChild(
             path.join(snapshot.root, 'tests/mock-reset.ts'),
             ...(parsed.contracts ? [] : ['--preload', path.join(snapshot.root, 'tests/stories/preload.ts')]),
           ]),
-      ...parsed.forwarded,
+      ...resolveReporterOutfiles(parsed.forwarded, dependencies.cwd),
       ...files,
     ],
     {
-      cwd: dependencies.cwd,
-      env: sanitizedStoryEnvironment(dependencies.env),
+      cwd: childRoot,
+      env: {
+        ...sanitizedStoryEnvironment(dependencies.env),
+        ...(snapshot === undefined ? {} : { PAPAI_STORY_EXECUTION_ROOT: snapshot.root }),
+      },
       stdin: 'inherit',
       stdout: 'inherit',
       stderr: 'inherit',

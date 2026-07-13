@@ -3,7 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { STORY_JUNIT_REPORT_PATH } from './story-reports.js'
+import { lstatSync, realpathSync } from 'node:fs'
+import path from 'node:path'
+
+import { STORY_JUNIT_REPORT_PATH, STORY_REPORT_DIRECTORY } from './story-reports.js'
 import { parseBunInteger } from './story-runner-integers.js'
 
 export const STORY_SEED = 41021
@@ -146,4 +149,72 @@ export function parseStoryRunnerArguments(args: readonly string[]): ParsedStoryR
     throw new Error(`Unsupported story runner argument: ${argument}`)
   }
   return finalizeArguments(state)
+}
+
+function isWithinDirectory(directory: string, target: string): boolean {
+  const relative = path.relative(directory, target)
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
+}
+
+function existingPath(target: string): ReturnType<typeof lstatSync> | undefined {
+  return lstatSync(target, { throwIfNoEntry: false })
+}
+
+function pathComponents(root: string, target: string): readonly string[] {
+  const parent = path.dirname(target)
+  const relative = path.relative(root, parent)
+  if (relative === '') return [root, target]
+  const components = [root]
+  let current = root
+  for (const segment of relative.split(path.sep)) {
+    current = path.join(current, segment)
+    components.push(current)
+  }
+  components.push(target)
+  return components
+}
+
+function assertSafeReporterOutfile(liveRoot: string, output: string): void {
+  const rootEntry = existingPath(liveRoot)
+  const realLiveRoot = rootEntry === undefined ? undefined : realpathSync(liveRoot)
+  for (const component of pathComponents(liveRoot, output)) {
+    const entry = existingPath(component)
+    if (entry === undefined) continue
+    if (entry.isSymbolicLink()) throw new Error('Story reporter outfile must not traverse symbolic links')
+    if (realLiveRoot !== undefined && !isWithinDirectory(realLiveRoot, realpathSync(component))) {
+      throw new Error(`Story reporter outfile must stay within ${liveRoot}`)
+    }
+  }
+}
+
+function resolveReporterOutfile(value: string, liveRoot: string, reportRoot: string): string {
+  const output = path.resolve(liveRoot, value)
+  const relative = path.relative(reportRoot, output)
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Story reporter outfile must stay within ${reportRoot}`)
+  }
+  assertSafeReporterOutfile(liveRoot, output)
+  return output
+}
+
+export function resolveReporterOutfiles(forwarded: readonly string[], liveRoot: string): readonly string[] {
+  const reportRoot = path.resolve(liveRoot, STORY_REPORT_DIRECTORY)
+  const argumentsForChild: string[] = []
+  let reporterOutfile = false
+  for (const argument of forwarded) {
+    if (reporterOutfile) {
+      argumentsForChild.push(resolveReporterOutfile(argument, liveRoot, reportRoot))
+      reporterOutfile = false
+      continue
+    }
+    if (argument.startsWith('--reporter-outfile=')) {
+      argumentsForChild.push(
+        `--reporter-outfile=${resolveReporterOutfile(argument.slice('--reporter-outfile='.length), liveRoot, reportRoot)}`,
+      )
+      continue
+    }
+    argumentsForChild.push(argument)
+    reporterOutfile = argument === '--reporter-outfile'
+  }
+  return argumentsForChild
 }
