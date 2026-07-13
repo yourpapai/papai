@@ -43,12 +43,13 @@ function rewriteToolOverrides(value: string): string | null {
   let changed = false
   const next: Record<string, unknown> = {}
   for (const [key, perm] of Object.entries(overrides)) {
-    if (key.startsWith(RENAME_FROM)) {
-      next[`${RENAME_TO}${key.slice(RENAME_FROM.length)}`] = perm
-      changed = true
-    } else {
-      next[key] = perm
-    }
+    if (!key.startsWith(RENAME_FROM)) next[key] = perm
+  }
+  for (const [key, perm] of Object.entries(overrides)) {
+    if (!key.startsWith(RENAME_FROM)) continue
+    const canonicalKey = `${RENAME_TO}${key.slice(RENAME_FROM.length)}`
+    if (!(canonicalKey in next)) next[canonicalKey] = perm
+    changed = true
   }
   if (!changed) return null
   return JSON.stringify({ ...parsed, toolOverrides: next })

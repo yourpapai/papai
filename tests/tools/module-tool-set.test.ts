@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { moduleEligibilityRegistry } from '../../src/ports/module-eligibility.js'
 import { moduleToolRegistry, type ModuleTool, type ModuleToolRuntimeContext } from '../../src/ports/module-tools.js'
 import { toolGateRegistry } from '../../src/ports/tool-gate.js'
+import { createToolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { buildModuleToolSet, namespacedModuleToolName } from '../../src/tools/module-tool-set.js'
 import { getToolExecutor } from '../utils/test-helpers.js'
 
@@ -26,6 +27,7 @@ const echoTool = (name: string, gate?: 'operator'): ModuleTool => ({
 afterEach(() => {
   moduleToolRegistry.clear()
   moduleEligibilityRegistry.clear()
+  toolGateRegistry.clear()
 })
 
 describe('buildModuleToolSet', () => {
@@ -58,6 +60,24 @@ describe('buildModuleToolSet', () => {
     moduleToolRegistry.register('coding', [echoTool('start_session')])
     const out = buildModuleToolSet(new Set<string>(['module_coding__start_session']), ctx)
     expect('module_coding__start_session' in out).toBe(false)
+  })
+
+  test('resolves a capability to the canonical name when its legacy alias collides', () => {
+    moduleToolRegistry.register('coding', [
+      {
+        ...echoTool('start_session', 'operator'),
+        capabilityId: 'coding-session.start',
+        legacyWireName: 'plugin_acp__start_session',
+      },
+    ])
+    const catalog = createToolCapabilityCatalog()
+
+    const out = buildModuleToolSet(new Set(['plugin_acp__start_session']), ctx, catalog)
+
+    expect('module_coding__start_session' in out).toBe(true)
+    expect('plugin_acp__start_session' in out).toBe(false)
+    expect(catalog.resolve('coding-session.start')).toBe('module_coding__start_session')
+    expect(toolGateRegistry.isOperatorGated('plugin_acp__start_session')).toBe(false)
   })
 
   test('omits tools whose module is ineligible for the context', () => {

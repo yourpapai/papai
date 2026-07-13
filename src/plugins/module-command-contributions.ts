@@ -20,7 +20,16 @@ export function namespacedModuleCommandName(moduleId: string, commandName: strin
  * eligible, but a registered predicate can gate execution per `storageContextId`.
  */
 export function registerModuleCommands(chat: ChatProvider): void {
-  for (const { moduleId, command } of moduleCommandRegistry.list()) {
+  const entries = moduleCommandRegistry.list()
+  const registeredNames = new Set<string>()
+  for (const { moduleId, command } of entries) {
+    for (const name of [namespacedModuleCommandName(moduleId, command.name), command.legacyWireName]) {
+      if (name === undefined) continue
+      if (registeredNames.has(name)) throw new Error(`Duplicate module command wire name '${name}'`)
+      registeredNames.add(name)
+    }
+  }
+  for (const { moduleId, command } of entries) {
     const names = [namespacedModuleCommandName(moduleId, command.name), command.legacyWireName].filter(
       (name): name is string => name !== undefined,
     )

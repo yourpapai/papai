@@ -21,16 +21,21 @@ export type OperatorAllowlistResolver = (platformInstanceId: string) => WhoMayUs
 export interface OperatorAllowlistPort {
   register(resolver: OperatorAllowlistResolver): void
   resolve(platformInstanceId: string): WhoMayUse
+  reset(): void
 }
 
 /** Create an isolated port (used by tests and, as a singleton, by the runtime). */
 export function createOperatorAllowlistPort(): OperatorAllowlistPort {
-  let resolver: OperatorAllowlistResolver = () => 'members'
+  const defaultResolver: OperatorAllowlistResolver = () => 'members'
+  let resolver: OperatorAllowlistResolver = defaultResolver
   return {
     register: (r) => {
       resolver = r
     },
     resolve: (platformInstanceId) => resolver(platformInstanceId),
+    reset: () => {
+      resolver = defaultResolver
+    },
   }
 }
 

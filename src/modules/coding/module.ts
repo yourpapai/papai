@@ -45,6 +45,9 @@ export const codingModule: TrustedModule = {
   configureRuntime(runtime): void {
     configureMagiHttpFetch(runtime.http)
   },
+  resetRuntime(): void {
+    configureMagiHttpFetch()
+  },
   onActivate(): void {
     operatorAllowlistPort.register(codingWhoMayUseResolver)
   },

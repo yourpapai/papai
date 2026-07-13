@@ -38,8 +38,8 @@ export function buildModuleToolSet(
     used.add(name)
     const wrapped = wrapToolExecution((input, options) => moduleTool.execute(input, runtime, options), name)
     const legacyName = moduleTool.legacyWireName
-    const capabilityName = legacyName ?? name
-    if (legacyName !== undefined && !used.has(legacyName)) {
+    const registersLegacyName = legacyName !== undefined && !used.has(legacyName)
+    if (registersLegacyName) {
       used.add(legacyName)
       out[legacyName] = tool({
         description: moduleTool.description,
@@ -47,9 +47,10 @@ export function buildModuleToolSet(
         execute: wrapped,
       })
     }
-    if (moduleTool.capabilityId !== undefined) capabilityCatalog.register(moduleTool.capabilityId, capabilityName)
+    if (moduleTool.capabilityId !== undefined)
+      capabilityCatalog.register(moduleTool.capabilityId, registersLegacyName ? legacyName : name)
     toolGateRegistry.setGate(name, moduleTool.gate ?? 'default')
-    if (legacyName !== undefined) toolGateRegistry.setGate(legacyName, moduleTool.gate ?? 'default')
+    if (registersLegacyName) toolGateRegistry.setGate(legacyName, moduleTool.gate ?? 'default')
     out[name] = tool({ description: moduleTool.description, inputSchema: moduleTool.inputSchema, execute: wrapped })
   }
   return out

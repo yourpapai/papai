@@ -13,7 +13,10 @@ import { moduleCommandRegistry, modulePromptFragmentRegistry } from '../../src/p
 import { moduleEligibilityRegistry } from '../../src/ports/module-eligibility.js'
 import { moduleToolRegistry } from '../../src/ports/module-tools.js'
 import type { TrustedModule } from '../../src/ports/module.js'
+import { operatorAllowlistPort } from '../../src/ports/operator-allowlist.js'
 import { moduleSettingsRegistry } from '../../src/ports/settings-sections.js'
+import { toolGateRegistry } from '../../src/ports/tool-gate.js'
+import { buildModuleToolSet } from '../../src/tools/module-tool-set.js'
 
 const noopMigration = (id: string): Migration => ({ id, up: (): void => {} })
 
@@ -112,5 +115,55 @@ describe('loadTrustedModules', () => {
     expect(moduleEligibilityRegistry.isEligible('fixture', 'ok')).toBe(true)
     expect(moduleEligibilityRegistry.isEligible('fixture', 'no')).toBe(false)
     moduleEligibilityRegistry.clear()
+  })
+
+  test('clears process-wide gates and resolvers when replacing loaded modules', async () => {
+    const prior: TrustedModule = {
+      id: 'prior',
+      tools: [
+        {
+          name: 'restricted',
+          description: 'restricted',
+          gate: 'operator',
+          inputSchema: z.object({}),
+          execute: (): Promise<null> => Promise.resolve(null),
+        },
+      ],
+      onActivate: () => operatorAllowlistPort.register(() => ['prior-operator']),
+    }
+
+    await loadTrustedModules([prior], () => {})
+    buildModuleToolSet(new Set(), { storageContextId: 'ctx', chatUserId: 'user' })
+    expect(operatorAllowlistPort.resolve('pi')).toEqual(['prior-operator'])
+    expect(toolGateRegistry.isOperatorGated('module_prior__restricted')).toBe(true)
+
+    await loadTrustedModules([], () => {})
+
+    expect(operatorAllowlistPort.resolve('pi')).toBe('members')
+    expect(toolGateRegistry.isOperatorGated('module_prior__restricted')).toBe(false)
+  })
+
+  test('cleans registered contributions and runtime state after activation fails', async () => {
+    const failing: TrustedModule = {
+      id: 'failing',
+      tools: [
+        {
+          name: 'restricted',
+          description: 'restricted',
+          gate: 'operator',
+          inputSchema: z.object({}),
+          execute: (): Promise<null> => Promise.resolve(null),
+        },
+      ],
+      onActivate: () => {
+        operatorAllowlistPort.register(() => ['stale-operator'])
+        throw new Error('activation failed')
+      },
+    }
+
+    await expect(loadTrustedModules([failing], () => {})).rejects.toThrow('activation failed')
+
+    expect(moduleToolRegistry.list()).toEqual([])
+    expect(operatorAllowlistPort.resolve('pi')).toBe('members')
   })
 })

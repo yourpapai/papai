@@ -19,6 +19,7 @@ export interface ToolGateRegistry {
   setGate(toolName: string, gate: ToolGate): void
   getGate(toolName: string): ToolGate
   isOperatorGated(toolName: string): boolean
+  clear(): void
 }
 
 /** Create an isolated registry (used by tests and, as a singleton, by the runtime). */
@@ -30,6 +31,9 @@ export function createToolGateRegistry(): ToolGateRegistry {
     },
     getGate: (toolName) => gates.get(toolName) ?? 'default',
     isOperatorGated: (toolName) => (gates.get(toolName) ?? 'default') === 'operator',
+    clear: () => {
+      gates.clear()
+    },
   }
 }
 

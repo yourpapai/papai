@@ -5,13 +5,15 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
+import { loadTrustedModules } from '../../../../src/composition/load-trusted-modules.js'
 import {
   configureMagiHttpFetch,
   magiDynamicHosts,
   magiHttpFetch,
 } from '../../../../src/modules/coding/acp/http-fetch.js'
+import { codingModule } from '../../../../src/modules/coding/module.js'
 import { setPluginAdminConfig } from '../../../../src/plugins/store.js'
-import { setupTestDb } from '../../../utils/test-helpers.js'
+import { restoreFetch, setMockFetch, setupTestDb } from '../../../utils/test-helpers.js'
 
 describe('acp http-fetch dynamic hosts', () => {
   beforeEach(async () => {
@@ -20,6 +22,7 @@ describe('acp http-fetch dynamic hosts', () => {
 
   afterEach(() => {
     configureMagiHttpFetch()
+    restoreFetch()
   })
 
   it('is a callable fetch', () => {
@@ -52,5 +55,31 @@ describe('acp http-fetch dynamic hosts', () => {
     await magiHttpFetch('https://magi.example.com/agents')
 
     expect(requests).toEqual(['https://magi.example.com/agents'])
+  })
+
+  it('restores the safe default fetch when the coding module is unloaded', async () => {
+    setPluginAdminConfig('acp', 'magi_base_url', 'https://magi.example.com', 'admin')
+    const injectedRequests: string[] = []
+    await loadTrustedModules([codingModule], () => {}, {
+      http: {
+        fetch: (url: string): Promise<Response> => {
+          injectedRequests.push(url)
+          return Promise.resolve(new Response('injected'))
+        },
+        assertPublicUrl: (): Promise<void> => Promise.resolve(),
+      },
+    })
+    await magiHttpFetch('https://magi.example.com/agents')
+    const defaultRequests: string[] = []
+    setMockFetch((url: string): Promise<Response> => {
+      defaultRequests.push(url)
+      return Promise.resolve(new Response('default'))
+    })
+
+    await loadTrustedModules([], () => {})
+    await magiHttpFetch('https://magi.example.com/agents')
+
+    expect(injectedRequests).toEqual(['https://magi.example.com/agents'])
+    expect(defaultRequests).toEqual(['https://magi.example.com/agents'])
   })
 })

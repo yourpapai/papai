@@ -17,6 +17,7 @@ import { replyToUnauthorized } from './bot-unauthorized-reply.js'
 import { supportsFileReplies } from './chat/capabilities.js'
 import { userManagesAuthorizedGroupLive } from './chat/group-admin-live.js'
 import { routeInteraction } from './chat/interaction-router.js'
+import { createObservedCommandProvider } from './chat/observed-command-provider.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { willQueueAuthorizedMessage } from './chat/queue-policy.js'
 import { maybeSeedContextAssignment } from './chat/seed-context-assignment.js'
@@ -105,17 +106,7 @@ function createObservedCommandHandler(
   }
 }
 function createObservedChatProvider(chat: ChatProvider): ChatProvider {
-  const registerCommand = chat.registerCommand.bind(chat)
-  return new Proxy(chat, {
-    get(target, prop: keyof ChatProvider) {
-      if (prop === 'registerCommand') {
-        return (name: string, handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>) => {
-          registerCommand(name, createObservedCommandHandler(chat, name, handler))
-        }
-      }
-      return target[prop]
-    },
-  })
+  return createObservedCommandProvider(chat, (name, handler) => createObservedCommandHandler(chat, name, handler))
 }
 function registerCommands(chat: ChatProvider, adminUserId: string): void {
   const observedChat = createObservedChatProvider(chat)

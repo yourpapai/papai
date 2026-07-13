@@ -46,6 +46,8 @@ export interface TrustedModule {
   readonly isEligibleForContext?: ModuleEligibilityPredicate
   /** Receives runtime collaborators before this module's contributions are registered. */
   configureRuntime?(runtime: TrustedModuleRuntime): void
+  /** Reverts process-wide collaborators configured by this module before replacement or failed activation. */
+  resetRuntime?(): void
   /** Called once after all modules' migrations have run. Registers resolvers/adapters into ports. */
   onActivate?(): void | Promise<void>
 }

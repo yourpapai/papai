@@ -65,6 +65,30 @@ describe('migration 067 acp tool_prefs rename', () => {
     expect(readValue(db, 'ctx-2')).toBe(original)
   })
 
+  it('preserves an already-current override when both wire names exist in either JSON order', () => {
+    const db = dbWithToolPrefs([
+      {
+        userId: 'canonical-first',
+        value: JSON.stringify({
+          toolOverrides: { module_coding__start_session: 'deny', plugin_acp__start_session: 'allow' },
+        }),
+      },
+      {
+        userId: 'legacy-first',
+        value: JSON.stringify({
+          toolOverrides: { plugin_acp__start_session: 'allow', module_coding__start_session: 'deny' },
+        }),
+      },
+    ])
+
+    migration067AcpToolPrefsRename.up(db)
+
+    for (const userId of ['canonical-first', 'legacy-first']) {
+      const parsed = parseRecord(readValue(db, userId))
+      expect(parsed['toolOverrides']).toEqual({ module_coding__start_session: 'deny' })
+    }
+  })
+
   it('tolerates non-JSON / malformed values without throwing', () => {
     const db = dbWithToolPrefs([{ userId: 'ctx-3', value: 'not json' }])
     expect(() => migration067AcpToolPrefsRename.up(db)).not.toThrow()

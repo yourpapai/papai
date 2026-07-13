@@ -8,6 +8,7 @@ import { buildPluginLogger } from '../../../plugins/context-facade-builders.js'
 import { buildProviderRuntime, type DynamicHostsFn } from '../../../plugins/provider-runtime.js'
 import type { ProviderRuntimeDeps } from '../../../plugins/provider-runtime.js'
 import { getPluginAdminConfig } from '../../../plugins/store.js'
+import { assertPublicUrl } from '../../../web/safe-fetch.js'
 
 type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -32,8 +33,13 @@ export const magiDynamicHosts: DynamicHostsFn = (): ReadonlySet<string> => {
   return hosts
 }
 
+const safeDefaultDeps: ProviderRuntimeDeps = {
+  fetch: (url, init): Promise<Response> => globalThis.fetch(url, init),
+  assertPublicUrl,
+}
+
 const buildMagiHttpFetch = (deps?: ProviderRuntimeDeps): HttpFetch =>
-  buildProviderRuntime([], buildPluginLogger('coding'), deps, magiDynamicHosts).httpFetch
+  buildProviderRuntime([], buildPluginLogger('coding'), deps ?? safeDefaultDeps, magiDynamicHosts).httpFetch
 
 // The tools retain this delegating function, while composition replaces its
 // implementation before module contributions are registered. That lets ACP use

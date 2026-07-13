@@ -97,4 +97,17 @@ describe('registerModuleCommands', () => {
     expect(called).toBe(true)
     expect(textCalls.length).toBe(0)
   })
+
+  test('rejects duplicate module command wire names before a provider can overwrite a handler', () => {
+    moduleCommandRegistry.register('first', [
+      { name: 'go', legacyWireName: 'shared', description: 'first', execute: (): void => undefined },
+    ])
+    moduleCommandRegistry.register('second', [
+      { name: 'go', legacyWireName: 'shared', description: 'second', execute: (): void => undefined },
+    ])
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    expect(() => registerModuleCommands(provider)).toThrow("Duplicate module command wire name 'shared'")
+    expect(commandHandlers.size).toBe(0)
+  })
 })
