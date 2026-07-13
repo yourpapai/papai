@@ -64,6 +64,171 @@ function rejectedStartMessage(body: unknown): Promise<string> {
 }
 
 describe('fake magi', () => {
+  test('serves declared ACP lifecycle routes with exact encoded requests and sanitized events', async () => {
+    const { events, http, magi } = setup()
+    const sessionId = 'session/alpha one'
+    const encodedSessionId = encodeURIComponent(sessionId)
+    const lifecycleSecret = 'lifecycle-provider-secret'
+    const forgeSecret = 'lifecycle-forge-secret'
+    const mcpSecret = 'lifecycle-mcp-secret'
+
+    magi.expectAgents([{ id: 'claude', name: 'Claude' }])
+    magi.expectSessions('active', [{ id: sessionId, status: 'running' }])
+    magi.expectSession(sessionId, { id: sessionId, status: 'running' })
+    magi.expectPermissions(sessionId, [{ toolCallId: 'call-1' }, { toolCallId: 'call-2' }])
+    magi.expectPermissionDecision(sessionId, { toolCallId: 'call-1', decision: 'allow' })
+    magi.expectPermissionDecision(sessionId, { toolCallId: 'call-2', decision: 'deny' })
+    magi.expectFinish(sessionId, {
+      action: 'pr',
+      message: 'create pull request',
+      title: 'private title',
+      body: 'private body',
+      forgeToken: forgeSecret,
+    })
+    magi.expectCancel(sessionId)
+    magi.expectFollowUp(sessionId, {
+      prompt: 'private follow-up prompt',
+      contextId: 'pi:dm:alice',
+      secrets: { ANTHROPIC_API_KEY: lifecycleSecret },
+      forgeToken: forgeSecret,
+      mcpTokens: { docs: mcpSecret },
+    })
+
+    await http.fetch(`${BASE_URL}/agents`, { headers: { authorization: `Bearer ${TOKEN}` } })
+    await http.fetch(`${BASE_URL}/sessions?filter=active`, { headers: { authorization: `Bearer ${TOKEN}` } })
+    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}`, { headers: { authorization: `Bearer ${TOKEN}` } })
+    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/permissions`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    })
+    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/permission`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ toolCallId: 'call-1', decision: 'allow' }),
+    })
+    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/permission`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ toolCallId: 'call-2', decision: 'deny' }),
+    })
+    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/finish`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'pr',
+        message: 'create pull request',
+        title: 'private title',
+        body: 'private body',
+        forgeToken: forgeSecret,
+      }),
+    })
+    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/cancel`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}` },
+    })
+    await http.fetch(`${BASE_URL}/sessions/${encodedSessionId}/follow-up`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'private follow-up prompt',
+        contextId: 'pi:dm:alice',
+        secrets: { ANTHROPIC_API_KEY: lifecycleSecret },
+        forgeToken: forgeSecret,
+        mcpTokens: { docs: mcpSecret },
+      }),
+    })
+
+    magi.verifyConsumed()
+    expect(
+      events
+        .all()
+        .filter(({ kind }) => kind.startsWith('magi.'))
+        .map(({ kind, data }) => ({ kind, data })),
+    ).toEqual([
+      { kind: 'magi.agents.list', data: { count: 1, status: 200 } },
+      { kind: 'magi.sessions.list', data: { count: 1, status: 200 } },
+      { kind: 'magi.session.status', data: { sessionId, status: 200 } },
+      { kind: 'magi.permissions.list', data: { count: 2, sessionId, status: 200 } },
+      { kind: 'magi.permission.answer', data: { decision: 'allow', sessionId, status: 200, toolCallId: 'call-1' } },
+      { kind: 'magi.permission.answer', data: { decision: 'deny', sessionId, status: 200, toolCallId: 'call-2' } },
+      { kind: 'magi.session.finish', data: { action: 'pr', sessionId, status: 200 } },
+      { kind: 'magi.session.cancel', data: { sessionId, status: 200 } },
+      { kind: 'magi.session.follow_up', data: { sessionId, status: 202 } },
+    ])
+    const trace = JSON.stringify(events.all())
+    expect(trace).not.toContain(TOKEN)
+    expect(trace).not.toContain(lifecycleSecret)
+    expect(trace).not.toContain(forgeSecret)
+    expect(trace).not.toContain(mcpSecret)
+    expect(trace).not.toContain('private follow-up prompt')
+    expect(trace).not.toContain('private title')
+    expect(trace).not.toContain('private body')
+  })
+
+  test('rejects unencoded session IDs, invalid authorization, and lifecycle body mismatches', async () => {
+    const malformedId = setup()
+    malformedId.magi.expectSession('session/one', { id: 'session/one', status: 'running' })
+    await expect(
+      malformedId.http.fetch(`${BASE_URL}/sessions/session/one`, { headers: { authorization: `Bearer ${TOKEN}` } }),
+    ).rejects.toThrow(
+      `expected GET ${BASE_URL}/sessions/session%2Fone but received GET ${BASE_URL}/sessions/session/one`,
+    )
+
+    const wrongAuthorization = setup()
+    wrongAuthorization.magi.expectCancel('session-1')
+    expect(
+      await causeMessage(
+        wrongAuthorization.http.fetch(`${BASE_URL}/sessions/session-1/cancel`, {
+          method: 'POST',
+          headers: { authorization: 'Bearer wrong-lifecycle-token' },
+        }),
+      ),
+    ).toContain('rejected authorization')
+
+    const wrongBody = setup()
+    wrongBody.magi.expectPermissionDecision('session-1', { toolCallId: 'call-1', decision: 'allow' })
+    expect(
+      await causeMessage(
+        wrongBody.http.fetch(`${BASE_URL}/sessions/session-1/permission`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ toolCallId: 'call-1', decision: 'deny' }),
+        }),
+      ),
+    ).toContain('expected exact JSON body')
+
+    const readWithContentType = setup()
+    readWithContentType.magi.expectAgents([])
+    expect(
+      await causeMessage(
+        readWithContentType.http.fetch(`${BASE_URL}/agents`, {
+          headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+        }),
+      ),
+    ).toContain('expected no Content-Type')
+  })
+
+  test('returns declared lifecycle failure responses without recording their payloads', async () => {
+    const { events, http, magi } = setup()
+    magi.expectSession(
+      'session-1',
+      { ignored: 'private response body' },
+      { body: { error: 'upstream unavailable' }, status: 503 },
+    )
+
+    const response = await http.fetch(`${BASE_URL}/sessions/session-1`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    })
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ error: 'upstream unavailable' })
+    expect(events.all().find(({ kind }) => kind === 'magi.session.status')?.data).toEqual({
+      sessionId: 'session-1',
+      status: 503,
+    })
+    expect(JSON.stringify(events.all())).not.toContain('private response body')
+    expect(JSON.stringify(events.all())).not.toContain('upstream unavailable')
+  })
+
   test('rejects successful statuses declared for a start failure', () => {
     const { magi } = setup()
 
@@ -131,16 +296,8 @@ describe('fake magi', () => {
     expect(events.all().find(({ kind }) => kind === 'magi.session.start')?.data).toEqual({
       agent: 'claude-code-acp',
       contextId: 'pi:dm:user-1',
-      prompt: 'Add health check',
-      projectSpec: {
-        agent: 'claude',
-        baseBranch: 'main',
-        name: 'papai',
-        permissionPreset: 'cautious',
-        repoUrl: 'https://github.com/acme/papai.git',
-      },
-      environmentNames: ['ANTHROPIC_API_KEY'],
-      forgeIncluded: false,
+      project: 'papai',
+      status: 202,
     })
   })
 
@@ -277,12 +434,8 @@ describe('fake magi', () => {
     expect(events.all().find(({ kind }) => kind === 'magi.session.start')?.data).toEqual({
       agent: 'claude-code-acp',
       contextId: 'pi:dm:user-1',
-      prompt: 'Add health check',
-      projectSpec,
-      environmentNames: ['ANTHROPIC_API_KEY'],
-      forgeIncluded: true,
-      prNumber: 42,
-      mcpServerIds: ['docs'],
+      project: 'papai',
+      status: 202,
     })
     const trace = JSON.stringify(events.all())
     expect(trace).not.toContain('forge-private')

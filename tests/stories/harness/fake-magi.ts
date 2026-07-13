@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { isDeepStrictEqual } from 'node:util'
+
 import { z } from 'zod'
 
 import type { ScenarioEvents } from './events.js'
@@ -77,12 +79,47 @@ export type FakeMagiStartFailure = Readonly<{
   expected?: ExpectedStart
 }>
 
+export type FakeMagiPermissionDecision = Readonly<{
+  toolCallId: string
+  decision: 'allow' | 'deny'
+}>
+
+export type FakeMagiFinishBody = Readonly<{
+  action: 'push' | 'pr'
+  message: string
+  forgeToken: string
+  title?: string
+  body?: string
+}>
+
+export type FakeMagiFollowUpBody = Readonly<{
+  prompt: string
+  contextId: string
+  secrets: Readonly<Record<string, string>>
+  forgeToken: string
+  mcpTokens?: Readonly<Record<string, string>>
+}>
+
+export type FakeMagiResponse = Readonly<{
+  body?: unknown
+  status?: number
+}>
+
 export type FakeMagi = Readonly<{
-  expectAgents(agents: readonly unknown[]): void
+  expectAgents(agents: readonly unknown[], response?: FakeMagiResponse): void
   expectStartSession(session: FakeMagiStart): void
   expectStartFailure(failure: FakeMagiStartFailure): void
-  expectSessions(filter: 'new' | 'active' | 'waiting' | 'done', sessions: readonly unknown[]): void
-  expectSession(sessionId: string, session: unknown): void
+  expectSessions(
+    filter: 'new' | 'active' | 'waiting' | 'done',
+    sessions: readonly unknown[],
+    response?: FakeMagiResponse,
+  ): void
+  expectSession(sessionId: string, session: unknown, response?: FakeMagiResponse): void
+  expectPermissions(sessionId: string, permissions: readonly unknown[], response?: FakeMagiResponse): void
+  expectPermissionDecision(sessionId: string, decision: FakeMagiPermissionDecision, response?: FakeMagiResponse): void
+  expectFinish(sessionId: string, body: FakeMagiFinishBody, response?: FakeMagiResponse): void
+  expectCancel(sessionId: string, response?: FakeMagiResponse): void
+  expectFollowUp(sessionId: string, body: FakeMagiFollowUpBody, response?: FakeMagiResponse): void
   verifyConsumed(): void
 }>
 
@@ -110,17 +147,47 @@ function assertJsonContentType(request: Request): void {
 }
 
 async function parseStartBody(request: Request): Promise<StartSessionBody> {
-  let body: unknown
-  try {
-    body = await request.json()
-  } catch {
-    throw new Error('Fake magi expected valid JSON for POST /sessions')
-  }
+  const body = await parseJsonBody(request, 'POST /sessions')
   const parsed = startSessionSchema.safeParse(body)
   if (!parsed.success) {
     throw new Error(`Fake magi rejected POST /sessions: ${z.prettifyError(parsed.error)}`)
   }
   return parsed.data
+}
+
+async function parseJsonBody(request: Request, route: string): Promise<unknown> {
+  try {
+    return await request.json()
+  } catch {
+    throw new Error(`Fake magi expected valid JSON for ${route}`)
+  }
+}
+
+async function assertExactJsonBody(request: Request, route: string, expected: unknown): Promise<void> {
+  assertJsonContentType(request)
+  const actual = await parseJsonBody(request, route)
+  if (!isDeepStrictEqual(actual, expected)) throw new Error(`Fake magi expected exact JSON body for ${route}`)
+}
+
+async function assertEmptyBody(request: Request, route: string): Promise<void> {
+  if (request.headers.has('content-type')) throw new Error(`Fake magi expected no Content-Type for ${route}`)
+  if ((await request.text()) !== '') throw new Error(`Fake magi expected an empty body for ${route}`)
+}
+
+function sessionUrl(baseUrl: string, sessionId: string, suffix = ''): string {
+  return `${baseUrl}/sessions/${encodeURIComponent(sessionId)}${suffix}`
+}
+
+function resolveResponse(
+  response: FakeMagiResponse | undefined,
+  fallbackBody: unknown,
+  fallbackStatus: number,
+): Readonly<{ body: unknown; status: number }> {
+  return { body: response?.body ?? fallbackBody, status: response?.status ?? fallbackStatus }
+}
+
+function recordEvent(events: ScenarioEvents, kind: string, data: Readonly<Record<string, string | number>>): void {
+  events.record(kind, data)
 }
 
 function assertExpected(body: StartSessionBody, expected: ExpectedStart | undefined): void {
@@ -135,16 +202,12 @@ function assertExpected(body: StartSessionBody, expected: ExpectedStart | undefi
     throw new Error(`Fake magi expected agent=${expected.agent}`)
 }
 
-function recordStart(events: ScenarioEvents, body: StartSessionBody): void {
-  events.record('magi.session.start', {
+function recordStart(events: ScenarioEvents, body: StartSessionBody, status: number): void {
+  recordEvent(events, 'magi.session.start', {
     agent: body.agent,
     contextId: body.contextId,
-    prompt: body.prompt,
-    projectSpec: body.projectSpec,
-    environmentNames: Object.keys(body.secrets).sort(),
-    forgeIncluded: body.forgeToken !== undefined,
-    ...(body.prNumber === undefined ? {} : { prNumber: body.prNumber }),
-    ...(body.mcpTokens === undefined ? {} : { mcpServerIds: Object.keys(body.mcpTokens).sort() }),
+    project: body.projectSpec.name,
+    status,
   })
 }
 
@@ -152,10 +215,13 @@ export function createFakeMagi(options: FakeMagiOptions): FakeMagi {
   const baseUrl = options.baseUrl.replace(/\/+$/u, '')
   const authorized = (request: Request): void => assertAuthorization(request, options.token)
   return {
-    expectAgents(agents): void {
-      options.http.expect({ method: 'GET', url: `${baseUrl}/agents` }, (request) => {
+    expectAgents(agents, expectedResponse): void {
+      options.http.expect({ method: 'GET', url: `${baseUrl}/agents` }, async (request) => {
         authorized(request)
-        return jsonResponse(agents)
+        await assertEmptyBody(request, 'GET /agents')
+        const response = resolveResponse(expectedResponse, agents, 200)
+        recordEvent(options.events, 'magi.agents.list', { count: agents.length, status: response.status })
+        return jsonResponse(response.body, response.status)
       })
     },
     expectStartSession(session): void {
@@ -164,9 +230,8 @@ export function createFakeMagi(options: FakeMagiOptions): FakeMagi {
         assertJsonContentType(request)
         const body = await parseStartBody(request)
         assertExpected(body, session.expected)
-        recordStart(options.events, body)
         const shareToken = session.shareToken ?? `share-${session.id}`
-        return jsonResponse(
+        const response = jsonResponse(
           {
             id: session.id,
             status: session.status ?? 'queued',
@@ -175,6 +240,8 @@ export function createFakeMagi(options: FakeMagiOptions): FakeMagi {
           },
           202,
         )
+        recordStart(options.events, body, response.status)
+        return response
       })
     },
     expectStartFailure(failure): void {
@@ -186,20 +253,76 @@ export function createFakeMagi(options: FakeMagiOptions): FakeMagi {
         assertJsonContentType(request)
         const body = await parseStartBody(request)
         assertExpected(body, failure.expected)
-        recordStart(options.events, body)
-        return jsonResponse(failure.body, failure.status)
+        const response = jsonResponse(failure.body, failure.status)
+        recordStart(options.events, body, response.status)
+        return response
       })
     },
-    expectSessions(filter, sessions): void {
-      options.http.expect({ method: 'GET', url: `${baseUrl}/sessions?filter=${filter}` }, (request) => {
+    expectSessions(filter, sessions, expectedResponse): void {
+      options.http.expect({ method: 'GET', url: `${baseUrl}/sessions?filter=${filter}` }, async (request) => {
         authorized(request)
-        return jsonResponse(sessions)
+        await assertEmptyBody(request, `GET /sessions?filter=${filter}`)
+        const response = resolveResponse(expectedResponse, sessions, 200)
+        recordEvent(options.events, 'magi.sessions.list', { count: sessions.length, status: response.status })
+        return jsonResponse(response.body, response.status)
       })
     },
-    expectSession(sessionId, session): void {
-      options.http.expect({ method: 'GET', url: `${baseUrl}/sessions/${encodeURIComponent(sessionId)}` }, (request) => {
+    expectSession(sessionId, session, expectedResponse): void {
+      options.http.expect({ method: 'GET', url: sessionUrl(baseUrl, sessionId) }, async (request) => {
         authorized(request)
-        return jsonResponse(session)
+        await assertEmptyBody(request, `GET /sessions/${encodeURIComponent(sessionId)}`)
+        const response = resolveResponse(expectedResponse, session, 200)
+        recordEvent(options.events, 'magi.session.status', { sessionId, status: response.status })
+        return jsonResponse(response.body, response.status)
+      })
+    },
+    expectPermissions(sessionId, permissions, expectedResponse): void {
+      options.http.expect({ method: 'GET', url: sessionUrl(baseUrl, sessionId, '/permissions') }, async (request) => {
+        authorized(request)
+        await assertEmptyBody(request, `GET /sessions/${encodeURIComponent(sessionId)}/permissions`)
+        const response = resolveResponse(expectedResponse, permissions, 200)
+        recordEvent(options.events, 'magi.permissions.list', {
+          count: permissions.length,
+          sessionId,
+          status: response.status,
+        })
+        return jsonResponse(response.body, response.status)
+      })
+    },
+    expectPermissionDecision(sessionId, decision, response): void {
+      options.http.expect({ method: 'POST', url: sessionUrl(baseUrl, sessionId, '/permission') }, async (request) => {
+        authorized(request)
+        await assertExactJsonBody(request, `POST /sessions/${encodeURIComponent(sessionId)}/permission`, decision)
+        const resolved = resolveResponse(response, { resolved: true }, 200)
+        recordEvent(options.events, 'magi.permission.answer', { ...decision, sessionId, status: resolved.status })
+        return jsonResponse(resolved.body, resolved.status)
+      })
+    },
+    expectFinish(sessionId, body, response): void {
+      options.http.expect({ method: 'POST', url: sessionUrl(baseUrl, sessionId, '/finish') }, async (request) => {
+        authorized(request)
+        await assertExactJsonBody(request, `POST /sessions/${encodeURIComponent(sessionId)}/finish`, body)
+        const resolved = resolveResponse(response, { id: sessionId, status: 'finished' }, 200)
+        recordEvent(options.events, 'magi.session.finish', { action: body.action, sessionId, status: resolved.status })
+        return jsonResponse(resolved.body, resolved.status)
+      })
+    },
+    expectCancel(sessionId, response): void {
+      options.http.expect({ method: 'POST', url: sessionUrl(baseUrl, sessionId, '/cancel') }, async (request) => {
+        authorized(request)
+        await assertEmptyBody(request, `POST /sessions/${encodeURIComponent(sessionId)}/cancel`)
+        const resolved = resolveResponse(response, { id: sessionId, status: 'cancelled' }, 200)
+        recordEvent(options.events, 'magi.session.cancel', { sessionId, status: resolved.status })
+        return jsonResponse(resolved.body, resolved.status)
+      })
+    },
+    expectFollowUp(sessionId, body, response): void {
+      options.http.expect({ method: 'POST', url: sessionUrl(baseUrl, sessionId, '/follow-up') }, async (request) => {
+        authorized(request)
+        await assertExactJsonBody(request, `POST /sessions/${encodeURIComponent(sessionId)}/follow-up`, body)
+        const resolved = resolveResponse(response, { id: `${sessionId}-follow-up`, status: 'queued' }, 202)
+        recordEvent(options.events, 'magi.session.follow_up', { sessionId, status: resolved.status })
+        return jsonResponse(resolved.body, resolved.status)
       })
     },
     verifyConsumed: options.http.verifyConsumed,
