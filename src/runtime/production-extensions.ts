@@ -132,7 +132,14 @@ export async function startProductionExtensions(
     process.exit(1)
   }
   if (guard.action === 'warn') log.warn({ reason: guard.reason }, 'Starting in degraded mode')
-  syncRegistryFromDb(plugins)
+  const activatablePlugins = plugins.filter((plugin) => plugin.retired !== true)
+  if (activatablePlugins.length !== plugins.length) {
+    log.info(
+      { retiredCount: plugins.length - activatablePlugins.length },
+      'Skipped retired plugin compatibility records',
+    )
+  }
+  syncRegistryFromDb(activatablePlugins)
   evaluateCompatibility(router, state, log)
   return activateAndFinalizePlugins(pluginRegistry.getApprovedCompatiblePlugins(), log, options)
 }

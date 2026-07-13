@@ -7,6 +7,7 @@ import { migration061CodingSessionCredentials } from '../../db/migrations/061_co
 import { migration064CodingSessionRepos } from '../../db/migrations/064_coding_session_repos.js'
 import { migration066CodingReposEgress } from '../../db/migrations/066_coding_repos_egress.js'
 import { migration067AcpToolPrefsRename } from '../../db/migrations/067_acp_tool_prefs_rename.js'
+import { registerRetiredPluginDiscovery } from '../../plugins/retired-discovery.js'
 import type { TrustedModule } from '../../ports/module.js'
 import { operatorAllowlistPort, type WhoMayUse } from '../../ports/operator-allowlist.js'
 import {
@@ -17,7 +18,10 @@ import {
   isCodingContextEligible,
 } from './acp/contributions.js'
 import { configureMagiHttpFetch } from './acp/http-fetch.js'
+import { retiredAcpPluginDiscovery } from './acp/retired-discovery.js'
 import { resolveCodingGuardrails } from './credentials/guardrails.js'
+
+let unregisterRetiredAcpDiscovery: (() => void) | undefined
 
 /** Who-may-use resolver for coding sessions: the platform-instance guardrail policy's allowlist. */
 export const codingWhoMayUseResolver = (platformInstanceId: string): WhoMayUse =>
@@ -43,9 +47,13 @@ export const codingModule: TrustedModule = {
   settingsSections: [codingAcpSettingsSection],
   isEligibleForContext: isCodingContextEligible,
   configureRuntime(runtime): void {
+    unregisterRetiredAcpDiscovery?.()
+    unregisterRetiredAcpDiscovery = registerRetiredPluginDiscovery(retiredAcpPluginDiscovery)
     configureMagiHttpFetch(runtime.http)
   },
   resetRuntime(): void {
+    unregisterRetiredAcpDiscovery?.()
+    unregisterRetiredAcpDiscovery = undefined
     configureMagiHttpFetch()
   },
   onActivate(): void {

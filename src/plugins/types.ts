@@ -268,4 +268,10 @@ export type DiscoveredPlugin = {
   entryPoint: string
   /** SHA-256 hex hash of the manifest + entry point content. */
   manifestHash: string
+  /**
+   * Compatibility-only record for a plugin that has moved into a trusted module.
+   * It remains discoverable for callers that need to recognize historic plugin
+   * ids, but must never enter the plugin activation lifecycle.
+   */
+  retired?: true
 }
