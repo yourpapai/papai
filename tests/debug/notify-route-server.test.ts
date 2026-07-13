@@ -24,6 +24,14 @@ class OkRouter extends ChatRouter {
   override sendMessage(_p: string, _t: DeferredDeliveryTarget, _m: string): Promise<boolean> {
     return Promise.resolve(true)
   }
+  override async sendProactiveReturningId(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+  ): Promise<{ delivered: boolean; messageId: string | null }> {
+    const delivered = await this.sendMessage(platformInstanceId, target, markdown)
+    return { delivered, messageId: delivered ? 'P1' : null }
+  }
 }
 
 describe('/api/notify routing', () => {

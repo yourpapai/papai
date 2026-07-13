@@ -5,6 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 
+import { z } from 'zod'
+
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
@@ -34,6 +36,14 @@ class RecordingRouter extends ChatRouter {
   override sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
     this.sent.push({ platformInstanceId, target, markdown })
     return Promise.resolve(true)
+  }
+  override async sendProactiveReturningId(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+  ): Promise<{ delivered: boolean; messageId: string | null }> {
+    const delivered = await this.sendMessage(platformInstanceId, target, markdown)
+    return { delivered, messageId: delivered ? 'P1' : null }
   }
 }
 
@@ -141,6 +151,26 @@ describe('handleNotifyRoute', () => {
     expect(router.sent[0]?.target.contextType).toBe('group')
     expect(router.sent[0]?.target.contextId).toBe('channel-26-char-identifier')
     expect(router.sent[0]?.platformInstanceId).toBe('mattermost-default')
+  })
+
+  test('returns the thread-scoped storageContextId for a group root post', async () => {
+    const scoped = toScopedContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: 'channel-26-char-identifier',
+    })
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: scoped, contextType: 'group', markdown: 'ack' }))
+    expect(res.status).toBe(200)
+    const body = z.object({ sent: z.boolean(), storageContextId: z.string().optional() }).parse(await res.json())
+    expect(body.sent).toBe(true)
+    expect(body.storageContextId).toBe(
+      toScopedThreadContextId({
+        platformInstanceId: 'mattermost-default',
+        nativeContextId: 'channel-26-char-identifier',
+        threadId: 'P1',
+      }),
+    )
   })
 
   test('returns 502 when delivery throws', async () => {

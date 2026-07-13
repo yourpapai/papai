@@ -14,6 +14,7 @@ import {
   getNativeContextId,
   isScopedThreadContextId,
   parseScopedContextId,
+  toScopedThreadContextId,
 } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
@@ -123,15 +124,21 @@ const checkAuth = (req: Request): Response | null => {
 }
 
 const sendNotify = async (
-  chat: { sendMessage: (id: string, target: DeferredDeliveryTarget, md: string) => Promise<boolean> },
+  chat: {
+    sendProactiveReturningId: (
+      id: string,
+      target: DeferredDeliveryTarget,
+      md: string,
+    ) => Promise<{ delivered: boolean; messageId: string | null }>
+  },
   platformInstanceId: string,
   target: DeferredDeliveryTarget,
   contextId: string,
   markdown: string,
 ): Promise<Response> => {
-  let sent: boolean
+  let outcome: { delivered: boolean; messageId: string | null }
   try {
-    sent = await chat.sendMessage(platformInstanceId, target, markdown)
+    outcome = await chat.sendProactiveReturningId(platformInstanceId, target, markdown)
   } catch (error: unknown) {
     log.warn(
       { platformInstanceId, contextId, error: error instanceof Error ? error.message : String(error) },
@@ -139,12 +146,22 @@ const sendNotify = async (
     )
     return jsonResponse({ error: 'delivery failed' }, { status: 502 })
   }
-  if (!sent) {
+  if (!outcome.delivered) {
     log.warn({ platformInstanceId, contextId }, 'notify delivery failed')
     return jsonResponse({ error: 'delivery failed' }, { status: 502 })
   }
-  recordProactiveInHistory(contextId, markdown)
-  return jsonResponse({ sent: true })
+  // Thread-scope a fresh group root post so a downstream supervisor can key a task to this thread.
+  let storageContextId = contextId
+  const base = parseScopedContextId(contextId)
+  if (outcome.messageId !== null && base !== null && base.threadId === undefined) {
+    storageContextId = toScopedThreadContextId({
+      platformInstanceId: base.platformInstanceId,
+      nativeContextId: base.nativeContextId,
+      threadId: outcome.messageId,
+    })
+  }
+  recordProactiveInHistory(storageContextId, markdown)
+  return jsonResponse({ sent: true, storageContextId })
 }
 
 export const handleNotifyRoute = async (req: Request): Promise<Response> => {
