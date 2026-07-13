@@ -259,6 +259,10 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   third — 7 Figma file/node/style/component/comment tools authenticated via `X-Figma-Token`;
   it does not opt into `mcpResponseRedaction` (design metadata, not customer data) and is the
   first of the three with a context-scoped (per-team) rather than admin-scoped credential.
+  It ships the reference `kiss`-derived simplifier's **full simplify**: a compact CSS
+  `layout` string per node plus a de-duplicated `globalVars.styles` text-style table, and
+  its `token` config accepts a comma-separated pool rotated on HTTP 429 — Figma parity with
+  the reference implementation is complete, not a moderate subset.
   `mcp-teamcity` (`plugins/mcp-teamcity/`) is the fourth — 4 TeamCity project/pipeline config
   tools authenticated via Bearer token; it also skips `mcpResponseRedaction`, relying solely on
   a static `name`/`value`-pattern sanitizer (`sanitizeTeamCityConfig` in `format.ts`) to redact

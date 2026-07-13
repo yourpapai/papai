@@ -52,18 +52,53 @@ reads it via `runtimeContext.contextConfig.get('token')` (`index.ts`) and
 sends it as the `X-Figma-Token` header (`client.ts`) on every request to
 `https://api.figma.com`.
 
+### Token pooling
+
+`token` accepts either a single Figma personal access token or a
+comma-separated **pool**: `tok1,tok2,tok3`. `FigmaClient` (`client.ts`)
+splits and trims the value into a token list at construction. On an HTTP
+429 response it rotates to the next token in the pool and retries the same
+request once per remaining token — no blocking sleep/backoff. If every
+token in the pool comes back 429, the call surfaces a rate-limited error
+(`all N token(s) exhausted`) instead of retrying further.
+
 ## Simplification
 
 `figma_get_file` and `figma_get_file_nodes` run the raw Figma API response
 through `format.ts`'s `simplifyFigmaResponse`, which keeps per-node id,
 name, type (with `VECTOR` renamed to `IMAGE-SVG`), width/height, text
-content and a basic text style (`fontFamily`/`fontSize`/`fontWeight`),
-`layoutMode` (`HORIZONTAL`/`VERTICAL`), and children — dropping invisible
-nodes and all other Figma styling/paint/effect noise. This mirrors the
-node-tree shape used by the reference `kiss`-derived simplifier, but is a
-narrower slice of it: full CSS-layout extraction (padding, gaps, positioning,
-constraints) and cross-node style dedup/registry are **not** implemented
-here and are a deferred follow-up.
+content/style, a compact CSS `layout` string, and children — dropping
+invisible nodes and all other Figma styling/paint/effect noise. This now
+mirrors the full node-tree shape used by the reference `kiss`-derived
+simplifier (`simplify.ts` + `simplify-layout.ts` + `simplify-text.ts`),
+including CSS-layout extraction and cross-node text-style dedup — see
+"Output shape (full simplify)" below.
+
+### Output shape (full simplify)
+
+`figma_get_file` / `figma_get_file_nodes` return
+`{ name, nodes, globalVars }`. Each node in `nodes` (recursively, via
+`children`) carries:
+
+- a compact CSS `layout` string derived from Figma auto-layout fields
+  (`layoutMode`, alignment, padding, gap, wrap, relative position for
+  non-auto-layout children), e.g.
+  `display:flex;flex-direction:row;justify-content:center;gap:8px;padding:16px`
+  — omitted when the node has no layout-relevant properties;
+- `width`/`height` (rounded to 2 decimals) from `absoluteBoundingBox`, plus
+  `layoutSizingHorizontal`/`layoutSizingVertical` when Figma reports them
+  (`FIXED` sizing along an auto-layout axis also fixes the corresponding
+  `width`/`height` to the node's absolute box);
+- for `TEXT` nodes, `text` (the raw `characters`) plus a `textStyle`
+  **reference id** (e.g. `"s1"`) instead of an inline style object.
+
+`globalVars.styles` is a top-level `Record<string, TextStyle>` populated as
+the tree is walked: each distinct text style (`fontFamily`, `fontWeight`,
+`fontSize`, and non-default `fontStyle`/`lineHeightPx`/`letterSpacing`/
+`textCase`/`textAlign`/`textDecoration`/`maxLines`/`textTruncation`/
+`paragraphSpacing`) is de-duplicated by deep-equality across the **whole**
+response — repeated text styles across many text nodes resolve to the same
+`sN` id and are serialized once, keeping large designs compact.
 
 ## No redaction
 
@@ -79,12 +114,11 @@ Figma comments should account for this when granting access to the plugin.
 
 ## Deviations
 
-Single Figma token per context — no comma-separated token pool or 429-driven
-rotation across multiple tokens (unlike some reference Figma MCP
-implementations). If the configured token gets rate-limited by Figma, tool
-calls surface `{ error: 'rate_limited', retryAfterSec }` from papai's own
-per-actor rate limiter, or a `figma_error` carrying the upstream 4xx/5xx —
-there is no automatic failover to a second token.
+None of note against the reference `kiss`-derived Figma MCP implementation:
+output shape (CSS `layout` string + `globalVars.styles` text-style dedup)
+and token pooling/429 rotation (see above) both match it. `{ error:
+'rate_limited', retryAfterSec }` from papai's own per-actor rate limiter is
+still layered on top and is checked before any Figma API call is made.
 
 ## Failure handling
 
