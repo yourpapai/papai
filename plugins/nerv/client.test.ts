@@ -5,7 +5,7 @@
 
 import { test, expect } from 'bun:test'
 
-import { resolveActiveTaskId, type NervConfig } from './client.js'
+import { resolveActiveTaskId, type HttpFetch, type NervConfig } from './client.js'
 import { setActive, type KvStore } from './history.js'
 
 function makeKv(): KvStore {
@@ -27,33 +27,32 @@ function makeKv(): KvStore {
 const cfg: NervConfig = { baseUrl: 'http://nerv', token: 't' }
 
 test('returns an explicit taskId without touching kv or nerv', async () => {
-  const fetchFn = (async () => {
+  const fetchFn: HttpFetch = () => {
     throw new Error('must not fetch')
-  }) as unknown as typeof fetch
+  }
   expect(await resolveActiveTaskId(fetchFn, cfg, makeKv(), 'ctx', 'explicit-1')).toBe('explicit-1')
 })
 test('returns the cached active task without calling nerv', async () => {
   const kv = makeKv()
   setActive(kv, 'ctx', 'cached-1')
   let called = false
-  const fetchFn = (async () => {
+  const fetchFn: HttpFetch = () => {
     called = true
-    return new Response('{}')
-  }) as unknown as typeof fetch
+    return Promise.resolve(new Response('{}'))
+  }
   expect(await resolveActiveTaskId(fetchFn, cfg, kv, 'ctx', null)).toBe('cached-1')
   expect(called).toBe(false)
 })
 test('falls back to nerv lookup by context and caches the result', async () => {
   const kv = makeKv()
-  const fetchFn = (async (url: string) => {
+  const fetchFn: HttpFetch = (url) => {
     expect(url).toContain('/tasks?contextId=ctx')
-    return new Response(JSON.stringify({ taskId: 'from-nerv' }), { status: 200 })
-  }) as unknown as typeof fetch
+    return Promise.resolve(new Response(JSON.stringify({ taskId: 'from-nerv' }), { status: 200 }))
+  }
   expect(await resolveActiveTaskId(fetchFn, cfg, kv, 'ctx', null)).toBe('from-nerv')
   expect(kv.get('active:ctx')).toBe('from-nerv')
 })
 test('returns null when nerv reports no active task', async () => {
-  const fetchFn = (async () =>
-    new Response(JSON.stringify({ taskId: null }), { status: 200 })) as unknown as typeof fetch
+  const fetchFn: HttpFetch = () => Promise.resolve(new Response(JSON.stringify({ taskId: null }), { status: 200 }))
   expect(await resolveActiveTaskId(fetchFn, cfg, makeKv(), 'ctx', null)).toBeNull()
 })
