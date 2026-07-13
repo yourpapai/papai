@@ -8,14 +8,19 @@ import { createHmac, randomBytes } from 'node:crypto'
 import type { AttachmentSourceProvider } from '../attachments/types.js'
 import { getContextSettings } from '../instances/context-store.js'
 import type { InstanceConfig, InstanceStatus, PlatformInstanceType } from '../instances/types.js'
+import { logger } from '../logger.js'
 import type { ManagedChatInstance, ManagedChatInstanceSnapshot } from './router-types.js'
 import type {
   ChatCapability,
+  ChatProvider,
   ChatProviderTraits,
+  CommandHandler,
   ContextRendered,
+  DeferredDeliveryTarget,
   IncomingInteraction,
   IncomingMessage,
   ReplyFn,
+  ResolveUserContext,
   ThreadCapabilities,
 } from './types.js'
 
@@ -185,3 +190,89 @@ const hasDownloadFile = (
 }
 
 export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+const routerLog = logger.child({ scope: 'chat:router' })
+
+/** Looks up `platformInstanceId`, warning and returning null when it is missing or inactive. */
+const resolveActiveManagedInstance = (
+  instances: Map<string, ManagedChatInstance>,
+  isInstanceActive: (id: string) => boolean,
+  platformInstanceId: string,
+  kind: string,
+): ManagedChatInstance | null => {
+  const instance = instances.get(platformInstanceId)
+  if (instance === undefined || !isInstanceActive(platformInstanceId)) {
+    routerLog.warn({ platformInstanceId }, `cannot route ${kind} to inactive or unknown chat instance`)
+    return null
+  }
+  return instance
+}
+
+/** Routes a proactive send through the named instance, refusing inactive/unknown instances. */
+export const sendMessageForManagedInstance = async (
+  instances: Map<string, ManagedChatInstance>,
+  isInstanceActive: (id: string) => boolean,
+  platformInstanceId: string,
+  target: DeferredDeliveryTarget,
+  markdown: string,
+): Promise<boolean> => {
+  const instance = resolveActiveManagedInstance(instances, isInstanceActive, platformInstanceId, 'message')
+  if (instance === null) return false
+  const result = await instance.provider.sendMessage(platformInstanceId, target, markdown)
+  return result !== false
+}
+
+/** Like {@link sendMessageForManagedInstance}, but also surfaces the created root post's id when supported. */
+export const sendProactiveReturningIdForManagedInstance = async (
+  instances: Map<string, ManagedChatInstance>,
+  isInstanceActive: (id: string) => boolean,
+  platformInstanceId: string,
+  target: DeferredDeliveryTarget,
+  markdown: string,
+): Promise<{ delivered: boolean; messageId: string | null }> => {
+  const instance = resolveActiveManagedInstance(instances, isInstanceActive, platformInstanceId, 'proactive message')
+  if (instance === null) return { delivered: false, messageId: null }
+  const { provider } = instance
+  if (typeof provider.sendMessageReturningId === 'function') {
+    const messageId = await provider.sendMessageReturningId(platformInstanceId, target, markdown)
+    return { delivered: true, messageId }
+  }
+  const result = await provider.sendMessage(platformInstanceId, target, markdown)
+  return { delivered: result !== false, messageId: null }
+}
+
+/** Wraps `handler` so the instance's own `id` is stamped onto every command invocation, then registers it. */
+export const registerCommandForManagedInstance = (
+  instance: ManagedChatInstance,
+  name: string,
+  handler: CommandHandler,
+): void => {
+  instance.provider.registerCommand(name, async (msg, reply, auth) => {
+    await handler({ ...msg, platformInstanceId: instance.id }, reply, auth)
+  })
+}
+
+/** Resolves the provider that should service `context`, using its explicit platformInstanceId or the stored context settings. */
+export const providerForResolveContext = (
+  instances: Map<string, ManagedChatInstance>,
+  context: ResolveUserContext,
+): ChatProvider | null => {
+  const platformInstanceId =
+    context.platformInstanceId ?? getContextSettings(context.contextId)?.platformInstanceId ?? null
+  return platformInstanceId === null ? null : providerForManagedInstance(instances.get(platformInstanceId))
+}
+
+/** Stops `instance` via `stopInstance`, forcing it to 'stopped' locally when the provider throws. */
+export const stopManagedInstanceSafely = async (
+  instance: ManagedChatInstance,
+  stopInstance: (id: string) => Promise<void>,
+  stoppingInstances: Set<string>,
+): Promise<void> => {
+  try {
+    await stopInstance(instance.id)
+  } catch (error) {
+    instance.status = 'stopped'
+    stoppingInstances.delete(instance.id)
+    routerLog.error({ platformInstanceId: instance.id, error: errorMessage(error) }, 'failed to stop chat instance')
+  }
+}

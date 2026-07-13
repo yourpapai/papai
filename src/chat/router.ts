@@ -6,7 +6,6 @@
 import pLimit from 'p-limit'
 
 import type { AttachmentSourceProvider } from '../attachments/types.js'
-import { getContextSettings } from '../instances/context-store.js'
 import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import {
@@ -18,12 +17,16 @@ import {
   isGroupAdminForManagedInstance,
   managedInstanceOrNull,
   managedInstanceSnapshots,
-  providerForManagedInstance,
+  providerForResolveContext,
+  registerCommandForManagedInstance,
   registerInteractionHandlerForManagedInstance,
   renderContextForManagedInstance,
   renderContextFromManagedInstances,
   resolveGroupLabelForManagedInstance,
   routedMessageHandler,
+  sendMessageForManagedInstance,
+  sendProactiveReturningIdForManagedInstance,
+  stopManagedInstanceSafely,
   threadCapabilitiesForManagedInstances,
   traitsForManagedInstance,
   traitsForManagedInstances,
@@ -160,13 +163,17 @@ export class ChatRouter implements ChatProvider {
 
   async stop(): Promise<void> {
     const limit = pLimit(ROUTER_LIFECYCLE_CONCURRENCY)
-    await Promise.all([...this.instances.values()].map((instance) => limit(() => this.stopInstanceSafely(instance))))
+    await Promise.all(
+      [...this.instances.values()].map((instance) =>
+        limit(() => stopManagedInstanceSafely(instance, (id) => this.stopInstance(id), this.stoppingInstances)),
+      ),
+    )
   }
 
   registerCommand(name: string, handler: CommandHandler): void {
     this.commandHandlers.set(name, handler)
     for (const instance of this.instances.values()) {
-      this.registerCommandForInstance(instance, name, handler)
+      registerCommandForManagedInstance(instance, name, handler)
     }
   }
 
@@ -184,14 +191,29 @@ export class ChatRouter implements ChatProvider {
     }
   }
 
-  async sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
-    const instance = this.instances.get(platformInstanceId)
-    if (instance === undefined || !this.isInstanceActive(platformInstanceId)) {
-      log.warn({ platformInstanceId }, 'cannot route message to inactive or unknown chat instance')
-      return false
-    }
-    const result = await instance.provider.sendMessage(platformInstanceId, target, markdown)
-    return result !== false
+  sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
+    return sendMessageForManagedInstance(
+      this.instances,
+      (id) => this.isInstanceActive(id),
+      platformInstanceId,
+      target,
+      markdown,
+    )
+  }
+
+  /** Proactive send that also returns the created root post's id (when supported). Router-only. */
+  sendProactiveReturningId(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+  ): Promise<{ delivered: boolean; messageId: string | null }> {
+    return sendProactiveReturningIdForManagedInstance(
+      this.instances,
+      (id) => this.isInstanceActive(id),
+      platformInstanceId,
+      target,
+      markdown,
+    )
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {
@@ -229,14 +251,14 @@ export class ChatRouter implements ChatProvider {
   }
 
   resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
-    const provider = this.providerForResolveContext(context)
+    const provider = providerForResolveContext(this.instances, context)
     if (provider === null) return Promise.resolve(null)
     if (provider.resolveUserId === undefined) return Promise.resolve(null)
     return provider.resolveUserId(username, context)
   }
 
   resolveUserLabel(userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
-    const provider = context === undefined ? null : this.providerForResolveContext(context)
+    const provider = context === undefined ? null : providerForResolveContext(this.instances, context)
     if (provider === null) return Promise.resolve(null)
     if (provider.resolveUserLabel === undefined) return Promise.resolve(null)
     return provider.resolveUserLabel(userId, context)
@@ -256,35 +278,13 @@ export class ChatRouter implements ChatProvider {
 
   private registerExistingHandlers(instance: ManagedChatInstance): void {
     for (const [name, handler] of this.commandHandlers.entries()) {
-      this.registerCommandForInstance(instance, name, handler)
+      registerCommandForManagedInstance(instance, name, handler)
     }
     if (this.messageHandler !== null) {
       instance.provider.onMessage(routedMessageHandler(instance.id, this.messageHandler))
     }
     if (this.interactionHandler !== null) {
       registerInteractionHandlerForManagedInstance(instance, this.interactionHandler)
-    }
-  }
-
-  private registerCommandForInstance(instance: ManagedChatInstance, name: string, handler: CommandHandler): void {
-    instance.provider.registerCommand(name, async (msg, reply, auth) => {
-      await handler({ ...msg, platformInstanceId: instance.id }, reply, auth)
-    })
-  }
-
-  private providerForResolveContext(context: ResolveUserContext): ChatProvider | null {
-    const platformInstanceId =
-      context.platformInstanceId ?? getContextSettings(context.contextId)?.platformInstanceId ?? null
-    return platformInstanceId === null ? null : providerForManagedInstance(this.instances.get(platformInstanceId))
-  }
-
-  private async stopInstanceSafely(instance: ManagedChatInstance): Promise<void> {
-    try {
-      await this.stopInstance(instance.id)
-    } catch (error) {
-      instance.status = 'stopped'
-      this.stoppingInstances.delete(instance.id)
-      log.error({ platformInstanceId: instance.id, error: errorMessage(error) }, 'failed to stop chat instance')
     }
   }
 

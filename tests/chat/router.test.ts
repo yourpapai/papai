@@ -801,6 +801,28 @@ describe('ChatRouter', () => {
     expect(getProvider('active').setCommandsCalls).toEqual(['admin-1'])
   })
 
+  test('sendProactiveReturningId returns the post id when the provider supports it', async () => {
+    router.addInstance('mm-main', 'mattermost', {})
+    await router.startInstance('mm-main')
+    const provider = getProvider('mm-main')
+    provider.sendMessageReturningId = (): Promise<string | null> => Promise.resolve('post-9')
+
+    const out = await router.sendProactiveReturningId('mm-main', dmTarget('user-1'), 'hi')
+    expect(out).toEqual({ delivered: true, messageId: 'post-9' })
+  })
+
+  test('sendProactiveReturningId falls back to sendMessage (no id) when unsupported', async () => {
+    router.addInstance('tg-main', 'telegram', {})
+    await router.startInstance('tg-main')
+    const out = await router.sendProactiveReturningId('tg-main', dmTarget('user-1'), 'hi')
+    expect(out).toEqual({ delivered: true, messageId: null })
+  })
+
+  test('sendProactiveReturningId reports not-delivered for an unknown instance', async () => {
+    const out = await router.sendProactiveReturningId('missing', dmTarget('user-1'), 'hi')
+    expect(out).toEqual({ delivered: false, messageId: null })
+  })
+
   test('registered command handlers receive managed platform instance IDs', async () => {
     const commandMessages: IncomingMessage[] = []
     router.addInstance('telegram-main', 'telegram', {})
