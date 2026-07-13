@@ -151,9 +151,10 @@ const sendNotify = async (
     return jsonResponse({ error: 'delivery failed' }, { status: 502 })
   }
   // Thread-scope a fresh group root post so a downstream supervisor can key a task to this thread.
+  // DMs also return a real post id, but must never be thread-scoped — only groups.
   let storageContextId = contextId
   const base = parseScopedContextId(contextId)
-  if (outcome.messageId !== null && base !== null && base.threadId === undefined) {
+  if (target.contextType === 'group' && outcome.messageId !== null && base !== null && base.threadId === undefined) {
     storageContextId = toScopedThreadContextId({
       platformInstanceId: base.platformInstanceId,
       nativeContextId: base.nativeContextId,

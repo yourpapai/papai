@@ -173,6 +173,20 @@ describe('handleNotifyRoute', () => {
     )
   })
 
+  test('does not thread-scope a DM even when a post id is returned', async () => {
+    const scoped = toScopedContextId({
+      platformInstanceId: 'mattermost-default',
+      nativeContextId: '6q9cpoqy4tb35gozuo1darzgra',
+    })
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: scoped, contextType: 'dm', markdown: 'ack' }))
+    expect(res.status).toBe(200)
+    const body = z.object({ sent: z.boolean(), storageContextId: z.string().optional() }).parse(await res.json())
+    expect(body.sent).toBe(true)
+    expect(body.storageContextId).toBe(scoped)
+  })
+
   test('returns 502 when delivery throws', async () => {
     const throwingRouter = new RecordingRouter()
     throwingRouter.sendMessage = (): Promise<boolean> => Promise.reject(new Error('network down'))
