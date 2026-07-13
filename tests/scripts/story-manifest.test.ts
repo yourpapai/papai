@@ -9,9 +9,10 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, w
 import os from 'node:os'
 import path from 'node:path'
 
+import type { StoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
 import {
   buildBaselineStoryManifest,
-  buildCandidateStoryManifest,
+  buildCandidateStoryManifest as acquireCandidateStoryManifest,
   compareStoryManifests,
   parseStoryManifestArguments,
   StoryManifestSchema,
@@ -20,6 +21,20 @@ import {
 
 const roots: string[] = []
 const PROJECT_ROOT = path.resolve(import.meta.dir, '../..')
+const TEST_DEPENDENCY_SNAPSHOT: StoryDependencySnapshot = {
+  key: 'a'.repeat(64),
+  root: '/dependency-cache/node_modules',
+  treeHash: 'b'.repeat(64),
+}
+
+function buildCandidateStoryManifest(
+  options: Readonly<{ root: string; seed: number; bunVersion?: string }>,
+  dependencySnapshot: StoryDependencySnapshot = TEST_DEPENDENCY_SNAPSHOT,
+): Promise<Awaited<ReturnType<typeof acquireCandidateStoryManifest>>> {
+  return acquireCandidateStoryManifest(options, {
+    acquireDependencySnapshot: (): Promise<StoryDependencySnapshot> => Promise.resolve(dependencySnapshot),
+  })
+}
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -54,6 +69,15 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
       `test('wrapped', async () => {\n  await executeScenario('nested story', async ({ then }) => {\n    then.responseStatus(response, 200)\n  })\n})\n`,
   )
   writeFileSync(path.join(root, 'scripts/test-stories.ts'), 'runner enforcement')
+  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-cleanup.ts'), 'dependency cleanup enforcement')
+  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-installer.ts'), 'dependency installer enforcement')
+  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-key.ts'), 'dependency key enforcement')
+  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-root.ts'), 'dependency root enforcement')
+  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-symlink.ts'), 'dependency symlink enforcement')
+  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-tree.ts'), 'dependency tree enforcement')
+  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot.ts'), 'dependency snapshot enforcement')
+  writeFileSync(path.join(root, 'scripts/story-manifest-arguments.ts'), 'manifest arguments enforcement')
+  writeFileSync(path.join(root, 'scripts/story-manifest-dependencies.ts'), 'manifest dependency enforcement')
   writeFileSync(path.join(root, 'scripts/story-manifest.ts'), 'manifest enforcement')
   writeFileSync(path.join(root, 'scripts/story-reports.ts'), 'report enforcement')
   writeFileSync(path.join(root, 'scripts/story-runner-arguments.ts'), 'argument enforcement')
@@ -94,6 +118,15 @@ describe('story manifest', () => {
     expect(repeated.treeHash).toBe(manifest.treeHash)
     expect(manifest.files.map(({ path: filePath }) => filePath)).toEqual([
       'bunfig.toml',
+      'scripts/story-dependency-snapshot-cleanup.ts',
+      'scripts/story-dependency-snapshot-installer.ts',
+      'scripts/story-dependency-snapshot-key.ts',
+      'scripts/story-dependency-snapshot-root.ts',
+      'scripts/story-dependency-snapshot-symlink.ts',
+      'scripts/story-dependency-snapshot-tree.ts',
+      'scripts/story-dependency-snapshot.ts',
+      'scripts/story-manifest-arguments.ts',
+      'scripts/story-manifest-dependencies.ts',
       'scripts/story-manifest.ts',
       'scripts/story-reports.ts',
       'scripts/story-runner-arguments.ts',
@@ -140,7 +173,7 @@ describe('story manifest', () => {
     expect(rebuilt.treeHash).toBe(manifest.treeHash)
   })
 
-  test('emits schema version 3 and runtime directory topology for candidate and baseline manifests', async () => {
+  test('emits schema version 4 and runtime directory topology for candidate and baseline manifests', async () => {
     const root = fixture()
     const ref = git(root, 'rev-parse', 'HEAD')
     const [candidate, baseline] = await Promise.all([
@@ -148,11 +181,11 @@ describe('story manifest', () => {
       buildBaselineStoryManifest({ root, ref, seed: 41021 }),
     ])
 
-    expect(candidate.version).toBe(3)
-    expect(baseline.version).toBe(3)
+    expect(candidate.version).toBe(4)
+    expect(baseline.version).toBe(4)
     expect(candidate.runtimeInputs.directories).toEqual(['plugins', 'plugins/example', 'public', 'src'])
     expect(baseline.runtimeInputs.directories).toEqual(['plugins', 'plugins/example', 'public', 'src'])
-    expect(StoryManifestSchema.safeParse({ ...candidate, version: 2 }).success).toBe(false)
+    expect(StoryManifestSchema.safeParse({ ...candidate, version: 3 }).success).toBe(false)
   })
 
   test('captures empty required and present optional runtime directories', async () => {
@@ -166,7 +199,7 @@ describe('story manifest', () => {
 
     const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
 
-    expect(manifest.version).toBe(3)
+    expect(manifest.version).toBe(4)
     expect(manifest.runtimeInputs.directories).toEqual(['plugins', 'public', 'src'])
   })
 
@@ -244,6 +277,24 @@ describe('story manifest', () => {
     expect(baseline.scenarios[0]?.id).toContain('#alpha story')
   })
 
+  test('captures candidate dependency evidence while omitting it from the historical baseline', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const dependencySnapshot = { key: 'c'.repeat(64), root: '/cache/node_modules', treeHash: 'd'.repeat(64) }
+    const [candidate, baseline] = await Promise.all([
+      buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' }, dependencySnapshot),
+      buildBaselineStoryManifest({ root, ref, seed: 41021, bunVersion: '1.2.3' }),
+    ])
+
+    expect(candidate.dependencySnapshot).toEqual({
+      key: dependencySnapshot.key,
+      treeHash: dependencySnapshot.treeHash,
+      bunVersion: '1.2.3',
+    })
+    expect(baseline.dependencySnapshot).toBeUndefined()
+    expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
+  })
+
   test('rejects a baseline ref without every required runtime input', async () => {
     const root = fixture()
     rmSync(path.join(root, 'package.json'))
@@ -272,6 +323,18 @@ describe('story manifest', () => {
     const candidate = await buildCandidateStoryManifest({ root, seed: 41021 })
 
     expect(candidate.runtimeInputs.treeHash).not.toBe(baseline.runtimeInputs.treeHash)
+    expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
+  })
+
+  test('ignores candidate dependency evidence during compatibility comparison', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021 })
+    const candidate = await buildCandidateStoryManifest(
+      { root, seed: 41021 },
+      { key: 'e'.repeat(64), root: '/cache/node_modules', treeHash: 'f'.repeat(64) },
+    )
+
     expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
   })
 

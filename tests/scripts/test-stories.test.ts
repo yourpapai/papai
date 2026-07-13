@@ -4,17 +4,29 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, mock, spyOn, test } from 'bun:test'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
+import { acquireStoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
 import { buildCandidateStoryManifest, type StoryManifest, writeStoryManifest } from '../../scripts/story-manifest.js'
 import { resolveReporterOutfiles } from '../../scripts/story-runner-arguments.js'
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/test-stories.js'
 
 const manifest = (treeHash: string): StoryManifest => ({
-  version: 3,
+  version: 4,
   commit: '1234567',
   bunVersion: '1.0.0',
   seed: STORY_SEED,
@@ -27,6 +39,12 @@ const manifest = (treeHash: string): StoryManifest => ({
 function runGit(root: string, ...args: readonly string[]): void {
   const result = Bun.spawnSync(['git', ...args], { cwd: root, stderr: 'pipe' })
   if (result.exitCode !== 0) throw new Error(result.stderr.toString())
+}
+
+function makeRemovable(root: string): void {
+  if (!lstatSync(root).isDirectory()) return
+  for (const entry of readdirSync(root)) makeRemovable(path.join(root, entry))
+  chmodSync(root, 0o700)
 }
 
 function createFailingReportRemover(attempted: string[]): (reportPath: string) => Promise<void> {
@@ -504,8 +522,23 @@ describe('story runner reports and compatibility', () => {
       writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), '')
       writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), '')
       writeFileSync(path.join(root, 'src/runtime.ts'), '')
-      writeFileSync(path.join(root, 'package.json'), '{}')
-      writeFileSync(path.join(root, 'bun.lock'), '')
+      const packageName = `story-runner-ref-${path.basename(root)}`
+      const dependencyCacheRoot = path.join(root, '.dependency-cache')
+      writeFileSync(path.join(root, 'package.json'), `{"name":"${packageName}"}\n`)
+      writeFileSync(path.join(root, 'bun.lock'), 'fixture lock\n')
+      await acquireStoryDependencySnapshot(
+        {
+          projectRoot: root,
+          cacheRoot: dependencyCacheRoot,
+          bunVersion: Bun.version,
+        },
+        {
+          install: (options): Promise<void> => {
+            mkdirSync(path.join(options.cwd, 'node_modules'), { recursive: true })
+            return Promise.resolve()
+          },
+        },
+      )
       runGit(root, 'init', '-q')
       runGit(root, 'config', 'user.email', 'stories@example.invalid')
       runGit(root, 'config', 'user.name', 'Story Tests')
@@ -515,6 +548,7 @@ describe('story runner reports and compatibility', () => {
       const runner = path.resolve(import.meta.dir, '../../scripts/test-stories.ts')
       const child = Bun.spawn(['bun', runner, '--manifest-only', '--baseline-ref=missing-ref'], {
         cwd: root,
+        env: { ...process.env, PAPAI_STORY_DEPENDENCY_CACHE_ROOT: dependencyCacheRoot },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -524,6 +558,7 @@ describe('story runner reports and compatibility', () => {
       expect(stderr).toContain('Cannot resolve baseline ref "missing-ref"')
       expect(existsSync(path.join(root, 'reports/stories/junit.xml'))).toBe(false)
     } finally {
+      makeRemovable(root)
       rmSync(root, { recursive: true, force: true })
     }
   })

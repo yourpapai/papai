@@ -20,9 +20,28 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 
+import type { StoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
 import { createCandidateStorySnapshot, StorySnapshotInterruptedError } from '../../scripts/story-runner-snapshot.js'
 
 const roots: string[] = []
+const TEST_DEPENDENCY_SNAPSHOT: StoryDependencySnapshot = {
+  key: 'a'.repeat(64),
+  root: '/dependency-cache/node_modules',
+  treeHash: 'b'.repeat(64),
+}
+type SnapshotTestDependencies = NonNullable<Parameters<typeof createCandidateStorySnapshot>[1]>
+
+function createSnapshot(
+  options: Readonly<{ root: string; seed: number; bunVersion?: string }>,
+  dependencies: SnapshotTestDependencies = {},
+): ReturnType<typeof createCandidateStorySnapshot> {
+  return createCandidateStorySnapshot(options, {
+    candidateCaptureDependencies: {
+      acquireDependencySnapshot: (): Promise<StoryDependencySnapshot> => Promise.resolve(TEST_DEPENDENCY_SNAPSHOT),
+    },
+    ...dependencies,
+  })
+}
 
 function requireInterruptedError(value: unknown): StorySnapshotInterruptedError {
   if (value instanceof StorySnapshotInterruptedError) return value
@@ -89,7 +108,7 @@ function fixture(): string {
 describe('candidate story snapshot', () => {
   test('materializes captured runtime inputs without live-worktree bridges', async () => {
     const root = fixture()
-    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    const snapshot = await createSnapshot({ root, seed: 41021 })
     const capturedStory = path.join(snapshot.root, 'tests/stories/example.story.test.ts')
     try {
       writeFileSync(path.join(root, 'tests/stories/example.story.test.ts'), 'mutated story')
@@ -122,7 +141,7 @@ describe('candidate story snapshot', () => {
     rmSync(path.join(root, 'src', 'live.ts'))
     rmSync(path.join(root, 'plugins', 'example'), { recursive: true })
     rmSync(path.join(root, 'public', 'settings.js'))
-    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    const snapshot = await createSnapshot({ root, seed: 41021 })
     try {
       expect(lstatSync(path.join(snapshot.root, 'src')).isDirectory()).toBe(true)
       expect(lstatSync(path.join(snapshot.root, 'plugins')).isDirectory()).toBe(true)
@@ -137,7 +156,7 @@ describe('candidate story snapshot', () => {
     const root = fixture()
     rmSync(path.join(root, 'src', 'alias.ts'))
     rmSync(path.join(root, 'src', 'live.ts'))
-    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    const snapshot = await createSnapshot({ root, seed: 41021 })
     try {
       chmodSync(snapshot.root, 0o700)
       rmSync(path.join(snapshot.root, 'src'), { recursive: true })
@@ -152,7 +171,7 @@ describe('candidate story snapshot', () => {
 
   test('rejects a tampered captured runtime file before execution', async () => {
     const root = fixture()
-    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    const snapshot = await createSnapshot({ root, seed: 41021 })
     const runtimeDirectory = path.join(snapshot.root, 'src')
     try {
       const runtimeFile = path.join(runtimeDirectory, 'live.ts')
@@ -169,7 +188,7 @@ describe('candidate story snapshot', () => {
 
   test('rejects an unexpected runtime path before execution', async () => {
     const root = fixture()
-    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    const snapshot = await createSnapshot({ root, seed: 41021 })
     const runtimeDirectory = path.join(snapshot.root, 'src')
     try {
       chmodSync(runtimeDirectory, 0o700)
@@ -192,7 +211,7 @@ describe('candidate story snapshot', () => {
     ],
   ] as const)('rejects snapshot %s before execution', async (_replacement, replace) => {
     const root = fixture()
-    const snapshot = await createCandidateStorySnapshot({ root, seed: 41021 })
+    const snapshot = await createSnapshot({ root, seed: 41021 })
     const capturedStory = path.join(snapshot.root, 'tests/stories/example.story.test.ts')
     chmodSync(path.dirname(capturedStory), 0o700)
     rmSync(capturedStory)
@@ -209,7 +228,7 @@ describe('candidate story snapshot', () => {
     const safetyHandler = (): void => undefined
     process.once('SIGTERM', safetyHandler)
     try {
-      const caught = await createCandidateStorySnapshot(
+      const caught = await createSnapshot(
         { root, seed: 41021 },
         {
           afterRootCreated: () => {
@@ -260,7 +279,7 @@ describe('candidate story snapshot', () => {
       ],
     ])
 
-    const creation = createCandidateStorySnapshot(
+    const creation = createSnapshot(
       { root, seed: 41021 },
       {
         writeCapturedFile: (targetRoot, file): Promise<void> => {
@@ -294,7 +313,7 @@ describe('candidate story snapshot', () => {
     }
     let changeActions = new Map<string, (target: string, mode: number) => Promise<void>>()
 
-    const creation = createCandidateStorySnapshot(
+    const creation = createSnapshot(
       { root, seed: 41021 },
       {
         afterRootCreated: (target): Promise<void> => {

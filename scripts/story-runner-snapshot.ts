@@ -10,6 +10,7 @@ import path from 'node:path'
 
 import {
   captureCandidateStoryInputs,
+  type CandidateStoryManifestDependencies,
   type LoadedRuntimeInput,
   type LoadedStoryFile,
   type StoryManifest,
@@ -26,6 +27,7 @@ export type CandidateStorySnapshot = Readonly<{
 type SnapshotOptions = Readonly<{ root: string; seed: number; bunVersion?: string }>
 type SnapshotDependencies = Readonly<{
   afterRootCreated?(snapshotRoot: string): Promise<void>
+  candidateCaptureDependencies?: CandidateStoryManifestDependencies
   changeMode?(target: string, mode: number): Promise<void>
   writeCapturedFile?(snapshotRoot: string, file: LoadedStoryFile): Promise<void>
 }>
@@ -242,7 +244,7 @@ export async function createCandidateStorySnapshot(
   options: SnapshotOptions,
   dependencies: SnapshotDependencies = {},
 ): Promise<CandidateStorySnapshot> {
-  const captured = await captureCandidateStoryInputs(options)
+  const captured = await captureCandidateStoryInputs(options, dependencies.candidateCaptureDependencies)
   const snapshotRoot = await mkdtemp(path.join(options.root, '.papai-story-snapshot-'))
   const cleanup = createCleanup(snapshotRoot)
   const signals = captureConstructionSignals()

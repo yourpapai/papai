@@ -28,10 +28,12 @@ export type LoadedRuntimeInputTree = Readonly<{ directories: readonly string[]; 
 export type CandidateCaptureDependencies = Readonly<{
   afterDirectoryRead?(directory: string): Promise<void>
 }>
-
 export function isFrozenEnforcementPath(filePath: string): boolean {
   return (
     filePath === 'scripts/test-stories.ts' ||
+    /^scripts\/story-dependency-snapshot(?:-(?:cleanup|installer|key|root|symlink|tree))?\.ts$/u.test(filePath) ||
+    filePath === 'scripts/story-manifest-arguments.ts' ||
+    filePath === 'scripts/story-manifest-dependencies.ts' ||
     filePath === 'scripts/story-reports.ts' ||
     /^scripts\/story-(?:manifest|runner).*\.ts$/u.test(filePath)
   )

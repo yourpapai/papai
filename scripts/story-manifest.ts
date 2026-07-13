@@ -9,6 +9,7 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { parseStoryManifestArguments } from './story-manifest-arguments.js'
 import {
   currentStoryManifestCommit,
   loadBaselineRuntimeInputs,
@@ -21,10 +22,15 @@ import {
   type LoadedRuntimeInput,
   type LoadedStoryFile,
 } from './story-manifest-candidate.js'
+import {
+  acquireCandidateDependencySnapshot,
+  type CandidateStoryManifestDependencies,
+} from './story-manifest-dependencies.js'
 import { hashRuntimeTree } from './story-manifest-runtime.js'
 import { extractStoryScenarios } from './story-manifest-scenarios.js'
 import { removeStoryReport, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
-import { parseBunInteger } from './story-runner-integers.js'
+
+export { parseStoryManifestArguments } from './story-manifest-arguments.js'
 
 const FILE_HASH = /^[a-f0-9]{64}$/u
 
@@ -55,15 +61,21 @@ const RuntimeInputManifestSchema = z.strictObject({
   directories: RuntimeDirectoriesSchema,
   files: z.array(RuntimeInputSchema),
 })
+const DependencySnapshotSchema = z.strictObject({
+  key: z.string().regex(FILE_HASH),
+  treeHash: z.string().regex(FILE_HASH),
+  bunVersion: z.string().min(1),
+})
 
 export const StoryManifestSchema = z.strictObject({
-  version: z.literal(3),
+  version: z.literal(4),
   commit: z.string().min(7),
   bunVersion: z.string().min(1),
   seed: z.number().int(),
   treeHash: z.string().regex(FILE_HASH),
   files: z.array(StoryFileSchema),
   runtimeInputs: RuntimeInputManifestSchema,
+  dependencySnapshot: DependencySnapshotSchema.optional(),
   scenarios: z.array(StoryScenarioSchema),
 })
 
@@ -72,6 +84,7 @@ type StoryFile = z.infer<typeof StoryFileSchema>
 type StoryScenario = z.infer<typeof StoryScenarioSchema>
 type ManifestOptions = Readonly<{ root: string; seed: number; bunVersion?: string }>
 type BaselineOptions = ManifestOptions & Readonly<{ ref: string }>
+export type { CandidateStoryManifestDependencies } from './story-manifest-dependencies.js'
 export type { LoadedRuntimeInput, LoadedStoryFile } from './story-manifest-candidate.js'
 export type CapturedCandidateStoryInputs = Readonly<{
   manifest: StoryManifest
@@ -122,7 +135,12 @@ function assembleManifest(
   loaded: readonly LoadedStoryFile[],
   runtimeInputFiles: readonly LoadedRuntimeInput[],
   runtimeDirectories: readonly string[],
-  metadata: Readonly<{ commit: string; bunVersion: string; seed: number }>,
+  metadata: Readonly<{
+    commit: string
+    bunVersion: string
+    seed: number
+    dependencySnapshot?: Awaited<ReturnType<typeof acquireCandidateDependencySnapshot>>
+  }>,
 ): StoryManifest {
   const files = loaded.map((file): StoryFile => ({ path: file.path, sha256: sha256(file.bytes) }))
   const runtimeFiles = runtimeInputFiles.map((file): StoryManifest['runtimeInputs']['files'][number] => {
@@ -137,8 +155,18 @@ function assembleManifest(
     if (scenarios[index - 1]?.id === scenarios[index]?.id)
       throw new Error(`Duplicate scenario id: ${scenarios[index]?.id}`)
   }
+  const dependencySnapshot =
+    metadata.dependencySnapshot === undefined
+      ? {}
+      : {
+          dependencySnapshot: {
+            key: metadata.dependencySnapshot.key,
+            treeHash: metadata.dependencySnapshot.treeHash,
+            bunVersion: metadata.bunVersion,
+          },
+        }
   return StoryManifestSchema.parse({
-    version: 3,
+    version: 4,
     ...metadata,
     treeHash: hashTree(files, 'papai-story-tree-v1\0'),
     files,
@@ -147,24 +175,34 @@ function assembleManifest(
       directories: runtimeDirectories,
       files: runtimeFiles,
     },
+    ...dependencySnapshot,
     scenarios,
   })
 }
 
-export async function buildCandidateStoryManifest(options: ManifestOptions): Promise<StoryManifest> {
-  return (await captureCandidateStoryInputs(options)).manifest
+export async function buildCandidateStoryManifest(
+  options: ManifestOptions,
+  dependencies: CandidateStoryManifestDependencies = {},
+): Promise<StoryManifest> {
+  return (await captureCandidateStoryInputs(options, dependencies)).manifest
 }
 
-export async function captureCandidateStoryInputs(options: ManifestOptions): Promise<CapturedCandidateStoryInputs> {
-  const [commit, files, runtimeInputs] = await Promise.all([
+export async function captureCandidateStoryInputs(
+  options: ManifestOptions,
+  dependencies: CandidateStoryManifestDependencies = {},
+): Promise<CapturedCandidateStoryInputs> {
+  const bunVersion = options.bunVersion ?? Bun.version
+  const [commit, files, runtimeInputs, dependencySnapshot] = await Promise.all([
     currentStoryManifestCommit(options.root),
     loadCandidateStoryFiles(options.root),
     loadCandidateRuntimeInputTree(options.root),
+    acquireCandidateDependencySnapshot(options.root, bunVersion, dependencies),
   ])
   const manifest = assembleManifest(files, runtimeInputs.files, runtimeInputs.directories, {
     commit,
-    bunVersion: options.bunVersion ?? Bun.version,
+    bunVersion,
     seed: options.seed,
+    dependencySnapshot,
   })
   return { manifest, files, runtimeInputs: { manifest: manifest.runtimeInputs, ...runtimeInputs } }
 }
@@ -230,29 +268,6 @@ export async function writeStoryManifest(
     }
     throw error
   }
-}
-
-export function parseStoryManifestArguments(args: readonly string[]): Readonly<{ seed: number }> {
-  let seed = 41021
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index]
-    let token: string
-    if (argument !== undefined && argument.startsWith('--seed=')) token = argument.slice('--seed='.length)
-    else if (argument === '--seed') {
-      const value = args[index + 1]
-      if (value === undefined) throw new Error('--seed requires a value')
-      token = value
-      index += 1
-    } else throw new Error(`Unsupported story manifest argument: ${argument}`)
-    if (token.trim() === '') throw new Error('--seed requires a non-empty value')
-    seed = parseBunInteger(token, {
-      flag: '--seed',
-      minimum: 0,
-      maximum: 4_294_967_295,
-      expectation: 'an integer between 0 and 4294967295',
-    })
-  }
-  return { seed }
 }
 
 async function main(): Promise<number> {
