@@ -56,3 +56,9 @@ test('returns null when nerv reports no active task', async () => {
   const fetchFn: HttpFetch = () => Promise.resolve(new Response(JSON.stringify({ taskId: null }), { status: 200 }))
   expect(await resolveActiveTaskId(fetchFn, cfg, makeKv(), 'ctx', null)).toBeNull()
 })
+test('fails safe (returns null, does not throw) when nerv is unreachable', async () => {
+  const kv = makeKv()
+  const fetchFn: HttpFetch = () => Promise.reject(new Error('network unreachable'))
+  expect(await resolveActiveTaskId(fetchFn, cfg, kv, 'ctx', null)).toBeNull()
+  expect(kv.get('active:ctx')).toBeUndefined()
+})

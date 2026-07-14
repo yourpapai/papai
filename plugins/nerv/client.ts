@@ -74,7 +74,16 @@ export async function resolveActiveTaskId(
   if (explicitTaskId !== null) return explicitTaskId
   const cached = getActiveTaskId(kv, storageContextId)
   if (cached !== null) return cached
-  const result = await callNerv(httpFetch, cfg, 'GET', `/tasks?contextId=${encodeURIComponent(storageContextId)}`)
+  // Deliberate fail-safe: a throwing httpFetch (network failure/timeout) must not propagate out
+  // of this resolver and crash the calling tool. Treat an unreachable nerv the same as "no
+  // resolvable task" — the caller reports not_found — rather than surfacing a raw error. Do not
+  // cache anything in this case.
+  let result: unknown
+  try {
+    result = await callNerv(httpFetch, cfg, 'GET', `/tasks?contextId=${encodeURIComponent(storageContextId)}`)
+  } catch {
+    return null
+  }
   const taskId = asString(asObject(result), 'taskId')
   if (taskId !== null) setActive(kv, storageContextId, taskId)
   return taskId
