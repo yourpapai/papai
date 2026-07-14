@@ -22,6 +22,7 @@ import { willQueueAuthorizedMessage } from './chat/queue-policy.js'
 import { maybeSeedContextAssignment } from './chat/seed-context-assignment.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
+import { maybeRouteCodingTask } from './coding-mode.js'
 import {
   registerClearCommand,
   registerConfigCommand,
@@ -189,6 +190,8 @@ async function handleMessage(
     await reply.text('✋ folding that into the current run…')
     return
   }
+
+  if (await maybeRouteCodingTask(msg, auth, reply)) return
 
   const queueMessage = deps.enqueueMessage ?? enqueueMessage
   queueMessage(
