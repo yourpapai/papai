@@ -198,7 +198,8 @@ export function createCodingTaskTool(httpFetch: HttpFetch | undefined): Tool {
       const resolved = resolveRepos(runtimeContext, names)
       if ('error' in resolved) return resolved
 
-      const outputLanguage = runtimeContext.contextConfig.get('output_language')
+      const outputLanguage =
+        runtimeContext.contextConfig.get('output_language') ?? runtimeContext.adminConfig.get('output_language_default')
       const body = buildCreateTaskBody(args, prompt, runtimeContext.storageContextId, resolved, outputLanguage)
       const result = await callNerv(httpFetch, cfg, 'POST', '/tasks', body)
       recordCreatedTask(runtimeContext, result, prompt, resolved)

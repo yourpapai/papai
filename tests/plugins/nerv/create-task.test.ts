@@ -156,6 +156,37 @@ test('create passes outputLanguage from context config when set', async () => {
   expect(asRecord(captured[0]?.body)['outputLanguage']).toBe('Russian')
 })
 
+function adminConfigWithLanguageDefault(languageDefault: string): { get: (k: string) => string | undefined } {
+  const values: Record<string, string> = {
+    nerv_base_url: 'http://nerv:9000',
+    nerv_token: 'tok',
+    output_language_default: languageDefault,
+  }
+  return { get: (k: string): string | undefined => values[k] }
+}
+
+test('create falls back to admin output_language_default when context output_language is unset', async () => {
+  const captured: Captured[] = []
+  const ctx = runtimeCtx(new Map())
+  const withAdminDefault = { ...ctx, adminConfig: adminConfigWithLanguageDefault('French') }
+  const tool = createCodingTaskTool(capturingFetch(captured, { taskId: 't4' }))
+  await tool.execute({ project: 'demo', prompt: 'fix the CI' }, withAdminDefault, options())
+  expect(asRecord(captured[0]?.body)['outputLanguage']).toBe('French')
+})
+
+test('create prefers context output_language over admin output_language_default', async () => {
+  const captured: Captured[] = []
+  const ctx = runtimeCtx(new Map())
+  const withBoth = {
+    ...ctx,
+    contextConfig: { get: (): string | undefined => 'Russian' },
+    adminConfig: adminConfigWithLanguageDefault('French'),
+  }
+  const tool = createCodingTaskTool(capturingFetch(captured, { taskId: 't5' }))
+  await tool.execute({ project: 'demo', prompt: 'fix the CI' }, withBoth, options())
+  expect(asRecord(captured[0]?.body)['outputLanguage']).toBe('Russian')
+})
+
 test('multi-repo passes an array of projectPaths', async () => {
   const captured: Captured[] = []
   const tool = createCodingTaskTool(capturingFetch(captured, { taskId: 't2' }))
