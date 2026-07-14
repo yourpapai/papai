@@ -6,6 +6,8 @@
 import type { ToolExecutionOptions } from 'ai'
 
 import type { AuthorizationResult, IncomingMessage, ReplyFn } from './chat/types.js'
+import type { CodingGuardrails } from './coding-credentials/guardrails.js'
+import { resolveCodingGuardrails } from './coding-credentials/guardrails.js'
 import { getPluginConfig } from './config.js'
 import { contributionRegistry } from './plugins/contributions.js'
 import { getPluginsForContext } from './plugins/registry.js'
@@ -23,6 +25,7 @@ export interface CodingModeDeps {
     manifest: PluginManifest,
     runtime: { storageContextId: string; chatUserId: string },
   ): PluginToolRuntimeContext
+  resolveGuardrails(platformInstanceId: string): CodingGuardrails
 }
 
 const defaultDeps: CodingModeDeps = {
@@ -30,6 +33,7 @@ const defaultDeps: CodingModeDeps = {
   nervEligible: (contextId) => getPluginsForContext(contextId).some((plugin) => plugin.manifest.id === 'nerv'),
   getNervContributions: () => contributionRegistry.getContributions('nerv'),
   buildRuntime: (manifest, runtime) => buildPluginToolRuntimeContext('nerv', manifest, runtime),
+  resolveGuardrails: (platformInstanceId) => resolveCodingGuardrails(platformInstanceId),
 }
 
 function buildToolExecutionOptions(): ToolExecutionOptions {
@@ -48,9 +52,41 @@ function isErrorResult(value: unknown): value is { error: string; message?: stri
 /** The `coding_mode` value qualifies this message for routing (mode + no-bot marker + mention gating). */
 function isRoutableMessage(msg: IncomingMessage, mode: string | null): mode is 'always' | 'mention_only' {
   if (mode !== 'always' && mode !== 'mention_only') return false
+  // Registered commands (e.g. plugin_nerv_nerv) never reach here as commandMatch, but guard anyway;
+  // unregistered/typo'd slash commands (e.g. `/nerv`) have no commandMatch and must not become task prompts.
+  if (msg.commandMatch !== undefined) return false
+  if (msg.text.trimStart().startsWith('/')) return false
   if (msg.text.includes(NO_BOT_MARKER)) return false
   if (mode === 'mention_only' && !msg.isMentioned && msg.isReplyToBot !== true) return false
   return true
+}
+
+/**
+ * Mirrors the LLM path's guest + who-may-use gate (see `applyGuestReadOnlyFilter` and
+ * `applyWhoMayUseFilter` in llm-orchestrator-tools.ts) so a barred actor is never handed a
+ * deterministically-created task. Returning `true` here falls through to normal LLM handling,
+ * which applies the identical filter and simply creates nothing — same outcome, no bypass.
+ */
+function isGovernedOut(msg: IncomingMessage, auth: AuthorizationResult, deps: CodingModeDeps): boolean {
+  if (auth.isGuest === true) return true
+  const { whoMayUse } = deps.resolveGuardrails(msg.platformInstanceId)
+  return whoMayUse !== 'members' && !whoMayUse.includes(msg.user.id)
+}
+
+/** Per-`storageContextId` async mutex: chains routing work so concurrent messages in one thread
+ *  serialize instead of racing the check-then-act `activeTaskConflict` window. */
+const contextLocks = new Map<string, Promise<unknown>>()
+
+async function withContextLock<T>(storageContextId: string, fn: () => Promise<T>): Promise<T> {
+  const prior = contextLocks.get(storageContextId) ?? Promise.resolve()
+  const run = prior.then(fn, fn)
+  const guarded = run.catch(() => undefined)
+  contextLocks.set(storageContextId, guarded)
+  try {
+    return await run
+  } finally {
+    if (contextLocks.get(storageContextId) === guarded) contextLocks.delete(storageContextId)
+  }
 }
 
 /** Handles the create_coding_task result: conflict reroutes to a followup, other errors are surfaced verbatim. */
@@ -76,27 +112,16 @@ async function respondToCreateResult(
   await reply.text('🛠️ Started a coding task on `' + repoName + '`.')
 }
 
-/**
- * SS-09: for a channel whose `coding_mode` context config is `always`/`mention_only`, deterministically
- * route a qualifying message straight to a coding task, bypassing the LLM entirely.
- *
- * Returns `true` when the message was handled (the caller should return without further processing),
- * or `false` to fall through to normal (LLM) handling. Only single-repo channels are routed; channels
- * with zero or multiple supervised repos fall through (multi-repo routing is deferred to SS-16).
- */
-export async function maybeRouteCodingTask(
+/** The repo-resolution-through-create critical section, run inside the per-context lock. Nerv
+ *  network errors / bad responses (e.g. `callNerv`'s unguarded JSON.parse) are caught here so the
+ *  message is never dropped silently. */
+async function routeToCoding(
   msg: IncomingMessage,
   auth: AuthorizationResult,
   reply: ReplyFn,
-  deps: CodingModeDeps = defaultDeps,
+  deps: CodingModeDeps,
+  contrib: { manifest: PluginManifest; tools: PluginTool[] },
 ): Promise<boolean> {
-  if (auth.configContextId === undefined) return false
-  if (!isRoutableMessage(msg, deps.getMode(auth.configContextId))) return false
-  if (!deps.nervEligible(auth.configContextId)) return false
-
-  const contrib = deps.getNervContributions()
-  if (contrib === undefined) return false
-
   const runtimeContext = deps.buildRuntime(contrib.manifest, {
     storageContextId: auth.storageContextId,
     chatUserId: msg.user.id,
@@ -116,11 +141,41 @@ export async function maybeRouteCodingTask(
   const createTool = contrib.tools.find((tool) => tool.name === 'create_coding_task')
   if (createTool === undefined) return false
 
-  const result = await createTool.execute(
-    { prompt: msg.text, project: repo.name },
-    runtimeContext,
-    buildToolExecutionOptions(),
-  )
-  await respondToCreateResult(result, msg, reply, contrib, runtimeContext, repo.name)
+  try {
+    const result = await createTool.execute(
+      { prompt: msg.text, project: repo.name },
+      runtimeContext,
+      buildToolExecutionOptions(),
+    )
+    await respondToCreateResult(result, msg, reply, contrib, runtimeContext, repo.name)
+  } catch {
+    await reply.text('⚠️ Couldn’t reach the coding service — please try again in a moment.')
+  }
   return true
+}
+
+/**
+ * SS-09: for a channel whose `coding_mode` context config is `always`/`mention_only`, deterministically
+ * route a qualifying message straight to a coding task, bypassing the LLM entirely.
+ *
+ * Returns `true` when the message was handled (the caller should return without further processing),
+ * or `false` to fall through to normal (LLM) handling. Only single-repo channels are routed; channels
+ * with zero or multiple supervised repos fall through (multi-repo routing is deferred to SS-16).
+ */
+export function maybeRouteCodingTask(
+  msg: IncomingMessage,
+  auth: AuthorizationResult,
+  reply: ReplyFn,
+  deps: CodingModeDeps = defaultDeps,
+): Promise<boolean> {
+  if (auth.configContextId === undefined) return Promise.resolve(false)
+  if (!isRoutableMessage(msg, deps.getMode(auth.configContextId))) return Promise.resolve(false)
+  if (!deps.nervEligible(auth.configContextId)) return Promise.resolve(false)
+  if (isGovernedOut(msg, auth, deps)) return Promise.resolve(false)
+
+  return withContextLock(auth.storageContextId, () => {
+    const contrib = deps.getNervContributions()
+    if (contrib === undefined) return Promise.resolve(false)
+    return routeToCoding(msg, auth, reply, deps, contrib)
+  })
 }

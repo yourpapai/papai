@@ -126,8 +126,17 @@ function deps(over: Partial<CodingModeDeps> = {}): CodingModeDeps {
     nervEligible: () => true,
     getNervContributions: () => contributions,
     buildRuntime: () => makeRuntimeContext(['g/r']),
+    resolveGuardrails: () => ({ allowedAgents: [], whoMayUse: 'members', forceSharedKey: false, maxMcpServers: 3 }),
     ...over,
   }
+}
+
+/** Flushes pending microtasks and one macrotask tick — used to let a blocked `execute()` call
+ *  reach its await point before asserting on call counts in the concurrency test. */
+function flush(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
 }
 
 describe('maybeRouteCodingTask', () => {
@@ -235,5 +244,97 @@ describe('maybeRouteCodingTask', () => {
     })
     expect(await maybeRouteCodingTask(makeMessage(), auth, reply, d)).toBe(true)
     expect(texts[0]).toContain('nerv not set up')
+  })
+
+  // Defect 1: guest / whoMayUse governance gate
+  it('guest actor → false, no task created', async () => {
+    const { reply, texts } = stubReply()
+    const d = deps()
+    const contrib = d.getNervContributions()
+    const create = contrib?.tools.find((t) => t.name === 'create_coding_task')
+    const guestAuth: AuthorizationResult = { ...auth, isGuest: true }
+    expect(await maybeRouteCodingTask(makeMessage(), guestAuth, reply, d)).toBe(false)
+    expect(create?.execute).not.toHaveBeenCalled()
+    expect(texts).toHaveLength(0)
+  })
+
+  it('whoMayUse allowlist configured, user not on it → false', async () => {
+    const { reply } = stubReply()
+    const d = deps({
+      resolveGuardrails: () => ({
+        allowedAgents: [],
+        whoMayUse: ['someone-else'],
+        forceSharedKey: false,
+        maxMcpServers: 3,
+      }),
+    })
+    expect(await maybeRouteCodingTask(makeMessage(), auth, reply, d)).toBe(false)
+  })
+
+  it('whoMayUse allowlist configured, user on it → routes', async () => {
+    const { reply } = stubReply()
+    const d = deps({
+      resolveGuardrails: () => ({ allowedAgents: [], whoMayUse: ['u1'], forceSharedKey: false, maxMcpServers: 3 }),
+    })
+    expect(await maybeRouteCodingTask(makeMessage(), auth, reply, d)).toBe(true)
+  })
+
+  // Defect 2: slash commands must never become coding tasks
+  it('registered command (commandMatch set) → false', async () => {
+    const { reply } = stubReply()
+    expect(await maybeRouteCodingTask(makeMessage({ commandMatch: 'nerv' }), auth, reply, deps())).toBe(false)
+  })
+
+  it('unregistered slash command /nerv → false', async () => {
+    const { reply } = stubReply()
+    expect(await maybeRouteCodingTask(makeMessage({ text: '/nerv' }), auth, reply, deps())).toBe(false)
+  })
+
+  it('typo slash command /anything → false', async () => {
+    const { reply } = stubReply()
+    expect(await maybeRouteCodingTask(makeMessage({ text: '/anything' }), auth, reply, deps())).toBe(false)
+  })
+
+  // Defect 3: nerv errors must not drop the message
+  it('create.execute throws → replies and returns true instead of propagating', async () => {
+    const { reply, texts } = stubReply()
+    const d = deps({
+      getNervContributions: () => ({
+        manifest,
+        tools: [
+          tool(
+            'create_coding_task',
+            mock(() => Promise.reject(new Error('network fail'))),
+          ),
+        ],
+      }),
+    })
+    expect(await maybeRouteCodingTask(makeMessage(), auth, reply, d)).toBe(true)
+    expect(texts[0]).toContain('coding service')
+  })
+
+  // Defect 4: concurrent messages in the same context must serialize, not double-create
+  it('concurrent calls for the same context serialize routing', async () => {
+    const { reply: reply1 } = stubReply()
+    const { reply: reply2 } = stubReply()
+    let releaseFirst: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const create = mock(() => gate.then(() => ({ id: 't1' })))
+    const d = deps({
+      getNervContributions: () => ({ manifest, tools: [tool('create_coding_task', create)] }),
+    })
+
+    const p1 = maybeRouteCodingTask(makeMessage(), auth, reply1, d)
+    await flush()
+    const p2 = maybeRouteCodingTask(makeMessage(), auth, reply2, d)
+    await flush()
+
+    expect(create).toHaveBeenCalledTimes(1)
+
+    releaseFirst()
+    await Promise.all([p1, p2])
+    expect(create).toHaveBeenCalledTimes(2)
   })
 })
