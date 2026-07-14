@@ -6,14 +6,19 @@
 import { createHash, type Hash } from 'node:crypto'
 import { constants } from 'node:fs'
 import type { Dirent, Stats } from 'node:fs'
-import type { FileHandle } from 'node:fs/promises'
 import path from 'node:path'
 
 import { assertSafeDependencySymlink } from './story-dependency-snapshot-symlink.js'
 
+export type DependencyFileHandle = Readonly<{
+  close(): Promise<void>
+  readFile(): Promise<Uint8Array>
+  stat(): Promise<Stats>
+}>
+
 export type DependencyTreeDependencies = Readonly<{
   lstat(target: string): Promise<Stats>
-  open(target: string, flags: number): Promise<FileHandle>
+  open(target: string, flags: number): Promise<DependencyFileHandle>
   readlink(target: string): Promise<string>
   readdir(target: string, options: Readonly<{ withFileTypes: true }>): Promise<readonly Dirent[]>
   realpath(target: string): Promise<string>
@@ -22,7 +27,7 @@ export type DependencyTreeDependencies = Readonly<{
 type DependencyTreeEntry = Readonly<
   | { kind: 'directory'; path: string }
   | { kind: 'file'; path: string; target: string }
-  | { kind: 'symlink'; path: string; target: string }
+  | { kind: 'symlink'; path: string; target: string; linkTarget: string }
 >
 
 function errorCode(error: unknown): unknown {
@@ -52,7 +57,7 @@ export async function safeReadDependencyFile(
 ): Promise<Uint8Array> {
   const before = await deps.lstat(target)
   if (!before.isFile() || before.isSymbolicLink()) throw unsafeEntry(relative, 'not a regular file')
-  let handle: FileHandle | undefined
+  let handle: DependencyFileHandle | undefined
   try {
     handle = await deps.open(target, constants.O_RDONLY | constants.O_NOFOLLOW)
     const after = await handle.stat()
@@ -96,10 +101,12 @@ async function collectDependencyEntry(
   const relative = toPosix(path.relative(root, target))
   const stats = await deps.lstat(target)
   if (stats.isSymbolicLink()) {
+    const linkTarget = await assertSafeDependencySymlink(root, target, relative, deps, requireReadOnly)
     collected.push({
       kind: 'symlink',
       path: relative,
-      target: await assertSafeDependencySymlink(root, target, relative, deps, requireReadOnly),
+      target,
+      linkTarget,
     })
   } else if (stats.isDirectory()) {
     if (requireReadOnly) assertReadOnlyEntry(stats, relative)
@@ -126,20 +133,37 @@ export async function hashDependencyTree(
   requireReadOnly = false,
 ): Promise<string> {
   const hash = createHash('sha256')
-  hash.update('papai-story-dependency-tree-v1\0')
+  hash.update('papai-story-dependency-tree-v2\0')
   const entries = await collectDependencyTree(root, root, deps, requireReadOnly)
   await entries
     .sort((left, right) => compareText(left.path, right.path))
-    .reduce((serial, entry) => serial.then(() => hashDependencyEntry(hash, entry, deps)), Promise.resolve())
+    .reduce((serial, entry) => serial.then(() => hashDependencyEntry(root, hash, entry, deps)), Promise.resolve())
   return hash.digest('hex')
 }
 
+async function canonicalDependencySymlinkTarget(
+  root: string,
+  target: string,
+  linkTarget: string,
+  deps: DependencyTreeDependencies,
+): Promise<string> {
+  const [resolvedRoot, resolvedTarget] = await Promise.all([
+    deps.realpath(root),
+    deps.realpath(path.resolve(path.dirname(target), linkTarget)),
+  ])
+  return toPosix(path.relative(resolvedRoot, resolvedTarget))
+}
+
 async function hashDependencyEntry(
+  root: string,
   hash: Hash,
   entry: DependencyTreeEntry,
   deps: DependencyTreeDependencies,
 ): Promise<void> {
   hash.update(`${entry.kind}\0${entry.path}\0`)
   if (entry.kind === 'file') updateFramedBytes(hash, await safeReadDependencyFile(entry.target, entry.path, deps))
-  else if (entry.kind === 'symlink') updateFramedBytes(hash, Buffer.from(entry.target))
+  else if (entry.kind === 'symlink') {
+    const target = await canonicalDependencySymlinkTarget(root, entry.target, entry.linkTarget, deps)
+    updateFramedBytes(hash, Buffer.from(target))
+  }
 }

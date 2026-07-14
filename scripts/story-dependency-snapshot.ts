@@ -48,7 +48,7 @@ export type StoryDependencySnapshotDependencies = Readonly<{
 }>
 
 type SnapshotOptions = Readonly<{ projectRoot: string; cacheRoot: string; bunVersion: string }>
-type EntryManifest = Readonly<{ version: 1; key: string; bunVersion: string; treeHash: string }>
+type EntryManifest = Readonly<{ version: 2; key: string; bunVersion: string; treeHash: string }>
 type Dependencies = Required<StoryDependencySnapshotDependencies>
 
 const HASH = /^[a-f0-9]{64}$/u
@@ -116,7 +116,7 @@ function parseManifest(bytes: Uint8Array, expected: Readonly<{ key: string; bunV
   const treeHash = manifest['treeHash']
   if (
     Object.keys(manifest).sort(compareText).join(',') !== 'bunVersion,key,treeHash,version' ||
-    manifest['version'] !== 1 ||
+    manifest['version'] !== 2 ||
     manifest['key'] !== expected.key ||
     manifest['bunVersion'] !== expected.bunVersion ||
     typeof treeHash !== 'string' ||
@@ -124,7 +124,7 @@ function parseManifest(bytes: Uint8Array, expected: Readonly<{ key: string; bunV
   ) {
     throw new Error('Story dependency cache entry is invalid: manifest does not match the requested lock key')
   }
-  return { version: 1, key: expected.key, bunVersion: expected.bunVersion, treeHash }
+  return { version: 2, key: expected.key, bunVersion: expected.bunVersion, treeHash }
 }
 
 async function verifyEntry(
@@ -172,7 +172,7 @@ async function createStagingEntry(
   await installStagedDependencies(staging, packageBytes, lockBytes, workspaceManifests, deps)
   const nodeModules = path.join(staging, 'node_modules')
   const treeHash = await hashDependencyTree(nodeModules, deps)
-  const manifest: EntryManifest = { version: 1, ...expected, treeHash }
+  const manifest: EntryManifest = { version: 2, ...expected, treeHash }
   await deps.writeFile(path.join(staging, MANIFEST_FILE), `${JSON.stringify(manifest)}\n`)
 }
 

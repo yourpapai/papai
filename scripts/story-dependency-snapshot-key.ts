@@ -16,7 +16,7 @@ export function dependencySnapshotKey(
   workspaceManifests: ReadonlyArray<Readonly<{ path: string; bytes: Uint8Array }>> = [],
 ): string {
   const hash = createHash('sha256')
-  hash.update('papai-story-dependency-key-v2\0')
+  hash.update('papai-story-dependency-key-v3\0')
   for (const value of [packageBytes, lockBytes, Buffer.from(bunVersion)]) hash.update(frame(value))
   for (const workspace of workspaceManifests) {
     hash.update(frame(Buffer.from(workspace.path)))

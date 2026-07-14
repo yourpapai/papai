@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 import type { Stats } from 'node:fs'
 import {
   chmodSync,
@@ -75,6 +76,30 @@ function installerEnvironment(cwd: string): Readonly<Record<string, string>> {
     TMPDIR: path.join(cwd, '.tmp'),
     BUN_INSTALL_CACHE_DIR: path.join(cwd, '.bun-cache'),
   }
+}
+
+function frame(bytes: Uint8Array): Uint8Array {
+  return Buffer.concat([Buffer.from(String(bytes.byteLength)), Buffer.from('\0'), bytes, Buffer.from('\0')])
+}
+
+function legacySnapshotKey(packageBytes: Uint8Array, lockBytes: Uint8Array, bunVersion: string): string {
+  const hash = createHash('sha256').update('papai-story-dependency-key-v2\0')
+  for (const value of [packageBytes, lockBytes, Buffer.from(bunVersion)]) hash.update(frame(value))
+  return hash.digest('hex')
+}
+
+function legacyRawLinkTreeHash(): string {
+  const hash = createHash('sha256').update('papai-story-dependency-tree-v1\0')
+  const entries: readonly [string, string, string][] = [
+    ['directory', 'example', ''],
+    ['symlink', 'example/internal-link.js', 'target.js'],
+    ['file', 'example/target.js', 'export default 1\n'],
+  ]
+  for (const [kind, relative, contents] of entries) {
+    hash.update(`${kind}\0${relative}\0`)
+    if (kind !== 'directory') hash.update(frame(Buffer.from(contents)))
+  }
+  return hash.digest('hex')
 }
 
 function sequentialOpen(): (target: string, flags: number) => Promise<FileHandle> {
@@ -182,6 +207,39 @@ describe('story dependency snapshot', () => {
     expect(calls).toHaveLength(1)
   })
 
+  test('ignores an old-format cache entry with a raw internal-link fingerprint and builds the current format', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    const packageBytes = readFileSync(path.join(projectRoot, 'package.json'))
+    const lockBytes = readFileSync(path.join(projectRoot, 'bun.lock'))
+    const oldKey = legacySnapshotKey(packageBytes, lockBytes, '1.2.3')
+    const oldEntry = path.join(cacheRoot, oldKey)
+    const oldModules = path.join(oldEntry, 'node_modules')
+    mkdirSync(path.join(oldModules, 'example'), { recursive: true, mode: 0o700 })
+    writeFileSync(path.join(oldModules, 'example', 'target.js'), 'export default 1\n')
+    symlinkSync('target.js', path.join(oldModules, 'example', 'internal-link.js'))
+    writeFileSync(
+      path.join(oldEntry, 'manifest.json'),
+      `${JSON.stringify({ version: 1, key: oldKey, bunVersion: '1.2.3', treeHash: legacyRawLinkTreeHash() })}\n`,
+    )
+    for (const entry of [cacheRoot, oldEntry, oldModules, path.join(oldModules, 'example')]) chmodSync(entry, 0o500)
+    chmodSync(cacheRoot, 0o700)
+    chmodSync(path.join(oldModules, 'example', 'target.js'), 0o400)
+    chmodSync(path.join(oldEntry, 'manifest.json'), 0o400)
+    const calls: string[] = []
+
+    const snapshot = await acquireStoryDependencySnapshot(
+      { projectRoot, cacheRoot, bunVersion: '1.2.3' },
+      { install: installer(calls) },
+    )
+
+    expect(snapshot.key).not.toBe(oldKey)
+    expect(calls).toHaveLength(1)
+    expect(existsSync(oldEntry)).toBe(true)
+    const currentManifest = path.join(cacheRoot, snapshot.key, 'manifest.json')
+    expect(existsSync(currentManifest)).toBe(true)
+    expect(readFileSync(currentManifest, 'utf8')).toContain('"version":2')
+  })
+
   test('hashes dependency files sequentially with an insertion-order-independent tree hash', async () => {
     const { projectRoot, cacheRoot } = fixture()
     const options = { projectRoot, cacheRoot, bunVersion: '1.2.3' }
@@ -203,7 +261,7 @@ describe('story dependency snapshot', () => {
       open: sequentialOpen(),
     })
 
-    expect(first.treeHash).toBe('06338d1806b54c38d7b2e646e32e655579285600b366a32afa773c9cf86c6145')
+    expect(first.treeHash).toBe('c25d8b184cba7dab7cfeaeb463f95d7bbec6b0675e3d04558208c718ec93282c')
     expect(second.treeHash).toBe(first.treeHash)
   })
 

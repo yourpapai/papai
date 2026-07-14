@@ -9,6 +9,7 @@ import { hashDependencyTree } from './story-dependency-snapshot-tree.js'
 import type { StoryDependencySnapshot } from './story-dependency-snapshot.js'
 import { acquireCandidateDependencySnapshot } from './story-manifest-dependencies.js'
 import type { StoryManifest } from './story-manifest.js'
+import { materializeSessionDependencies } from './story-runner-session-dependencies.js'
 import {
   copyReports,
   createReportFiles,
@@ -64,7 +65,7 @@ const fileSystem: SessionFileSystem = {
   readdir: (target) => readdir(target, { withFileTypes: true }),
   realpath,
   rm,
-  symlink: (target, link): Promise<void> => symlink(target, link, 'dir'),
+  symlink,
 }
 
 async function makeTreeRemovable(directory: string, fs: SessionFileSystem): Promise<void> {
@@ -95,9 +96,10 @@ async function verifySession(
   await appIntegrity.verifyIntegrity()
   await verifyDependencySnapshot(dependency)
   const nodeModulesEntry = await fs.lstat(nodeModules)
-  if (!nodeModulesEntry.isSymbolicLink() || (await fs.readlink(nodeModules)) !== dependency.root) {
-    throw new Error('Story session dependency link does not point to the verified dependency snapshot')
-  }
+  if (!nodeModulesEntry.isDirectory() || nodeModulesEntry.isSymbolicLink())
+    throw new Error('Story session dependency tree is unsafe')
+  const treeHash = await hashDependencyTree(nodeModules, fs, true)
+  if (treeHash !== dependency.treeHash) throw new Error('Story session dependency fingerprint changed')
   await verifyReportFiles(reports, fs)
 }
 
@@ -162,16 +164,20 @@ async function materializeSession(
   try {
     const appRoot = path.join(root, 'app')
     const tempRoot = path.join(root, 'tmp')
-    const nodeModules = path.join(root, 'node_modules')
+    const nodeModules = path.join(appRoot, 'node_modules')
     const reportsRoot = path.join(root, 'reports')
     const mapped = reporterMappings(options.reporterArguments, options.root, root)
     await fs.mkdir(appRoot, { recursive: true, mode: 0o700 })
-    const appIntegrity = await source.materialize(appRoot)
+    const appIntegrity = await source.materialize(appRoot, [{ kind: 'directory', path: 'node_modules' }])
+    await fs.chmod(appRoot, 0o700)
+    await fs.chmod(nodeModules, 0o700)
+    const treeHash = await materializeSessionDependencies(dependency.root, nodeModules, fs)
+    if (treeHash !== dependency.treeHash) throw new Error('Story session dependency copy fingerprint changed')
+    await fs.chmod(appRoot, 0o500)
     await fs.mkdir(tempRoot, { recursive: true, mode: 0o700 })
     await fs.chmod(tempRoot, 0o700)
     await fs.mkdir(reportsRoot, { recursive: true, mode: 0o700 })
     await createReportFiles(mapped.reports, fs)
-    await fs.symlink(dependency.root, nodeModules, 'dir')
     const childReportPaths = mapped.reports.map((report) => report.sessionPath)
     const verifyIntegrity = (): Promise<void> =>
       verifySession(appIntegrity, dependency, nodeModules, mapped.reports, fs)

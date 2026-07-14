@@ -22,7 +22,7 @@ export type SessionFileSystem = Readonly<{
   readdir(target: string, options: Readonly<{ withFileTypes: true }>): Promise<readonly Dirent[]>
   realpath(target: string): Promise<string>
   rm(target: string, options: Readonly<{ recursive: true; force: true }>): Promise<void>
-  symlink(target: string, link: string, type: 'dir'): Promise<void>
+  symlink(target: string, link: string, type?: 'dir' | 'file' | 'junction'): Promise<void>
 }>
 
 export type ReportMapping = Readonly<{ livePath: string; sessionPath: string }>

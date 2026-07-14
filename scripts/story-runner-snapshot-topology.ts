@@ -7,8 +7,9 @@ import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { StoryManifest } from './story-manifest.js'
+import type { GeneratedStorySnapshotEntry } from './story-runner-snapshot-generated.js'
 
-type SnapshotEntryKind = 'directory' | 'file' | 'symlink'
+type SnapshotEntryKind = 'directory' | 'file' | 'symlink' | 'opaque-directory'
 type SnapshotControlFile = Readonly<{ path: string; sha256: string }>
 
 function addExpectedSnapshotEntry(
@@ -33,6 +34,7 @@ function addExpectedSnapshotParents(entries: Map<string, SnapshotEntryKind>, ent
 function expectedSnapshotTopology(
   manifest: StoryManifest,
   controlFile: SnapshotControlFile,
+  generatedEntries: readonly GeneratedStorySnapshotEntry[],
 ): ReadonlyMap<string, SnapshotEntryKind> {
   const entries = new Map<string, SnapshotEntryKind>()
   for (const file of [...manifest.files, controlFile]) {
@@ -47,6 +49,9 @@ function expectedSnapshotTopology(
     addExpectedSnapshotParents(entries, input.path)
     addExpectedSnapshotEntry(entries, input.path, input.kind)
   }
+  for (const entry of generatedEntries) {
+    addExpectedSnapshotEntry(entries, entry.path, entry.kind === 'directory' ? 'opaque-directory' : entry.kind)
+  }
   return entries
 }
 
@@ -57,6 +62,10 @@ function snapshotEntryKind(stats: Awaited<ReturnType<typeof lstat>>): SnapshotEn
   return undefined
 }
 
+function matchesExpectedKind(actual: SnapshotEntryKind | undefined, expected: SnapshotEntryKind): boolean {
+  return actual === expected || (expected === 'opaque-directory' && actual === 'directory')
+}
+
 async function verifyExpectedEntries(
   snapshotRoot: string,
   expected: ReadonlyMap<string, SnapshotEntryKind>,
@@ -64,7 +73,7 @@ async function verifyExpectedEntries(
   await Promise.all(
     [...expected.entries()].map(async ([entryPath, expectedKind]) => {
       const stats = await lstat(path.join(snapshotRoot, entryPath)).catch(() => undefined)
-      if (stats === undefined || snapshotEntryKind(stats) !== expectedKind) {
+      if (stats === undefined || !matchesExpectedKind(snapshotEntryKind(stats), expectedKind)) {
         throw new Error(`Snapshot integrity check failed: ${entryPath} is not a ${expectedKind}`)
       }
     }),
@@ -91,10 +100,10 @@ async function verifyDirectoryTopology(
         throw new Error(`Snapshot integrity check failed: ${relative} cannot be read safely`, { cause: error })
       })
       const actualKind = snapshotEntryKind(stats)
-      if (actualKind !== expectedKind) {
+      if (!matchesExpectedKind(actualKind, expectedKind)) {
         throw new Error(`Snapshot integrity check failed: ${relative} has unexpected type`)
       }
-      return { absolute, actualKind, relative }
+      return { absolute, actualKind: expectedKind === 'opaque-directory' ? expectedKind : actualKind, relative }
     }),
   )
   await Promise.all(
@@ -108,8 +117,9 @@ export function verifySnapshotTopology(
   snapshotRoot: string,
   manifest: StoryManifest,
   controlFile: SnapshotControlFile,
+  generatedEntries: readonly GeneratedStorySnapshotEntry[] = [],
 ): Promise<void> {
-  const expected = expectedSnapshotTopology(manifest, controlFile)
+  const expected = expectedSnapshotTopology(manifest, controlFile, generatedEntries)
   return Promise.all([
     verifyExpectedEntries(snapshotRoot, expected),
     verifyDirectoryTopology(expected, snapshotRoot, ''),

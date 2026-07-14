@@ -15,6 +15,15 @@ import {
   type LoadedStoryFile,
   type StoryManifest,
 } from './story-manifest.js'
+import {
+  generatedStorySnapshotVerifications,
+  writeGeneratedStorySnapshotEntry,
+  type GeneratedStorySnapshotEntry,
+} from './story-runner-snapshot-generated.js'
+import {
+  captureStorySnapshotConstructionSignals,
+  type StorySnapshotConstructionSignals,
+} from './story-runner-snapshot-signals.js'
 import { verifySnapshotTopology } from './story-runner-snapshot-topology.js'
 
 export type CandidateStorySnapshot = Readonly<{
@@ -34,8 +43,13 @@ export type SnapshotDependencies = Readonly<{
 
 export type CandidateStorySnapshotSource = Readonly<{
   manifest: StoryManifest
-  materialize(snapshotRoot: string): Promise<Readonly<{ verifyIntegrity(): Promise<void> }>>
+  materialize(
+    snapshotRoot: string,
+    generatedEntries?: readonly GeneratedStorySnapshotEntry[],
+  ): Promise<Readonly<{ verifyIntegrity(): Promise<void> }>>
 }>
+
+export type { GeneratedStorySnapshotEntry } from './story-runner-snapshot-generated.js'
 
 export class StorySnapshotInterruptedError extends Error {
   readonly exitCode: 130 | 143
@@ -120,37 +134,14 @@ async function writeCapturedDirectory(root: string, directory: string): Promise<
   await mkdir(path.join(root, directory), { recursive: true })
 }
 
-type ConstructionSignals = Readonly<{
-  current(): 'SIGINT' | 'SIGTERM' | undefined
-  dispose(): void
-}>
-
-function captureConstructionSignals(): ConstructionSignals {
-  let signal: 'SIGINT' | 'SIGTERM' | undefined
-  const onInterrupt = (): void => {
-    signal ??= 'SIGINT'
-  }
-  const onTerminate = (): void => {
-    signal ??= 'SIGTERM'
-  }
-  process.once('SIGINT', onInterrupt)
-  process.once('SIGTERM', onTerminate)
-  return {
-    current: () => signal,
-    dispose: (): void => {
-      process.off('SIGINT', onInterrupt)
-      process.off('SIGTERM', onTerminate)
-    },
-  }
-}
-
 async function materializeSnapshot(
   snapshotRoot: string,
   files: readonly LoadedStoryFile[],
   runtimeDirectories: readonly string[],
   runtimeInputs: readonly LoadedRuntimeInput[],
+  generatedEntries: readonly GeneratedStorySnapshotEntry[],
   dependencies: SnapshotDependencies,
-  signals: ConstructionSignals,
+  signals: StorySnapshotConstructionSignals,
 ): Promise<LoadedStoryFile> {
   await dependencies.afterRootCreated?.(snapshotRoot)
   throwIfInterrupted(signals.current())
@@ -177,6 +168,10 @@ async function materializeSnapshot(
   await settleStarted(
     runtimeSymlinks.map((file) => writeCapturedSymlink(snapshotRoot, file)),
     'Story snapshot symlink creation failed',
+  )
+  await settleStarted(
+    generatedEntries.map((entry) => writeGeneratedStorySnapshotEntry(snapshotRoot, entry)),
+    'Story generated dependency entry creation failed',
   )
   throwIfInterrupted(signals.current())
   const changeMode = dependencies.changeMode ?? ((target, mode): Promise<void> => chmod(target, mode))
@@ -252,23 +247,25 @@ export async function createCandidateStorySnapshotSource(
   const captured = await captureCandidateStoryInputs(options, dependencies.candidateCaptureDependencies)
   return {
     manifest: captured.manifest,
-    materialize: async (snapshotRoot) => {
-      const signals = captureConstructionSignals()
+    materialize: async (snapshotRoot, generatedEntries = []) => {
+      const signals = captureStorySnapshotConstructionSignals()
       try {
         const controlFile = await materializeSnapshot(
           snapshotRoot,
           captured.files,
           captured.runtimeInputs.directories,
           captured.runtimeInputs.files,
+          generatedEntries,
           dependencies,
           signals,
         )
         const controlManifestFile = { path: controlFile.path, sha256: sha256(controlFile.bytes) }
         const verifyIntegrity = (): Promise<void> =>
           Promise.all([
-            verifySnapshotTopology(snapshotRoot, captured.manifest, controlManifestFile),
+            verifySnapshotTopology(snapshotRoot, captured.manifest, controlManifestFile, generatedEntries),
             ...captured.manifest.files.map((file) => verifySnapshotFile(snapshotRoot, file)),
             ...captured.manifest.runtimeInputs.files.map((input) => verifySnapshotRuntimeInput(snapshotRoot, input)),
+            ...generatedStorySnapshotVerifications(snapshotRoot, generatedEntries),
             verifySnapshotFile(snapshotRoot, controlManifestFile),
           ]).then(() => undefined)
         return { verifyIntegrity }
