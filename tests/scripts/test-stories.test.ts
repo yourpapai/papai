@@ -23,6 +23,8 @@ import path from 'node:path'
 import { acquireStoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
 import { buildCandidateStoryManifest, type StoryManifest, writeStoryManifest } from '../../scripts/story-manifest.js'
 import { resolveReporterOutfiles } from '../../scripts/story-runner-arguments.js'
+import type { StoryRunnerSession } from '../../scripts/story-runner-session.js'
+import type { StorySandboxRequest } from '../../scripts/story-sandbox.js'
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/test-stories.js'
 
 const manifest = (treeHash: string): StoryManifest => ({
@@ -35,6 +37,44 @@ const manifest = (treeHash: string): StoryManifest => ({
   runtimeInputs: { treeHash: '0'.repeat(64), directories: [], files: [] },
   scenarios: [],
 })
+
+function testSession(
+  root: string,
+  candidate: StoryManifest,
+  options: Readonly<{
+    appRoot?: string
+    cleanup?: () => Promise<void>
+    copyReports?: () => Promise<void>
+    verifyIntegrity?: () => Promise<void>
+  }> = {},
+): StoryRunnerSession {
+  const appRoot = options.appRoot ?? root
+  const reportPath = path.join(root, 'reports', 'junit.xml')
+  return {
+    root,
+    appRoot,
+    tempRoot: path.join(root, 'tmp'),
+    manifest: candidate,
+    childReporterArguments: ['--reporter', 'junit', '--reporter-outfile', reportPath],
+    childReportPaths: [reportPath],
+    reportPaths: [reportPath],
+    verifyIntegrity: options.verifyIntegrity ?? (() => Promise.resolve()),
+    copyReports: options.copyReports ?? (() => Promise.resolve()),
+    cleanup: options.cleanup ?? (() => Promise.resolve()),
+  }
+}
+
+function sessionDependencies(session: StoryRunnerSession): Readonly<{
+  createStoryRunnerSession: () => Promise<StoryRunnerSession>
+  buildSandboxCommand: (request: StorySandboxRequest) => readonly string[]
+  resolveSessionDependencyRoot: () => string
+}> {
+  return {
+    createStoryRunnerSession: () => Promise.resolve(session),
+    buildSandboxCommand: (request) => request.command,
+    resolveSessionDependencyRoot: () => '/dependencies/node_modules',
+  }
+}
 
 function runGit(root: string, ...args: readonly string[]): void {
   const result = Bun.spawnSync(['git', ...args], { cwd: root, stderr: 'pipe' })
@@ -63,6 +103,142 @@ function createAlwaysFailingReportRemover(attempted: string[]): (reportPath: str
 }
 
 describe('story runner reports and compatibility', () => {
+  test('runs through a verified sandbox session and copies reports only after post-exit integrity', async () => {
+    const actions: string[] = []
+    const candidate = {
+      ...manifest('a'.repeat(64)),
+      files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+    }
+    const session = {
+      root: '/session',
+      appRoot: '/session/app',
+      tempRoot: '/session/tmp',
+      manifest: candidate,
+      childReporterArguments: ['--reporter', 'junit', '--reporter-outfile', '/session/reports/junit.xml'],
+      childReportPaths: ['/session/reports/junit.xml'],
+      reportPaths: ['/session/reports/junit.xml'],
+      verifyIntegrity: mock(() => {
+        actions.push('verify')
+        return Promise.resolve()
+      }),
+      copyReports: mock(() => {
+        actions.push('copy')
+        return Promise.resolve()
+      }),
+      cleanup: mock(() => {
+        actions.push('cleanup')
+        return Promise.resolve()
+      }),
+    } as StoryRunnerSession
+    const dependencies = {
+      cwd: '/repo',
+      env: { HOME: '/must-not-leak' },
+      spawn: mock((command: readonly string[], options: Parameters<typeof Bun.spawn>[1]) => {
+        actions.push('spawn')
+        expect(command).toEqual(['sandbox-exec', '-p', 'profile', '/bun', 'test'])
+        expect(options?.cwd).toBe(session.appRoot)
+        expect(options?.env?.['TMPDIR']).toBe(session.tempRoot)
+        expect(options?.env?.['PAPAI_STORY_EXECUTION_ROOT']).toBe(session.appRoot)
+        expect(options?.env?.['HOME']).toBeUndefined()
+        return { exited: Promise.resolve(0), kill: (): void => undefined }
+      }),
+      buildCandidateManifest: () => Promise.resolve(candidate),
+      buildBaselineManifest: () => Promise.resolve(candidate),
+      writeManifest: () => Promise.resolve(),
+      removeReport: () => Promise.resolve(),
+      discoverStories: () => Promise.reject(new Error('live story discovery must not run')),
+      discoverContracts: () => Promise.reject(new Error('live contract discovery must not run')),
+      createStoryRunnerSession: () => {
+        actions.push('session')
+        return Promise.resolve(session)
+      },
+      buildSandboxCommand: mock((request: StorySandboxRequest) => {
+        actions.push('sandbox')
+        expect(request).toMatchObject({
+          platform: 'darwin',
+          appRoot: session.appRoot,
+          dependencyRoot: '/dependencies/node_modules',
+          tempRoot: session.tempRoot,
+          reportPaths: session.childReportPaths,
+          bunExecutable: '/bun',
+        })
+        return ['sandbox-exec', '-p', 'profile', '/bun', 'test']
+      }),
+      platform: 'darwin' as NodeJS.Platform,
+      bunExecutable: '/bun',
+      resolveSessionDependencyRoot: () => '/dependencies/node_modules',
+    } as Parameters<typeof runStoryTests>[1]
+
+    await expect(runStoryTests([], dependencies)).resolves.toBe(0)
+
+    expect(actions).toEqual(['session', 'verify', 'sandbox', 'spawn', 'verify', 'copy', 'cleanup'])
+  })
+
+  test('fails before spawning when no sandbox backend supports the platform', async () => {
+    let spawned = false
+    const candidate = {
+      ...manifest('a'.repeat(64)),
+      files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+    }
+    const exitCode = await runStoryTests([], {
+      cwd: '/repo',
+      env: {},
+      spawn: () => {
+        spawned = true
+        return { exited: Promise.resolve(0), kill: (): void => undefined }
+      },
+      createStoryRunnerSession: () => Promise.resolve(testSession('/session', candidate)),
+      resolveSessionDependencyRoot: () => '/dependencies/node_modules',
+      buildCandidateManifest: () => Promise.resolve(candidate),
+      buildBaselineManifest: () => Promise.resolve(candidate),
+      writeManifest: () => Promise.resolve(),
+      removeReport: () => Promise.resolve(),
+      discoverStories: () => Promise.resolve(['tests/stories/a.story.test.ts']),
+      discoverContracts: () => Promise.resolve([]),
+      platform: 'freebsd' as NodeJS.Platform,
+    } as Parameters<typeof runStoryTests>[1])
+
+    expect(exitCode).toBe(2)
+    expect(spawned).toBe(false)
+  })
+
+  test.each([
+    ['Docker availability', new Error('Story sandbox Docker availability check failed')],
+    ['pinned Bun version', new Error('Story sandbox Docker image must run Bun 1.3.13')],
+  ])('rejects a Linux %s failure before session creation or spawn', async (_failure, failure) => {
+    const actions: string[] = []
+    const candidate = {
+      ...manifest('a'.repeat(64)),
+      files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+    }
+    const exitCode = await runStoryTests([], {
+      cwd: '/repo',
+      env: {},
+      spawn: () => {
+        actions.push('spawn')
+        return { exited: Promise.resolve(0), kill: (): void => undefined }
+      },
+      createStoryRunnerSession: () => {
+        actions.push('session')
+        return Promise.resolve(testSession('/session', candidate))
+      },
+      assertLinuxSandboxBackend: () => {
+        actions.push('preflight')
+        throw failure
+      },
+      buildCandidateManifest: () => Promise.resolve(candidate),
+      buildBaselineManifest: () => Promise.resolve(candidate),
+      writeManifest: () => Promise.resolve(),
+      removeReport: () => Promise.resolve(),
+      discoverStories: () => Promise.resolve([]),
+      discoverContracts: () => Promise.resolve([]),
+      platform: 'linux' as NodeJS.Platform,
+    } as Parameters<typeof runStoryTests>[1])
+
+    expect(exitCode).toBe(2)
+    expect(actions).toEqual(['preflight'])
+  })
+
   test.each([
     ['mutation', (liveStory: string): void => writeFileSync(liveStory, 'mutated story')],
     ['symlink', (liveStory: string, external: string): void => symlinkSync(external, liveStory)],
@@ -83,6 +259,9 @@ describe('story runner reports and compatibility', () => {
       let spawnedStory = ''
       try {
         const candidate = { ...manifest('a'.repeat(64)), files: [{ path: storyPath, sha256: 'b'.repeat(64) }] }
+        const session = testSession(snapshotRoot, candidate, {
+          cleanup: () => rm(snapshotRoot, { recursive: true, force: true }),
+        })
         const exitCode = await runStoryTests([], {
           cwd: root,
           env: {},
@@ -94,13 +273,7 @@ describe('story runner reports and compatibility', () => {
             return { exited: Promise.resolve(0), kill: (): void => undefined }
           },
           buildCandidateManifest: () => Promise.resolve(candidate),
-          buildCandidateSnapshot: () =>
-            Promise.resolve({
-              manifest: candidate,
-              root: snapshotRoot,
-              verifyIntegrity: () => Promise.resolve(),
-              cleanup: () => rm(snapshotRoot, { recursive: true }),
-            }),
+          ...sessionDependencies(session),
           buildBaselineManifest: () => Promise.resolve(candidate),
           writeManifest: () => {
             rmSync(liveStory)
@@ -139,6 +312,13 @@ describe('story runner reports and compatibility', () => {
       writeFileSync(path.join(snapshotRoot, 'tests/setup.ts'), '')
       writeFileSync(path.join(snapshotRoot, 'tests/mock-reset.ts'), '')
       writeFileSync(path.join(snapshotRoot, 'tests/stories/preload.ts'), '')
+      const session = testSession(snapshotRoot, candidate, {
+        cleanup: () => rm(snapshotRoot, { recursive: true, force: true }),
+        copyReports: () => {
+          writeFileSync(reportPath, readFileSync(path.join(snapshotRoot, 'reports/junit.xml')))
+          return Promise.resolve()
+        },
+      })
 
       const exitCode = await runStoryTests([], {
         cwd: root,
@@ -168,18 +348,12 @@ describe('story runner reports and compatibility', () => {
           expect(storyPreloadIndex).toBeLessThan(storyFileIndex)
 
           const reportArgument = command.indexOf('--reporter-outfile')
-          expect(command[reportArgument + 1]).toBe(reportPath)
-          writeFileSync(reportPath, 'current junit')
+          expect(command[reportArgument + 1]).toBe(path.join(snapshotRoot, 'reports/junit.xml'))
+          writeFileSync(path.join(snapshotRoot, 'reports/junit.xml'), 'current junit')
           return { exited: Promise.resolve(0), kill: (): void => undefined }
         },
         buildCandidateManifest: () => Promise.resolve(candidate),
-        buildCandidateSnapshot: () =>
-          Promise.resolve({
-            manifest: candidate,
-            root: snapshotRoot,
-            verifyIntegrity: () => Promise.resolve(),
-            cleanup: () => rm(snapshotRoot, { recursive: true }),
-          }),
+        ...sessionDependencies(session),
         buildBaselineManifest: () => Promise.resolve(candidate),
         writeManifest: (_manifest, outputPath) => {
           writeFileSync(outputPath, 'current manifest')
@@ -225,6 +399,10 @@ describe('story runner reports and compatibility', () => {
     const safetyHandler = (): void => undefined
     process.once('SIGTERM', safetyHandler)
     try {
+      const candidate = manifest('a'.repeat(64))
+      const session = testSession(snapshotRoot, candidate, {
+        cleanup: () => rm(snapshotRoot, { recursive: true, force: true }),
+      })
       const exitCode = await runStoryTests([], {
         cwd: root,
         env: {},
@@ -232,15 +410,9 @@ describe('story runner reports and compatibility', () => {
           spawns += 1
           return { exited: Promise.resolve(0), kill: (): void => undefined }
         },
-        buildCandidateSnapshot: () =>
-          Promise.resolve({
-            root: snapshotRoot,
-            manifest: manifest('a'.repeat(64)),
-            verifyIntegrity: () => Promise.resolve(),
-            cleanup: () => rm(snapshotRoot, { recursive: true, force: true }),
-          }),
-        buildCandidateManifest: () => Promise.resolve(manifest('a'.repeat(64))),
-        buildBaselineManifest: () => Promise.resolve(manifest('a'.repeat(64))),
+        ...sessionDependencies(session),
+        buildCandidateManifest: () => Promise.resolve(candidate),
+        buildBaselineManifest: () => Promise.resolve(candidate),
         writeManifest: () => {
           process.emit('SIGTERM')
           return Promise.resolve()
@@ -440,6 +612,11 @@ describe('story runner reports and compatibility', () => {
   test('ignores BASE_REF outside explicit compatibility mode and writes before spawning', async () => {
     const actions: string[] = []
     let baselineBuilds = 0
+    const candidate = manifest('a'.repeat(64))
+    const session = testSession('/session', {
+      ...candidate,
+      files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+    })
 
     const exitCode = await runStoryTests([], {
       cwd: '/repo',
@@ -448,13 +625,14 @@ describe('story runner reports and compatibility', () => {
         actions.push('spawn')
         return { exited: Promise.resolve(0), kill: (): void => undefined }
       },
+      ...sessionDependencies(session),
       buildCandidateManifest: () => {
         actions.push('candidate')
-        return Promise.resolve(manifest('a'.repeat(64)))
+        return Promise.resolve(candidate)
       },
       buildBaselineManifest: () => {
         baselineBuilds += 1
-        return Promise.resolve(manifest('a'.repeat(64)))
+        return Promise.resolve(candidate)
       },
       writeManifest: () => {
         actions.push('write')
@@ -467,7 +645,7 @@ describe('story runner reports and compatibility', () => {
 
     expect(exitCode).toBe(0)
     expect(baselineBuilds).toBe(0)
-    expect(actions).toEqual(['candidate', 'write', 'spawn'])
+    expect(actions).toEqual(['write', 'spawn'])
   })
 
   test('manifest-only compares BASE_REF in explicit compat mode, removes stale JUnit, and never spawns', async () => {
@@ -581,16 +759,22 @@ describe('story report lifecycle', () => {
   }
 
   function dependencies(root: string, overrides: Partial<TestRunnerDependencies> = {}): TestRunnerDependencies {
+    const candidate = manifest('a'.repeat(64))
+    const sessionManifest = {
+      ...candidate,
+      files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+    }
     return {
       cwd: root,
       env: {},
       spawn: () => ({ exited: Promise.resolve(0), kill: (): void => undefined }),
-      buildCandidateManifest: () => Promise.resolve(manifest('a'.repeat(64))),
-      buildBaselineManifest: () => Promise.resolve(manifest('a'.repeat(64))),
+      buildCandidateManifest: () => Promise.resolve(candidate),
+      buildBaselineManifest: () => Promise.resolve(candidate),
       writeManifest: writeStoryManifest,
       removeReport: (reportPath) => rm(reportPath, { force: true }),
       discoverStories: () => Promise.resolve(['./tests/stories/a.story.test.ts']),
       discoverContracts: () => Promise.resolve(['./tests/stories/harness/a.test.ts']),
+      ...sessionDependencies(testSession(root, sessionManifest)),
       ...overrides,
     }
   }
@@ -664,6 +848,7 @@ describe('story report lifecycle', () => {
       const exitCode = await runStoryTests(
         ['--baseline-ref=base'],
         dependencies(fixture.root, {
+          ...sessionDependencies(testSession(fixture.root, manifest('a'.repeat(64)))),
           buildBaselineManifest: () => Promise.resolve(manifest('b'.repeat(64))),
         }),
       )
@@ -676,12 +861,16 @@ describe('story report lifecycle', () => {
     }
   })
 
-  test('empty discovery leaves the current candidate manifest and no JUnit', async () => {
+  test('an empty frozen session leaves the current candidate manifest and no JUnit', async () => {
     const fixture = reportFixture()
     try {
+      const candidate = manifest('a'.repeat(64))
       const exitCode = await runStoryTests(
         [],
-        dependencies(fixture.root, { discoverStories: () => Promise.resolve([]) }),
+        dependencies(fixture.root, {
+          ...sessionDependencies(testSession(fixture.root, candidate)),
+          buildCandidateManifest: () => Promise.resolve(candidate),
+        }),
       )
 
       expect(exitCode).toBe(2)
@@ -704,13 +893,9 @@ describe('story report lifecycle', () => {
       const exitCode = await runStoryTests(
         [],
         dependencies(fixture.root, {
-          buildCandidateSnapshot: () =>
-            Promise.resolve({
-              manifest: candidate,
-              root: snapshotRoot,
-              verifyIntegrity: () => Promise.resolve(),
-              cleanup: () => rm(snapshotRoot, { recursive: true }),
-            }),
+          ...sessionDependencies(
+            testSession(snapshotRoot, candidate, { cleanup: () => rm(snapshotRoot, { recursive: true, force: true }) }),
+          ),
           spawn: () => {
             throw new Error('spawn failed')
           },
@@ -747,13 +932,9 @@ describe('story report lifecycle', () => {
       const run = runStoryTests(
         [],
         dependencies(fixture.root, {
-          buildCandidateSnapshot: () =>
-            Promise.resolve({
-              manifest: candidate,
-              root: snapshotRoot,
-              verifyIntegrity: () => Promise.resolve(),
-              cleanup: () => rm(snapshotRoot, { recursive: true }),
-            }),
+          ...sessionDependencies(
+            testSession(snapshotRoot, candidate, { cleanup: () => rm(snapshotRoot, { recursive: true, force: true }) }),
+          ),
           spawn: () => {
             resolveSpawned?.()
             return {
@@ -797,13 +978,12 @@ describe('story report lifecycle', () => {
       const exitCode = await runStoryTests(
         [],
         dependencies(fixture.root, {
-          buildCandidateSnapshot: () =>
-            Promise.resolve({
-              manifest: candidate,
-              root: snapshotRoot,
+          ...sessionDependencies(
+            testSession(snapshotRoot, candidate, {
               verifyIntegrity,
               cleanup: () => rm(snapshotRoot, { recursive: true, force: true }),
             }),
+          ),
           spawn: () => ({
             exited: Promise.resolve().then(() => {
               rmSync(storyPath)
@@ -836,7 +1016,10 @@ describe('story report lifecycle', () => {
       )
 
       expect(exitCode).toBe(0)
-      expect(JSON.parse(readFileSync(fixture.manifestPath, 'utf8'))).toEqual(manifest('a'.repeat(64)))
+      expect(JSON.parse(readFileSync(fixture.manifestPath, 'utf8'))).toEqual({
+        ...manifest('a'.repeat(64)),
+        files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+      })
       expect(readFileSync(fixture.junitPath, 'utf8')).toBe('current junit')
     } finally {
       rmSync(fixture.root, { recursive: true, force: true })
@@ -877,13 +1060,9 @@ describe('story report lifecycle', () => {
       const exitCode = await runStoryTests(
         ['--contracts', '--reporter=dots'],
         dependencies(fixture.root, {
-          buildCandidateSnapshot: () =>
-            Promise.resolve({
-              root: snapshotRoot,
-              manifest: candidate,
-              verifyIntegrity: () => Promise.resolve(),
-              cleanup: () => rm(snapshotRoot, { recursive: true, force: true }),
-            }),
+          ...sessionDependencies(
+            testSession(snapshotRoot, candidate, { cleanup: () => rm(snapshotRoot, { recursive: true, force: true }) }),
+          ),
           discoverStories: () => Promise.reject(new Error('story discovery must not run')),
           discoverContracts: () => Promise.reject(new Error('live contract discovery must not run')),
           spawn: (spawnCommand) => {

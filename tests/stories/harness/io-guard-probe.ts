@@ -211,8 +211,7 @@ scenario('rejects fs promise statfs reads outside root', async ({ world }) => {
 
 scenario('rejects fs callback statfs reads from HOME', ({ world }) => {
   phase(world)
-  const home = process.env['HOME']
-  if (home === undefined) throw new Error('HOME is unavailable')
+  const home = process.env['HOME'] ?? '/papai-story-home-unavailable'
   statfsCallback(home, () => undefined)
 })
 
@@ -266,8 +265,7 @@ scenario('rejects fs watch outside root', ({ world }) => {
 
 scenario('rejects fs watchFile from HOME', ({ world }) => {
   phase(world)
-  const home = process.env['HOME']
-  if (home === undefined) throw new Error('HOME is unavailable')
+  const home = process.env['HOME'] ?? '/papai-story-home-unavailable'
   watchFile(home, (): void => undefined)
 })
 
@@ -305,8 +303,7 @@ scenario('rejects reads from the execution-root parent', ({ world }) => {
 
 scenario('rejects reads from HOME', ({ world }) => {
   phase(world)
-  const home = process.env['HOME']
-  if (home === undefined) throw new Error('HOME is unavailable')
+  const home = process.env['HOME'] ?? '/papai-story-home-unavailable'
   lstatSync(nodePath.join(home, 'papai-story-home-sentinel'))
 })
 

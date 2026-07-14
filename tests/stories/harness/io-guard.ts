@@ -9,7 +9,6 @@ import childProcess from 'node:child_process'
 import dgram from 'node:dgram'
 import fs from 'node:fs'
 import net from 'node:net'
-import os from 'node:os'
 import path from 'node:path'
 import workerThreads from 'node:worker_threads'
 
@@ -453,8 +452,12 @@ export function runWithScenarioIoGuard<T>(
   }
   const executionRoot = process.env['PAPAI_STORY_EXECUTION_ROOT']
   if (executionRoot === undefined) throw new Error('Story I/O guard requires PAPAI_STORY_EXECUTION_ROOT')
+  const runnerTempRoot = process.env['TMPDIR']
+  if (runnerTempRoot === undefined || !path.isAbsolute(runnerTempRoot)) {
+    throw new Error('Story I/O guard requires an absolute runner TMPDIR')
+  }
   boundaryOwner = name
-  const tempRoot = originals.fsMkdtempSync(path.join(os.tmpdir(), 'papai-story-'))
+  const tempRoot = originals.fsMkdtempSync(path.join(runnerTempRoot, 'papai-story-'))
   const boundary: Boundary = {
     name,
     tempRoot: originals.fsRealpathSync(tempRoot),

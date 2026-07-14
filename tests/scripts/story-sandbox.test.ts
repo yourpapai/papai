@@ -313,6 +313,31 @@ describe('Darwin story sandbox', () => {
 })
 
 describe('Linux story sandbox', () => {
+  test('translates canonical session command paths to their declared container mounts', () => {
+    const { request } = fixture()
+    const report = request.reportPaths[0]!
+    const command = buildStorySandboxCommand({
+      ...request,
+      platform: 'linux',
+      command: [
+        request.bunExecutable,
+        'test',
+        `--config=${path.join(request.appRoot, 'scripts/snapshot-bunfig.toml')}`,
+        '--preload',
+        path.join(request.appRoot, 'tests/setup.ts'),
+        '--reporter-outfile',
+        report,
+        path.join(request.appRoot, 'tests/stories/example.story.test.ts'),
+      ],
+    })
+
+    expect(command).toContain('--config=/session/app/scripts/snapshot-bunfig.toml')
+    expect(command).toContain('/session/app/tests/setup.ts')
+    expect(command).toContain('/session/reports/junit.xml')
+    expect(command).toContain('/session/app/tests/stories/example.story.test.ts')
+    expect(command).not.toContain(path.join(request.appRoot, 'tests/setup.ts'))
+  })
+
   test('builds a pinned, capability-restricted Docker command with only declared mounts', () => {
     const { request, liveRoot } = fixture()
 

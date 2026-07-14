@@ -33,17 +33,18 @@ async function run(
 }
 
 function sanitizedEnvironment(source: Record<string, string | undefined>): Record<string, string> {
-  const allowed = ['PATH', 'HOME', 'TMPDIR', 'CI'] as const
+  const allowed = ['PATH', 'CI'] as const
   const environment = Object.fromEntries(
     allowed.flatMap((key) => (source[key] === undefined ? [] : [[key, source[key]] as const])),
   )
+  environment['TMPDIR'] = source['TMPDIR'] ?? os.tmpdir()
   environment['TZ'] = 'UTC'
   environment['PAPAI_STORY_RUNNER'] = '1'
   environment['PAPAI_STORY_EXECUTION_ROOT'] = ROOT
   return environment
 }
 
-// Nested fixtures already run from the immutable snapshot, so they must not construct another snapshot beneath it.
+// guard fixtures run directly to exercise diagnostics; process isolation is covered by the sandbox boundary suite.
 async function runFixture(
   file: string,
   args: readonly string[] = [],
@@ -53,7 +54,7 @@ async function runFixture(
     [
       'bun',
       '--no-env-file',
-      `--config=${path.join(ROOT, 'scripts/snapshot-bunfig.toml')}`,
+      '--config=/dev/null',
       'test',
       '--path-ignore-patterns',
       '',

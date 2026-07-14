@@ -94,14 +94,61 @@ function dockerMount(source: string, target: string, readOnly = false): readonly
   return ['--mount', `type=bind,src=${source},dst=${target}${readOnly ? ',readonly' : ''}`]
 }
 
-function commandArguments(request: StorySandboxRequest, bunExecutable: string): readonly string[] {
+function commandArguments(
+  request: StorySandboxRequest,
+  bunExecutable: string,
+  appRoot: string,
+  dependencyRoot: string,
+  tempRoot: string,
+  reports: readonly string[],
+): readonly string[] {
   if (request.command[0] !== request.bunExecutable && request.command[0] !== bunExecutable) {
     throw new Error('Story sandbox command must begin with the declared bun executable')
   }
   if (request.command.length < 2 || request.command[1] !== 'test') {
     throw new Error('Story sandbox Linux command must invoke bun test')
   }
-  return request.command.slice(1)
+  return request.command
+    .slice(1)
+    .map((argument) => translateLinuxCommandArgument(argument, appRoot, dependencyRoot, tempRoot, reports))
+}
+
+function translateLinuxCommandArgument(
+  argument: string,
+  appRoot: string,
+  dependencyRoot: string,
+  tempRoot: string,
+  reports: readonly string[],
+): string {
+  for (const prefix of ['--config=', '--reporter-outfile=']) {
+    if (argument.startsWith(prefix)) {
+      return `${prefix}${translateLinuxSessionPath(argument.slice(prefix.length), appRoot, dependencyRoot, tempRoot, reports)}`
+    }
+  }
+  if (!path.isAbsolute(argument)) return argument
+  return translateLinuxSessionPath(argument, appRoot, dependencyRoot, tempRoot, reports)
+}
+
+function translateLinuxSessionPath(
+  hostPath: string,
+  appRoot: string,
+  dependencyRoot: string,
+  tempRoot: string,
+  reports: readonly string[],
+): string {
+  const report = reports.find((value) => value === hostPath)
+  if (report !== undefined) return `/session/reports/${path.basename(report)}`
+  for (const [hostRoot, containerRoot] of [
+    [appRoot, '/session/app'],
+    [dependencyRoot, '/session/node_modules'],
+    [tempRoot, '/session/tmp'],
+  ] as const) {
+    const relative = path.relative(hostRoot, hostPath)
+    if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
+      return relative === '' ? containerRoot : path.posix.join(containerRoot, ...relative.split(path.sep))
+    }
+  }
+  throw new Error(`Story sandbox Linux command path is outside the declared session: ${hostPath}`)
 }
 
 export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): readonly string[] {
@@ -111,7 +158,7 @@ export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): rea
   const reports = sessionOutputs(appRoot, tempRoot, request.reportPaths)
   sessionDependencyRoot(appRoot, dependencyRoot)
   const bunExecutable = canonicalFile(request.bunExecutable, 'bun executable')
-  const argumentsForBun = commandArguments(request, bunExecutable)
+  const argumentsForBun = commandArguments(request, bunExecutable, appRoot, dependencyRoot, tempRoot, reports)
   const reportMounts = reports.flatMap((report) => dockerMount(report, `/session/reports/${path.basename(report)}`))
 
   return [
@@ -137,6 +184,10 @@ export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): rea
     'TMPDIR=/session/tmp',
     '--env',
     'HOME=/nonexistent',
+    '--env',
+    'TZ=UTC',
+    '--env',
+    'PAPAI_STORY_RUNNER=1',
     '--env',
     'PAPAI_STORY_EXECUTION_ROOT=/session/app',
     ...dockerMount(appRoot, '/session/app', true),
