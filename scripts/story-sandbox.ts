@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { buildLinuxStorySandboxCommand } from './story-sandbox-linux.js'
 import { buildDarwinStorySandboxCommand } from './story-sandbox-macos.js'
 
 export type StorySandboxRequest = Readonly<{
@@ -17,5 +18,6 @@ export type StorySandboxRequest = Readonly<{
 
 export function buildStorySandboxCommand(request: StorySandboxRequest): readonly string[] {
   if (request.platform === 'darwin') return buildDarwinStorySandboxCommand(request)
+  if (request.platform === 'linux') return buildLinuxStorySandboxCommand(request)
   throw new Error(`Story sandbox backend is not implemented for ${request.platform}`)
 }

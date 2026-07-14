@@ -29,6 +29,7 @@ export type StoryRunnerSession = Readonly<{
   tempRoot: string
   manifest: StoryManifest
   childReporterArguments: readonly string[]
+  childReportPaths: readonly string[]
   reportPaths: readonly string[]
   verifyIntegrity(): Promise<void>
   copyReports(): Promise<void>
@@ -171,6 +172,7 @@ async function materializeSession(
     await fs.mkdir(reportsRoot, { recursive: true, mode: 0o700 })
     await createReportFiles(mapped.reports, fs)
     await fs.symlink(dependency.root, nodeModules, 'dir')
+    const childReportPaths = mapped.reports.map((report) => report.sessionPath)
     const verifyIntegrity = (): Promise<void> =>
       verifySession(appIntegrity, dependency, nodeModules, mapped.reports, fs)
     return {
@@ -179,7 +181,8 @@ async function materializeSession(
       tempRoot,
       manifest: source.manifest,
       childReporterArguments: mapped.argumentsForChild,
-      reportPaths: mapped.reports.map((report) => report.livePath),
+      childReportPaths,
+      reportPaths: childReportPaths,
       verifyIntegrity,
       copyReports: (): Promise<void> => copyReports(mapped.reports, options.root, fs),
       cleanup,

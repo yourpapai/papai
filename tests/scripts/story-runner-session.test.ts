@@ -164,7 +164,8 @@ describe('story runner session', () => {
         '--reporter-outfile',
         path.join(session.root, 'reports/junit.xml'),
       ])
-      expect(session.reportPaths).toEqual([path.join(root, 'reports/stories/junit.xml')])
+      expect(session.childReportPaths).toEqual([path.join(session.root, 'reports/junit.xml')])
+      expect(session.reportPaths).toEqual(session.childReportPaths)
       expect(lstatSync(path.join(session.root, 'reports/junit.xml')).isFile()).toBe(true)
       expect(readdirSync(path.join(session.root, 'reports'))).toEqual(['junit.xml'])
       writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime v2')

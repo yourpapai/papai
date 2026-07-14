@@ -50,6 +50,7 @@
     "test:e2e:watch": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts --watch",
     "test:stories": "bun scripts/test-stories.ts",
     "test:stories:contracts": "bun scripts/test-stories.ts --contracts",
+    "test:stories:sandbox": "bun scripts/test-story-sandbox.ts",
     "test:stories:stress": "bun scripts/test-stories.ts --rerun-each 10 --randomize",
     "test:stories:manifest": "bun scripts/test-stories.ts --manifest-only",
     "test:stories:compat": "bun scripts/test-stories.ts --compat",
