@@ -31,6 +31,13 @@
       "scope": "context"
     },
     {
+      "key": "coding_mode",
+      "label": "Coding mode (off / mention_only / always)",
+      "required": false,
+      "sensitive": false,
+      "scope": "context"
+    },
+    {
       "key": "output_language_default",
       "label": "Default output language (all channels)",
       "required": false,
