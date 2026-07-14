@@ -90,6 +90,21 @@ test('create refuses when the thread already has a live task', async () => {
   expect(called).toBe(false)
 })
 
+test('create refuses when the active pointer has no local record (forge-adopted task)', async () => {
+  const store = new Map<string, string>()
+  const kv = kvOf(store)
+  setActive(kv, CTX_ID, 'forge-1')
+
+  let called = false
+  const tool = createCodingTaskTool(() => {
+    called = true
+    return Promise.resolve(new Response(JSON.stringify({ taskId: 't1' }), { status: 201 }))
+  })
+  const result = await tool.execute({ project: 'demo', prompt: 'again' }, runtimeCtx(store), options())
+  expect(asRecord(result)['error']).toBe('conflict')
+  expect(called).toBe(false)
+})
+
 test('create allows a new task once the prior one is terminal', async () => {
   const store = new Map<string, string>()
   const kv = kvOf(store)

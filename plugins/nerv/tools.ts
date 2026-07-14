@@ -122,8 +122,13 @@ function resolveRepos(runtimeContext: RuntimeContext, names: string[]): Resolved
 function activeTaskConflict(runtimeContext: RuntimeContext): { error: string; message: string } | null {
   const activeId = getActiveTaskId(runtimeContext.kv, runtimeContext.storageContextId)
   if (activeId === null) return null
+  // A set active pointer with no local record still means a task is active in this thread —
+  // it's either one we created here (and should have a record) or a forge-adopted task that
+  // resolveActiveTaskId cached without ever writing a TaskRecord. The pointer is cleared on
+  // terminal (refreshFromTaskDoc) and on cancel (clearActive), so only a record we can
+  // positively read as terminal clears the conflict; a missing record does not.
   const active = readRecord(runtimeContext.kv, activeId)
-  if (active === null || isTerminal(active.status)) return null
+  if (active !== null && isTerminal(active.status)) return null
   return {
     error: 'conflict',
     message: 'A coding task is already running in this thread — cancel it or wait for it to finish.',
