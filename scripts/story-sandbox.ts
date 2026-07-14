@@ -11,7 +11,6 @@ export type StorySandboxBackend = 'darwin-sandbox-exec' | 'linux-docker'
 export type StorySandboxRequest = Readonly<{
   platform: NodeJS.Platform
   appRoot: string
-  dependencyRoot: string
   tempRoot: string
   reportPaths: readonly string[]
   bunExecutable: string

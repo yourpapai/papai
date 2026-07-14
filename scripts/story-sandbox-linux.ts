@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { lstatSync, readlinkSync, realpathSync } from 'node:fs'
+import { lstatSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import type { StorySandboxRequest } from './story-sandbox.js'
@@ -80,14 +80,6 @@ function sessionOutputs(appRoot: string, tempRoot: string, reportPaths: readonly
   return reports
 }
 
-function sessionDependencyRoot(appRoot: string, dependencyRoot: string): void {
-  const link = path.join(path.dirname(appRoot), 'node_modules')
-  const entry = lstatSync(link)
-  if (!entry.isSymbolicLink() || readlinkSync(link) !== dependencyRoot || realpathSync(link) !== dependencyRoot) {
-    throw new Error('Story sandbox dependency root must be the session node_modules target')
-  }
-}
-
 function dockerMount(source: string, target: string, readOnly = false): readonly string[] {
   if (source.includes(',') || source.includes('\0'))
     throw new Error('Story sandbox mount path contains an unsafe Docker separator')
@@ -98,7 +90,6 @@ function commandArguments(
   request: StorySandboxRequest,
   bunExecutable: string,
   appRoot: string,
-  dependencyRoot: string,
   tempRoot: string,
   reports: readonly string[],
 ): readonly string[] {
@@ -108,31 +99,27 @@ function commandArguments(
   if (request.command.length < 2 || request.command[1] !== 'test') {
     throw new Error('Story sandbox Linux command must invoke bun test')
   }
-  return request.command
-    .slice(1)
-    .map((argument) => translateLinuxCommandArgument(argument, appRoot, dependencyRoot, tempRoot, reports))
+  return request.command.slice(1).map((argument) => translateLinuxCommandArgument(argument, appRoot, tempRoot, reports))
 }
 
 function translateLinuxCommandArgument(
   argument: string,
   appRoot: string,
-  dependencyRoot: string,
   tempRoot: string,
   reports: readonly string[],
 ): string {
   for (const prefix of ['--config=', '--reporter-outfile=']) {
     if (argument.startsWith(prefix)) {
-      return `${prefix}${translateLinuxSessionPath(argument.slice(prefix.length), appRoot, dependencyRoot, tempRoot, reports)}`
+      return `${prefix}${translateLinuxSessionPath(argument.slice(prefix.length), appRoot, tempRoot, reports)}`
     }
   }
   if (!path.isAbsolute(argument)) return argument
-  return translateLinuxSessionPath(argument, appRoot, dependencyRoot, tempRoot, reports)
+  return translateLinuxSessionPath(argument, appRoot, tempRoot, reports)
 }
 
 function translateLinuxSessionPath(
   hostPath: string,
   appRoot: string,
-  dependencyRoot: string,
   tempRoot: string,
   reports: readonly string[],
 ): string {
@@ -140,7 +127,6 @@ function translateLinuxSessionPath(
   if (report !== undefined) return `/session/reports/${path.basename(report)}`
   for (const [hostRoot, containerRoot] of [
     [appRoot, '/session/app'],
-    [dependencyRoot, '/session/node_modules'],
     [tempRoot, '/session/tmp'],
   ] as const) {
     const relative = path.relative(hostRoot, hostPath)
@@ -153,12 +139,10 @@ function translateLinuxSessionPath(
 
 export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): readonly string[] {
   const appRoot = canonicalDirectory(request.appRoot, 'app root')
-  const dependencyRoot = canonicalDirectory(request.dependencyRoot, 'dependency root')
   const tempRoot = canonicalDirectory(request.tempRoot, 'temporary root')
   const reports = sessionOutputs(appRoot, tempRoot, request.reportPaths)
-  sessionDependencyRoot(appRoot, dependencyRoot)
   const bunExecutable = canonicalFile(request.bunExecutable, 'bun executable')
-  const argumentsForBun = commandArguments(request, bunExecutable, appRoot, dependencyRoot, tempRoot, reports)
+  const argumentsForBun = commandArguments(request, bunExecutable, appRoot, tempRoot, reports)
   const reportMounts = reports.flatMap((report) => dockerMount(report, `/session/reports/${path.basename(report)}`))
 
   return [
@@ -191,7 +175,6 @@ export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): rea
     '--env',
     'PAPAI_STORY_EXECUTION_ROOT=/session/app',
     ...dockerMount(appRoot, '/session/app', true),
-    ...dockerMount(dependencyRoot, '/session/node_modules', true),
     ...dockerMount(tempRoot, '/session/tmp'),
     ...reportMounts,
     STORY_SANDBOX_LINUX_IMAGE,

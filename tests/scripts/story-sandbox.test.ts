@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -28,22 +29,39 @@ import { classifyStorySandboxDockerMode } from '../../scripts/test-story-sandbox
 
 const roots: string[] = []
 
-function fixture(): Readonly<{ request: StorySandboxRequest; liveRoot: string; outsideRoot: string }> {
+function fixture(): Readonly<{
+  request: StorySandboxRequest
+  dependencyCacheRoot: string
+  liveRoot: string
+  outsideRoot: string
+}> {
   const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-sandbox-'))
   roots.push(root)
   const appRoot = path.join(root, 'session', 'app')
-  const dependencyRoot = path.join(root, 'dependency-cache', 'node_modules')
+  const dependencyCacheRoot = path.join(root, 'dependency-cache', 'node_modules')
+  const dependencyRoot = path.join(appRoot, 'node_modules')
   const tempRoot = path.join(root, 'session', 'tmp')
   const reportsRoot = path.join(root, 'session', 'reports')
   const outsideRoot = path.join(root, 'session', 'outside')
   const liveRoot = path.join(root, 'candidate-worktree')
-  for (const directory of [appRoot, dependencyRoot, tempRoot, reportsRoot, outsideRoot, liveRoot]) {
+  for (const directory of [
+    appRoot,
+    dependencyCacheRoot,
+    dependencyRoot,
+    tempRoot,
+    reportsRoot,
+    outsideRoot,
+    liveRoot,
+  ]) {
     mkdirSync(directory, { recursive: true })
   }
-  symlinkSync(realpathSync(dependencyRoot), path.join(root, 'session', 'node_modules'), 'dir')
   writeFileSync(path.join(appRoot, 'source.txt'), 'captured source')
   writeFileSync(path.join(appRoot, 'package.json'), '{"name":"sandbox-fixture"}')
   writeFileSync(path.join(dependencyRoot, 'dependency.txt'), 'captured dependency')
+  const packageRoot = path.join(dependencyRoot, '@fixture', 'dependency')
+  mkdirSync(packageRoot, { recursive: true })
+  writeFileSync(path.join(packageRoot, 'package.json'), '{"name":"@fixture/dependency","exports":"./index.ts"}')
+  writeFileSync(path.join(packageRoot, 'index.ts'), "export const capturedDependency = 'captured dependency module'\n")
   writeFileSync(path.join(reportsRoot, 'junit.xml'), '')
   writeFileSync(path.join(outsideRoot, 'outside-module.ts'), 'export const outside = true')
   writeFileSync(path.join(liveRoot, 'live.txt'), 'candidate worktree')
@@ -51,12 +69,12 @@ function fixture(): Readonly<{ request: StorySandboxRequest; liveRoot: string; o
     request: {
       platform: 'darwin',
       appRoot: realpathSync(appRoot),
-      dependencyRoot: realpathSync(dependencyRoot),
       tempRoot: realpathSync(tempRoot),
       reportPaths: [realpathSync(path.join(reportsRoot, 'junit.xml'))],
       bunExecutable: realpathSync(process.execPath),
       command: [realpathSync(process.execPath), 'test'],
     },
+    dependencyCacheRoot: realpathSync(dependencyCacheRoot),
     liveRoot,
     outsideRoot,
   }
@@ -169,7 +187,7 @@ describe('Darwin story sandbox', () => {
   })
 
   test('builds a deny-default command from canonical declared paths', () => {
-    const { request, liveRoot } = fixture()
+    const { request, dependencyCacheRoot, liveRoot } = fixture()
 
     const command = buildStorySandboxCommand(request)
     const profile = String(command[2])
@@ -178,13 +196,13 @@ describe('Darwin story sandbox', () => {
     expect(command[1]).toBe('-p')
     expect(typeof command[2]).toBe('string')
     expect([...command.slice(3)]).toEqual([...request.command])
+    expect('dependencyRoot' in request).toBe(false)
     expect(profile).toContain('(version 1)')
     expect(profile).toContain('(deny default)')
     expect(profile).toContain('(deny network*)')
     expect(profile).toContain('(allow process-exec*)')
     expect(profile).not.toContain('(allow process*)')
     expect(profile).toContain(`(subpath "${realpathSync(request.appRoot)}")`)
-    expect(profile).toContain(`(subpath "${realpathSync(request.dependencyRoot)}")`)
     expect(profile).toContain(`(subpath "${realpathSync(request.tempRoot)}")`)
     expect(profile).toContain(`(literal "${realpathSync(request.reportPaths[0]!)}")`)
     expect(profile).toContain('(subpath "/System")')
@@ -192,6 +210,7 @@ describe('Darwin story sandbox', () => {
     expect(profile).toContain('(subpath "/private/var/db/timezone")')
     expect(profile).toContain(`(subpath "${path.dirname(process.execPath)}")`)
     expect(profile).not.toContain(liveRoot)
+    expect(profile).not.toContain(dependencyCacheRoot)
     expect(profile).not.toContain(`(subpath "${os.homedir()}")`)
   })
 
@@ -224,45 +243,70 @@ describe('Darwin story sandbox', () => {
     )
   })
 
-  test('rejects a canonical dependency root that is not the session node_modules target', () => {
-    const { request, liveRoot } = fixture()
-    const liveNodeModules = path.join(liveRoot, 'node_modules')
-    mkdirSync(liveNodeModules)
-
-    expect(() => buildStorySandboxCommand({ ...request, dependencyRoot: realpathSync(liveNodeModules) })).toThrow(
-      'session node_modules',
-    )
-  })
-
-  executableSandboxTest('permits only declared source, dependency, temp, and report access', async () => {
+  test('resolves a scoped app-local dependency outside Seatbelt', async () => {
     const { request } = fixture()
-    const report = request.reportPaths[0]!
+    const packageRoot = path.join(request.appRoot, 'node_modules', '@fixture', 'dependency')
     const probe = writeProbe(
       request,
-      'allowed',
+      'unsandboxed-scoped-import',
       [
         "import { expect, test } from 'bun:test'",
-        "import { writeFileSync } from 'node:fs'",
-        "import path from 'node:path'",
-        "test('reads declared inputs and writes declared outputs', async () => {",
-        "  expect(await Bun.file('source.txt').text()).toBe('captured source')",
-        "  expect(await Bun.file(path.resolve('../node_modules/dependency.txt')).text()).toBe('captured dependency')",
-        `  writeFileSync(${JSON.stringify(path.join(request.tempRoot, 'allowed.txt'))}, 'temporary')`,
-        `  writeFileSync(${JSON.stringify(report)}, '<testsuite/>')`,
-        '})',
+        "import { capturedDependency } from '@fixture/dependency'",
+        "test('loads the app-local scoped package', () => expect(capturedDependency).toBe('captured dependency module'))",
       ].join('\n'),
     )
 
-    const child = spawnSandboxed(request, probe)
+    expect(lstatSync(path.join(request.appRoot, 'node_modules')).isSymbolicLink()).toBe(false)
+    expect(lstatSync(packageRoot).isSymbolicLink()).toBe(false)
+    expect(realpathSync(packageRoot)).toBe(packageRoot)
+    const child = Bun.spawn([...request.command, `./${path.relative(request.appRoot, probe)}`], {
+      cwd: request.appRoot,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
     const [exitCode, stderr, stdout] = await Promise.all([
       child.exited,
       outputText(child.stderr),
       outputText(child.stdout),
     ])
+
     expect(exitCode, `${stdout}\n${stderr}`).toBe(0)
-    expect(existsSync(path.join(request.tempRoot, 'allowed.txt'))).toBe(true)
-    expect(existsSync(report)).toBe(true)
   })
+
+  executableSandboxTest(
+    'permits only app-local source and dependencies plus declared temp and report access',
+    async () => {
+      const { request } = fixture()
+      const report = request.reportPaths[0]!
+      const probe = writeProbe(
+        request,
+        'allowed',
+        [
+          "import { expect, test } from 'bun:test'",
+          "import { writeFileSync } from 'node:fs'",
+          "import path from 'node:path'",
+          "import { capturedDependency } from '@fixture/dependency'",
+          "test('reads declared inputs and writes declared outputs', async () => {",
+          "  expect(await Bun.file('source.txt').text()).toBe('captured source')",
+          "  expect(await Bun.file(path.resolve('node_modules/dependency.txt')).text()).toBe('captured dependency')",
+          "  expect(capturedDependency).toBe('captured dependency module')",
+          `  writeFileSync(${JSON.stringify(path.join(request.tempRoot, 'allowed.txt'))}, 'temporary')`,
+          `  writeFileSync(${JSON.stringify(report)}, '<testsuite/>')`,
+          '})',
+        ].join('\n'),
+      )
+
+      const child = spawnSandboxed(request, probe)
+      const [exitCode, stderr, stdout] = await Promise.all([
+        child.exited,
+        outputText(child.stderr),
+        outputText(child.stdout),
+      ])
+      expect(exitCode, `${stdout}\n${stderr}`).toBe(0)
+      expect(existsSync(path.join(request.tempRoot, 'allowed.txt'))).toBe(true)
+      expect(existsSync(report)).toBe(true)
+    },
+  )
 
   executableSandboxTest('denies native file import outside the app root', async () => {
     const { request, outsideRoot } = fixture()
@@ -366,9 +410,10 @@ describe('Linux story sandbox', () => {
     ]) {
       expect(command).toContain(argument)
     }
-    expect(command.filter((argument) => argument === '--mount')).toHaveLength(4)
+    expect('dependencyRoot' in request).toBe(false)
+    expect(command.filter((argument) => argument === '--mount')).toHaveLength(3)
     expect(command).toContain(`type=bind,src=${request.appRoot},dst=/session/app,readonly`)
-    expect(command).toContain(`type=bind,src=${request.dependencyRoot},dst=/session/node_modules,readonly`)
+    expect(command).not.toContain('dst=/session/node_modules')
     expect(command).toContain(`type=bind,src=${request.tempRoot},dst=/session/tmp`)
     expect(command).toContain(`type=bind,src=${request.reportPaths[0]},dst=/session/reports/junit.xml`)
     expect(command).toContain('TMPDIR=/session/tmp')
@@ -455,9 +500,11 @@ describe('Linux story sandbox', () => {
         "import { expect, test } from 'bun:test'",
         "import { writeFileSync } from 'node:fs'",
         "import path from 'node:path'",
+        "import { capturedDependency } from '@fixture/dependency'",
         "test('can use only declared Docker mounts', async () => {",
         "  expect(await Bun.file('/session/app/source.txt').text()).toBe('captured source')",
-        "  expect(await Bun.file('/session/node_modules/dependency.txt').text()).toBe('captured dependency')",
+        "  expect(await Bun.file('/session/app/node_modules/dependency.txt').text()).toBe('captured dependency')",
+        "  expect(capturedDependency).toBe('captured dependency module')",
         `  await expect(import(${JSON.stringify(`file://${containerOutsideModule}`)})).rejects.toThrow()`,
         `  await expect(Bun.file(${JSON.stringify(containerOutsideFile)}).text()).rejects.toThrow()`,
         '  let outsideGlob: string[] = []',

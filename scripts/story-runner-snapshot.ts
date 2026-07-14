@@ -20,6 +20,7 @@ import {
   writeGeneratedStorySnapshotEntry,
   type GeneratedStorySnapshotEntry,
 } from './story-runner-snapshot-generated.js'
+import type { StorySnapshotOptions } from './story-runner-snapshot-options.js'
 import {
   captureStorySnapshotConstructionSignals,
   type StorySnapshotConstructionSignals,
@@ -33,7 +34,6 @@ export type CandidateStorySnapshot = Readonly<{
   cleanup(): Promise<void>
 }>
 
-type SnapshotOptions = Readonly<{ root: string; seed: number; bunVersion?: string }>
 export type SnapshotDependencies = Readonly<{
   afterRootCreated?(snapshotRoot: string): Promise<void>
   candidateCaptureDependencies?: CandidateStoryManifestDependencies
@@ -241,7 +241,7 @@ async function verifySnapshotRuntimeInput(
 }
 
 export async function createCandidateStorySnapshotSource(
-  options: SnapshotOptions,
+  options: StorySnapshotOptions,
   dependencies: SnapshotDependencies = {},
 ): Promise<CandidateStorySnapshotSource> {
   const captured = await captureCandidateStoryInputs(options, dependencies.candidateCaptureDependencies)
@@ -277,7 +277,7 @@ export async function createCandidateStorySnapshotSource(
 }
 
 export async function createCandidateStorySnapshot(
-  options: SnapshotOptions,
+  options: StorySnapshotOptions,
   dependencies: SnapshotDependencies = {},
 ): Promise<CandidateStorySnapshot> {
   const source = await createCandidateStorySnapshotSource(options, dependencies)

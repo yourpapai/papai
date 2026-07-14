@@ -42,7 +42,6 @@ type RunnerDependencies = Readonly<{
   platform?: NodeJS.Platform
   assertLinuxSandboxBackend?(): void
   bunExecutable?: string
-  resolveSessionDependencyRoot?(session: StoryRunnerSession): string
   buildCandidateManifest(
     options: Readonly<{ root: string; seed: number; sandboxBackend: ReturnType<typeof selectStorySandboxBackend> }>,
   ): Promise<StoryManifest>
@@ -122,7 +121,6 @@ function defaultDependencies(): RunnerDependencies {
     platform: process.platform,
     assertLinuxSandboxBackend: assertLinuxStorySandboxBackend,
     bunExecutable: process.execPath,
-    resolveSessionDependencyRoot: undefined,
     buildCandidateManifest: buildCandidateStoryManifest,
     buildBaselineManifest: buildBaselineStoryManifest,
     writeManifest: writeStoryManifest,

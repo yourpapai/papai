@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import type { ParsedStoryRunnerArguments } from './story-runner-arguments.js'
@@ -22,7 +21,6 @@ export type StoryChildDependencies = Readonly<{
   buildSandboxCommand?(request: StorySandboxRequest): readonly string[]
   platform?: NodeJS.Platform
   bunExecutable?: string
-  resolveSessionDependencyRoot?(session: StoryRunnerSession): string
 }>
 
 function childCommand(
@@ -48,15 +46,6 @@ function childCommand(
   ]
 }
 
-function sessionDependencyRoot(session: StoryRunnerSession, dependencies: StoryChildDependencies): string {
-  const resolve = dependencies.resolveSessionDependencyRoot ?? defaultSessionDependencyRoot
-  return resolve(session)
-}
-
-function defaultSessionDependencyRoot(session: StoryRunnerSession): string {
-  return realpathSync(path.join(session.root, 'node_modules'))
-}
-
 export function spawnStorySandboxedChild(
   parsed: ParsedStoryRunnerArguments,
   dependencies: StoryChildDependencies,
@@ -69,7 +58,6 @@ export function spawnStorySandboxedChild(
   const sandboxCommand = buildSandbox({
     platform: dependencies.platform ?? process.platform,
     appRoot: session.appRoot,
-    dependencyRoot: sessionDependencyRoot(session, dependencies),
     tempRoot: session.tempRoot,
     reportPaths: session.childReportPaths,
     bunExecutable,

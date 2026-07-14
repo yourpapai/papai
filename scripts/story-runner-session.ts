@@ -3,12 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 
 import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, realpath, rm, symlink } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 
 import { hashDependencyTree } from './story-dependency-snapshot-tree.js'
 import type { StoryDependencySnapshot } from './story-dependency-snapshot.js'
 import { acquireCandidateDependencySnapshot } from './story-manifest-dependencies.js'
-import type { StoryManifest } from './story-manifest.js'
+import type { StoryManifest, StorySandboxBackend } from './story-manifest.js'
 import { materializeSessionDependencies } from './story-runner-session-dependencies.js'
 import {
   copyReports,
@@ -23,6 +24,7 @@ import {
   type CandidateStorySnapshotSource,
   type SnapshotDependencies,
 } from './story-runner-snapshot.js'
+import { selectStorySandboxBackend } from './story-sandbox.js'
 
 export type StoryRunnerSession = Readonly<{
   root: string
@@ -41,6 +43,7 @@ export type StoryRunnerSessionOptions = Readonly<{
   root: string
   seed: number
   bunVersion?: string
+  sandboxBackend?: StorySandboxBackend
   reporterArguments: readonly string[]
 }>
 
@@ -49,7 +52,7 @@ export type StoryRunnerSessionDependencies = Readonly<{
     options: Readonly<{ projectRoot: string; cacheRoot: string; bunVersion: string }>,
   ): Promise<StoryDependencySnapshot>
   createSnapshotSource?(
-    options: Readonly<{ root: string; seed: number; bunVersion?: string }>,
+    options: Readonly<{ root: string; seed: number; bunVersion?: string; sandboxBackend?: StorySandboxBackend }>,
     dependencies: SnapshotDependencies,
   ): Promise<CandidateStorySnapshotSource>
   fileSystem?: Partial<SessionFileSystem>
@@ -121,10 +124,17 @@ export async function createStoryRunnerSession(
   dependencies: StoryRunnerSessionDependencies = {},
 ): Promise<StoryRunnerSession> {
   const fs: SessionFileSystem = { ...fileSystem, ...dependencies.fileSystem }
-  const dependency = await acquireSessionDependency(options, dependencies)
+  const selectedOptions = {
+    ...options,
+    sandboxBackend: options.sandboxBackend ?? selectStorySandboxBackend(process.platform),
+  }
+  const dependency = await acquireSessionDependency(selectedOptions, dependencies)
   await verifyDependencySnapshot(dependency)
-  const source = await captureSessionSource(options, dependencies, dependency)
-  return materializeSession(options, source, dependency, fs)
+  const source = await captureSessionSource(selectedOptions, dependencies, dependency)
+  if (source.manifest.sandboxBackend !== selectedOptions.sandboxBackend) {
+    throw new Error('Story session manifest does not record the selected sandbox backend')
+  }
+  return materializeSession(selectedOptions, source, dependency, fs)
 }
 
 function acquireSessionDependency(
@@ -159,7 +169,8 @@ async function materializeSession(
   dependency: StoryDependencySnapshot,
   fs: SessionFileSystem,
 ): Promise<StoryRunnerSession> {
-  const root = await fs.mkdtemp(path.join(options.root, '.papai-story-session-'))
+  const temporaryParent = await fs.realpath(os.tmpdir())
+  const root = await fs.mkdtemp(path.join(temporaryParent, 'papai-story-session-'))
   const cleanup = cleanupSession(root, fs)
   try {
     const appRoot = path.join(root, 'app')

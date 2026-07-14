@@ -67,12 +67,10 @@ function testSession(
 function sessionDependencies(session: StoryRunnerSession): Readonly<{
   createStoryRunnerSession: () => Promise<StoryRunnerSession>
   buildSandboxCommand: (request: StorySandboxRequest) => readonly string[]
-  resolveSessionDependencyRoot: () => string
 }> {
   return {
     createStoryRunnerSession: () => Promise.resolve(session),
     buildSandboxCommand: (request) => request.command,
-    resolveSessionDependencyRoot: () => '/dependencies/node_modules',
   }
 }
 
@@ -158,7 +156,6 @@ describe('story runner reports and compatibility', () => {
         expect(request).toMatchObject({
           platform: 'darwin',
           appRoot: session.appRoot,
-          dependencyRoot: '/dependencies/node_modules',
           tempRoot: session.tempRoot,
           reportPaths: session.childReportPaths,
           bunExecutable: '/bun',
@@ -167,7 +164,6 @@ describe('story runner reports and compatibility', () => {
       }),
       platform: 'darwin' as NodeJS.Platform,
       bunExecutable: '/bun',
-      resolveSessionDependencyRoot: () => '/dependencies/node_modules',
     } as Parameters<typeof runStoryTests>[1]
 
     await expect(runStoryTests([], dependencies)).resolves.toBe(0)
@@ -189,7 +185,6 @@ describe('story runner reports and compatibility', () => {
         return { exited: Promise.resolve(0), kill: (): void => undefined }
       },
       createStoryRunnerSession: () => Promise.resolve(testSession('/session', candidate)),
-      resolveSessionDependencyRoot: () => '/dependencies/node_modules',
       buildCandidateManifest: () => Promise.resolve(candidate),
       buildBaselineManifest: () => Promise.resolve(candidate),
       writeManifest: () => Promise.resolve(),

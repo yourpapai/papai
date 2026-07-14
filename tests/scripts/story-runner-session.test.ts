@@ -14,6 +14,7 @@ import {
   mkdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   readdirSync,
   rmSync,
   statSync,
@@ -183,6 +184,8 @@ describe('story runner session', () => {
       expect(readFileSync(path.join(session.appRoot, 'src/runtime.ts'), 'utf8')).toBe('runtime v1')
       expect(statSync(session.appRoot).mode & 0o222).toBe(0)
       expect(statSync(session.tempRoot).mode & 0o777).toBe(0o700)
+      expect(path.dirname(session.root)).toBe(realpathSync(os.tmpdir()))
+      expect(path.relative(root, session.root).startsWith(`..${path.sep}`)).toBe(true)
       expect(readdirSync(session.root).sort()).toEqual(['app', 'reports', 'tmp'])
       expect(lstatSync(path.join(session.appRoot, 'node_modules')).isDirectory()).toBe(true)
       expect(lstatSync(path.join(session.appRoot, 'node_modules')).isSymbolicLink()).toBe(false)

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { lstatSync, readlinkSync, realpathSync } from 'node:fs'
+import { lstatSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import type { StorySandboxRequest } from './story-sandbox.js'
@@ -56,34 +56,15 @@ function sessionOutputs(appRoot: string, tempRoot: string, reportPaths: readonly
   return reports
 }
 
-function sessionDependencyRoot(appRoot: string, dependencyRoot: string): string {
-  const link = path.join(path.dirname(appRoot), 'node_modules')
-  const entry = lstatSync(link)
-  if (!entry.isSymbolicLink() || readlinkSync(link) !== dependencyRoot || realpathSync(link) !== dependencyRoot) {
-    throw new Error('Story sandbox dependency root must be the session node_modules target')
-  }
-  return link
-}
-
 export function buildDarwinStorySandboxCommand(request: StorySandboxRequest): readonly string[] {
   const appRoot = canonicalDirectory(request.appRoot, 'app root')
-  const dependencyRoot = canonicalDirectory(request.dependencyRoot, 'dependency root')
   const tempRoot = canonicalDirectory(request.tempRoot, 'temporary root')
   const reports = sessionOutputs(appRoot, tempRoot, request.reportPaths)
-  const dependencyLink = sessionDependencyRoot(appRoot, dependencyRoot)
   const bunExecutable = canonicalFile(request.bunExecutable, 'bun executable')
   if (request.command[0] !== request.bunExecutable && request.command[0] !== bunExecutable) {
     throw new Error('Story sandbox command must begin with the declared bun executable')
   }
-  const readRoots = [
-    appRoot,
-    dependencyRoot,
-    dependencyLink,
-    '/System',
-    '/usr/lib',
-    '/private/var/db/timezone',
-    path.dirname(bunExecutable),
-  ]
+  const readRoots = [appRoot, '/System', '/usr/lib', '/private/var/db/timezone', path.dirname(bunExecutable)]
   const profile = [
     '(version 1)',
     '(deny default)',
