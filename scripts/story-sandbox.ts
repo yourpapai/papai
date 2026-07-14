@@ -6,6 +6,8 @@
 import { buildLinuxStorySandboxCommand } from './story-sandbox-linux.js'
 import { buildDarwinStorySandboxCommand } from './story-sandbox-macos.js'
 
+export type StorySandboxBackend = 'darwin-sandbox-exec' | 'linux-docker'
+
 export type StorySandboxRequest = Readonly<{
   platform: NodeJS.Platform
   appRoot: string
@@ -16,8 +18,14 @@ export type StorySandboxRequest = Readonly<{
   command: readonly string[]
 }>
 
+export function selectStorySandboxBackend(platform: NodeJS.Platform): StorySandboxBackend {
+  if (platform === 'darwin') return 'darwin-sandbox-exec'
+  if (platform === 'linux') return 'linux-docker'
+  throw new Error(`Story sandbox backend is not implemented for ${platform}`)
+}
+
 export function buildStorySandboxCommand(request: StorySandboxRequest): readonly string[] {
-  if (request.platform === 'darwin') return buildDarwinStorySandboxCommand(request)
-  if (request.platform === 'linux') return buildLinuxStorySandboxCommand(request)
-  throw new Error(`Story sandbox backend is not implemented for ${request.platform}`)
+  const backend = selectStorySandboxBackend(request.platform)
+  if (backend === 'darwin-sandbox-exec') return buildDarwinStorySandboxCommand(request)
+  return buildLinuxStorySandboxCommand(request)
 }

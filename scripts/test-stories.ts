@@ -18,7 +18,7 @@ import { spawnStorySandboxedChild, type SpawnedStoryChild } from './story-runner
 import { createStoryRunnerSession, type StoryRunnerSession } from './story-runner-session.js'
 import { StorySnapshotInterruptedError } from './story-runner-snapshot.js'
 import { assertLinuxStorySandboxBackend } from './story-sandbox-linux.js'
-import type { StorySandboxRequest } from './story-sandbox.js'
+import { selectStorySandboxBackend, type StorySandboxRequest } from './story-sandbox.js'
 
 export { parseStoryRunnerArguments, STORY_SEED }
 
@@ -34,6 +34,7 @@ type RunnerDependencies = Readonly<{
     options: Readonly<{
       root: string
       seed: number
+      sandboxBackend: ReturnType<typeof selectStorySandboxBackend>
       reporterArguments: readonly string[]
     }>,
   ): Promise<StoryRunnerSession>
@@ -42,7 +43,9 @@ type RunnerDependencies = Readonly<{
   assertLinuxSandboxBackend?(): void
   bunExecutable?: string
   resolveSessionDependencyRoot?(session: StoryRunnerSession): string
-  buildCandidateManifest(options: Readonly<{ root: string; seed: number }>): Promise<StoryManifest>
+  buildCandidateManifest(
+    options: Readonly<{ root: string; seed: number; sandboxBackend: ReturnType<typeof selectStorySandboxBackend> }>,
+  ): Promise<StoryManifest>
   buildBaselineManifest(options: Readonly<{ root: string; ref: string; seed: number }>): Promise<StoryManifest>
   writeManifest(manifest: StoryManifest, outputPath: string): Promise<void>
   removeReport(reportPath: string): Promise<void>
@@ -166,6 +169,10 @@ function explicitBaselineRef(parsed: ParsedStoryRunnerArguments, dependencies: R
   return baselineRef
 }
 
+function selectedStorySandboxBackend(dependencies: RunnerDependencies): ReturnType<typeof selectStorySandboxBackend> {
+  return selectStorySandboxBackend(dependencies.platform ?? process.platform)
+}
+
 async function verifyCompatibility(
   parsed: ParsedStoryRunnerArguments,
   dependencies: RunnerDependencies,
@@ -173,7 +180,12 @@ async function verifyCompatibility(
 ): Promise<void> {
   const baselineRef = explicitBaselineRef(parsed, dependencies)
   const candidateManifest =
-    candidate ?? (await dependencies.buildCandidateManifest({ root: dependencies.cwd, seed: parsed.seed }))
+    candidate ??
+    (await dependencies.buildCandidateManifest({
+      root: dependencies.cwd,
+      seed: parsed.seed,
+      sandboxBackend: selectedStorySandboxBackend(dependencies),
+    }))
   await dependencies.writeManifest(candidateManifest, path.join(dependencies.cwd, STORY_MANIFEST_REPORT_PATH))
   if (!parsed.compat || baselineRef === undefined) return
   const baseline = await dependencies.buildBaselineManifest({
@@ -223,10 +235,12 @@ async function executeStoryTests(
     return 0
   }
   preflightStorySandbox(dependencies)
+  const sandboxBackend = selectedStorySandboxBackend(dependencies)
   const createSession = dependencies.createStoryRunnerSession ?? createStoryRunnerSession
   const session = await createSession({
     root: dependencies.cwd,
     seed: parsed.seed,
+    sandboxBackend,
     reporterArguments: parsed.forwarded,
   })
   return withSessionLifecycle(session, async (lifecycle): Promise<number> => {

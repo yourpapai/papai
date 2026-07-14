@@ -148,8 +148,9 @@ describe('story runner reports and compatibility', () => {
       removeReport: () => Promise.resolve(),
       discoverStories: () => Promise.reject(new Error('live story discovery must not run')),
       discoverContracts: () => Promise.reject(new Error('live contract discovery must not run')),
-      createStoryRunnerSession: () => {
+      createStoryRunnerSession: (options) => {
         actions.push('session')
+        expect(options.sandboxBackend).toBe('darwin-sandbox-exec')
         return Promise.resolve(session)
       },
       buildSandboxCommand: mock((request: StorySandboxRequest) => {

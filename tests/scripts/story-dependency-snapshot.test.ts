@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -115,6 +116,56 @@ describe('story dependency snapshot', () => {
     )
 
     expect(new Set([first.key, packageChanged.key, lockChanged.key, versionChanged.key]).size).toBe(4)
+  })
+
+  test('materializes declared workspace manifests into staging and invalidates the cache when they change', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    const workspace = path.join(projectRoot, 'review-loop')
+    mkdirSync(workspace)
+    writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"snapshot-fixture","workspaces":["review-loop"]}\n')
+    writeFileSync(path.join(workspace, 'package.json'), '{"name":"review-loop","version":"1.0.0"}\n')
+    const stagedWorkspaceManifests: string[] = []
+    const install = (options: StoryDependencyInstallerOptions): Promise<void> => {
+      stagedWorkspaceManifests.push(readFileSync(path.join(options.cwd, 'review-loop/package.json'), 'utf8'))
+      mkdirSync(path.join(options.cwd, 'node_modules/example'), { recursive: true })
+      writeFileSync(path.join(options.cwd, 'node_modules/example/index.js'), 'export default 1\n')
+      return Promise.resolve()
+    }
+
+    const first = await acquireStoryDependencySnapshot({ projectRoot, cacheRoot, bunVersion: '1.2.3' }, { install })
+    writeFileSync(path.join(workspace, 'package.json'), '{"name":"review-loop","version":"2.0.0"}\n')
+    const changed = await acquireStoryDependencySnapshot({ projectRoot, cacheRoot, bunVersion: '1.2.3' }, { install })
+
+    expect(first.key).not.toBe(changed.key)
+    expect(stagedWorkspaceManifests).toEqual([
+      '{"name":"review-loop","version":"1.0.0"}\n',
+      '{"name":"review-loop","version":"2.0.0"}\n',
+    ])
+  })
+
+  test('rejects escaping and symlinked workspace paths before dependency installation', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"snapshot-fixture","workspaces":["../outside"]}\n')
+
+    await expect(
+      acquireStoryDependencySnapshot(
+        { projectRoot, cacheRoot, bunVersion: '1.2.3' },
+        { install: (): Promise<void> => Promise.reject(new Error('installer must not run')) },
+      ),
+    ).rejects.toThrow('Unsafe story dependency workspace path')
+
+    const outside = path.join(path.dirname(projectRoot), 'outside-workspace')
+    mkdirSync(outside)
+    writeFileSync(path.join(outside, 'package.json'), '{"name":"outside"}\n')
+    writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"snapshot-fixture","workspaces":["review-loop"]}\n')
+    symlinkSync(outside, path.join(projectRoot, 'review-loop'), 'dir')
+
+    await expect(
+      acquireStoryDependencySnapshot(
+        { projectRoot, cacheRoot, bunVersion: '1.2.3' },
+        { install: (): Promise<void> => Promise.reject(new Error('installer must not run')) },
+      ),
+    ).rejects.toThrow('Unsafe story dependency workspace path')
   })
 
   test('validates a cache hit without invoking the installer', async () => {

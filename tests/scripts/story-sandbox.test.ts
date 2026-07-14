@@ -418,6 +418,11 @@ describe('Linux story sandbox', () => {
         throw new Error('daemon unavailable')
       }),
     ).toThrow('daemon unavailable')
+    expect(() =>
+      classifyStorySandboxDockerMode({ PAPAI_REQUIRE_STORY_SANDBOX: '1' }, () => {
+        throw new Error('daemon unavailable')
+      }),
+    ).toThrow('daemon unavailable')
     expect(skipOptionalLinuxDockerTest({})).toBe(true)
     expect(skipOptionalLinuxDockerTest({ PAPAI_STORY_SANDBOX_DOCKER_MODE: 'available' })).toBe(false)
     expect(skipOptionalLinuxDockerTest({ CI: 'true' })).toBe(false)

@@ -28,6 +28,7 @@ import {
 import { dependencySnapshotKey } from './story-dependency-snapshot-key.js'
 import { ensurePrivateDependencyCacheRoot } from './story-dependency-snapshot-root.js'
 import { hashDependencyTree, safeReadDependencyFile } from './story-dependency-snapshot-tree.js'
+import { loadStoryWorkspaceManifests, type StoryWorkspaceManifest } from './story-dependency-snapshot-workspaces.js'
 
 export type { StoryDependencyInstallerOptions } from './story-dependency-snapshot-installer.js'
 export type StoryDependencySnapshot = Readonly<{ key: string; root: string; treeHash: string }>
@@ -164,10 +165,11 @@ async function createStagingEntry(
   staging: string,
   packageBytes: Uint8Array,
   lockBytes: Uint8Array,
+  workspaceManifests: readonly StoryWorkspaceManifest[],
   expected: Readonly<{ key: string; bunVersion: string }>,
   deps: Dependencies,
 ): Promise<void> {
-  await installStagedDependencies(staging, packageBytes, lockBytes, deps)
+  await installStagedDependencies(staging, packageBytes, lockBytes, workspaceManifests, deps)
   const nodeModules = path.join(staging, 'node_modules')
   const treeHash = await hashDependencyTree(nodeModules, deps)
   const manifest: EntryManifest = { version: 1, ...expected, treeHash }
@@ -185,7 +187,8 @@ export async function acquireStoryDependencySnapshot(
     deps,
   )
   const lockBytes = await safeReadDependencyFile(path.join(options.projectRoot, 'bun.lock'), 'bun.lock', deps)
-  const key = dependencySnapshotKey(packageBytes, lockBytes, options.bunVersion)
+  const workspaceManifests = await loadStoryWorkspaceManifests(options.projectRoot, packageBytes, deps)
+  const key = dependencySnapshotKey(packageBytes, lockBytes, options.bunVersion, workspaceManifests)
   const expected = { key, bunVersion: options.bunVersion }
   const entryRoot = path.join(options.cacheRoot, key)
   await ensurePrivateDependencyCacheRoot(options.cacheRoot, deps)
@@ -198,7 +201,7 @@ export async function acquireStoryDependencySnapshot(
   await deps.mkdir(staging, { recursive: true, mode: 0o700 })
   let published = false
   try {
-    await createStagingEntry(staging, packageBytes, lockBytes, expected, deps)
+    await createStagingEntry(staging, packageBytes, lockBytes, workspaceManifests, expected, deps)
     await sealDependencyCacheTree(staging, deps)
     await verifyEntry(staging, expected, deps)
     try {

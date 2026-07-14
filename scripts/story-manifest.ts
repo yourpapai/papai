@@ -26,11 +26,14 @@ import {
   acquireCandidateDependencySnapshot,
   type CandidateStoryManifestDependencies,
 } from './story-manifest-dependencies.js'
+import { candidateManifestEvidence } from './story-manifest-evidence.js'
 import { hashRuntimeTree } from './story-manifest-runtime.js'
 import { extractStoryScenarios } from './story-manifest-scenarios.js'
 import { removeStoryReport, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
+import { selectStorySandboxBackend, type StorySandboxBackend } from './story-sandbox.js'
 
 export { parseStoryManifestArguments } from './story-manifest-arguments.js'
+export type { StorySandboxBackend } from './story-sandbox.js'
 
 const FILE_HASH = /^[a-f0-9]{64}$/u
 
@@ -66,6 +69,7 @@ const DependencySnapshotSchema = z.strictObject({
   treeHash: z.string().regex(FILE_HASH),
   bunVersion: z.string().min(1),
 })
+const SandboxBackendSchema = z.enum(['darwin-sandbox-exec', 'linux-docker'])
 
 export const StoryManifestSchema = z.strictObject({
   version: z.literal(4),
@@ -76,13 +80,19 @@ export const StoryManifestSchema = z.strictObject({
   files: z.array(StoryFileSchema),
   runtimeInputs: RuntimeInputManifestSchema,
   dependencySnapshot: DependencySnapshotSchema.optional(),
+  sandboxBackend: SandboxBackendSchema.optional(),
   scenarios: z.array(StoryScenarioSchema),
 })
 
 export type StoryManifest = z.infer<typeof StoryManifestSchema>
 type StoryFile = z.infer<typeof StoryFileSchema>
 type StoryScenario = z.infer<typeof StoryScenarioSchema>
-type ManifestOptions = Readonly<{ root: string; seed: number; bunVersion?: string }>
+type ManifestOptions = Readonly<{
+  root: string
+  seed: number
+  bunVersion?: string
+  sandboxBackend?: StorySandboxBackend
+}>
 type BaselineOptions = ManifestOptions & Readonly<{ ref: string }>
 export type { CandidateStoryManifestDependencies } from './story-manifest-dependencies.js'
 export type { LoadedRuntimeInput, LoadedStoryFile } from './story-manifest-candidate.js'
@@ -140,6 +150,7 @@ function assembleManifest(
     bunVersion: string
     seed: number
     dependencySnapshot?: Awaited<ReturnType<typeof acquireCandidateDependencySnapshot>>
+    sandboxBackend?: StorySandboxBackend
   }>,
 ): StoryManifest {
   const files = loaded.map((file): StoryFile => ({ path: file.path, sha256: sha256(file.bytes) }))
@@ -155,16 +166,6 @@ function assembleManifest(
     if (scenarios[index - 1]?.id === scenarios[index]?.id)
       throw new Error(`Duplicate scenario id: ${scenarios[index]?.id}`)
   }
-  const dependencySnapshot =
-    metadata.dependencySnapshot === undefined
-      ? {}
-      : {
-          dependencySnapshot: {
-            key: metadata.dependencySnapshot.key,
-            treeHash: metadata.dependencySnapshot.treeHash,
-            bunVersion: metadata.bunVersion,
-          },
-        }
   return StoryManifestSchema.parse({
     version: 4,
     ...metadata,
@@ -175,7 +176,7 @@ function assembleManifest(
       directories: runtimeDirectories,
       files: runtimeFiles,
     },
-    ...dependencySnapshot,
+    ...candidateManifestEvidence(metadata),
     scenarios,
   })
 }
@@ -203,6 +204,7 @@ export async function captureCandidateStoryInputs(
     bunVersion,
     seed: options.seed,
     dependencySnapshot,
+    sandboxBackend: options.sandboxBackend ?? selectStorySandboxBackend(process.platform),
   })
   return { manifest, files, runtimeInputs: { manifest: manifest.runtimeInputs, ...runtimeInputs } }
 }

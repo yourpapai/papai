@@ -4,16 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -21,8 +12,9 @@ import type { StoryManifest } from '../../../scripts/story-manifest.js'
 import { spawnStorySandboxedChild, type SpawnedStoryChild } from '../../../scripts/story-runner-child.js'
 import type { StoryRunnerSession } from '../../../scripts/story-runner-session.js'
 import { assertLinuxStorySandboxBackend } from '../../../scripts/story-sandbox-linux.js'
+import { buildStorySandboxCommand } from '../../../scripts/story-sandbox.js'
+import { classifyStorySandboxDockerMode } from '../../../scripts/test-story-sandbox.js'
 
-const fixtureSource = path.resolve('tests/stories/harness/process-boundary.fixture.ts')
 const operations = ['file-import', 'bun-stat', 'bun-glob', 'network', 'stream-race', 'cp-dereference', 'write'] as const
 const roots: string[] = []
 const emptyHash = '0'.repeat(64)
@@ -42,18 +34,71 @@ type Operation = (typeof operations)[number]
 type SandboxedChild = SpawnedStoryChild &
   Readonly<{ stdout: ReadableStream<Uint8Array>; stderr: ReadableStream<Uint8Array> }>
 
-function dockerAvailable(): boolean {
-  try {
-    assertLinuxStorySandboxBackend()
-    return true
-  } catch {
-    return false
-  }
+const dockerMode = classifyStorySandboxDockerMode(process.env, assertLinuxStorySandboxBackend)
+const dockerTest = test.skipIf(dockerMode === 'unavailable')
+
+function renderFixture(outsideRoot: string, directNetworkUrl: string, sandboxNetworkUrl: string): string {
+  return [
+    "import { test, expect } from 'bun:test'",
+    "import { createReadStream } from 'node:fs'",
+    "import { cp, readFile, rm, symlink, writeFile } from 'node:fs/promises'",
+    `const outside = ${JSON.stringify(outsideRoot)}`,
+    `const directNetworkUrl = ${JSON.stringify(directNetworkUrl)}`,
+    `const sandboxNetworkUrl = ${JSON.stringify(sandboxNetworkUrl)}`,
+    "const temporary = process.env['TMPDIR']",
+    "const executionRoot = process.env['PAPAI_STORY_EXECUTION_ROOT']",
+    "if (temporary === undefined || executionRoot === undefined) throw new Error('missing process-boundary fixture environment')",
+    "const networkUrl = executionRoot === '/session/app' ? sandboxNetworkUrl : directNetworkUrl",
+    'function readStream(target: string): Promise<string> {',
+    '  return new Promise((resolve, reject) => {',
+    '    const chunks: Buffer[] = []',
+    '    const stream = createReadStream(target)',
+    "    stream.on('data', (chunk: Buffer) => chunks.push(chunk))",
+    "    stream.once('error', reject)",
+    "    stream.once('end', () => resolve(Buffer.concat(chunks).toString('utf8')))",
+    '  })',
+    '}',
+    "test('file-import', async () => {",
+    '  const module = await import(`file://${outside}/external-module.ts`)',
+    "  expect(module.outside).toBe('host-sentinel')",
+    '})',
+    "test('bun-stat', async () => {",
+    '  expect((await Bun.file(`${outside}/external.txt`).stat()).size).toBeGreaterThan(0)',
+    '})',
+    "test('bun-glob', async () => {",
+    '  const paths: string[] = []',
+    "  for await (const pathname of new Bun.Glob('*').scan({ cwd: outside })) paths.push(pathname)",
+    "  expect(paths).toContain('external.txt')",
+    '})',
+    "test('network', async () => {",
+    "  expect(await fetch(networkUrl).then((response) => response.text())).toBe('parent-network-sentinel')",
+    '})',
+    "test('stream-race', async () => {",
+    '  const victim = `${temporary}/stream-race.txt`',
+    "  await Bun.write(victim, 'safe')",
+    '  await rm(victim)',
+    '  await symlink(`${outside}/external.txt`, victim)',
+    "  expect(await readStream(victim)).toBe('host-sentinel')",
+    '})',
+    "test('cp-dereference', async () => {",
+    '  const source = `${temporary}/copy-link`',
+    '  const destination = `${temporary}/copy-result.txt`',
+    '  await symlink(`${outside}/external.txt`, source)',
+    '  await cp(source, destination, { dereference: true })',
+    "  expect(await readFile(destination, 'utf8')).toBe('host-sentinel')",
+    '})',
+    "test('write', async () => {",
+    '  const target = `${executionRoot}/blocked.txt`',
+    "  await writeFile(target, 'written outside declared outputs')",
+    "  expect(await readFile(target, 'utf8')).toBe('written outside declared outputs')",
+    '})',
+  ].join('\n')
 }
 
-const dockerTest = test.skipIf(!dockerAvailable())
-
-function createSession(): Readonly<{ session: StoryRunnerSession; fixture: string; appRoot: string }> {
+function createSession(
+  directNetworkUrl: string,
+  sandboxNetworkUrl: string,
+): Readonly<{ session: StoryRunnerSession; fixture: string; appRoot: string }> {
   const root = mkdtempSync(path.join(os.tmpdir(), 'papai-process-boundary-'))
   roots.push(root)
   const appRoot = path.join(root, 'app')
@@ -68,12 +113,12 @@ function createSession(): Readonly<{ session: StoryRunnerSession; fixture: strin
   mkdirSync(tempRoot, { recursive: true, mode: 0o700 })
   mkdirSync(reportsRoot, { recursive: true, mode: 0o700 })
   mkdirSync(outsideRoot, { recursive: true, mode: 0o700 })
-  writeFileSync(path.join(outsideRoot, 'external.txt'), 'outside sandbox session')
-  writeFileSync(path.join(outsideRoot, 'external-module.ts'), 'export const outside = true')
+  writeFileSync(path.join(outsideRoot, 'external.txt'), 'host-sentinel')
+  writeFileSync(path.join(outsideRoot, 'external-module.ts'), "export const outside = 'host-sentinel'")
   writeFileSync(path.join(appRoot, 'scripts/snapshot-bunfig.toml'), '[test]\ntimeout = 15000\n')
   writeFileSync(path.join(appRoot, 'tests/setup.ts'), '')
   writeFileSync(path.join(appRoot, 'tests/mock-reset.ts'), '')
-  writeFileSync(fixture, readFileSync(fixtureSource))
+  writeFileSync(fixture, renderFixture(realpathSync(outsideRoot), directNetworkUrl, sandboxNetworkUrl))
   writeFileSync(report, '')
   symlinkSync(dependencyRoot, path.join(root, 'node_modules'), 'dir')
   const canonicalAppRoot = realpathSync(appRoot)
@@ -95,6 +140,12 @@ function createSession(): Readonly<{ session: StoryRunnerSession; fixture: strin
   }
 }
 
+function addHostGateway(command: readonly string[]): readonly string[] {
+  const image = command.findIndex((argument) => argument.startsWith('docker.io/oven/bun:'))
+  if (image === -1) throw new Error('Story sandbox command has no Docker image')
+  return [...command.slice(0, image), '--add-host', 'host.docker.internal:host-gateway', ...command.slice(image)]
+}
+
 function spawnFixture(operation: Operation, session: StoryRunnerSession, fixture: string): SandboxedChild {
   let child: SandboxedChild | undefined
   const spawned = spawnStorySandboxedChild(
@@ -108,6 +159,7 @@ function spawnFixture(operation: Operation, session: StoryRunnerSession, fixture
     {
       env: process.env,
       platform: 'linux',
+      buildSandboxCommand: (request) => addHostGateway(buildStorySandboxCommand(request)),
       spawn: (command, options) => {
         const process = Bun.spawn([...command], { ...options, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
         if (!(process.stdout instanceof ReadableStream) || !(process.stderr instanceof ReadableStream)) {
@@ -130,6 +182,41 @@ function spawnFixture(operation: Operation, session: StoryRunnerSession, fixture
   return child
 }
 
+function spawnDirectFixture(operation: Operation, fixture: string, session: StoryRunnerSession): SandboxedChild {
+  const childProcess = Bun.spawn(
+    [
+      process.execPath,
+      'test',
+      '--no-env-file',
+      '--path-ignore-patterns',
+      '',
+      '--test-name-pattern',
+      `^${operation}$`,
+      fixture,
+    ],
+    {
+      cwd: session.appRoot,
+      env: {
+        ...process.env,
+        PAPAI_STORY_EXECUTION_ROOT: session.appRoot,
+        TMPDIR: session.tempRoot,
+      },
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  if (!(childProcess.stdout instanceof ReadableStream) || !(childProcess.stderr instanceof ReadableStream)) {
+    throw new Error('Direct control child must expose captured output streams')
+  }
+  return {
+    exited: childProcess.exited,
+    kill: (signal) => childProcess.kill(signal),
+    stdout: childProcess.stdout,
+    stderr: childProcess.stderr,
+  }
+}
+
 function output(stream: ReadableStream<Uint8Array>): Promise<string> {
   return new Response(stream).text()
 }
@@ -141,16 +228,35 @@ afterEach(() => {
 describe('story process sandbox boundary', () => {
   for (const operation of operations) {
     dockerTest(`rejects ${operation} through the real story child launcher`, async () => {
-      const { session, fixture, appRoot } = createSession()
-      const child = spawnFixture(operation, session, fixture)
-      const [exitCode, stderr, stdout] = await Promise.all([child.exited, output(child.stderr), output(child.stdout)])
+      const server = Bun.serve({
+        hostname: '0.0.0.0',
+        port: 0,
+        fetch: () => new Response('parent-network-sentinel'),
+      })
+      try {
+        const { session, fixture, appRoot } = createSession(
+          `http://127.0.0.1:${server.port}/`,
+          `http://host.docker.internal:${server.port}/`,
+        )
+        const direct = spawnDirectFixture(operation, fixture, session)
+        const [directExitCode, directStderr, directStdout] = await Promise.all([
+          direct.exited,
+          output(direct.stderr),
+          output(direct.stdout),
+        ])
+        expect(directExitCode, `${directStdout}\n${directStderr}`).toBe(0)
+        rmSync(path.join(appRoot, 'blocked.txt'), { force: true })
+        const child = spawnFixture(operation, session, fixture)
+        const [exitCode, stderr, stdout] = await Promise.all([child.exited, output(child.stderr), output(child.stdout)])
+        const sandboxOutput = `${stdout}\n${stderr}`
 
-      expect(exitCode, `${stdout}\n${stderr}`).not.toBe(0)
-      expect(`${stdout}\n${stderr}`).toMatch(
-        /sandbox|permission denied|operation not permitted|erofs|enoent|network|fetch|not found/iu,
-      )
-      expect(`${stdout}\n${stderr}`).not.toContain('UNSAFE:')
-      expect(existsSync(path.join(appRoot, 'blocked.txt'))).toBe(false)
+        expect(exitCode, sandboxOutput).not.toBe(0)
+        expect(sandboxOutput).toContain(`(fail) ${operation}`)
+        expect(sandboxOutput).not.toContain('missing process-boundary fixture environment')
+        expect(existsSync(path.join(appRoot, 'blocked.txt'))).toBe(false)
+      } finally {
+        await server.stop(true)
+      }
     })
   }
 })

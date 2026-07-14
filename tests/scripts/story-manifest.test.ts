@@ -28,7 +28,12 @@ const TEST_DEPENDENCY_SNAPSHOT: StoryDependencySnapshot = {
 }
 
 function buildCandidateStoryManifest(
-  options: Readonly<{ root: string; seed: number; bunVersion?: string }>,
+  options: Readonly<{
+    root: string
+    seed: number
+    bunVersion?: string
+    sandboxBackend?: 'darwin-sandbox-exec' | 'linux-docker'
+  }>,
   dependencySnapshot: StoryDependencySnapshot = TEST_DEPENDENCY_SNAPSHOT,
 ): Promise<Awaited<ReturnType<typeof acquireCandidateStoryManifest>>> {
   return acquireCandidateStoryManifest(options, {
@@ -293,6 +298,18 @@ describe('story manifest', () => {
     })
     expect(baseline.dependencySnapshot).toBeUndefined()
     expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
+  })
+
+  test('captures the selected sandbox backend while omitting it from historical baselines', async () => {
+    const root = fixture()
+    const ref = git(root, 'rev-parse', 'HEAD')
+    const candidate = await buildCandidateStoryManifest({ root, seed: 41021, sandboxBackend: 'linux-docker' })
+    const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021 })
+
+    expect(candidate.sandboxBackend).toBe('linux-docker')
+    expect(baseline.sandboxBackend).toBeUndefined()
+    expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
+    expect(() => compareStoryManifests(candidate, baseline)).not.toThrow()
   })
 
   test('rejects a baseline ref without every required runtime input', async () => {

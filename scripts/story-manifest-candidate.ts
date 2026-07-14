@@ -31,7 +31,9 @@ export type CandidateCaptureDependencies = Readonly<{
 export function isFrozenEnforcementPath(filePath: string): boolean {
   return (
     filePath === 'scripts/test-stories.ts' ||
-    /^scripts\/story-dependency-snapshot(?:-(?:cleanup|installer|key|root|symlink|tree))?\.ts$/u.test(filePath) ||
+    /^scripts\/story-dependency-snapshot(?:-(?:cleanup|installer|key|root|symlink|tree|workspaces))?\.ts$/u.test(
+      filePath,
+    ) ||
     filePath === 'scripts/story-manifest-arguments.ts' ||
     filePath === 'scripts/story-manifest-dependencies.ts' ||
     filePath === 'scripts/story-reports.ts' ||

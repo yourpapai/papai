@@ -5,6 +5,8 @@
 
 import path from 'node:path'
 
+import type { StoryWorkspaceManifest } from './story-dependency-snapshot-workspaces.js'
+
 export type StoryDependencyInstallerOptions = Readonly<{
   args: readonly string[]
   cwd: string
@@ -34,6 +36,7 @@ export async function installStagedDependencies(
   staging: string,
   packageBytes: Uint8Array,
   lockBytes: Uint8Array,
+  workspaceManifests: readonly StoryWorkspaceManifest[],
   deps: StagingInstallerDependencies,
 ): Promise<void> {
   const env = installEnvironment(staging)
@@ -44,6 +47,12 @@ export async function installStagedDependencies(
   )
   await deps.writeFile(path.join(staging, 'package.json'), packageBytes)
   await deps.writeFile(path.join(staging, 'bun.lock'), lockBytes)
+  await Promise.all(
+    workspaceManifests.map(async (workspace) => {
+      await deps.mkdir(path.dirname(path.join(staging, workspace.path)), { recursive: true, mode: 0o700 })
+      await deps.writeFile(path.join(staging, workspace.path), workspace.bytes)
+    }),
+  )
   await deps.install({
     args: ['install', '--frozen-lockfile', '--backend=copyfile'],
     cwd: staging,
@@ -58,5 +67,16 @@ export async function installStagedDependencies(
       .map((directory) => deps.rm(directory, { recursive: true, force: true })),
     deps.rm(path.join(staging, 'package.json'), { recursive: true, force: true }),
     deps.rm(path.join(staging, 'bun.lock'), { recursive: true, force: true }),
+    ...workspaceManifests.map((workspace) =>
+      deps.rm(path.join(staging, workspace.path), { recursive: true, force: true }),
+    ),
   ])
+  const workspaceDirectories = [
+    ...new Set(workspaceManifests.map((workspace) => path.dirname(path.join(staging, workspace.path)))),
+  ]
+  workspaceDirectories.sort((left, right) => right.length - left.length)
+  await workspaceDirectories.reduce(
+    (serial, directory) => serial.then(() => deps.rm(directory, { recursive: true, force: true })),
+    Promise.resolve(),
+  )
 }

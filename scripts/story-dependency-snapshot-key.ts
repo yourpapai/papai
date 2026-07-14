@@ -9,9 +9,18 @@ function frame(bytes: Uint8Array): Uint8Array {
   return Buffer.concat([Buffer.from(String(bytes.byteLength)), Buffer.from('\0'), bytes, Buffer.from('\0')])
 }
 
-export function dependencySnapshotKey(packageBytes: Uint8Array, lockBytes: Uint8Array, bunVersion: string): string {
+export function dependencySnapshotKey(
+  packageBytes: Uint8Array,
+  lockBytes: Uint8Array,
+  bunVersion: string,
+  workspaceManifests: ReadonlyArray<Readonly<{ path: string; bytes: Uint8Array }>> = [],
+): string {
   const hash = createHash('sha256')
-  hash.update('papai-story-dependency-key-v1\0')
+  hash.update('papai-story-dependency-key-v2\0')
   for (const value of [packageBytes, lockBytes, Buffer.from(bunVersion)]) hash.update(frame(value))
+  for (const workspace of workspaceManifests) {
+    hash.update(frame(Buffer.from(workspace.path)))
+    hash.update(frame(workspace.bytes))
+  }
   return hash.digest('hex')
 }
