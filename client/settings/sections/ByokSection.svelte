@@ -9,14 +9,15 @@
   import Btn from '../../shared/ui/Btn.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
-  import Input from '../../shared/ui/Input.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
-  import Secret from '../../shared/ui/Secret.svelte'
-  import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
-  import type { ByokField, ByokResponse } from '../fetcher-schemas.js'
-  import { fetchByok, patchByok, toggleByok } from '../fetchers.js'
-  import { maskSecret } from '../lib/mask-secret.js'
+  import ProviderForm from '../components/ProviderForm.svelte'
+  import RoleBindingBlock from '../components/RoleBindingBlock.svelte'
+  import VerificationPill from '../components/VerificationPill.svelte'
+  import type { ByokResponse } from '../fetcher-schemas.js'
+  import type { LlmRoleBindings, RoleBinding } from '../fetcher-schemas-llm-providers.js'
+  import { fetchByok, toggleByok } from '../fetchers.js'
+  import { deleteByokProviderAction, setByokRolesAction, upsertByokProviderAction } from '../byok-provider-fetchers.js'
 
   interface Props {
     contextId: string
@@ -25,18 +26,16 @@
   let { contextId }: Props = $props()
 
   let data: ByokResponse | null = $state(null)
+  let loadedContextId: string | null = $state(null)
   let error: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
-  let savingKey: string | null = $state(null)
-  let toggling: boolean = $state(false)
-  let drafts: Record<string, string> = $state({})
-  let replacing: Record<string, boolean> = $state({})
-  let loadedContextId: string | null = $state(null)
+  let toggling = $state(false)
+  let saving = $state(false)
+  let showAddForm = $state(false)
+  let draftRoles: LlmRoleBindings | null = $state(null)
 
   const currentData = $derived(loadedContextId === contextId ? data : null)
-  const fields = $derived(currentData?.fields ?? [])
-  const missing = $derived(currentData?.missing ?? [])
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
 
   type PillTone = 'accent' | 'warn' | 'danger' | 'mute'
@@ -49,27 +48,21 @@
     if (currentData === null) return null
     if (!currentData.enabled) return { tone: 'mute', dot: false, text: 'Central credentials' }
     if (unreadableError !== null) return { tone: 'danger', dot: true, text: 'Unreadable' }
-    if (!currentData.complete) return { tone: 'warn', dot: true, text: 'Incomplete' }
+    if (currentData.providers.length === 0) return { tone: 'warn', dot: true, text: 'No providers' }
     return { tone: 'accent', dot: true, text: 'Active' }
   })
 
-  function isDirty(field: ByokField): boolean {
-    return (drafts[field.key] ?? '') !== (field.sensitive ? '' : field.value)
-  }
-
-  function initialDrafts(nextFields: ByokField[]): Record<string, string> {
-    return Object.fromEntries(nextFields.map((field) => [field.key, field.sensitive && field.hasValue ? '' : field.value]))
-  }
+  const rolesDirty = $derived(
+    currentData !== null &&
+      draftRoles !== null &&
+      JSON.stringify(draftRoles) !== JSON.stringify(currentData.roles),
+  )
 
   function clearContextState(): void {
     data = null
-    drafts = {}
-    replacing = {}
     loadedContextId = null
-  }
-
-  function displaySecret(value: string): string {
-    return value.includes('*') ? maskSecret(value) : '••••••••'
+    draftRoles = null
+    showAddForm = false
   }
 
   async function load(id: string): Promise<boolean> {
@@ -82,49 +75,14 @@
       if (id !== contextId) return false
       data = next
       loadedContextId = id
-      drafts = initialDrafts(next.fields)
-      replacing = {}
+      draftRoles = JSON.parse(JSON.stringify(next.roles)) as LlmRoleBindings
+      showAddForm = false
       return true
     } catch (err) {
       if (id === contextId) error = err instanceof Error ? err.message : String(err)
       return false
     } finally {
       if (id === contextId) loading = false
-    }
-  }
-
-  function updateDraft(key: string, value: string): void {
-    drafts = { ...drafts, [key]: value }
-  }
-
-  function replaceSecret(key: string): void {
-    replacing = { ...replacing, [key]: true }
-    updateDraft(key, '')
-  }
-
-  function cancelReplace(key: string): void {
-    const { [key]: _, ...rest } = replacing
-    replacing = rest
-    updateDraft(key, '')
-  }
-
-  function editorOpen(field: ByokField): boolean {
-    return !field.sensitive || replacing[field.key] === true || !field.hasValue
-  }
-
-  async function save(field: ByokField): Promise<void> {
-    if (loading || toggling || loadedContextId !== contextId || !fields.some((candidate) => candidate.key === field.key)) return
-    error = null
-    status = null
-    savingKey = field.key
-    try {
-      await patchByok({ contextId, values: { [field.key]: drafts[field.key] ?? '' } })
-      const ok = await load(contextId)
-      if (ok) status = `${field.label} saved.`
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    } finally {
-      savingKey = null
     }
   }
 
@@ -140,6 +98,71 @@
       error = err instanceof Error ? err.message : String(err)
     } finally {
       toggling = false
+    }
+  }
+
+  async function onAddProvider(input: {
+    label: string
+    providerType: string
+    baseUrl: string
+    apiKey: string
+  }): Promise<boolean> {
+    saving = true
+    error = null
+    try {
+      const provider = {
+        id: `prov_${Math.random().toString(36).slice(2, 14)}`,
+        label: input.label,
+        providerType: input.providerType,
+        baseUrl: input.baseUrl,
+        apiKey: input.apiKey,
+        verification: {
+          status: 'unverified' as const,
+          error: null,
+          at: null,
+          models: [],
+          modelsFetchedAt: null,
+        },
+      }
+      await upsertByokProviderAction({ contextId, provider })
+      await load(contextId)
+      return true
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+      return false
+    } finally {
+      saving = false
+    }
+  }
+
+  async function onDeleteProvider(id: string): Promise<void> {
+    error = null
+    try {
+      await deleteByokProviderAction({ contextId, id })
+      await load(contextId)
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  function onRoleChange(role: 'main' | 'small' | 'embedding', binding: RoleBinding): void {
+    if (draftRoles === null) return
+    draftRoles = { ...draftRoles, [role]: binding }
+  }
+
+  async function onSaveRoles(): Promise<void> {
+    if (draftRoles === null || !rolesDirty) return
+    saving = true
+    error = null
+    status = null
+    try {
+      await setByokRolesAction({ contextId, roles: draftRoles })
+      await load(contextId)
+      status = 'Role overrides saved.'
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      saving = false
     }
   }
 
@@ -196,57 +219,128 @@
     </p>
   {:else if currentData !== null}
     {#if unreadableError !== null}
-      <p class="status-error" role="alert">Stored BYOK credentials are unreadable. Re-enter the values to repair this context.</p>
-    {/if}
-    {#if !currentData.complete && missing.length > 0}
-      <p class="status-error" role="alert">Missing required fields: {missing.join(', ')}</p>
+      <p class="status-error" role="alert">
+        Stored BYOK credentials are unreadable. Re-add providers to repair this context.
+      </p>
     {/if}
 
-    <div class="settings-byok-fields">
-      {#each fields as field (field.key)}
-        <SettingsFieldShell
-          label={field.label}
-          required={field.required}
-          editorOpen={editorOpen(field)}
-          testid={`byok-row-${field.key}`}>
-          {#snippet head()}
-            {#if field.sensitive && field.hasValue && !editorOpen(field)}
-              <Secret value={displaySecret(field.value)} />
-              <Btn variant="secondary" size="sm" testid={`byok-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
-                {#snippet children()}Replace{/snippet}
-              </Btn>
-            {/if}
-          {/snippet}
-          {#snippet editor()}
-            <Input
-              type={field.sensitive ? 'password' : 'text'}
-              value={drafts[field.key] ?? ''}
-              placeholder={field.sensitive ? 'enter a new value' : ''}
-              onInput={(value) => updateDraft(field.key, value)}
-              testid={`byok-input-${field.key}`} />
-            <Btn
-              variant="primary"
-              size="sm"
-              testid={`byok-save-${field.key}`}
-              disabled={!isDirty(field) || savingKey === field.key || loading || toggling}
-              onClick={() => void save(field)}>
-              {#snippet children()}{savingKey === field.key ? 'Saving…' : 'Save'}{/snippet}
-            </Btn>
-            {#if field.sensitive && field.hasValue}
-              <Btn variant="ghost" size="sm" testid={`byok-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
-                {#snippet children()}Cancel{/snippet}
-              </Btn>
-            {/if}
-          {/snippet}
-        </SettingsFieldShell>
-      {/each}
+    {#if showAddForm}
+      <div class="provider-create" data-testid="byok-add-form">
+        <div class="t-subhead">Add provider</div>
+        <ProviderForm
+          onSave={onAddProvider}
+          onCancel={() => (showAddForm = false)}
+          busy={saving}
+          testidPrefix="byok-provider-form" />
+      </div>
+    {:else}
+      <div class="settings-byok__add">
+        <Btn variant="primary" size="sm" testid="byok-add-provider" onClick={() => (showAddForm = true)}>
+          {#snippet children()}Add provider{/snippet}
+        </Btn>
+      </div>
+    {/if}
+
+    {#if currentData.providers.length === 0}
+      <p class="placeholder">No providers configured. Click "Add provider" to create one.</p>
+    {:else}
+      <div class="settings-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Type</th>
+              <th>API Key</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each currentData.providers as provider (provider.id)}
+              <tr>
+                <td>{provider.label}</td>
+                <td>{provider.providerType}</td>
+                <td class="mono">{provider.apiKeyMasked}</td>
+                <td><VerificationPill verification={provider.verification} /></td>
+                <td>
+                  <Btn
+                    variant="danger"
+                    size="sm"
+                    testid={`byok-delete-${provider.id}`}
+                    onClick={() => void onDeleteProvider(provider.id)}>
+                    {#snippet children()}Delete{/snippet}
+                  </Btn>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+
+    <div class="settings-byok__roles">
+      <div class="settings-byok__roles-head">
+        <div class="t-subhead">Role overrides</div>
+        <Btn
+          variant="primary"
+          size="sm"
+          testid="byok-roles-save"
+          disabled={!rolesDirty || saving}
+          onClick={() => void onSaveRoles()}>
+          {#snippet children()}{saving ? 'Saving…' : 'Save roles'}{/snippet}
+        </Btn>
+      </div>
+      {#if draftRoles !== null}
+        <RoleBindingBlock
+          roleName="main"
+          providers={currentData.providers}
+          binding={draftRoles.main}
+          canInherit={false}
+          onChange={(binding) => onRoleChange('main', binding)}
+          testid="byok-role-main" />
+        <RoleBindingBlock
+          roleName="small"
+          providers={currentData.providers}
+          binding={draftRoles.small}
+          canInherit={true}
+          inheritLabel="Inherit admin"
+          onChange={(binding) => onRoleChange('small', binding)}
+          testid="byok-role-small" />
+        <RoleBindingBlock
+          roleName="embedding"
+          providers={currentData.providers}
+          binding={draftRoles.embedding}
+          canInherit={true}
+          inheritLabel="Inherit admin"
+          onChange={(binding) => onRoleChange('embedding', binding)}
+          testid="byok-role-embedding" />
+      {/if}
     </div>
   {/if}
 </section>
 
 <style>
-  .settings-byok-fields {
+  .settings-byok__add {
+    margin-bottom: var(--gap-field);
+  }
+  .provider-create {
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: var(--gap-field);
+  }
+  .settings-byok__roles {
+    margin-top: var(--gap-field);
     display: grid;
     gap: var(--gap-inline);
+  }
+  .settings-byok__roles-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mono {
+    font-family: var(--font-mono);
   }
 </style>
