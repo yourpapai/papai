@@ -14,7 +14,10 @@ import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
 import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
-import { createMockReply, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import { getDrizzleDb } from '../../../src/db/drizzle.js'
+import { platformInstances } from '../../../src/db/schema.js'
+import { getMattermostLastEventAt } from '../../../src/instances/platform-store.js'
+import { createMockReply, mockLogger, restoreFetch, setMockFetch, setupTestDb } from '../../utils/test-helpers.js'
 
 type BuiltPostedMessage = { readonly msg: IncomingMessage }
 type PostedEventHandler = (data: Record<string, unknown>) => Promise<void>
@@ -1227,6 +1230,51 @@ describe('MattermostChatProvider', () => {
 
       const result = determineMattermostThreadId(post, true, 'dm', undefined)
       expect(result).toBeUndefined()
+    })
+
+    test('advances the mattermostLastEventAt cursor on live posts, tracking the max create_at seen', async () => {
+      await setupTestDb()
+      mockLogger()
+      getDrizzleDb()
+        .insert(platformInstances)
+        .values({ id: TEST_PLATFORM_ID, type: 'mattermost', config: '{}', status: 'active' })
+        .run()
+
+      setMockFetch(makeFetchWithGroupChannel('O'))
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post-cursor-1',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: 'hello',
+          root_id: '',
+          parent_id: '',
+          create_at: 5000,
+        }),
+      })
+      expect(getMattermostLastEventAt(TEST_PLATFORM_ID)).toBe(5000)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post-cursor-2',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: 'older message',
+          root_id: '',
+          parent_id: '',
+          create_at: 3000,
+        }),
+      })
+      expect(getMattermostLastEventAt(TEST_PLATFORM_ID)).toBe(5000)
+
+      restoreFetch()
     })
   })
 })

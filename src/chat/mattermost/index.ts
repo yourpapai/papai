@@ -5,7 +5,6 @@
 
 import { logger } from '../../logger.js'
 import { getSettingsPublicBaseUrl } from '../../settings/config.js'
-import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
   ChatProvider,
   CommandHandler,
@@ -33,7 +32,6 @@ import { resolveMattermostConfig, type MattermostConstructorConfig } from './con
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
 import { renderMattermostContext } from './context-renderer.js'
 import {
-  cacheIncomingPost,
   downloadMattermostFile,
   parsePostedEvent,
   resolveMattermostPostFiles,
@@ -43,20 +41,18 @@ import {
 import { resolveMattermostGroupLabel, resolveMattermostUserLabel } from './label-helpers.js'
 import { determineMattermostThreadId, normalizeMattermostMessageText } from './message-normalization.js'
 import { mattermostCapabilities, mattermostConfigRequirements, mattermostTraits } from './metadata.js'
+import {
+  cachePostOnly as cachePostOnlyPipeline,
+  processPost as processPostPipeline,
+  type PostedMessageResult,
+} from './process-post.js'
 import { setMattermostReaction } from './reactions.js'
 import { buildMattermostReplyContext } from './reply-context.js'
 import { createMattermostReplyFn, sendMattermostDeferredMessage } from './reply-helpers.js'
-import { extractReplyId, MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
+import { MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
 import { connectMattermostWebSocket } from './websocket.js'
 
 const log = logger.child({ scope: 'chat:mattermost' })
-
-type PostedMessageResult = {
-  msg: IncomingMessage
-  reply: ReplyFn
-  command: { handler: CommandHandler; match: string } | null
-  isAdmin: boolean
-}
 
 export class MattermostChatProvider implements ChatProvider {
   readonly name = 'mattermost'
@@ -169,23 +165,26 @@ export class MattermostChatProvider implements ChatProvider {
   private async handlePostedEvent(data: Record<string, unknown>): Promise<void> {
     const parsed = parsePostedEvent(data)
     if (parsed === null) return
-    const { post, senderName } = parsed
-    if (post.user_id === this.botUserId) return
-    const replyToMessageId = extractReplyId(post.parent_id, post.root_id)
-    cacheIncomingPost(post, replyToMessageId, senderName)
-    const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
-    if (msg.isMentioned && msg.text === '') {
-      const mentionHelp =
-        this.botUsername === null ? 'Use `/help` to see commands' : `Use \`@${this.botUsername} /help\` to see commands`
-      await reply.text(`${mentionHelp}, or mention me with a question.`)
-      return
-    }
-    if (command !== null) {
-      const auth = buildScopedCommandAuth(msg, isAdmin, this.platformInstanceId)
-      await command.handler(msg, reply, auth)
-      return
-    }
-    if (this.messageHandler !== null) await this.messageHandler(msg, reply)
+    await this.processPost(parsed.post, parsed.senderName)
+  }
+
+  private async processPost(post: MattermostPost, senderName: string | undefined): Promise<void> {
+    await processPostPipeline(post, senderName, {
+      platformInstanceId: this.platformInstanceId,
+      botUserId: this.botUserId,
+      botUsername: this.botUsername,
+      buildPostedMessage: this.buildPostedMessage.bind(this),
+      messageHandler: this.messageHandler,
+    })
+  }
+
+  /** Cache-only path for catch-up's stale branch. Not private: a later step's catch-up module calls this. */
+  cachePostOnly(post: MattermostPost, senderName: string | undefined): Promise<void> {
+    cachePostOnlyPipeline(post, senderName, {
+      platformInstanceId: this.platformInstanceId,
+      botUserId: this.botUserId,
+    })
+    return Promise.resolve()
   }
 
   async buildPostedMessage(
