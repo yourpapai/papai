@@ -117,7 +117,7 @@
     "src/byok-llm/blob-codec.ts": ["files", "exports", "types"],
     // Multi-provider domain types are created ahead of the store/codec/resolver
     // tasks in the multi-provider LLM backend plan; no production importer exists yet.
-    "src/llm-providers/types.ts": ["files", "types"],
+    "src/llm-providers/types.ts": ["files", "exports", "types"],
     // Multi-provider admin store is staged ahead of the resolver/verification/admin-route
     // tasks in the multi-provider LLM backend plan; no production importer exists yet.
     "src/llm-providers/store.ts": ["files", "exports", "types"],
