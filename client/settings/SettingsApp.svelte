@@ -33,7 +33,8 @@
   import KaneoAccessSection from './sections/KaneoAccessSection.svelte'
   import ReleaseSubscriptionSection from './sections/ReleaseSubscriptionSection.svelte'
   import AdminInstancesSection from './sections/admin/AdminInstancesSection.svelte'
-  import AdminSystemSection from './sections/admin/AdminSystemSection.svelte'
+  import AdminProvidersSection from './sections/admin/AdminProvidersSection.svelte'
+  import AdminModelsSection from './sections/admin/AdminModelsSection.svelte'
   import AdminByokSection from './sections/admin/AdminByokSection.svelte'
   import AdminUsersSection from './sections/admin/AdminUsersSection.svelte'
   import AdminGroupsSection from './sections/admin/AdminGroupsSection.svelte'
@@ -68,7 +69,8 @@
     if (session.isBotAdmin) {
       items.push(
         { id: 'instances', label: 'Instances' },
-        { id: 'system', label: 'System' },
+        { id: 'llm-providers', label: 'LLM providers' },
+        { id: 'llm-models', label: 'LLM models' },
         { id: 'byok-admin', label: 'BYOK LLM' },
         { id: 'plugin-config', label: 'Plugin config' },
         { id: 'users', label: 'Users' },
@@ -254,7 +256,8 @@
             <div class="settings-group settings-group--wide settings-admin-zone">
               {#if settingsSession.isBotAdmin}
                 <AdminInstancesSection />
-                <AdminSystemSection />
+                <AdminProvidersSection />
+                <AdminModelsSection />
                 <AdminByokSection />
                 <AdminPluginsConfigSection />
                 <AdminUsersSection />
