@@ -99,7 +99,12 @@ async function retryFixAfterBuildFailure(
 
   if (!result.fixed || result.verdict !== 'valid') {
     await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
-    recordVerification(deps.ledger, record.id, result)
+    recordVerification(deps.ledger, record.id, {
+      verdict: result.verdict,
+      fixability: result.fixability,
+      reasoning: result.reasoning,
+      targetFiles: result.targetFiles,
+    })
     deps.log.log(`[fix] "${shortTitle(record)}" \u2192 ${result.verdict} (after retry)`)
     return false
   }
