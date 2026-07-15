@@ -43,9 +43,11 @@ import {
 import { resolveMattermostGroupLabel, resolveMattermostUserLabel } from './label-helpers.js'
 import { determineMattermostThreadId, normalizeMattermostMessageText } from './message-normalization.js'
 import { mattermostCapabilities, mattermostConfigRequirements, mattermostTraits } from './metadata.js'
+import { setMattermostReaction } from './reactions.js'
 import { buildMattermostReplyContext } from './reply-context.js'
 import { createMattermostReplyFn, sendMattermostDeferredMessage } from './reply-helpers.js'
 import { extractReplyId, MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
+import { connectMattermostWebSocket } from './websocket.js'
 
 const log = logger.child({ scope: 'chat:mattermost' })
 
@@ -110,6 +112,16 @@ export class MattermostChatProvider implements ChatProvider {
     return checkChannelAdmin(groupId, userId, this.apiFetch.bind(this))
   }
 
+  setReaction(
+    _platformInstanceId: string,
+    _target: DeferredDeliveryTarget,
+    messageId: string,
+    emoji: string | null,
+    previousEmoji?: string | null,
+  ): Promise<boolean> {
+    return setMattermostReaction(this.apiFetch.bind(this), this.botUserId, messageId, emoji, previousEmoji)
+  }
+
   async start(): Promise<void> {
     const data = await this.apiFetch('GET', '/api/v4/users/me', void 0)
     const user = UserMeSchema.parse(data)
@@ -129,29 +141,16 @@ export class MattermostChatProvider implements ChatProvider {
   }
 
   private connectWebSocket(): void {
-    const wsUrl = this.baseUrl.replace(/^http/u, 'ws') + '/api/v4/websocket'
-    log.debug({ wsUrl }, 'Connecting to Mattermost WebSocket')
-    const ws = new WebSocket(wsUrl)
-    this.ws = ws
-    ws.addEventListener('open', () => {
-      log.debug('Mattermost WebSocket connected, authenticating')
-      this.wsSend({
-        seq: this.wsSeq++,
-        action: 'authentication_challenge',
-        data: { token: this.token },
-      })
-    })
-    ws.addEventListener('message', (event) => {
-      void this.handleWsMessage(event)
-    })
-    ws.addEventListener('close', () => {
-      log.warn('Mattermost WebSocket closed, reconnecting in 5s')
-      setTimeout(() => {
+    this.ws = connectMattermostWebSocket({
+      baseUrl: this.baseUrl,
+      token: this.token,
+      nextSeq: () => this.wsSeq++,
+      onMessage: (event) => {
+        void this.handleWsMessage(event)
+      },
+      onReconnect: () => {
         this.connectWebSocket()
-      }, 5000)
-    })
-    ws.addEventListener('error', (event) => {
-      log.error({ event }, 'Mattermost WebSocket error')
+      },
     })
   }
 
