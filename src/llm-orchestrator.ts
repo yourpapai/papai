@@ -12,7 +12,7 @@ import type { ReplyFn } from './chat/types.js'
 import { appendHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
-import { appendAssistantTurnHistory } from './llm-history.js'
+import { recordAssistantTurn } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
@@ -143,7 +143,10 @@ type CallLlmArgs = InvocationSource & {
   turnId: string
 }
 
-const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: ModelMessage[] } }> => {
+// `finishReason` distinguishes a step-cap truncation ('tool-calls') from a normal stop.
+type CallLlmResult = { response: { messages: ModelMessage[] }; finishReason?: string }
+
+const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
   const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId, resolvedLlm, turnId } = args
   if (contextType === 'dm') {
     try {
@@ -218,16 +221,8 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
       resolvedLlm,
       turnId: resolvedTurnId,
     })
-    appendAssistantTurnHistory(
-      contextId,
-      configId,
-      resolvedLlm.main.model,
-      turn.baseHistory,
-      turn.historyMessage,
-      result.response.messages,
-      contextType,
-      actorRole,
-    )
+    const meta = { contextId, configId, mainModel: resolvedLlm.main.model, contextType, actorRole }
+    recordAssistantTurn(meta, turn, result)
     if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false }))
   } catch (error) {
     if (error instanceof RunAbortedError) {

@@ -105,17 +105,21 @@ describe('buildVerifiedCompletion', () => {
     expect(result).toEqual({ text: 'Created task TK-42.', verdict: 'confirmed' })
   })
 
-  test('truncated: verdict is truncated and the prompt tells the model to invite "continue"', async () => {
+  test('truncated: verdict is truncated and the prompt asks for a progress summary, offering "continue" as an option', async () => {
     mockLogger()
     let seen: VerifierPrompt | undefined
     const result = await buildVerifiedCompletion(
       { history: [], finishReason: 'tool-calls', hadToolFailure: false },
-      okDeps('Reached the step limit; say continue to resume.', (p) => {
+      okDeps('Did A and B; C still pending — say continue to resume.', (p) => {
         seen = p
       }),
     )
     expect(result.verdict).toBe('truncated')
+    // The reworded prompt frames the turn as a lot of work done, summarizing progress and
+    // remaining steps, and offers "continue" as an option rather than demanding it.
+    expect(seen?.system).toContain('what remains')
     expect(seen?.system).toContain('continue')
+    expect(seen?.system).not.toContain('reached the tool-step limit before finishing')
   })
 
   test('partial: a tool failure yields the partial verdict', async () => {

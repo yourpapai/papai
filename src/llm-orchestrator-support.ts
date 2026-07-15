@@ -211,7 +211,7 @@ type InvokeWithLiveStatusArgs = {
 
 export const invokeWithLiveStatus = async (
   args: InvokeWithLiveStatusArgs,
-): Promise<{ response: { messages: ModelMessage[] } }> => {
+): Promise<{ response: { messages: ModelMessage[] }; finishReason?: string }> => {
   const { reply, invokeArgs, progressReporter, liveStatusEnabled } = args
   const liveStatus = createLiveStatusReporter(reply, { enabled: liveStatusEnabled })
   await liveStatus.start()
