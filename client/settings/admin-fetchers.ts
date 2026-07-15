@@ -10,7 +10,6 @@ import {
   AdminGroupsResponseSchema,
   AdminInstancesResponseSchema,
   AdminRosterResponseSchema,
-  AdminSystemResponseSchema,
   AdminUsersResponseSchema,
   AnnounceResultSchema,
   OpenAccessResponseSchema,
@@ -20,7 +19,6 @@ import {
   type AdminGroupsResponse,
   type AdminInstancesResponse,
   type AdminRosterResponse,
-  type AdminSystemResponse,
   type AdminUsersResponse,
   type AnnounceResult,
   type OpenAccessResponse,
@@ -32,6 +30,14 @@ import {
   type AdminCodingGuardrailsResponse,
 } from './fetcher-schemas-coding-guardrails.js'
 import { ApplyInstancesResultSchema, type ApplyInstancesResult } from './fetcher-schemas-instances.js'
+import {
+  AdminLlmRolesResponseSchema,
+  AdminProvidersResponseSchema,
+  type AdminLlmRolesResponse,
+  type AdminProvidersResponse,
+  type LlmRoleBindings,
+  type ProviderInput,
+} from './fetcher-schemas-llm-providers.js'
 import { AdminMcpCatalogResponseSchema, type AdminMcpCatalogResponse } from './fetcher-schemas-mcp-catalog.js'
 import {
   AdminMcpPluginServersResponseSchema,
@@ -113,12 +119,6 @@ export const deleteAdminTaskInstance = (id: string): Promise<unknown> =>
   )
 
 // --- Admin: system / access / roster / plugins / announce ---
-
-export const fetchAdminSystem = (): Promise<AdminSystemResponse> =>
-  getJson('/settings/api/admin/system', (b) => AdminSystemResponseSchema.parse(b))
-
-export const submitAdminSystem = (input: { key: string; value: string }): Promise<unknown> =>
-  writeJson('/settings/api/admin/system', 'POST', input, (b) => b)
 
 export const fetchAdminByok = (): Promise<AdminByokResponse> =>
   getJson('/settings/api/admin/byok', (b) => AdminByokResponseSchema.parse(b))
@@ -249,3 +249,27 @@ export const postAdminMcpPluginServers = (configs: unknown): Promise<AdminMcpPlu
   writeJson('/settings/api/admin/mcp-plugin-servers', 'POST', { kind: 'plugin-servers', configs }, (b) =>
     AdminMcpPluginServersResponseSchema.parse(b),
   )
+
+// --- Admin: LLM providers + roles ---
+
+export const fetchAdminProviders = (): Promise<AdminProvidersResponse> =>
+  getJson('/settings/api/admin/providers', (b) => AdminProvidersResponseSchema.parse(b))
+
+export const createAdminProvider = (input: ProviderInput): Promise<unknown> =>
+  writeJson('/settings/api/admin/providers', 'POST', input, (b) => b)
+
+export const updateAdminProvider = (id: string, input: Partial<ProviderInput>): Promise<unknown> =>
+  writeJson(`/settings/api/admin/providers/${encodeURIComponent(id)}`, 'PATCH', input, (b) => b)
+
+export const deleteAdminProvider = (id: string): Promise<unknown> =>
+  settingsFetch(`/settings/api/admin/providers/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(async (res) => {
+    const body = await readBody(res)
+    requireOk(res, body)
+    return body
+  })
+
+export const fetchAdminLlmRoles = (): Promise<AdminLlmRolesResponse> =>
+  getJson('/settings/api/admin/llm-roles', (b) => AdminLlmRolesResponseSchema.parse(b))
+
+export const putAdminLlmRoles = (roles: LlmRoleBindings): Promise<unknown> =>
+  writeJson('/settings/api/admin/llm-roles', 'PUT', roles, (b) => b)
