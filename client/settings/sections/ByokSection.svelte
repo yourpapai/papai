@@ -10,12 +10,13 @@
   import ErrorState from '../../shared/ui/ErrorState.svelte'
   import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
+  import Confirm from '../../shared/Confirm.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
   import ProviderForm from '../components/ProviderForm.svelte'
   import RoleBindingBlock from '../components/RoleBindingBlock.svelte'
   import VerificationPill from '../components/VerificationPill.svelte'
   import type { ByokResponse } from '../fetcher-schemas.js'
-  import type { LlmRoleBindings, RoleBinding } from '../fetcher-schemas-llm-providers.js'
+  import type { LlmRoleBindings, PublicProviderAccount, RoleBinding } from '../fetcher-schemas-llm-providers.js'
   import { fetchByok, toggleByok } from '../fetchers.js'
   import { deleteByokProviderAction, setByokRolesAction, upsertByokProviderAction } from '../byok-provider-fetchers.js'
 
@@ -34,6 +35,8 @@
   let saving = $state(false)
   let showAddForm = $state(false)
   let draftRoles: LlmRoleBindings | null = $state(null)
+  let deleteTarget: PublicProviderAccount | null = $state(null)
+  let deleteError: string | null = $state(null)
 
   const currentData = $derived(loadedContextId === contextId ? data : null)
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
@@ -57,6 +60,8 @@
       draftRoles !== null &&
       JSON.stringify(draftRoles) !== JSON.stringify(currentData.roles),
   )
+
+  const deleteTargetLabel = $derived(deleteTarget?.label ?? '')
 
   function clearContextState(): void {
     data = null
@@ -135,14 +140,22 @@
     }
   }
 
-  async function onDeleteProvider(id: string): Promise<void> {
+  async function onDelete(): Promise<void> {
+    if (deleteTarget === null) return
+    deleteError = null
     error = null
     try {
-      await deleteByokProviderAction({ contextId, id })
+      await deleteByokProviderAction({ contextId, id: deleteTarget.id })
+      deleteTarget = null
       await load(contextId)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      deleteError = err instanceof Error ? err.message : String(err)
     }
+  }
+
+  function requestDelete(provider: PublicProviderAccount): void {
+    deleteError = null
+    deleteTarget = provider
   }
 
   function onRoleChange(role: 'main' | 'small' | 'embedding', binding: RoleBinding): void {
@@ -267,7 +280,7 @@
                     variant="danger"
                     size="sm"
                     testid={`byok-delete-${provider.id}`}
-                    onClick={() => void onDeleteProvider(provider.id)}>
+                    onClick={() => requestDelete(provider)}>
                     {#snippet children()}Delete{/snippet}
                   </Btn>
                 </td>
@@ -317,6 +330,18 @@
       {/if}
     </div>
   {/if}
+  <Confirm
+    open={deleteTarget !== null}
+    title="Delete provider"
+    danger
+    confirmLabel="Delete"
+    onCancel={() => (deleteTarget = null)}
+    onConfirm={() => void onDelete()}>
+    {#snippet body()}
+      <p>Delete provider {deleteTargetLabel}? This cannot be undone.</p>
+      {#if deleteError !== null}<p class="status-error">{deleteError}</p>{/if}
+    {/snippet}
+  </Confirm>
 </section>
 
 <style>
