@@ -5,6 +5,170 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.8.1] - 2026-07-15
+
+### Added
+
+- **mcp-server:** Stateless HMAC binding token for plugin-MCP endpoints
+- **plugins:** McpServer manifest flag to expose tools as an MCP server
+- **mcp-server:** Bridge to list and execute plugin tools as MCP
+- **mcp-server:** Token-authed streamable-HTTP route exposing plugin tools
+- **mcp-server:** Mount /mcp/plugin route before the settings auth gate
+- **coding-credentials:** Operator config + derivation for internal MCP servers
+- **coding-credentials:** Resolve internal plugin MCP servers with minted token
+- **settings:** Expose internal plugin MCP servers in the coding-credentials picker
+- **settings-ui:** Pick internal plugin MCP servers without a token
+- **settings:** Admin route for internal plugin MCP server toggles + policy
+- **settings-ui:** Admin section to expose plugins as internal MCP servers
+- **web-search:** Expose search as an MCP server; add endpoint integration test
+- **proactive:** Add recordProactiveInHistory unit
+- **deferred:** Record error-branch notices in history
+- **notify:** Record delivered notify pushes in history
+- **scheduler:** Record recurring-task notifications in history
+- **announce:** Record admin broadcasts in history
+- **announcements:** Record release-notes broadcasts in history
+- **announcements:** Record admin review notice in history
+- **ui:** Add optional placeholder option to Select primitive
+- **ui:** Add Combobox primitive (input + datalist, design-system styled)
+- **mcp:** Multi-server selection — servers[] vault, resolveMcpServers/Tokens, fail-closed session start, maxMcpServers cap
+- **settings:** Validate mcp servers[] array + cap on save; expose maxMcpServers
+- **settings-ui:** Add-row multi-MCP-server picker with token-preserving save
+- **settings:** Admin maxMcpServers control + end-to-end multi-MCP proof
+- **runtime:** Add stable tool capability catalog
+- **runtime:** Add deterministic cleanup lifecycle
+- **runtime:** Define shared application contract
+- **runtime:** Compose lifecycle-managed papai runtime
+
+### Changed
+
+- **settings:** CodingCredentialsSection onto Select/Combobox + empty guard + model hint
+- **settings:** CodeHostSection select onto shared Select primitive
+- **settings:** CodingMcpSection select onto shared Select primitive
+- **llm:** Inject provider-neutral language model
+- **startup:** Run production through PapaiRuntime
+- **coding:** Add stable integration seam
+
+### Documentation
+
+- **plans:** Phase 0+1 foundation + toolgate implementation plan
+- **specs:** Plugins-as-MCP-servers design (web-search proof)
+- **plans:** Plugins-as-MCP-servers implementation plan
+- **specs:** Design for recording proactive messages in conversation history
+- **plans:** Implementation plan for proactive message history
+- Plugins-as-MCP-servers surface, signing secret, and operator egress note
+- **specs:** Design for coding-cluster credential UX fixes
+- **ux-review:** CodingCredentialsSection review + captured states
+- **plans:** Implementation plan for coding-cluster credential UX fixes
+- **specs:** Multi-server MCP multiplexing design (papai + magi + geofront)
+- **plans:** Multi-server MCP multiplexing — coordinated magi + papai plans
+- **architecture:** Coding-session stack overview (papai → magi → geofront)
+- **testing:** Design hermetic user-story harness
+- **testing:** Baseline harness before core separation
+- **testing:** Plan hermetic E2E baseline and proof
+- Design scenario catalog story coverage
+- Plan scenario catalog story coverage
+- Design trusted module qualification stories
+- Plan trusted module qualification stories
+
+### Fixed
+
+- **mcp-server:** Make verifyPluginMcpToken never throw; add validation-path tests
+- **mcp-server:** Guard malformed plugin-id path; scope close-in-finally comment
+- **mcp-server:** Fail closed on operator exposure for internal MCP tokens and redemption
+- **orchestrator:** Preserve user message on turn-error rollback
+- **settings:** Keep model combobox disabled during save/load
+- **mcp:** ResolveMcpTokens derives from validated set; constrain catalog name charset
+- **runtime:** Share in-flight lifecycle cleanup
+- **runtime:** Coordinate stop with startup
+- **runtime:** Decouple extensions from production chat
+- **runtime:** Harden production lifecycle cleanup
+- **runtime:** Gate scheduler behind background lifecycle
+- **scheduler:** Drain immediate work before shutdown
+- **plugins:** Serialize lifecycle transitions
+- **plugins:** Tear down tracked lifecycle owners
+- **coding:** Preserve capability approval state
+- **stories:** Snapshot comment pagination
+- **stories:** Snapshot label fixture inputs
+- **stories:** Preserve runtime extension rollback cleanup
+- **stories:** Register runtime extensions before startup
+- **stories:** Report runtime extension cleanup failures
+- **stories:** Await runtime extension startup on stop
+- **stories:** Guard runtime extension reentrant stop
+- **coding:** Fail closed on malformed MCP settings
+- **attachments:** Scope prompt manifest to current-message attachments only
+
+### Testing
+
+- **mcp-server:** Cover plugin-bridge error branches; reject array schemas
+- **stories:** Realistic agent-provider coding-credentials fixtures + models handler
+- **visual:** Agent-provider states for CodingCredentialsSection
+- **visual:** Regenerate shared-ui screenshot specs (Select placeholder, Combobox)
+- **startup:** Isolate debug server boundary
+- **stories:** Add deterministic external boundaries
+- **stories:** Harden scenario chat contracts
+- **stories:** Harden deterministic boundaries
+- **stories:** Redact credential metadata
+- **stories:** Add deterministic AI SDK script model
+- **stories:** Enforce scripted tool correlation
+- **stories:** Add deterministic task and state fixtures
+- **stories:** Harden task fixture isolation
+- **stories:** Compose fresh typed scenario worlds
+- **stories:** Harden scenario world lifecycle
+- **stories:** Align world with production scopes
+- **stories:** Prove chat task and context behavior
+- **stories:** Prove actor-bound group identities
+- **stories:** Prove guest tool surface is turn-local
+- **stories:** Prove settings changes affect chat turns
+- **stories:** Harden settings session harness
+- **stories:** Prove ACP and plugin integration behavior
+- **stories:** Harden ACP contracts and lifecycle isolation
+- **stories:** Close plugin lifecycle isolation gaps
+- **stories:** Enforce hermetic process boundaries
+- **stories:** Close hermetic I/O guard gaps
+- **stories:** Close timer and listener guard bypasses
+- **stories:** Guard promise scheduler timers
+- **stories:** Harden hermetic guard lifecycle
+- **stories:** Block alternate execution surfaces
+- **stories:** Exclude adversarial guard fixtures
+- **stories:** Bind compatibility to captured inputs
+- Restore startup mock isolation
+- **stories:** Track scenario catalog coverage
+- **stories:** Tighten catalog coverage contracts
+- **stories:** Read catalog stories from snapshot
+- **stories:** Configure task provider capabilities
+- **stories:** Keep task capabilities safe
+- **stories:** Add comment provider fixture
+- **stories:** Add label provider fixture
+- **stories:** Add runtime extension fixture seam
+- **stories:** Expose runtime extension setup
+- **stories:** Qualify runtime extension contributions
+- **stories:** Cover ineligible ACP command
+- **stories:** Trace ACP command catalog coverage
+- **stories:** Align scenario command routing
+- Qualify coding session settings stories
+- Cover denied coding credential updates
+- Assert denied ACP turns create no records
+- Harden coding session qualification coverage
+- Tighten story session helpers
+- **stories:** Declare ACP lifecycle protocol
+- **stories:** Harden ACP lifecycle fixture
+- **stories:** Freeze ACP start and discovery coverage
+- **stories:** Tighten ACP lifecycle safety assertions
+- **stories:** Cover ACP session controls
+- **stories:** Isolate ACP control fixtures
+- **stories:** Cover ACP MCP session safety
+- **stories:** Map ACP catalog coverage
+- **stories:** Decouple ACP lifecycle fixtures
+- **stories:** Avoid stale manifest scenario count
+
+### Ci
+
+- **stories:** Establish hermetic master baseline
+- Bump the github-actions group with 4 updates
+
+### Harden
+
+- **mcp-server:** Share reserved-prefix constant; test malformed base-URL fail-closed
 ## [6.8.0] - 2026-07-08
 
 ### Added
