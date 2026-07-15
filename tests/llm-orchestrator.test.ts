@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mock, describe, expect, test, beforeEach, afterEach, afterAll } from 'bun:test'
+import { mock, describe, expect, test, beforeEach, afterEach, afterAll, spyOn } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { APICallError } from '@ai-sdk/provider'
@@ -156,6 +156,7 @@ import {
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { setConfigValue } from '../src/config.js'
+import * as conversationModule from '../src/conversation.js'
 import { appendHistory } from '../src/history.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { setContextSettings } from '../src/instances/context-store.js'
@@ -1294,6 +1295,79 @@ describe('processMessage', () => {
       expect(userContent).toMatch(/^<current_time>.*<\/current_time>\nhello$/u)
       expect(history[1]!.role).toBe('assistant')
       expect(history[1]!.content).toBe('Hi!')
+    })
+
+    test('a step-cap truncated turn defers the background trim (preserves resume context)', async () => {
+      const ctxId = 'truncated-defers-trim-ctx'
+      seedConfigForContext(ctxId)
+      // Seed history past the hard trim cap so a completed turn would normally trim.
+      appendHistory(
+        ctxId,
+        Array.from({ length: 100 }, (_, i): ModelMessage => ({ role: 'assistant', content: `old ${i}` })),
+      )
+      const trimSpy = spyOn(conversationModule, 'runTrimInBackground').mockResolvedValue(undefined)
+      // The turn stops at the tool-step cap: finishReason 'tool-calls'.
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: '',
+          toolCalls: [{ toolName: 'search_tasks', toolCallId: 'c-1', input: { q: 'x' } }],
+          toolResults: [{ toolName: 'search_tasks', toolCallId: 'c-1', output: { hits: 1 } }],
+          steps: [],
+          response: {
+            messages: [
+              {
+                role: 'assistant' as const,
+                content: [{ type: 'tool-call', toolCallId: 'c-1', toolName: 'search_tasks', input: { q: 'x' } }],
+              },
+              {
+                role: 'tool' as const,
+                content: [
+                  {
+                    type: 'tool-result',
+                    toolCallId: 'c-1',
+                    toolName: 'search_tasks',
+                    output: { type: 'json', value: { hits: 1 } },
+                  },
+                ],
+              },
+            ] as ModelMessage[],
+          },
+          usage: {},
+          finishReason: 'tool-calls',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+      const { reply } = createMockReply()
+
+      await processMessage(reply, ctxId, 'user-1', null, 'do the thing', 'dm')
+      await flushMicrotasks()
+
+      // The in-progress tool trace is persisted so "continue" can resume from it...
+      const history = getCachedHistory(ctxId)
+      expect(history.some((m) => m.role === 'tool')).toBe(true)
+      // ...but the trim that could collapse it before the resume must be deferred.
+      expect(trimSpy).not.toHaveBeenCalled()
+      trimSpy.mockRestore()
+    })
+
+    test('a completed turn over the cap still triggers the background trim', async () => {
+      const ctxId = 'completed-triggers-trim-ctx'
+      seedConfigForContext(ctxId)
+      appendHistory(
+        ctxId,
+        Array.from({ length: 100 }, (_, i): ModelMessage => ({ role: 'assistant', content: `old ${i}` })),
+      )
+      const trimSpy = spyOn(conversationModule, 'runTrimInBackground').mockResolvedValue(undefined)
+      // Same over-cap history, but the turn completes normally (finishReason 'stop').
+      generateTextImpl = defaultGenerateTextResult
+      const { reply } = createMockReply()
+
+      await processMessage(reply, ctxId, 'user-1', null, 'hello', 'dm')
+      await flushMicrotasks()
+
+      expect(trimSpy).toHaveBeenCalledTimes(1)
+      trimSpy.mockRestore()
     })
 
     test('tool results include tool names for fact extraction', async () => {

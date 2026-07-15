@@ -12,6 +12,7 @@ import { handleToolCallFinish } from './llm-orchestrator-support.js'
 import type { GenerateArgs, InvokeModelArgs, LlmOrchestratorDeps, ToolCallContext } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
+import { createNoProgressCondition } from './run-control/no-progress-condition.js'
 import { runRegistry } from './run-control/registry.js'
 import { composePrepareSteps, createSteeringPrepareStep } from './run-control/steering-prepare-step.js'
 import { createStopRequestedCondition } from './run-control/stop-condition.js'
@@ -21,6 +22,14 @@ import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
 import { createDisclosurePrepareStep } from './tools/disclosure/prepare-step.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:invoke' })
+
+/**
+ * Per-turn tool-step budget for the agent loop. A single generateText call loops through
+ * all its steps internally (accumulating complete tool-call/result pairs), so this is the
+ * total budget for one user turn — not a per-round cap. Kept generous so ordinary requests
+ * finish in one turn; the no-progress guard stops a stalled turn well before this.
+ */
+const AGENT_MAX_STEPS = 50
 
 const safeByteLength = (value: unknown): number | null => {
   if (value === undefined || value === null) return null
@@ -201,7 +210,11 @@ const callGenerateText = async (a: GenerateArgs): ReturnType<LlmOrchestratorDeps
     disclosure === undefined ? undefined : createDisclosurePrepareStep(disclosure, contextId, turnId)
   const prepareStep =
     run === undefined ? disclosureStep : composePrepareSteps(createSteeringPrepareStep(run), disclosureStep)
-  const stopWhen = run === undefined ? deps.stepCountIs(25) : [deps.stepCountIs(25), createStopRequestedCondition(run)]
+  // Budget cap + no-progress guard always apply; a live force-stop condition is added when a run is active.
+  const stopWhen =
+    run === undefined
+      ? [deps.stepCountIs(AGENT_MAX_STEPS), createNoProgressCondition()]
+      : [deps.stepCountIs(AGENT_MAX_STEPS), createNoProgressCondition(), createStopRequestedCondition(run)]
   const finishHandler = buildToolCallFinishHandler(ctx)
   try {
     return await deps.generateText({
