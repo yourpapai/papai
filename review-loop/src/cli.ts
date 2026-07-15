@@ -76,6 +76,13 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
   return { configPath, planPath, repoRoot, resumeRunId }
 }
 
+export function splitLines(pending: string, chunk: string): { lines: string[]; remaining: string } {
+  const parts = (pending + chunk).split('\n')
+  const remaining = parts.pop() ?? ''
+  const lines = parts.filter((line) => line.length > 0)
+  return { lines, remaining }
+}
+
 const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
   return new Promise((resolve) => {
     const child = spawn(command, [...args], { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -85,15 +92,10 @@ const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult
     child.stdout?.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
       stdout += text
-      pending += text
-      let newlineIndex = pending.indexOf('\n')
-      while (newlineIndex !== -1) {
-        const line = pending.slice(0, newlineIndex)
-        pending = pending.slice(newlineIndex + 1)
-        newlineIndex = pending.indexOf('\n')
-        if (line.length > 0) {
-          onLine?.(line)
-        }
+      const split = splitLines(pending, text)
+      pending = split.remaining
+      for (const line of split.lines) {
+        onLine?.(line)
       }
     })
     child.stderr?.on('data', (chunk: Buffer) => {
