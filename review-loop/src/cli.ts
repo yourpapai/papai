@@ -167,16 +167,16 @@ export async function runCli(argv: readonly string[]): Promise<void> {
       log,
     })
 
-    const summary = formatSummary(result)
-    await writeFile(path.join(runState.runDir, 'summary.txt'), `${summary}\n`)
-    console.log(summary)
-
     await finalizeRun(config, runState, {
       exec,
       runBuildCheck,
       mergeWorktree,
       removeWorktree,
     })
+
+    const summary = formatSummary(result)
+    await writeFile(path.join(runState.runDir, 'summary.txt'), `${summary}\n`)
+    console.log(summary)
   } catch (error) {
     console.error('Review loop failed:', error)
     console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
