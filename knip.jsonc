@@ -124,6 +124,10 @@
     // Per-role resolver is staged ahead of the legacy-delegation wiring (Task 8)
     // in the multi-provider LLM backend plan; no production importer exists yet.
     "src/llm-providers/resolver.ts": ["files", "exports"],
+    // resolveEffectiveLlmConfig is the legacy adapter; after the orchestrator
+    // migration (Task 12) no production importer remains. The test suite still
+    // covers it; Task 13 deletes the file entirely.
+    "src/llm-config-resolver.ts": ["exports"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
