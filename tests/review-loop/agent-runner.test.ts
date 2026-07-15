@@ -4,11 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { writeFileSync, unlinkSync } from 'node:fs'
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { runAgent } from '../../review-loop/src/agent-runner.js'
 import { ReviewerIssuesSchema } from '../../review-loop/src/issue-schema.js'
+import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -143,5 +144,72 @@ describe('agent-runner', () => {
         extraArgs: [],
       }),
     ).rejects.toThrow()
+  })
+
+  test('streams live progress from agent events', async () => {
+    const dir = makeTempDir('agent-stream-')
+    const outputPath = path.join(dir, 'issues.json')
+    const logPath = path.join(dir, 'log.txt')
+    const lines = [
+      JSON.stringify({ type: 'step_start', timestamp: Date.now(), part: { type: 'step-start' } }),
+      JSON.stringify({
+        type: 'tool_use',
+        part: {
+          type: 'tool',
+          tool: 'read',
+          callID: 'call_1',
+          state: { status: 'completed', input: { filePath: '/x/cli.ts' } },
+        },
+      }),
+      JSON.stringify({
+        type: 'step_finish',
+        part: { type: 'step-finish', reason: 'stop', tokens: { input: 100, output: 5, reasoning: 0 }, cost: 0 },
+      }),
+    ]
+    const live: string[] = []
+    const events: string[] = []
+    const reporter: ProgressReporter = {
+      dynamic: false,
+      event: (m) => {
+        events.push(m)
+      },
+      live: (m) => {
+        live.push(m)
+      },
+      clearLive() {},
+      log: (m) => {
+        events.push(m)
+      },
+    }
+    const spawn = (
+      _command: string,
+      _args: readonly string[],
+      _opts: { cwd: string },
+      onLine?: (line: string) => void,
+    ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      for (const line of lines) {
+        onLine?.(line)
+      }
+      writeFileSync(outputPath, JSON.stringify({ issues: [] }))
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+    }
+
+    await runAgent({
+      spawn,
+      model: 'test-model',
+      cwd: dir,
+      prompt: 'review the code',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath,
+      extraArgs: [],
+      reporter,
+    })
+
+    const liveReviewerRead = live.filter((l) => l.includes('reviewer')).filter((l) => l.includes('read'))
+    expect(liveReviewerRead.length).toBeGreaterThan(0)
+    expect(events.some((e) => e.includes('in 100 / out 5'))).toBe(true)
+    expect(readFileSync(logPath, 'utf8')).toContain('step_start')
   })
 })
