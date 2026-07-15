@@ -153,7 +153,18 @@ export function agentWritePath(outputPath: string): string {
 function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<SpawnResult> {
   return options.spawn(
     'opencode',
-    ['run', '--format', 'json', '--model', options.model, '--dir', options.cwd, ...options.extraArgs, options.prompt],
+    [
+      'run',
+      '--auto',
+      '--format',
+      'json',
+      '--model',
+      options.model,
+      '--dir',
+      options.cwd,
+      ...options.extraArgs,
+      options.prompt,
+    ],
     { cwd: options.cwd },
     onLine,
   )
