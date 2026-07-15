@@ -3,11 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { SpawnFn } from './agent-runner.js'
+import type { SpawnFn, SpawnResult } from './agent-runner.js'
 import { createShellExec } from './build-checker.js'
 import { loadReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
@@ -76,18 +76,37 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
   return { configPath, planPath, repoRoot, resumeRunId }
 }
 
-const realSpawn: SpawnFn = (
-  command,
-  args,
-  options,
-): Promise<{
-  exitCode: number
-  stdout: string
-  stderr: string
-}> => {
+const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
   return new Promise((resolve) => {
-    execFile(command, [...args], { ...options, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      resolve({ exitCode: err === null ? 0 : 1, stdout, stderr })
+    const child = spawn(command, [...args], { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    let pending = ''
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString()
+      stdout += text
+      pending += text
+      let newlineIndex = pending.indexOf('\n')
+      while (newlineIndex !== -1) {
+        const line = pending.slice(0, newlineIndex)
+        pending = pending.slice(newlineIndex + 1)
+        newlineIndex = pending.indexOf('\n')
+        if (line.length > 0) {
+          onLine?.(line)
+        }
+      }
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    child.on('error', () => {
+      resolve({ exitCode: 1, stdout, stderr })
+    })
+    child.on('close', (code) => {
+      if (pending.length > 0) {
+        onLine?.(pending)
+      }
+      resolve({ exitCode: code ?? 0, stdout, stderr })
     })
   })
 }
