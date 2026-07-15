@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { formatDuration, formatLiveLine, formatStepFooter, formatToolArg } from '../../review-loop/src/live-renderer.js'
+import {
+  formatDuration,
+  formatLiveLine,
+  formatStepFooter,
+  formatToolArg,
+  LiveRenderer,
+} from '../../review-loop/src/live-renderer.js'
 
 describe('formatDuration', () => {
   test('formats seconds under a minute', () => {
@@ -66,5 +72,80 @@ describe('formatStepFooter', () => {
     expect(footer).toContain('18s')
     expect(footer).toContain('4 tools')
     expect(footer).toContain('in 13373 / out 31')
+  })
+})
+
+function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
+  output: string[]
+  stream: { write(s: string): boolean; isTTY?: boolean; columns?: number }
+} {
+  const output: string[] = []
+  return {
+    output,
+    stream: {
+      write(s: string): boolean {
+        output.push(s)
+        return true
+      },
+      ...opts,
+    },
+  }
+}
+
+describe('LiveRenderer', () => {
+  test('event writes a scrolling line', () => {
+    const { output, stream } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.event('hello')
+    expect(output).toEqual(['hello\n'])
+  })
+
+  test('log aliases event', () => {
+    const { output, stream } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.log('hi')
+    expect(output).toEqual(['hi\n'])
+  })
+
+  test('dynamic=false when not a TTY', () => {
+    const { stream } = makeStream()
+    expect(new LiveRenderer(stream).dynamic).toBe(false)
+  })
+
+  test('dynamic=true when TTY', () => {
+    const { stream } = makeStream({ isTTY: true })
+    expect(new LiveRenderer(stream).dynamic).toBe(true)
+  })
+
+  test('non-TTY live scrolls with newline', () => {
+    const { output, stream } = makeStream()
+    new LiveRenderer(stream).live('x')
+    expect(output).toEqual(['x\n'])
+  })
+
+  test('TTY live writes clear-line + content with no newline', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 80 })
+    new LiveRenderer(stream).live('working')
+    expect(output).toEqual(['\r\u001b[2Kworking'])
+  })
+
+  test('event after a live line clears it first (TTY)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 80 })
+    const r = new LiveRenderer(stream)
+    r.live('working')
+    r.event('done')
+    expect(output).toEqual(['\r\u001b[2Kworking', '\r\u001b[2K', 'done\n'])
+  })
+
+  test('clearLive is a no-op when nothing is live', () => {
+    const { output, stream } = makeStream({ isTTY: true })
+    new LiveRenderer(stream).clearLive()
+    expect(output).toEqual([])
+  })
+
+  test('TTY live truncates to columns with ellipsis', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 10 })
+    new LiveRenderer(stream).live('abcdefghijklmnopqrstuvwxyz')
+    expect(output[0]).toBe('\r\u001b[2Kabcdefghi\u2026')
   })
 })

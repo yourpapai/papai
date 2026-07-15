@@ -5,10 +5,20 @@
 
 import path from 'node:path'
 
+import type { ProgressReporter } from './progress-log.js'
+
 const ELLIPSIS = '\u2026'
 const ARROW = '\u25B6'
 const CHECK = '\u2713'
 const MIDDLE_DOT = '\u00B7'
+
+const CLEAR_LINE = '\r\u001b[2K'
+
+export interface RendererStream {
+  write(chunk: string): boolean
+  isTTY?: boolean
+  columns?: number
+}
 
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
@@ -88,4 +98,46 @@ export function formatStepFooter(
 ): string {
   const tools = `${toolCount} tool${toolCount === 1 ? '' : 's'}`
   return `  ${label} ${CHECK} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools} ${MIDDLE_DOT} in ${tokens.input} / out ${tokens.output}`
+}
+
+export class LiveRenderer implements ProgressReporter {
+  readonly dynamic: boolean
+  private readonly stream: RendererStream
+  private liveActive = false
+
+  constructor(stream: RendererStream) {
+    this.stream = stream
+    this.dynamic = stream.isTTY === true
+  }
+
+  event(message: string): void {
+    this.clearLive()
+    this.stream.write(`${message}\n`)
+  }
+
+  log(message: string): void {
+    this.event(message)
+  }
+
+  live(line: string): void {
+    if (!this.dynamic) {
+      this.stream.write(`${line}\n`)
+      return
+    }
+    this.stream.write(`${CLEAR_LINE}${this.fit(line)}`)
+    this.liveActive = true
+  }
+
+  clearLive(): void {
+    if (!this.liveActive) {
+      return
+    }
+    this.stream.write(CLEAR_LINE)
+    this.liveActive = false
+  }
+
+  private fit(line: string): string {
+    const max = this.stream.columns ?? 80
+    return truncate(line, max)
+  }
 }
