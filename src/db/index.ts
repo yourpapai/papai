@@ -77,6 +77,7 @@ import { migration063ReleaseAnnouncements } from './migrations/063_release_annou
 import { migration064CodingSessionRepos } from './migrations/064_coding_session_repos.js'
 import { migration065CodingIdentity } from './migrations/065_coding_identity.js'
 import { migration066CodingReposEgress } from './migrations/066_coding_repos_egress.js'
+import { migration067MattermostCatchupCursor } from './migrations/067_mattermost_catchup_cursor.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -178,6 +179,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration064CodingSessionRepos,
   migration065CodingIdentity,
   migration066CodingReposEgress,
+  migration067MattermostCatchupCursor,
 ]
 
 export const initDb = (): void => {

@@ -126,3 +126,17 @@ export const setOpenDmAccess = (id: string, enabled: boolean): void => {
   getDrizzleDb().update(platformInstances).set({ openDmAccess: enabled }).where(eq(platformInstances.id, id)).run()
   log.info({ id, enabled }, 'open DM access updated')
 }
+
+export const getMattermostLastEventAt = (id: string): number | null => {
+  const row = getDrizzleDb()
+    .select({ mattermostLastEventAt: platformInstances.mattermostLastEventAt })
+    .from(platformInstances)
+    .where(eq(platformInstances.id, id))
+    .get()
+  return row?.mattermostLastEventAt ?? null
+}
+
+export const setMattermostLastEventAt = (id: string, ts: number): void => {
+  getDrizzleDb().update(platformInstances).set({ mattermostLastEventAt: ts }).where(eq(platformInstances.id, id)).run()
+  log.info({ id, ts }, 'mattermost last event at updated')
+}

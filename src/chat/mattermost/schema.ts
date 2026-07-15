@@ -24,6 +24,7 @@ export const MattermostPostSchema = z.object({
   root_id: z.string().optional(),
   parent_id: z.string().optional(),
   file_ids: z.array(z.string()).optional(),
+  create_at: z.number().optional(),
 })
 
 export const MattermostFileInfoSchema = z.object({

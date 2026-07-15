@@ -56,4 +56,17 @@ describe('MattermostPostSchema', () => {
     expect(result.data.root_id).toBe('root123')
     expect(result.data.parent_id).toBeUndefined()
   })
+
+  test('should parse a post with create_at', () => {
+    const post = {
+      id: 'post123',
+      user_id: 'user456',
+      channel_id: 'channel789',
+      message: 'Hello world',
+      create_at: 123,
+    }
+
+    const result = MattermostPostSchema.parse(post)
+    expect(result.create_at).toBe(123)
+  })
 })

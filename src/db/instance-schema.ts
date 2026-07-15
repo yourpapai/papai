@@ -12,6 +12,7 @@ export const platformInstances = sqliteTable('platform_instances', {
   config: text('config').notNull(),
   status: text('status').notNull().default('pending'),
   openDmAccess: integer('open_dm_access', { mode: 'boolean' }).notNull().default(false),
+  mattermostLastEventAt: integer('mattermost_last_event_at'),
   createdAt: text('created_at')
     .notNull()
     .default(sql`(datetime('now'))`),

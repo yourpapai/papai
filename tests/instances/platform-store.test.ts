@@ -9,11 +9,13 @@ import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { platformInstances } from '../../src/db/schema.js'
 import {
   deletePlatformInstance,
+  getMattermostLastEventAt,
   getPlatformInstance,
   insertPlatformInstance,
   isOpenDmAccessEnabled,
   listActivePlatformInstancesSafe,
   listPlatformInstances,
+  setMattermostLastEventAt,
   setOpenDmAccess,
   updatePlatformInstance,
 } from '../../src/instances/platform-store.js'
@@ -113,5 +115,16 @@ describe('platform-store', () => {
 
   test('isOpenDmAccessEnabled is false for missing instance', () => {
     expect(isOpenDmAccessEnabled('nope')).toBe(false)
+  })
+
+  test('mattermostLastEventAt round-trips and defaults to null', () => {
+    insertPlatformInstance({ id: 'mm', type: 'mattermost', config: { baseUrl: 'u', token: 't' }, status: 'active' })
+    expect(getMattermostLastEventAt('mm')).toBeNull()
+    setMattermostLastEventAt('mm', 123)
+    expect(getMattermostLastEventAt('mm')).toBe(123)
+  })
+
+  test('getMattermostLastEventAt returns null for missing instance', () => {
+    expect(getMattermostLastEventAt('nope')).toBeNull()
   })
 })
