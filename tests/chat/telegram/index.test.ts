@@ -99,6 +99,24 @@ function getProviderBot(provider: TelegramChatProvider): {
   return value
 }
 
+type SetMessageReactionCall = [chatId: number, messageId: number, reaction: unknown[]]
+
+function isBotWithSetMessageReaction(
+  value: unknown,
+): value is { api: { setMessageReaction: (...args: SetMessageReactionCall) => Promise<unknown> } } {
+  return typeof value === 'object' && value !== null && 'api' in value
+}
+
+function getProviderReactionBot(provider: TelegramChatProvider): {
+  api: { setMessageReaction: (...args: SetMessageReactionCall) => Promise<unknown> }
+} {
+  const value = Reflect.get(provider as object, 'bot') as unknown
+  if (!isBotWithSetMessageReaction(value)) {
+    throw new TypeError('Expected provider bot to expose api.setMessageReaction')
+  }
+  return value
+}
+
 function isBotWithLifecycleMethods(value: unknown): value is {
   on: (filter: string | string[], handler: (...args: unknown[]) => unknown) => unknown
   start: (options?: { onStart?: (botInfo: { username: string }) => void }) => Promise<void>
@@ -340,6 +358,77 @@ describe('TelegramChatProvider', () => {
           ],
         },
       ])
+    })
+  })
+
+  describe('setReaction', () => {
+    const reactionTarget: DeferredDeliveryTarget = {
+      contextId: '99',
+      contextType: 'group',
+      threadId: null,
+      audience: 'shared',
+      mentionUserIds: [],
+      createdByUserId: 'user-1',
+      createdByUsername: null,
+    }
+
+    test('replaces the reaction set with the new emoji, ignoring previousEmoji', async () => {
+      const provider = createTelegramProvider()
+      const bot = getProviderReactionBot(provider)
+
+      const calls: unknown[][] = []
+      bot.api.setMessageReaction = (...args: unknown[]): Promise<unknown> => {
+        calls.push(args)
+        return Promise.resolve(undefined)
+      }
+
+      const result = await provider.setReaction('telegram-default', reactionTarget, '42', '👀', '⏳')
+
+      expect(result).toBe(true)
+      expect(calls).toEqual([[99, 42, [{ type: 'emoji', emoji: '👀' }]]])
+    })
+
+    test('clears the reaction set with an empty array when emoji is null', async () => {
+      const provider = createTelegramProvider()
+      const bot = getProviderReactionBot(provider)
+
+      const calls: unknown[][] = []
+      bot.api.setMessageReaction = (...args: unknown[]): Promise<unknown> => {
+        calls.push(args)
+        return Promise.resolve(undefined)
+      }
+
+      const result = await provider.setReaction('telegram-default', reactionTarget, '42', null, '✅')
+
+      expect(result).toBe(true)
+      expect(calls).toEqual([[99, 42, []]])
+    })
+
+    test('returns false without calling the API for a non-numeric messageId', async () => {
+      const provider = createTelegramProvider()
+      const bot = getProviderReactionBot(provider)
+
+      let called = false
+      bot.api.setMessageReaction = (): Promise<unknown> => {
+        called = true
+        return Promise.resolve(undefined)
+      }
+
+      const result = await provider.setReaction('telegram-default', reactionTarget, 'x', '👀', null)
+
+      expect(result).toBe(false)
+      expect(called).toBe(false)
+    })
+
+    test('returns false without throwing when the API errors', async () => {
+      const provider = createTelegramProvider()
+      const bot = getProviderReactionBot(provider)
+
+      bot.api.setMessageReaction = (): Promise<unknown> => Promise.reject(new Error('telegram unavailable'))
+
+      const result = await provider.setReaction('telegram-default', reactionTarget, '42', '👀', '⏳')
+
+      expect(result).toBe(false)
     })
   })
 

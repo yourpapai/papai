@@ -11,6 +11,7 @@ export const telegramCapabilities: ReadonlySet<ChatCapability> = new Set<ChatCap
   'messages.buttons',
   'messages.ephemeral',
   'messages.files',
+  'messages.reactions',
   'messages.redact',
   'messages.reply-context',
   'files.receive',

@@ -36,6 +36,7 @@ import {
   resolveThreadId,
 } from './message-extraction.js'
 import { telegramCapabilities, telegramConfigRequirements, telegramTraits } from './metadata.js'
+import { setTelegramReaction } from './reactions.js'
 import { buildTelegramReplyFn, type CallbackAnswerState } from './reply-fn-builder.js'
 import {
   buildTelegramMentionPrefix,
@@ -139,6 +140,15 @@ export class TelegramChatProvider implements ChatProvider {
       options.message_thread_id = parseInt(target.threadId, 10)
     }
     await this.bot.api.sendMessage(chatId, `${mentionPrefix.text}${formatted.text}`, options)
+  }
+  setReaction(
+    _platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    messageId: string,
+    emoji: string | null,
+    _previousEmoji?: string | null,
+  ): Promise<boolean> {
+    return setTelegramReaction(this.bot.api, target, messageId, emoji)
   }
   start(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
