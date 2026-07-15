@@ -127,6 +127,7 @@ function deps(over: Partial<CodingModeDeps> = {}): CodingModeDeps {
     getNervContributions: () => contributions,
     buildRuntime: () => makeRuntimeContext(['g/r']),
     resolveGuardrails: () => ({ allowedAgents: [], whoMayUse: 'members', forceSharedKey: false, maxMcpServers: 3 }),
+    ackReaction: () => Promise.resolve(),
     ...over,
   }
 }
@@ -336,5 +337,76 @@ describe('maybeRouteCodingTask', () => {
     releaseFirst()
     await Promise.all([p1, p2])
     expect(create).toHaveBeenCalledTimes(2)
+  })
+
+  // SS-10 P6: messageId plumbing + instant ⏳ ack reaction
+  it('success → passes msg.messageId into buildRuntime', async () => {
+    const { reply } = stubReply()
+    const buildRuntime = mock(() => makeRuntimeContext(['g/r']))
+    const d = deps({ buildRuntime })
+    expect(await maybeRouteCodingTask(makeMessage({ messageId: 'm1' }), auth, reply, d)).toBe(true)
+    expect(buildRuntime).toHaveBeenCalledWith(manifest, {
+      storageContextId: 'st',
+      chatUserId: 'u1',
+      messageId: 'm1',
+    })
+  })
+
+  it('successful create with a messageId → calls ackReaction with the ⏳ emoji', async () => {
+    const { reply } = stubReply()
+    const ackReaction = mock(() => Promise.resolve())
+    const d = deps({ ackReaction })
+    expect(await maybeRouteCodingTask(makeMessage({ messageId: 'm1' }), auth, reply, d)).toBe(true)
+    expect(ackReaction).toHaveBeenCalledTimes(1)
+    expect(ackReaction).toHaveBeenCalledWith(expect.objectContaining({ messageId: 'm1' }), auth, '⏳')
+  })
+
+  it('conflict → does not call ackReaction (existing task keeps its own reaction)', async () => {
+    const { reply } = stubReply()
+    const ackReaction = mock(() => Promise.resolve())
+    const conflictContributions = {
+      manifest,
+      tools: [
+        tool(
+          'create_coding_task',
+          mock(() => Promise.resolve({ error: 'conflict', message: 'x' })),
+        ),
+        tool(
+          'followup_coding_task',
+          mock(() => Promise.resolve({ ok: true })),
+        ),
+      ],
+    }
+    const d = deps({ getNervContributions: () => conflictContributions, ackReaction })
+    expect(await maybeRouteCodingTask(makeMessage({ messageId: 'm1' }), auth, reply, d)).toBe(true)
+    expect(ackReaction).not.toHaveBeenCalled()
+  })
+
+  it('non-conflict tool error → does not call ackReaction', async () => {
+    const { reply } = stubReply()
+    const ackReaction = mock(() => Promise.resolve())
+    const d = deps({
+      getNervContributions: () => ({
+        manifest,
+        tools: [
+          tool(
+            'create_coding_task',
+            mock(() => Promise.resolve({ error: 'not_configured', message: 'nerv not set up' })),
+          ),
+        ],
+      }),
+      ackReaction,
+    })
+    expect(await maybeRouteCodingTask(makeMessage({ messageId: 'm1' }), auth, reply, d)).toBe(true)
+    expect(ackReaction).not.toHaveBeenCalled()
+  })
+
+  it('message with no messageId → creates the task but never calls ackReaction', async () => {
+    const { reply, texts } = stubReply()
+    const ackReaction = mock(() => Promise.resolve())
+    const d = deps({ ackReaction })
+    expect(await maybeRouteCodingTask(makeMessage(), auth, reply, d)).toBe(true)
+    expect(texts[0]).toContain('Started a coding task')
+    expect(ackReaction).not.toHaveBeenCalled()
   })
 })

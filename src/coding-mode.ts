@@ -5,16 +5,20 @@
 
 import type { ToolExecutionOptions } from 'ai'
 
-import type { AuthorizationResult, IncomingMessage, ReplyFn } from './chat/types.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
+import type { AuthorizationResult, DeferredDeliveryTarget, IncomingMessage, ReplyFn } from './chat/types.js'
 import type { CodingGuardrails } from './coding-credentials/guardrails.js'
 import { resolveCodingGuardrails } from './coding-credentials/guardrails.js'
 import { getPluginConfig } from './config.js'
+import { getRuntimeChatRouter } from './debug/chat-router-runtime.js'
 import { contributionRegistry } from './plugins/contributions.js'
 import { getPluginsForContext } from './plugins/registry.js'
+import { kvSet } from './plugins/store.js'
 import { buildPluginToolRuntimeContext } from './plugins/tool-runtime.js'
 import type { PluginManifest, PluginTool, PluginToolRuntimeContext } from './plugins/types.js'
 
 const NO_BOT_MARKER = ':no-bot:'
+const REACTIONS_KV_PLUGIN_ID = 'nerv-reactions'
 
 /** Dependency-injected hooks for {@link maybeRouteCodingTask}, so tests can stub plugin/config lookups. */
 export interface CodingModeDeps {
@@ -23,9 +27,40 @@ export interface CodingModeDeps {
   getNervContributions(): { manifest: PluginManifest; tools: PluginTool[] } | undefined
   buildRuntime(
     manifest: PluginManifest,
-    runtime: { storageContextId: string; chatUserId: string },
+    runtime: { storageContextId: string; chatUserId: string; messageId?: string },
   ): PluginToolRuntimeContext
   resolveGuardrails(platformInstanceId: string): CodingGuardrails
+  /** Instant ack on a successfully-created task: sets `emoji` on `msg.messageId` and records it in
+   *  kv so a later notify (P7) can transition/clear it. Best-effort — must never throw. */
+  ackReaction(msg: IncomingMessage, auth: AuthorizationResult, emoji: string): Promise<void>
+}
+
+/** Builds the delivery target for reacting to `msg` itself (the message just routed), from fields
+ *  already on the incoming message — no round-trip through a stored context id needed. */
+function buildAckTarget(msg: IncomingMessage, auth: AuthorizationResult): DeferredDeliveryTarget {
+  return {
+    contextId: msg.contextId,
+    contextType: msg.contextType,
+    threadId: msg.threadId ?? null,
+    audience: 'shared',
+    mentionUserIds: [],
+    createdByUserId: msg.user.id,
+    createdByUsername: null,
+    storageContextId: auth.storageContextId,
+  }
+}
+
+async function defaultAckReaction(msg: IncomingMessage, auth: AuthorizationResult, emoji: string): Promise<void> {
+  if (msg.messageId === undefined) return
+  const { messageId } = msg
+  try {
+    const router = getRuntimeChatRouter()
+    if (router !== null) await router.setReaction(msg.platformInstanceId, buildAckTarget(msg, auth), messageId, emoji)
+    const configContextId = getConfigContextIdFromStorageContextId(auth.storageContextId)
+    kvSet(REACTIONS_KV_PLUGIN_ID, configContextId, 'reaction:' + messageId, emoji)
+  } catch {
+    // Best-effort ack — a failed reaction must never break task creation.
+  }
 }
 
 const defaultDeps: CodingModeDeps = {
@@ -34,6 +69,7 @@ const defaultDeps: CodingModeDeps = {
   getNervContributions: () => contributionRegistry.getContributions('nerv'),
   buildRuntime: (manifest, runtime) => buildPluginToolRuntimeContext('nerv', manifest, runtime),
   resolveGuardrails: (platformInstanceId) => resolveCodingGuardrails(platformInstanceId),
+  ackReaction: defaultAckReaction,
 }
 
 function buildToolExecutionOptions(): ToolExecutionOptions {
@@ -89,7 +125,9 @@ async function withContextLock<T>(storageContextId: string, fn: () => Promise<T>
   }
 }
 
-/** Handles the create_coding_task result: conflict reroutes to a followup, other errors are surfaced verbatim. */
+/** Handles the create_coding_task result: conflict reroutes to a followup, other errors are surfaced
+ *  verbatim. Returns `true` only for a genuinely successful create, so the caller can fire the
+ *  instant ack reaction — a conflict/error never gets one (the existing task keeps its own). */
 async function respondToCreateResult(
   result: unknown,
   msg: IncomingMessage,
@@ -97,19 +135,20 @@ async function respondToCreateResult(
   contrib: { tools: PluginTool[] },
   runtimeContext: PluginToolRuntimeContext,
   repoName: string,
-): Promise<void> {
+): Promise<boolean> {
   if (isErrorResult(result) && result.error === 'conflict') {
     const followupTool = contrib.tools.find((tool) => tool.name === 'followup_coding_task')
     if (followupTool !== undefined)
       await followupTool.execute({ text: msg.text }, runtimeContext, buildToolExecutionOptions())
     await reply.text('✋ Folded that into the running coding task.')
-    return
+    return false
   }
   if (isErrorResult(result)) {
     await reply.text('⚠️ ' + (result.message ?? 'Could not start a coding task.'))
-    return
+    return false
   }
   await reply.text('🛠️ Started a coding task on `' + repoName + '`.')
+  return true
 }
 
 /** The repo-resolution-through-create critical section, run inside the per-context lock. Nerv
@@ -125,6 +164,7 @@ async function routeToCoding(
   const runtimeContext = deps.buildRuntime(contrib.manifest, {
     storageContextId: auth.storageContextId,
     chatUserId: msg.user.id,
+    messageId: msg.messageId,
   })
 
   const repos = runtimeContext.codingRepos.list()
@@ -147,7 +187,8 @@ async function routeToCoding(
       runtimeContext,
       buildToolExecutionOptions(),
     )
-    await respondToCreateResult(result, msg, reply, contrib, runtimeContext, repo.name)
+    const created = await respondToCreateResult(result, msg, reply, contrib, runtimeContext, repo.name)
+    if (created && msg.messageId !== undefined) await deps.ackReaction(msg, auth, '⏳')
   } catch {
     await reply.text('⚠️ Couldn’t reach the coding service — please try again in a moment.')
   }
