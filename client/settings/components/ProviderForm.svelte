@@ -19,6 +19,7 @@
     busy?: boolean
     initial?: Partial<{ label: string; providerType: LlmProviderType; baseUrl: string }> | null
     requireApiKey?: boolean
+    editMode?: boolean
     testidPrefix?: string
   }
 
@@ -28,6 +29,7 @@
     busy = false,
     initial = null,
     requireApiKey = true,
+    editMode = false,
     testidPrefix = 'provider-form',
   }: Props = $props()
 
@@ -42,7 +44,11 @@
     if (preset !== undefined) baseUrl = preset
   }
 
-  const canSave = $derived(label.trim().length > 0 && baseUrl.trim().length > 0 && (!requireApiKey || apiKey.trim().length > 0))
+  const canSave = $derived(
+    label.trim().length > 0 &&
+      baseUrl.trim().length > 0 &&
+      (editMode || !requireApiKey || apiKey.trim().length > 0),
+  )
 
   async function save(): Promise<void> {
     if (!canSave || busy) return
@@ -67,10 +73,15 @@
     <span class="provider-form__label">Base URL</span>
     <Input value={baseUrl} placeholder="https://api.example.com/v1" onInput={(v) => (baseUrl = v)} testid={`${testidPrefix}-base-url`} />
   </label>
-  {#if requireApiKey}
+  {#if requireApiKey || editMode}
     <label class="provider-form__field">
       <span class="provider-form__label">API Key</span>
-      <Input type="password" value={apiKey} placeholder="enter API key" onInput={(v) => (apiKey = v)} testid={`${testidPrefix}-api-key`} />
+      <Input
+        type="password"
+        value={apiKey}
+        placeholder={editMode ? 'enter new key to replace (optional)' : 'enter API key'}
+        onInput={(v) => (apiKey = v)}
+        testid={`${testidPrefix}-api-key`} />
     </label>
   {/if}
   <div class="provider-form__actions">

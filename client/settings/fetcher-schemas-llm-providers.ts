@@ -66,6 +66,7 @@ export const ProviderInputSchema = z.object({
   apiKey: z.string().min(1),
 })
 export type ProviderInput = z.infer<typeof ProviderInputSchema>
+export type ProviderPatch = Partial<ProviderInput> & { models?: string[] }
 
 export const PROVIDER_TYPE_OPTIONS: ReadonlyArray<{ value: LlmProviderType; label: string }> = [
   { value: 'openai', label: 'OpenAI' },

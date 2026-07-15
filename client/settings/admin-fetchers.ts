@@ -37,6 +37,7 @@ import {
   type AdminProvidersResponse,
   type LlmRoleBindings,
   type ProviderInput,
+  type ProviderPatch,
 } from './fetcher-schemas-llm-providers.js'
 import { AdminMcpCatalogResponseSchema, type AdminMcpCatalogResponse } from './fetcher-schemas-mcp-catalog.js'
 import {
@@ -258,8 +259,11 @@ export const fetchAdminProviders = (): Promise<AdminProvidersResponse> =>
 export const createAdminProvider = (input: ProviderInput): Promise<unknown> =>
   writeJson('/settings/api/admin/providers', 'POST', input, (b) => b)
 
-export const updateAdminProvider = (id: string, input: Partial<ProviderInput>): Promise<unknown> =>
+export const updateAdminProvider = (id: string, input: ProviderPatch): Promise<unknown> =>
   writeJson(`/settings/api/admin/providers/${encodeURIComponent(id)}`, 'PATCH', input, (b) => b)
+
+export const refreshAdminProviderModels = (id: string): Promise<unknown> =>
+  writeJson(`/settings/api/admin/providers/${encodeURIComponent(id)}/refresh-models`, 'POST', {}, (b) => b)
 
 export const deleteAdminProvider = (id: string): Promise<unknown> =>
   settingsFetch(`/settings/api/admin/providers/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(async (res) => {

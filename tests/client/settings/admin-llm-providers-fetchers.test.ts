@@ -11,6 +11,7 @@ import {
   fetchAdminLlmRoles,
   fetchAdminProviders,
   putAdminLlmRoles,
+  refreshAdminProviderModels,
   updateAdminProvider,
 } from '../../../client/settings/admin-fetchers.js'
 import { setCsrfToken } from '../../../client/settings/fetchers.js'
@@ -80,6 +81,22 @@ describe('admin LLM provider fetchers', () => {
     expect(captured[0]?.url).toBe('/settings/api/admin/providers/prov_1')
     expect(methodOf(captured[0]!.init)).toBe('PATCH')
     expect(parseBody(captured[0]?.init.body)).toEqual({ label: 'Renamed' })
+  })
+
+  test('updateAdminProvider can send models in the PATCH body', async () => {
+    installFetch({ provider: sampleProvider })
+    await updateAdminProvider('prov_1', { models: ['gpt-4o', 'gpt-4o-mini'] })
+    expect(captured[0]?.url).toBe('/settings/api/admin/providers/prov_1')
+    expect(methodOf(captured[0]!.init)).toBe('PATCH')
+    expect(parseBody(captured[0]?.init.body)).toEqual({ models: ['gpt-4o', 'gpt-4o-mini'] })
+  })
+
+  test('refreshAdminProviderModels POSTs to the refresh-models URL', async () => {
+    installFetch({ ok: true })
+    await refreshAdminProviderModels('prov_1')
+    expect(captured[0]?.url).toBe('/settings/api/admin/providers/prov_1/refresh-models')
+    expect(methodOf(captured[0]!.init)).toBe('POST')
+    expect(parseBody(captured[0]?.init.body)).toEqual({})
   })
 
   test('deleteAdminProvider DELETEs a provider', async () => {
