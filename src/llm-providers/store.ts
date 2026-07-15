@@ -171,6 +171,25 @@ export function updateProviderVerification(id: string, verification: Verificatio
   if (fresh !== undefined) cache.set(id, toAccount(fresh))
 }
 
+export function setProviderModels(id: string, models: string[], updatedBy: string): LlmProviderAccount | null {
+  const now = Date.now()
+  getDrizzleDb()
+    .update(llmProviders)
+    .set({
+      modelsCache: JSON.stringify(models),
+      modelsFetchedAt: now,
+      updatedAt: now,
+      updatedBy,
+    })
+    .where(eq(llmProviders.id, id))
+    .run()
+  const fresh = getDrizzleDb().select().from(llmProviders).where(eq(llmProviders.id, id)).get()
+  if (fresh === undefined) return null
+  const account = toAccount(fresh)
+  cache.set(id, account)
+  return account
+}
+
 export function deleteLlmProvider(id: string): void {
   const roles = getAdminRoleBindings()
   if (roles !== null && roles.main.providerId === id) {

@@ -182,6 +182,70 @@ describe('settings admin llm-providers routes', () => {
     expect(res.status).toBe(404)
   })
 
+  test('PATCH with models writes models_cache directly without triggering a fetch', async () => {
+    let fetchCount = 0
+    setMockFetch(() => {
+      fetchCount++
+      return Promise.resolve(okResponse({ data: [{ id: 'm1' }] }))
+    })
+    const { id } = await createViaRoute()
+    await waitFor(() => fetchCount >= 1)
+    const afterCreate = fetchCount
+    const res = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { models: ['manual-a', 'manual-b'] })
+    expect(res.status).toBe(200)
+    const body = z.object({ provider: ProviderSchema }).parse(await res.json())
+    expect(body.provider.verification.models).toEqual(['manual-a', 'manual-b'])
+    expect(getLlmProvider(id)?.verification.models).toEqual(['manual-a', 'manual-b'])
+    expect(fetchCount).toBe(afterCreate)
+  })
+
+  test('PATCH can update label and models in the same request', async () => {
+    const { id } = await createViaRoute()
+    const res = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, {
+      label: 'combined',
+      models: ['x', 'y'],
+    })
+    expect(res.status).toBe(200)
+    const body = z.object({ provider: ProviderSchema }).parse(await res.json())
+    expect(body.provider.label).toBe('combined')
+    expect(body.provider.verification.models).toEqual(['x', 'y'])
+  })
+
+  test('POST refresh-models discovers models synchronously and returns them', async () => {
+    const { id } = await createViaRoute()
+    await waitFor(() => getLlmProvider(id)?.verification.status === 'verified')
+    setMockFetch(() => Promise.resolve(okResponse({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] })))
+    const res = await call('POST', `${PROVIDERS_PATH}/${id}/refresh-models`, adminSession)
+    expect(res.status).toBe(200)
+    const body = z.object({ provider: ProviderSchema }).parse(await res.json())
+    expect(body.provider.verification.models).toEqual(['gpt-4o', 'gpt-4o-mini'])
+    expect(body.provider.verification.status).toBe('verified')
+    expect(getLlmProvider(id)?.verification.models).toEqual(['gpt-4o', 'gpt-4o-mini'])
+  })
+
+  test('POST refresh-models on a missing provider returns 404', async () => {
+    const res = await call('POST', `${PROVIDERS_PATH}/prov_missing/refresh-models`, adminSession)
+    expect(res.status).toBe(404)
+  })
+
+  test('POST refresh-models without CSRF returns 403', async () => {
+    const { id } = await createViaRoute()
+    const res = await call('POST', `${PROVIDERS_PATH}/${id}/refresh-models`, adminSession, undefined, false)
+    expect(res.status).toBe(403)
+  })
+
+  test('non-admin POST refresh-models returns 403', async () => {
+    const { id } = await createViaRoute()
+    const res = await call('POST', `${PROVIDERS_PATH}/${id}/refresh-models`, userSession)
+    expect(res.status).toBe(403)
+  })
+
+  test('GET refresh-models returns 405', async () => {
+    const { id } = await createViaRoute()
+    const res = await call('GET', `${PROVIDERS_PATH}/${id}/refresh-models`, adminSession)
+    expect(res.status).toBe(405)
+  })
+
   test('DELETE removes the provider', async () => {
     const { id } = await createViaRoute()
     const res = await call('DELETE', `${PROVIDERS_PATH}/${id}`, adminSession)

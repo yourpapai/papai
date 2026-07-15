@@ -10,8 +10,10 @@ import {
   createLlmProvider,
   deleteLlmProvider,
   getAdminRoleBindings,
+  getLlmProvider,
   listLlmProviders,
   setAdminRoleBindings,
+  setProviderModels,
   updateLlmProvider,
   updateProviderVerification,
 } from '../../../llm-providers/store.js'
@@ -29,7 +31,9 @@ const ProviderBodySchema = z.object({
   baseUrl: z.string().min(1),
   apiKey: z.string().min(1),
 })
-const ProviderPatchSchema = ProviderBodySchema.partial()
+const ProviderPatchSchema = ProviderBodySchema.partial().extend({
+  models: z.array(z.string()).optional(),
+})
 const RoleBindingSchema = z.object({ providerId: z.string().min(1), model: z.string().min(1) }).nullable()
 const RolesBodySchema = z.object({
   main: z.object({ providerId: z.string().min(1), model: z.string().min(1) }),
@@ -116,6 +120,15 @@ async function handleProviderItem(req: Request, authed: AuthenticatedSettingsReq
     if (!body.success) return settingsJson(422, { error: 'invalid request' })
     const updated = updateLlmProvider(id, body.data, authed.principal.platformUserId)
     if (updated === null) return settingsJson(404, { error: 'not found' })
+    if (body.data.models !== undefined) {
+      const withModels = setProviderModels(id, body.data.models, authed.principal.platformUserId)
+      if (withModels !== null) {
+        if (body.data.apiKey !== undefined || body.data.baseUrl !== undefined) {
+          verifyInBackground(withModels.id, withModels.baseUrl, withModels.apiKey)
+        }
+        return settingsJson(200, { provider: publicAccount(withModels) })
+      }
+    }
     if (body.data.apiKey !== undefined || body.data.baseUrl !== undefined) {
       verifyInBackground(updated.id, updated.baseUrl, updated.apiKey)
     }
@@ -132,6 +145,28 @@ async function handleProviderItem(req: Request, authed: AuthenticatedSettingsReq
     return settingsJson(200, { ok: true })
   } catch (error) {
     return settingsJson(409, { error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+async function handleRefreshModels(req: Request, authed: AuthenticatedSettingsRequest, id: string): Promise<Response> {
+  if (req.method !== 'POST') return settingsJson(405, { error: 'method not allowed' })
+  const guard = requireAdmin(authed, 'write')
+  if (guard !== null) return guard
+  const csrf = requireCsrf(req, authed)
+  if (csrf !== null) return csrf
+
+  const provider = getLlmProvider(id)
+  if (provider === null) return settingsJson(404, { error: 'not found' })
+
+  try {
+    const result = await fetchProviderModels(provider.baseUrl, provider.apiKey)
+    updateProviderVerification(id, toVerification(result))
+    log.info({ id }, 'admin provider models refreshed')
+    const updated = getLlmProvider(id)
+    if (updated === null) return settingsJson(404, { error: 'not found' })
+    return settingsJson(200, { provider: publicAccount(updated) })
+  } catch (error) {
+    return settingsJson(500, { error: error instanceof Error ? error.message : String(error) })
   }
 }
 
@@ -160,7 +195,12 @@ export function handleAdminLlmProvidersRoutes(req: Request, _url: URL, pathname:
   if (!auth.ok) return Promise.resolve(auth.response)
   if (pathname === '/settings/api/admin/providers') return handleProvidersCollection(req, auth.authed)
   if (pathname.startsWith(PROVIDERS_PREFIX)) {
-    return handleProviderItem(req, auth.authed, pathname.slice(PROVIDERS_PREFIX.length))
+    const rest = pathname.slice(PROVIDERS_PREFIX.length)
+    if (rest.endsWith('/refresh-models')) {
+      const id = rest.slice(0, -'/refresh-models'.length)
+      if (id.length > 0) return handleRefreshModels(req, auth.authed, id)
+    }
+    return handleProviderItem(req, auth.authed, rest)
   }
   if (pathname === '/settings/api/admin/llm-roles') return handleRoles(req, auth.authed)
   return Promise.resolve(settingsJson(404, { error: 'not found' }))
