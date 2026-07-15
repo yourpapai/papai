@@ -5,8 +5,9 @@
 
 import { generateText, type LanguageModel } from 'ai'
 
-import { resolveGlobalConfig, type EffectiveLlmConfigResult } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { resolveAdminLlmConfig } from '../llm-providers/resolver.js'
+import type { LlmConfigResult } from '../llm-providers/types.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'announcements:humanize' })
@@ -23,13 +24,13 @@ const SYSTEM_PROMPT = [
 ].join('\n')
 
 export interface HumanizeChangelogDeps {
-  resolveConfig: () => EffectiveLlmConfigResult
+  resolveConfig: () => LlmConfigResult
   buildModel: (apiKey: string, baseUrl: string, modelName: string) => LanguageModel
   generate: (opts: { model: LanguageModel; system: string; prompt: string }) => Promise<{ text: string }>
 }
 
 const defaultDeps: HumanizeChangelogDeps = {
-  resolveConfig: resolveGlobalConfig,
+  resolveConfig: resolveAdminLlmConfig,
   buildModel: buildChatModel,
   generate: async (opts) => {
     const result = await generateText(opts)
@@ -55,7 +56,7 @@ export async function humanizeChangelog(
     return null
   }
   try {
-    const model = deps.buildModel(config.llmApiKey, config.llmBaseUrl, config.mainModel)
+    const model = deps.buildModel(config.main.apiKey, config.main.baseUrl, config.main.model)
     const { text } = await deps.generate({ model, system: SYSTEM_PROMPT, prompt: rawSection })
     const trimmed = text.trim()
     return trimmed.length === 0 ? null : trimmed

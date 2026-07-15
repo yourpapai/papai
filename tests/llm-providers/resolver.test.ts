@@ -15,7 +15,7 @@ import {
 } from '../../src/byok-llm/store.js'
 import { byokLlmCredentials } from '../../src/db/byok-llm-schema.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { resolveLlmConfig } from '../../src/llm-providers/resolver.js'
+import { resolveAdminLlmConfig, resolveLlmConfig } from '../../src/llm-providers/resolver.js'
 import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import type { EffectiveLlmConfig, LlmConfigResult } from '../../src/llm-providers/types.js'
 import { encryptSecretPayload } from '../../src/secret-payload-crypto.js'
@@ -206,5 +206,23 @@ describe('resolveLlmConfig', () => {
     expect(bundle.enabled).toBe(true)
     expect(bundle.unreadable).toBe(true)
     expect(bundle.error).toBe('stored BYOK LLM credentials are unreadable')
+  })
+})
+
+describe('resolveAdminLlmConfig', () => {
+  test('missing when no admin binding exists', () => {
+    expect(resolveAdminLlmConfig()).toEqual({ ok: false, type: 'missing', source: 'global', missing: ['main'] })
+  })
+
+  test('resolves admin main; small inherits admin binding, embedding falls back to main; source global', () => {
+    seedAdmin()
+    const r = unwrapOk(resolveAdminLlmConfig())
+    expect(r.source).toBe('global')
+    expect(r.main.model).toBe('gpt-main')
+    expect(r.main.apiKey).toBe('sk-admin')
+    expect(r.main.source).toBe('global')
+    expect(r.small.model).toBe('gpt-small')
+    expect(r.embedding.model).toBe('gpt-main')
+    expect(r.embedding.apiKey).toBe('sk-admin')
   })
 })

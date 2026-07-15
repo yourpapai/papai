@@ -24,6 +24,16 @@ const adminCredsFor = (providerId: string): Creds | null => {
   return { apiKey: provider.apiKey, baseUrl: provider.baseUrl }
 }
 
+const resolveAdminRole = (adminBinding: RoleBinding): ResolvedRole | null => {
+  if (adminBinding !== null && adminBinding.providerId !== '') {
+    const creds = adminCredsFor(adminBinding.providerId)
+    if (creds !== null) {
+      return { apiKey: creds.apiKey, baseUrl: creds.baseUrl, model: adminBinding.model, source: 'global' }
+    }
+  }
+  return null
+}
+
 const resolveRole = (
   byokBinding: RoleBinding,
   adminBinding: RoleBinding,
@@ -35,13 +45,7 @@ const resolveRole = (
       return { apiKey: creds.apiKey, baseUrl: creds.baseUrl, model: byokBinding.model, source: 'byok' }
     }
   }
-  if (adminBinding !== null && adminBinding.providerId !== '') {
-    const creds = adminCredsFor(adminBinding.providerId)
-    if (creds !== null) {
-      return { apiKey: creds.apiKey, baseUrl: creds.baseUrl, model: adminBinding.model, source: 'global' }
-    }
-  }
-  return null
+  return resolveAdminRole(adminBinding)
 }
 
 const aggregateSource = (
@@ -72,4 +76,24 @@ export function resolveLlmConfig(configContextId: string): LlmConfigResult {
   const embedding = resolveRole(byokRoles?.embedding ?? null, adminBindings?.embedding ?? null, byokProviders) ?? main
 
   return { ok: true, source: aggregateSource(main.source, small.source, embedding.source), main, small, embedding }
+}
+
+// Admin-only resolution: the configured central/main LLM with no context/BYOK
+// layer. Used by callers with no chat context (e.g. the changelog humanizer).
+// `source` is always 'global' since no BYOK provider is ever consulted.
+export function resolveAdminLlmConfig(): LlmConfigResult {
+  const adminBindings = getAdminRoleBindings()
+  if (adminBindings === null) {
+    return { ok: false, type: 'missing', source: 'global', missing: ['main'] }
+  }
+
+  const main = resolveAdminRole(adminBindings.main)
+  if (main === null) {
+    return { ok: false, type: 'missing', source: 'global', missing: ['main'] }
+  }
+
+  const small = resolveAdminRole(adminBindings.small) ?? main
+  const embedding = resolveAdminRole(adminBindings.embedding) ?? main
+
+  return { ok: true, source: 'global', main, small, embedding }
 }
