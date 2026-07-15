@@ -27,6 +27,7 @@ import {
 import { getMattermostActionSigningSecret } from './action-secret.js'
 import { createMattermostActionContext } from './action-signing.js'
 import { makeMattermostApiFetch } from './api-fetch.js'
+import { triggerMattermostCatchUpOnHello } from './catch-up-deps.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
@@ -155,11 +156,10 @@ export class MattermostChatProvider implements ChatProvider {
     if (!parsed.success) return
     if (parsed.data.event === 'hello') {
       log.info('Mattermost WebSocket authenticated')
+      triggerMattermostCatchUpOnHello(this.platformInstanceId, this.mmFetch, this.processPost, this.cachePostOnly)
       return
     }
-    if (parsed.data.event === 'posted') {
-      await this.handlePostedEvent(parsed.data.data)
-    }
+    if (parsed.data.event === 'posted') await this.handlePostedEvent(parsed.data.data)
   }
 
   private async handlePostedEvent(data: Record<string, unknown>): Promise<void> {
@@ -168,7 +168,8 @@ export class MattermostChatProvider implements ChatProvider {
     await this.processPost(parsed.post, parsed.senderName)
   }
 
-  private async processPost(post: MattermostPost, senderName: string | undefined): Promise<void> {
+  // Arrow field (auto-bound): passed directly as a callback to the `hello` catch-up trigger.
+  private readonly processPost = async (post: MattermostPost, senderName: string | undefined): Promise<void> => {
     await processPostPipeline(post, senderName, {
       platformInstanceId: this.platformInstanceId,
       botUserId: this.botUserId,
@@ -178,8 +179,8 @@ export class MattermostChatProvider implements ChatProvider {
     })
   }
 
-  /** Cache-only path for catch-up's stale branch. Not private: a later step's catch-up module calls this. */
-  cachePostOnly(post: MattermostPost, senderName: string | undefined): Promise<void> {
+  /** Cache-only path for catch-up's stale branch. Not private: catch-up-deps.js calls this. */
+  readonly cachePostOnly = (post: MattermostPost, senderName: string | undefined): Promise<void> => {
     cachePostOnlyPipeline(post, senderName, {
       platformInstanceId: this.platformInstanceId,
       botUserId: this.botUserId,

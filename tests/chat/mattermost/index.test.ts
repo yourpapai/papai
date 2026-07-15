@@ -16,12 +16,15 @@ import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { platformInstances } from '../../../src/db/schema.js'
-import { getMattermostLastEventAt } from '../../../src/instances/platform-store.js'
+import { ensureContextPlatformInstance } from '../../../src/instances/context-store.js'
+import { getMattermostLastEventAt, setMattermostLastEventAt } from '../../../src/instances/platform-store.js'
+import { cacheMessage } from '../../../src/message-cache/index.js'
 import { createMockReply, mockLogger, restoreFetch, setMockFetch, setupTestDb } from '../../utils/test-helpers.js'
 
 type BuiltPostedMessage = { readonly msg: IncomingMessage }
 type PostedEventHandler = (data: Record<string, unknown>) => Promise<void>
 type MattermostActionDispatch = (payload: unknown) => Promise<unknown>
+type WsMessageHandler = (event: { data: string }) => Promise<void>
 const TEST_PLATFORM_ID = 'mattermost-default'
 
 const createMattermostProvider = (): MattermostChatProvider =>
@@ -50,6 +53,10 @@ function isPostedEventHandler(value: unknown): value is PostedEventHandler {
   return typeof value === 'function'
 }
 
+function isWsMessageHandler(value: unknown): value is WsMessageHandler {
+  return typeof value === 'function'
+}
+
 function isMattermostActionDispatch(value: unknown): value is MattermostActionDispatch {
   return typeof value === 'function'
 }
@@ -57,6 +64,12 @@ function isMattermostActionDispatch(value: unknown): value is MattermostActionDi
 function getPostedEventHandler(provider: MattermostChatProvider): PostedEventHandler {
   const handler = Reflect.get(provider as object, 'handlePostedEvent') as unknown
   if (!isPostedEventHandler(handler)) throw new Error('Expected Mattermost posted event handler')
+  return handler
+}
+
+function getWsMessageHandler(provider: MattermostChatProvider): WsMessageHandler {
+  const handler = Reflect.get(provider as object, 'handleWsMessage') as unknown
+  if (!isWsMessageHandler(handler)) throw new Error('Expected Mattermost WS message handler')
   return handler
 }
 
@@ -105,6 +118,34 @@ function makeFetchUser(userId: string, userData: Record<string, unknown>): (url:
       return Promise.resolve(new Response(JSON.stringify(userData), { status: 200 }))
     }
     return Promise.resolve(new Response(null, { status: 404 }))
+  }
+}
+
+// Routes a single channel's catch-up posts-since fetch, channel-admin membership check, and
+// channel-type (DM, so no team lookup) lookup, most-specific path first.
+function makeCatchUpFetch(channelId: string, postList: unknown): (url: string) => Promise<Response> {
+  return (url: string): Promise<Response> => {
+    if (url.includes(`/api/v4/channels/${channelId}/posts`)) {
+      return Promise.resolve(new Response(JSON.stringify(postList), { status: 200 }))
+    }
+    if (url.includes(`/api/v4/channels/${channelId}/members/`)) {
+      return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
+    }
+    if (url.includes(`/api/v4/channels/${channelId}`)) {
+      return Promise.resolve(new Response(JSON.stringify({ type: 'D' }), { status: 200 }))
+    }
+    return Promise.resolve(new Response(null, { status: 404 }))
+  }
+}
+
+/** Polls a predicate for the fire-and-forget catch-up chain kicked off by a `hello` event. */
+async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error('waitUntil: condition was never met')
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 5)
+    })
   }
 }
 
@@ -1273,6 +1314,62 @@ describe('MattermostChatProvider', () => {
         }),
       })
       expect(getMattermostLastEventAt(TEST_PLATFORM_ID)).toBe(5000)
+
+      restoreFetch()
+    })
+
+    test('a hello WebSocket event runs Mattermost catch-up: replays a fresh post and skips an already-cached one', async () => {
+      await setupTestDb()
+      mockLogger()
+      const channelId = 'catchup-channel'
+      getDrizzleDb()
+        .insert(platformInstances)
+        .values({ id: TEST_PLATFORM_ID, type: 'mattermost', config: '{}', status: 'active' })
+        .run()
+      ensureContextPlatformInstance(channelId, TEST_PLATFORM_ID)
+      setMattermostLastEventAt(TEST_PLATFORM_ID, Date.now() - 60_000)
+
+      const freshPost = {
+        id: 'fresh-1',
+        user_id: 'user456',
+        channel_id: channelId,
+        message: 'fresh message',
+        user_name: 'testuser',
+        root_id: '',
+        parent_id: '',
+        create_at: Date.now() - 1000,
+      }
+      const cachedPost = {
+        id: 'cached-1',
+        user_id: 'user456',
+        channel_id: channelId,
+        message: 'already seen',
+        user_name: 'testuser',
+        root_id: '',
+        parent_id: '',
+        create_at: Date.now() - 2000,
+      }
+      cacheMessage({ messageId: cachedPost.id, contextId: channelId, timestamp: Date.now() })
+
+      const postList = {
+        order: [cachedPost.id, freshPost.id],
+        posts: { [cachedPost.id]: cachedPost, [freshPost.id]: freshPost },
+      }
+      setMockFetch(makeCatchUpFetch(channelId, postList))
+
+      provider = createMattermostProvider()
+      const seen: IncomingMessage[] = []
+      provider.onMessage((msg) => {
+        seen.push(msg)
+        return Promise.resolve()
+      })
+
+      const handleWsMessage = getWsMessageHandler(provider)
+      await handleWsMessage.call(provider, { data: JSON.stringify({ event: 'hello', data: {} }) })
+
+      await waitUntil(() => seen.length > 0)
+
+      expect(seen.map((msg) => msg.messageId)).toEqual(['fresh-1'])
 
       restoreFetch()
     })
