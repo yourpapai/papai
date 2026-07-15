@@ -18,7 +18,12 @@
   import type { ByokResponse } from '../fetcher-schemas.js'
   import type { LlmRoleBindings, PublicProviderAccount, RoleBinding } from '../fetcher-schemas-llm-providers.js'
   import { fetchByok, toggleByok } from '../fetchers.js'
-  import { deleteByokProviderAction, setByokRolesAction, upsertByokProviderAction } from '../byok-provider-fetchers.js'
+  import {
+    deleteByokProviderAction,
+    refreshByokModels,
+    setByokRolesAction,
+    upsertByokProviderAction,
+  } from '../byok-provider-fetchers.js'
 
   interface Props {
     contextId: string
@@ -37,6 +42,7 @@
   let draftRoles: LlmRoleBindings | null = $state(null)
   let deleteTarget: PublicProviderAccount | null = $state(null)
   let deleteError: string | null = $state(null)
+  let refreshingId: string | null = $state(null)
 
   const currentData = $derived(loadedContextId === contextId ? data : null)
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
@@ -158,6 +164,19 @@
     deleteTarget = provider
   }
 
+  async function refreshProviderModels(id: string): Promise<void> {
+    refreshingId = id
+    error = null
+    try {
+      await refreshByokModels({ contextId, id })
+      await load(contextId)
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      refreshingId = null
+    }
+  }
+
   function onRoleChange(role: 'main' | 'small' | 'embedding', binding: RoleBinding): void {
     if (draftRoles === null) return
     draftRoles = { ...draftRoles, [role]: binding }
@@ -276,13 +295,23 @@
                 <td class="mono">{provider.apiKeyMasked}</td>
                 <td><VerificationPill verification={provider.verification} /></td>
                 <td>
-                  <Btn
-                    variant="danger"
-                    size="sm"
-                    testid={`byok-delete-${provider.id}`}
-                    onClick={() => requestDelete(provider)}>
-                    {#snippet children()}Delete{/snippet}
-                  </Btn>
+                  <div class="row-actions">
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      testid={`byok-refresh-models-${provider.id}`}
+                      disabled={refreshingId === provider.id}
+                      onClick={() => void refreshProviderModels(provider.id)}>
+                      {#snippet children()}{refreshingId === provider.id ? '…' : 'Refresh'}{/snippet}
+                    </Btn>
+                    <Btn
+                      variant="danger"
+                      size="sm"
+                      testid={`byok-delete-${provider.id}`}
+                      onClick={() => requestDelete(provider)}>
+                      {#snippet children()}Delete{/snippet}
+                    </Btn>
+                  </div>
                 </td>
               </tr>
             {/each}
@@ -367,5 +396,9 @@
   }
   .mono {
     font-family: var(--font-mono);
+  }
+  .row-actions {
+    display: flex;
+    gap: 4px;
   }
 </style>

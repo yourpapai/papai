@@ -266,6 +266,25 @@ describe('ByokSection', () => {
     expect(statePill!.textContent).toContain('Unreadable')
   })
 
+  test('clicking the refresh-models button PATCHes a refresh-models action and reloads', async () => {
+    setCsrfToken('c')
+    const state: MockState = {
+      current: enabledWithProviderPayload,
+      afterPatch: enabledWithProviderPayload,
+      patchBodies: [],
+    }
+    setMockFetch(byokMock(state))
+    mountSection()
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="byok-refresh-models-prov_1"]')!.click()
+    // Two drains: refreshProviderModels awaits refreshByokModels then load.
+    await drain()
+    await drain()
+
+    expect(state.patchBodies).toEqual([JSON.stringify({ contextId: 'user:1', action: 'refresh-models', id: 'prov_1' })])
+  })
+
   test('the Save roles button is disabled until the role bindings change', async () => {
     setMockFetch(() => Promise.resolve(json(enabledWithProviderPayload)))
     mountSection()
