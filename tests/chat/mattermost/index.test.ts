@@ -11,7 +11,7 @@ import { MattermostChatProvider } from '../../../src/chat/mattermost/index.js'
 import { determineMattermostThreadId } from '../../../src/chat/mattermost/message-normalization.js'
 import { mattermostCapabilities } from '../../../src/chat/mattermost/metadata.js'
 import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
-import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
@@ -1318,6 +1318,46 @@ describe('MattermostChatProvider', () => {
       restoreFetch()
     })
 
+    test('a live system post (join/leave) is never dispatched to the message handler', async () => {
+      await setupTestDb()
+      mockLogger()
+      getDrizzleDb()
+        .insert(platformInstances)
+        .values({ id: TEST_PLATFORM_ID, type: 'mattermost', config: '{}', status: 'active' })
+        .run()
+
+      setMockFetch(makeFetchWithGroupChannel('O'))
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+      const seen: IncomingMessage[] = []
+      provider.onMessage((msg) => {
+        seen.push(msg)
+        return Promise.resolve()
+      })
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'sys-join-1',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: 'testuser joined the channel.',
+          root_id: '',
+          parent_id: '',
+          create_at: 6000,
+          type: 'system_join_channel',
+        }),
+      })
+
+      expect(seen).toEqual([])
+      // System posts also don't advance the catch-up cursor.
+      expect(getMattermostLastEventAt(TEST_PLATFORM_ID)).toBeNull()
+
+      restoreFetch()
+    })
+
     test('a hello WebSocket event runs Mattermost catch-up: replays a fresh post and skips an already-cached one', async () => {
       await setupTestDb()
       mockLogger()
@@ -1326,7 +1366,13 @@ describe('MattermostChatProvider', () => {
         .insert(platformInstances)
         .values({ id: TEST_PLATFORM_ID, type: 'mattermost', config: '{}', status: 'active' })
         .run()
-      ensureContextPlatformInstance(channelId, TEST_PLATFORM_ID)
+      // Seed the *scoped* context id (the real production shape written by
+      // maybeSeedContextAssignment/auth.ts), not the raw channel id -- catch-up must decode
+      // this back to the native channel id itself.
+      ensureContextPlatformInstance(
+        toScopedContextId({ platformInstanceId: TEST_PLATFORM_ID, nativeContextId: channelId }),
+        TEST_PLATFORM_ID,
+      )
       setMattermostLastEventAt(TEST_PLATFORM_ID, Date.now() - 60_000)
 
       const freshPost = {

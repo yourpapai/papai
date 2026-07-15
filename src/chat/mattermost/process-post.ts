@@ -49,6 +49,9 @@ export async function processPost(
   deps: ProcessPostDeps,
 ): Promise<void> {
   if (post.user_id === deps.botUserId) return
+  // System posts (join/leave etc) must never drive a chat turn: skip cursor-advance/cache/
+  // handler dispatch entirely, matching catch-up's isSkippable.
+  if (post.type !== undefined && post.type !== '') return
   advanceMattermostCursor(deps.platformInstanceId, post)
   const replyToMessageId = extractReplyId(post.parent_id, post.root_id)
   cacheIncomingPost(post, replyToMessageId, senderName)

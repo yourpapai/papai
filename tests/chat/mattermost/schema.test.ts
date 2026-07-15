@@ -69,4 +69,29 @@ describe('MattermostPostSchema', () => {
     const result = MattermostPostSchema.parse(post)
     expect(result.create_at).toBe(123)
   })
+
+  test('captures a system post type (e.g. join/leave)', () => {
+    const post = {
+      id: 'sys123',
+      user_id: 'user456',
+      channel_id: 'channel789',
+      message: 'user456 joined the channel.',
+      type: 'system_join_channel',
+    }
+
+    const result = MattermostPostSchema.parse(post)
+    expect(result.type).toBe('system_join_channel')
+  })
+
+  test('type is optional for a regular post', () => {
+    const post = {
+      id: 'post123',
+      user_id: 'user456',
+      channel_id: 'channel789',
+      message: 'Hello world',
+    }
+
+    const result = MattermostPostSchema.parse(post)
+    expect(result.type).toBeUndefined()
+  })
 })

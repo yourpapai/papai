@@ -34,9 +34,13 @@ function orderedPosts(list: { order: string[]; posts: Record<string, MattermostT
     .sort((a, b) => a.create_at - b.create_at)
 }
 
-/** Thread-reply/empty posts are never replayed or cached during catch-up. */
+/**
+ * Thread-reply/empty posts, and system posts (join/leave etc, `type` non-empty), are never
+ * replayed or cached during catch-up. System posts can carry a non-empty `message`, so they
+ * must be excluded independently of the empty-message check.
+ */
 function isSkippable(post: MattermostThreadPost): boolean {
-  return Boolean(post.root_id) || post.message === ''
+  return Boolean(post.root_id) || post.message === '' || (post.type !== undefined && post.type !== '')
 }
 
 function isProcessed(cached: unknown): boolean {

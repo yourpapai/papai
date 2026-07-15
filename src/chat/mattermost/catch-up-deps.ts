@@ -7,6 +7,7 @@ import { listContextsByPlatformInstance } from '../../instances/context-store.js
 import { getMattermostLastEventAt } from '../../instances/platform-store.js'
 import { logger } from '../../logger.js'
 import { getCachedMessage } from '../../message-cache/index.js'
+import { getNativeContextId } from '../scoped-context.js'
 import { runMattermostCatchUp, type CatchUpDeps } from './catch-up.js'
 import { getCatchupConfig } from './catchup-config.js'
 import type { MattermostApiFetch } from './file-helpers.js'
@@ -29,8 +30,13 @@ export interface MattermostCatchUpProviderHooks {
 export function buildMattermostCatchUpDeps(hooks: MattermostCatchUpProviderHooks): CatchUpDeps {
   return {
     apiFetch: (method, path) => hooks.apiFetch(method, path, undefined),
+    // `contextSettings.contextId` is the scoped context id (`pi:<base64>:ctx:<base64>`), not
+    // the raw Mattermost channel id: decode it back before it's used as the REST path
+    // segment / cache key, both of which key on the native channel id.
     listContexts: (platformInstanceId) =>
-      listContextsByPlatformInstance(platformInstanceId).map((context) => ({ contextId: context.contextId })),
+      listContextsByPlatformInstance(platformInstanceId).map((context) => ({
+        contextId: getNativeContextId(context.contextId),
+      })),
     getCursor: getMattermostLastEventAt,
     getCachedMessage,
     replayPost: (post) => hooks.replayPost(post, post.user_name),

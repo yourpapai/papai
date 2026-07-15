@@ -141,4 +141,42 @@ describe('runMattermostCatchUp', () => {
     expect(replayPost).toHaveBeenCalledTimes(1)
     expect(firstArg(replayPost.mock.calls)?.id).toBe('good-1')
   })
+
+  test('system posts (join/leave) are skipped entirely; a regular post in the same batch is still processed', async () => {
+    const joinPost: MattermostThreadPost = {
+      ...post('sys-1', 9000),
+      message: 'someone joined the channel.',
+      type: 'system_join_channel',
+    }
+    const leavePost: MattermostThreadPost = {
+      ...post('sys-2', 9100),
+      message: 'someone left the channel.',
+      type: 'system_leave_channel',
+    }
+    const regularPost = post('p1', 9200)
+    const apiFetch = mock((_method: string, _path: string) =>
+      Promise.resolve(postList([joinPost, leavePost, regularPost])),
+    )
+    const replayPost = mock((_post: MattermostThreadPost) => Promise.resolve())
+    const cachePostOnly = mock((_post: MattermostThreadPost) => Promise.resolve())
+    const deps = makeDeps({
+      apiFetch,
+      getCachedMessage: () => null,
+      replayPost,
+      cachePostOnly,
+      now: () => 10_000,
+    })
+
+    await runMattermostCatchUp('inst-1', deps, CONFIG)
+
+    // Neither system post is replayed or cache-only'd -- isSkippable drops them up front.
+    expect(calledIds(replayPost.mock.calls)).not.toContain('sys-1')
+    expect(calledIds(replayPost.mock.calls)).not.toContain('sys-2')
+    expect(calledIds(cachePostOnly.mock.calls)).not.toContain('sys-1')
+    expect(calledIds(cachePostOnly.mock.calls)).not.toContain('sys-2')
+
+    // The regular post in the same batch is unaffected.
+    expect(replayPost).toHaveBeenCalledTimes(1)
+    expect(firstArg(replayPost.mock.calls)?.id).toBe('p1')
+  })
 })
