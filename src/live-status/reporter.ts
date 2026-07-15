@@ -7,6 +7,12 @@ import type { ReplyFn, StatusHandle } from '../chat/types.js'
 import { formatToolStatus } from './tool-status-labels.js'
 
 const THINKING = '💭 Thinking…'
+/**
+ * Placeholder shown once the model's tool phase ends, held in place while the final answer is
+ * prepared/verified and until the first reply message is actually sent — closes the visible gap
+ * between deleting the tool status and posting the reply.
+ */
+export const PREPARING_RESPONSE = '💬 Preparing response…'
 /** A tool label is held at least this long before reverting to {@link THINKING}, to avoid flicker on fast tools. */
 const DEFAULT_MIN_LABEL_MS = 1000
 
@@ -18,6 +24,11 @@ export type LiveStatusReporter = {
   onToolStart: (event: { toolName: string; input: unknown }) => void
   /** A tool finished executing. */
   onToolFinish: () => void
+  /**
+   * Replace the status message with a sticky placeholder that survives until {@link dismiss}: stops all
+   * tool-driven updates so it never flickers. Safe to await even when unsupported. Idempotent.
+   */
+  placeholder: (text: string) => Promise<void>
   /** Delete the status message. Idempotent. */
   dismiss: () => Promise<void>
 }
@@ -138,8 +149,11 @@ const createStatusEngine = (deps: StatusEngineDeps): StatusEngine => {
 export function createLiveStatusReporter(reply: ReplyFn, options?: LiveStatusReporterOptions): LiveStatusReporter {
   const enabled = options?.enabled !== false
   let handle: StatusHandle | undefined
+  /** Once frozen (placeholder shown), tool-driven engine emits are ignored so the placeholder never flickers. */
+  let frozen = false
   const engine = createStatusEngine({
     emit: (text): void => {
+      if (frozen) return
       void handle?.update(text).catch(() => undefined)
     },
     isActive: (): boolean => handle !== undefined,
@@ -160,6 +174,12 @@ export function createLiveStatusReporter(reply: ReplyFn, options?: LiveStatusRep
     },
     onToolFinish: (): void => {
       engine.onToolFinish()
+    },
+    placeholder: async (text: string): Promise<void> => {
+      engine.stop()
+      frozen = true
+      if (handle === undefined) return
+      await handle.update(text).catch(() => undefined)
     },
     dismiss: async (): Promise<void> => {
       engine.stop()

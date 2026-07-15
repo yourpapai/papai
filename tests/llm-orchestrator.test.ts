@@ -1769,10 +1769,16 @@ describe('processMessage', () => {
 
     const created: string[] = []
     const updates: string[] = []
+    const order: string[] = []
     let dismissed = 0
     const { reply: base } = createMockReply()
+    const baseFormatted = base.formatted
     const reply: ReplyFn = {
       ...base,
+      formatted: (content: string): Promise<void> => {
+        order.push('reply')
+        return baseFormatted(content)
+      },
       createStatus: (initialText: string) => {
         created.push(initialText)
         return Promise.resolve({
@@ -1782,6 +1788,7 @@ describe('processMessage', () => {
           },
           dismiss: () => {
             dismissed += 1
+            order.push('dismiss')
             return Promise.resolve()
           },
         })
@@ -1811,6 +1818,10 @@ describe('processMessage', () => {
 
     expect(created).toEqual(['💭 Thinking…'])
     expect(updates).toContain('📝 Creating task: "X"…')
+    // Status is transitioned to a placeholder (not deleted) after the tool phase…
+    expect(updates).toContain('💬 Preparing response…')
     expect(dismissed).toBeGreaterThanOrEqual(1)
+    // …and only dismissed once the real answer is about to post — no gap.
+    expect(order.indexOf('dismiss')).toBeLessThan(order.indexOf('reply'))
   })
 })
