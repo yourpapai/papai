@@ -5,6 +5,79 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.9.0] - 2026-07-15
+
+### Added
+
+- **llm:** Add drizzle schema for admin provider registry
+- **db:** Migration 067 — multi-provider tables + legacy key migration
+- **llm:** Add multi-provider domain types
+- **llm:** Admin provider store with encrypted apiKey + role bindings
+- **byok:** Version-tolerant blob codec (v2 + legacy flat)
+- **byok:** Multi-provider blob ops (upsert/delete provider, set roles)
+- **llm:** Per-role resolver with context→admin→main fallback
+- **llm:** Provider model discovery (GET /models, non-blocking)
+- **settings:** Admin provider + role routes
+- **settings:** BYOK PATCH multi-provider actions
+- **llm:** Env-bootstrap seeds provider registry; remove legacy system LLM route + accessors
+- **byok:** Extend GET response with v2 providers and roles
+- **client:** Add LLM provider Zod schemas + extend BYOK response schema
+- **client:** Admin LLM provider + roles fetchers; remove dead system fetchers
+- **client:** BYOK multi-provider action fetchers
+- **stories:** MSW handlers for admin providers/roles + extended BYOK
+- **client:** Shared components — VerificationPill, ProviderForm, RoleBindingBlock
+- **client:** AdminProvidersSection with list + add + delete
+- **client:** AdminModelsSection with role binding blocks
+- **client:** Generalized ByokSection with multi-provider UI
+- **client:** Wire Providers + Models sections; retire AdminSystemSection
+- **llm:** Admin refresh-models endpoint + manual models PATCH support
+- **client:** Refresh-models fetcher + models PATCH type + ProviderForm edit mode
+- **client:** Admin provider edit + refresh-models + manual models editor
+- **client:** BYOK provider refresh-models button
+
+### Changed
+
+- **llm:** Cache-prime sentinel + tests for update/verification paths
+- **llm:** ResolveEffectiveLlmConfig becomes adapter over per-role resolver
+- **tests:** Extract seedAdminLlmBinding helper + adapter cleanup
+- **embeddings:** Consume per-role LLM config
+- **llm:** Small/embedding call sites consume per-role config
+- **llm:** Main-model call sites consume per-role config
+- **llm:** Orchestrator consumes per-role config
+- **llm:** Migrate changelog humanizer to admin resolver; remove legacy resolver
+
+### Documentation
+
+- **specs:** Add multi-provider LLM configuration design
+- **plans:** Add multi-provider LLM backend implementation plan
+- Update README to reflect provider-registry LLM model
+- **llm:** Fix stale system-config references + test hygiene
+- **plans:** Add multi-provider LLM settings UI implementation plan
+
+### Fixed
+
+- **live-status:** Bridge gap between tool status and reply with a placeholder
+- **orchestration:** Raise tool-step cap with no-progress guard and defer trim on truncation
+- **settings:** Handle background-verify rejection + cover re-verify path
+- **llm:** Precise knip ignores + guard legacy values PATCH against v2 blobs
+- **client:** Update byok-section tests + final gate cleanup
+- **client:** Delete orphaned SystemKvRow; add confirm to BYOK provider delete
+
+### Miscellaneous
+
+- **knip:** Ignore staged-byok-llm blob-codec (Task 6 wiring)
+- **knip:** Ignore staged llm-providers types exports
+- **knip:** Ignore resolveEffectiveLlmConfig (staged for Task 13 deletion)
+- **knip:** Ignore forward-compat exports in LLM provider client schemas
+- **knip:** Ignore forward-compat byok-provider-fetchers module
+- Bump @opencode-ai/plugin to 1.17.18
+
+### Testing
+
+- **db:** Cover embedding branch + idiomatic ids in migration 067
+- **byok:** Cover auto-enable + no-op branches; log contextId on unreadable v2
+- **db:** Expect 067 as last migration
+- **conversation:** Seed admin binding so trim tests exercise the real path
 ## [6.8.1] - 2026-07-15
 
 ### Added
