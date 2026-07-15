@@ -57,18 +57,28 @@ const publicAccount = (p: LlmProviderAccount): PublicProviderAccount => ({
   verification: p.verification,
 })
 
-const toVerification = (r: DiscoveryResult): Verification => ({
-  status: r.status,
-  error: r.error,
-  at: Date.now(),
-  models: r.models,
-  modelsFetchedAt: r.status === 'verified' ? Date.now() : null,
-})
+const toVerification = (r: DiscoveryResult): Verification => {
+  const now = Date.now()
+  return {
+    status: r.status,
+    error: r.error,
+    at: now,
+    models: r.models,
+    modelsFetchedAt: r.status === 'verified' ? now : null,
+  }
+}
 
 const verifyInBackground = (id: string, baseUrl: string, apiKey: string): void => {
-  void fetchProviderModels(baseUrl, apiKey).then((r) => {
-    updateProviderVerification(id, toVerification(r))
-  })
+  void fetchProviderModels(baseUrl, apiKey)
+    .then((r) => {
+      updateProviderVerification(id, toVerification(r))
+    })
+    .catch((error: unknown) => {
+      log.warn(
+        { id, error: error instanceof Error ? error.message : String(error) },
+        'background provider verification failed',
+      )
+    })
 }
 
 const PROVIDERS_PREFIX = '/settings/api/admin/providers/'

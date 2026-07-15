@@ -12,6 +12,7 @@ import { addAdmin } from '../../../../src/instances/admin-store.js'
 import {
   clearLlmAdminCacheForTesting,
   createLlmProvider,
+  getLlmProvider,
   setAdminRoleBindings,
 } from '../../../../src/llm-providers/store.js'
 import { addUser } from '../../../../src/users.js'
@@ -27,6 +28,19 @@ import { authHeaders, establishSession, type SettingsSession } from '../helpers.
 
 const okResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+const nextTick = (): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+
+const waitFor = async (predicate: () => boolean, attempts = 50): Promise<void> => {
+  for (let i = 0; i < attempts; i++) {
+    if (predicate()) return
+    await nextTick()
+  }
+  expect(predicate()).toBe(true)
+}
 
 const VerificationSchema = z.object({
   status: z.string(),
@@ -128,6 +142,14 @@ describe('settings admin llm-providers routes', () => {
     expect(body.providers.map((p) => p.id)).toContain(id)
   })
 
+  test('POST create triggers background verification that flips status to verified', async () => {
+    const { id } = await createViaRoute()
+    await waitFor(() => getLlmProvider(id)?.verification.status === 'verified')
+    const account = getLlmProvider(id)
+    expect(account?.verification.status).toBe('verified')
+    expect(account?.verification.models).toEqual(['m1'])
+  })
+
   test('POST create with an invalid body returns 422', async () => {
     const res = await call('POST', PROVIDERS_PATH, adminSession, { label: '', providerType: 'nope' })
     expect(res.status).toBe(422)
@@ -140,6 +162,21 @@ describe('settings admin llm-providers routes', () => {
     const body = z.object({ provider: ProviderSchema }).parse(await res.json())
     expect(body.provider.label).toBe('renamed')
     expect(body.provider.id).toBe(id)
+  })
+
+  test('PATCH updating apiKey triggers a background re-verify', async () => {
+    let fetchCount = 0
+    setMockFetch(() => {
+      fetchCount++
+      return Promise.resolve(okResponse({ data: [{ id: 'm1' }] }))
+    })
+    const { id } = await createViaRoute()
+    await waitFor(() => fetchCount >= 1)
+    const afterCreate = fetchCount
+    const res = await call('PATCH', `${PROVIDERS_PATH}/${id}`, adminSession, { apiKey: 'sk-rotated' })
+    expect(res.status).toBe(200)
+    await waitFor(() => fetchCount > afterCreate)
+    expect(getLlmProvider(id)?.apiKey).toBe('sk-rotated')
   })
 
   test('PATCH update on a missing provider returns 404', async () => {
