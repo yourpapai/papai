@@ -5,7 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { LLM_PROVIDER_TYPES, PROVIDER_TYPE_BASE_URLS, type LlmConfigResult } from '../../src/llm-providers/types.js'
+import {
+  LLM_PROVIDER_TYPES,
+  PROVIDER_TYPE_BASE_URLS,
+  VERIFICATION_STATUSES,
+  type LlmConfigResult,
+} from '../../src/llm-providers/types.js'
 
 describe('llm-providers types', () => {
   test('LLM_PROVIDER_TYPES includes all expected providers', () => {
@@ -18,6 +23,11 @@ describe('llm-providers types', () => {
     expect(PROVIDER_TYPE_BASE_URLS.openai).toBe('https://api.openai.com/v1')
     expect(PROVIDER_TYPE_BASE_URLS.groq).toBe('https://api.groq.com/openai/v1')
     expect(PROVIDER_TYPE_BASE_URLS.custom).toBeUndefined()
+  })
+
+  test('VERIFICATION_STATUSES lists the three statuses', () => {
+    expect(VERIFICATION_STATUSES).toEqual(['verified', 'unverified', 'error'])
+    expect(VERIFICATION_STATUSES).toHaveLength(3)
   })
 
   test('LlmConfigResult union accepts the effective (ok) variant', () => {

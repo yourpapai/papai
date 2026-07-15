@@ -12,6 +12,7 @@ import { logger } from '../logger.js'
 import { decryptSecretPayload, encryptSecretPayload } from '../secret-payload-crypto.js'
 import {
   LLM_PROVIDER_TYPES,
+  VERIFICATION_STATUSES,
   type LlmProviderAccount,
   type LlmProviderType,
   type LlmRoleBindings,
@@ -21,7 +22,6 @@ import {
 const log = logger.child({ scope: 'llm-providers:store' })
 
 const LEGACY_PREFIX = 'legacy:'
-const VERIFICATION_STATUSES = ['verified', 'unverified', 'error'] as const
 const newProviderId = (): string => `prov_${crypto.randomUUID()}`
 
 export type NewLlmProviderInput = {
@@ -68,25 +68,28 @@ const toAccount = (row: LlmProviderRow): LlmProviderAccount => ({
 // ---- in-process cache (mirrors src/system-config.ts cache) ----
 const cache = new Map<string, LlmProviderAccount>()
 let roleCache: LlmRoleBindings | null | undefined = undefined
+let cachePrimed = false
 
 export const clearLlmAdminCacheForTesting = (): void => {
   cache.clear()
+  cachePrimed = false
   roleCache = undefined
 }
 
 export const primeLlmAdminCache = (): void => {
   const rows = getDrizzleDb().select().from(llmProviders).all()
   cache.clear()
+  cachePrimed = true
   for (const row of rows) cache.set(row.id, toAccount(row))
   roleCache = readRoleBindings()
   log.debug({ count: rows.length }, 'llm_providers cache primed')
 }
 
 const ensureCache = (): void => {
-  if (cache.size === 0) {
-    const rows = getDrizzleDb().select().from(llmProviders).all()
-    if (rows.length > 0) for (const row of rows) cache.set(row.id, toAccount(row))
-  }
+  if (cachePrimed) return
+  const rows = getDrizzleDb().select().from(llmProviders).all()
+  cachePrimed = true
+  for (const row of rows) cache.set(row.id, toAccount(row))
 }
 
 export function listLlmProviders(): LlmProviderAccount[] {

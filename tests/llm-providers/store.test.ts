@@ -13,6 +13,8 @@ import {
   getLlmProvider,
   listLlmProviders,
   setAdminRoleBindings,
+  updateLlmProvider,
+  updateProviderVerification,
   clearLlmAdminCacheForTesting,
 } from '../../src/llm-providers/store.js'
 import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
@@ -77,5 +79,57 @@ describe('llm-providers store', () => {
 
   test('getAdminRoleBindings returns null when unset', () => {
     expect(getAdminRoleBindings()).toBeNull()
+  })
+
+  test('updateLlmProvider rotates apiKey and preserves it when omitted from the patch', () => {
+    const created = createLlmProvider(
+      { label: 'a', providerType: 'custom', baseUrl: 'https://a/v1', apiKey: 'sk-old' },
+      'admin-1',
+    )
+
+    const rotated = updateLlmProvider(created.id, { apiKey: 'sk-rotated' }, 'admin-1')
+    expect(rotated?.apiKey).toBe('sk-rotated')
+    expect(getLlmProvider(created.id)?.apiKey).toBe('sk-rotated')
+
+    const relabeled = updateLlmProvider(created.id, { label: 'a2' }, 'admin-1')
+    expect(relabeled?.label).toBe('a2')
+    expect(relabeled?.apiKey).toBe('sk-rotated')
+    expect(getLlmProvider(created.id)?.apiKey).toBe('sk-rotated')
+  })
+
+  test('updateLlmProvider returns null for a non-existent id', () => {
+    expect(updateLlmProvider('prov_does-not-exist', { label: 'x' }, 'admin-1')).toBeNull()
+  })
+
+  test('updateProviderVerification round-trips status and models through JSON', () => {
+    const created = createLlmProvider(
+      { label: 'a', providerType: 'custom', baseUrl: 'https://a/v1', apiKey: 'k' },
+      'admin-1',
+    )
+    updateProviderVerification(created.id, {
+      status: 'verified',
+      error: null,
+      at: 123,
+      models: ['m1', 'm2'],
+      modelsFetchedAt: 456,
+    })
+
+    const verification = getLlmProvider(created.id)?.verification
+    expect(verification?.status).toBe('verified')
+    expect(verification?.models).toEqual(['m1', 'm2'])
+    expect(verification?.at).toBe(123)
+    expect(verification?.modelsFetchedAt).toBe(456)
+  })
+
+  test('updateProviderVerification is a safe no-op for a non-existent id', () => {
+    expect(() =>
+      updateProviderVerification('prov_does-not-exist', {
+        status: 'verified',
+        error: null,
+        at: null,
+        models: [],
+        modelsFetchedAt: null,
+      }),
+    ).not.toThrow()
   })
 })

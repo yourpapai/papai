@@ -16,7 +16,8 @@ export const PROVIDER_TYPE_BASE_URLS: Readonly<Partial<Record<LlmProviderType, s
   groq: 'https://api.groq.com/openai/v1',
 }
 
-export type VerificationStatus = 'verified' | 'unverified' | 'error'
+export const VERIFICATION_STATUSES = ['verified', 'unverified', 'error'] as const
+export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number]
 
 export type Verification = {
   readonly status: VerificationStatus
