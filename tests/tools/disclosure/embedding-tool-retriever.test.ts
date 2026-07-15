@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import type { EmbeddingCallContext } from '../../../src/embeddings.js'
-import type { EffectiveLlmConfigResult } from '../../../src/llm-config-resolver.js'
+import type { LlmConfigResult } from '../../../src/llm-providers/types.js'
 import {
   clearBriefEmbeddingCachesForTesting,
   EmbeddingToolRetriever,
@@ -266,17 +266,15 @@ describe('EmbeddingToolRetriever', () => {
   })
 })
 
-const okConfig: EffectiveLlmConfigResult = {
+const okConfig: LlmConfigResult = {
   ok: true,
   source: 'byok',
-  llmApiKey: 'byok-key',
-  llmBaseUrl: 'http://byok-llm',
-  mainModel: 'main-1',
-  smallModel: 'small-1',
-  embeddingModel: 'embed-1',
+  main: { apiKey: 'byok-key', baseUrl: 'http://byok-llm', model: 'main-1', source: 'byok' },
+  small: { apiKey: 'byok-key', baseUrl: 'http://byok-llm', model: 'small-1', source: 'byok' },
+  embedding: { apiKey: 'byok-key', baseUrl: 'http://byok-llm', model: 'embed-1', source: 'byok' },
 }
 
-const missingConfig: EffectiveLlmConfigResult = {
+const missingConfig: LlmConfigResult = {
   ok: false,
   type: 'missing',
   source: 'global',
@@ -312,7 +310,10 @@ describe('getToolRetriever', () => {
   })
 
   it('does not share brief caches across endpoints with the same model name', async () => {
-    const otherEndpoint: EffectiveLlmConfigResult = { ...okConfig, llmBaseUrl: 'http://other-llm' }
+    const otherEndpoint: LlmConfigResult = {
+      ...okConfig,
+      embedding: { ...okConfig.embedding, baseUrl: 'http://other-llm' },
+    }
     let callsA = 0
     const embedA: ToolRetrieverFactoryDeps['embedText'] = (_t, _k, _u, _m, _c) => {
       callsA++

@@ -7,8 +7,10 @@ import { eq, sql } from 'drizzle-orm'
 
 import { byokLlmCredentials, type ByokLlmCredentialRow } from '../db/byok-llm-schema.js'
 import { getDrizzleDb } from '../db/drizzle.js'
+import type { LlmProviderAccount, LlmRoleBindings, Verification } from '../llm-providers/types.js'
 import { logger } from '../logger.js'
 import { decryptSecretPayload, encryptSecretPayload, type SecretPayload } from '../secret-payload-crypto.js'
+import { decodeByokBlob, encodeByokBlob, type ByokBlobV2 } from './blob-codec.js'
 import {
   BYOK_LLM_KEYS,
   REQUIRED_BYOK_LLM_KEYS,
@@ -170,4 +172,105 @@ export function listByokAdminSummaries(): ByokAdminSummary[] {
         updatedBy: row.updatedBy,
       }
     })
+}
+
+// ---------------------------------------------------------------------------
+// Multi-provider BYOK blob operations (v2 shape)
+// ---------------------------------------------------------------------------
+// The v2 blob is a NESTED object, but `encryptSecretPayload` is typed as a flat
+// `Record<string, string>`. To stay fully type-safe without `as` casts (forbidden
+// by `no-unsafe-type-assertion`), the v2 blob is JSON-stringified and stored
+// under the single key `'v2'`. Legacy payloads have no `'v2'` key and are lifted
+// into v2 in-memory by `decodeByokBlob`.
+
+export type ByokBundle = {
+  readonly enabled: boolean
+  readonly blob: ByokBlobV2 | null
+  readonly unreadable: boolean
+  readonly error: string | null
+}
+
+type DecodedBlob =
+  | { readonly blob: ByokBlobV2 | null; readonly unreadable: false }
+  | { readonly unreadable: true; readonly error: string }
+
+// `JSON.parse` is typed `any`; annotating the return as `unknown` keeps the
+// result from flowing as `any` (no-unsafe-assignment) without a cast.
+const parseJson = (text: string): unknown => JSON.parse(text)
+
+const decodeStoredPayload = (contextId: string, encryptedConfig: string | null): DecodedBlob => {
+  if (encryptedConfig === null) return { blob: decodeByokBlob(null), unreadable: false }
+  try {
+    const payload = decryptSecretPayload(encryptedConfig)
+    const raw = payload['v2'] === undefined ? payload : parseJson(payload['v2'])
+    return { blob: decodeByokBlob(raw), unreadable: false }
+  } catch {
+    log.warn({ contextId }, 'BYOK LLM v2 blob is unreadable')
+    return { unreadable: true, error: UNREADABLE_BYOK_CONFIG_ERROR }
+  }
+}
+
+export function getByokBundle(contextId: string): ByokBundle {
+  const row = findRow(contextId)
+  if (row === undefined || !row.enabled) return { enabled: false, blob: null, unreadable: false, error: null }
+  const decoded = decodeStoredPayload(contextId, row.encryptedConfig)
+  if (decoded.unreadable) return { enabled: true, blob: null, unreadable: true, error: decoded.error }
+  return { enabled: true, blob: decoded.blob, unreadable: false, error: null }
+}
+
+const writeBlob = (contextId: string, blob: ByokBlobV2, updatedBy: string): void => {
+  const payload = encryptSecretPayload({ v2: JSON.stringify(encodeByokBlob(blob)) })
+  getDrizzleDb()
+    .insert(byokLlmCredentials)
+    .values({ contextId, enabled: true, encryptedConfig: payload, updatedAt: now(), updatedBy })
+    .onConflictDoUpdate({
+      target: byokLlmCredentials.contextId,
+      set: {
+        encryptedConfig: sql`excluded.encrypted_config`,
+        updatedAt: sql`excluded.updated_at`,
+        updatedBy: sql`excluded.updated_by`,
+      },
+    })
+    .run()
+}
+
+const emptyRoles = (): LlmRoleBindings => ({ main: { providerId: '', model: '' }, small: null, embedding: null })
+
+const rolesWithoutProvider = (roles: LlmRoleBindings, providerId: string): LlmRoleBindings => ({
+  main: roles.main.providerId === providerId ? { providerId: '', model: '' } : roles.main,
+  small: roles.small?.providerId === providerId ? null : roles.small,
+  embedding: roles.embedding?.providerId === providerId ? null : roles.embedding,
+})
+
+export function upsertByokProvider(contextId: string, provider: LlmProviderAccount, updatedBy: string): void {
+  const bundle = getByokBundle(contextId)
+  const base: ByokBlobV2 = bundle.blob ?? { v: 2, providers: [], roles: emptyRoles() }
+  const providers = [...base.providers.filter((p) => p.id !== provider.id), provider]
+  writeBlob(contextId, { ...base, providers }, updatedBy)
+}
+
+export function deleteByokProvider(contextId: string, providerId: string, updatedBy: string): void {
+  const bundle = getByokBundle(contextId)
+  if (bundle.blob === null) return
+  const providers = bundle.blob.providers.filter((p) => p.id !== providerId)
+  const roles = rolesWithoutProvider(bundle.blob.roles, providerId)
+  writeBlob(contextId, { ...bundle.blob, providers, roles }, updatedBy)
+}
+
+export function setByokRoles(contextId: string, roles: LlmRoleBindings, updatedBy: string): void {
+  const bundle = getByokBundle(contextId)
+  const base: ByokBlobV2 = bundle.blob ?? { v: 2, providers: [], roles }
+  writeBlob(contextId, { ...base, roles }, updatedBy)
+}
+
+export function updateByokProviderVerification(
+  contextId: string,
+  providerId: string,
+  verification: Verification,
+  updatedBy: string,
+): void {
+  const bundle = getByokBundle(contextId)
+  if (bundle.blob === null) return
+  const providers = bundle.blob.providers.map((p) => (p.id === providerId ? { ...p, verification } : p))
+  writeBlob(contextId, { ...bundle.blob, providers }, updatedBy)
 }

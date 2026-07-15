@@ -16,7 +16,6 @@ import { isOpenDmAccessEnabled, setOpenDmAccess } from '../../../instances/platf
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { addPendingUser, addUser, blockUser, listUsers, removeUser, unblockUser } from '../../../users.js'
-import { applyAdminLlmUpdate, getAdminLlmSnapshot } from '../../admin-llm.js'
 import { resolveSettingsUserId } from '../resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
 import { requireAdmin } from './admin-guard.js'
@@ -27,36 +26,6 @@ const UserBodySchema = z.object({ userId: z.string().min(1), username: z.string(
 const GroupBodySchema = z.object({ groupId: z.string().min(1) })
 const OpenAccessBodySchema = z.object({ enabled: z.boolean() })
 const UserBlockBodySchema = z.object({ userId: z.string().min(1), blocked: z.boolean() })
-const LlmBodySchema = z.object({
-  key: z.enum(['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model']),
-  value: z.string(),
-})
-
-async function handleSystem(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
-  if (req.method === 'GET') {
-    const guard = requireAdmin(authed, 'read')
-    if (guard !== null) return guard
-    return settingsJson(200, { config: getAdminLlmSnapshot() })
-  }
-  if (req.method === 'POST') {
-    const guard = requireAdmin(authed, 'write')
-    if (guard !== null) return guard
-    const csrf = requireCsrf(req, authed)
-    if (csrf !== null) return csrf
-    const parsed = await parseJsonBody(req)
-    if (!parsed.ok) return parsed.response
-    const body = LlmBodySchema.safeParse(parsed.value)
-    if (!body.success) return settingsJson(422, { error: 'invalid request' })
-    try {
-      const result = applyAdminLlmUpdate(body.data, authed.principal.platformUserId)
-      log.info({ key: body.data.key }, 'Settings admin updated system config')
-      return settingsJson(200, { ok: true, key: result.key })
-    } catch (error) {
-      return settingsJson(422, { error: error instanceof Error ? error.message : String(error) })
-    }
-  }
-  return settingsJson(405, { error: 'method not allowed' })
-}
 
 async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   if (req.method === 'GET') {
@@ -191,7 +160,6 @@ async function handleGroups(req: Request, authed: AuthenticatedSettingsRequest):
 export function handleAdminSystemAccessRoutes(req: Request, _url: URL, pathname: string): Promise<Response> {
   const auth = authenticate(req)
   if (!auth.ok) return Promise.resolve(auth.response)
-  if (pathname === '/settings/api/admin/system') return handleSystem(req, auth.authed)
   if (pathname === '/settings/api/admin/users') return handleUsers(req, auth.authed)
   if (pathname === '/settings/api/admin/users/block') return handleUserBlock(req, auth.authed)
   if (pathname === '/settings/api/admin/open-access') return handleOpenAccess(req, auth.authed)

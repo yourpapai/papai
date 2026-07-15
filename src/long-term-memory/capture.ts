@@ -10,8 +10,8 @@ import type { ModelMessage } from 'ai'
 import { hasThreadContextId } from '../chat/scoped-context.js'
 import type { ActorRole, ContextType } from '../chat/types.js'
 import { getEmbeddingForContext } from '../embeddings.js'
-import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { saveMemoryRecordWithEmbedding } from './embedding-writer.js'
 import { markExtracted } from './extraction-state.js'
@@ -46,7 +46,7 @@ export type RunMemoryCaptureDeps = Readonly<{
 }>
 
 const defaultExtract = (input: CaptureExtractInput): Promise<MemoryPatch> => {
-  const resolved = resolveEffectiveLlmConfig(input.configContextId)
+  const resolved = resolveLlmConfig(input.configContextId)
   if (!resolved.ok) {
     log.warn(
       { configContextId: input.configContextId, source: resolved.source, type: resolved.type },
@@ -54,7 +54,7 @@ const defaultExtract = (input: CaptureExtractInput): Promise<MemoryPatch> => {
     )
     return Promise.resolve(EMPTY_PATCH)
   }
-  const model = buildChatModel(resolved.llmApiKey, resolved.llmBaseUrl, resolved.smallModel)
+  const model = buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
   return extractMemoryPatch({ history: input.history, profile: input.profile, records: [], model })
 }
 

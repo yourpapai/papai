@@ -31,7 +31,7 @@ export type AiOutputConfigKey =
 // 'kaneo_workspace_id', 'youtrack_token', etc.) are no longer part of this
 // union; they are plugin-namespaced dynamic keys handled via
 // setConfigValue/getConfigValue + isAllowedDynamicConfigKey.
-// LLM credentials live in `system_config` (see `src/system-config.ts`)
+// LLM credentials live in the llm_providers / llm_admin_roles tables (see src/llm-providers/store.js)
 // and are owned by the bot admin, not per-user.
 export type ConfigKey = PreferenceConfigKey | McpConfigKey | AiOutputConfigKey
 

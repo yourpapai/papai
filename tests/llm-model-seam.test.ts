@@ -10,11 +10,10 @@ import { MockLanguageModelV3 } from 'ai/test'
 
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
 import { processMessage } from '../src/llm-orchestrator.js'
-import { setSystemConfig } from '../src/system-config.js'
 import {
   createMockReply,
   mockLogger,
-  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   setupTestDb,
 } from './utils/test-helpers.js'
@@ -36,10 +35,7 @@ describe('LLM model injection seam', () => {
     mockLogger()
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    resetSystemConfigCacheForTesting()
-    setSystemConfig('llm_apikey', 'test-key', 'env')
-    setSystemConfig('llm_baseurl', 'https://llm.invalid/v1', 'env')
-    setSystemConfig('main_model', 'test-model', 'env')
+    seedAdminLlmBinding()
   })
 
   test('passes the model built from effective config to generateText unchanged', async () => {

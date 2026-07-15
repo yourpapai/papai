@@ -9,10 +9,10 @@ import type { ChatProvider, ContextRendered, ContextSnapshot } from '../chat/typ
 import { buildMessagesWithMemory } from '../conversation.js'
 import { loadHistory } from '../history.js'
 import { buildInstructionsBlock } from '../instructions.js'
+import { resolveAdminLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { loadFacts, loadSummary } from '../memory.js'
 import type { TaskProvider } from '../providers/types.js'
-import { getSystemConfig } from '../system-config.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt as buildSystemPromptImpl } from '../system-prompt.js'
 import {
   collectContext,
@@ -83,7 +83,8 @@ async function buildCollectorDeps(
   resolvedToolSurface: ResolvedContextToolSurface,
   deps: ContextCommandDeps,
 ): Promise<ContextCollectorDeps> {
-  const modelName = getSystemConfig('main_model')
+  const adminLlm = resolveAdminLlmConfig()
+  const modelName = adminLlm.ok ? adminLlm.main.model : null
   const resolvedModelName = resolveModelName(modelName)
   const encoding = resolveEncodingName(resolvedModelName)
   const resolvedEncoding = resolveEncoding(encoding)

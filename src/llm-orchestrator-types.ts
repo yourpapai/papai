@@ -10,7 +10,7 @@ import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import type { ReplyFn } from './chat/types.js'
 import type { LiveStatusReporter } from './live-status/reporter.js'
-import type { EffectiveLlmConfig } from './llm-config-resolver.js'
+import type { EffectiveLlmConfig } from './llm-providers/types.js'
 import type { TaskProvider } from './providers/types.js'
 import type { DisclosureSession } from './tools/disclosure/registry.js'
 

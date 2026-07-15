@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { sql } from 'drizzle-orm'
-import { blob, sqliteTable, text, integer, primaryKey, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, primaryKey, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { platformInstances } from './instance-schema.js'
 
@@ -51,6 +51,7 @@ export { systemConfig } from './system-config-schema.js'
 export { llmUsageEvents, type LlmUsageEventRow } from './llm-usage-events-schema.js'
 export { toolCallEvents, type ToolCallEventRow } from './tool-call-events-schema.js'
 export { byokLlmCredentials, type ByokLlmCredentialRow } from './byok-llm-schema.js'
+export { llmProviders, type LlmProviderRow, llmAdminRoles, type LlmAdminRoleRow } from './llm-providers-schema.js'
 export { codingSessionCredentials, type CodingSessionCredentialRow } from './coding-credentials-schema.js'
 export { codingSessionRepos, type CodingSessionRepoRow } from './coding-repos-schema.js'
 
@@ -185,43 +186,7 @@ export const messageMetadata = sqliteTable(
   ],
 )
 
-export const memos = sqliteTable(
-  'memos',
-  {
-    id: text('id').primaryKey(),
-    userId: text('user_id').notNull(),
-    content: text('content').notNull(),
-    summary: text('summary'),
-    tags: text('tags').notNull().default('[]'),
-    embedding: blob('embedding'),
-    status: text('status').notNull().default('active'),
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`(datetime('now'))`),
-    updatedAt: text('updated_at')
-      .notNull()
-      .default(sql`(datetime('now'))`),
-  },
-  (table) => [index('idx_memos_user_status_created').on(table.userId, table.status, table.createdAt)],
-)
-
-export const memoLinks = sqliteTable(
-  'memo_links',
-  {
-    id: text('id').primaryKey(),
-    sourceMemoId: text('source_memo_id').notNull(),
-    targetMemoId: text('target_memo_id'),
-    targetTaskId: text('target_task_id'),
-    relationType: text('relation_type').notNull(),
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`(datetime('now'))`),
-  },
-  (table) => [
-    index('idx_memo_links_source').on(table.sourceMemoId),
-    index('idx_memo_links_target_memo').on(table.targetMemoId),
-  ],
-)
+export { memos, memoLinks } from './memos-schema.js'
 export const userIdentityMappings = sqliteTable(
   'user_identity_mappings',
   {
