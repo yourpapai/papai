@@ -42,7 +42,7 @@ function createMockSpawn(handlers: {
 }): SpawnFn {
   let reviewerCall = 0
   let fixerCall = 0
-  return (_command: string, args: readonly string[], _opts: { cwd: string }): Promise<SpawnResult> => {
+  return (_command: string, args: readonly string[], opts: { cwd: string }): Promise<SpawnResult> => {
     const promptText = args[args.length - 1] ?? ''
     const outputPath = extractOutputPath(promptText)
 
@@ -50,14 +50,14 @@ function createMockSpawn(handlers: {
       const issues = handlers.reviewerIssues?.[reviewerCall] ?? []
       reviewerCall += 1
       if (outputPath !== null) {
-        writeFileSync(outputPath, JSON.stringify({ issues }))
+        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ issues }))
       }
     } else if (promptText.includes('Verify and fix') || promptText.includes('build error')) {
       const result = handlers.fixerResults?.[fixerCall] ?? { verdict: 'valid', fixability: 'auto', fixed: true }
       fixerCall += 1
       if (outputPath !== null) {
         writeFileSync(
-          outputPath,
+          path.join(opts.cwd, outputPath),
           JSON.stringify({
             ...result,
             reasoning: 'Fixed.',
@@ -68,7 +68,7 @@ function createMockSpawn(handlers: {
       }
     } else if (promptText.includes('Match newly found')) {
       if (outputPath !== null) {
-        writeFileSync(outputPath, JSON.stringify({ matches: [] }))
+        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches: [] }))
       }
     }
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })

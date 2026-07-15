@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { runAgent, type SpawnFn } from './agent-runner.js'
+import { agentWritePath, runAgent, type SpawnFn } from './agent-runner.js'
 import { runBuildCheck, type ShellExecFn } from './build-checker.js'
 import type { ReviewLoopConfig } from './config.js'
 import {
@@ -107,7 +107,11 @@ async function retryFixAfterBuildFailure(
   deps.log.log(`[fix] build failed, retrying...`)
   const preFixSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
 
-  await runFixer(deps, buildRetryFixPrompt(record.issue, deps.runState.resultPath, buildError), 'fixer-retry')
+  await runFixer(
+    deps,
+    buildRetryFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), buildError),
+    'fixer-retry',
+  )
 
   const retryPhase = await withLivePhase(deps.log, 'build', () =>
     runBuildCheck({ exec: deps.exec, cwd: deps.runState.worktreePath, command: deps.config.checkCommand }),
@@ -137,7 +141,7 @@ async function retryFixAfterBuildFailure(
 async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Promise<{ fixed: boolean }> {
   deps.log.log(`[fix] "${shortTitle(record)}" — verifying...`)
 
-  const result = await runFixer(deps, buildFixPrompt(record.issue, deps.runState.resultPath), 'fixer')
+  const result = await runFixer(deps, buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath)), 'fixer')
 
   recordVerification(deps.ledger, record.id, {
     verdict: result.verdict,
@@ -193,7 +197,7 @@ async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIss
     spawn: deps.spawn,
     model: deps.config.reviewer.model,
     cwd: deps.runState.worktreePath,
-    prompt: buildReviewPrompt(deps.runState.planPath, deps.runState.issuesPath),
+    prompt: buildReviewPrompt(deps.runState.planPath, agentWritePath(deps.runState.issuesPath)),
     outputPath: deps.runState.issuesPath,
     outputSchema: ReviewerIssuesSchema,
     label: 'reviewer',

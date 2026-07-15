@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { runAgent } from '../../review-loop/src/agent-runner.js'
@@ -40,7 +40,8 @@ describe('agent-runner', () => {
     const issuesData = { issues: [] }
     const mock = createMockSpawn([{ exitCode: 0, stdout: 'done', stderr: '' }])
 
-    writeFileSync(outputPath, JSON.stringify(issuesData))
+    mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+    writeFileSync(path.join(dir, '.review-loop', path.basename(outputPath)), JSON.stringify(issuesData))
 
     const result = await runAgent({
       spawn: mock.spawn,
@@ -57,7 +58,6 @@ describe('agent-runner', () => {
     expect(result).toEqual({ issues: [] })
     expect(mock.calls[0]?.command).toBe('opencode')
     expect(mock.calls[0]?.args).toContain('run')
-    expect(mock.calls[0]?.args).toContain('--auto')
     expect(mock.calls[0]?.args).toContain('--model')
     expect(mock.calls[0]?.args).toContain('test-model')
     expect(mock.calls[0]?.args).toContain('--dir')
@@ -84,7 +84,7 @@ describe('agent-runner', () => {
       logPath: path.join(dir, 'log.txt'),
       extraArgs: [],
       onRetry: () => {
-        writeFileSync(outputPath, JSON.stringify(issuesData))
+        writeFileSync(path.join(dir, '.review-loop', path.basename(outputPath)), JSON.stringify(issuesData))
       },
     })
 
@@ -101,7 +101,8 @@ describe('agent-runner', () => {
       { exitCode: 0, stdout: 'done', stderr: '' },
     ])
 
-    writeFileSync(outputPath, '{ not valid json')
+    mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+    writeFileSync(path.join(dir, '.review-loop', path.basename(outputPath)), '{ not valid json')
 
     const { FixerResultSchema } = await import('../../review-loop/src/issue-schema.js')
     const result = await runAgent({
@@ -115,8 +116,7 @@ describe('agent-runner', () => {
       logPath: path.join(dir, 'log.txt'),
       extraArgs: [],
       onRetry: () => {
-        unlinkSync(outputPath)
-        writeFileSync(outputPath, JSON.stringify(validData))
+        writeFileSync(path.join(dir, '.review-loop', path.basename(outputPath)), JSON.stringify(validData))
       },
     })
 
@@ -185,13 +185,13 @@ describe('agent-runner', () => {
     const spawn = (
       _command: string,
       _args: readonly string[],
-      _opts: { cwd: string },
+      opts: { cwd: string },
       onLine?: (line: string) => void,
     ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
       for (const line of lines) {
         onLine?.(line)
       }
-      writeFileSync(outputPath, JSON.stringify({ issues: [] }))
+      writeFileSync(path.join(opts.cwd, '.review-loop', path.basename(outputPath)), JSON.stringify({ issues: [] }))
       return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
     }
 

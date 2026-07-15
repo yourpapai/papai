@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { runAgent, type SpawnFn } from './agent-runner.js'
+import { agentWritePath, runAgent, type SpawnFn } from './agent-runner.js'
 import type { LedgerIssueRecord } from './issue-ledger.js'
 import { IssueMatchesSchema } from './issue-schema.js'
 import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
@@ -56,7 +56,7 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<IssueMatch[]> 
     return deps.newIssues.map((_, index) => ({ newIssueIndex: index, existingId: null }))
   }
 
-  const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, deps.outputPath)
+  const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, agentWritePath(deps.outputPath))
 
   const result = await runAgent({
     spawn: deps.spawn,

@@ -45,8 +45,12 @@ const newIssue: ReviewerIssue = {
 }
 
 function createMockSpawn(outputPath: string, data: unknown): SpawnFn {
-  return (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
-    writeFileSync(outputPath, JSON.stringify(data))
+  return (
+    _command: string,
+    _args: readonly string[],
+    opts: { cwd: string },
+  ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+    writeFileSync(path.join(opts.cwd, '.review-loop', path.basename(outputPath)), JSON.stringify(data))
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
   }
 }

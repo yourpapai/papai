@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { appendFile, readFile } from 'node:fs/promises'
+import { appendFile, copyFile, mkdir, readFile } from 'node:fs/promises'
+import path from 'node:path'
 
 import type { z } from 'zod'
 
@@ -145,21 +146,14 @@ function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
   return { onLine, dispose }
 }
 
+export function agentWritePath(outputPath: string): string {
+  return path.join('.review-loop', path.basename(outputPath))
+}
+
 function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<SpawnResult> {
   return options.spawn(
     'opencode',
-    [
-      'run',
-      '--auto',
-      '--format',
-      'json',
-      '--model',
-      options.model,
-      '--dir',
-      options.cwd,
-      ...options.extraArgs,
-      options.prompt,
-    ],
+    ['run', '--format', 'json', '--model', options.model, '--dir', options.cwd, ...options.extraArgs, options.prompt],
     { cwd: options.cwd },
     onLine,
   )
@@ -168,6 +162,7 @@ function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<
 async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
   const handler = createLineHandler(options)
   try {
+    await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
     const result = await attemptRun(options, handler.onLine)
     if (result.exitCode !== 0) {
       await appendFile(options.logPath, `[${options.label}] stderr: ${result.stderr}\n`)
@@ -177,6 +172,8 @@ async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
       }
     }
     try {
+      const agentFile = path.resolve(options.cwd, agentWritePath(options.outputPath))
+      await copyFile(agentFile, options.outputPath)
       const raw = await readFile(options.outputPath, 'utf8')
       return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
     } catch (error) {
