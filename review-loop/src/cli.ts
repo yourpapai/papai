@@ -24,8 +24,10 @@ export interface CliArgs {
   resumeRunId?: string
 }
 
+const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
+
 export function parseCliArgs(argv: readonly string[]): CliArgs {
-  let configPath = 'review-loop/config.json'
+  let configPath = DEFAULT_CONFIG_PATH
   let planPath: string | undefined
   let repoRoot = '.'
   let resumeRunId: string | undefined

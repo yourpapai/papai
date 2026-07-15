@@ -10,7 +10,7 @@ import { parseCliArgs } from '../../review-loop/src/cli.js'
 describe('parseCliArgs', () => {
   test('defaults configPath to review-loop/config.json and repoRoot to .', () => {
     const args = parseCliArgs(['--plan', '/path/to/plan.md'])
-    expect(args.configPath).toBe('review-loop/config.json')
+    expect(args.configPath.endsWith('review-loop/config.json')).toBe(true)
     expect(args.repoRoot).toBe('.')
   })
 
