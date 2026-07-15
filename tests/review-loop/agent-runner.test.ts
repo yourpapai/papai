@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { runAgent } from '../../review-loop/src/agent-runner.js'
@@ -63,6 +63,32 @@ describe('agent-runner', () => {
     expect(mock.calls[0]?.args).toContain('test-model')
     expect(mock.calls[0]?.args).toContain('--dir')
     expect(mock.calls[0]?.args).toContain(dir)
+  })
+
+  test('removes scratch output from worktree after copying to outputPath', async () => {
+    const dir = makeTempDir('agent-runner-')
+    const outputPath = path.join(dir, 'out', 'issues.json')
+    mkdirSync(path.join(dir, 'out'), { recursive: true })
+    const mock = createMockSpawn([{ exitCode: 0, stdout: 'done', stderr: '' }])
+
+    mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+    const scratchPath = path.join(dir, '.review-loop', 'issues.json')
+    writeFileSync(scratchPath, JSON.stringify({ issues: [] }))
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'test-model',
+      cwd: dir,
+      prompt: 'review the code',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+    })
+
+    expect(existsSync(scratchPath)).toBe(false)
+    expect(existsSync(outputPath)).toBe(true)
   })
 
   test('retries once when output file is missing', async () => {

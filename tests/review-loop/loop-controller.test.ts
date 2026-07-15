@@ -120,6 +120,16 @@ async function setupGitRepo(repoPath: string): Promise<void> {
   await execGit(repoPath, ['commit', '-m', 'init'])
 }
 
+async function setupBareGitRepo(repoPath: string): Promise<void> {
+  mkdirSync(repoPath, { recursive: true })
+  await execGit(repoPath, ['init'])
+  await execGit(repoPath, ['config', 'user.email', 'test@test.com'])
+  await execGit(repoPath, ['config', 'user.name', 'Test'])
+  writeFileSync(path.join(repoPath, 'README.md'), 'hello')
+  await execGit(repoPath, ['add', '.'])
+  await execGit(repoPath, ['commit', '-m', 'init'])
+}
+
 describe('runReviewLoop', () => {
   test('runs until reviewer reports no issues', async () => {
     const repoRoot = makeTempDir('loop-ctrl-')
@@ -323,6 +333,42 @@ describe('runReviewLoop', () => {
     expect(status).toBe('')
     const committed = (await execGit(runState.worktreePath, ['show', 'HEAD:fixed.ts'])).stdout
     expect(committed).toContain('export const fixed = true')
+  })
+
+  test('does not commit agent scratch files when .review-loop is not gitignored', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupBareGitRepo(runState.worktreePath)
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], []],
+        fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'export const fixed = true\n')
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+    })
+
+    const committedFiles = (
+      await execGit(runState.worktreePath, ['show', 'HEAD', '--name-only', '--pretty=format:'])
+    ).stdout
+      .split('\n')
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0)
+
+    expect(committedFiles).toContain('fixed.ts')
+    expect(committedFiles.some((f) => f.startsWith('.review-loop/'))).toBe(false)
   })
 
   test('does not re-discover terminal issues as duplicates across rounds', async () => {
