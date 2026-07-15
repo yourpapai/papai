@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -32,7 +33,7 @@ export interface RunState extends PersistedRunState {
 }
 
 function makeRunId(): string {
-  return new Date().toISOString().replace(/[:.]/gu, '-')
+  return `${new Date().toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`
 }
 
 export async function createRunState(config: ReviewLoopConfig, planPath: string): Promise<RunState> {
