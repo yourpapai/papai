@@ -234,6 +234,21 @@ const applyByokAction = (body: ByokActionBody, contextId: string, updatedBy: str
   return settingsJson(200, { ok: true, contextId, enabled })
 }
 
+// A v2 multi-provider blob lives under the `v2` storage key, which the flat legacy
+// reader (getByokLlmConfig) reads as `{}`; a legacy `values` save would then merge
+// against `{}` and overwrite the v2 provider/role config. getByokBundle migrates a
+// legacy flat config into a single-provider v2 blob in memory, so a non-empty flat
+// config distinguishes the legacy case (allowed) from real v2 data (rejected here).
+const rejectLegacyValuesAgainstV2Blob = (contextId: string): Response | null => {
+  const bundle = getByokBundle(contextId)
+  const flatConfig = getByokLlmConfig(contextId) ?? {}
+  if (bundle.blob !== null && bundle.blob.providers.length > 0 && Object.keys(flatConfig).length === 0)
+    return settingsJson(409, {
+      error: 'multi-provider BYOK config is active; use the upsert-provider/set-roles actions',
+    })
+  return null
+}
+
 export async function handleByokRoutes(req: Request, url: URL): Promise<Response> {
   const auth = authenticate(req)
   if (!auth.ok) return auth.response
@@ -266,6 +281,9 @@ export async function handleByokRoutes(req: Request, url: URL): Promise<Response
       return settingsJson(403, {
         error: 'BYOK is not enabled for this context',
       })
+
+    const rejected = rejectLegacyValuesAgainstV2Blob(scope.scope.contextId)
+    if (rejected !== null) return rejected
 
     updateByokLlmConfig(
       scope.scope.contextId,

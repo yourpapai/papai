@@ -624,6 +624,43 @@ describe('settings BYOK routes', () => {
     expect(getByokBundle(personalConfigContextId).blob?.providers.map((p) => p.id)).not.toContain('prov-1')
   })
 
+  test('PATCH legacy values is rejected with 409 when a v2 multi-provider blob exists', async () => {
+    enableByokForContext(personalConfigContextId, 'admin')
+    upsertByokProvider(personalConfigContextId, makeProvider(), 'admin')
+    const before = getByokBundle(personalConfigContextId)
+    assert(before.blob !== null, 'v2 blob should exist after upsert-provider')
+    assert(before.blob.providers.length === 1, 'one provider should be stored')
+
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: {
+          ...authHeaders(session, true),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: {
+            llm_apikey: 'sk-overwrite-attempt',
+            llm_baseurl: 'https://api.example/v1',
+            main_model: 'gpt-overwrite',
+          },
+        }),
+      }),
+      url,
+    )
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({
+      error: 'multi-provider BYOK config is active; use the upsert-provider/set-roles actions',
+    })
+
+    // The v2 multi-provider config must be untouched by the rejected legacy save.
+    const after = getByokBundle(personalConfigContextId)
+    expect(after.blob?.providers.map((p) => p.id)).toEqual(['prov-1'])
+    expect(after.blob?.providers[0]?.apiKey).toBe('sk-test-1234')
+    expect(after.blob?.providers[0]?.baseUrl).toBe('https://byok.invalid/v1')
+  })
+
   test('PATCH action:refresh-models returns 200 and runs background verification', async () => {
     enableByokForContext(personalConfigContextId, 'admin')
     upsertByokProvider(personalConfigContextId, makeProvider(), 'admin')
