@@ -12,13 +12,16 @@
   import PageHeader from '../../../shared/ui/PageHeader.svelte'
   import Confirm from '../../../shared/Confirm.svelte'
   import ProviderForm from '../../components/ProviderForm.svelte'
+  import ProviderModelsEditor from '../../components/ProviderModelsEditor.svelte'
   import VerificationPill from '../../components/VerificationPill.svelte'
   import {
     createAdminProvider,
     deleteAdminProvider,
     fetchAdminProviders,
+    refreshAdminProviderModels,
+    updateAdminProvider,
   } from '../../admin-fetchers.js'
-  import type { PublicProviderAccount } from '../../fetcher-schemas-llm-providers.js'
+  import type { LlmProviderType, ProviderPatch, PublicProviderAccount } from '../../fetcher-schemas-llm-providers.js'
 
   let providers: PublicProviderAccount[] = $state([])
   let error: string | null = $state(null)
@@ -27,6 +30,9 @@
   let saving = $state(false)
   let deleteTarget: PublicProviderAccount | null = $state(null)
   let deleteError: string | null = $state(null)
+  let editTarget: PublicProviderAccount | null = $state(null)
+  let modelsTarget: PublicProviderAccount | null = $state(null)
+  let refreshingId: string | null = $state(null)
 
   async function load(): Promise<void> {
     error = null
@@ -78,6 +84,60 @@
     deleteTarget = provider
   }
 
+  async function patchAndReload(id: string, patch: ProviderPatch): Promise<boolean> {
+    saving = true
+    try {
+      await updateAdminProvider(id, patch)
+      await load()
+      return true
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+      return false
+    } finally {
+      saving = false
+    }
+  }
+
+  async function onEdit(
+    id: string,
+    input: { label: string; providerType: LlmProviderType; baseUrl: string; apiKey: string },
+  ): Promise<boolean> {
+    const patch: ProviderPatch = { label: input.label, providerType: input.providerType, baseUrl: input.baseUrl }
+    if (input.apiKey.length > 0) patch.apiKey = input.apiKey
+    const ok = await patchAndReload(id, patch)
+    if (ok) editTarget = null
+    return ok
+  }
+
+  async function onSaveModels(id: string, models: string[]): Promise<boolean> {
+    const ok = await patchAndReload(id, { models })
+    if (ok) modelsTarget = null
+    return ok
+  }
+
+  async function refreshModels(id: string): Promise<void> {
+    refreshingId = id
+    error = null
+    try {
+      await refreshAdminProviderModels(id)
+      await load()
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      refreshingId = null
+    }
+  }
+
+  function startEdit(provider: PublicProviderAccount): void {
+    editTarget = provider
+    modelsTarget = null
+  }
+
+  function startModelsEdit(provider: PublicProviderAccount): void {
+    modelsTarget = provider
+    editTarget = null
+  }
+
   $effect(() => {
     untrack(() => {
       void load()
@@ -121,7 +181,7 @@
             <th>API Key</th>
             <th>Status</th>
             <th>Models</th>
-            <th></th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -136,15 +196,64 @@
               </td>
               <td>{provider.verification.models.length}</td>
               <td>
-                <Btn
-                  variant="danger"
-                  size="sm"
-                  testid={`admin-providers-delete-${provider.id}`}
-                  onClick={() => requestDelete(provider)}>
-                  {#snippet children()}Delete{/snippet}
-                </Btn>
+                <div class="row-actions">
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    testid={`admin-providers-edit-${provider.id}`}
+                    onClick={() => startEdit(provider)}>
+                    {#snippet children()}Edit{/snippet}
+                  </Btn>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    testid={`admin-providers-refresh-models-${provider.id}`}
+                    disabled={refreshingId === provider.id}
+                    onClick={() => void refreshModels(provider.id)}>
+                    {#snippet children()}{refreshingId === provider.id ? 'Refreshing…' : 'Refresh'}{/snippet}
+                  </Btn>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    testid={`admin-providers-models-${provider.id}`}
+                    onClick={() => startModelsEdit(provider)}>
+                    {#snippet children()}Models{/snippet}
+                  </Btn>
+                  <Btn
+                    variant="danger"
+                    size="sm"
+                    testid={`admin-providers-delete-${provider.id}`}
+                    onClick={() => requestDelete(provider)}>
+                    {#snippet children()}Delete{/snippet}
+                  </Btn>
+                </div>
               </td>
             </tr>
+            {#if editTarget?.id === provider.id}
+              <tr>
+                <td colspan="7">
+                  <ProviderForm
+                    editMode={true}
+                    initial={{ label: provider.label, providerType: provider.providerType, baseUrl: provider.baseUrl }}
+                    onSave={(input) => onEdit(provider.id, input)}
+                    onCancel={() => (editTarget = null)}
+                    busy={saving}
+                    testidPrefix="provider-edit-form" />
+                </td>
+              </tr>
+            {/if}
+            {#if modelsTarget?.id === provider.id}
+              <tr>
+                <td colspan="7">
+                  <ProviderModelsEditor
+                    models={provider.verification.models}
+                    onSave={(models) => onSaveModels(provider.id, models)}
+                    onCancel={() => (modelsTarget = null)}
+                    busy={saving}
+                    testid={`provider-models-${provider.id}`} />
+                </td>
+              </tr>
+            {/if}
           {/each}
         </tbody>
       </table>
@@ -180,5 +289,11 @@
   }
   .mono {
     font-family: var(--font-mono);
+  }
+  .row-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 </style>

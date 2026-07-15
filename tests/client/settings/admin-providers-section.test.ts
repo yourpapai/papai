@@ -19,6 +19,18 @@ const drain = async (): Promise<void> => {
   flushSync()
 }
 
+interface CapturedCall {
+  url: string
+  method: string
+}
+
+const captureCall = (calls: CapturedCall[], url: string, init: RequestInit): void => {
+  calls.push({ url, method: init.method ?? 'GET' })
+}
+
+const findCall = (calls: CapturedCall[], fragment: string): CapturedCall | undefined =>
+  calls.find((c) => c.url.includes(fragment))
+
 const populatedPayload = {
   providers: [
     {
@@ -88,5 +100,51 @@ describe('AdminProvidersSection', () => {
     await drain()
 
     expect(document.body.textContent).toContain('boom')
+  })
+
+  test('shows edit form in edit mode on edit button click', async () => {
+    setMockFetch(() => Promise.resolve(json(populatedPayload)))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    const editBtn = document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-edit-prov_1"]')!
+    editBtn.click()
+    await drain()
+
+    expect(document.querySelector('[data-testid="provider-edit-form"]')).not.toBeNull()
+    const labelInput = document.querySelector<HTMLInputElement>('[data-testid="provider-edit-form-label"]')!
+    expect(labelInput.value).toBe('OpenAI')
+  })
+
+  test('refresh-models button triggers refresh-models fetch', async () => {
+    const calls: CapturedCall[] = []
+    setMockFetch((url, init) => {
+      captureCall(calls, url, init)
+      return Promise.resolve(json(populatedPayload))
+    })
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    const refreshBtn = document.querySelector<HTMLButtonElement>(
+      '[data-testid="admin-providers-refresh-models-prov_1"]',
+    )!
+    refreshBtn.click()
+    await drain()
+
+    expect(findCall(calls, '/providers/prov_1/refresh-models')?.method).toBe('POST')
+  })
+
+  test('shows models editor textarea on models button click', async () => {
+    setMockFetch(() => Promise.resolve(json(populatedPayload)))
+    mount(AdminProvidersSection, { target })
+    await drain()
+
+    const modelsBtn = document.querySelector<HTMLButtonElement>('[data-testid="admin-providers-models-prov_1"]')!
+    modelsBtn.click()
+    await drain()
+
+    const textarea = document.querySelector<HTMLTextAreaElement>('[data-testid="provider-models-prov_1-textarea"]')!
+    expect(textarea).not.toBeNull()
+    expect(textarea.value).toBe('gpt-4o')
   })
 })
