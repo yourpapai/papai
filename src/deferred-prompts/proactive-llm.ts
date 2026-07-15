@@ -7,8 +7,8 @@ import { generateText, stepCountIs, type LanguageModel, type ModelMessage } from
 
 import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
-import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
@@ -60,7 +60,7 @@ type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildPro
 export type { BuildProviderFn }
 
 function getLlmConfig(configContextId: string): LlmConfig | string {
-  const resolved = resolveEffectiveLlmConfig(configContextId)
+  const resolved = resolveLlmConfig(configContextId)
   if (!resolved.ok) {
     log.warn(
       {
@@ -81,10 +81,10 @@ function getLlmConfig(configContextId: string): LlmConfig | string {
     return 'Deferred prompt skipped: BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.'
   }
   return {
-    apiKey: resolved.llmApiKey,
-    baseURL: resolved.llmBaseUrl,
-    mainModel: resolved.mainModel,
-    smallModel: resolved.smallModel,
+    apiKey: resolved.main.apiKey,
+    baseURL: resolved.main.baseUrl,
+    mainModel: resolved.main.model,
+    smallModel: resolved.small.model,
   }
 }
 

@@ -19,10 +19,9 @@ import type { DeferredExecutionContext } from '../../src/deferred-prompts/proact
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
-import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { loadFacts } from '../../src/memory.js'
-import { setSystemConfig } from '../../src/system-config.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -102,13 +101,20 @@ type UserConfigOptions = Readonly<{ smallModel: string | null }>
 function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): void {
   setConfig(USER_ID, 'timezone', 'UTC')
   resetSystemConfigCacheForTesting()
-  setSystemConfig('llm_apikey', 'test-key', 'env')
-  setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
-  setSystemConfig('main_model', 'main-model', 'env')
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'http://localhost:11434/v1', apiKey: 'test-key' },
+    'admin',
+  )
   const opts = args[0]
-  if (opts !== undefined && opts.smallModel !== null) {
-    setSystemConfig('small_model', opts.smallModel, 'env')
-  }
+  setAdminRoleBindings(
+    {
+      main: { providerId: provider.id, model: 'main-model' },
+      small:
+        opts !== undefined && opts.smallModel !== null ? { providerId: provider.id, model: opts.smallModel } : null,
+      embedding: null,
+    },
+    'admin',
+  )
 }
 
 describe('dispatchExecution', () => {

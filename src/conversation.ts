@@ -7,8 +7,9 @@ import type { LanguageModel, ModelMessage } from 'ai'
 
 import { getCachedHistory, setCachedHistory } from './cache.js'
 import { emitUser } from './debug/event-bus.js'
-import { resolveEffectiveLlmConfig } from './llm-config-resolver.js'
 import { buildChatModel } from './llm-model-builder.js'
+import { resolveLlmConfig } from './llm-providers/resolver.js'
+import type { LlmConfigResult } from './llm-providers/types.js'
 import { logger } from './logger.js'
 import { buildLongTermMemoryContextMessage } from './long-term-memory/context.js'
 import { resolveMemoryScope } from './long-term-memory/scope.js'
@@ -42,7 +43,7 @@ type MessagesWithMemory = {
 const logTrimConfigFailure = (
   userId: string,
   configContextId: string,
-  resolved: Exclude<ReturnType<typeof resolveEffectiveLlmConfig>, { readonly ok: true }>,
+  resolved: Exclude<LlmConfigResult, { readonly ok: true }>,
 ): void => {
   log.warn(
     {
@@ -116,7 +117,7 @@ const performTrim = async (
   log.warn({ userId, historyLength: history.length, reason }, 'Smart trim triggered (running in background)')
   emitUser('trim:start', userId, { historyLength: history.length, reason })
 
-  const resolved = resolveEffectiveLlmConfig(configContextId)
+  const resolved = resolveLlmConfig(configContextId)
 
   if (!resolved.ok) {
     logTrimConfigFailure(userId, configContextId, resolved)
@@ -125,7 +126,7 @@ const performTrim = async (
 
   try {
     const existing = loadSummary(userId)
-    const model = deps.buildModel(resolved.llmApiKey, resolved.llmBaseUrl, resolved.smallModel)
+    const model = deps.buildModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
     const { trimmedMessages, summary } = await trimWithMemoryModel(history, TRIM_MIN, TRIM_MAX, existing, model)
     // Preserve any messages added to history while the async trim was running
     const currentHistory = getCachedHistory(userId)

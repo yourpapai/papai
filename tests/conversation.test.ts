@@ -393,6 +393,7 @@ describe('runTrimInBackground', () => {
   })
 
   test('success path: calls trimWithMemoryModel, saves summary, and updates history', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -638,6 +639,7 @@ describe('runTrimInBackground', () => {
   })
 
   test('concurrency guard: skips a second trim while one is in flight, then releases', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
