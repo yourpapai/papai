@@ -8,6 +8,12 @@ import { describe, expect, test } from 'bun:test'
 import { parseCliArgs } from '../../review-loop/src/cli.js'
 
 describe('parseCliArgs', () => {
+  test('defaults configPath to review-loop/config.json and repoRoot to .', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md'])
+    expect(args.configPath).toBe('review-loop/config.json')
+    expect(args.repoRoot).toBe('.')
+  })
+
   test('parses --config and --plan', () => {
     const args = parseCliArgs(['--config', '/path/to/config.json', '--plan', '/path/to/plan.md'])
     expect(args.configPath).toBe('/path/to/config.json')

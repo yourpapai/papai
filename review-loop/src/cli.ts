@@ -20,14 +20,14 @@ import { createWorktree, mergeWorktree, removeWorktree, worktreeExists } from '.
 export interface CliArgs {
   configPath: string
   planPath: string
-  repoRoot?: string
+  repoRoot: string
   resumeRunId?: string
 }
 
 export function parseCliArgs(argv: readonly string[]): CliArgs {
-  let configPath = '.review-loop/config.json'
+  let configPath = 'review-loop/config.json'
   let planPath: string | undefined
-  let repoRoot: string | undefined
+  let repoRoot = '.'
   let resumeRunId: string | undefined
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -50,10 +50,11 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
       continue
     }
     if (arg === '--repo') {
-      repoRoot = argv[index + 1]
-      if (repoRoot === undefined) {
+      const value = argv[index + 1]
+      if (value === undefined) {
         throw new Error('Missing value for --repo')
       }
+      repoRoot = value
       index += 1
       continue
     }

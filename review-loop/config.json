@@ -4,15 +4,15 @@
   "maxNoProgressRounds": 2,
   "checkCommand": "bun check:full",
   "reviewer": {
-    "model": "ollama-cloud/kimi-k2.6:cloud",
+    "model": "zai-coding-plan/glm-5.2",
     "extraArgs": []
   },
   "fixer": {
-    "model": "opencode/claude-sonnet-4-6",
+    "model": "zai-coding-plan/glm-5.2",
     "extraArgs": []
   },
   "matcher": {
-    "model": "ollama-cloud/kimi-k2.6:cloud",
+    "model": "zai-coding-plan/glm-5.2",
     "extraArgs": []
   }
 }

@@ -10,7 +10,6 @@ import { ReviewLoopConfigSchema } from '../../review-loop/src/config.js'
 describe('ReviewLoopConfigSchema', () => {
   test('parses a valid config with defaults', () => {
     const parsed = ReviewLoopConfigSchema.parse({
-      repoRoot: '.',
       workDir: '.review-loop',
       reviewer: { model: 'm1' },
       fixer: { model: 'm2' },

@@ -14,7 +14,6 @@ const AgentConfigSchema = z.object({
 })
 
 export const ReviewLoopConfigSchema = z.object({
-  repoRoot: z.string().min(1),
   workDir: z.string().min(1),
   maxRounds: z.number().int().positive().default(10),
   maxNoProgressRounds: z.number().int().positive().default(2),
@@ -24,21 +23,22 @@ export const ReviewLoopConfigSchema = z.object({
   matcher: AgentConfigSchema,
 })
 
-export type ReviewLoopConfig = z.infer<typeof ReviewLoopConfigSchema>
+export interface ReviewLoopConfig extends z.infer<typeof ReviewLoopConfigSchema> {
+  repoRoot: string
+  workDir: string
+}
 
 export interface ConfigLoadInput {
   configPath: string
-  repoRoot?: string
+  repoRoot: string
 }
 
 export async function loadReviewLoopConfig(input: ConfigLoadInput): Promise<ReviewLoopConfig> {
   const configPath = path.resolve(input.configPath)
-  const configDir = path.dirname(configPath)
   const raw = JSON.parse(await readFile(configPath, 'utf8')) as unknown
   const parsed = ReviewLoopConfigSchema.parse(raw)
 
-  const repoRoot =
-    input.repoRoot === undefined ? path.resolve(configDir, parsed.repoRoot) : path.resolve(input.repoRoot)
+  const repoRoot = path.resolve(input.repoRoot)
   const workDir = path.resolve(repoRoot, parsed.workDir)
 
   await mkdir(workDir, { recursive: true })
