@@ -249,6 +249,47 @@ describe('runReviewLoop', () => {
     expect(headAfter).toBe(baselineSha)
   })
 
+  test('does not mark fixed when retry agent reports not fixed even if build would pass', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 1, maxNoProgressRounds: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    const execResults: Array<{ exitCode: number; stdout: string; stderr: string }> = [
+      { exitCode: 1, stdout: '', stderr: 'TypeError: broken' },
+      { exitCode: 0, stdout: '', stderr: '' },
+    ]
+    let execIndex = 0
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue]],
+        fixerResults: [
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+          { verdict: 'needs_human', fixability: 'manual', fixed: false },
+        ],
+      }),
+      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+        const r = execResults[execIndex]!
+        execIndex += 1
+        return Promise.resolve(r)
+      },
+      log: silentReporter(),
+    })
+
+    const records = Object.values(ledger.snapshot.issues)
+    expect(records.length).toBe(1)
+    expect(records[0]!.status).toBe('needs_human')
+    expect(execIndex).toBe(1)
+  })
+
   test('auto-commits uncommitted fixer changes to prevent silent loss on merge', async () => {
     const repoRoot = makeTempDir('loop-ctrl-')
     const config = createReviewLoopConfigFixture(repoRoot)

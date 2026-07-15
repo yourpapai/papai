@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { agentWritePath, runAgent, type SpawnFn } from './agent-runner.js'
-import { runBuildCheck, type ShellExecFn } from './build-checker.js'
+import { runBuildCheck, type BuildCheckResult, type ShellExecFn } from './build-checker.js'
 import type { ReviewLoopConfig } from './config.js'
 import {
   applyMatchedIssues,
@@ -75,6 +75,14 @@ function runFixer(deps: ReviewLoopDeps, prompt: string, label: string): Promise<
   })
 }
 
+async function runBuildWithLogging(deps: ReviewLoopDeps): Promise<BuildCheckResult> {
+  const phase = await withLivePhase(deps.log, 'build', () =>
+    runBuildCheck({ exec: deps.exec, cwd: deps.runState.worktreePath, command: deps.config.checkCommand }),
+  )
+  deps.log.event(`[build] ${phase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(phase.durationMs)}`)
+  return phase.result
+}
+
 async function retryFixAfterBuildFailure(
   record: LedgerIssueRecord,
   deps: ReviewLoopDeps,
@@ -83,19 +91,20 @@ async function retryFixAfterBuildFailure(
 ): Promise<boolean> {
   deps.log.log(`[fix] build failed, retrying...`)
 
-  await runFixer(
+  const result = await runFixer(
     deps,
     buildRetryFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), buildError),
     'fixer-retry',
   )
 
-  const retryPhase = await withLivePhase(deps.log, 'build', () =>
-    runBuildCheck({ exec: deps.exec, cwd: deps.runState.worktreePath, command: deps.config.checkCommand }),
-  )
-  deps.log.event(
-    `[build] ${retryPhase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(retryPhase.durationMs)}`,
-  )
-  const retryBuild = retryPhase.result
+  if (!result.fixed || result.verdict !== 'valid') {
+    await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
+    recordVerification(deps.ledger, record.id, result)
+    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 ${result.verdict} (after retry)`)
+    return false
+  }
+
+  const retryBuild = await runBuildWithLogging(deps)
 
   if (retryBuild.passed) {
     await ensureFixerChangesCommitted(deps, record, baselineSha)
@@ -156,13 +165,7 @@ async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Pr
     return { fixed: false }
   }
 
-  const buildPhase = await withLivePhase(deps.log, 'build', () =>
-    runBuildCheck({ exec: deps.exec, cwd: deps.runState.worktreePath, command: deps.config.checkCommand }),
-  )
-  deps.log.event(
-    `[build] ${buildPhase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(buildPhase.durationMs)}`,
-  )
-  const buildResult = buildPhase.result
+  const buildResult = await runBuildWithLogging(deps)
 
   if (buildResult.passed) {
     await ensureFixerChangesCommitted(deps, record, baselineSha)
