@@ -120,6 +120,7 @@ describe('progress logging', () => {
     expect(messages.some((m) => m.startsWith('[fix] "Missing error handling"'))).toBe(true)
     expect(messages).toContain('[round 1] Fixed 1/1 issues')
     expect(messages).toContain('[done] clean after 2 rounds')
+    expect(messages.some((m) => m.startsWith('[build] passed'))).toBe(true)
   })
 
   test('logs stall and no_progress when no issues are fixed', async () => {
