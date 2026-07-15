@@ -17,7 +17,6 @@ import {
   adminByokHandlers,
   adminGroupsHandlers,
   adminPluginConfigHandlers,
-  adminSystemHandlers,
   adminToolDefaultsHandlers,
 } from '../../../../client/stories/msw/settings-handlers-admin.js'
 
@@ -53,7 +52,6 @@ function assertHandlerFamily(
 
 describe('admin settings msw handlers', () => {
   assertHandlerFamily('adminByokHandlers', adminByokHandlers, '/settings/api/admin/byok')
-  assertHandlerFamily('adminSystemHandlers', adminSystemHandlers, '/settings/api/admin/system')
   assertHandlerFamily('adminGroupsHandlers', adminGroupsHandlers, '/settings/api/admin/groups')
   assertHandlerFamily('adminAdminsHandlers', adminAdminsHandlers, '/settings/api/admin/admins')
   assertHandlerFamily('adminPluginConfigHandlers', adminPluginConfigHandlers, '/settings/api/admin/plugin-config')

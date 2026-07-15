@@ -14,7 +14,6 @@ import { runRegistry } from '../../src/run-control/registry.js'
 import {
   createMockReply,
   mockLogger,
-  resetSystemConfigCacheForTesting,
   seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   setupTestDb,
@@ -44,7 +43,6 @@ describe('processMessage run lifecycle', () => {
     mockLogger()
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    resetSystemConfigCacheForTesting()
     seedAdminLlmBinding()
     runRegistry.clear()
   })

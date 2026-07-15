@@ -85,8 +85,6 @@
     // getTaskProviderProvision is a forward-compat export wired in a downstream
     // task of the plugins deployment safety plan (mirrors getTaskProviderConfigValidator).
     "src/providers/registry.ts": ["exports"],
-    // systemConfigCacheForTesting is a test-only seam.
-    "src/system-config.ts": ["exports"],
     // resetNotifyTokenCacheForTesting is a test-only seam.
     "src/notify-token.ts": ["exports"],
     // resetStatsSaltCacheForTesting is a test-only seam.

@@ -9,12 +9,7 @@ import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { llmUsageEvents } from '../../src/db/schema.js'
 import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
-import {
-  mockLogger,
-  resetSystemConfigCacheForTesting,
-  seedAdminLlmBinding,
-  setupTestDb,
-} from '../utils/test-helpers.js'
+import { mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 const MAX_EXCERPT_CHARS = 8_000
 
@@ -75,7 +70,6 @@ describe('distillWebContent', () => {
 
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
     clearLlmAdminCacheForTesting()
     await setupTestDb()
     ;({ distillWebContent } = await import('../../src/web/distill.js'))
@@ -315,7 +309,6 @@ describe('distillWebContent', () => {
 describe('distillWebContent default buildModel dep', () => {
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
     clearLlmAdminCacheForTesting()
     await setupTestDb()
   })

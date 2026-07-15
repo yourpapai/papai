@@ -29,7 +29,6 @@ import { createMockProvider } from './tools/mock-provider.js'
 import {
   createMockReply,
   mockLogger,
-  resetSystemConfigCacheForTesting,
   seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   setupTestDb,
@@ -352,7 +351,6 @@ describe('processMessage', () => {
 
     // Clear caches to ensure clean state
     userCachesForTesting.clear()
-    resetSystemConfigCacheForTesting()
     clearLlmAdminCacheForTesting()
     resetBotMisconfiguredNotifiedForTesting()
 

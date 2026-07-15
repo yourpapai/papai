@@ -16,12 +16,7 @@ import {
 } from '../../src/chat/scoped-context.js'
 import { appendHistory } from '../../src/history.js'
 import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.js'
-import {
-  mockLogger,
-  resetSystemConfigCacheForTesting,
-  seedAdminLlmBinding,
-  setupTestDb,
-} from '../utils/test-helpers.js'
+import { mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 type GenerateTextResult = {
   text: string
@@ -38,7 +33,6 @@ let builtModelCalls: Array<{ apiKey: string; baseUrl: string; modelName: string 
 describe('makeLookupGroupHistoryTool', () => {
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
     await setupTestDb()
     builtModelCalls = []
 
@@ -117,7 +111,6 @@ describe('makeLookupGroupHistoryTool', () => {
 describe('executeLookupGroupHistory', () => {
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
     await setupTestDb()
     builtModelCalls = []
 
@@ -162,7 +155,6 @@ describe('executeLookupGroupHistory', () => {
 describe('executeLookupGroupHistory with history', () => {
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
     clearLlmAdminCacheForTesting()
     await setupTestDb()
     builtModelCalls = []

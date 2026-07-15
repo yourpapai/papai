@@ -60,18 +60,6 @@ describe('settings admin system/access routes', () => {
     clearRuntimeChatRouter()
   })
 
-  test('GET system returns an LLM snapshot with masked api key', async () => {
-    const url = new URL('https://x/settings/api/admin/system')
-    const res = await handleAdminSystemAccessRoutes(
-      new Request(url, { headers: authHeaders(adminSession) }),
-      url,
-      '/settings/api/admin/system',
-    )
-    expect(res.status).toBe(200)
-    const body = z.object({ config: z.record(z.string(), z.unknown()) }).parse(await res.json())
-    expect(body.config).toBeDefined()
-  })
-
   test('POST users adds an authorized user', async () => {
     const url = new URL('https://x/settings/api/admin/users')
     const res = await handleAdminSystemAccessRoutes(
@@ -190,36 +178,6 @@ describe('settings admin system/access routes', () => {
       '/settings/api/admin/users',
     )
     expect(res.status).toBe(403)
-  })
-
-  test('admin POST system without CSRF returns 403', async () => {
-    const url = new URL('https://x/settings/api/admin/system')
-    const res = await handleAdminSystemAccessRoutes(
-      new Request(url, {
-        method: 'POST',
-        headers: { ...authHeaders(adminSession, false), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'main_model', value: 'gpt-4' }),
-      }),
-      url,
-      '/settings/api/admin/system',
-    )
-    expect(res.status).toBe(403)
-  })
-
-  test('admin POST system with unknown key returns 422', async () => {
-    const url = new URL('https://x/settings/api/admin/system')
-    const res = await handleAdminSystemAccessRoutes(
-      new Request(url, {
-        method: 'POST',
-        headers: { ...authHeaders(adminSession, true), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'nope', value: 'x' }),
-      }),
-      url,
-      '/settings/api/admin/system',
-    )
-    expect(res.status).toBe(422)
-    const body = z.object({ error: z.string() }).parse(await res.json())
-    expect(body.error).toBe('invalid request')
   })
 
   test('admin DELETE users removes the user', async () => {

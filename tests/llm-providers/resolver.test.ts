@@ -19,7 +19,7 @@ import { resolveAdminLlmConfig, resolveLlmConfig } from '../../src/llm-providers
 import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import type { EffectiveLlmConfig, LlmConfigResult } from '../../src/llm-providers/types.js'
 import { encryptSecretPayload } from '../../src/secret-payload-crypto.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const UNVERIFIED = { status: 'unverified', error: null, at: null, models: [], modelsFetchedAt: null } as const
 
@@ -64,7 +64,6 @@ beforeEach(async () => {
   mockLogger()
   process.env['INSTANCE_CONFIG_KEY'] = 'd'.repeat(64)
   await setupTestDb()
-  resetSystemConfigCacheForTesting()
   clearLlmAdminCacheForTesting()
 })
 

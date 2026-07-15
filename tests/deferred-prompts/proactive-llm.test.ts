@@ -25,13 +25,7 @@ import { loadFacts } from '../../src/memory.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import {
-  flushMicrotasks,
-  mockLogger,
-  resetSystemConfigCacheForTesting,
-  seedAdminLlmBinding,
-  setupTestDb,
-} from '../utils/test-helpers.js'
+import { flushMicrotasks, mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 // Track generateText calls
 type GenerateTextResult = {
@@ -100,7 +94,6 @@ type UserConfigOptions = Readonly<{ smallModel: string | null }>
 
 function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): void {
   setConfig(USER_ID, 'timezone', 'UTC')
-  resetSystemConfigCacheForTesting()
   const provider = createLlmProvider(
     { label: 'admin', providerType: 'openai', baseUrl: 'http://localhost:11434/v1', apiKey: 'test-key' },
     'admin',
@@ -134,7 +127,6 @@ describe('dispatchExecution', () => {
 
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
     clearLlmAdminCacheForTesting()
     generateTextCalls.length = 0
     buildModelCalls.length = 0

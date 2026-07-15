@@ -72,7 +72,6 @@ import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
 import * as _scheduler from '../src/scheduler.js'
-import * as _systemConfig from '../src/system-config.js'
 import * as _toolsIndex from '../src/tools/index.js'
 import * as _usageIndex from '../src/usage/index.js'
 import * as _users from '../src/users.js'
@@ -124,7 +123,6 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],
   ['../src/scheduler-instance.js', { ..._schedulerInstance }],
-  ['../src/system-config.js', { ..._systemConfig }],
   ['../src/tools/index.js', { ..._toolsIndex }],
   ['../src/usage/index.js', { ..._usageIndex }],
   ['../src/users.js', { ..._users }],
@@ -138,12 +136,7 @@ const restoreOriginalModules = (): void => {
 
 beforeEach(() => {
   resetDrizzleDbForTesting()
-  // The system_config cache is a module-level Map that survives across test files
-  // in serial mode (`bun test`, CI). Clearing it here keeps serial runs matching
-  // the isolated (`--parallel`) per-file processes, so a config-seeding file can't
-  // leave LLM credentials visible to a later file that assumes none are configured.
-  _systemConfig.systemConfigCacheForTesting.clear()
-  // Same rationale for the new per-role admin LLM cache (provider + role-binding
+  // The new per-role admin LLM cache (provider + role-binding
   // caches in src/llm-providers/store.ts): a file that seeds an admin binding can't
   // leak a non-null binding into a later file that asserts "no config configured".
   clearLlmAdminCacheForTesting()

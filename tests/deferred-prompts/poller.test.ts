@@ -25,7 +25,6 @@ import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createMockChatWithSentMessages,
   mockLogger,
-  resetSystemConfigCacheForTesting,
   seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   seedTestPlatformInstance,
@@ -40,7 +39,7 @@ function setupUserConfig(userId: string): void {
   seedTestTaskInstance({ id: 'kaneo-default' })
   setConfig(userId, 'timezone', 'UTC')
   setContextSettings({ contextId: userId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
-  resetSystemConfigCacheForTesting()
+
   seedAdminLlmBinding()
 }
 

@@ -18,7 +18,6 @@ import {
 import { addUser } from '../../../../src/users.js'
 import {
   mockLogger,
-  resetSystemConfigCacheForTesting,
   restoreFetch,
   seedTestPlatformInstance,
   setMockFetch,
@@ -78,7 +77,6 @@ describe('settings admin llm-providers routes', () => {
     mockLogger()
     process.env['INSTANCE_CONFIG_KEY'] = 'e'.repeat(64)
     await setupTestDb()
-    resetSystemConfigCacheForTesting()
     clearLlmAdminCacheForTesting()
     seedTestPlatformInstance({ id: 'pi-1' })
     addUser({ userId: 'admin-1', platformInstanceId: 'pi-1', addedBy: 'boot', username: undefined })

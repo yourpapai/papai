@@ -17,13 +17,12 @@ import {
   updateProviderVerification,
   clearLlmAdminCacheForTesting,
 } from '../../src/llm-providers/store.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 beforeEach(async () => {
   mockLogger()
   process.env['INSTANCE_CONFIG_KEY'] = 'd'.repeat(64)
   await setupTestDb()
-  resetSystemConfigCacheForTesting()
   clearLlmAdminCacheForTesting()
 })
 

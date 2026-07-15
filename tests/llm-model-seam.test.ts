@@ -13,7 +13,6 @@ import { processMessage } from '../src/llm-orchestrator.js'
 import {
   createMockReply,
   mockLogger,
-  resetSystemConfigCacheForTesting,
   seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   setupTestDb,
@@ -36,7 +35,6 @@ describe('LLM model injection seam', () => {
     mockLogger()
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    resetSystemConfigCacheForTesting()
     seedAdminLlmBinding()
   })
 
