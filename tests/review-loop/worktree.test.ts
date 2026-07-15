@@ -53,13 +53,13 @@ describe('worktree', () => {
 
     const wtPath = path.join(repoRoot, '.review-loop', 'worktree')
 
-    expect(await worktreeExists(wtPath)).toBe(false)
+    expect(worktreeExists(wtPath)).toBe(false)
 
     await createWorktree(repoRoot, wtPath, 'test-run')
-    expect(await worktreeExists(wtPath)).toBe(true)
+    expect(worktreeExists(wtPath)).toBe(true)
 
     await removeWorktree(repoRoot, wtPath, 'test-run')
-    expect(await worktreeExists(wtPath)).toBe(false)
+    expect(worktreeExists(wtPath)).toBe(false)
   })
 
   test('mergeWorktree merges the branch back to current HEAD', async () => {
