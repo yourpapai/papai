@@ -162,6 +162,9 @@
     "client/settings/fetcher-schemas-mcp-catalog.ts": ["types"],
     "client/settings/fetcher-schemas-mcp-plugin-servers.ts": ["types"],
     "client/settings/fetchers.ts": ["exports"],
+    // BYOK multi-provider action fetchers consumed by the upcoming multi-provider
+    // .svelte sections (multi-provider UI plan, Task 5+); knip can't follow .svelte imports.
+    "client/settings/byok-provider-fetchers.ts": ["files", "exports"],
     "client/settings/coding-credentials-fetchers.ts": ["exports"],
     "client/settings/admin-fetchers.ts": ["exports"],
     "client/settings/release-fetchers.ts": ["exports"],
