@@ -69,7 +69,7 @@ const fromResult = (r: LlmConfigResult): EffectiveLlmConfigResult => {
       embeddingModel: r.embedding.model,
     }
   }
-  if (r.type === 'error') return { ok: false, type: 'error', source: 'byok', error: r.error }
+  if (r.type === 'error') return { ok: false, type: 'error', source: r.source, error: r.error }
   return { ok: false, type: 'missing', source: r.source, missing: r.missing }
 }
 

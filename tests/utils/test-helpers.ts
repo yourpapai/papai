@@ -38,6 +38,7 @@ import type {
   PlatformInstanceType,
   TaskInstanceType,
 } from '../../src/instances/types.js'
+import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 // ============================================================================
 // MESSAGE CACHE TEST HELPERS
 // ============================================================================
@@ -199,6 +200,23 @@ export function restoreDrizzle(): void {
  */
 export function resetSystemConfigCacheForTesting(): void {
   systemConfigCacheForTesting.clear()
+}
+
+/**
+ * Seed a baseline admin LLM provider + role binding so the resolver adapter
+ * delegates to the new per-role registry instead of the legacy system_config
+ * fallback. Creates a single OpenAI-type provider and binds it to `main`
+ * (small/embedding left null so BYOK overrides or main-fallback apply).
+ */
+export function seedAdminLlmBinding(): void {
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
+    'admin',
+  )
+  setAdminRoleBindings(
+    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
+    'admin',
+  )
 }
 
 export interface SeedTestPlatformInstanceInput {

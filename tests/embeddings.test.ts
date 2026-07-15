@@ -9,20 +9,8 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { llmUsageEvents } from '../src/db/schema.js'
 import { getEmbedding, getEmbeddingForContext, tryGetEmbedding } from '../src/embeddings.js'
-import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../src/llm-providers/store.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
-
-/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
-const seedAdminLlmBinding = (): void => {
-  const provider = createLlmProvider(
-    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
-    'admin',
-  )
-  setAdminRoleBindings(
-    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
-    'admin',
-  )
-}
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.js'
+import { mockLogger, seedAdminLlmBinding, setupTestDb } from './utils/test-helpers.js'
 
 type EmbedResult = { embedding: number[]; usage?: { tokens: number } }
 type MockProvider = { embeddingModel: (name: string) => string }

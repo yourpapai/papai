@@ -19,14 +19,20 @@ import type { DeferredExecutionContext } from '../../src/deferred-prompts/proact
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
-import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { loadFacts } from '../../src/memory.js'
 import { setSystemConfig } from '../../src/system-config.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { flushMicrotasks, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import {
+  flushMicrotasks,
+  mockLogger,
+  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 // Track generateText calls
 type GenerateTextResult = {
@@ -60,18 +66,6 @@ const containsFact = (
   )
 
 const USER_ID = 'exec-mode-user'
-
-/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
-const seedAdminLlmBinding = (): void => {
-  const provider = createLlmProvider(
-    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
-    'admin',
-  )
-  setAdminRoleBindings(
-    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
-    'admin',
-  )
-}
 
 function makeExecCtx(): DeferredExecutionContext {
   return {

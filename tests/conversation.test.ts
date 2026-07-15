@@ -11,25 +11,18 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import * as cacheModule from '../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
-import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.js'
 import { logger } from '../src/logger.js'
 import * as longTermMemoryStore from '../src/long-term-memory/store.js'
 import { saveMemoryProfile, saveMemoryRecord } from '../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../src/long-term-memory/types.js'
 import * as systemConfigModule from '../src/system-config.js'
-import { flushMicrotasks, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
-
-/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
-const seedAdminLlmBinding = (): void => {
-  const provider = createLlmProvider(
-    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
-    'admin',
-  )
-  setAdminRoleBindings(
-    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
-    'admin',
-  )
-}
+import {
+  flushMicrotasks,
+  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
+  setupTestDb,
+} from './utils/test-helpers.js'
 
 // Helper type for spy instances that need cleanup
 type SpyInstance = { mockRestore: () => void }

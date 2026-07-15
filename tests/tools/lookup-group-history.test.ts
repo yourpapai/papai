@@ -15,20 +15,13 @@ import {
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
 import { appendHistory } from '../../src/history.js'
-import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
-
-/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
-const seedAdminLlmBinding = (): void => {
-  const provider = createLlmProvider(
-    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
-    'admin',
-  )
-  setAdminRoleBindings(
-    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
-    'admin',
-  )
-}
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.js'
+import {
+  mockLogger,
+  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 type GenerateTextResult = {
   text: string

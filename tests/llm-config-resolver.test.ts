@@ -21,7 +21,7 @@ beforeEach(async () => {
 })
 
 /** Seed a baseline admin registry so the adapter delegates to the new per-role resolver. */
-const seedAdmin = (): { main: string; small: string } => {
+const seedAdmin = (): void => {
   const main = createLlmProvider(
     { label: 'admin-openai', providerType: 'openai', baseUrl: 'https://admin/v1', apiKey: 'sk-admin' },
     'admin',
@@ -38,7 +38,6 @@ const seedAdmin = (): { main: string; small: string } => {
     },
     'admin',
   )
-  return { main: main.id, small: small.id }
 }
 
 const seedGlobal = (): void => {

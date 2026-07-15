@@ -21,7 +21,7 @@ import { getDrizzleDb } from '../src/db/drizzle.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
 import { defaultDeps, processMessage, resolveAiOutputSettingsContextId } from '../src/llm-orchestrator.js'
-import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -29,6 +29,7 @@ import {
   createMockReply,
   mockLogger,
   resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   setupTestDb,
   flushMicrotasks,
@@ -191,18 +192,6 @@ const seedSystemLlmConfig = (): void => {
   setSystemConfig('llm_apikey', 'test-key', 'env')
   setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
   setSystemConfig('main_model', 'test-model', 'env')
-}
-
-/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
-const seedAdminLlmBinding = (): void => {
-  const provider = createLlmProvider(
-    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
-    'admin',
-  )
-  setAdminRoleBindings(
-    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
-    'admin',
-  )
 }
 
 const assignKaneoContext = (contextId: string): void => {
