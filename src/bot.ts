@@ -177,7 +177,9 @@ async function handleMessage(
   maybeSeedContextAssignment(auth, msg.platformInstanceId)
   const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
-  const steerText = buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId)
+  const newAttachmentIdSet = new Set(newAttachmentIds)
+  const messageAttachments = activeAttachments.filter((ref) => newAttachmentIdSet.has(ref.attachmentId))
+  const steerText = buildPromptWithReplyContext(msg, messageAttachments, auth.storageContextId)
 
   const activeRun = runRegistry.get(auth.storageContextId)
   if (activeRun !== undefined) {
