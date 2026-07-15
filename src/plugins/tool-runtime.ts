@@ -25,6 +25,7 @@ export type PluginToolSetRuntime = {
   provider?: TaskProvider
   storageContextId: string
   chatUserId: string
+  messageId?: string
 }
 
 function buildRuntimeKv(
@@ -221,6 +222,7 @@ export function buildPluginToolRuntimeContext(
     pluginId,
     storageContextId: runtime.storageContextId,
     chatUserId: runtime.chatUserId,
+    ...(runtime.messageId === undefined ? {} : { messageId: runtime.messageId }),
     kv: buildRuntimeKv(pluginId, kvContextId, permissions.has('storage')),
     adminConfig: buildRuntimeAdminConfig(pluginId, manifest),
     contextConfig: buildRuntimeContextConfig(pluginId, runtime.storageContextId, manifest),

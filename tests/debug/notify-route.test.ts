@@ -225,6 +225,22 @@ describe('handleNotifyRoute', () => {
     expect(res.status).toBe(200)
     expect(router.sent[0]?.markdown).toBe('done')
   })
+
+  test('accepts a body with messageId and a structured status', async () => {
+    setRuntimeChatRouter(new RecordingRouter())
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'm', messageId: 'x', status: 'review' }),
+    )
+    expect(res.status).toBe(200)
+  })
+
+  test('rejects an invalid status value with 400', async () => {
+    setRuntimeChatRouter(new RecordingRouter())
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'm', status: 'not_a_real_status' }),
+    )
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('handleNotifyRoute — proactive history recording', () => {

@@ -42,6 +42,8 @@ export type PluginToolRuntimeContext = {
   pluginId: string
   storageContextId: string
   chatUserId: string
+  /** Originating chat message id, when the tool call is correlated to a specific message (undefined until threaded through by callers). */
+  messageId?: string
   taskProvider?: PluginTaskProviderFacade
   kv: PluginContext['kv']
   adminConfig: PluginAdminConfig

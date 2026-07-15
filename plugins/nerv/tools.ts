@@ -37,6 +37,7 @@ type KvStore = {
 }
 export type RuntimeContext = {
   storageContextId: string
+  messageId?: string
   adminConfig: AdminConfigReader
   contextConfig: ContextConfigReader
   kv: KvStore
@@ -138,17 +139,18 @@ function activeTaskConflict(runtimeContext: RuntimeContext): { error: string; me
 function buildCreateTaskBody(
   args: Record<string, unknown>,
   prompt: string,
-  storageContextId: string,
+  runtimeContext: RuntimeContext,
   resolved: { repos: { projectPath: string }[]; targetBranch: string | undefined },
   outputLanguage: string | undefined,
 ): Record<string, unknown> {
   const kind = optionalString(args, 'kind')
   const costBudgetUsd = asNumber(args, 'costBudgetUsd')
+  const { storageContextId, messageId } = runtimeContext
   return {
     ...(kind === undefined ? {} : { kind }),
     prompt,
     repos: resolved.repos,
-    contextRef: { contextId: storageContextId },
+    contextRef: { contextId: storageContextId, ...(messageId === undefined ? {} : { messageId }) },
     source: 'chat',
     ...(resolved.targetBranch === undefined ? {} : { targetBranch: resolved.targetBranch }),
     ...(costBudgetUsd === null ? {} : { costBudgetUsd }),
@@ -200,7 +202,7 @@ export function createCodingTaskTool(httpFetch: HttpFetch | undefined): Tool {
 
       const outputLanguage =
         runtimeContext.contextConfig.get('output_language') ?? runtimeContext.adminConfig.get('output_language_default')
-      const body = buildCreateTaskBody(args, prompt, runtimeContext.storageContextId, resolved, outputLanguage)
+      const body = buildCreateTaskBody(args, prompt, runtimeContext, resolved, outputLanguage)
       const result = await callNerv(httpFetch, cfg, 'POST', '/tasks', body)
       recordCreatedTask(runtimeContext, result, prompt, resolved)
       return result

@@ -187,6 +187,22 @@ test('create prefers context output_language over admin output_language_default'
   expect(asRecord(captured[0]?.body)['outputLanguage']).toBe('Russian')
 })
 
+test('create includes contextRef.messageId when the runtime context carries one', async () => {
+  const captured: Captured[] = []
+  const ctx = runtimeCtx(new Map())
+  const withMessageId = { ...ctx, messageId: 'm1' }
+  const tool = createCodingTaskTool(capturingFetch(captured, { taskId: 't6' }))
+  await tool.execute({ project: 'demo', prompt: 'fix the CI' }, withMessageId, options())
+  expect(asRecord(captured[0]?.body)['contextRef']).toEqual({ contextId: CTX_ID, messageId: 'm1' })
+})
+
+test('create omits contextRef.messageId when the runtime context has none', async () => {
+  const captured: Captured[] = []
+  const tool = createCodingTaskTool(capturingFetch(captured, { taskId: 't7' }))
+  await tool.execute({ project: 'demo', prompt: 'fix the CI' }, runtimeCtx(new Map()), options())
+  expect(asRecord(captured[0]?.body)['contextRef']).toEqual({ contextId: CTX_ID })
+})
+
 test('multi-repo passes an array of projectPaths', async () => {
   const captured: Captured[] = []
   const tool = createCodingTaskTool(capturingFetch(captured, { taskId: 't2' }))

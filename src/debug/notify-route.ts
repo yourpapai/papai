@@ -35,6 +35,10 @@ const NotifyBodySchema = z.object({
   markdown: z.string().min(1),
   /** magi session id (from nerv's PapaiTaskNotifier); when present, papai mints and appends a `/t/<token>` transcript link. */
   magiSessionId: z.string().min(1).optional(),
+  /** Originating chat message id this notify is correlated to (e.g. a nerv task's ack thread). */
+  messageId: z.string().min(1).optional(),
+  /** Structured coding-task status, when this notify represents a task lifecycle transition. */
+  status: z.enum(['new', 'coding', 'review', 'ci_wait', 'completed', 'closed', 'failed']).optional(),
 })
 
 export type NotifyBody = z.infer<typeof NotifyBodySchema>
