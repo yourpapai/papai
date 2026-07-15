@@ -31,11 +31,13 @@ describe('prompt-templates', () => {
   })
 
   test('buildFixPrompt includes issue JSON, output path, commit instructions', () => {
-    const prompt = buildFixPrompt(issue, '/path/to/result.json')
+    const prompt = buildFixPrompt(issue, '/path/to/result.json', 'npm test')
     expect(prompt).toContain('src/message-queue/queue.ts')
     expect(prompt).toContain('/path/to/result.json')
     expect(prompt).toContain('commit')
     expect(prompt).toContain('fix(review-loop)')
+    expect(prompt).toContain('`npm test`')
+    expect(prompt).not.toContain('bun check:full')
   })
 
   test('buildRetryFixPrompt includes error output', () => {

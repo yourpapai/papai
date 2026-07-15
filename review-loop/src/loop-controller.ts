@@ -143,7 +143,11 @@ async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Pr
 
   const baselineSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
 
-  const result = await runFixer(deps, buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath)), 'fixer')
+  const result = await runFixer(
+    deps,
+    buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), deps.config.checkCommand),
+    'fixer',
+  )
 
   recordVerification(deps.ledger, record.id, {
     verdict: result.verdict,
