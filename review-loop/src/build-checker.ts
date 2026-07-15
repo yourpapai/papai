@@ -28,7 +28,8 @@ interface RawExecResult {
 function runExec(file: string, args: string[], options: { cwd: string; maxBuffer: number }): Promise<RawExecResult> {
   return new Promise((resolve) => {
     execFile(file, args, options, (err, stdout, stderr) => {
-      resolve({ exitCode: err === null ? 0 : 1, stdout, stderr })
+      const exitCode = err === null ? 0 : typeof err.code === 'number' ? err.code : 1
+      resolve({ exitCode, stdout, stderr })
     })
   })
 }
