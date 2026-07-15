@@ -14,6 +14,7 @@ import {
   getByokBundle,
   getByokCredentialState,
   getByokLlmConfig,
+  setByokRoles,
   updateByokLlmConfig,
   upsertByokProvider,
 } from '../../../src/byok-llm/store.js'
@@ -59,6 +60,23 @@ const PatchResponseSchema = z.object({
   contextId: z.string(),
 })
 const OkOnlySchema = z.object({ ok: z.literal(true) })
+
+const ByokV2Schema = z.object({
+  providers: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      providerType: z.string(),
+      baseUrl: z.string(),
+      apiKeyMasked: z.string(),
+    }),
+  ),
+  roles: z.object({
+    main: z.object({ providerId: z.string(), model: z.string() }),
+    small: z.object({ providerId: z.string(), model: z.string() }).nullable(),
+    embedding: z.object({ providerId: z.string(), model: z.string() }).nullable(),
+  }),
+})
 
 const okFetchResponse = (body: unknown): Response =>
   new Response(JSON.stringify(body), {
@@ -601,6 +619,45 @@ describe('settings BYOK routes', () => {
       providerId: 'prov-1',
       model: 'gpt-test',
     })
+  })
+
+  test('GET returns v2 providers and roles alongside legacy fields', async () => {
+    enableByokForContext(personalConfigContextId, 'admin')
+    upsertByokProvider(
+      personalConfigContextId,
+      makeProvider({
+        id: 'prov_1',
+        label: 'My Ollama',
+        providerType: 'ollama',
+        baseUrl: 'http://localhost:11434/v1',
+        apiKey: 'sk-test-key',
+      }),
+      'admin',
+    )
+    setByokRoles(
+      personalConfigContextId,
+      {
+        main: { providerId: 'prov_1', model: 'llama3' },
+        small: null,
+        embedding: null,
+      },
+      'admin',
+    )
+
+    const url = new URL('https://x/settings/api/byok')
+    const res = await handleByokRoutes(new Request(url, { headers: authHeaders(session) }), url)
+
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(text).not.toContain('sk-test-key')
+    const body = ByokV2Schema.parse(JSON.parse(text))
+    expect(body.providers).toHaveLength(1)
+    const provider = body.providers[0]
+    assert(provider !== undefined, 'provider should be present')
+    expect(provider.apiKeyMasked).toBe('****-key')
+    expect(provider.label).toBe('My Ollama')
+    expect(body.roles.main).toEqual({ providerId: 'prov_1', model: 'llama3' })
+    expect(body.roles.small).toBeNull()
   })
 
   test('PATCH action:delete-provider removes the provider', async () => {

@@ -27,37 +27,10 @@ import {
   type Verification,
 } from '../../llm-providers/types.js'
 import { logger } from '../../logger.js'
+import { BYOK_FIELDS, buildByokFieldResponse } from './byok-field-response.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 
 const log = logger.child({ scope: 'debug-server:settings-byok' })
-
-const BYOK_FIELDS = [
-  { key: 'llm_apikey', label: 'LLM API Key', required: true, sensitive: true },
-  {
-    key: 'llm_baseurl',
-    label: 'LLM Base URL',
-    required: true,
-    sensitive: false,
-  },
-  { key: 'main_model', label: 'Main Model', required: true, sensitive: false },
-  {
-    key: 'small_model',
-    label: 'Small Model',
-    required: false,
-    sensitive: false,
-  },
-  {
-    key: 'embedding_model',
-    label: 'Embedding Model',
-    required: false,
-    sensitive: false,
-  },
-] as const satisfies readonly {
-  readonly key: ByokLlmKey
-  readonly label: string
-  readonly required: boolean
-  readonly sensitive: boolean
-}[]
 
 const ToggleBodySchema = z
   .object({
@@ -142,24 +115,6 @@ const toVerification = (r: DiscoveryResult): Verification => {
 }
 
 const allowedKeys = new Set<string>(BYOK_LLM_KEYS)
-
-const fieldResponse = (contextId: string): unknown => {
-  const state = getByokCredentialState(contextId)
-  if (!state.enabled) return { enabled: false, complete: false, missing: [], fields: [] }
-
-  const config = getByokLlmConfig(contextId) ?? {}
-  const fields = BYOK_FIELDS.map((field) => {
-    const raw = config[field.key] ?? ''
-    const hasValue = raw.length > 0
-    return {
-      ...field,
-      hasValue,
-      value: hasValue && field.sensitive ? maskSensitiveValue(raw) : raw,
-    }
-  })
-
-  return { ...state, fields }
-}
 
 const isAllowedKey = (key: string): key is ByokLlmKey => allowedKeys.has(key)
 
@@ -256,7 +211,7 @@ export async function handleByokRoutes(req: Request, url: URL): Promise<Response
   if (req.method === 'GET') {
     const scope = resolveContextScope(auth.authed.principal, 'read', url.searchParams.get('contextId') ?? undefined)
     if (!scope.ok) return scope.response
-    return settingsJson(200, fieldResponse(scope.scope.contextId))
+    return settingsJson(200, buildByokFieldResponse(scope.scope.contextId))
   }
 
   if (req.method === 'PATCH') {
