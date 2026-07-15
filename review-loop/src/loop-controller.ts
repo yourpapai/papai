@@ -216,7 +216,7 @@ async function runMatchAndRecord(
   round: number,
   newIssues: readonly ReviewerIssue[],
 ): Promise<readonly LedgerIssueRecord[]> {
-  const existingRecords = filterActionable(Object.values(deps.ledger.snapshot.issues))
+  const existingRecords = Object.values(deps.ledger.snapshot.issues)
 
   const matches = await matchIssues({
     spawn: deps.spawn,

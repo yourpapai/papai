@@ -10,7 +10,7 @@ import path from 'node:path'
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger } from '../../review-loop/src/issue-ledger.js'
-import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
+import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { execGit } from '../../review-loop/src/worktree.js'
@@ -36,10 +36,30 @@ function extractOutputPath(prompt: string): string | null {
   return match?.[1] ?? null
 }
 
+function parseExistingIds(prompt: string): string[] {
+  const section = prompt.split('Existing issues:')[1] ?? ''
+  const ids: string[] = []
+  for (const line of section.split('\n')) {
+    const matched = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):/u.exec(line)
+    if (matched) {
+      ids.push(matched[1]!)
+    }
+  }
+  return ids
+}
+
+function matchAllToFirstExisting(prompt: string): IssueMatch[] {
+  const newSection = prompt.split('New issues:')[1]?.split('Existing issues:')[0] ?? ''
+  const newCount = (newSection.match(/^\[\d+\]/gmu) ?? []).length
+  const existingId = parseExistingIds(prompt)[0] ?? null
+  return Array.from({ length: newCount }, (_, index) => ({ newIssueIndex: index, existingId }))
+}
+
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean }>
   onFixer?: (cwd: string, callIndex: number) => Promise<void> | void
+  matchExisting?: boolean
 }): SpawnFn {
   let reviewerCall = 0
   let fixerCall = 0
@@ -71,8 +91,9 @@ function createMockSpawn(handlers: {
         await handlers.onFixer(opts.cwd, fixerCall - 1)
       }
     } else if (promptText.includes('Match newly found')) {
+      const matches = handlers.matchExisting === true ? matchAllToFirstExisting(promptText) : []
       if (outputPath !== null) {
-        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches: [] }))
+        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches }))
       }
     }
     return { exitCode: 0, stdout: '', stderr: '' }
@@ -261,5 +282,41 @@ describe('runReviewLoop', () => {
     expect(status).toBe('')
     const committed = (await execGit(runState.worktreePath, ['show', 'HEAD:fixed.ts'])).stdout
     expect(committed).toContain('export const fixed = true')
+  })
+
+  test('does not re-discover terminal issues as duplicates across rounds', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 2, maxNoProgressRounds: 2 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    let fixerCalls = 0
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], [issue]],
+        fixerResults: [
+          { verdict: 'invalid', fixability: 'manual', fixed: false },
+          { verdict: 'invalid', fixability: 'manual', fixed: false },
+        ],
+        matchExisting: true,
+        onFixer: () => {
+          fixerCalls += 1
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+    })
+
+    const records = Object.values(ledger.snapshot.issues)
+    expect(records.length).toBe(1)
+    expect(records[0]!.status).toBe('rejected')
+    expect(fixerCalls).toBe(1)
   })
 })
