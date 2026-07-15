@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
+import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 
 const tempDirs: string[] = []
 
@@ -46,5 +47,15 @@ export function createReviewLoopConfigFixture(
       extraArgs: [],
     },
     ...overrides,
+  }
+}
+
+export function silentReporter(): ProgressReporter {
+  return {
+    dynamic: false,
+    event() {},
+    live() {},
+    clearLive() {},
+    log() {},
   }
 }
