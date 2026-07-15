@@ -503,6 +503,7 @@ describe('runTrimInBackground', () => {
   })
 
   test('preserves new messages added during async trim', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -539,6 +540,7 @@ describe('runTrimInBackground', () => {
 
     const finalHistory = mockHistories.get('user1')
     expect(finalHistory).toBeDefined()
+    expect(modelBuildCalls).toHaveLength(1)
     expect(finalHistory!.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -555,6 +557,7 @@ describe('runTrimInBackground', () => {
   })
 
   test('handles trimWithMemoryModel failure gracefully', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -582,10 +585,12 @@ describe('runTrimInBackground', () => {
     await runTrimInBackground('user1', history)
     await flushMicrotasks()
 
+    expect(modelBuildCalls).toHaveLength(1)
     expect(mockHistories.get('user1')).toEqual(history)
   })
 
   test('concurrent calls for same user — both complete without corruption', async () => {
+    seedAdminLlmBinding()
     const history1: ModelMessage[] = [
       { role: 'user', content: 'First conversation' },
       { role: 'assistant', content: 'Response 1' },
@@ -636,6 +641,7 @@ describe('runTrimInBackground', () => {
     const finalHistory = concurrentHistories.get('user1')
     expect(finalHistory).toBeDefined()
     expect(Array.isArray(finalHistory)).toBe(true)
+    expect(modelBuildCalls.length).toBeGreaterThan(0)
   })
 
   test('concurrency guard: skips a second trim while one is in flight, then releases', async () => {
