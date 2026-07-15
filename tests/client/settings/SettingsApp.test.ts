@@ -104,7 +104,8 @@ describe('SettingsApp', () => {
     await drain()
     for (const id of [
       'instances',
-      'system',
+      'llm-providers',
+      'llm-models',
       'byok-admin',
       'plugin-config',
       'users',
