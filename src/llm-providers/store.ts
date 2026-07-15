@@ -65,7 +65,7 @@ const toAccount = (row: LlmProviderRow): LlmProviderAccount => ({
   },
 })
 
-// ---- in-process cache (mirrors src/system-config.ts cache) ----
+// ---- in-process cache (provider registry) ----
 const cache = new Map<string, LlmProviderAccount>()
 let roleCache: LlmRoleBindings | null | undefined = undefined
 let cachePrimed = false

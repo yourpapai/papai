@@ -178,7 +178,7 @@ export type ScenarioFixtures = Readonly<{
       displayName: string
     }>,
   ): void
-  seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
+  seedSystemLlmConfig(input?: Readonly<{ mainModel?: string }>): void
   issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>, nowMs: number): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
   registerTaskProvider(): void

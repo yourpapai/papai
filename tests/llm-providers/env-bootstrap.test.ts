@@ -32,7 +32,7 @@ afterEach(() => {
 })
 
 describe('seedDefaultLlmProviderFromEnv', () => {
-  test('no-op when admin role bindings already configured', () => {
+  test('seeds default provider when env present and admin registry empty', () => {
     process.env['LLM_API_KEY'] = 'sk-env'
     process.env['LLM_BASE_URL'] = 'https://api.invalid/v1'
     process.env['MAIN_MODEL'] = 'gpt-env'
