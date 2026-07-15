@@ -10,8 +10,8 @@ import { z } from 'zod'
 
 import { getCachedHistory } from '../cache.js'
 import { getMainContextIdFromThreadContextId } from '../chat/scoped-context.js'
-import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tools:lookup-group-history' })
@@ -47,7 +47,7 @@ const defaultDeps: LookupGroupHistoryDeps = {
     return { text: result.text }
   },
   getSmallModel: (configContextId) => {
-    const resolved = resolveEffectiveLlmConfig(configContextId)
+    const resolved = resolveLlmConfig(configContextId)
 
     if (!resolved.ok) {
       log.warn(
@@ -63,7 +63,7 @@ const defaultDeps: LookupGroupHistoryDeps = {
       return null
     }
 
-    return buildChatModel(resolved.llmApiKey, resolved.llmBaseUrl, resolved.smallModel)
+    return buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
   },
 }
 

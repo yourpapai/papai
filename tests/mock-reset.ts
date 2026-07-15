@@ -52,6 +52,7 @@ import * as _kaneoLegacyRepair from '../src/instances/kaneo-legacy-repair.js'
 import * as _platformStore from '../src/instances/platform-store.js'
 import * as _taskStore from '../src/instances/task-store.js'
 import * as _llmModelBuilder from '../src/llm-model-builder.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.js'
 import * as _logger from '../src/logger.js'
 import * as _mcpIndex from '../src/mcp/index.js'
 import * as _mcpPluginEndpoints from '../src/mcp/plugin-endpoints.js'
@@ -142,6 +143,10 @@ beforeEach(() => {
   // the isolated (`--parallel`) per-file processes, so a config-seeding file can't
   // leave LLM credentials visible to a later file that assumes none are configured.
   _systemConfig.systemConfigCacheForTesting.clear()
+  // Same rationale for the new per-role admin LLM cache (provider + role-binding
+  // caches in src/llm-providers/store.ts): a file that seeds an admin binding can't
+  // leak a non-null binding into a later file that asserts "no config configured".
+  clearLlmAdminCacheForTesting()
   setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
   process.env['S3_BUCKET'] = 'test-bucket'
   process.env['S3_ACCESS_KEY_ID'] = 'test-key'
