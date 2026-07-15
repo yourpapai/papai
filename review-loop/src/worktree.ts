@@ -30,6 +30,11 @@ export async function execGit(cwd: string, args: readonly string[]): Promise<{ s
   return { stdout, stderr }
 }
 
+export async function detectGitRoot(cwd: string): Promise<string> {
+  const { stdout } = await execGit(cwd, ['rev-parse', '--show-toplevel'])
+  return stdout.trim()
+}
+
 export async function createWorktree(repoRoot: string, worktreePath: string, runId: string): Promise<void> {
   const parentDir = path.dirname(worktreePath)
   if (!existsSync(parentDir)) {

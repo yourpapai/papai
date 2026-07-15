@@ -8,10 +8,10 @@ import { describe, expect, test } from 'bun:test'
 import { parseCliArgs, splitLines } from '../../review-loop/src/cli.js'
 
 describe('parseCliArgs', () => {
-  test('defaults configPath to review-loop/config.json and repoRoot to .', () => {
+  test('defaults configPath to review-loop/config.json', () => {
     const args = parseCliArgs(['--plan', '/path/to/plan.md'])
     expect(args.configPath.endsWith('review-loop/config.json')).toBe(true)
-    expect(args.repoRoot).toBe('.')
+    expect(args.repoRoot).toBeUndefined()
   })
 
   test('parses --config and --plan', () => {

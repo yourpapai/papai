@@ -15,12 +15,12 @@ import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop } from './loop-controller.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { formatSummary } from './summary.js'
-import { createWorktree, mergeWorktree, removeWorktree, worktreeExists } from './worktree.js'
+import { createWorktree, detectGitRoot, mergeWorktree, removeWorktree, worktreeExists } from './worktree.js'
 
 export interface CliArgs {
   configPath: string
   planPath: string
-  repoRoot: string
+  repoRoot?: string
   resumeRunId?: string
 }
 
@@ -29,7 +29,7 @@ const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
 export function parseCliArgs(argv: readonly string[]): CliArgs {
   let configPath = DEFAULT_CONFIG_PATH
   let planPath: string | undefined
-  let repoRoot = '.'
+  let repoRoot: string | undefined
   let resumeRunId: string | undefined
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -115,9 +115,10 @@ const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult
 
 export async function runCli(argv: readonly string[]): Promise<void> {
   const args = parseCliArgs(argv)
+  const repoRoot = args.repoRoot === undefined ? await detectGitRoot(process.cwd()) : path.resolve(args.repoRoot)
   const config = await loadReviewLoopConfig({
     configPath: args.configPath,
-    repoRoot: args.repoRoot,
+    repoRoot,
   })
 
   const runState: RunState =

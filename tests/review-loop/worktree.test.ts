@@ -4,11 +4,17 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import { execGit } from '../../review-loop/src/worktree.js'
-import { createWorktree, mergeWorktree, removeWorktree, worktreeExists } from '../../review-loop/src/worktree.js'
+import {
+  createWorktree,
+  detectGitRoot,
+  mergeWorktree,
+  removeWorktree,
+  worktreeExists,
+} from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -77,5 +83,12 @@ describe('worktree', () => {
     await mergeWorktree(repoRoot, 'review-loop/test-run')
 
     expect(existsSync(path.join(repoRoot, 'fix.txt'))).toBe(true)
+  })
+
+  test('detectGitRoot returns the repository toplevel', async () => {
+    const repoRoot = makeTempDir('gitroot-')
+    await execGit(repoRoot, ['init'])
+    const result = await detectGitRoot(repoRoot)
+    expect(result).toBe(realpathSync(repoRoot))
   })
 })
