@@ -52,6 +52,10 @@ function buildMatcherPrompt(
 }
 
 export async function matchIssues(deps: MatchIssuesDeps): Promise<IssueMatch[]> {
+  if (deps.newIssues.length === 0) {
+    return []
+  }
+
   if (deps.existingRecords.length === 0) {
     return deps.newIssues.map((_, index) => ({ newIssueIndex: index, existingId: null }))
   }

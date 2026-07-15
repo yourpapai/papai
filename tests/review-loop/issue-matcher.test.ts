@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -96,5 +96,28 @@ describe('issue-matcher', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0]?.existingId).toBe('existing-001')
+  })
+
+  test('short-circuits without invoking matcher when there are no new issues', async () => {
+    const dir = makeTempDir('matcher-')
+    const spawn = mock(
+      (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+        Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+    )
+
+    const result = await matchIssues({
+      spawn,
+      newIssues: [],
+      existingRecords: [existingRecord],
+      outputPath: path.join(dir, 'matches.json'),
+      logPath: path.join(dir, 'log.txt'),
+      cwd: dir,
+      model: 'test-model',
+      extraArgs: [],
+      reporter: silentReporter(),
+    })
+
+    expect(result).toEqual([])
+    expect(spawn).not.toHaveBeenCalled()
   })
 })
