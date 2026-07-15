@@ -14,7 +14,7 @@ import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { execGit } from '../../review-loop/src/worktree.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
+import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, silentReporter } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -112,7 +112,7 @@ describe('runReviewLoop', () => {
         fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
       }),
       exec: createMockExec(true),
-      log: { log: () => {} },
+      log: silentReporter(),
     })
 
     expect(result.doneReason).toBe('clean')
@@ -136,7 +136,7 @@ describe('runReviewLoop', () => {
         fixerResults: [{ verdict: 'needs_human', fixability: 'manual', fixed: false }],
       }),
       exec: createMockExec(true),
-      log: { log: () => {} },
+      log: silentReporter(),
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -174,7 +174,7 @@ describe('runReviewLoop', () => {
         execIndex += 1
         return Promise.resolve(r)
       },
-      log: { log: () => {} },
+      log: silentReporter(),
     })
 
     expect(result.doneReason).toBe('clean')

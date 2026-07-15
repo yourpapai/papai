@@ -12,7 +12,7 @@ import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger } from '../../review-loop/src/issue-ledger.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
-import type { ProgressLog } from '../../review-loop/src/progress-log.js'
+import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
@@ -78,8 +78,14 @@ function createMockSpawn(handlers: {
 const passingExec: ShellExecFn = (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
   Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
 
-function makeLog(messages: string[]): ProgressLog {
+function makeReporter(messages: string[]): ProgressReporter {
   return {
+    dynamic: false,
+    event: (message: string): void => {
+      messages.push(message)
+    },
+    live() {},
+    clearLive() {},
     log: (message: string): void => {
       messages.push(message)
     },
@@ -105,7 +111,7 @@ describe('progress logging', () => {
         fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
       }),
       exec: passingExec,
-      log: makeLog(messages),
+      log: makeReporter(messages),
     })
 
     expect(result.doneReason).toBe('clean')
@@ -140,7 +146,7 @@ describe('progress logging', () => {
         fixerResults: [{ verdict: 'needs_human', fixability: 'manual', fixed: false }],
       }),
       exec: passingExec,
-      log: makeLog(messages),
+      log: makeReporter(messages),
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -168,7 +174,7 @@ describe('progress logging', () => {
         fixerResults: [{ verdict: 'invalid', fixability: 'manual', fixed: false }],
       }),
       exec: passingExec,
-      log: makeLog(messages),
+      log: makeReporter(messages),
     })
 
     const fixMessage = messages.find((m) => m.startsWith('[fix]'))

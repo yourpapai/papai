@@ -11,7 +11,7 @@ import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import type { LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
 import { matchIssues } from '../../review-loop/src/issue-matcher.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
-import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
+import { cleanupTempDirs, makeTempDir, silentReporter } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -64,6 +64,7 @@ describe('issue-matcher', () => {
       cwd: dir,
       model: 'test-model',
       extraArgs: [],
+      reporter: silentReporter(),
     })
 
     expect(result).toHaveLength(1)
@@ -86,6 +87,7 @@ describe('issue-matcher', () => {
       cwd: dir,
       model: 'test-model',
       extraArgs: [],
+      reporter: silentReporter(),
     })
 
     expect(result).toHaveLength(1)

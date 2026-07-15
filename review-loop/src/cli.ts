@@ -11,8 +11,8 @@ import type { SpawnFn } from './agent-runner.js'
 import { createShellExec } from './build-checker.js'
 import { loadReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
+import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop } from './loop-controller.js'
-import type { ProgressLog } from './progress-log.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { formatSummary } from './summary.js'
 import { createWorktree, mergeWorktree, removeWorktree, worktreeExists } from './worktree.js'
@@ -111,7 +111,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     await createWorktree(config.repoRoot, runState.worktreePath, runState.runId)
   }
 
-  const log: ProgressLog = { log: console.log }
+  const log = new LiveRenderer(process.stdout)
   const exec = createShellExec(runState.worktreePath, config.checkCommand)
 
   try {

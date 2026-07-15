@@ -7,6 +7,7 @@ import { runAgent, type SpawnFn } from './agent-runner.js'
 import type { LedgerIssueRecord } from './issue-ledger.js'
 import { IssueMatchesSchema } from './issue-schema.js'
 import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
+import type { ProgressReporter } from './progress-log.js'
 
 export interface MatchIssuesDeps {
   spawn: SpawnFn
@@ -17,6 +18,7 @@ export interface MatchIssuesDeps {
   cwd: string
   model: string
   extraArgs: readonly string[]
+  reporter: ProgressReporter
 }
 
 function buildMatcherPrompt(
@@ -64,6 +66,7 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<IssueMatch[]> 
     outputPath: deps.outputPath,
     outputSchema: IssueMatchesSchema,
     label: 'matcher',
+    reporter: deps.reporter,
     logPath: deps.logPath,
     extraArgs: deps.extraArgs,
   })

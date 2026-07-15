@@ -18,7 +18,7 @@ import {
 import { matchIssues } from './issue-matcher.js'
 import { FixerResultSchema, ReviewerIssuesSchema } from './issue-schema.js'
 import type { FixerResult, ReviewerIssue } from './issue-schema.js'
-import type { ProgressLog } from './progress-log.js'
+import type { ProgressReporter } from './progress-log.js'
 import { buildFixPrompt, buildReviewPrompt, buildRetryFixPrompt } from './prompt-templates.js'
 import { saveRunState, type RunState } from './run-state.js'
 import { execGit } from './worktree.js'
@@ -31,7 +31,7 @@ export interface ReviewLoopDeps {
   ledger: IssueLedger
   spawn: SpawnFn
   exec: ShellExecFn
-  log: ProgressLog
+  log: ProgressReporter
 }
 
 export interface ReviewLoopResult {
@@ -68,6 +68,7 @@ function runFixer(deps: ReviewLoopDeps, prompt: string, label: string): Promise<
     outputPath: deps.runState.resultPath,
     outputSchema: FixerResultSchema,
     label,
+    reporter: deps.log,
     logPath: deps.runState.logPath,
     extraArgs: deps.config.fixer.extraArgs,
   })
@@ -167,6 +168,7 @@ async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIss
     outputPath: deps.runState.issuesPath,
     outputSchema: ReviewerIssuesSchema,
     label: 'reviewer',
+    reporter: deps.log,
     logPath: deps.runState.logPath,
     extraArgs: deps.config.reviewer.extraArgs,
   })
@@ -190,6 +192,7 @@ async function runMatchAndRecord(
     cwd: deps.runState.worktreePath,
     model: deps.config.matcher.model,
     extraArgs: deps.config.matcher.extraArgs,
+    reporter: deps.log,
   })
 
   const roundRecords = applyMatchedIssues(deps.ledger, round, newIssues, matches)
