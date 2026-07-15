@@ -17,6 +17,18 @@ export type DispatchableMessage = DiscordMessageLike & {
     }>
 }
 
+/** Narrowed channel shape exposing the reaction API — used by ChatProvider.setReaction. */
+export type ReactableChannel = {
+  messages: {
+    react: (messageId: string, emoji: string) => Promise<void>
+    fetch: (messageId: string) => Promise<{
+      reactions: {
+        resolve: (emoji: string) => { users: { remove: () => Promise<unknown> } } | null | undefined
+      }
+    }>
+  }
+}
+
 type EventListener = (...args: unknown[]) => void
 
 /** Structural type covering the discord.js Client API surface we use. */

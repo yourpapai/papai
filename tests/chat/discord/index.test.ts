@@ -1546,4 +1546,116 @@ describe('DiscordChatProvider', () => {
       })
     })
   })
+
+  describe('setReaction', () => {
+    const reactionTarget = {
+      contextId: 'chan-react',
+      contextType: 'group' as const,
+      threadId: null,
+      audience: 'shared' as const,
+      mentionUserIds: [],
+      createdByUserId: 'user-1',
+      createdByUsername: null,
+    }
+
+    test('removes previousEmoji then adds emoji, returning true', async () => {
+      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
+
+      const removedEmojis: string[] = []
+      const reactedCalls: Array<{ id: string; emoji: string }> = []
+
+      provider.testSetClient({
+        destroy: (): Promise<void> => Promise.resolve(),
+        channels: {
+          cache: new Map<string, unknown>(),
+          fetch: (_id: string): Promise<unknown> =>
+            Promise.resolve({
+              messages: {
+                react: (id: string, emoji: string): Promise<void> => {
+                  reactedCalls.push({ id, emoji })
+                  return Promise.resolve()
+                },
+                fetch: (_messageId: string): Promise<unknown> =>
+                  Promise.resolve({
+                    reactions: {
+                      resolve: (emoji: string): { users: { remove: () => Promise<unknown> } } => ({
+                        users: {
+                          remove: (): Promise<unknown> => {
+                            removedEmojis.push(emoji)
+                            return Promise.resolve(undefined)
+                          },
+                        },
+                      }),
+                    },
+                  }),
+              },
+            }),
+        },
+      })
+
+      const result = await provider.setReaction('discord-default', reactionTarget, 'm1', '👀', '⏳')
+      expect(result).toBe(true)
+      expect(removedEmojis).toEqual(['⏳'])
+      expect(reactedCalls).toEqual([{ id: 'm1', emoji: '👀' }])
+    })
+
+    test('clearing a reaction (emoji=null) removes previousEmoji without calling react', async () => {
+      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
+
+      const removedEmojis: string[] = []
+      let reactCalled = false
+
+      provider.testSetClient({
+        destroy: (): Promise<void> => Promise.resolve(),
+        channels: {
+          cache: new Map<string, unknown>(),
+          fetch: (_id: string): Promise<unknown> =>
+            Promise.resolve({
+              messages: {
+                react: (): Promise<void> => {
+                  reactCalled = true
+                  return Promise.resolve()
+                },
+                fetch: (_messageId: string): Promise<unknown> =>
+                  Promise.resolve({
+                    reactions: {
+                      resolve: (emoji: string): { users: { remove: () => Promise<unknown> } } => ({
+                        users: {
+                          remove: (): Promise<unknown> => {
+                            removedEmojis.push(emoji)
+                            return Promise.resolve(undefined)
+                          },
+                        },
+                      }),
+                    },
+                  }),
+              },
+            }),
+        },
+      })
+
+      const result = await provider.setReaction('discord-default', reactionTarget, 'm1', null, '✅')
+      expect(result).toBe(true)
+      expect(removedEmojis).toEqual(['✅'])
+      expect(reactCalled).toBe(false)
+    })
+
+    test('returns false without throwing when the client errors', async () => {
+      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
+
+      provider.testSetClient({
+        destroy: (): Promise<void> => Promise.resolve(),
+        channels: {
+          cache: new Map<string, unknown>(),
+          fetch: (_id: string): Promise<unknown> => Promise.reject(new Error('discord unavailable')),
+        },
+      })
+
+      const result = await provider.setReaction('discord-default', reactionTarget, 'm1', '👀', '⏳')
+      expect(result).toBe(false)
+    })
+  })
 })

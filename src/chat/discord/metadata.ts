@@ -9,6 +9,7 @@ export const discordCapabilities: ReadonlySet<ChatCapability> = new Set<ChatCapa
   'interactions.callbacks',
   'messages.buttons',
   'messages.ephemeral',
+  'messages.reactions',
   'messages.redact',
   'messages.reply-context',
   'users.resolve',

@@ -34,11 +34,13 @@ import {
 import { matchDiscordCommand } from './commands.js'
 import { renderDiscordContext } from './context-renderer.js'
 import { resolveDiscordGroupLabel, resolveDiscordGuildFromContext, resolveDiscordUserLabel } from './label-helpers.js'
-import { CHANNEL_TYPE_DM, mapDiscordMessage } from './map-message.js'
+import { mapDiscordMessage } from './map-message.js'
 import { isBotMentioned } from './mention-helpers.js'
 import { discordCapabilities, discordConfigRequirements, discordTraits } from './metadata.js'
+import { setDiscordReaction } from './reactions.js'
 import { buildDiscordReplyContext } from './reply-context.js'
 import { createDiscordReplyFn } from './reply-helpers.js'
+import { resolveIsReplyToBot } from './reply-to-bot.js'
 import { sendDiscordMessage } from './send-message.js'
 import { isDispatchableMessage, isReadyPayload } from './type-guards.js'
 export type { DiscordClientFactory, DiscordClientLike, DispatchableMessage }
@@ -49,32 +51,6 @@ type DiscordConstructorConfig = {
   readonly clientFactory?: DiscordClientFactory
   readonly token?: string
   readonly platformInstanceId: string
-}
-
-/**
- * Determine if an unmentioned group message is a reply to the bot's own message.
- * Skips the fetch when the bot is already mentioned (passes the group filter regardless)
- * or when the message is in a DM channel.
- */
-async function resolveIsReplyToBot(message: DispatchableMessage, botId: string, mentioned: boolean): Promise<boolean> {
-  if (message.reference?.messageId === undefined) return false
-  if (message.channel.type === CHANNEL_TYPE_DM) return false
-  if (mentioned) return false
-  const messages = message.channel.messages
-  if (messages === undefined) return false
-  try {
-    const parent = await messages.fetch(message.reference.messageId)
-    return parent.author.id === botId
-  } catch (error: unknown) {
-    log.warn(
-      {
-        messageId: message.reference.messageId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'failed to fetch parent message for reply-to-bot detection',
-    )
-    return false
-  }
 }
 
 export class DiscordChatProvider implements ChatProvider {
@@ -125,6 +101,16 @@ export class DiscordChatProvider implements ChatProvider {
 
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     await sendDiscordMessage(this.client, target, markdown)
+  }
+
+  setReaction(
+    _platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    messageId: string,
+    emoji: string | null,
+    previousEmoji?: string | null,
+  ): Promise<boolean> {
+    return setDiscordReaction(this.client, target, messageId, emoji, previousEmoji)
   }
 
   async resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
