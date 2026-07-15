@@ -112,6 +112,10 @@
     // PROVIDER_TYPE_BASE_URLS + LlmRole are retained for Plan B UI
     // (provider base-url presets / role iteration); no production consumer yet.
     "src/llm-providers/types.ts": ["exports", "types"],
+    // Client mirror of the LLM provider schemas: the public API surface the
+    // upcoming fetchers and .svelte sections (multi-provider UI plan, Task 3+)
+    // consume. No production consumer yet; tracked forward-compat, not dead code.
+    "client/settings/fetcher-schemas-llm-providers.ts": ["exports", "types"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
