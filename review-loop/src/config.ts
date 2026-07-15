@@ -8,12 +8,15 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { detectGitRoot } from './worktree.js'
+
 const AgentConfigSchema = z.object({
   model: z.string().min(1),
   extraArgs: z.array(z.string()).default([]),
 })
 
 export const ReviewLoopConfigSchema = z.object({
+  repoRoot: z.string().min(1).optional(),
   workDir: z.string().min(1),
   maxRounds: z.number().int().positive().default(10),
   maxNoProgressRounds: z.number().int().positive().default(2),
@@ -30,7 +33,7 @@ export interface ReviewLoopConfig extends z.infer<typeof ReviewLoopConfigSchema>
 
 export interface ConfigLoadInput {
   configPath: string
-  repoRoot: string
+  repoRoot?: string
 }
 
 export async function loadReviewLoopConfig(input: ConfigLoadInput): Promise<ReviewLoopConfig> {
@@ -38,7 +41,8 @@ export async function loadReviewLoopConfig(input: ConfigLoadInput): Promise<Revi
   const raw = JSON.parse(await readFile(configPath, 'utf8')) as unknown
   const parsed = ReviewLoopConfigSchema.parse(raw)
 
-  const repoRoot = path.resolve(input.repoRoot)
+  const repoRootSource = input.repoRoot ?? parsed.repoRoot
+  const repoRoot = repoRootSource === undefined ? await detectGitRoot(process.cwd()) : path.resolve(repoRootSource)
   const workDir = path.resolve(repoRoot, parsed.workDir)
 
   await mkdir(workDir, { recursive: true })
