@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { isAuthorizedGroup } from '../authorized-groups.js'
 import { resolveDeliveryPlatformInstanceId } from '../chat/delivery-routing.js'
+import type { ChatRouter } from '../chat/router.js'
 import {
   getConfigContextIdFromStorageContextId,
   getNativeContextId,
@@ -21,12 +22,30 @@ import { dmTarget } from '../chat/types.js'
 import { logger } from '../logger.js'
 import { mintTranscriptToken } from '../mcp-server/token.js'
 import { getNotifyToken } from '../notify-token.js'
+import { kvGet, kvSet } from '../plugins/store.js'
 import { recordProactiveInHistory } from '../proactive-history.js'
 import { getSettingsPublicBaseUrl } from '../settings/config.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { jsonResponse } from './json-response.js'
 
 const log = logger.child({ scope: 'debug:notify-route' })
+
+/** Same kv plugin id used by coding-mode's ack reaction (P6) — a notify transition and the
+ *  original ack reaction share one tracked-emoji slot per origin message. */
+const REACTIONS_KV_PLUGIN_ID = 'nerv-reactions'
+
+/** Maps a structured coding-task status (N2/P5) to the emoji that represents it on the origin
+ *  message. Statuses without an obvious visual (e.g. unrecognized future values) are absent —
+ *  callers fall back to a text post when a status has no mapped emoji. */
+const STATUS_EMOJI: Record<string, string> = {
+  new: '⏳',
+  coding: '⏳',
+  review: '👀',
+  ci_wait: '⏳',
+  completed: '✅',
+  failed: '❌',
+  closed: '🚫',
+}
 
 const NotifyBodySchema = z.object({
   contextId: z.string().min(1),
@@ -169,6 +188,40 @@ const sendNotify = async (
   return jsonResponse({ sent: true, storageContextId })
 }
 
+/**
+ * Drives an emoji reaction transition on the origin message in place of a redundant status text
+ * post. Returns true when the reaction was applied — callers must suppress the text post in that
+ * case. Returns false when there is nothing to react to (no `status`/`messageId`, or an
+ * unrecognized status) or the provider doesn't support reactions; callers fall back to the text
+ * post in both cases. Best-effort: a throw from the provider is treated like an unsupported
+ * provider rather than failing the notify.
+ */
+const tryReact = async (
+  chat: { setReaction: ChatRouter['setReaction'] },
+  platformInstanceId: string,
+  target: DeferredDeliveryTarget,
+  body: NotifyBody,
+): Promise<boolean> => {
+  if (body.status === undefined || body.messageId === undefined) return false
+  const emoji = STATUS_EMOJI[body.status]
+  if (emoji === undefined) return false
+  const configContextId = getConfigContextIdFromStorageContextId(body.contextId)
+  const key = 'reaction:' + body.messageId
+  const prev = kvGet(REACTIONS_KV_PLUGIN_ID, configContextId, key)
+  let ok: boolean
+  try {
+    ok = await chat.setReaction(platformInstanceId, target, body.messageId, emoji, prev)
+  } catch (error: unknown) {
+    log.warn(
+      { platformInstanceId, messageId: body.messageId, error: error instanceof Error ? error.message : String(error) },
+      'notify setReaction threw; falling back to text post',
+    )
+    return false
+  }
+  if (ok) kvSet(REACTIONS_KV_PLUGIN_ID, configContextId, key, emoji)
+  return ok
+}
+
 export const handleNotifyRoute = async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return jsonResponse({ error: 'method not allowed' }, { status: 405 })
 
@@ -190,6 +243,10 @@ export const handleNotifyRoute = async (req: Request): Promise<Response> => {
   const target = buildNotifyTarget(parsed.data, isAuthorizedGroup(parsed.data.contextId))
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
   if (platformInstanceId === null) return jsonResponse({ error: 'context not deliverable' }, { status: 404 })
+
+  if (await tryReact(chat, platformInstanceId, target, parsed.data)) {
+    return jsonResponse(null, { status: 204 })
+  }
 
   const markdown = appendTranscriptLink(parsed.data.markdown, parsed.data.magiSessionId)
   return sendNotify(chat, platformInstanceId, target, parsed.data.contextId, markdown)

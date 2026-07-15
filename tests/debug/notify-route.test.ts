@@ -17,6 +17,7 @@ import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { resetNotifyTokenCacheForTesting } from '../../src/notify-token.js'
+import { kvGet, kvSet } from '../../src/plugins/store.js'
 import * as proactiveHistoryModule from '../../src/proactive-history.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -26,8 +27,20 @@ interface Sent {
   markdown: string
 }
 
+interface ReactionCall {
+  platformInstanceId: string
+  target: DeferredDeliveryTarget
+  messageId: string
+  emoji: string | null
+  previousEmoji: string | null | undefined
+}
+
 class RecordingRouter extends ChatRouter {
   readonly sent: Sent[] = []
+  readonly reactionCalls: ReactionCall[] = []
+  /** Controls {@link setReaction}'s outcome: `'throw'` simulates a provider error; everything
+   *  else is the resolved return value. */
+  reactionResult: boolean | 'throw' = true
   constructor() {
     super(() => {
       throw new Error('unused test factory')
@@ -44,6 +57,17 @@ class RecordingRouter extends ChatRouter {
   ): Promise<{ delivered: boolean; messageId: string | null }> {
     const delivered = await this.sendMessage(platformInstanceId, target, markdown)
     return { delivered, messageId: delivered ? 'P1' : null }
+  }
+  override setReaction(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    messageId: string,
+    emoji: string | null,
+    previousEmoji?: string | null,
+  ): Promise<boolean> {
+    this.reactionCalls.push({ platformInstanceId, target, messageId, emoji, previousEmoji })
+    if (this.reactionResult === 'throw') return Promise.reject(new Error('reactions unsupported'))
+    return Promise.resolve(this.reactionResult)
   }
 }
 
@@ -231,7 +255,8 @@ describe('handleNotifyRoute', () => {
     const res = await handleNotifyRoute(
       notifyReq('tok', { contextId: 'user-1', markdown: 'm', messageId: 'x', status: 'review' }),
     )
-    expect(res.status).toBe(200)
+    // A valid status/messageId pair drives a reaction transition (P7) rather than a text post.
+    expect(res.status).toBe(204)
   })
 
   test('rejects an invalid status value with 400', async () => {
@@ -300,6 +325,97 @@ describe('handleNotifyRoute — proactive history recording', () => {
 
     expect(res.status).toBe(502)
     expect(recordCalls).toHaveLength(0)
+  })
+})
+
+describe('handleNotifyRoute — reaction transitions (P7)', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    resetNotifyTokenCacheForTesting()
+    process.env['NOTIFY_TOKEN'] = 'tok'
+    insertPlatformInstance({ id: 'pi-1', type: 'telegram', config: {}, status: 'active' })
+    insertTaskInstance({ id: 'ti-1', type: 'kaneo', config: {}, status: 'active' })
+    setContextSettings({ contextId: 'user-1', taskInstanceId: 'ti-1', platformInstanceId: 'pi-1' })
+  })
+  afterEach(() => {
+    delete process.env['NOTIFY_TOKEN']
+    resetNotifyTokenCacheForTesting()
+    clearRuntimeChatRouter()
+  })
+
+  test('drives a reaction transition, records the new emoji, and suppresses the text post', async () => {
+    kvSet('nerv-reactions', 'user-1', 'reaction:m1', '⏳')
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'm', messageId: 'm1', status: 'review' }),
+    )
+
+    expect(res.status).toBe(204)
+    expect(router.reactionCalls).toHaveLength(1)
+    expect(router.reactionCalls[0]).toMatchObject({
+      platformInstanceId: 'pi-1',
+      messageId: 'm1',
+      emoji: '👀',
+      previousEmoji: '⏳',
+    })
+    expect(router.sent).toHaveLength(0)
+    expect(kvGet('nerv-reactions', 'user-1', 'reaction:m1')).toBe('👀')
+  })
+
+  test('posts text as today when status/messageId are absent (regression)', async () => {
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'user-1', markdown: 'hello' }))
+
+    expect(res.status).toBe(200)
+    expect(router.reactionCalls).toHaveLength(0)
+    expect(router.sent).toHaveLength(1)
+  })
+
+  test('falls back to the text post when the provider lacks reaction support', async () => {
+    const router = new RecordingRouter()
+    router.reactionResult = false
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'm', messageId: 'm1', status: 'review' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(router.reactionCalls).toHaveLength(1)
+    expect(router.sent).toHaveLength(1)
+    expect(kvGet('nerv-reactions', 'user-1', 'reaction:m1')).toBeUndefined()
+  })
+
+  test('falls back to the text post when the provider throws (never 500)', async () => {
+    const router = new RecordingRouter()
+    router.reactionResult = 'throw'
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'm', messageId: 'm1', status: 'completed' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(router.sent).toHaveLength(1)
+  })
+
+  test('reacts with the status emoji and no previous emoji on the first transition', async () => {
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'm', messageId: 'm1', status: 'coding' }),
+    )
+
+    expect(res.status).toBe(204)
+    expect(router.reactionCalls).toHaveLength(1)
+    expect(router.reactionCalls[0]).toMatchObject({ emoji: '⏳', previousEmoji: undefined })
+    expect(kvGet('nerv-reactions', 'user-1', 'reaction:m1')).toBe('⏳')
   })
 })
 
