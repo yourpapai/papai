@@ -121,6 +121,9 @@
     // Multi-provider admin store is staged ahead of the resolver/verification/admin-route
     // tasks in the multi-provider LLM backend plan; no production importer exists yet.
     "src/llm-providers/store.ts": ["files", "exports", "types"],
+    // Per-role resolver is staged ahead of the legacy-delegation wiring (Task 8)
+    // in the multi-provider LLM backend plan; no production importer exists yet.
+    "src/llm-providers/resolver.ts": ["files", "exports"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
