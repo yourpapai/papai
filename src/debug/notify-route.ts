@@ -58,6 +58,10 @@ const NotifyBodySchema = z.object({
   messageId: z.string().min(1).optional(),
   /** Structured coding-task status, when this notify represents a task lifecycle transition. */
   status: z.enum(['new', 'coding', 'review', 'ci_wait', 'completed', 'closed', 'failed']).optional(),
+  /** Substance to post alongside a reaction transition (e.g. an MR link, an agent's `[RESULT]`
+   *  reply) — kept separate from the redundant status-line `markdown` so a successful reaction
+   *  still surfaces it instead of being fully suppressed. */
+  extraMarkdown: z.string().optional(),
 })
 
 export type NotifyBody = z.infer<typeof NotifyBodySchema>
@@ -222,6 +226,30 @@ const tryReact = async (
   return ok
 }
 
+/**
+ * After a successful reaction transition, the redundant status-line text is always suppressed —
+ * but `extraMarkdown` (an MR link, an agent's `[RESULT]` reply, etc.) carries substance the
+ * reaction can't convey, so it still gets posted. No `extraMarkdown` means there is nothing left
+ * to say and the notify is fully suppressed (204, unchanged from before this fix).
+ */
+const respondAfterReact = (
+  chat: {
+    sendProactiveReturningId: (
+      id: string,
+      target: DeferredDeliveryTarget,
+      md: string,
+    ) => Promise<{ delivered: boolean; messageId: string | null }>
+  },
+  platformInstanceId: string,
+  target: DeferredDeliveryTarget,
+  data: NotifyBody,
+): Promise<Response> => {
+  const { extraMarkdown } = data
+  if (extraMarkdown === undefined || extraMarkdown.length === 0)
+    return Promise.resolve(jsonResponse(null, { status: 204 }))
+  return sendNotify(chat, platformInstanceId, target, data.contextId, extraMarkdown)
+}
+
 export const handleNotifyRoute = async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return jsonResponse({ error: 'method not allowed' }, { status: 405 })
 
@@ -245,7 +273,7 @@ export const handleNotifyRoute = async (req: Request): Promise<Response> => {
   if (platformInstanceId === null) return jsonResponse({ error: 'context not deliverable' }, { status: 404 })
 
   if (await tryReact(chat, platformInstanceId, target, parsed.data)) {
-    return jsonResponse(null, { status: 204 })
+    return respondAfterReact(chat, platformInstanceId, target, parsed.data)
   }
 
   const markdown = appendTranscriptLink(parsed.data.markdown, parsed.data.magiSessionId)

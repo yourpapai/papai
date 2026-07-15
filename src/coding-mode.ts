@@ -55,9 +55,14 @@ async function defaultAckReaction(msg: IncomingMessage, auth: AuthorizationResul
   const { messageId } = msg
   try {
     const router = getRuntimeChatRouter()
-    if (router !== null) await router.setReaction(msg.platformInstanceId, buildAckTarget(msg, auth), messageId, emoji)
-    const configContextId = getConfigContextIdFromStorageContextId(auth.storageContextId)
-    kvSet(REACTIONS_KV_PLUGIN_ID, configContextId, 'reaction:' + messageId, emoji)
+    const ok =
+      router === null
+        ? false
+        : await router.setReaction(msg.platformInstanceId, buildAckTarget(msg, auth), messageId, emoji)
+    if (ok) {
+      const configContextId = getConfigContextIdFromStorageContextId(auth.storageContextId)
+      kvSet(REACTIONS_KV_PLUGIN_ID, configContextId, 'reaction:' + messageId, emoji)
+    }
   } catch {
     // Best-effort ack — a failed reaction must never break task creation.
   }
@@ -71,6 +76,10 @@ const defaultDeps: CodingModeDeps = {
   resolveGuardrails: (platformInstanceId) => resolveCodingGuardrails(platformInstanceId),
   ackReaction: defaultAckReaction,
 }
+
+/** Exposes the real `ackReaction` implementation for direct testing — `maybeRouteCodingTask`'s
+ *  own tests inject a stub, so the success-gated kv write (P6/defect 3) needs a separate seam. */
+export const defaultAckReactionForTest = defaultAckReaction
 
 function buildToolExecutionOptions(): ToolExecutionOptions {
   return { toolCallId: 'coding-mode-router', messages: [] }

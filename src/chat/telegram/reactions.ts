@@ -20,6 +20,12 @@ const asReactionEmoji = (emoji: string): ReactionTypeEmoji['emoji'] => {
   return emoji as unknown as ReactionTypeEmoji['emoji']
 }
 
+/** Maps our canonical status emoji (kept in kv and passed by callers) to a Telegram-valid
+ *  reaction — `setMessageReaction` only accepts a fixed ~70-emoji set and 4 of our 5 canonical
+ *  emoji aren't in it. Only the Telegram API call is translated; the kv/caller side still tracks
+ *  the canonical emoji. */
+const TG_REACTION: Record<string, string> = { '⏳': '👨‍💻', '👀': '👀', '✅': '🎉', '❌': '👎', '🚫': '🤷' }
+
 /**
  * Sets or clears a Telegram reaction on an existing message. Telegram's `setMessageReaction`
  * REPLACES the whole reaction set, so `previousEmoji` is intentionally ignored: setting `emoji`
@@ -36,7 +42,12 @@ export async function setTelegramReaction(
   const mid = Number(messageId)
   if (!Number.isInteger(mid)) return false
   try {
-    await api.setMessageReaction(chatId, mid, emoji === null ? [] : [{ type: 'emoji', emoji: asReactionEmoji(emoji) }])
+    const tgEmoji = emoji === null ? null : (TG_REACTION[emoji] ?? emoji)
+    await api.setMessageReaction(
+      chatId,
+      mid,
+      tgEmoji === null ? [] : [{ type: 'emoji', emoji: asReactionEmoji(tgEmoji) }],
+    )
     return true
   } catch (error: unknown) {
     log.warn(

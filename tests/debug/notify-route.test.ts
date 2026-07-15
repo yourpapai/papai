@@ -344,7 +344,7 @@ describe('handleNotifyRoute — reaction transitions (P7)', () => {
     clearRuntimeChatRouter()
   })
 
-  test('drives a reaction transition, records the new emoji, and suppresses the text post', async () => {
+  test('drives a reaction transition, records the new emoji, and suppresses the text post when there is no extra substance', async () => {
     kvSet('nerv-reactions', 'user-1', 'reaction:m1', '⏳')
     const router = new RecordingRouter()
     setRuntimeChatRouter(router)
@@ -363,6 +363,43 @@ describe('handleNotifyRoute — reaction transitions (P7)', () => {
     })
     expect(router.sent).toHaveLength(0)
     expect(kvGet('nerv-reactions', 'user-1', 'reaction:m1')).toBe('👀')
+  })
+
+  test('drives a reaction transition AND posts extraMarkdown substance (MR link), dropping only the redundant status line', async () => {
+    kvSet('nerv-reactions', 'user-1', 'reaction:m1', '⏳')
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(
+      notifyReq('tok', {
+        contextId: 'user-1',
+        markdown: 'm',
+        messageId: 'm1',
+        status: 'review',
+        extraMarkdown: '**Merge Request:** [!1](url)',
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(router.reactionCalls).toHaveLength(1)
+    expect(router.reactionCalls[0]).toMatchObject({ emoji: '👀', previousEmoji: '⏳' })
+    expect(router.sent).toHaveLength(1)
+    expect(router.sent[0]?.markdown).toBe('**Merge Request:** [!1](url)')
+    expect(router.sent[0]?.markdown).not.toBe('m')
+    expect(kvGet('nerv-reactions', 'user-1', 'reaction:m1')).toBe('👀')
+  })
+
+  test('react-success without extraMarkdown still fully suppresses (204, no post)', async () => {
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(
+      notifyReq('tok', { contextId: 'user-1', markdown: 'm', messageId: 'm1', status: 'completed' }),
+    )
+
+    expect(res.status).toBe(204)
+    expect(router.reactionCalls).toHaveLength(1)
+    expect(router.sent).toHaveLength(0)
   })
 
   test('posts text as today when status/messageId are absent (regression)', async () => {

@@ -3,11 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../src/chat/types.js'
-import { type CodingModeDeps, maybeRouteCodingTask } from '../src/coding-mode.js'
+import { ChatRouter } from '../src/chat/router.js'
+import type { AuthorizationResult, DeferredDeliveryTarget, IncomingMessage, ReplyFn } from '../src/chat/types.js'
+import { type CodingModeDeps, defaultAckReactionForTest, maybeRouteCodingTask } from '../src/coding-mode.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../src/debug/chat-router-runtime.js'
+import { kvGet } from '../src/plugins/store.js'
 import type { PluginManifest, PluginTool, PluginToolRuntimeContext } from '../src/plugins/types.js'
+import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 function stubReply(): { reply: ReplyFn; texts: string[] } {
   const texts: string[] = []
@@ -408,5 +412,68 @@ describe('maybeRouteCodingTask', () => {
     expect(await maybeRouteCodingTask(makeMessage(), auth, reply, d)).toBe(true)
     expect(texts[0]).toContain('Started a coding task')
     expect(ackReaction).not.toHaveBeenCalled()
+  })
+})
+
+// SS-10 defect 3: the real ackReaction implementation must gate its kv write on setReaction's
+// success — a failed reaction must never be recorded as if it had applied.
+class StubReactionRouter extends ChatRouter {
+  readonly reactionCalls: Array<{ messageId: string; emoji: string }> = []
+  result: boolean | 'throw' = true
+  constructor() {
+    super(() => {
+      throw new Error('unused test factory')
+    })
+  }
+  override setReaction(
+    _platformInstanceId: string,
+    _target: DeferredDeliveryTarget,
+    messageId: string,
+    emoji: string | null,
+  ): Promise<boolean> {
+    this.reactionCalls.push({ messageId, emoji: emoji ?? '' })
+    if (this.result === 'throw') return Promise.reject(new Error('reactions unsupported'))
+    return Promise.resolve(this.result)
+  }
+}
+
+describe('defaultAckReactionForTest (SS-10 defect 3)', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+  afterEach(() => {
+    clearRuntimeChatRouter()
+  })
+
+  it('setReaction succeeds → records the emoji in kv', async () => {
+    const router = new StubReactionRouter()
+    setRuntimeChatRouter(router)
+    await defaultAckReactionForTest(makeMessage({ messageId: 'm1' }), auth, '⏳')
+    expect(router.reactionCalls).toHaveLength(1)
+    expect(kvGet('nerv-reactions', 'st', 'reaction:m1')).toBe('⏳')
+  })
+
+  it('setReaction returns false → does NOT record the emoji in kv', async () => {
+    const router = new StubReactionRouter()
+    router.result = false
+    setRuntimeChatRouter(router)
+    await defaultAckReactionForTest(makeMessage({ messageId: 'm1' }), auth, '⏳')
+    expect(router.reactionCalls).toHaveLength(1)
+    expect(kvGet('nerv-reactions', 'st', 'reaction:m1')).toBeUndefined()
+  })
+
+  it('setReaction throws → does NOT record the emoji in kv (best-effort, never throws)', async () => {
+    const router = new StubReactionRouter()
+    router.result = 'throw'
+    setRuntimeChatRouter(router)
+    await expect(defaultAckReactionForTest(makeMessage({ messageId: 'm1' }), auth, '⏳')).resolves.toBeUndefined()
+    expect(kvGet('nerv-reactions', 'st', 'reaction:m1')).toBeUndefined()
+  })
+
+  it('no chat router running → does NOT record the emoji in kv', async () => {
+    clearRuntimeChatRouter()
+    await defaultAckReactionForTest(makeMessage({ messageId: 'm1' }), auth, '⏳')
+    expect(kvGet('nerv-reactions', 'st', 'reaction:m1')).toBeUndefined()
   })
 })
