@@ -203,20 +203,18 @@ export function resetSystemConfigCacheForTesting(): void {
 }
 
 /**
- * Seed a baseline admin LLM provider + role binding so the resolver adapter
- * delegates to the new per-role registry instead of the legacy system_config
- * fallback. Creates a single OpenAI-type provider and binds it to `main`
- * (small/embedding left null so BYOK overrides or main-fallback apply).
+ * Seed a baseline admin LLM provider + role binding so the per-role resolver
+ * returns a resolvable `main` role. Creates a single OpenAI-type provider and
+ * binds it to `main` (small/embedding left null so BYOK overrides or
+ * main-fallback apply). Pass `mainModel` to control the resolved model name
+ * (e.g. for multimodal-prefix tests).
  */
-export function seedAdminLlmBinding(): void {
+export function seedAdminLlmBinding(mainModel = 'admin-main'): void {
   const provider = createLlmProvider(
     { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
     'admin',
   )
-  setAdminRoleBindings(
-    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
-    'admin',
-  )
+  setAdminRoleBindings({ main: { providerId: provider.id, model: mainModel }, small: null, embedding: null }, 'admin')
 }
 
 export interface SeedTestPlatformInstanceInput {

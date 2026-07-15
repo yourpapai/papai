@@ -12,7 +12,6 @@ import type { ReplyFn } from './chat/types.js'
 import { appendHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
-import { resolveEffectiveLlmConfig, type EffectiveLlmConfig } from './llm-config-resolver.js'
 import { appendAssistantTurnHistory } from './llm-history.js'
 import { getOpenAICompatibleProvider } from './llm-model-builder.js'
 import { checkRequiredProviderConfig, resolveConfigId } from './llm-orchestrator-config.js'
@@ -27,7 +26,9 @@ import {
 import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import { resolveLlmConfig } from './llm-providers/resolver.js'
 import { getAdminRoleBindings } from './llm-providers/store.js'
+import type { EffectiveLlmConfig, LlmConfigResult } from './llm-providers/types.js'
 import { logger } from './logger.js'
 import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { ensureWorkspaceMember } from './providers/membership/index.js'
@@ -45,7 +46,7 @@ export const resolveAiOutputSettingsContextId = (contextId: string): string =>
 export const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
   stepCountIs: (...args) => stepCountIs(...args),
-  buildModel: ({ llmApiKey, llmBaseUrl, mainModel }) => getOpenAICompatibleProvider(llmApiKey, llmBaseUrl)(mainModel),
+  buildModel: (config) => getOpenAICompatibleProvider(config.main.apiKey, config.main.baseUrl)(config.main.model),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   maybeAutoProvision: (reply, contextId, chatUserId, username) =>
     maybeAutoProvisionProvider(reply, contextId, chatUserId, username),
@@ -99,7 +100,7 @@ const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise
   }
 }
 
-type LlmConfigFailure = Exclude<ReturnType<typeof resolveEffectiveLlmConfig>, EffectiveLlmConfig>
+type LlmConfigFailure = Exclude<LlmConfigResult, EffectiveLlmConfig>
 type ResolvedTurnLlmConfig = EffectiveLlmConfig | null
 
 async function replyByokConfigProblem(reply: ReplyFn, contextId: string, result: LlmConfigFailure): Promise<void> {
@@ -117,7 +118,7 @@ async function replyByokConfigProblem(reply: ReplyFn, contextId: string, result:
 }
 
 async function resolveLlmForTurn(reply: ReplyFn, contextId: string, configId: string): Promise<ResolvedTurnLlmConfig> {
-  const resolvedLlm = resolveEffectiveLlmConfig(configId)
+  const resolvedLlm = resolveLlmConfig(configId)
   if (resolvedLlm.ok) return resolvedLlm
   if (resolvedLlm.source === 'global') {
     await replyBotMisconfigured(reply, contextId)
@@ -151,7 +152,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
       // Auto-provision is opportunistic; missing or broken hooks should fall through to normal setup guidance.
     }
   }
-  const { mainModel } = resolvedLlm
+  const mainModel = resolvedLlm.main.model
   const model = deps.buildModel(resolvedLlm)
   const provider = await deps.resolve(configId)
   if (provider === null) {
@@ -220,7 +221,7 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
     appendAssistantTurnHistory(
       contextId,
       configId,
-      resolvedLlm.mainModel,
+      resolvedLlm.main.model,
       turn.baseHistory,
       turn.historyMessage,
       result.response.messages,
@@ -234,7 +235,7 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
     } else {
       await handleLlmTurnError({
         ...invocationSource,
-        mainModel: resolvedLlm.mainModel,
+        mainModel: resolvedLlm.main.model,
         startedAt,
         baseHistory: turn.baseHistory,
         userHistoryMessage: turn.historyMessage,
@@ -265,7 +266,7 @@ export const processMessage = async (
   const configId = resolveConfigId(contextId, configContextId)
   const resolvedLlm = await resolveLlmForTurn(reply, contextId, configId)
   if (resolvedLlm === null) return
-  const turn = await buildHistory(contextId, chatUserId, resolvedLlm.mainModel, userText, newAttachmentIds)
+  const turn = await buildHistory(contextId, chatUserId, resolvedLlm.main.model, userText, newAttachmentIds)
   const invocationSource = { reply, contextId, chatUserId, username, userText, contextType, actorRole }
   appendHistory(contextId, [turn.historyMessage])
   const leftover = await runTurn({
