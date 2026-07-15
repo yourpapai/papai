@@ -198,14 +198,14 @@ type DecodedBlob =
 // result from flowing as `any` (no-unsafe-assignment) without a cast.
 const parseJson = (text: string): unknown => JSON.parse(text)
 
-const decodeStoredPayload = (encryptedConfig: string | null): DecodedBlob => {
+const decodeStoredPayload = (contextId: string, encryptedConfig: string | null): DecodedBlob => {
   if (encryptedConfig === null) return { blob: decodeByokBlob(null), unreadable: false }
   try {
     const payload = decryptSecretPayload(encryptedConfig)
     const raw = payload['v2'] === undefined ? payload : parseJson(payload['v2'])
     return { blob: decodeByokBlob(raw), unreadable: false }
   } catch {
-    log.warn('BYOK LLM v2 blob is unreadable')
+    log.warn({ contextId }, 'BYOK LLM v2 blob is unreadable')
     return { unreadable: true, error: UNREADABLE_BYOK_CONFIG_ERROR }
   }
 }
@@ -213,7 +213,7 @@ const decodeStoredPayload = (encryptedConfig: string | null): DecodedBlob => {
 export function getByokBundle(contextId: string): ByokBundle {
   const row = findRow(contextId)
   if (row === undefined || !row.enabled) return { enabled: false, blob: null, unreadable: false, error: null }
-  const decoded = decodeStoredPayload(row.encryptedConfig)
+  const decoded = decodeStoredPayload(contextId, row.encryptedConfig)
   if (decoded.unreadable) return { enabled: true, blob: null, unreadable: true, error: decoded.error }
   return { enabled: true, blob: decoded.blob, unreadable: false, error: null }
 }

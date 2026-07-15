@@ -216,4 +216,65 @@ describe('byok-llm multi-provider store ops', () => {
 
     expect(getByokLlmConfig('ctx-coexist')).toEqual({})
   })
+
+  test('upsertByokProvider auto-enables a never-enabled context on write', () => {
+    upsertByokProvider('ctx-auto', makeProvider({ id: 'prov-auto' }), 'user-1')
+
+    const bundle = getByokBundle('ctx-auto')
+    expect(bundle.enabled).toBe(true)
+    expect(bundle.blob?.providers[0]?.id).toBe('prov-auto')
+  })
+
+  test('setByokRoles auto-enables a never-enabled context on write', () => {
+    setByokRoles('ctx-auto-roles', { main: { providerId: 'p', model: 'm' }, small: null, embedding: null }, 'user-1')
+
+    expect(getByokBundle('ctx-auto-roles').enabled).toBe(true)
+  })
+
+  test('upsertByokProvider stages the blob but leaves an explicitly disabled context disabled', () => {
+    enableByokForContext('ctx-dis-up', 'admin-1')
+    disableByokForContext('ctx-dis-up', 'admin-2')
+    upsertByokProvider('ctx-dis-up', makeProvider({ id: 'prov-staged' }), 'user-1')
+
+    expect(getByokBundle('ctx-dis-up').enabled).toBe(false)
+
+    enableByokForContext('ctx-dis-up', 'admin-3')
+    const bundle = getByokBundle('ctx-dis-up')
+    expect(bundle.enabled).toBe(true)
+    expect(bundle.blob?.providers[0]?.id).toBe('prov-staged')
+  })
+
+  test('setByokRoles leaves an explicitly disabled context disabled', () => {
+    enableByokForContext('ctx-dis-roles', 'admin-1')
+    disableByokForContext('ctx-dis-roles', 'admin-2')
+    setByokRoles('ctx-dis-roles', { main: { providerId: 'p', model: 'm' }, small: null, embedding: null }, 'user-1')
+
+    expect(getByokBundle('ctx-dis-roles').enabled).toBe(false)
+  })
+
+  test('deleteByokProvider is a silent no-op on a disabled context', () => {
+    enableByokForContext('ctx-noop-del', 'admin-1')
+    disableByokForContext('ctx-noop-del', 'admin-2')
+
+    expect(() => deleteByokProvider('ctx-noop-del', 'any', 'user-1')).not.toThrow()
+    expect(getByokBundle('ctx-noop-del').enabled).toBe(false)
+  })
+
+  test('updateByokProviderVerification is a silent no-op on an unreadable context', () => {
+    insertCorruptedByokRow('ctx-noop-verify')
+    const verified: Verification = {
+      status: 'verified',
+      error: null,
+      at: 1,
+      models: ['m'],
+      modelsFetchedAt: 2,
+    }
+
+    expect(() => updateByokProviderVerification('ctx-noop-verify', 'any', verified, 'user-1')).not.toThrow()
+
+    const bundle = getByokBundle('ctx-noop-verify')
+    expect(bundle.enabled).toBe(true)
+    expect(bundle.unreadable).toBe(true)
+    expect(bundle.blob).toBeNull()
+  })
 })
