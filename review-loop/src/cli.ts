@@ -8,8 +8,8 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { SpawnFn, SpawnResult } from './agent-runner.js'
-import { createShellExec } from './build-checker.js'
-import { loadReviewLoopConfig } from './config.js'
+import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
+import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
 import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop } from './loop-controller.js'
@@ -83,6 +83,28 @@ export function splitLines(pending: string, chunk: string): { lines: string[]; r
   return { lines, remaining }
 }
 
+export interface FinalizeDeps {
+  exec: ShellExecFn
+  runBuildCheck: typeof runBuildCheck
+  mergeWorktree: (repoRoot: string, branchName: string) => Promise<void>
+  removeWorktree: (repoRoot: string, worktreePath: string, runId: string) => Promise<void>
+}
+
+export async function finalizeRun(config: ReviewLoopConfig, runState: RunState, deps: FinalizeDeps): Promise<void> {
+  const build = await deps.runBuildCheck({
+    exec: deps.exec,
+    cwd: runState.worktreePath,
+    command: config.checkCommand,
+  })
+  if (!build.passed) {
+    throw new Error(
+      `Final build check failed; worktree preserved at ${runState.worktreePath} for inspection, merge skipped.`,
+    )
+  }
+  await deps.mergeWorktree(config.repoRoot, `review-loop/${runState.runId}`)
+  await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
+}
+
 const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
   return new Promise((resolve) => {
     const child = spawn(command, [...args], { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -150,8 +172,12 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     await writeFile(path.join(runState.runDir, 'summary.txt'), `${summary}\n`)
     console.log(summary)
 
-    await mergeWorktree(config.repoRoot, `review-loop/${runState.runId}`)
-    await removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
+    await finalizeRun(config, runState, {
+      exec,
+      runBuildCheck,
+      mergeWorktree,
+      removeWorktree,
+    })
   } catch (error) {
     console.error('Review loop failed:', error)
     console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)

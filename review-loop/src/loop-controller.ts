@@ -103,9 +103,9 @@ async function retryFixAfterBuildFailure(
   record: LedgerIssueRecord,
   deps: ReviewLoopDeps,
   buildError: string,
+  baselineSha: string,
 ): Promise<boolean> {
   deps.log.log(`[fix] build failed, retrying...`)
-  const preFixSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
 
   await runFixer(
     deps,
@@ -127,7 +127,7 @@ async function retryFixAfterBuildFailure(
     return true
   }
 
-  await execGit(deps.runState.worktreePath, ['reset', '--hard', preFixSha])
+  await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
   recordVerification(deps.ledger, record.id, {
     verdict: 'needs_human',
     fixability: 'manual',
@@ -140,6 +140,8 @@ async function retryFixAfterBuildFailure(
 
 async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Promise<{ fixed: boolean }> {
   deps.log.log(`[fix] "${shortTitle(record)}" — verifying...`)
+
+  const baselineSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
 
   const result = await runFixer(deps, buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath)), 'fixer')
 
@@ -169,7 +171,7 @@ async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Pr
     return { fixed: true }
   }
 
-  const fixed = await retryFixAfterBuildFailure(record, deps, buildResult.stderr)
+  const fixed = await retryFixAfterBuildFailure(record, deps, buildResult.stderr, baselineSha)
   return { fixed }
 }
 

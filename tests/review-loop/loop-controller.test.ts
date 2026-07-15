@@ -39,10 +39,11 @@ function extractOutputPath(prompt: string): string | null {
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean }>
+  onFixer?: (cwd: string, callIndex: number) => Promise<void>
 }): SpawnFn {
   let reviewerCall = 0
   let fixerCall = 0
-  return (_command: string, args: readonly string[], opts: { cwd: string }): Promise<SpawnResult> => {
+  return async (_command: string, args: readonly string[], opts: { cwd: string }): Promise<SpawnResult> => {
     const promptText = args[args.length - 1] ?? ''
     const outputPath = extractOutputPath(promptText)
 
@@ -66,12 +67,15 @@ function createMockSpawn(handlers: {
           }),
         )
       }
+      if (handlers.onFixer) {
+        await handlers.onFixer(opts.cwd, fixerCall - 1)
+      }
     } else if (promptText.includes('Match newly found')) {
       if (outputPath !== null) {
         writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches: [] }))
       }
     }
-    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+    return { exitCode: 0, stdout: '', stderr: '' }
   }
 }
 
@@ -103,6 +107,8 @@ describe('runReviewLoop', () => {
     const runState = await createRunState(config, planPath)
     const ledger = await createIssueLedger(runState.runDir)
 
+    await setupGitRepo(runState.worktreePath)
+
     const result = await runReviewLoop({
       config,
       runState,
@@ -126,6 +132,8 @@ describe('runReviewLoop', () => {
     writeFileSync(planPath, '# Plan')
     const runState = await createRunState(config, planPath)
     const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
 
     const result = await runReviewLoop({
       config,
@@ -179,5 +187,43 @@ describe('runReviewLoop', () => {
 
     expect(result.doneReason).toBe('clean')
     expect(execIndex).toBe(2)
+  })
+
+  test('resets worktree to baseline SHA when retry build also fails', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxNoProgressRounds: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+
+    const commitOnFix = async (cwd: string, callIndex: number): Promise<void> => {
+      writeFileSync(path.join(cwd, `fix-${callIndex}.txt`), `attempt ${callIndex}`)
+      await execGit(cwd, ['add', '.'])
+      await execGit(cwd, ['commit', '-m', `fix attempt ${callIndex}`])
+    }
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], [issue]],
+        fixerResults: [
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+        ],
+        onFixer: commitOnFix,
+      }),
+      exec: createMockExec(false),
+      log: silentReporter(),
+    })
+
+    expect(result.doneReason).toBe('no_progress')
+    const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    expect(headAfter).toBe(baselineSha)
   })
 })

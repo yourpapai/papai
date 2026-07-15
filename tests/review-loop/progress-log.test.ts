@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
@@ -14,6 +14,7 @@ import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
+import { execGit } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -92,6 +93,16 @@ function makeReporter(messages: string[]): ProgressReporter {
   }
 }
 
+async function setupGitRepo(repoPath: string): Promise<void> {
+  mkdirSync(repoPath, { recursive: true })
+  await execGit(repoPath, ['init'])
+  await execGit(repoPath, ['config', 'user.email', 'test@test.com'])
+  await execGit(repoPath, ['config', 'user.name', 'Test'])
+  writeFileSync(path.join(repoPath, 'README.md'), 'hello')
+  await execGit(repoPath, ['add', '.'])
+  await execGit(repoPath, ['commit', '-m', 'init'])
+}
+
 describe('progress logging', () => {
   test('logs round start, issue discovery, verification, fix, and done for a clean round', async () => {
     const repoRoot = makeTempDir('review-loop-progress-')
@@ -101,6 +112,8 @@ describe('progress logging', () => {
     const runState = await createRunState(config, planPath)
     const ledger = await createIssueLedger(runState.runDir)
     const messages: string[] = []
+
+    await setupGitRepo(runState.worktreePath)
 
     const result = await runReviewLoop({
       config,
@@ -132,6 +145,8 @@ describe('progress logging', () => {
     const ledger = await createIssueLedger(runState.runDir)
     const messages: string[] = []
 
+    await setupGitRepo(runState.worktreePath)
+
     const stallIssue: ReviewerIssue = {
       ...issue,
       title: 'Persistent issue',
@@ -162,6 +177,8 @@ describe('progress logging', () => {
     const runState = await createRunState(config, planPath)
     const ledger = await createIssueLedger(runState.runDir)
     const messages: string[] = []
+
+    await setupGitRepo(runState.worktreePath)
 
     const longTitle = 'A'.repeat(80)
     const longIssue: ReviewerIssue = { ...issue, title: longTitle, severity: 'low' }

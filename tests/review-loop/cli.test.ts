@@ -3,9 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { writeFileSync } from 'node:fs'
+import path from 'node:path'
 
-import { parseCliArgs, splitLines } from '../../review-loop/src/cli.js'
+import { runBuildCheck } from '../../review-loop/src/build-checker.js'
+import { finalizeRun, parseCliArgs, splitLines, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
+import { createRunState, type RunState } from '../../review-loop/src/run-state.js'
+import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
+
+afterEach(cleanupTempDirs)
 
 describe('parseCliArgs', () => {
   test('defaults configPath to review-loop/config.json', () => {
@@ -83,4 +91,60 @@ describe('splitLines', () => {
       expect(splitLines(c.pending, c.chunk)).toEqual({ lines: c.lines, remaining: c.remaining })
     })
   }
+})
+
+async function setupFinalizeFixtures(): Promise<{ config: ReviewLoopConfig; runState: RunState }> {
+  const repoRoot = makeTempDir('cli-')
+  const config = createReviewLoopConfigFixture(repoRoot)
+  const planPath = path.join(repoRoot, 'plan.md')
+  writeFileSync(planPath, '# Plan')
+  const runState = await createRunState(config, planPath)
+  return { config, runState }
+}
+
+describe('finalizeRun', () => {
+  test('aborts merge and preserves worktree when final build fails', async () => {
+    const { config, runState } = await setupFinalizeFixtures()
+    let merged = 0
+    let removed = 0
+    const deps: FinalizeDeps = {
+      exec: () => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'TypeError: broken' }),
+      runBuildCheck,
+      mergeWorktree: () => {
+        merged += 1
+        return Promise.resolve()
+      },
+      removeWorktree: () => {
+        removed += 1
+        return Promise.resolve()
+      },
+    }
+
+    await expect(finalizeRun(config, runState, deps)).rejects.toThrow('Final build check failed')
+    expect(merged).toBe(0)
+    expect(removed).toBe(0)
+  })
+
+  test('merges and removes worktree when final build passes', async () => {
+    const { config, runState } = await setupFinalizeFixtures()
+    let merged = 0
+    let removed = 0
+    const deps: FinalizeDeps = {
+      exec: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      runBuildCheck,
+      mergeWorktree: () => {
+        merged += 1
+        return Promise.resolve()
+      },
+      removeWorktree: () => {
+        removed += 1
+        return Promise.resolve()
+      },
+    }
+
+    await finalizeRun(config, runState, deps)
+
+    expect(merged).toBe(1)
+    expect(removed).toBe(1)
+  })
 })
