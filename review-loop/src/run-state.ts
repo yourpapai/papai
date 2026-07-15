@@ -52,7 +52,7 @@ export async function createRunState(config: ReviewLoopConfig, planPath: string)
     logPath: path.join(runDir, 'agent-output.log'),
     statePath: path.join(runDir, 'state.json'),
     repoRoot: config.repoRoot,
-    planPath,
+    planPath: path.resolve(planPath),
     currentRound: 0,
     noProgressRounds: 0,
   }

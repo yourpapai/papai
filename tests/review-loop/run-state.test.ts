@@ -44,6 +44,16 @@ describe('run-state', () => {
     expect(reloadedFirst.worktreePath).toBe(path.join(config.workDir, 'worktrees', first.runId))
   })
 
+  test('createRunState resolves relative planPath to absolute', async () => {
+    const repoRoot = makeTempDir('run-state-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+
+    const state = await createRunState(config, 'relative/plan.md')
+
+    expect(path.isAbsolute(state.planPath)).toBe(true)
+    expect(state.planPath).toBe(path.resolve('relative/plan.md'))
+  })
+
   test('saveRunState + loadRunState round-trips persisted fields', async () => {
     const repoRoot = makeTempDir('run-state-')
     const config = createReviewLoopConfigFixture(repoRoot)
