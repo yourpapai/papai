@@ -8,23 +8,9 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
-const ReviewerConfigSchema = z.object({
-  command: z.string().min(1),
-  args: z.array(z.string()).default([]),
-  env: z.record(z.string(), z.string()).default({}),
-  sessionConfig: z.record(z.string(), z.string()).default({}),
-  invocationPrefix: z.string().nullable().default(null),
-  requireInvocationPrefix: z.boolean().default(false),
-})
-
-const FixerConfigSchema = z.object({
-  command: z.string().min(1),
-  args: z.array(z.string()).default([]),
-  env: z.record(z.string(), z.string()).default({}),
-  sessionConfig: z.record(z.string(), z.string()).default({}),
-  verifyInvocationPrefix: z.string().nullable().default(null),
-  fixInvocationPrefix: z.string().nullable().default(null),
-  requireVerifyInvocation: z.boolean().default(false),
+const AgentConfigSchema = z.object({
+  model: z.string().min(1),
+  extraArgs: z.array(z.string()).default([]),
 })
 
 export const ReviewLoopConfigSchema = z.object({
@@ -32,8 +18,10 @@ export const ReviewLoopConfigSchema = z.object({
   workDir: z.string().min(1),
   maxRounds: z.number().int().positive().default(10),
   maxNoProgressRounds: z.number().int().positive().default(2),
-  reviewer: ReviewerConfigSchema,
-  fixer: FixerConfigSchema,
+  checkCommand: z.string().min(1).default('bun check:full'),
+  reviewer: AgentConfigSchema,
+  fixer: AgentConfigSchema,
+  matcher: AgentConfigSchema,
 })
 
 export type ReviewLoopConfig = z.infer<typeof ReviewLoopConfigSchema>

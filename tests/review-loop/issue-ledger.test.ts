@@ -4,20 +4,20 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import {
+  applyMatchedIssues,
+  closeUnreportedFixed,
   createIssueLedger,
-  applyReviewRound,
-  IssueLedgerSnapshotSchema,
   loadIssueLedger,
-  recordVerification,
   recordFixAttempt,
+  recordVerification,
   saveIssueLedger,
 } from '../../review-loop/src/issue-ledger.js'
-import type { ReviewerIssue, VerifierDecision } from '../../review-loop/src/issue-schema.js'
+import type { IssueMatch, ReviewerIssue, VerifierDecision } from '../../review-loop/src/issue-schema.js'
 
 const tempDirs: string[] = []
 
@@ -34,6 +34,13 @@ const issue: ReviewerIssue = {
   confidence: 0.92,
 }
 
+const validDecision: VerifierDecision = {
+  verdict: 'valid',
+  fixability: 'auto',
+  reasoning: 'The control flow is actually unsafe.',
+  targetFiles: ['src/message-queue/queue.ts'],
+}
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true })
@@ -41,112 +48,77 @@ afterEach(() => {
 })
 
 describe('issue ledger', () => {
-  test('deduplicates repeated issues within the same review round', async () => {
+  test('creates new records for unmatched issues', async () => {
     const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
     tempDirs.push(runDir)
 
     const ledger = await createIssueLedger(runDir)
-    const duplicateIssues = [issue, { ...issue }]
+    const matches: IssueMatch[] = [{ newIssueIndex: 0, existingId: null }]
 
-    const records = applyReviewRound(ledger, 1, duplicateIssues)
+    const records = applyMatchedIssues(ledger, 1, [issue], matches)
 
     expect(records).toHaveLength(1)
-    expect(records[0]?.fingerprint).toBeDefined()
-    expect(Object.keys(ledger.snapshot.issues)).toHaveLength(1)
+    expect(records[0]?.id).toBeDefined()
+    expect(records[0]?.status).toBe('discovered')
+    expect(records[0]?.firstSeenRound).toBe(1)
   })
 
-  test('distinguishes invalid and already_fixed verification statuses', async () => {
+  test('reopens existing record when matched', async () => {
     const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
     tempDirs.push(runDir)
 
     const ledger = await createIssueLedger(runDir)
-    const [invalidRecord, alreadyFixedRecord] = applyReviewRound(ledger, 1, [
-      issue,
-      {
-        ...issue,
-        title: 'Queue flush race is already fixed',
-        summary: 'The lock now protects the flush path.',
-      },
-    ])
+    const records1 = applyMatchedIssues(ledger, 1, [issue], [{ newIssueIndex: 0, existingId: null }])
+    const id = records1[0]!.id
 
-    expect(invalidRecord).toBeDefined()
-    expect(alreadyFixedRecord).toBeDefined()
+    recordVerification(ledger, id, validDecision)
+    recordFixAttempt(ledger, id)
+    ledger.snapshot.issues[id]!.status = 'closed'
 
-    recordVerification(ledger, invalidRecord!.fingerprint, {
-      verdict: 'invalid',
-      fixability: 'manual',
-      reasoning: 'The bug report is not supported by the current code.',
-      targetFiles: ['src/message-queue/queue.ts'],
-      needsPlanning: false,
-    })
-    recordVerification(ledger, alreadyFixedRecord!.fingerprint, {
-      verdict: 'already_fixed',
-      fixability: 'manual',
-      reasoning: 'The implementation already contains the described fix.',
-      targetFiles: ['src/message-queue/queue.ts'],
-      needsPlanning: false,
-    })
+    const issueRephrased: ReviewerIssue = {
+      ...issue,
+      title: 'Race condition when flushing the message queue',
+      summary: 'Concurrent flush calls can interleave.',
+    }
 
+    applyMatchedIssues(ledger, 2, [issueRephrased], [{ newIssueIndex: 0, existingId: id }])
     await saveIssueLedger(ledger)
     const loaded = await loadIssueLedger(runDir)
 
-    expect(loaded.snapshot.issues[invalidRecord!.fingerprint]?.status).toBe('rejected')
-    expect(loaded.snapshot.issues[alreadyFixedRecord!.fingerprint]?.status).toBe('already_fixed')
-    expect(loaded.snapshot.issues[invalidRecord!.fingerprint]?.verifierDecision?.verdict).toBe('invalid')
-    expect(loaded.snapshot.issues[alreadyFixedRecord!.fingerprint]?.verifierDecision?.verdict).toBe('already_fixed')
+    expect(loaded.snapshot.issues[id]?.status).toBe('reopened')
+    expect(loaded.snapshot.issues[id]?.issue.title).toBe('Race condition when flushing the message queue')
+    expect(loaded.snapshot.issues[id]?.fixAttempts).toBe(1)
   })
 
-  test('reopens closed issues when the reviewer reports them again', async () => {
+  test('closeUnreportedFixed marks fixed_pending_review as closed when not in current round', async () => {
     const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
     tempDirs.push(runDir)
 
     const ledger = await createIssueLedger(runDir)
-    const record = applyReviewRound(ledger, 1, [issue])[0]
-    expect(record).toBeDefined()
+    const records = applyMatchedIssues(ledger, 1, [issue], [{ newIssueIndex: 0, existingId: null }])
+    const id = records[0]!.id
 
-    const decision: VerifierDecision = {
-      verdict: 'valid',
-      fixability: 'auto',
-      reasoning: 'The control flow is actually unsafe.',
-      targetFiles: ['src/message-queue/queue.ts'],
-      needsPlanning: false,
-    }
+    recordVerification(ledger, id, validDecision)
+    recordFixAttempt(ledger, id)
 
-    recordVerification(ledger, record!.fingerprint, decision)
-    recordFixAttempt(ledger, record!.fingerprint)
-    ledger.snapshot.issues[record!.fingerprint]!.status = 'closed'
-    applyReviewRound(ledger, 2, [issue])
-    await saveIssueLedger(ledger)
-    const persisted = await loadIssueLedger(runDir)
+    closeUnreportedFixed(ledger, [id])
 
-    expect(persisted.snapshot.issues[record!.fingerprint]?.status).toBe('reopened')
-    expect(persisted.snapshot.issues[record!.fingerprint]?.fixAttempts).toBe(1)
+    expect(ledger.snapshot.issues[id]?.status).toBe('fixed_pending_review')
+
+    closeUnreportedFixed(ledger, [])
+
+    expect(ledger.snapshot.issues[id]?.status).toBe('closed')
   })
 
-  test('reopens fixed pending review issues when the reviewer reports them again', async () => {
+  test('persists and loads correctly', async () => {
     const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
     tempDirs.push(runDir)
 
     const ledger = await createIssueLedger(runDir)
-    const record = applyReviewRound(ledger, 1, [issue])[0]
-    expect(record).toBeDefined()
-
-    const decision: VerifierDecision = {
-      verdict: 'valid',
-      fixability: 'auto',
-      reasoning: 'The control flow is actually unsafe.',
-      targetFiles: ['src/message-queue/queue.ts'],
-      needsPlanning: false,
-    }
-
-    recordVerification(ledger, record!.fingerprint, decision)
-    recordFixAttempt(ledger, record!.fingerprint)
-    applyReviewRound(ledger, 2, [issue])
+    applyMatchedIssues(ledger, 1, [issue], [{ newIssueIndex: 0, existingId: null }])
     await saveIssueLedger(ledger)
 
-    const persisted = IssueLedgerSnapshotSchema.parse(JSON.parse(readFileSync(ledger.path, 'utf8')))
-
-    expect(persisted.issues[record!.fingerprint]?.status).toBe('reopened')
-    expect(persisted.issues[record!.fingerprint]?.fixAttempts).toBe(1)
+    const loaded = await loadIssueLedger(runDir)
+    expect(Object.keys(loaded.snapshot.issues)).toHaveLength(1)
   })
 })

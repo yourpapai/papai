@@ -11,8 +11,6 @@
     "start": "bun run src/cli.ts"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.18.2",
-    "p-limit": "^7.3.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
