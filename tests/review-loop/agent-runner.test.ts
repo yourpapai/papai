@@ -58,6 +58,7 @@ describe('agent-runner', () => {
     expect(result).toEqual({ issues: [] })
     expect(mock.calls[0]?.command).toBe('opencode')
     expect(mock.calls[0]?.args).toContain('run')
+    expect(mock.calls[0]?.args).toContain('--auto')
     expect(mock.calls[0]?.args).toContain('--model')
     expect(mock.calls[0]?.args).toContain('test-model')
     expect(mock.calls[0]?.args).toContain('--dir')
