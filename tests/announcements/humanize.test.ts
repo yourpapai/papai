@@ -9,14 +9,19 @@ import type { LanguageModel } from 'ai'
 
 import { humanizeChangelog, type HumanizeChangelogDeps } from '../../src/announcements/humanize.js'
 
+const role = (model: string): { apiKey: string; baseUrl: string; model: string; source: 'global' } => ({
+  apiKey: 'k',
+  baseUrl: 'https://llm.example',
+  model,
+  source: 'global',
+})
+
 const okConfig = {
   ok: true as const,
   source: 'global' as const,
-  llmApiKey: 'k',
-  llmBaseUrl: 'https://llm.example',
-  mainModel: 'main',
-  smallModel: 'small',
-  embeddingModel: 'embed',
+  main: role('main'),
+  small: role('small'),
+  embedding: role('embed'),
 }
 
 function deps(over: Partial<HumanizeChangelogDeps>): HumanizeChangelogDeps {
@@ -32,9 +37,16 @@ describe('humanizeChangelog', () => {
   test('returns trimmed model text and passes raw as prompt', async () => {
     let seenPrompt = ''
     let seenSystem = ''
+    const seenModel: { apiKey?: string; baseUrl?: string; model?: string } = {}
     const result = await humanizeChangelog(
       '### Added\n- thing',
       deps({
+        buildModel: (apiKey, baseUrl, model) => {
+          seenModel.apiKey = apiKey
+          seenModel.baseUrl = baseUrl
+          seenModel.model = model
+          return 'test-model'
+        },
         generate: (opts) => {
           seenPrompt = opts.prompt
           seenSystem = opts.system
@@ -45,6 +57,7 @@ describe('humanizeChangelog', () => {
     expect(result).toBe('✨ New\n- Thing')
     expect(seenPrompt).toContain('### Added')
     expect(seenSystem).toContain('announcement')
+    expect(seenModel).toEqual({ apiKey: 'k', baseUrl: 'https://llm.example', model: 'main' })
   })
 
   test('returns null when LLM config is missing', async () => {

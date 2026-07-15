@@ -44,24 +44,86 @@ export const adminByokHandlers: HandlerFamily = {
   ],
 }
 
-// --- Admin: system config (GET /settings/api/admin/system) ---
-// AdminSystemResponseSchema: { config: Record<string, { value: string|null, updatedAt: number|null, updatedBy: string|null }> }
+// --- Admin: LLM providers (GET/POST/PATCH/DELETE /settings/api/admin/providers) ---
 
-const adminSystemPopulated = {
-  config: {
-    LLM_BASE_URL: { value: 'https://api.anthropic.com', updatedAt: 1717000000000, updatedBy: 'admin' },
-    ANTHROPIC_API_KEY: { value: '****abc', updatedAt: 1717000000000, updatedBy: 'admin' },
+const adminProvidersPopulated = {
+  providers: [
+    {
+      id: 'prov_openai',
+      label: 'OpenAI',
+      providerType: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyMasked: '****abcd',
+      verification: {
+        status: 'verified',
+        error: null,
+        at: 1717000000000,
+        models: ['gpt-4o', 'gpt-4o-mini'],
+        modelsFetchedAt: 1717000000000,
+      },
+    },
+    {
+      id: 'prov_ollama',
+      label: 'Local Ollama',
+      providerType: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      apiKeyMasked: '****ama',
+      verification: { status: 'unverified', error: null, at: null, models: [], modelsFetchedAt: null },
+    },
+  ],
+}
+
+export const adminProvidersHandlers: HandlerFamily = {
+  populated: [
+    http.get('/settings/api/admin/providers', () => HttpResponse.json(adminProvidersPopulated)),
+    http.post('/settings/api/admin/providers', () =>
+      HttpResponse.json({ provider: adminProvidersPopulated.providers[0] }),
+    ),
+    http.patch('/settings/api/admin/providers/:id', () =>
+      HttpResponse.json({ provider: adminProvidersPopulated.providers[0] }),
+    ),
+    http.delete('/settings/api/admin/providers/:id', () => HttpResponse.json({ ok: true })),
+  ],
+  empty: [
+    http.get('/settings/api/admin/providers', () => HttpResponse.json({ providers: [] })),
+    http.post('/settings/api/admin/providers', () =>
+      HttpResponse.json({ provider: adminProvidersPopulated.providers[0] }),
+    ),
+  ],
+  error: [http.get('/settings/api/admin/providers', boom)],
+  loading: [
+    http.get('/settings/api/admin/providers', async () => {
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json({ providers: [] })
+    }),
+  ],
+}
+
+// --- Admin: LLM roles (GET/PUT /settings/api/admin/llm-roles) ---
+
+const adminLlmRolesPopulated = {
+  roles: {
+    main: { providerId: 'prov_openai', model: 'gpt-4o' },
+    small: { providerId: 'prov_openai', model: 'gpt-4o-mini' },
+    embedding: null,
   },
 }
 
-export const adminSystemHandlers: HandlerFamily = {
-  populated: [http.get('/settings/api/admin/system', () => HttpResponse.json(adminSystemPopulated))],
-  empty: [http.get('/settings/api/admin/system', () => HttpResponse.json({ config: {} }))],
-  error: [http.get('/settings/api/admin/system', boom)],
+const adminLlmRolesEmpty = {
+  roles: { main: { providerId: '', model: '' }, small: null, embedding: null },
+}
+
+export const adminLlmRolesHandlers: HandlerFamily = {
+  populated: [
+    http.get('/settings/api/admin/llm-roles', () => HttpResponse.json(adminLlmRolesPopulated)),
+    http.put('/settings/api/admin/llm-roles', () => HttpResponse.json({ ok: true })),
+  ],
+  empty: [http.get('/settings/api/admin/llm-roles', () => HttpResponse.json(adminLlmRolesEmpty))],
+  error: [http.get('/settings/api/admin/llm-roles', boom)],
   loading: [
-    http.get('/settings/api/admin/system', async () => {
+    http.get('/settings/api/admin/llm-roles', async () => {
       await delay(NEVER_RESOLVE_MS)
-      return HttpResponse.json({ config: {} })
+      return HttpResponse.json(adminLlmRolesEmpty)
     }),
   ],
 }

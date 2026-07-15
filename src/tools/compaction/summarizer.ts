@@ -5,8 +5,8 @@
 
 import { generateText } from 'ai'
 
-import { resolveEffectiveLlmConfig } from '../../llm-config-resolver.js'
 import { buildChatModel } from '../../llm-model-builder.js'
+import { resolveLlmConfig } from '../../llm-providers/resolver.js'
 import { logger } from '../../logger.js'
 
 const log = logger.child({ scope: 'compaction:summarizer' })
@@ -33,9 +33,9 @@ export interface SummarizeInput {
 
 /** Resolves per-context (BYOK-aware) credentials once; callers should build this once per turn. */
 export function buildSummarizerDeps(configContextId: string): SummarizerDeps | null {
-  const resolved = resolveEffectiveLlmConfig(configContextId)
+  const resolved = resolveLlmConfig(configContextId)
   if (!resolved.ok) return null
-  const model = buildChatModel(resolved.llmApiKey, resolved.llmBaseUrl, resolved.smallModel)
+  const model = buildChatModel(resolved.small.apiKey, resolved.small.baseUrl, resolved.small.model)
   return {
     generate: async (opts) => {
       const result = await generateText({ model, system: opts.system, prompt: opts.prompt })

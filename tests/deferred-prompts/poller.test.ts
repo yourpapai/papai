@@ -18,14 +18,14 @@ import * as proactiveLlmModule from '../../src/deferred-prompts/proactive-llm.js
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.js'
 import * as proactiveHistoryModule from '../../src/proactive-history.js'
 import type { TaskProvider } from '../../src/providers/types.js'
-import { setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createMockChatWithSentMessages,
   mockLogger,
-  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   seedTestPlatformInstance,
   seedTestTaskInstance,
@@ -39,10 +39,8 @@ function setupUserConfig(userId: string): void {
   seedTestTaskInstance({ id: 'kaneo-default' })
   setConfig(userId, 'timezone', 'UTC')
   setContextSettings({ contextId: userId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
-  resetSystemConfigCacheForTesting()
-  setSystemConfig('llm_apikey', 'test-key', 'env')
-  setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
-  setSystemConfig('main_model', 'test-model', 'env')
+
+  seedAdminLlmBinding()
 }
 
 const USER_ID = 'poller-user-1'
@@ -375,9 +373,13 @@ describe('pollScheduledOnce', () => {
   })
 
   test('skips prompt when central LLM config is missing (Phase 1)', async () => {
-    // Reset the system_config cache so getSystemConfig returns null and
-    // the deferred prompt path bails out with the misconfigured message.
-    resetSystemConfigCacheForTesting()
+    // Reset to a pristine DB so no admin LLM binding is present; the per-role
+    // resolver then reports the central config as missing (source: 'global')
+    // and the deferred prompt bails out with the misconfigured message.
+    await setupTestDb()
+    clearLlmAdminCacheForTesting()
+    seedTestPlatformInstance({ id: 'mock-default' })
+    seedTestTaskInstance({ id: 'kaneo-default' })
 
     const unconfiguredUser = 'unconfigured-user'
     setContextSettings({

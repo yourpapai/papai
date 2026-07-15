@@ -16,6 +16,8 @@ import { closeMigrationDbInstance, initDb } from '../db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-router-runtime.js'
 import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
+import { seedDefaultLlmProviderFromEnv } from '../llm-providers/env-bootstrap.js'
+import { getAdminRoleBindings, primeLlmAdminCache } from '../llm-providers/store.js'
 import { logger } from '../logger.js'
 import { cancelAndDrainPendingMemoryCaptures } from '../long-term-memory/capture-debounce.js'
 import { initializeMessageCache } from '../message-cache/index.js'
@@ -29,7 +31,6 @@ import {
   registerMembershipSubscriber,
   runMembershipBackfill,
 } from '../providers/membership/index.js'
-import { missingSystemConfigKeys, seedSystemConfigFromEnv } from '../system-config.js'
 import { initUsageRecorder } from '../usage/index.js'
 import { toolCapabilityCatalog } from './capability-catalog.js'
 import type { ProductionBackgroundHandle } from './production-background.js'
@@ -51,12 +52,12 @@ function startDatabase(): void {
     log.error({ error: error instanceof Error ? error.message : String(error) }, 'Database migration failed')
     process.exit(1)
   }
-  seedSystemConfigFromEnv()
+  primeLlmAdminCache()
+  seedDefaultLlmProviderFromEnv()
   const bootstrapResult = bootstrapInstancesFromEnv()
   log.info({ bootstrapResult }, 'instance bootstrap evaluated')
-  const missing = missingSystemConfigKeys()
-  if (missing.length > 0) {
-    log.warn({ missing }, 'system_config is incomplete; the bot will reply "misconfigured" until these keys are set')
+  if (getAdminRoleBindings() === null) {
+    log.warn('admin LLM role bindings are not configured; the bot will reply "misconfigured" until a provider is set')
   }
   initUsageRecorder()
 }

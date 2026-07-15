@@ -19,13 +19,13 @@ import type { DeferredExecutionContext } from '../../src/deferred-prompts/proact
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
+import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { loadFacts } from '../../src/memory.js'
-import { setSystemConfig } from '../../src/system-config.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { flushMicrotasks, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import { flushMicrotasks, mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 // Track generateText calls
 type GenerateTextResult = {
@@ -59,6 +59,7 @@ const containsFact = (
   )
 
 const USER_ID = 'exec-mode-user'
+
 function makeExecCtx(): DeferredExecutionContext {
   return {
     createdByUserId: USER_ID,
@@ -93,14 +94,20 @@ type UserConfigOptions = Readonly<{ smallModel: string | null }>
 
 function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): void {
   setConfig(USER_ID, 'timezone', 'UTC')
-  resetSystemConfigCacheForTesting()
-  setSystemConfig('llm_apikey', 'test-key', 'env')
-  setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
-  setSystemConfig('main_model', 'main-model', 'env')
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'http://localhost:11434/v1', apiKey: 'test-key' },
+    'admin',
+  )
   const opts = args[0]
-  if (opts !== undefined && opts.smallModel !== null) {
-    setSystemConfig('small_model', opts.smallModel, 'env')
-  }
+  setAdminRoleBindings(
+    {
+      main: { providerId: provider.id, model: 'main-model' },
+      small:
+        opts !== undefined && opts.smallModel !== null ? { providerId: provider.id, model: opts.smallModel } : null,
+      embedding: null,
+    },
+    'admin',
+  )
 }
 
 describe('dispatchExecution', () => {
@@ -120,7 +127,7 @@ describe('dispatchExecution', () => {
 
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     generateTextCalls.length = 0
     buildModelCalls.length = 0
     generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
@@ -371,7 +378,8 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.model).toContain('main-model')
     })
 
-    test('uses complete BYOK config for full generation without global config', async () => {
+    test('uses complete BYOK config for full generation (overriding admin)', async () => {
+      seedAdminLlmBinding()
       setConfig(USER_ID, 'timezone', 'UTC')
       updateByokLlmConfig(
         USER_ID,
@@ -545,6 +553,7 @@ describe('dispatchExecution', () => {
     })
 
     test('full mode background trim uses scoped main config context instead of thread storage', async () => {
+      seedAdminLlmBinding()
       setConfig(USER_ID, 'timezone', 'UTC')
       const scopedThreadContextId = toScopedThreadContextId({
         platformInstanceId: 'telegram-secondary',

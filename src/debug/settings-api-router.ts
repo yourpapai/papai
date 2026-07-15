@@ -7,6 +7,7 @@ import type { ProviderRuntimeDeps } from '../plugins/provider-runtime.js'
 import { handleAdminByokRoutes } from './settings/admin/byok-routes.js'
 import { handleAdminCodingGuardrailsRoutes } from './settings/admin/coding-guardrails-routes.js'
 import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
+import { handleAdminLlmProvidersRoutes } from './settings/admin/llm-providers-routes.js'
 import { handleAdminMcpCatalogRoutes } from './settings/admin/mcp-catalog-routes.js'
 import { handleAdminMcpPluginServersRoutes } from './settings/admin/mcp-plugin-servers-routes.js'
 import { handleAdminPluginConfigRoutes } from './settings/admin/plugin-config-routes.js'
@@ -62,6 +63,12 @@ function routeAdminApi(req: Request, url: URL, options: SettingsApiRouteOptions)
   if (p === '/settings/api/admin/mcp-catalog') return handleAdminMcpCatalogRoutes(req, url, p)
   if (p === '/settings/api/admin/mcp-plugin-servers') return handleAdminMcpPluginServersRoutes(req, url, p)
   if (p === '/settings/api/admin/release-notes') return handleAdminReleaseNotesRoutes(req, url, p)
+  if (
+    p === '/settings/api/admin/providers' ||
+    p.startsWith('/settings/api/admin/providers/') ||
+    p === '/settings/api/admin/llm-roles'
+  )
+    return handleAdminLlmProvidersRoutes(req, url, p)
   return null
 }
 

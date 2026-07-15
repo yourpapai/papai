@@ -8,7 +8,6 @@ export const REQUIRED_BYOK_LLM_KEYS = ['llm_apikey', 'llm_baseurl', 'main_model'
 
 export type ByokLlmKey = (typeof BYOK_LLM_KEYS)[number]
 export type RequiredByokLlmKey = (typeof REQUIRED_BYOK_LLM_KEYS)[number]
-export type ByokLlmConfig = Partial<Record<ByokLlmKey, string>> & Record<RequiredByokLlmKey, string>
 export type PartialByokLlmConfig = Partial<Record<ByokLlmKey, string>>
 export type ByokUnreadablePayloadMetadata = {
   readonly unreadable: true

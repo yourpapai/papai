@@ -22,10 +22,9 @@ import type { TaskProvider } from '../../../src/providers/types.js'
 import { issueAuthCode } from '../../../src/settings/auth-code-store.js'
 import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
 import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
-import { setSystemConfig } from '../../../src/system-config.js'
 import { addUser } from '../../../src/users.js'
 import {
-  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedTestPlatformInstance,
   seedTestTaskInstance,
   setupTestDb,
@@ -179,7 +178,7 @@ export type ScenarioFixtures = Readonly<{
       displayName: string
     }>,
   ): void
-  seedSystemLlmConfig(input?: Readonly<{ apiKey?: string; baseUrl?: string; mainModel?: string }>): void
+  seedSystemLlmConfig(input?: Readonly<{ mainModel?: string }>): void
   issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>, nowMs: number): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
   registerTaskProvider(): void
@@ -207,7 +206,6 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       teardownRegistries()
       settingsSessions.reset()
       await setupTestDb()
-      resetSystemConfigCacheForTesting()
     },
     seedPlatformInstance(input = {}): void {
       seedTestPlatformInstance({ id: input.id ?? SCENARIO_PLATFORM_INSTANCE_ID, type: input.type ?? 'telegram' })
@@ -251,9 +249,7 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       })
     },
     seedSystemLlmConfig(input = {}): void {
-      setSystemConfig('llm_apikey', input.apiKey ?? 'scenario-api-key', 'scenario-admin')
-      setSystemConfig('llm_baseurl', input.baseUrl ?? 'https://llm.invalid/v1', 'scenario-admin')
-      setSystemConfig('main_model', input.mainModel ?? 'scenario-main-model', 'scenario-admin')
+      seedAdminLlmBinding(input.mainModel ?? 'scenario-main-model')
     },
     issueSettingsAuthCode(input, nowMs): string {
       return issueAuthCode(input, nowMs)

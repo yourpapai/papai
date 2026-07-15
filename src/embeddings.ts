@@ -6,7 +6,7 @@
 import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/openai-compatible'
 import { embed } from 'ai'
 
-import { resolveEffectiveLlmConfig } from './llm-config-resolver.js'
+import { resolveLlmConfig } from './llm-providers/resolver.js'
 import { logger } from './logger.js'
 import { recordUsage } from './usage/recorder.js'
 import type { ContextType } from './usage/types.js'
@@ -145,7 +145,7 @@ export function getEmbeddingForContext(
   context?: EmbeddingCallContext,
   deps: EmbeddingsDeps = defaultEmbeddingsDeps,
 ): Promise<number[] | null> {
-  const resolved = resolveEffectiveLlmConfig(configContextId)
+  const resolved = resolveLlmConfig(configContextId)
   if (!resolved.ok) {
     log.warn(
       {
@@ -160,5 +160,12 @@ export function getEmbeddingForContext(
     return Promise.resolve(null)
   }
 
-  return tryGetEmbedding(text, resolved.llmApiKey, resolved.llmBaseUrl, resolved.embeddingModel, context, deps)
+  return tryGetEmbedding(
+    text,
+    resolved.embedding.apiKey,
+    resolved.embedding.baseUrl,
+    resolved.embedding.model,
+    context,
+    deps,
+  )
 }

@@ -22,7 +22,7 @@ import { establishSession, type SettingsSession } from '../helpers.js'
 const ForbiddenSchema = z.object({ error: z.literal('forbidden') })
 
 function makeAuthed(session: SettingsSession): AuthenticatedSettingsRequest {
-  const req = new Request('https://x/settings/api/admin/system', {
+  const req = new Request('https://x/settings/api/admin/users', {
     headers: { Cookie: `${SESSION_COOKIE_NAME}=${session.cookie}` },
   })
   const authed = authenticateSettingsRequest(req)

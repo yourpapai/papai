@@ -5,8 +5,8 @@
 
 import { generateText, type LanguageModel } from 'ai'
 
-import { resolveEffectiveLlmConfig } from '../llm-config-resolver.js'
 import { buildChatModel } from '../llm-model-builder.js'
+import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { recordUsage } from '../usage/recorder.js'
 import type { ContextType } from '../usage/types.js'
@@ -41,9 +41,9 @@ const bypassDistillation = (storageContextId: string, content: string): Distille
 }
 
 const getModelConfig = (configContextId: string): { apiKey: string; baseUrl: string; modelId: string } => {
-  const resolved = resolveEffectiveLlmConfig(configContextId)
+  const resolved = resolveLlmConfig(configContextId)
   if (resolved.ok) {
-    return { apiKey: resolved.llmApiKey, baseUrl: resolved.llmBaseUrl, modelId: resolved.smallModel }
+    return { apiKey: resolved.small.apiKey, baseUrl: resolved.small.baseUrl, modelId: resolved.small.model }
   }
   const details = resolved.type === 'missing' ? resolved.missing.join(', ') : resolved.error
   throw new Error(`Missing ${resolved.source} LLM config: ${details}`)

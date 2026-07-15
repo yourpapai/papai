@@ -18,16 +18,18 @@ import {
 import type { ReplyFn } from '../src/chat/types.js'
 import { byokLlmCredentials } from '../src/db/byok-llm-schema.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
+import { llmAdminRoles } from '../src/db/schema.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
 import { defaultDeps, processMessage, resolveAiOutputSettingsContextId } from '../src/llm-orchestrator.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import {
   createMockReply,
   mockLogger,
-  resetSystemConfigCacheForTesting,
+  seedAdminLlmBinding,
   seedCommonTestPlatformInstances,
   setupTestDb,
   flushMicrotasks,
@@ -142,10 +144,12 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
     providerMetadata: undefined,
   })
 
-const buildMockModel: LlmOrchestratorDeps['buildModel'] = ({ llmApiKey, llmBaseUrl, mainModel }) =>
-  realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey: llmApiKey, baseURL: llmBaseUrl })(
-    mainModel,
-  )
+const buildMockModel: LlmOrchestratorDeps['buildModel'] = (config) =>
+  realOpenAICompatible.createOpenAICompatible({
+    name: 'mock-openai',
+    apiKey: config.main.apiKey,
+    baseURL: config.main.baseUrl,
+  })(config.main.model)
 
 import { KaneoClassifiedError } from '../plugins/task-provider-kaneo/classify-error.js'
 import {
@@ -166,7 +170,6 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../src/providers/registry.js'
-import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
 import { KANEO_PLUGIN_WORKSPACE_KEY } from '../src/types/config.js'
@@ -185,11 +188,10 @@ test('AI output settings context resolves thread to parent group', () => {
   )
 })
 
-/** Seed the central LLM config used by every orchestrator call. */
-const seedSystemLlmConfig = (): void => {
-  setSystemConfig('llm_apikey', 'test-key', 'env')
-  setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
-  setSystemConfig('main_model', 'test-model', 'env')
+/** Remove the admin LLM role binding so the resolver reports the bot as unconfigured. */
+const clearAdminLlmBinding = (): void => {
+  getDrizzleDb().delete(llmAdminRoles).run()
+  clearLlmAdminCacheForTesting()
 }
 
 const assignKaneoContext = (contextId: string): void => {
@@ -349,10 +351,10 @@ describe('processMessage', () => {
 
     // Clear caches to ensure clean state
     userCachesForTesting.clear()
-    resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     resetBotMisconfiguredNotifiedForTesting()
 
-    seedSystemLlmConfig()
+    seedAdminLlmBinding()
     seedConfig()
 
     delete process.env['ADMIN_USER_ID']
@@ -397,8 +399,8 @@ describe('processMessage', () => {
       expect(textCalls).toContain('Hello!')
     })
 
-    test('replies with bot-misconfigured when system_config is incomplete', async () => {
-      resetSystemConfigCacheForTesting()
+    test('replies with bot-misconfigured when admin LLM binding is missing', async () => {
+      clearAdminLlmBinding()
 
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm')
@@ -409,7 +411,7 @@ describe('processMessage', () => {
     })
 
     test('bot-misconfigured path does not send typing', async () => {
-      resetSystemConfigCacheForTesting()
+      clearAdminLlmBinding()
 
       const { reply, textCalls, typingCalls } = createReplyWithTypingSpy()
       await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm')
@@ -420,6 +422,7 @@ describe('processMessage', () => {
     })
 
     test('uses complete BYOK config to build the model for the resolved config context', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok'
       seedConfigForContext(configContextId)
       updateByokLlmConfig(
@@ -436,7 +439,7 @@ describe('processMessage', () => {
         },
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildModel: (config) => {
-          buildCalls.push({ apiKey: config.llmApiKey, baseURL: config.llmBaseUrl, model: config.mainModel })
+          buildCalls.push({ apiKey: config.main.apiKey, baseURL: config.main.baseUrl, model: config.main.model })
           return buildMockModel(config)
         },
         resolve: () => null,
@@ -452,6 +455,7 @@ describe('processMessage', () => {
     })
 
     test('passes resolved config context to normal conversation background trim', async () => {
+      seedAdminLlmBinding()
       const storageContextId = toScopedThreadContextId({
         platformInstanceId: 'telegram-secondary',
         nativeContextId: '-1001',
@@ -541,7 +545,8 @@ describe('processMessage', () => {
       })
     })
 
-    test('blocks incomplete BYOK setup before model invocation', async () => {
+    test('gracefully falls back to admin when BYOK is enabled but incomplete', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok-incomplete'
       seedConfigForContext(configContextId)
       enableByokForContext(configContextId, 'admin-1')
@@ -560,12 +565,13 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
 
-      expect(textCalls[0]).toContain('BYOK is enabled for this context')
-      expect(generateCalls).toBe(0)
-      expect(getCachedHistory(CTX_ID)).toHaveLength(0)
+      // Graceful fallback: incomplete BYOK no longer hard-errors; admin config serves the turn.
+      expect(generateCalls).toBe(1)
+      expect(textCalls).toContain('Hello!')
     })
 
     test('blocks unreadable BYOK setup before model invocation', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok-unreadable'
       seedConfigForContext(configContextId)
       insertUnreadableByokConfig(configContextId)
@@ -1613,7 +1619,7 @@ describe('processMessage', () => {
       const { persistIncomingAttachments } = await import('../src/attachments/index.js')
       const attachmentCtx = 'attachment-ctx-multimodal'
       seedConfigForContext(attachmentCtx)
-      setSystemConfig('main_model', 'gpt-4o', 'env')
+      seedAdminLlmBinding('gpt-4o')
 
       const refs = await persistIncomingAttachments({
         contextId: attachmentCtx,
@@ -1667,7 +1673,7 @@ describe('processMessage', () => {
       const { persistIncomingAttachments } = await import('../src/attachments/index.js')
       const ctx = 'attachment-ctx-textmodel'
       seedConfigForContext(ctx)
-      setSystemConfig('main_model', 'llama-3.1-instruct', 'env')
+      seedAdminLlmBinding('llama-3.1-instruct')
 
       const refs = await persistIncomingAttachments({
         contextId: ctx,
@@ -1763,8 +1769,8 @@ describe('processMessage', () => {
   test('callLlm creates a live status, updates it on a tool call, and dismisses it', async () => {
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    resetSystemConfigCacheForTesting()
-    seedSystemLlmConfig()
+    clearLlmAdminCacheForTesting()
+    seedAdminLlmBinding()
     seedConfig()
 
     const created: string[] = []

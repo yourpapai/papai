@@ -85,8 +85,6 @@
     // getTaskProviderProvision is a forward-compat export wired in a downstream
     // task of the plugins deployment safety plan (mirrors getTaskProviderConfigValidator).
     "src/providers/registry.ts": ["exports"],
-    // systemConfigCacheForTesting is a test-only seam.
-    "src/system-config.ts": ["exports"],
     // resetNotifyTokenCacheForTesting is a test-only seam.
     "src/notify-token.ts": ["exports"],
     // resetStatsSaltCacheForTesting is a test-only seam.
@@ -109,9 +107,15 @@
     "src/chat/mattermost/action-signing.ts": ["files"],
     // Mattermost action callback route entry points are created ahead of the web server route wiring.
     "src/chat/mattermost/action-callbacks.ts": ["exports"],
-    // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
-    "src/byok-llm/store.ts": ["files", "exports"],
-    "src/byok-llm/types.ts": ["files", "types"],
+    // clearLlmAdminCacheForTesting is a test-only seam.
+    "src/llm-providers/store.ts": ["exports"],
+    // PROVIDER_TYPE_BASE_URLS + LlmRole are retained for Plan B UI
+    // (provider base-url presets / role iteration); no production consumer yet.
+    "src/llm-providers/types.ts": ["exports", "types"],
+    // Client mirror of the LLM provider schemas: the public API surface the
+    // upcoming fetchers and .svelte sections (multi-provider UI plan, Task 3+)
+    // consume. No production consumer yet; tracked forward-compat, not dead code.
+    "client/settings/fetcher-schemas-llm-providers.ts": ["exports", "types"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
@@ -158,6 +162,9 @@
     "client/settings/fetcher-schemas-mcp-catalog.ts": ["types"],
     "client/settings/fetcher-schemas-mcp-plugin-servers.ts": ["types"],
     "client/settings/fetchers.ts": ["exports"],
+    // BYOK multi-provider action fetchers consumed by the upcoming multi-provider
+    // .svelte sections (multi-provider UI plan, Task 5+); knip can't follow .svelte imports.
+    "client/settings/byok-provider-fetchers.ts": ["files", "exports"],
     "client/settings/coding-credentials-fetchers.ts": ["exports"],
     "client/settings/admin-fetchers.ts": ["exports"],
     "client/settings/release-fetchers.ts": ["exports"],

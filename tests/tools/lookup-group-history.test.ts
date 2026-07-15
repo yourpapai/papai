@@ -15,7 +15,8 @@ import {
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
 import { appendHistory } from '../../src/history.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.js'
+import { mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 type GenerateTextResult = {
   text: string
@@ -32,7 +33,6 @@ let builtModelCalls: Array<{ apiKey: string; baseUrl: string; modelName: string 
 describe('makeLookupGroupHistoryTool', () => {
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
     await setupTestDb()
     builtModelCalls = []
 
@@ -111,7 +111,6 @@ describe('makeLookupGroupHistoryTool', () => {
 describe('executeLookupGroupHistory', () => {
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
     await setupTestDb()
     builtModelCalls = []
 
@@ -156,7 +155,7 @@ describe('executeLookupGroupHistory', () => {
 describe('executeLookupGroupHistory with history', () => {
   beforeEach(async () => {
     mockLogger()
-    resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     await setupTestDb()
     builtModelCalls = []
 
@@ -199,7 +198,8 @@ describe('executeLookupGroupHistory with history', () => {
     expect(result).toBe('The team decided to use REST for the API.')
   })
 
-  it('uses BYOK small model for the enabled main group context without global config', async () => {
+  it('uses BYOK small model for the enabled main group context (overriding admin)', async () => {
+    seedAdminLlmBinding()
     const { executeLookupGroupHistory } = await import('../../src/tools/lookup-group-history.js')
     const groupId = 'group-byok-history'
     updateByokLlmConfig(

@@ -10,6 +10,7 @@ import { isGroupMember } from '../../../src/groups.js'
 import { getContextSettings } from '../../../src/instances/context-store.js'
 import { getPlatformInstance } from '../../../src/instances/platform-store.js'
 import { getTaskInstance } from '../../../src/instances/task-store.js'
+import { getAdminRoleBindings } from '../../../src/llm-providers/store.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { getPluginAdminState } from '../../../src/plugins/store.js'
 import {
@@ -21,7 +22,6 @@ import {
 import { TaskProviderResolver } from '../../../src/providers/resolver.js'
 import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
 import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
-import { getSystemConfig, isSystemConfigComplete } from '../../../src/system-config.js'
 import { isAuthorized } from '../../../src/users.js'
 import {
   SCENARIO_CONTEXT_ID,
@@ -144,10 +144,9 @@ describe('scenario fixtures', () => {
     await fixtures.setupDatabase()
     fixtures.seedSystemLlmConfig()
 
-    expect(isSystemConfigComplete()).toBe(true)
-    expect(getSystemConfig('llm_apikey')).toBe('scenario-api-key')
-    expect(getSystemConfig('llm_baseurl')).toBe('https://llm.invalid/v1')
-    expect(getSystemConfig('main_model')).toBe('scenario-main-model')
+    const bindings = getAdminRoleBindings()
+    expect(bindings).not.toBeNull()
+    expect(bindings!.main.model).toBe('scenario-main-model')
   })
 
   test('approves a valid discovered plugin through the real registry and store', async () => {
@@ -171,7 +170,7 @@ describe('scenario fixtures', () => {
 
     expect(getPlatformInstance(SCENARIO_PLATFORM_INSTANCE_ID)).toBeNull()
     expect(pluginRegistry.getAllEntries()).toEqual([])
-    expect(isSystemConfigComplete()).toBe(false)
+    expect(getAdminRoleBindings()).toBeNull()
   })
 
   test('parses an opaque settings session and builds authenticated write headers', async () => {
