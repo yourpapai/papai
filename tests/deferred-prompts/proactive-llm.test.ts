@@ -19,6 +19,7 @@ import type { DeferredExecutionContext } from '../../src/deferred-prompts/proact
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
+import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { loadFacts } from '../../src/memory.js'
 import { setSystemConfig } from '../../src/system-config.js'
@@ -59,6 +60,19 @@ const containsFact = (
   )
 
 const USER_ID = 'exec-mode-user'
+
+/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
+const seedAdminLlmBinding = (): void => {
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
+    'admin',
+  )
+  setAdminRoleBindings(
+    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
+    'admin',
+  )
+}
+
 function makeExecCtx(): DeferredExecutionContext {
   return {
     createdByUserId: USER_ID,
@@ -121,6 +135,7 @@ describe('dispatchExecution', () => {
   beforeEach(async () => {
     mockLogger()
     resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     generateTextCalls.length = 0
     buildModelCalls.length = 0
     generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
@@ -371,7 +386,8 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.model).toContain('main-model')
     })
 
-    test('uses complete BYOK config for full generation without global config', async () => {
+    test('uses complete BYOK config for full generation (overriding admin)', async () => {
+      seedAdminLlmBinding()
       setConfig(USER_ID, 'timezone', 'UTC')
       updateByokLlmConfig(
         USER_ID,
@@ -545,6 +561,7 @@ describe('dispatchExecution', () => {
     })
 
     test('full mode background trim uses scoped main config context instead of thread storage', async () => {
+      seedAdminLlmBinding()
       setConfig(USER_ID, 'timezone', 'UTC')
       const scopedThreadContextId = toScopedThreadContextId({
         platformInstanceId: 'telegram-secondary',

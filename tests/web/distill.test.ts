@@ -8,8 +8,21 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { llmUsageEvents } from '../../src/db/schema.js'
+import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { setSystemConfig } from '../../src/system-config.js'
 import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+
+/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
+const seedAdminLlmBinding = (): void => {
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
+    'admin',
+  )
+  setAdminRoleBindings(
+    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
+    'admin',
+  )
+}
 
 const MAX_EXCERPT_CHARS = 8_000
 
@@ -66,6 +79,7 @@ describe('distillWebContent', () => {
   beforeEach(async () => {
     mockLogger()
     resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     await setupTestDb()
     ;({ distillWebContent } = await import('../../src/web/distill.js'))
   })
@@ -141,7 +155,8 @@ describe('distillWebContent', () => {
     expect(result.excerpt).toBe('B'.repeat(MAX_EXCERPT_CHARS))
   })
 
-  test('uses BYOK small model for context distillation without global config', async () => {
+  test('uses BYOK small model for context distillation (overriding admin)', async () => {
+    seedAdminLlmBinding()
     const runDistill = getDistillWebContent(distillWebContent)
     updateByokLlmConfig(
       'ctx-distill-byok',

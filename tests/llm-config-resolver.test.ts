@@ -5,10 +5,10 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { disableByokForContext, enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store.js'
 import { byokLlmCredentials } from '../src/db/byok-llm-schema.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { resolveEffectiveLlmConfig } from '../src/llm-config-resolver.js'
+import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../src/llm-providers/store.js'
 import { setSystemConfig } from '../src/system-config.js'
 import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
@@ -17,7 +17,29 @@ beforeEach(async () => {
   process.env['INSTANCE_CONFIG_KEY'] = 'd'.repeat(64)
   await setupTestDb()
   resetSystemConfigCacheForTesting()
+  clearLlmAdminCacheForTesting()
 })
+
+/** Seed a baseline admin registry so the adapter delegates to the new per-role resolver. */
+const seedAdmin = (): { main: string; small: string } => {
+  const main = createLlmProvider(
+    { label: 'admin-openai', providerType: 'openai', baseUrl: 'https://admin/v1', apiKey: 'sk-admin' },
+    'admin',
+  )
+  const small = createLlmProvider(
+    { label: 'admin-small', providerType: 'custom', baseUrl: 'https://admin-small/v1', apiKey: 'sk-admin-small' },
+    'admin',
+  )
+  setAdminRoleBindings(
+    {
+      main: { providerId: main.id, model: 'gpt-main' },
+      small: { providerId: small.id, model: 'gpt-small' },
+      embedding: { providerId: main.id, model: 'text-embed' },
+    },
+    'admin',
+  )
+  return { main: main.id, small: small.id }
+}
 
 const seedGlobal = (): void => {
   setSystemConfig('llm_apikey', 'sk-global', 'env')
@@ -27,58 +49,32 @@ const seedGlobal = (): void => {
   setSystemConfig('embedding_model', 'global-embed', 'env')
 }
 
-describe('resolveEffectiveLlmConfig', () => {
-  test('returns global config when BYOK has no row or is disabled', () => {
-    seedGlobal()
-    disableByokForContext('ctx-disabled', 'admin-1')
-
-    const expectedGlobal = {
+describe('resolveEffectiveLlmConfig — adapter over per-role resolver', () => {
+  test('maps new per-role result back to the legacy single-cred shape (source from main)', () => {
+    seedAdmin()
+    const r = resolveEffectiveLlmConfig('ctx-no-byok')
+    expect(r).toEqual({
       ok: true,
       source: 'global',
-      llmApiKey: 'sk-global',
-      llmBaseUrl: 'https://global.invalid/v1',
-      mainModel: 'global-main',
-      smallModel: 'global-small',
-      embeddingModel: 'global-embed',
-    } as const
-
-    expect(resolveEffectiveLlmConfig('ctx-no-row')).toEqual(expectedGlobal)
-    expect(resolveEffectiveLlmConfig('ctx-disabled')).toEqual(expectedGlobal)
-  })
-
-  test('returns complete BYOK config with optional model fallback to BYOK main', () => {
-    seedGlobal()
-    updateByokLlmConfig(
-      'ctx-byok',
-      { llm_apikey: 'sk-byok', llm_baseurl: 'https://byok.invalid/v1', main_model: 'byok-main' },
-      'user-1',
-    )
-
-    expect(resolveEffectiveLlmConfig('ctx-byok')).toEqual({
-      ok: true,
-      source: 'byok',
-      llmApiKey: 'sk-byok',
-      llmBaseUrl: 'https://byok.invalid/v1',
-      mainModel: 'byok-main',
-      smallModel: 'byok-main',
-      embeddingModel: 'byok-main',
+      llmApiKey: 'sk-admin',
+      llmBaseUrl: 'https://admin/v1',
+      mainModel: 'gpt-main',
+      smallModel: 'gpt-small',
+      embeddingModel: 'text-embed',
     })
   })
 
-  test('returns BYOK missing result without global fallback', () => {
-    seedGlobal()
-    enableByokForContext('ctx-missing', 'admin-1')
-
-    expect(resolveEffectiveLlmConfig('ctx-missing')).toEqual({
+  test('reports missing when there is no admin binding AND no legacy system_config', () => {
+    expect(resolveEffectiveLlmConfig('ctx-no-row')).toEqual({
       ok: false,
       type: 'missing',
-      source: 'byok',
+      source: 'global',
       missing: ['llm_apikey', 'llm_baseurl', 'main_model'],
     })
   })
 
-  test('returns BYOK error result for unreadable encrypted payload', () => {
-    seedGlobal()
+  test('propagates an unreadable BYOK blob as an error (only hard BYOK failure)', () => {
+    seedAdmin()
     getDrizzleDb()
       .insert(byokLlmCredentials)
       .values({
@@ -98,10 +94,22 @@ describe('resolveEffectiveLlmConfig', () => {
     })
   })
 
-  test('returns global missing result when required global keys are missing', () => {
-    setSystemConfig('small_model', 'global-small', 'env')
-    setSystemConfig('embedding_model', 'global-embed', 'env')
+  test('legacy fallback: with NO admin binding but WITH system_config keys, returns the legacy global shape', () => {
+    seedGlobal()
+    // No admin binding seeded — proves the fresh-deploy bridge still works.
+    expect(resolveEffectiveLlmConfig('ctx-fresh-deploy')).toEqual({
+      ok: true,
+      source: 'global',
+      llmApiKey: 'sk-global',
+      llmBaseUrl: 'https://global.invalid/v1',
+      mainModel: 'global-main',
+      smallModel: 'global-small',
+      embeddingModel: 'global-embed',
+    })
+  })
 
+  test('legacy fallback reports the missing global keys when system_config is incomplete', () => {
+    setSystemConfig('small_model', 'global-small', 'env')
     expect(resolveEffectiveLlmConfig('ctx-no-row')).toEqual({
       ok: false,
       type: 'missing',

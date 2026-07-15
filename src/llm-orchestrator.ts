@@ -27,6 +27,7 @@ import {
 import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import { getAdminRoleBindings } from './llm-providers/store.js'
 import { logger } from './logger.js'
 import { maybeAutoProvisionProvider } from './providers/auto-provision.js'
 import { ensureWorkspaceMember } from './providers/membership/index.js'
@@ -35,7 +36,6 @@ import type { TaskProvider } from './providers/types.js'
 import { runRegistry } from './run-control/registry.js'
 import { buildStopSummary } from './run-control/summary.js'
 import { RunAbortedError, type InjectedMessage } from './run-control/types.js'
-import { missingSystemConfigKeys } from './system-config.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
 
@@ -88,14 +88,14 @@ const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId:
 let botMisconfiguredNotified = false
 
 const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise<void> => {
-  const missing = missingSystemConfigKeys()
-  log.error({ contextId, missing }, 'system_config is incomplete; bot cannot serve this turn')
+  const configured = getAdminRoleBindings() !== null
+  log.error({ contextId, configured }, 'admin LLM provider registry is incomplete; bot cannot serve this turn')
   await reply.text(
     '⚠️ The bot is not fully configured. Ask the administrator to run /config and complete setup in the web UI.',
   )
   if (!botMisconfiguredNotified) {
     botMisconfiguredNotified = true
-    log.warn({ missing }, 'admin notification suppressed for subsequent turns in this process')
+    log.warn({ configured }, 'admin notification suppressed for subsequent turns in this process')
   }
 }
 

@@ -16,6 +16,7 @@ import { closeMigrationDbInstance, initDb } from '../db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-router-runtime.js'
 import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
+import { primeLlmAdminCache } from '../llm-providers/store.js'
 import { logger } from '../logger.js'
 import { cancelAndDrainPendingMemoryCaptures } from '../long-term-memory/capture-debounce.js'
 import { initializeMessageCache } from '../message-cache/index.js'
@@ -52,6 +53,7 @@ function startDatabase(): void {
     process.exit(1)
   }
   seedSystemConfigFromEnv()
+  primeLlmAdminCache()
   const bootstrapResult = bootstrapInstancesFromEnv()
   log.info({ bootstrapResult }, 'instance bootstrap evaluated')
   const missing = missingSystemConfigKeys()

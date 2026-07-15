@@ -21,6 +21,7 @@ import { getDrizzleDb } from '../src/db/drizzle.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
 import { defaultDeps, processMessage, resolveAiOutputSettingsContextId } from '../src/llm-orchestrator.js'
+import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../src/llm-providers/store.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -192,6 +193,18 @@ const seedSystemLlmConfig = (): void => {
   setSystemConfig('main_model', 'test-model', 'env')
 }
 
+/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
+const seedAdminLlmBinding = (): void => {
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
+    'admin',
+  )
+  setAdminRoleBindings(
+    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
+    'admin',
+  )
+}
+
 const assignKaneoContext = (contextId: string): void => {
   const taskInstanceId = `${contextId}-kaneo`
   if (getTaskInstance(taskInstanceId) === null) {
@@ -350,6 +363,7 @@ describe('processMessage', () => {
     // Clear caches to ensure clean state
     userCachesForTesting.clear()
     resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     resetBotMisconfiguredNotifiedForTesting()
 
     seedSystemLlmConfig()
@@ -420,6 +434,7 @@ describe('processMessage', () => {
     })
 
     test('uses complete BYOK config to build the model for the resolved config context', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok'
       seedConfigForContext(configContextId)
       updateByokLlmConfig(
@@ -452,6 +467,7 @@ describe('processMessage', () => {
     })
 
     test('passes resolved config context to normal conversation background trim', async () => {
+      seedAdminLlmBinding()
       const storageContextId = toScopedThreadContextId({
         platformInstanceId: 'telegram-secondary',
         nativeContextId: '-1001',
@@ -541,7 +557,8 @@ describe('processMessage', () => {
       })
     })
 
-    test('blocks incomplete BYOK setup before model invocation', async () => {
+    test('gracefully falls back to admin when BYOK is enabled but incomplete', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok-incomplete'
       seedConfigForContext(configContextId)
       enableByokForContext(configContextId, 'admin-1')
@@ -560,12 +577,13 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm', configContextId, deps)
 
-      expect(textCalls[0]).toContain('BYOK is enabled for this context')
-      expect(generateCalls).toBe(0)
-      expect(getCachedHistory(CTX_ID)).toHaveLength(0)
+      // Graceful fallback: incomplete BYOK no longer hard-errors; admin config serves the turn.
+      expect(generateCalls).toBe(1)
+      expect(textCalls).toContain('Hello!')
     })
 
     test('blocks unreadable BYOK setup before model invocation', async () => {
+      seedAdminLlmBinding()
       const configContextId = 'cfg-byok-unreadable'
       seedConfigForContext(configContextId)
       insertUnreadableByokConfig(configContextId)

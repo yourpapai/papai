@@ -15,7 +15,20 @@ import {
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
 import { appendHistory } from '../../src/history.js'
+import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
+
+/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
+const seedAdminLlmBinding = (): void => {
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
+    'admin',
+  )
+  setAdminRoleBindings(
+    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
+    'admin',
+  )
+}
 
 type GenerateTextResult = {
   text: string
@@ -157,6 +170,7 @@ describe('executeLookupGroupHistory with history', () => {
   beforeEach(async () => {
     mockLogger()
     resetSystemConfigCacheForTesting()
+    clearLlmAdminCacheForTesting()
     await setupTestDb()
     builtModelCalls = []
 
@@ -199,7 +213,8 @@ describe('executeLookupGroupHistory with history', () => {
     expect(result).toBe('The team decided to use REST for the API.')
   })
 
-  it('uses BYOK small model for the enabled main group context without global config', async () => {
+  it('uses BYOK small model for the enabled main group context (overriding admin)', async () => {
+    seedAdminLlmBinding()
     const { executeLookupGroupHistory } = await import('../../src/tools/lookup-group-history.js')
     const groupId = 'group-byok-history'
     updateByokLlmConfig(

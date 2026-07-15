@@ -11,12 +11,25 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import * as cacheModule from '../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
+import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../src/llm-providers/store.js'
 import { logger } from '../src/logger.js'
 import * as longTermMemoryStore from '../src/long-term-memory/store.js'
 import { saveMemoryProfile, saveMemoryRecord } from '../src/long-term-memory/store.js'
 import type { MemoryRecordInput } from '../src/long-term-memory/types.js'
 import * as systemConfigModule from '../src/system-config.js'
 import { flushMicrotasks, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
+
+/** Seed a baseline admin binding so the adapter delegates to the new per-role resolver. */
+const seedAdminLlmBinding = (): void => {
+  const provider = createLlmProvider(
+    { label: 'admin', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
+    'admin',
+  )
+  setAdminRoleBindings(
+    { main: { providerId: provider.id, model: 'admin-main' }, small: null, embedding: null },
+    'admin',
+  )
+}
 
 // Helper type for spy instances that need cleanup
 type SpyInstance = { mockRestore: () => void }
@@ -354,6 +367,7 @@ describe('runTrimInBackground', () => {
 
   beforeEach(async () => {
     await setupTestDb()
+    clearLlmAdminCacheForTesting()
     resetSystemConfigCacheForTesting()
     generateTextImpl = defaultGenerateTextImpl
     mockSummaries.clear()
@@ -423,7 +437,8 @@ describe('runTrimInBackground', () => {
     expect(mockSummaries.get('user1')).toBe('Updated summary text')
   })
 
-  test('uses BYOK small model for supplied config context', async () => {
+  test('uses BYOK small model for supplied config context (overriding admin)', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [
       { role: 'user', content: 'Hello' },
       { role: 'assistant', content: 'Hi' },
@@ -467,15 +482,11 @@ describe('runTrimInBackground', () => {
     expect(mockSummaries.get('user1')).toBe('Updated summary text')
   })
 
-  test('skips incomplete BYOK without falling back to global config or mutating history', async () => {
+  test('falls back to admin config when BYOK is enabled but incomplete (graceful fallback)', async () => {
+    seedAdminLlmBinding()
     const history: ModelMessage[] = [{ role: 'user', content: 'Hello' }]
     mockHistories.set('user1', [...history])
     enableByokForContext('ctx-byok-incomplete-trim', 'admin-1')
-    resetSystemConfigCacheForTesting()
-    systemConfigModule.setSystemConfig('llm_apikey', 'sk-global-trim', 'env')
-    systemConfigModule.setSystemConfig('llm_baseurl', 'https://global-trim.invalid/v1', 'env')
-    systemConfigModule.setSystemConfig('main_model', 'global-main-trim', 'env')
-    systemConfigModule.setSystemConfig('small_model', 'global-small-trim', 'env')
     let historyWrites = 0
 
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
@@ -490,9 +501,11 @@ describe('runTrimInBackground', () => {
     await runTrimInBackground('user1', history, undefined, 'ctx-byok-incomplete-trim')
     await flushMicrotasks()
 
-    expect(modelBuildCalls).toHaveLength(0)
-    expect(historyWrites).toBe(0)
-    expect(mockHistories.get('user1')).toEqual(history)
+    // Graceful fallback: admin config is used, so a trim does run (not blocked).
+    expect(modelBuildCalls).toEqual([
+      { apiKey: 'sk-admin', baseUrl: 'https://admin.invalid/v1', modelName: 'admin-main' },
+    ])
+    expect(historyWrites).toBe(1)
   })
 
   test('preserves new messages added during async trim', async () => {
