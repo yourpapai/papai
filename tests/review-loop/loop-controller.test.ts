@@ -39,7 +39,7 @@ function extractOutputPath(prompt: string): string | null {
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean }>
-  onFixer?: (cwd: string, callIndex: number) => Promise<void>
+  onFixer?: (cwd: string, callIndex: number) => Promise<void> | void
 }): SpawnFn {
   let reviewerCall = 0
   let fixerCall = 0
@@ -93,6 +93,7 @@ async function setupGitRepo(repoPath: string): Promise<void> {
   await execGit(repoPath, ['init'])
   await execGit(repoPath, ['config', 'user.email', 'test@test.com'])
   await execGit(repoPath, ['config', 'user.name', 'Test'])
+  writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
   writeFileSync(path.join(repoPath, 'README.md'), 'hello')
   await execGit(repoPath, ['add', '.'])
   await execGit(repoPath, ['commit', '-m', 'init'])
@@ -225,5 +226,40 @@ describe('runReviewLoop', () => {
     expect(result.doneReason).toBe('no_progress')
     const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
     expect(headAfter).toBe(baselineSha)
+  })
+
+  test('auto-commits uncommitted fixer changes to prevent silent loss on merge', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], []],
+        fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'export const fixed = true\n')
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+    })
+
+    expect(result.doneReason).toBe('clean')
+    const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    expect(headAfter).not.toBe(baselineSha)
+    const status = (await execGit(runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
+    expect(status).toBe('')
+    const committed = (await execGit(runState.worktreePath, ['show', 'HEAD:fixed.ts'])).stdout
+    expect(committed).toContain('export const fixed = true')
   })
 })

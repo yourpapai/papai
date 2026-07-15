@@ -18,7 +18,7 @@ import {
 import { matchIssues } from './issue-matcher.js'
 import { FixerResultSchema, ReviewerIssuesSchema } from './issue-schema.js'
 import type { FixerResult, ReviewerIssue } from './issue-schema.js'
-import { formatDuration } from './live-renderer.js'
+import { formatDuration, withLivePhase } from './live-renderer.js'
 import type { ProgressReporter } from './progress-log.js'
 import { buildFixPrompt, buildReviewPrompt, buildRetryFixPrompt } from './prompt-templates.js'
 import { saveRunState, type RunState } from './run-state.js'
@@ -60,30 +60,6 @@ function terminalResult(
   return { doneReason, rounds: round, ledger: deps.ledger.snapshot }
 }
 
-async function withLivePhase<T>(
-  reporter: ProgressReporter,
-  label: string,
-  fn: () => Promise<T>,
-): Promise<{ result: T; durationMs: number }> {
-  reporter.event(`[${label}] running...`)
-  const start = Date.now()
-  let timer: ReturnType<typeof setInterval> | null = null
-  if (reporter.dynamic) {
-    timer = setInterval(() => {
-      reporter.live(`[${label}] ${formatDuration(Date.now() - start)}...`)
-    }, 1000)
-  }
-  try {
-    const result = await fn()
-    return { result, durationMs: Date.now() - start }
-  } finally {
-    if (timer !== null) {
-      clearInterval(timer)
-    }
-    reporter.clearLive()
-  }
-}
-
 function runFixer(deps: ReviewLoopDeps, prompt: string, label: string): Promise<FixerResult> {
   return runAgent({
     spawn: deps.spawn,
@@ -122,8 +98,9 @@ async function retryFixAfterBuildFailure(
   const retryBuild = retryPhase.result
 
   if (retryBuild.passed) {
+    await ensureFixerChangesCommitted(deps, record, baselineSha)
     recordFixAttempt(deps.ledger, record.id)
-    deps.log.log(`[fix] "${shortTitle(record)}" → fixed (after retry)`)
+    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed (after retry)`)
     return true
   }
 
@@ -136,6 +113,24 @@ async function retryFixAfterBuildFailure(
   })
   deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (build failed)`)
   return false
+}
+
+async function ensureFixerChangesCommitted(
+  deps: ReviewLoopDeps,
+  record: LedgerIssueRecord,
+  baselineSha: string,
+): Promise<void> {
+  const headSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+  if (headSha !== baselineSha) {
+    return
+  }
+  const status = (await execGit(deps.runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
+  if (status.length === 0) {
+    return
+  }
+  await execGit(deps.runState.worktreePath, ['add', '-A'])
+  await execGit(deps.runState.worktreePath, ['commit', '-m', `fix(review-loop): ${record.issue.title}`])
+  deps.log.log(`[fix] "${shortTitle(record)}" \u2192 auto-committed uncommitted changes`)
 }
 
 async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Promise<{ fixed: boolean }> {
@@ -170,8 +165,9 @@ async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Pr
   const buildResult = buildPhase.result
 
   if (buildResult.passed) {
+    await ensureFixerChangesCommitted(deps, record, baselineSha)
     recordFixAttempt(deps.ledger, record.id)
-    deps.log.log(`[fix] "${shortTitle(record)}" → fixed`)
+    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed`)
     return { fixed: true }
   }
 
