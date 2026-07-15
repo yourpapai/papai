@@ -51,6 +51,7 @@ export type ChatCapability =
   | 'messages.delete'
   | 'messages.ephemeral'
   | 'messages.files'
+  | 'messages.reactions'
   | 'messages.redact'
   | 'messages.reply-context'
   | 'files.receive'
@@ -280,4 +281,12 @@ export type ChatProvider = {
     target: DeferredDeliveryTarget,
     markdown: string,
   ) => Promise<string | null>
+  /** Sets or clears a reaction on an existing message. `emoji: null` clears; `previousEmoji` allows swapping in one call. */
+  setReaction: (
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    messageId: string,
+    emoji: string | null,
+    previousEmoji?: string | null,
+  ) => Promise<boolean>
 }>

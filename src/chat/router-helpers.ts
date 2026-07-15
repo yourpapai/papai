@@ -241,6 +241,20 @@ export const sendProactiveReturningIdForManagedInstance = async (
   return { delivered: result !== false, messageId: null }
 }
 
+/** Sets or clears a reaction through the named instance; no-ops (returns false) when unsupported or unknown. */
+export const setReactionForManagedInstance = (
+  instances: Map<string, ManagedChatInstance>,
+  platformInstanceId: string,
+  target: DeferredDeliveryTarget,
+  messageId: string,
+  emoji: string | null,
+  previousEmoji?: string | null,
+): Promise<boolean> => {
+  const instance = instances.get(platformInstanceId)
+  if (instance === undefined || typeof instance.provider.setReaction !== 'function') return Promise.resolve(false)
+  return instance.provider.setReaction(platformInstanceId, target, messageId, emoji, previousEmoji ?? null)
+}
+
 /** Wraps `handler` so the instance's own `id` is stamped onto every command invocation, then registers it. */
 export const registerCommandForManagedInstance = (
   instance: ManagedChatInstance,

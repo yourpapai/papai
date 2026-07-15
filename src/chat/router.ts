@@ -26,6 +26,7 @@ import {
   routedMessageHandler,
   sendMessageForManagedInstance,
   sendProactiveReturningIdForManagedInstance,
+  setReactionForManagedInstance,
   stopManagedInstanceSafely,
   threadCapabilitiesForManagedInstances,
   traitsForManagedInstance,
@@ -66,11 +67,9 @@ export class ChatRouter implements ChatProvider {
   get threadCapabilities(): ThreadCapabilities {
     return threadCapabilitiesForManagedInstances(this.instances.values())
   }
-
   get capabilities(): ReadonlySet<ChatCapability> {
     return new Set(this.activeInstances().flatMap((instance) => Array.from(instance.provider.capabilities)))
   }
-
   get traits(): ChatProviderTraits {
     return traitsForManagedInstances(this.instances.values())
   }
@@ -215,11 +214,19 @@ export class ChatRouter implements ChatProvider {
       markdown,
     )
   }
-
+  /** Sets or clears a reaction on an existing message. Router-only; no-ops when the target provider lacks support. */
+  setReaction(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    messageId: string,
+    emoji: string | null,
+    previousEmoji?: string | null,
+  ): Promise<boolean> {
+    return setReactionForManagedInstance(this.instances, platformInstanceId, target, messageId, emoji, previousEmoji)
+  }
   renderContext(snapshot: ContextSnapshot): ContextRendered {
     return renderContextFromManagedInstances(this.instances.values(), snapshot)
   }
-
   renderContextForInstance(platformInstanceId: string, snapshot: ContextSnapshot): ContextRendered {
     return renderContextForManagedInstance(
       this.instances.get(platformInstanceId),
@@ -234,14 +241,12 @@ export class ChatRouter implements ChatProvider {
       this.activeInstances().map((instance) => limit(() => this.setCommandsForInstance(instance, adminUserId))),
     )
   }
-
   getInstanceTraits(platformInstanceId: string): ChatProviderTraits | null {
     return traitsForManagedInstance(this.instances.get(platformInstanceId))
   }
   getPlatformInstanceCapabilities(platformInstanceId: string): ReadonlySet<ChatCapability> {
     return capabilitiesForManagedInstance(this.instances.get(platformInstanceId))
   }
-
   downloadFileFromInstance(
     platformInstanceId: string,
     sourceProvider: AttachmentSourceProvider,
@@ -249,29 +254,24 @@ export class ChatRouter implements ChatProvider {
   ): Promise<Buffer | null> {
     return downloadFileFromManagedInstance(this.instances.get(platformInstanceId), sourceProvider, fileId)
   }
-
   resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
     const provider = providerForResolveContext(this.instances, context)
     if (provider === null) return Promise.resolve(null)
     if (provider.resolveUserId === undefined) return Promise.resolve(null)
     return provider.resolveUserId(username, context)
   }
-
   resolveUserLabel(userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
     const provider = context === undefined ? null : providerForResolveContext(this.instances, context)
     if (provider === null) return Promise.resolve(null)
     if (provider.resolveUserLabel === undefined) return Promise.resolve(null)
     return provider.resolveUserLabel(userId, context)
   }
-
   resolveGroupLabel(groupId: string): Promise<string | null> {
     return resolveGroupLabelForManagedInstance(this.instances, groupId)
   }
-
   isGroupAdmin(platformInstanceId: string, groupId: string, userId: string): Promise<boolean | null> {
     return isGroupAdminForManagedInstance(this.instances.get(platformInstanceId), platformInstanceId, groupId, userId)
   }
-
   private activeInstances(): ManagedChatInstance[] {
     return activeManagedInstances(this.instances.values())
   }
