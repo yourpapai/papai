@@ -112,6 +112,9 @@
     // BYOK store is created ahead of settings route integration in the BYOK LLM credentials plan.
     "src/byok-llm/store.ts": ["files", "exports"],
     "src/byok-llm/types.ts": ["files", "types"],
+    // Multi-provider domain types are created ahead of the store/codec/resolver
+    // tasks in the multi-provider LLM backend plan; no production importer exists yet.
+    "src/llm-providers/types.ts": ["files", "types"],
     // partitionToolNames is a test-only seam.
     "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
