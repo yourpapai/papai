@@ -23,10 +23,25 @@ describe('run-state', () => {
     expect(state.runId).toBeDefined()
     expect(state.currentRound).toBe(0)
     expect(state.noProgressRounds).toBe(0)
-    expect(state.worktreePath).toBe(path.join(config.workDir, 'worktree'))
+    expect(state.worktreePath).toBe(path.join(config.workDir, 'worktrees', state.runId))
     expect(state.ledgerPath).toBe(path.join(state.runDir, 'ledger.json'))
     expect(state.issuesPath).toBe(path.join(state.runDir, 'issues.json'))
     expect(existsSync(state.statePath)).toBe(true)
+  })
+
+  test('worktreePath is per-run so distinct runs are isolated and resumable', async () => {
+    const repoRoot = makeTempDir('run-state-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+
+    const first = await createRunState(config, planPath)
+    const second = await createRunState(config, planPath)
+
+    expect(first.worktreePath).not.toBe(second.worktreePath)
+
+    const reloadedFirst = await loadRunState(config.workDir, first.runId)
+    expect(reloadedFirst.worktreePath).toBe(first.worktreePath)
+    expect(reloadedFirst.worktreePath).toBe(path.join(config.workDir, 'worktrees', first.runId))
   })
 
   test('saveRunState + loadRunState round-trips persisted fields', async () => {

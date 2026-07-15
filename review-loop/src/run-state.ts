@@ -44,7 +44,7 @@ export async function createRunState(config: ReviewLoopConfig, planPath: string)
   const state: RunState = {
     runId,
     runDir,
-    worktreePath: path.join(config.workDir, 'worktree'),
+    worktreePath: path.join(config.workDir, 'worktrees', runId),
     ledgerPath: path.join(runDir, 'ledger.json'),
     issuesPath: path.join(runDir, 'issues.json'),
     resultPath: path.join(runDir, 'result.json'),
@@ -69,7 +69,7 @@ export async function loadRunState(workDir: string, runId: string): Promise<RunS
   return {
     ...persisted,
     runDir,
-    worktreePath: path.join(workDir, 'worktree'),
+    worktreePath: path.join(workDir, 'worktrees', runId),
     ledgerPath: path.join(runDir, 'ledger.json'),
     issuesPath: path.join(runDir, 'issues.json'),
     resultPath: path.join(runDir, 'result.json'),
