@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { LlmRoleBindingsSchema, PublicProviderAccountSchema } from './fetcher-schemas-llm-providers.js'
 import { AdminMcpCatalogEntrySchema } from './fetcher-schemas-mcp-catalog.js'
 import { StoredConfigValueSchema } from './fetcher-schemas-shared.js'
 
@@ -48,6 +49,14 @@ export const ByokResponseSchema = z.object({
   unreadable: z.literal(true).optional(),
   error: z.string().optional(),
   fields: z.array(ByokFieldSchema),
+  // v2 multi-provider extension. Optional with defaults so older server
+  // responses that don't include these fields still parse cleanly.
+  providers: z.array(PublicProviderAccountSchema).default([]),
+  roles: LlmRoleBindingsSchema.default({
+    main: { providerId: '', model: '' },
+    small: null,
+    embedding: null,
+  }),
 })
 export type ByokField = z.infer<typeof ByokFieldSchema>
 export type ByokResponse = z.infer<typeof ByokResponseSchema>
