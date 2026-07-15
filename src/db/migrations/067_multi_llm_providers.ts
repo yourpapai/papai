@@ -13,19 +13,17 @@ const log = logger.child({ scope: 'migration:067' })
 type LegacyRow = { key: string; value: string }
 type CountRow = { c: number }
 
-const legacyKeys = (): readonly string[] => [
-  'llm_apikey',
-  'llm_baseurl',
-  'main_model',
-  'small_model',
-  'embedding_model',
-]
+const LEGACY_KEYS = ['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model'] as const
 
 const readLegacy = (db: Database): Record<string, string> => {
-  const rows = db.query<LegacyRow, []>(`SELECT key, value FROM system_config`).all()
+  const rows = db
+    .query<LegacyRow, [string, string, string, string, string]>(
+      `SELECT key, value FROM system_config WHERE key IN (?, ?, ?, ?, ?)`,
+    )
+    .all(...LEGACY_KEYS)
   const out: Record<string, string> = {}
   for (const row of rows) {
-    if (legacyKeys().includes(row.key)) out[row.key] = row.value
+    out[row.key] = row.value
   }
   return out
 }
@@ -61,6 +59,7 @@ const createTables = (db: Database): void => {
       updated_by TEXT NOT NULL
     )
   `)
+  log.info('migration 067: tables created')
 }
 
 const migrateLegacyConfig = (db: Database, legacy: Record<string, string>): void => {
@@ -71,7 +70,7 @@ const migrateLegacyConfig = (db: Database, legacy: Record<string, string>): void
     return
   }
 
-  const id = `prov_legacy_${Math.random().toString(36).slice(2, 10)}`
+  const id = `prov_legacy_${crypto.randomUUID()}`
   const now = Date.now()
   const smallModel = has('small_model') ? legacy['small_model']! : null
 
@@ -108,7 +107,7 @@ const migrateLegacyConfig = (db: Database, legacy: Record<string, string>): void
 }
 
 const deleteLegacyKeys = (db: Database): void => {
-  for (const key of legacyKeys()) {
+  for (const key of LEGACY_KEYS) {
     db.run(`DELETE FROM system_config WHERE key = ?`, [key])
   }
 }
