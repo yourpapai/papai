@@ -9,6 +9,7 @@ import path from 'node:path'
 
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
+import type { TraceEvent, TraceLogger } from '../../review-loop/src/trace-log.js'
 
 const tempDirs: string[] = []
 
@@ -59,5 +60,13 @@ export function silentReporter(): ProgressReporter {
     live() {},
     clearLive() {},
     log() {},
+  }
+}
+
+export function silentTrace(): TraceLogger {
+  return {
+    append(_: TraceEvent): Promise<void> {
+      return Promise.resolve()
+    },
   }
 }

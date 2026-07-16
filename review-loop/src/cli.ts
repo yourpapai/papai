@@ -15,6 +15,7 @@ import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop } from './loop-controller.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { formatSummary } from './summary.js'
+import { createSilentTraceLogger } from './trace-log.js'
 import {
   createWorktree,
   mergeWorktree,
@@ -189,6 +190,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   const log = new LiveRenderer(process.stdout)
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
+  const trace = createSilentTraceLogger()
 
   try {
     const result = await runReviewLoop({
@@ -198,6 +200,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
       spawn: realSpawn,
       exec,
       log,
+      trace,
     })
 
     await finalizeRun(config, runState, {

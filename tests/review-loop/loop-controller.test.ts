@@ -13,8 +13,15 @@ import { createIssueLedger, IssueLedgerSnapshotSchema } from '../../review-loop/
 import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
+import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, silentReporter } from './test-helpers.js'
+import {
+  cleanupTempDirs,
+  createReviewLoopConfigFixture,
+  makeTempDir,
+  silentReporter,
+  silentTrace,
+} from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -151,6 +158,7 @@ describe('runReviewLoop', () => {
       }),
       exec: createMockExec(true),
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     expect(result.doneReason).toBe('clean')
@@ -177,6 +185,7 @@ describe('runReviewLoop', () => {
       }),
       exec: createMockExec(true),
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -215,6 +224,7 @@ describe('runReviewLoop', () => {
         return Promise.resolve(r)
       },
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     expect(result.doneReason).toBe('clean')
@@ -267,6 +277,7 @@ describe('runReviewLoop', () => {
         return Promise.resolve(r)
       },
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     expect(result.doneReason).toBe('clean')
@@ -308,6 +319,7 @@ describe('runReviewLoop', () => {
       }),
       exec: createMockExec(false),
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -348,6 +360,7 @@ describe('runReviewLoop', () => {
         return Promise.resolve(r)
       },
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -380,6 +393,7 @@ describe('runReviewLoop', () => {
       }),
       exec: createMockExec(true),
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -414,6 +428,7 @@ describe('runReviewLoop', () => {
       }),
       exec: createMockExec(true),
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     expect(result.doneReason).toBe('clean')
@@ -448,6 +463,7 @@ describe('runReviewLoop', () => {
       }),
       exec: createMockExec(true),
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     const committedFiles = (
@@ -489,6 +505,7 @@ describe('runReviewLoop', () => {
       }),
       exec: createMockExec(true),
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -538,6 +555,7 @@ describe('runReviewLoop', () => {
       }),
       exec: createMockExec(true),
       log: silentReporter(),
+      trace: silentTrace(),
     })
 
     const onDisk = IssueLedgerSnapshotSchema.parse(JSON.parse(ledgerOnDiskAtSecondIssue))
@@ -547,5 +565,45 @@ describe('runReviewLoop', () => {
     expect(firstRecord).toBeDefined()
     expect(firstRecord!.status).toBe('fixed_pending_review')
     expect(firstRecord!.fixAttempts).toBe(1)
+  })
+
+  test('emits trace events and returns per-round metrics', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    const { logger, events } = createCapturingTraceLogger()
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], []],
+        fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'x\n')
+          return Promise.resolve()
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: logger,
+    })
+
+    const types = events.map((e) => e.event)
+    expect(types).toContain('round_start')
+    expect(types).toContain('review_complete')
+    expect(types).toContain('round_summary')
+    expect(types).toContain('loop_end')
+    expect(result.metrics).toBeDefined()
+    expect(result.metrics!.map((m) => m.round)).toEqual([1, 2])
+    const r1 = result.metrics![0]!
+    expect(r1.newIssues).toBe(1)
+    expect(r1.reviewerSeverity.high).toBe(1)
   })
 })

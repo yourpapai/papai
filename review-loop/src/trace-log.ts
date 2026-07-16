@@ -146,3 +146,11 @@ export function createCapturingTraceLogger(): { logger: TraceLogger; events: Tra
     events,
   }
 }
+
+export function createSilentTraceLogger(): TraceLogger {
+  return {
+    append(_: TraceEvent): Promise<void> {
+      return Promise.resolve()
+    },
+  }
+}

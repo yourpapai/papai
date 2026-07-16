@@ -4,25 +4,33 @@
 // See LICENSE in the project root for details.
 
 import { agentWritePath, runAgent, type SpawnFn } from './agent-runner.js'
-import { runBuildCheck, type BuildCheckResult, type ShellExecFn } from './build-checker.js'
+import type { ShellExecFn } from './build-checker.js'
 import type { ReviewLoopConfig } from './config.js'
 import {
   applyMatchedIssues,
   closeUnreportedFixed,
-  recordFixAttempt,
-  recordVerification,
   saveIssueLedger,
   type IssueLedger,
   type LedgerIssueRecord,
 } from './issue-ledger.js'
 import { matchIssues } from './issue-matcher.js'
-import { FixerResultSchema, ReviewerIssuesSchema } from './issue-schema.js'
-import type { FixerResult, ReviewerIssue } from './issue-schema.js'
-import { formatDuration, withLivePhase } from './live-renderer.js'
+import { processPendingIssues } from './issue-processor.js'
+import { ReviewerIssuesSchema } from './issue-schema.js'
+import type { ReviewerIssue } from './issue-schema.js'
+import {
+  emitLoopEnd,
+  emitMatchComplete,
+  emitReviewComplete,
+  emitRoundStart,
+  emitRoundSummary,
+  newCollector,
+  tallyReviewerIssues,
+  type RoundCollector,
+} from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
-import { buildFixPrompt, buildReviewPrompt, buildRetryFixPrompt } from './prompt-templates.js'
+import { buildReviewPrompt } from './prompt-templates.js'
 import { saveRunState, type RunState } from './run-state.js'
-import { execGit } from './worktree.js'
+import type { RoundMetric, TraceLogger } from './trace-log.js'
 
 const TERMINAL_STATUSES = new Set<LedgerIssueRecord['status']>(['rejected', 'already_fixed', 'needs_human'])
 
@@ -33,160 +41,60 @@ export interface ReviewLoopDeps {
   spawn: SpawnFn
   exec: ShellExecFn
   log: ProgressReporter
+  trace: TraceLogger
 }
 
 export interface ReviewLoopResult {
   doneReason: 'clean' | 'max_rounds' | 'no_progress'
   rounds: number
   ledger: IssueLedger['snapshot']
+  metrics?: RoundMetric[]
 }
 
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) {
-    return text
-  }
-  return `${text.slice(0, maxLength - 1)}\u2026`
-}
-
-function shortTitle(record: LedgerIssueRecord): string {
-  return truncate(record.issue.title, 60)
+function countOpen(deps: ReviewLoopDeps): number {
+  return Object.values(deps.ledger.snapshot.issues).filter((r) => !TERMINAL_STATUSES.has(r.status)).length
 }
 
 function terminalResult(
   deps: ReviewLoopDeps,
   doneReason: ReviewLoopResult['doneReason'],
   round: number,
+  metrics: RoundMetric[],
 ): ReviewLoopResult {
-  return { doneReason, rounds: round, ledger: deps.ledger.snapshot }
+  return { doneReason, rounds: round, ledger: deps.ledger.snapshot, metrics }
 }
 
-function runFixer(deps: ReviewLoopDeps, prompt: string, label: string): Promise<FixerResult> {
-  return runAgent({
-    spawn: deps.spawn,
-    model: deps.config.fixer.model,
-    cwd: deps.runState.worktreePath,
-    prompt,
-    outputPath: deps.runState.resultPath,
-    outputSchema: FixerResultSchema,
-    label,
-    reporter: deps.log,
-    logPath: deps.runState.logPath,
-    extraArgs: deps.config.fixer.extraArgs,
-    timeoutMs: deps.config.agentTimeoutMs,
-  })
-}
-
-async function runBuildWithLogging(deps: ReviewLoopDeps): Promise<BuildCheckResult> {
-  const phase = await withLivePhase(deps.log, 'build', () => runBuildCheck({ exec: deps.exec }))
-  deps.log.event(`[build] ${phase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(phase.durationMs)}`)
-  return phase.result
-}
-
-async function retryFixAfterBuildFailure(
-  record: LedgerIssueRecord,
+function pushRoundMetric(
   deps: ReviewLoopDeps,
-  buildError: string,
-  baselineSha: string,
-): Promise<boolean> {
-  deps.log.log(`[fix] build failed, retrying...`)
-
-  const result = await runFixer(
-    deps,
-    buildRetryFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), buildError, deps.config.checkCommand),
-    'fixer-retry',
-  )
-
-  if (!result.fixed || result.verdict !== 'valid') {
-    await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
-    recordVerification(deps.ledger, record.id, {
-      verdict: result.verdict,
-      fixability: result.fixability,
-      reasoning: result.reasoning,
-      targetFiles: result.targetFiles,
-    })
-    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 ${result.verdict} (after retry)`)
-    return false
+  metrics: RoundMetric[],
+  round: number,
+  newCount: number,
+  collector: RoundCollector,
+): void {
+  const metric: RoundMetric = {
+    round,
+    newIssues: newCount,
+    cumulativeOpen: countOpen(deps),
+    noProgressRounds: deps.runState.noProgressRounds,
+    decisions: collector.decisions,
+    reviewerSeverity: collector.reviewerSeverity,
+    fixerSeverity: collector.fixerSeverity,
   }
-
-  const retryBuild = await runBuildWithLogging(deps)
-
-  if (retryBuild.passed) {
-    await ensureFixerChangesCommitted(deps, record)
-    recordFixAttempt(deps.ledger, record.id)
-    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed (after retry)`)
-    return true
-  }
-
-  await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
-  recordVerification(deps.ledger, record.id, {
-    verdict: 'needs_human',
-    fixability: 'manual',
-    reasoning: `Build failed after retry: ${retryBuild.stderr}`,
-    targetFiles: result.targetFiles,
-  })
-  deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (build failed)`)
-  return false
+  metrics.push(metric)
+  emitRoundSummary(deps.trace, metric)
 }
 
-async function ensureFixerChangesCommitted(deps: ReviewLoopDeps, record: LedgerIssueRecord): Promise<void> {
-  const status = (await execGit(deps.runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
-  if (status.length === 0) {
-    return
-  }
-  await execGit(deps.runState.worktreePath, ['add', '-A'])
-  await execGit(deps.runState.worktreePath, ['commit', '-m', `fix(review-loop): ${record.issue.title}`])
-  deps.log.log(`[fix] "${shortTitle(record)}" \u2192 auto-committed uncommitted changes`)
-}
-
-async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Promise<{ fixed: boolean }> {
-  deps.log.log(`[fix] "${shortTitle(record)}" — verifying...`)
-
-  const baselineSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
-
-  const result = await runFixer(
-    deps,
-    buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), deps.config.checkCommand),
-    'fixer',
-  )
-
-  recordVerification(deps.ledger, record.id, {
-    verdict: result.verdict,
-    fixability: result.fixability,
-    reasoning: result.reasoning,
-    targetFiles: result.targetFiles,
-  })
-
-  if (!result.fixed || result.verdict !== 'valid') {
-    await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
-    deps.log.log(`[fix] "${shortTitle(record)}" → ${result.verdict}`)
-    return { fixed: false }
-  }
-
-  const buildResult = await runBuildWithLogging(deps)
-
-  if (buildResult.passed) {
-    await ensureFixerChangesCommitted(deps, record)
-    recordFixAttempt(deps.ledger, record.id)
-    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed`)
-    return { fixed: true }
-  }
-
-  const fixed = await retryFixAfterBuildFailure(record, deps, buildResult.stderr, baselineSha)
-  return { fixed }
-}
-
-async function processNextIssue(
-  pending: readonly LedgerIssueRecord[],
-  index: number,
+function finishRound(
   deps: ReviewLoopDeps,
-  fixed: number,
-): Promise<number> {
-  if (index >= pending.length) {
-    return fixed
-  }
-  const result = await processIssue(pending[index]!, deps)
-  await saveIssueLedger(deps.ledger)
-  return processNextIssue(pending, index + 1, deps, result.fixed ? fixed + 1 : fixed)
+  metrics: RoundMetric[],
+  round: number,
+  newCount: number,
+  collector: RoundCollector,
+  doneReason: ReviewLoopResult['doneReason'],
+): ReviewLoopResult {
+  pushRoundMetric(deps, metrics, round, newCount, collector)
+  emitLoopEnd(deps.trace, round, doneReason, metrics)
+  return terminalResult(deps, doneReason, round, metrics)
 }
 
 function filterActionable(records: readonly LedgerIssueRecord[]): readonly LedgerIssueRecord[] {
@@ -217,7 +125,7 @@ async function runMatchAndRecord(
   deps: ReviewLoopDeps,
   round: number,
   newIssues: readonly ReviewerIssue[],
-): Promise<readonly LedgerIssueRecord[]> {
+): Promise<{ records: readonly LedgerIssueRecord[]; newCount: number; matchedCount: number }> {
   const existingRecords = Object.values(deps.ledger.snapshot.issues)
 
   const matches = await matchIssues({
@@ -233,6 +141,9 @@ async function runMatchAndRecord(
     timeoutMs: deps.config.agentTimeoutMs,
   })
 
+  const newCount = matches.filter((m) => m.existingId === null).length
+  const matchedCount = matches.length - newCount
+
   const roundRecords = applyMatchedIssues(deps.ledger, round, newIssues, matches)
   closeUnreportedFixed(
     deps.ledger,
@@ -240,32 +151,36 @@ async function runMatchAndRecord(
   )
   await saveIssueLedger(deps.ledger)
 
-  return roundRecords
+  return { records: roundRecords, newCount, matchedCount }
 }
 
-async function runRound(round: number, deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
+async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetric[]): Promise<ReviewLoopResult> {
   deps.runState.currentRound = round
+  emitRoundStart(deps.trace, round, deps.config.maxRounds, deps.config.maxNoProgressRounds, deps.config.checkCommand)
+  const collector = newCollector()
+
   const newIssues = await runReviewStep(deps)
+  tallyReviewerIssues(collector, newIssues)
+  emitReviewComplete(deps.trace, round, newIssues)
 
   if (newIssues.length === 0 && round === 1) {
     deps.log.log(`[done] clean — no issues found`)
     await saveRunState(deps.runState)
-    return terminalResult(deps, 'clean', round)
+    return finishRound(deps, metrics, round, 0, collector, 'clean')
   }
 
-  const roundRecords = await runMatchAndRecord(deps, round, newIssues)
+  const matched = await runMatchAndRecord(deps, round, newIssues)
+  emitMatchComplete(deps.trace, round, matched.newCount, matched.matchedCount)
 
   if (newIssues.length === 0) {
     deps.log.log(`[done] clean after ${round} round${round === 1 ? '' : 's'}`)
     await saveRunState(deps.runState)
-    return terminalResult(deps, 'clean', round)
+    return finishRound(deps, metrics, round, matched.newCount, collector, 'clean')
   }
 
   deps.log.log(`[round ${round}] Found ${newIssues.length} issues`)
-
-  const pending = filterActionable(roundRecords)
-  const fixedThisRound = await processNextIssue(pending, 0, deps, 0)
-
+  const pending = filterActionable(matched.records)
+  const fixedThisRound = await processPendingIssues(deps, round, collector, pending)
   deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${pending.length} issues`)
 
   const newNoProgress = fixedThisRound === 0 ? deps.runState.noProgressRounds + 1 : 0
@@ -275,21 +190,22 @@ async function runRound(round: number, deps: ReviewLoopDeps): Promise<ReviewLoop
 
   if (newNoProgress >= deps.config.maxNoProgressRounds) {
     deps.log.log(`[done] no_progress`)
-    return terminalResult(deps, 'no_progress', round)
+    return finishRound(deps, metrics, round, matched.newCount, collector, 'no_progress')
   }
 
   if (round >= deps.config.maxRounds) {
     deps.log.log(`[done] max_rounds`)
-    return terminalResult(deps, 'max_rounds', round)
+    return finishRound(deps, metrics, round, matched.newCount, collector, 'max_rounds')
   }
 
-  return runRound(round + 1, deps)
+  pushRoundMetric(deps, metrics, round, matched.newCount, collector)
+  return runRound(round + 1, deps, metrics)
 }
 
 export function runReviewLoop(deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
   const nextRound = deps.runState.currentRound + 1
   if (nextRound > deps.config.maxRounds) {
-    return Promise.resolve(terminalResult(deps, 'max_rounds', deps.runState.currentRound))
+    return Promise.resolve(terminalResult(deps, 'max_rounds', deps.runState.currentRound, []))
   }
-  return runRound(nextRound, deps)
+  return runRound(nextRound, deps, [])
 }
