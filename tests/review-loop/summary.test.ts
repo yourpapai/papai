@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { IssueLedgerSnapshot, LedgerIssueStatus } from '../../review-loop/src/issue-ledger.js'
-import { formatSummary } from '../../review-loop/src/summary.js'
+import { buildMetricsJson, formatSummary } from '../../review-loop/src/summary.js'
 
 function makeSnapshot(statuses: LedgerIssueStatus[]): IssueLedgerSnapshot {
   return {
@@ -62,5 +62,58 @@ describe('formatSummary', () => {
     expect(summary).toContain('Done reason: max_rounds')
     expect(summary).toContain('Open issues: 3')
     expect(summary).toContain('Closed issues: 1')
+  })
+
+  test('emits a burndown block when metrics are present', () => {
+    const summary = formatSummary({
+      doneReason: 'max_rounds',
+      rounds: 2,
+      ledger: makeSnapshot(['closed']),
+      metrics: [
+        {
+          round: 1,
+          newIssues: 3,
+          cumulativeOpen: 3,
+          noProgressRounds: 0,
+          decisions: { fixed: 1, invalid: 0, already_fixed: 0, needs_human: 0, plan_drift: 0, no_commit: 0 },
+          reviewerSeverity: { critical: 0, high: 2, medium: 1, low: 0 },
+          fixerSeverity: { critical: 0, high: 1, medium: 0, low: 0 },
+        },
+        {
+          round: 2,
+          newIssues: 1,
+          cumulativeOpen: 1,
+          noProgressRounds: 1,
+          decisions: { fixed: 0, invalid: 1, already_fixed: 0, needs_human: 0, plan_drift: 0, no_commit: 0 },
+          reviewerSeverity: { critical: 0, high: 0, medium: 1, low: 0 },
+          fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+        },
+      ],
+    })
+    expect(summary).toContain('Burndown')
+    expect(summary).toContain('round')
+  })
+
+  test('buildMetricsJson returns burndown series and totals', () => {
+    const parsed = buildMetricsJson({
+      doneReason: 'max_rounds',
+      rounds: 1,
+      ledger: makeSnapshot(['closed']),
+      metrics: [
+        {
+          round: 1,
+          newIssues: 2,
+          cumulativeOpen: 2,
+          noProgressRounds: 0,
+          decisions: { fixed: 1, invalid: 1, already_fixed: 0, needs_human: 0, plan_drift: 0, no_commit: 0 },
+          reviewerSeverity: { critical: 0, high: 1, medium: 1, low: 0 },
+          fixerSeverity: { critical: 0, high: 1, medium: 0, low: 0 },
+        },
+      ],
+    })
+    expect(parsed.doneReason).toBe('max_rounds')
+    expect(parsed.rounds).toBe(1)
+    expect(parsed.burndown).toHaveLength(1)
+    expect(parsed.totals).toBeDefined()
   })
 })
