@@ -16,7 +16,7 @@ See LICENSE in the project root for details.
 
 A prompt-and-flow analysis of the current review-loop (`prompt-templates.ts`, `issue-schema.ts`, `loop-controller.ts`, `issue-ledger.ts`, `issue-matcher.ts`) surfaced three categories of weakness, confirmed against deep research into LLM code-review best practices (agentic evidence-gated review; confidence-thresholded structured output; intent-first review with independent reviewer/fixer contexts; empirical verify-before-fix; false-positive early-exit; bounded convergence with a fresh-reviewer exit gate; the "adjudication ratchet").
 
-1. **Correctness bugs** — five issues that are wrong regardless of any tuning data (see Section "Correctness fixes").
+1. **Correctness bugs** — two remaining issues that are wrong regardless of any tuning data (see Section "Correctness fixes"). Three originally-identified bugs were found already shipped on the branch during reconciliation (config-derived check command, retry-verdict recording, matcher ratchet widening) and are out of scope.
 2. **Prompt-quality gaps** — the three prompt builders (+ matcher) lack evidence-gating, severity calibration, explicit scope/exclusions, minimal-change discipline, and rely on stale schema references across stateless subprocesses.
 3. **No observability** — there is no structured record of loop behavior. Without it, the team cannot empirically decide _which_ of the heavier, data-dependent improvements (false-positive early-exit threshold, cross-model consensus, behavioral ratchet) are worth building.
 
@@ -27,12 +27,13 @@ It is too early to tune behavior on vibes: the loop has not yet been run enough 
 ## Key decisions (settled during brainstorm)
 
 1. **Approach B (chosen).** Fix obvious correctness bugs + apply conservative, research-validated prompt improvements to all builders + add a structured `trace.jsonl`. Defer speculative behavioral knobs until trace data justifies them.
-2. **Preserve the output JSON contract.** Prompt rewrites change _instructions only_; the exact Zod output schemas stay the same. No parsing or loop-wiring changes come from prompts.
-3. **Trust git, not the agent, for `commitSha`.** The loop verifies a commit actually landed (`HEAD` advanced past `preFixSha`) before believing `fixed: true`. Aligns with the repo's `verification-before-completion` skill.
-4. **Trace never breaks a run.** Trace logging failures are swallowed; trace is for investigation, not correctness.
-5. **Additive-only schema/path changes.** `tracePath` is synthesized from `runDir` on load; old persisted state and ledgers load without migration.
-6. **Capture confidence, defer thresholding.** The reviewer is asked for honest confidence; the loop does not filter on it yet. The trace records the full distribution so a defensible cutoff can be chosen later.
-7. **Preserve prompt sentinel phrases.** Fake-agent routing in tests keys off substring sentinels (`"Review the current implementation"`, `"Verify and fix"`, `"build error"`, `"Match newly found"`); the new prompts keep them.
+2. **Preserve the output JSON contract.** Prompt rewrites change _instructions only_; the Zod output schemas stay the same, with one additive exception: `FixerResultSchema` gains an optional `commitMessage` field (see Section 3 fixer). Optional + additive, so old result files still validate.
+3. **Trust git, not the agent, for fix outcomes.** The loop verifies `HEAD` actually advanced past `baselineSha` before believing `fixed: true` (a fixer that reports `fixed:true` but changes nothing must not be marked fixed). The real `commitSha = HEAD` comes from git, not the agent. Aligns with the repo's `verification-before-completion` skill.
+4. **Agent composes the commit message; the loop commits.** The fixer agent is the only actor that knows what it actually changed, so it returns a `commitMessage` field describing the real fix. The loop is the single committer (`ensureFixerChangesCommitted`), uses that message (sanitized to one line), and falls back to the issue title only if the agent omitted it. Removes the prior dual-committer reliance and fixes the raw-title commit messages.
+5. **Trace never breaks a run.** Trace logging failures are swallowed; trace is for investigation, not correctness.
+6. **Additive-only schema/path changes.** `tracePath` is synthesized from `runDir` on load; old persisted state and ledgers load without migration.
+7. **Capture confidence, defer thresholding.** The reviewer is asked for honest confidence; the loop does not filter on it yet. The trace records the full distribution so a defensible cutoff can be chosen later.
+8. **Preserve prompt sentinel phrases.** Fake-agent routing in tests keys off substring sentinels (`"Review the current implementation"`, `"Verify and fix"`, `"build error"`, `"Match newly found"`); the new prompts keep them.
 
 ## Approaches considered
 
@@ -69,21 +70,21 @@ It is too early to tune behavior on vibes: the loop has not yet been run enough 
 
 **Error handling (invariant).** Trace failures must never break a run. The file logger swallows fs errors; `append` is fire-and-forget (`void` return at call sites). Trace is for investigation, not correctness.
 
-## Section 2 — Correctness fixes (the obvious bugs)
+## Section 2 — Correctness fixes (the remaining bugs)
 
-Five unambiguous bugs — each wrong regardless of tuning data. All map to existing tests under `tests/review-loop/`.
+Two unambiguous bugs remain after reconciling with the branch. Each maps to existing tests under `tests/review-loop/`.
 
-**1. Retry prompt can't rely on "same schema as before"** (`prompt-templates.ts:34`). Each `opencode run` is a fresh stateless subprocess (`agent-runner.ts:153`), so the previous schema is not in context. **Fix:** inline the exact JSON schema into `buildRetryFixPrompt`, same as the other two builders.
+**1. Retry prompt can't rely on "same schema as before"** (`prompt-templates.ts:44`). Each `opencode run` is a fresh stateless subprocess (`agent-runner.ts:154`), so the previous schema is not in context. **Fix:** inline the exact JSON schema into `buildRetryFixPrompt`, same as the other two builders. (The config-derived `checkCommand` for the retry prompt is already shipped — `buildRetryFixPrompt` takes `checkCommand` and the loop passes `config.checkCommand`.)
 
-**2. Fixer validates against the wrong gate** (`prompt-templates.ts:23`). The fixer prompt hardcodes `bun check:full`, but the loop re-runs `config.checkCommand` afterward (`loop-controller.ts:159`). A custom `checkCommand` means the fixer validates against the wrong gate → spurious build-fail → retry. **Fix:** pass `config.checkCommand` into `buildFixPrompt`/`buildRetryFixPrompt` so both gates match.
+**2. `fixed: true` is trusted without proof** (`loop-controller.ts:165-172`). The branch already captures `baselineSha` (`:144`), `reset --hard` on not-fixed (`:160`), and auto-commits dirty trees via `ensureFixerChangesCommitted` (`:131`). **The remaining gap:** if the fixer reports `fixed: true` + `valid` but makes _no change_ (clean tree, no commit), `ensureFixerChangesCommitted` is a no-op, yet the loop still calls `recordFixAttempt` → the issue is falsely marked fixed with `HEAD === baselineSha`. **Fix:** after the build passes and `ensureFixerChangesCommitted` runs, capture `postSha = HEAD`; if `postSha === baselineSha` (no commit landed), override the outcome to **not fixed** — do **not** call `recordFixAttempt`; trace the event as `fix_complete` with `fixed=false` + a `no_commit` marker (the build passed but nothing changed, so the fixer's `fixed:true` was a false claim). When a commit did land, record `commitSha = postSha` in the trace. `commitSha` stays `nullable().optional()` in the _agent-output_ schema (additive, no migration); the **loop's** record of it comes from git.
 
-**3. `fixed: true` is trusted without proof** (`loop-controller.ts:153`, `issue-schema.ts:34`). `commitSha` is `nullable().optional()` and the loop trusts `result.fixed` alone. **Fix:** in `processIssue`, capture `preFixSha` before the fixer runs; when the fixer reports `fixed: true`, verify with git that `HEAD` advanced past `preFixSha` and use the real `commitSha = HEAD`. If `HEAD` did not advance (no commit landed), override the outcome to **not fixed**: still `recordVerification` the fixer's reported verdict (so the reason is preserved), but do **not** call `recordFixAttempt`, do **not** run the build check, and trace the event as `fix_complete` with `fixed=false` + a `no_commit` marker. The agent's `fixed:true` self-report is never trusted alone. `commitSha` stays `nullable().optional()` in the _agent-output_ schema (additive, no migration), but the **loop's** record of it comes from git, not the agent.
+### Shipped on the branch (out of scope — not re-implemented)
 
-**4. Retry's verdict is discarded** (`loop-controller.ts:102-139`). `retryFixAfterBuildFailure` runs the fixer again but, on success, only `recordFixAttempt`s (count++) — throwing away the retry's own verdict/reasoning/targetFiles; on failure it synthesizes `needs_human` from build stderr, also discarding the agent's reasoning. **Fix:** `recordVerification` the retry's actual result when it returns a verdict; only synthesize from build stderr when the build itself fails. Also feeds the trace so retry outcomes become analyzable.
+These three were identified during design but found already implemented when reconciling with the code. Recorded for trace accuracy; no work.
 
-**5. Adjudication ratchet leaks at the matcher** (`loop-controller.ts:217`). `runMatchAndRecord` passes only `filterActionable(...)` to the matcher, so a re-reported `rejected`/`needs_human` issue cannot match anything → becomes a _new_ record → gets re-processed, defeating the ratchet. **Fix:** widen the matcher's existing-set input to all ledger records (closed issues still reopen via `reopenExisting` on regression, which is desired). `filterActionable` still governs _processing_, so terminal issues will not be re-fixed — they just stop duplicating and stop burning fixer cycles. Side benefit: `matchedCount` vs `newCount` in the trace becomes meaningful for convergence analysis.
-
-_Risk note on #5:_ widening matcher input inlines more summaries into the matcher prompt; for long runs this grows it, but it is bounded by `maxRounds` (default 10) and the matcher is already O(issues). Acceptable; flagged for monitoring via the trace.
+- **Config-derived check command** — `buildFixPrompt(.., checkCommand)` (`prompt-templates.ts:19`); loop passes `config.checkCommand` (`loop-controller.ts:95,148`).
+- **Retry verdict recorded** — `retryFixAfterBuildFailure` records the real verdict on not-fixed (`loop-controller.ts:101-106`); synthesizes only on build failure (`:121-126`).
+- **Matcher ratchet widening** — `runMatchAndRecord` passes all ledger records to the matcher (`loop-controller.ts:221`); covered by the "does not re-discover terminal issues as duplicates" test (`loop-controller.test.ts:464`).
 
 ## Section 3 — Conservative prompt improvements (research-validated)
 
@@ -102,8 +103,9 @@ These rewrite the _instructions_ around each builder but **preserve the exact ou
 
 - Keep the load-bearing **verify-before-fix** ordering.
 - **Minimal-change discipline:** "Edit only what's necessary; no drive-by refactors; scope edits to `targetFiles`."
-- **Empirical verification:** "If non-trivial, run a check that reproduces the issue before and confirms resolution after; run `<checkCommand>` before committing." (`checkCommand` now config-derived — Section 2.)
-- **Commit-message sanitization:** replace the raw `<issue title>` with "subject derived from the issue title, single line, no backticks/quotes/newlines" — so the free-text title cannot produce a shell-unsafe or multi-line commit message.
+- **Empirical verification:** "If non-trivial, run a check that reproduces the issue before and confirms resolution after; run `<checkCommand>` to confirm." (`checkCommand` is config-derived — already shipped.)
+- **Do NOT commit; compose the message instead.** Remove the existing "commit with message: fix(review-loop): <issue title>" instruction (the loop owns commits via `ensureFixerChangesCommitted`). Instead instruct: "Do not commit. After editing, return a `commitMessage` field: a single-line conventional-commit subject, `fix(review-loop): <subject>`, that describes the **actual changes you made** (not the issue title)." The loop sanitizes it (strip backticks/quotes/newlines, one line) and falls back to the issue title only if absent.
+- **Schema (additive):** add `commitMessage: z.string().optional()` to `FixerResultSchema`. Optional + additive so old result files still validate.
 
 **Retry — `buildRetryFixPrompt`:**
 
@@ -122,7 +124,7 @@ These rewrite the _instructions_ around each builder but **preserve the exact ou
 - **Confidence thresholding** — capture distribution in trace; pick a defensible cutoff after a few runs.
 - **False-positive early-exit** — needs a measured FP rate to set a termination threshold.
 - **Cross-model consensus** — needs evidence that a single model's findings are the bottleneck.
-- **Full behavioral ratchet** — the matcher-input widening (Section 2 #5) is the safe, structural part; richer re-adjudication semantics are deferred.
+- **Full behavioral ratchet** — the structural matcher-input widening is already shipped; richer re-adjudication semantics are deferred.
 
 Each of these should be proposed as a follow-up spec once `trace.jsonl` from several real runs points at it.
 
@@ -139,11 +141,11 @@ Conventions: `bun:test`, DI-first, `SpawnFn`/`ShellExecFn`/`TraceLogger` injecte
 
 **Correctness-fix tests:**
 
-- `prompt-templates.test.ts` — retry prompt **inlines** the schema (assert schema string present; assert `"same schema as before"` is gone); fixer prompt **contains `config.checkCommand`** (parametrize with a custom command and assert it appears); commit-message text instructs a sanitized single-line subject.
+- `prompt-templates.test.ts` — retry prompt **inlines** the schema (assert schema string present; assert `"same schema as before"` is gone); fixer prompt no longer instructs the agent to commit and instead requests a `commitMessage`.
+- `issue-schema.test.ts` — `FixerResultSchema` accepts an optional `commitMessage` string and still validates results without it (additive).
 - `loop-controller.test.ts`:
-  - **commitSha via git:** fake fixer reports `fixed:true` but HEAD did not advance → treated as **not** fixed (no `recordFixAttempt`); HEAD advanced → fixed + recorded SHA traced. (Existing `setupGitRepo` already provides a real git repo.)
-  - **retry verdict recorded:** retry returns a real verdict → `recordVerification` gets _that_ verdict; build-fails-only path still synthesizes from stderr.
-  - **matcher ratchet:** a re-reported `rejected` issue matches the existing record (no duplicate id, not re-processed). Requires widening matcher input — assert the matcher receives terminal records.
+  - **no-commit guard:** fake fixer reports `fixed:true`+`valid` but leaves the tree clean (HEAD does not advance) → treated as **not** fixed (no `recordFixAttempt`); HEAD advances (real commit) → fixed + `commitSha` traced. (Existing `setupGitRepo` provides a real git repo; existing `onFixer` mock hook can simulate no-op vs. real edits.)
+  - **commit message from agent:** when the fixer returns a `commitMessage`, the loop's commit subject uses it (sanitized); when omitted, falls back to the issue title.
 
 **Prompt-improvement tests:** assert presence of the key clauses (evidence-gating text, severity-band words, `AGENTS.md` reference, minimal-change instruction) — content-contract locks so the gains do not silently regress. The _behavioral_ effect of prompts is **not** unit-tested (cannot be) — that is exactly what the trace log measures on real runs.
 
@@ -156,3 +158,14 @@ Conventions: `bun:test`, DI-first, `SpawnFn`/`ShellExecFn`/`TraceLogger` injecte
 - The `opencode run` shell-subprocess + file-JSON exchange architecture is unchanged. The agents already have tools (read/grep/bash) via opencode; the prompts now _instruct_ evidence-fetching rather than a tool-build.
 - No reviewer/fixer _persona_ or system-prompt layer is added; improvements live in the user-turn task strings only, matching the current single-turn model.
 - No cross-model, no consensus, no thresholding (see "Deferred").
+
+## Drift Log
+
+| Date       | Category           | Item                                                                     | Decision                                                                                            |
+| ---------- | ------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| 2026-07-16 | Already shipped    | §2 config-derived check command                                          | Removed from scope; verified at `prompt-templates.ts:19`, `loop-controller.ts:95,148`               |
+| 2026-07-16 | Already shipped    | §2 retry-verdict recording                                               | Removed from scope; verified at `loop-controller.ts:101-106,121-126`                                |
+| 2026-07-16 | Already shipped    | §2 matcher ratchet widening                                              | Removed from scope; verified at `loop-controller.ts:221`, test `loop-controller.test.ts:464`        |
+| 2026-07-16 | In-plan, partial   | §2 retry prompt schema-inline                                            | Kept; narrowed (checkCommand part already shipped)                                                  |
+| 2026-07-16 | In-plan, partial   | §2 `fixed:true` trust                                                    | Rewritten to the actual remaining gap (no-commit guard via `postSha === baselineSha`)               |
+| 2026-07-16 | In-plan, divergent | Fixer commit ownership (prompt told agent to commit + loop also commits) | Resolved with user: agent composes `commitMessage`, loop is single committer; additive schema field |
