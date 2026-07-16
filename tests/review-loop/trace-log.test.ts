@@ -58,6 +58,15 @@ describe('trace-log', () => {
 
   test('TraceEventSchema validates every event variant; bad shape rejected', () => {
     const good = [
+      {
+        ts: 'x',
+        round: 1,
+        phase: 'r',
+        event: 'round_start',
+        maxRounds: 10,
+        maxNoProgressRounds: 2,
+        checkCommand: 'bun check:full',
+      },
       { ts: 'x', round: 1, phase: 'r', event: 'review_complete', issueCount: 0, issues: [] },
       { ts: 'x', round: 1, phase: 'r', event: 'match_complete', newCount: 0, matchedCount: 0 },
       {
@@ -75,6 +84,19 @@ describe('trace-log', () => {
       },
       { ts: 'x', round: 1, phase: 'r', event: 'build_complete', issueId: 'i', passed: true, attempt: 1, durationMs: 5 },
       { ts: 'x', round: 1, phase: 'r', event: 'fix_complete', issueId: 'i', fixed: true, commitSha: 'abc', attempt: 1 },
+      {
+        ts: 'x',
+        round: 1,
+        phase: 'r',
+        event: 'round_summary',
+        newIssues: 1,
+        cumulativeOpen: 1,
+        noProgressRounds: 0,
+        decisions: { fixed: 1, invalid: 0, already_fixed: 0, needs_human: 0, plan_drift: 0, no_commit: 0 },
+        reviewerSeverity: { critical: 0, high: 1, medium: 0, low: 0 },
+        fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+      },
+      { ts: 'x', round: 1, phase: 'r', event: 'loop_end', doneReason: 'clean', rounds: 1, burndown: [] },
     ] as const
     for (const e of good) expect(TraceEventSchema.safeParse(e).success).toBe(true)
 

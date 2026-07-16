@@ -127,8 +127,8 @@ export function createFileTraceLogger(tracePath: string): TraceLogger {
     async append(e: TraceEvent): Promise<void> {
       try {
         await appendFile(tracePath, `${JSON.stringify(e)}\n`)
-      } catch {
-        // Trace must never break a run.
+      } catch (error) {
+        console.warn(`[review-loop] trace write failed: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
   }
