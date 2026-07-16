@@ -63,10 +63,11 @@ function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean }>
   matchFirstOnly?: boolean
+  onFixer?: (cwd: string) => Promise<void> | void
 }): SpawnFn {
   let reviewerCall = 0
   let fixerCall = 0
-  return (_command: string, args: readonly string[], opts: { cwd: string }): Promise<SpawnResult> => {
+  return async (_command: string, args: readonly string[], opts: { cwd: string }): Promise<SpawnResult> => {
     const promptText = args[args.length - 1] ?? ''
     const outputPath = extractOutputPath(promptText)
 
@@ -89,6 +90,9 @@ function createMockSpawn(handlers: {
             commitSha: result.fixed ? 'abc123' : null,
           }),
         )
+      }
+      if (handlers.onFixer) {
+        await handlers.onFixer(opts.cwd)
       }
     } else if (promptText.includes('Match newly found')) {
       const matches = handlers.matchFirstOnly === true ? matchFirstToExisting(promptText) : []
@@ -146,6 +150,10 @@ describe('progress logging', () => {
       spawn: createMockSpawn({
         reviewerIssues: [[issue], []],
         fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
       }),
       exec: passingExec,
       log: makeReporter(messages),
@@ -252,6 +260,10 @@ describe('progress logging', () => {
           { verdict: 'valid', fixability: 'auto', fixed: true },
         ],
         matchFirstOnly: true,
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
       }),
       exec: passingExec,
       log: makeReporter(messages),

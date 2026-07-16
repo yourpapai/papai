@@ -147,6 +147,7 @@ export function emitFixComplete(
   round: number,
   issueId: string,
   fixed: boolean,
+  commitSha: string | null,
   attempt: number,
 ): void {
   void trace.append({
@@ -156,7 +157,7 @@ export function emitFixComplete(
     event: 'fix_complete',
     issueId,
     fixed,
-    commitSha: null,
+    commitSha,
     attempt,
   })
 }

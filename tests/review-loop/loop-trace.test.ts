@@ -55,10 +55,10 @@ describe('loop-trace emitters', () => {
     const { logger, events } = createCapturingTraceLogger()
     emitMatchComplete(logger, 1, 2, 3)
     emitBuildComplete(logger, 1, 'id', true, 1, 42)
-    emitFixComplete(logger, 1, 'id', true, 1)
+    emitFixComplete(logger, 1, 'id', true, 'deadbeef', 1)
     expect(events.map((e) => e.event)).toEqual(['match_complete', 'build_complete', 'fix_complete'])
     expect(events[1]).toMatchObject({ passed: true, attempt: 1, durationMs: 42 })
-    expect(events[2]).toMatchObject({ fixed: true, commitSha: null, attempt: 1 })
+    expect(events[2]).toMatchObject({ fixed: true, commitSha: 'deadbeef', attempt: 1 })
   })
 
   test('emitVerifyComplete spreads targetFiles', () => {

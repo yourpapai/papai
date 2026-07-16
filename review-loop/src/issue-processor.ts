@@ -29,7 +29,7 @@ import type { ProgressReporter } from './progress-log.js'
 import { buildFixPrompt, buildRetryFixPrompt } from './prompt-templates.js'
 import type { RunState } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
-import { execGit } from './worktree.js'
+import { execGit, resetWorktreeTo } from './worktree.js'
 
 export interface IssueProcessorDeps {
   config: ReviewLoopConfig
@@ -43,6 +43,16 @@ export interface IssueProcessorDeps {
 
 function shortTitle(record: LedgerIssueRecord): string {
   return truncate(record.issue.title, 60)
+}
+
+function sanitizeSubject(text: string): string {
+  const oneLine = text.split(/\r?\n/u)[0] ?? ''
+  return oneLine.replace(/[`"']/gu, '').trim().slice(0, 100)
+}
+
+function tallyFixOutcome(collector: RoundCollector, result: FixerResult): void {
+  tallyDecision(collector, result.verdict, result.fixed)
+  tallyFixerSeverity(collector, result.severity)
 }
 
 function runFixer(deps: IssueProcessorDeps, prompt: string, label: string): Promise<FixerResult> {
@@ -63,17 +73,11 @@ function runFixer(deps: IssueProcessorDeps, prompt: string, label: string): Prom
 
 async function runBuildWithLogging(deps: IssueProcessorDeps): Promise<BuildCheckResult> {
   const phase = await withLivePhase(deps.log, 'build', () => runBuildCheck({ exec: deps.exec }))
-  deps.log.event(`[build] ${phase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(phase.durationMs)}`)
+  deps.log.event(`[build] ${phase.result.passed ? 'passed' : 'FAILED'} · ${formatDuration(phase.durationMs)}`)
   return phase.result
 }
 
-function recordVerify(
-  deps: IssueProcessorDeps,
-  round: number,
-  collector: RoundCollector,
-  record: LedgerIssueRecord,
-  result: FixerResult,
-): void {
+function recordVerify(deps: IssueProcessorDeps, round: number, record: LedgerIssueRecord, result: FixerResult): void {
   recordVerification(deps.ledger, record.id, {
     verdict: result.verdict,
     fixability: result.fixability,
@@ -91,14 +95,11 @@ function recordVerify(
     truncate(result.reasoning, 200),
     result.targetFiles,
   )
-  tallyDecision(collector, result.verdict, result.fixed)
-  tallyFixerSeverity(collector, result.severity)
 }
 
 function recordNeedsHuman(
   deps: IssueProcessorDeps,
   round: number,
-  collector: RoundCollector,
   record: LedgerIssueRecord,
   reasoning: string,
   result: FixerResult,
@@ -120,17 +121,49 @@ function recordNeedsHuman(
     truncate(reasoning, 200),
     result.targetFiles,
   )
-  tallyDecision(collector, 'needs_human', false)
 }
 
-async function ensureFixerChangesCommitted(deps: IssueProcessorDeps, record: LedgerIssueRecord): Promise<void> {
-  const status = (await execGit(deps.runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
+async function ensureFixerChangesCommitted(
+  deps: IssueProcessorDeps,
+  record: LedgerIssueRecord,
+  commitMessage: string | undefined,
+): Promise<string> {
+  const worktreePath = deps.runState.worktreePath
+  const status = (await execGit(worktreePath, ['status', '--porcelain'])).stdout.trim()
   if (status.length === 0) {
-    return
+    return (await execGit(worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
   }
-  await execGit(deps.runState.worktreePath, ['add', '-A'])
-  await execGit(deps.runState.worktreePath, ['commit', '-m', `fix(review-loop): ${record.issue.title}`])
-  deps.log.log(`[fix] "${shortTitle(record)}" \u2192 auto-committed uncommitted changes`)
+  const subject = sanitizeSubject(commitMessage ?? `fix(review-loop): ${record.issue.title}`)
+  await execGit(worktreePath, ['add', '-A'])
+  await execGit(worktreePath, ['commit', '-m', subject])
+  deps.log.log(`[fix] "${shortTitle(record)}" → auto-committed uncommitted changes`)
+  return (await execGit(worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+}
+
+async function finalizeFixerCommit(
+  deps: IssueProcessorDeps,
+  record: LedgerIssueRecord,
+  collector: RoundCollector,
+  round: number,
+  baselineSha: string,
+  result: FixerResult,
+  attempt: number,
+): Promise<{ fixed: boolean }> {
+  const postSha = await ensureFixerChangesCommitted(deps, record, result.commitMessage)
+  if (postSha === baselineSha) {
+    collector.decisions.no_commit += 1
+    tallyFixerSeverity(collector, result.severity)
+    emitFixComplete(deps.trace, round, record.id, false, null, attempt)
+    deps.log.log(`[fix] "${shortTitle(record)}" → no change (fixed:true was a false claim)`)
+    return { fixed: false }
+  }
+  recordFixAttempt(deps.ledger, record.id)
+  tallyFixOutcome(collector, result)
+  deps.log.log(
+    attempt === 1 ? `[fix] "${shortTitle(record)}" → fixed` : `[fix] "${shortTitle(record)}" → fixed (after retry)`,
+  )
+  emitFixComplete(deps.trace, round, record.id, true, postSha, attempt)
+  return { fixed: true }
 }
 
 async function retryFixAfterBuildFailure(
@@ -149,10 +182,11 @@ async function retryFixAfterBuildFailure(
   )
 
   if (!result.fixed || result.verdict !== 'valid') {
-    await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
-    recordVerify(deps, round, collector, record, result)
-    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 ${result.verdict} (after retry)`)
-    emitFixComplete(deps.trace, round, record.id, false, 2)
+    await resetWorktreeTo(deps.runState.worktreePath, baselineSha)
+    recordVerify(deps, round, record, result)
+    tallyFixOutcome(collector, result)
+    deps.log.log(`[fix] "${shortTitle(record)}" → ${result.verdict} (after retry)`)
+    emitFixComplete(deps.trace, round, record.id, false, null, 2)
     return false
   }
 
@@ -161,17 +195,15 @@ async function retryFixAfterBuildFailure(
   emitBuildComplete(deps.trace, round, record.id, retryBuild.passed, 2, Date.now() - retryStart)
 
   if (retryBuild.passed) {
-    await ensureFixerChangesCommitted(deps, record)
-    recordFixAttempt(deps.ledger, record.id)
-    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed (after retry)`)
-    emitFixComplete(deps.trace, round, record.id, true, 2)
-    return true
+    return (await finalizeFixerCommit(deps, record, collector, round, baselineSha, result, 2)).fixed
   }
 
-  await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
-  recordNeedsHuman(deps, round, collector, record, `Build failed after retry: ${retryBuild.stderr}`, result)
+  await resetWorktreeTo(deps.runState.worktreePath, baselineSha)
+  recordNeedsHuman(deps, round, record, `Build failed after retry: ${retryBuild.stderr}`, result)
+  tallyDecision(collector, 'needs_human', false)
+  tallyFixerSeverity(collector, result.severity)
   deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (build failed)`)
-  emitFixComplete(deps.trace, round, record.id, false, 2)
+  emitFixComplete(deps.trace, round, record.id, false, null, 2)
   return false
 }
 
@@ -188,12 +220,13 @@ async function processIssue(
     buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), deps.config.checkCommand),
     'fixer',
   )
-  recordVerify(deps, round, collector, record, result)
+  recordVerify(deps, round, record, result)
 
   if (!result.fixed || result.verdict !== 'valid') {
-    await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
+    await resetWorktreeTo(deps.runState.worktreePath, baselineSha)
+    tallyFixOutcome(collector, result)
     deps.log.log(`[fix] "${shortTitle(record)}" → ${result.verdict}`)
-    emitFixComplete(deps.trace, round, record.id, false, 1)
+    emitFixComplete(deps.trace, round, record.id, false, null, 1)
     return { fixed: false }
   }
 
@@ -202,11 +235,7 @@ async function processIssue(
   emitBuildComplete(deps.trace, round, record.id, buildResult.passed, 1, Date.now() - buildStart)
 
   if (buildResult.passed) {
-    await ensureFixerChangesCommitted(deps, record)
-    recordFixAttempt(deps.ledger, record.id)
-    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed`)
-    emitFixComplete(deps.trace, round, record.id, true, 1)
-    return { fixed: true }
+    return finalizeFixerCommit(deps, record, collector, round, baselineSha, result, 1)
   }
 
   const fixed = await retryFixAfterBuildFailure(record, deps, round, collector, buildResult.stderr, baselineSha)

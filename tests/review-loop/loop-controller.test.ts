@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
@@ -13,6 +13,7 @@ import { createIssueLedger, IssueLedgerSnapshotSchema } from '../../review-loop/
 import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
+import type { Decisions } from '../../review-loop/src/trace-log.js'
 import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import {
@@ -22,6 +23,10 @@ import {
   silentReporter,
   silentTrace,
 } from './test-helpers.js'
+
+function sumDecisions(d: Decisions): number {
+  return d.fixed + d.invalid + d.already_fixed + d.needs_human + d.plan_drift + d.no_commit
+}
 
 afterEach(cleanupTempDirs)
 
@@ -64,7 +69,7 @@ function matchAllToFirstExisting(prompt: string): IssueMatch[] {
 
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
-  fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean }>
+  fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean; commitMessage?: string }>
   onFixer?: (cwd: string, callIndex: number) => Promise<void> | void
   matchExisting?: boolean
 }): SpawnFn {
@@ -155,6 +160,10 @@ describe('runReviewLoop', () => {
       spawn: createMockSpawn({
         reviewerIssues: [[issue], []],
         fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
       }),
       exec: createMockExec(true),
       log: silentReporter(),
@@ -217,6 +226,10 @@ describe('runReviewLoop', () => {
           { verdict: 'valid', fixability: 'auto', fixed: true },
           { verdict: 'valid', fixability: 'auto', fixed: true },
         ],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
       }),
       exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
@@ -533,9 +546,13 @@ describe('runReviewLoop', () => {
 
     let ledgerOnDiskAtSecondIssue = ''
 
-    const fixerActions: Array<() => Promise<void>> = [
-      () => Promise.resolve(),
-      () => {
+    const fixerActions: Array<(cwd: string) => Promise<void>> = [
+      (cwd) => {
+        writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+        return Promise.resolve()
+      },
+      (cwd) => {
+        writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
         ledgerOnDiskAtSecondIssue = readFileSync(ledger.path, 'utf8')
         return Promise.resolve()
       },
@@ -551,7 +568,7 @@ describe('runReviewLoop', () => {
           { verdict: 'valid', fixability: 'auto', fixed: true },
           { verdict: 'valid', fixability: 'auto', fixed: true },
         ],
-        onFixer: (_cwd, callIndex) => fixerActions[callIndex]!(),
+        onFixer: (cwd, callIndex) => fixerActions[callIndex]!(cwd),
       }),
       exec: createMockExec(true),
       log: silentReporter(),
@@ -605,5 +622,210 @@ describe('runReviewLoop', () => {
     const r1 = result.metrics![0]!
     expect(r1.newIssues).toBe(1)
     expect(r1.reviewerSeverity.high).toBe(1)
+  })
+
+  test('does not mark fixed when fixer claims fixed but commits nothing (no-commit guard)', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    const { logger, events } = createCapturingTraceLogger()
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], []],
+        fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: logger,
+    })
+
+    const records = Object.values(ledger.snapshot.issues)
+    expect(records).toHaveLength(1)
+    expect(records[0]!.fixAttempts).toBe(0)
+    expect(records[0]!.status).not.toBe('fixed_pending_review')
+    const fixCompletes = events.filter((e) => e.event === 'fix_complete')
+    expect(fixCompletes.some((e) => !e.fixed)).toBe(true)
+    expect(result.metrics).toBeDefined()
+  })
+
+  test('uses sanitized fixer commitMessage as the commit subject', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], []],
+        fixerResults: [
+          { verdict: 'valid', fixability: 'auto', fixed: true, commitMessage: 'fix(review-loop): real change' },
+        ],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
+    expect(subject).toBe('fix(review-loop): real change')
+  })
+
+  test('falls back to issue-title commit subject when fixer omits commitMessage', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], []],
+        fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
+    expect(subject).toBe(`fix(review-loop): ${issue.title}`)
+  })
+
+  test('clean -fd removes untracked scratch files on not-fixed revert', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 1, maxNoProgressRounds: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue]],
+        fixerResults: [{ verdict: 'needs_human', fixability: 'manual', fixed: false }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'scratch.txt'), 'junk\n')
+          return Promise.resolve()
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    const status = (await execGit(runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
+    expect(status).toBe('')
+    expect(existsSync(path.join(runState.worktreePath, 'scratch.txt'))).toBe(false)
+  })
+
+  test('counts a retried-then-succeeded issue as a single fixed decision', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 1, maxNoProgressRounds: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    const execResults: Array<{ exitCode: number; stdout: string; stderr: string }> = [
+      { exitCode: 1, stdout: '', stderr: 'TypeError: broken' },
+      { exitCode: 0, stdout: '', stderr: '' },
+    ]
+    let execIndex = 0
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue]],
+        fixerResults: [
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+        ],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
+      }),
+      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+        const r = execResults[execIndex]!
+        execIndex += 1
+        return Promise.resolve(r)
+      },
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    const decisions = result.metrics![0]!.decisions
+    expect(decisions.fixed).toBe(1)
+    expect(sumDecisions(decisions)).toBe(1)
+  })
+
+  test('does not double-tally an issue that fails build then fails again on retry', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 1, maxNoProgressRounds: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue]],
+        fixerResults: [
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+        ],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
+      }),
+      exec: createMockExec(false),
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    const decisions = result.metrics![0]!.decisions
+    expect(decisions.needs_human).toBe(1)
+    expect(decisions.fixed).toBe(0)
+    expect(sumDecisions(decisions)).toBe(1)
   })
 })

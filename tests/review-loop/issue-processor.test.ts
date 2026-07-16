@@ -63,6 +63,7 @@ function mockSpawnForFixer(): SpawnFn {
           commitSha: 'abc',
         }),
       )
+      writeFileSync(path.join(opts.cwd, 'fixed.ts'), 'ok\n')
     }
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
   }

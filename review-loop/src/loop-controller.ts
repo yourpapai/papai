@@ -34,6 +34,8 @@ import type { RoundMetric, TraceLogger } from './trace-log.js'
 
 const TERMINAL_STATUSES = new Set<LedgerIssueRecord['status']>(['rejected', 'already_fixed', 'needs_human'])
 
+const MATCHER_RECENT_ROUNDS = 2
+
 export interface ReviewLoopDeps {
   config: ReviewLoopConfig
   runState: RunState
@@ -126,7 +128,10 @@ async function runMatchAndRecord(
   round: number,
   newIssues: readonly ReviewerIssue[],
 ): Promise<{ records: readonly LedgerIssueRecord[]; newCount: number; matchedCount: number }> {
-  const existingRecords = Object.values(deps.ledger.snapshot.issues)
+  const existingRecords = Object.values(deps.ledger.snapshot.issues).filter((r) => {
+    if (!TERMINAL_STATUSES.has(r.status)) return true
+    return round - r.latestSeenRound <= MATCHER_RECENT_ROUNDS
+  })
 
   const matches = await matchIssues({
     spawn: deps.spawn,
@@ -205,6 +210,7 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
 export function runReviewLoop(deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
   const nextRound = deps.runState.currentRound + 1
   if (nextRound > deps.config.maxRounds) {
+    emitLoopEnd(deps.trace, deps.runState.currentRound, 'max_rounds', [])
     return Promise.resolve(terminalResult(deps, 'max_rounds', deps.runState.currentRound, []))
   }
   return runRound(nextRound, deps, [])
