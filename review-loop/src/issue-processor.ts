@@ -133,7 +133,9 @@ async function ensureFixerChangesCommitted(
   if (status.length === 0) {
     return (await execGit(worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
   }
-  const subject = sanitizeSubject(commitMessage ?? `fix(review-loop): ${record.issue.title}`)
+  const provided = commitMessage?.trim()
+  const fallback = `fix(review-loop): ${record.issue.title}`
+  const subject = sanitizeSubject(provided !== undefined && provided !== '' ? provided : fallback)
   await execGit(worktreePath, ['add', '-A'])
   await execGit(worktreePath, ['commit', '-m', subject])
   deps.log.log(`[fix] "${shortTitle(record)}" → auto-committed uncommitted changes`)
