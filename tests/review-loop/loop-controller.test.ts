@@ -221,6 +221,62 @@ describe('runReviewLoop', () => {
     expect(execIndex).toBe(2)
   })
 
+  test('commits retry fixer changes when first fixer already committed', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxNoProgressRounds: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    const execResults: Array<{ exitCode: number; stdout: string; stderr: string }> = [
+      { exitCode: 1, stdout: '', stderr: 'TypeError: broken' },
+      { exitCode: 0, stdout: '', stderr: '' },
+    ]
+    let execIndex = 0
+
+    const fixerActions: Array<(cwd: string) => Promise<void>> = [
+      async (cwd) => {
+        writeFileSync(path.join(cwd, 'fix-0.txt'), 'first attempt\n')
+        await execGit(cwd, ['add', '.'])
+        await execGit(cwd, ['commit', '-m', 'fix attempt 0'])
+      },
+      (cwd) => {
+        writeFileSync(path.join(cwd, 'fix-1.txt'), 'retry correction\n')
+        return Promise.resolve()
+      },
+    ]
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], []],
+        fixerResults: [
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+        ],
+        onFixer: (cwd, callIndex) => fixerActions[callIndex]!(cwd),
+      }),
+      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+        const r = execResults[execIndex]!
+        execIndex += 1
+        return Promise.resolve(r)
+      },
+      log: silentReporter(),
+    })
+
+    expect(result.doneReason).toBe('clean')
+    expect(execIndex).toBe(2)
+    const status = (await execGit(runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
+    expect(status).toBe('')
+    const committed = (await execGit(runState.worktreePath, ['show', 'HEAD:fix-1.txt'])).stdout
+    expect(committed).toContain('retry correction')
+  })
+
   test('resets worktree to baseline SHA when retry build also fails', async () => {
     const repoRoot = makeTempDir('loop-ctrl-')
     const config = createReviewLoopConfigFixture(repoRoot, { maxNoProgressRounds: 1 })

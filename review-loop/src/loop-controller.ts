@@ -112,7 +112,7 @@ async function retryFixAfterBuildFailure(
   const retryBuild = await runBuildWithLogging(deps)
 
   if (retryBuild.passed) {
-    await ensureFixerChangesCommitted(deps, record, baselineSha)
+    await ensureFixerChangesCommitted(deps, record)
     recordFixAttempt(deps.ledger, record.id)
     deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed (after retry)`)
     return true
@@ -129,15 +129,7 @@ async function retryFixAfterBuildFailure(
   return false
 }
 
-async function ensureFixerChangesCommitted(
-  deps: ReviewLoopDeps,
-  record: LedgerIssueRecord,
-  baselineSha: string,
-): Promise<void> {
-  const headSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
-  if (headSha !== baselineSha) {
-    return
-  }
+async function ensureFixerChangesCommitted(deps: ReviewLoopDeps, record: LedgerIssueRecord): Promise<void> {
   const status = (await execGit(deps.runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
   if (status.length === 0) {
     return
@@ -173,7 +165,7 @@ async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Pr
   const buildResult = await runBuildWithLogging(deps)
 
   if (buildResult.passed) {
-    await ensureFixerChangesCommitted(deps, record, baselineSha)
+    await ensureFixerChangesCommitted(deps, record)
     recordFixAttempt(deps.ledger, record.id)
     deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed`)
     return { fixed: true }
