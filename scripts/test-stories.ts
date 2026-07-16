@@ -261,7 +261,7 @@ async function executeStoryTests(
 }
 
 function preflightStorySandbox(dependencies: RunnerDependencies): void {
-  if ((dependencies.platform ?? process.platform) !== 'linux') return
+  selectStorySandboxBackend(dependencies.platform ?? process.platform)
   const assertBackend = dependencies.assertLinuxSandboxBackend ?? assertLinuxStorySandboxBackend
   assertBackend()
 }

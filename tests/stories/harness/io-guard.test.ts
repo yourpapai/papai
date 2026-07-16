@@ -33,7 +33,7 @@ async function run(
 }
 
 function sanitizedEnvironment(source: Record<string, string | undefined>): Record<string, string> {
-  const allowed = ['PATH', 'CI'] as const
+  const allowed = ['PATH', 'CI', 'HOME'] as const
   const environment = Object.fromEntries(
     allowed.flatMap((key) => (source[key] === undefined ? [] : [[key, source[key]] as const])),
   )

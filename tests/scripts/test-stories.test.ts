@@ -133,7 +133,7 @@ describe('story runner reports and compatibility', () => {
       env: { HOME: '/must-not-leak' },
       spawn: mock((command: readonly string[], options: Parameters<typeof Bun.spawn>[1]) => {
         actions.push('spawn')
-        expect(command).toEqual(['sandbox-exec', '-p', 'profile', '/bun', 'test'])
+        expect(command).toEqual(['docker', 'run', 'sandboxed', '/bun', 'test'])
         expect(options?.cwd).toBe(session.appRoot)
         expect(options?.env?.['TMPDIR']).toBe(session.tempRoot)
         expect(options?.env?.['PAPAI_STORY_EXECUTION_ROOT']).toBe(session.appRoot)
@@ -148,7 +148,7 @@ describe('story runner reports and compatibility', () => {
       discoverContracts: () => Promise.reject(new Error('live contract discovery must not run')),
       createStoryRunnerSession: (options) => {
         actions.push('session')
-        expect(options.sandboxBackend).toBe('darwin-sandbox-exec')
+        expect(options.sandboxBackend).toBe('linux-docker')
         return Promise.resolve(session)
       },
       buildSandboxCommand: mock((request: StorySandboxRequest) => {
@@ -160,15 +160,18 @@ describe('story runner reports and compatibility', () => {
           reportPaths: session.childReportPaths,
           bunExecutable: '/bun',
         })
-        return ['sandbox-exec', '-p', 'profile', '/bun', 'test']
+        return ['docker', 'run', 'sandboxed', '/bun', 'test']
       }),
+      assertLinuxSandboxBackend: () => {
+        actions.push('preflight')
+      },
       platform: 'darwin' as NodeJS.Platform,
       bunExecutable: '/bun',
     } as Parameters<typeof runStoryTests>[1]
 
     await expect(runStoryTests([], dependencies)).resolves.toBe(0)
 
-    expect(actions).toEqual(['session', 'verify', 'sandbox', 'spawn', 'verify', 'copy', 'cleanup'])
+    expect(actions).toEqual(['preflight', 'session', 'verify', 'sandbox', 'spawn', 'verify', 'copy', 'cleanup'])
   })
 
   test('fails before spawning when no sandbox backend supports the platform', async () => {
@@ -198,42 +201,42 @@ describe('story runner reports and compatibility', () => {
     expect(spawned).toBe(false)
   })
 
-  test.each([
-    ['Docker availability', new Error('Story sandbox Docker availability check failed')],
-    ['pinned Bun version', new Error('Story sandbox Docker image must run Bun 1.3.13')],
-  ])('rejects a Linux %s failure before session creation or spawn', async (_failure, failure) => {
-    const actions: string[] = []
-    const candidate = {
-      ...manifest('a'.repeat(64)),
-      files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
-    }
-    const exitCode = await runStoryTests([], {
-      cwd: '/repo',
-      env: {},
-      spawn: () => {
-        actions.push('spawn')
-        return { exited: Promise.resolve(0), kill: (): void => undefined }
-      },
-      createStoryRunnerSession: () => {
-        actions.push('session')
-        return Promise.resolve(testSession('/session', candidate))
-      },
-      assertLinuxSandboxBackend: () => {
-        actions.push('preflight')
-        throw failure
-      },
-      buildCandidateManifest: () => Promise.resolve(candidate),
-      buildBaselineManifest: () => Promise.resolve(candidate),
-      writeManifest: () => Promise.resolve(),
-      removeReport: () => Promise.resolve(),
-      discoverStories: () => Promise.resolve([]),
-      discoverContracts: () => Promise.resolve([]),
-      platform: 'linux' as NodeJS.Platform,
-    } as Parameters<typeof runStoryTests>[1])
+  test.each(['darwin', 'linux', 'win32'] as const)(
+    'rejects a Docker preflight failure on %s before session creation or spawn',
+    async (platform) => {
+      const actions: string[] = []
+      const candidate = {
+        ...manifest('a'.repeat(64)),
+        files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
+      }
+      const exitCode = await runStoryTests([], {
+        cwd: '/repo',
+        env: {},
+        spawn: () => {
+          actions.push('spawn')
+          return { exited: Promise.resolve(0), kill: (): void => undefined }
+        },
+        createStoryRunnerSession: () => {
+          actions.push('session')
+          return Promise.resolve(testSession('/session', candidate))
+        },
+        assertLinuxSandboxBackend: () => {
+          actions.push('preflight')
+          throw new Error('Story sandbox Docker availability check failed')
+        },
+        buildCandidateManifest: () => Promise.resolve(candidate),
+        buildBaselineManifest: () => Promise.resolve(candidate),
+        writeManifest: () => Promise.resolve(),
+        removeReport: () => Promise.resolve(),
+        discoverStories: () => Promise.resolve([]),
+        discoverContracts: () => Promise.resolve([]),
+        platform: platform as NodeJS.Platform,
+      } as Parameters<typeof runStoryTests>[1])
 
-    expect(exitCode).toBe(2)
-    expect(actions).toEqual(['preflight'])
-  })
+      expect(exitCode).toBe(2)
+      expect(actions).toEqual(['preflight'])
+    },
+  )
 
   test.each([
     ['mutation', (liveStory: string): void => writeFileSync(liveStory, 'mutated story')],

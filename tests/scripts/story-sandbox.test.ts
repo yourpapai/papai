@@ -6,7 +6,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
   existsSync,
-  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -24,7 +23,11 @@ import {
   resolveLinuxStorySandboxUser,
   type StorySandboxProcessRunner,
 } from '../../scripts/story-sandbox-linux.js'
-import { buildStorySandboxCommand, type StorySandboxRequest } from '../../scripts/story-sandbox.js'
+import {
+  buildStorySandboxCommand,
+  selectStorySandboxBackend,
+  type StorySandboxRequest,
+} from '../../scripts/story-sandbox.js'
 import { classifyStorySandboxDockerMode } from '../../scripts/test-story-sandbox.js'
 
 const roots: string[] = []
@@ -80,54 +83,8 @@ function fixture(): Readonly<{
   }
 }
 
-function spawnSandboxed(request: StorySandboxRequest, file: string): ReturnType<typeof Bun.spawn> {
-  const relativeFile = `./${path.relative(request.appRoot, file)}`
-  const command = [...buildStorySandboxCommand(request), relativeFile]
-  return Bun.spawn(command, {
-    cwd: request.appRoot,
-    env: { ...process.env, TMPDIR: request.tempRoot },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-}
-
 function outputText(output: ReadableStream<Uint8Array> | number | undefined): Promise<string> {
   return output instanceof ReadableStream ? new Response(output).text() : Promise.resolve('')
-}
-
-function isNestedSandboxIncompatibility(output: string): boolean {
-  return output.includes('sandbox-exec: sandbox_apply: Operation not permitted')
-}
-
-function assertSandboxDenied(exitCode: number, output: string): void {
-  if (isNestedSandboxIncompatibility(output)) throw new Error('sandbox child could not start')
-  if (exitCode === 0) throw new Error('sandbox child unexpectedly succeeded')
-  if (!/operation not permitted|permission denied|connectionrefused|cannot find module/iu.test(output)) {
-    throw new Error(`sandbox child failed without an access denial: ${output}`)
-  }
-}
-
-function sandboxExecutionUnavailable(): boolean {
-  const child = Bun.spawnSync(['sandbox-exec', '-p', '(version 1) (allow default)', '/usr/bin/true'], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const output = `${child.stdout.toString()}\n${child.stderr.toString()}`
-  if (child.exitCode === 0) return false
-  if (isNestedSandboxIncompatibility(output)) return true
-  throw new Error(`sandbox-exec preflight failed: ${output}`)
-}
-
-const executableSandboxUnavailable = sandboxExecutionUnavailable()
-const executableSandboxTest = test.skipIf(executableSandboxUnavailable)
-
-async function expectSandboxDenied(child: ReturnType<typeof Bun.spawn>): Promise<void> {
-  const [exitCode, stderr, stdout] = await Promise.all([
-    child.exited,
-    outputText(child.stderr),
-    outputText(child.stdout),
-  ])
-  assertSandboxDenied(exitCode, `${stdout}\n${stderr}`)
 }
 
 function writeProbe(request: StorySandboxRequest, name: string, source: string): string {
@@ -179,181 +136,27 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-describe('Darwin story sandbox', () => {
-  test('does not treat a sandbox-exec setup failure as a denied child operation', () => {
-    expect(() => assertSandboxDenied(71, 'sandbox-exec: sandbox_apply: Operation not permitted')).toThrow(
-      'could not start',
-    )
+describe('story sandbox backend selection', () => {
+  test.each(['darwin', 'linux', 'win32'] as const)('selects the Docker backend on %s', (platform) => {
+    expect(selectStorySandboxBackend(platform)).toBe('linux-docker')
   })
 
-  test('builds a deny-default command from canonical declared paths', () => {
-    const { request, dependencyCacheRoot, liveRoot } = fixture()
-
-    const command = buildStorySandboxCommand(request)
-    const profile = String(command[2])
-
-    expect(command[0]).toBe('sandbox-exec')
-    expect(command[1]).toBe('-p')
-    expect(typeof command[2]).toBe('string')
-    expect([...command.slice(3)]).toEqual([...request.command])
-    expect('dependencyRoot' in request).toBe(false)
-    expect(profile).toContain('(version 1)')
-    expect(profile).toContain('(deny default)')
-    expect(profile).toContain('(deny network*)')
-    expect(profile).toContain('(allow process-exec*)')
-    expect(profile).not.toContain('(allow process*)')
-    expect(profile).toContain(`(subpath "${realpathSync(request.appRoot)}")`)
-    expect(profile).toContain(`(subpath "${realpathSync(request.tempRoot)}")`)
-    expect(profile).toContain(`(literal "${realpathSync(request.reportPaths[0]!)}")`)
-    expect(profile).toContain('(subpath "/System")')
-    expect(profile).toContain('(subpath "/usr/lib")')
-    expect(profile).toContain('(subpath "/private/var/db/timezone")')
-    expect(profile).toContain(`(subpath "${path.dirname(process.execPath)}")`)
-    expect(profile).not.toContain(liveRoot)
-    expect(profile).not.toContain(dependencyCacheRoot)
-    expect(profile).not.toContain(`(subpath "${os.homedir()}")`)
+  test.each(['aix', 'freebsd', 'openbsd'] as const)('fails closed on unsupported %s', (platform) => {
+    expect(() => selectStorySandboxBackend(platform)).toThrow('not implemented')
   })
 
-  test('rejects paths and commands outside the declared sandbox contract', () => {
-    const { request } = fixture()
-
-    expect(() => buildStorySandboxCommand({ ...request, appRoot: 'relative' })).toThrow('absolute')
-    expect(() => buildStorySandboxCommand({ ...request, appRoot: `${request.appRoot}/../app` })).toThrow('canonical')
-    expect(() => buildStorySandboxCommand({ ...request, command: ['bun', 'test'] })).toThrow('bun executable')
-    expect(() => buildStorySandboxCommand({ ...request, reportPaths: [] })).toThrow('report')
-  })
-
-  test('rejects canonical outputs outside the app-owned session layout', () => {
-    const { request, outsideRoot } = fixture()
-    const outsideReport = path.join(outsideRoot, 'outside.xml')
-    const nestedReport = path.join(path.dirname(request.reportPaths[0]!), 'nested', 'nested.xml')
-    mkdirSync(path.dirname(nestedReport), { recursive: true })
-    writeFileSync(outsideReport, '')
-    writeFileSync(nestedReport, '')
-
-    expect(() => buildStorySandboxCommand({ ...request, appRoot: path.dirname(request.appRoot) })).toThrow(
-      'session app',
-    )
-    expect(() => buildStorySandboxCommand({ ...request, tempRoot: realpathSync(outsideRoot) })).toThrow('session tmp')
-    expect(() => buildStorySandboxCommand({ ...request, reportPaths: [realpathSync(outsideReport)] })).toThrow(
-      'session reports',
-    )
-    expect(() => buildStorySandboxCommand({ ...request, reportPaths: [realpathSync(nestedReport)] })).toThrow(
-      'session reports',
-    )
-  })
-
-  test('resolves a scoped app-local dependency outside Seatbelt', async () => {
-    const { request } = fixture()
-    const packageRoot = path.join(request.appRoot, 'node_modules', '@fixture', 'dependency')
-    const probe = writeProbe(
-      request,
-      'unsandboxed-scoped-import',
-      [
-        "import { expect, test } from 'bun:test'",
-        "import { capturedDependency } from '@fixture/dependency'",
-        "test('loads the app-local scoped package', () => expect(capturedDependency).toBe('captured dependency module'))",
-      ].join('\n'),
-    )
-
-    expect(lstatSync(path.join(request.appRoot, 'node_modules')).isSymbolicLink()).toBe(false)
-    expect(lstatSync(packageRoot).isSymbolicLink()).toBe(false)
-    expect(realpathSync(packageRoot)).toBe(packageRoot)
-    const child = Bun.spawn([...request.command, `./${path.relative(request.appRoot, probe)}`], {
-      cwd: request.appRoot,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const [exitCode, stderr, stdout] = await Promise.all([
-      child.exited,
-      outputText(child.stderr),
-      outputText(child.stdout),
-    ])
-
-    expect(exitCode, `${stdout}\n${stderr}`).toBe(0)
-  })
-
-  executableSandboxTest(
-    'permits only app-local source and dependencies plus declared temp and report access',
-    async () => {
+  test.each(['darwin', 'linux', 'win32'] as const)(
+    'builds a Docker command on %s with no native sandbox fallback',
+    (platform) => {
       const { request } = fixture()
-      const report = request.reportPaths[0]!
-      const probe = writeProbe(
-        request,
-        'allowed',
-        [
-          "import { expect, test } from 'bun:test'",
-          "import { writeFileSync } from 'node:fs'",
-          "import path from 'node:path'",
-          "import { capturedDependency } from '@fixture/dependency'",
-          "test('reads declared inputs and writes declared outputs', async () => {",
-          "  expect(await Bun.file('source.txt').text()).toBe('captured source')",
-          "  expect(await Bun.file(path.resolve('node_modules/dependency.txt')).text()).toBe('captured dependency')",
-          "  expect(capturedDependency).toBe('captured dependency module')",
-          `  writeFileSync(${JSON.stringify(path.join(request.tempRoot, 'allowed.txt'))}, 'temporary')`,
-          `  writeFileSync(${JSON.stringify(report)}, '<testsuite/>')`,
-          '})',
-        ].join('\n'),
-      )
 
-      const child = spawnSandboxed(request, probe)
-      const [exitCode, stderr, stdout] = await Promise.all([
-        child.exited,
-        outputText(child.stderr),
-        outputText(child.stdout),
-      ])
-      expect(exitCode, `${stdout}\n${stderr}`).toBe(0)
-      expect(existsSync(path.join(request.tempRoot, 'allowed.txt'))).toBe(true)
-      expect(existsSync(report)).toBe(true)
+      const command = buildStorySandboxCommand({ ...request, platform })
+
+      expect(command[0]).toBe('docker')
+      expect(command[1]).toBe('run')
+      expect(command).not.toContain('sandbox-exec')
     },
   )
-
-  executableSandboxTest('denies native file import outside the app root', async () => {
-    const { request, outsideRoot } = fixture()
-    const outsideModule = path.join(realpathSync(outsideRoot), 'outside-module.ts')
-    const probe = writeProbe(request, 'external-import', `await import(${JSON.stringify(`file://${outsideModule}`)})`)
-
-    expect(existsSync(outsideModule)).toBe(true)
-    await expectSandboxDenied(spawnSandboxed(request, probe))
-  })
-
-  executableSandboxTest('denies Bun native reads outside declared inputs', async () => {
-    const { request } = fixture()
-    const probe = writeProbe(request, 'native-read', "await Bun.file('/etc/hosts').text()")
-
-    await expectSandboxDenied(spawnSandboxed(request, probe))
-  })
-
-  executableSandboxTest('denies network requests', async () => {
-    const { request } = fixture()
-    let requests = 0
-    const server = Bun.serve({
-      port: 0,
-      fetch: () => {
-        requests += 1
-        return new Response('parent listener')
-      },
-    })
-    const probe = writeProbe(request, 'network', `await fetch(${JSON.stringify(server.url.href)})`)
-
-    try {
-      await expectSandboxDenied(spawnSandboxed(request, probe))
-      expect(requests).toBe(0)
-    } finally {
-      await server.stop(true)
-    }
-  })
-
-  executableSandboxTest('denies writes outside the session temporary root and exact report', async () => {
-    const { request, outsideRoot } = fixture()
-    const probe = writeProbe(
-      request,
-      'outside-write',
-      `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(path.join(realpathSync(outsideRoot), 'escape.txt'))}, 'escape')`,
-    )
-
-    await expectSandboxDenied(spawnSandboxed(request, probe))
-  })
 })
 
 describe('Linux story sandbox', () => {
@@ -417,7 +220,8 @@ describe('Linux story sandbox', () => {
     expect(command).toContain(`type=bind,src=${request.tempRoot},dst=/session/tmp`)
     expect(command).toContain(`type=bind,src=${request.reportPaths[0]},dst=/session/reports/junit.xml`)
     expect(command).toContain('TMPDIR=/session/tmp')
-    expect(command).toContain('HOME=/nonexistent')
+    expect(command).toContain('HOME=/session/tmp')
+    expect(command).not.toContain('HOME=/nonexistent')
     expect(command).toContain('PAPAI_STORY_EXECUTION_ROOT=/session/app')
     expect(command).not.toContain('--volume')
     expect(command).not.toContain('-v')

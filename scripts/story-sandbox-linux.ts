@@ -167,7 +167,7 @@ export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): rea
     '--env',
     'TMPDIR=/session/tmp',
     '--env',
-    'HOME=/nonexistent',
+    'HOME=/session/tmp',
     '--env',
     'TZ=UTC',
     '--env',
