@@ -8,7 +8,7 @@ import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { runBuildCheck } from '../../review-loop/src/build-checker.js'
-import { finalizeRun, parseCliArgs, splitLines, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import { finalizeRun, parseCliArgs, realSpawn, splitLines, type FinalizeDeps } from '../../review-loop/src/cli.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import { createRunState, type RunState } from '../../review-loop/src/run-state.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
@@ -101,6 +101,15 @@ async function setupFinalizeFixtures(): Promise<{ config: ReviewLoopConfig; runS
   const runState = await createRunState(config, planPath)
   return { config, runState }
 }
+
+describe('realSpawn', () => {
+  test('surfaces spawn error message when binary cannot be spawned', async () => {
+    const result = await realSpawn('this-binary-does-not-exist-12345', [], { cwd: process.cwd() })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr.length).toBeGreaterThan(0)
+    expect(result.stderr).toContain('this-binary-does-not-exist-12345')
+  })
+})
 
 describe('finalizeRun', () => {
   test('aborts merge and preserves worktree when final build fails', async () => {

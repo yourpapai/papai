@@ -102,7 +102,7 @@ export async function finalizeRun(config: ReviewLoopConfig, runState: RunState, 
   await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
 }
 
-const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
+export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
   return new Promise((resolve) => {
     const child = spawn(command, [...args], { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''
@@ -120,8 +120,8 @@ const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString()
     })
-    child.on('error', () => {
-      resolve({ exitCode: 1, stdout, stderr })
+    child.on('error', (err: Error) => {
+      resolve({ exitCode: 1, stdout, stderr: stderr + err.message })
     })
     child.on('close', (code) => {
       if (pending.length > 0) {
