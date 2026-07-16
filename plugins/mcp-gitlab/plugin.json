@@ -12,7 +12,11 @@
       "gitlab_get_file_content",
       "gitlab_get_mr_info",
       "gitlab_get_mrs",
-      "gitlab_get_job"
+      "gitlab_get_job",
+      "gitlab_post_comment",
+      "gitlab_create_discussion",
+      "gitlab_update_mr",
+      "gitlab_set_mr_state"
     ],
     "promptFragments": [],
     "configKeys": []

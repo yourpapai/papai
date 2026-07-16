@@ -22,6 +22,7 @@ import {
   gitlabGetMrsSchema,
   gitlabGetRepositoryTreeSchema,
 } from './input-schema.js'
+import { buildWriteToolDefinitions } from './write-tools.js'
 
 function executeGetRepositoryTree(
   input: unknown,
@@ -155,6 +156,10 @@ const factory = (): {
       pluginContext.log.info({}, 'mcp-gitlab plugin activated')
 
       for (const tool of buildToolDefinitions(() => httpFetch)) {
+        pluginContext.registration.registerTool(tool)
+      }
+
+      for (const tool of buildWriteToolDefinitions(() => httpFetch)) {
         pluginContext.registration.registerTool(tool)
       }
     },

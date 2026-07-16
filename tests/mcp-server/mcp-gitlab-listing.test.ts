@@ -19,6 +19,10 @@ const GITLAB_TOOL_NAMES = [
   'gitlab_get_mr_info',
   'gitlab_get_mrs',
   'gitlab_get_job',
+  'gitlab_post_comment',
+  'gitlab_create_discussion',
+  'gitlab_update_mr',
+  'gitlab_set_mr_state',
 ]
 
 function discoverMcpGitLab(): DiscoveredPlugin {
@@ -46,7 +50,7 @@ describe('mcp-gitlab reachable through the mcp-server plugin bridge', () => {
     resetPluginRegistryForTesting()
   })
 
-  test('activation exposes all 5 gitlab tools with object input schemas via listPluginMcpTools', async () => {
+  test('activation exposes all 9 gitlab tools with object input schemas via listPluginMcpTools', async () => {
     const plugin = discoverMcpGitLab()
     expect(plugin.manifest.mcpServer).toBe(true)
 
@@ -73,7 +77,7 @@ describe('mcp-gitlab reachable through the mcp-server plugin bridge', () => {
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
     pluginRegistry.evaluateCompatibilityAcrossInstances([])
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
-    expect(await listPluginMcpTools('mcp-gitlab')).toHaveLength(5)
+    expect(await listPluginMcpTools('mcp-gitlab')).toHaveLength(9)
 
     await deactivateAllPlugins()
 

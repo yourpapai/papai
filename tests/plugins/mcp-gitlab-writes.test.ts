@@ -3,9 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+
+import type { ToolExecutionOptions } from 'ai'
 
 import { GitLabClient } from '../../plugins/mcp-gitlab/client.js'
+import factory from '../../plugins/mcp-gitlab/index.js'
+import type { PluginContext, PluginLogger, PluginRegistration } from '../../src/plugins/context.js'
+import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 
 interface Captured {
   url: string
@@ -67,5 +72,180 @@ describe('GitLabClient writes', () => {
   test('a non-ok write surfaces a clean error', async () => {
     const httpFetch = (): Promise<Response> => Promise.resolve(new Response('{}', { status: 403 }))
     await expect(client(httpFetch).postComment('group/proj', '42', 'hi')).rejects.toThrow(/GitLab API 403/u)
+  })
+})
+
+function createMockLogger(): PluginLogger {
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  }
+}
+
+function createMockContext(overrides: { httpFetch?: (url: string, init?: RequestInit) => Promise<Response> } = {}): {
+  ctx: PluginContext
+  registeredTools: Map<string, PluginTool>
+} {
+  const registeredTools = new Map<string, PluginTool>()
+
+  const registration: PluginRegistration = {
+    registerTool: (tool: PluginTool) => {
+      registeredTools.set(tool.name, tool)
+    },
+    registerPromptFragment: () => {},
+    registerCommand: () => {},
+    registerScheduledJob: () => {},
+    registerAttachmentTransformer: () => {},
+    registerTaskProviderType: () => {},
+  }
+
+  const ctx: PluginContext = {
+    pluginId: 'mcp-gitlab',
+    contextId: '__system__',
+    permissions: new Set(['http']),
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    log: createMockLogger(),
+    registration,
+    providerRuntime: {
+      httpFetch: overrides.httpFetch ?? mock(),
+      allowedHosts: new Set(['gl.example.com']),
+      logger: createMockLogger(),
+    },
+    adminConfig: {
+      get: () => undefined,
+    },
+  }
+
+  return { ctx, registeredTools }
+}
+
+function createMockRuntimeContext(
+  overrides: {
+    allowed?: boolean
+    retryAfterSec?: number
+    baseUrl?: string | undefined
+    token?: string | undefined
+  } = {},
+): PluginToolRuntimeContext {
+  const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
+
+  const values: Record<string, string | undefined> = {
+    base_url: 'baseUrl' in overrides ? overrides.baseUrl : 'https://gl.example.com',
+    token: 'token' in overrides ? overrides.token : 'tok',
+  }
+
+  return {
+    pluginId: 'mcp-gitlab',
+    storageContextId: 'test-context',
+    chatUserId: 'test-user',
+    taskProvider: {
+      getTask: () => notImplemented(),
+      listTasks: () => notImplemented(),
+      searchTasks: () => notImplemented(),
+      createTask: () => notImplemented(),
+      updateTask: () => notImplemented(),
+    },
+    kv: {
+      get: () => undefined,
+      set: () => {},
+      delete: () => {},
+      list: () => [],
+    },
+    rateLimit: {
+      check: () => ({
+        allowed: overrides.allowed ?? true,
+        retryAfterSec: overrides.retryAfterSec,
+      }),
+    },
+    attachments: {
+      read: () => notImplemented(),
+    },
+    adminConfig: {
+      get: (key: string) => values[key],
+    },
+    contextConfig: {
+      get: () => undefined,
+    },
+    codingSecrets: {
+      resolve: () => null,
+      resolveForgeToken: () => null,
+      resolveAgent: () => null,
+      resolveForge: () => null,
+      resolveProviderHost: () => null,
+      resolveModel: () => null,
+      resolveMcpServers: () => ({ ok: true, servers: [] }),
+      resolveMcpTokens: () => ({}),
+    },
+    codingRepos: { list: () => [], get: () => null },
+    transcript: { mintUrl: () => null },
+  } as PluginToolRuntimeContext
+}
+
+function createMockOptions(): ToolExecutionOptions {
+  return {
+    toolCallId: 'test-call-id',
+    messages: [],
+  }
+}
+
+describe('mcp-gitlab write tools', () => {
+  test('gitlab_post_comment posts and returns { noteId }', async () => {
+    const { httpFetch, captured } = captureFetch({ id: 7, body: 'hi' })
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('gitlab_post_comment')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ projectPath: 'group/proj', mrIid: '42', body: 'hi' }, runtimeCtx, options)
+
+    expect(result).toEqual({ noteId: 7 })
+    expect(captured[0]?.method).toBe('POST')
+  })
+
+  test('gitlab_update_mr with no fields returns validation_error and issues no HTTP call', async () => {
+    const { httpFetch, captured } = captureFetch({})
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('gitlab_update_mr')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ projectPath: 'group/proj', mrIid: '42' }, runtimeCtx, options)
+
+    expect(result).toHaveProperty('error', 'validation_error')
+    expect(result).toHaveProperty('message', expect.stringContaining('at least one'))
+    expect(captured).toHaveLength(0)
+  })
+
+  test('gitlab_set_mr_state with an invalid stateEvent returns validation_error', async () => {
+    const { httpFetch, captured } = captureFetch({})
+
+    const { ctx, registeredTools } = createMockContext({ httpFetch })
+    const instance = factory()
+    instance.activate(ctx)
+
+    const tool = registeredTools.get('gitlab_set_mr_state')!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute(
+      { projectPath: 'group/proj', mrIid: '42', stateEvent: 'bogus' },
+      runtimeCtx,
+      options,
+    )
+
+    expect(result).toHaveProperty('error', 'validation_error')
+    expect(captured).toHaveLength(0)
   })
 })

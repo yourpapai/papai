@@ -519,7 +519,7 @@ function createMockOptions(): ToolExecutionOptions {
 }
 
 describe('mcp-gitlab plugin', () => {
-  test('activates and registers all 5 GitLab tools', () => {
+  test('activates and registers all 9 GitLab tools', () => {
     const { ctx, registeredTools } = createMockContext()
     const instance = factory()
     instance.activate(ctx)
@@ -531,6 +531,10 @@ describe('mcp-gitlab plugin', () => {
         'gitlab_get_mr_info',
         'gitlab_get_mrs',
         'gitlab_get_job',
+        'gitlab_post_comment',
+        'gitlab_create_discussion',
+        'gitlab_update_mr',
+        'gitlab_set_mr_state',
       ].sort(),
     )
   })
