@@ -66,6 +66,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
         throw new Error('Missing value for --resume-run')
       }
       index += 1
+      continue
     }
   }
 
