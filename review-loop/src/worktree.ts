@@ -57,6 +57,11 @@ export async function resetWorktree(worktreePath: string): Promise<void> {
   await execGit(worktreePath, ['clean', '-fd'])
 }
 
+export async function resetWorktreeTo(worktreePath: string, sha: string): Promise<void> {
+  await execGit(worktreePath, ['reset', '--hard', sha])
+  await execGit(worktreePath, ['clean', '-fd'])
+}
+
 export async function mergeWorktree(repoRoot: string, branchName: string): Promise<void> {
   await execGit(repoRoot, ['merge', branchName, '--no-edit'])
 }

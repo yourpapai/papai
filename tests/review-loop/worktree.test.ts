@@ -14,6 +14,7 @@ import {
   mergeWorktree,
   removeWorktree,
   resetWorktree,
+  resetWorktreeTo,
   worktreeExists,
   worktreeIsDirty,
 } from '../../review-loop/src/worktree.js'
@@ -129,5 +130,29 @@ describe('worktree dirty-state helpers', () => {
     expect(await worktreeIsDirty(wtPath)).toBe(false)
     expect(readFileSync(path.join(wtPath, 'README.md'), 'utf8')).toBe('hello')
     expect(existsSync(path.join(wtPath, 'untracked.txt'))).toBe(false)
+  })
+
+  test('resetWorktreeTo resets to a sha AND removes untracked files', async () => {
+    const repo = makeTempDir('wt-')
+    await execGit(repo, ['init'])
+    await execGit(repo, ['config', 'user.email', 't@t.com'])
+    await execGit(repo, ['config', 'user.name', 'T'])
+    writeFileSync(path.join(repo, 'a.txt'), 'a')
+    await execGit(repo, ['add', '.'])
+    await execGit(repo, ['commit', '-m', 'init'])
+    const baseline = (await execGit(repo, ['rev-parse', 'HEAD'])).stdout.trim()
+
+    // second commit + an untracked scratch file
+    writeFileSync(path.join(repo, 'b.txt'), 'b')
+    await execGit(repo, ['add', '.'])
+    await execGit(repo, ['commit', '-m', 'second'])
+    writeFileSync(path.join(repo, 'scratch.txt'), 'leak')
+
+    await resetWorktreeTo(repo, baseline)
+
+    expect((await execGit(repo, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(baseline)
+    const status = (await execGit(repo, ['status', '--porcelain'])).stdout.trim()
+    // scratch.txt gone, no untracked files
+    expect(status).toBe('')
   })
 })
