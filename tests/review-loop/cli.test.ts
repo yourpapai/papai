@@ -40,6 +40,16 @@ describe('parseCliArgs', () => {
     expect(args.resumeRunId).toBe('2026-07-15T10-30-00-000Z')
   })
 
+  test('resetWorktree defaults to false', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md'])
+    expect(args.resetWorktree).toBe(false)
+  })
+
+  test('parses --reset-worktree as a boolean flag', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md', '--reset-worktree'])
+    expect(args.resetWorktree).toBe(true)
+  })
+
   test('throws on missing --plan', () => {
     expect(() => parseCliArgs(['--config', '/path/to/config.json'])).toThrow('Missing required --plan')
   })

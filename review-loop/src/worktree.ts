@@ -47,6 +47,16 @@ export function worktreeExists(worktreePath: string): boolean {
   return existsSync(worktreePath)
 }
 
+export async function worktreeIsDirty(worktreePath: string): Promise<boolean> {
+  const { stdout } = await execGit(worktreePath, ['status', '--porcelain'])
+  return stdout.trim().length > 0
+}
+
+export async function resetWorktree(worktreePath: string): Promise<void> {
+  await execGit(worktreePath, ['reset', '--hard', 'HEAD'])
+  await execGit(worktreePath, ['clean', '-fd'])
+}
+
 export async function mergeWorktree(repoRoot: string, branchName: string): Promise<void> {
   await execGit(repoRoot, ['merge', branchName, '--no-edit'])
 }

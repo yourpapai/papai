@@ -15,57 +15,64 @@ import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop } from './loop-controller.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { formatSummary } from './summary.js'
-import { createWorktree, mergeWorktree, removeWorktree, worktreeExists } from './worktree.js'
+import {
+  createWorktree,
+  mergeWorktree,
+  removeWorktree,
+  resetWorktree,
+  worktreeExists,
+  worktreeIsDirty,
+} from './worktree.js'
 
 export interface CliArgs {
   configPath: string
   planPath: string
   repoRoot?: string
   resumeRunId?: string
+  resetWorktree: boolean
 }
 
 const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
+
+function readValueArg(argv: readonly string[], index: number, name: string): string {
+  const value = argv[index + 1]
+  if (value === undefined) {
+    throw new Error(`Missing value for ${name}`)
+  }
+  return value
+}
 
 export function parseCliArgs(argv: readonly string[]): CliArgs {
   let configPath = DEFAULT_CONFIG_PATH
   let planPath: string | undefined
   let repoRoot: string | undefined
   let resumeRunId: string | undefined
+  let shouldResetWorktree = false
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--config') {
-      const value = argv[index + 1]
-      if (value === undefined) {
-        throw new Error('Missing value for --config')
-      }
-      configPath = value
+      configPath = readValueArg(argv, index, '--config')
       index += 1
       continue
     }
     if (arg === '--plan') {
-      planPath = argv[index + 1]
-      if (planPath === undefined) {
-        throw new Error('Missing value for --plan')
-      }
+      planPath = readValueArg(argv, index, '--plan')
       index += 1
       continue
     }
     if (arg === '--repo') {
-      const value = argv[index + 1]
-      if (value === undefined) {
-        throw new Error('Missing value for --repo')
-      }
-      repoRoot = value
+      repoRoot = readValueArg(argv, index, '--repo')
       index += 1
       continue
     }
     if (arg === '--resume-run') {
-      resumeRunId = argv[index + 1]
-      if (resumeRunId === undefined) {
-        throw new Error('Missing value for --resume-run')
-      }
+      resumeRunId = readValueArg(argv, index, '--resume-run')
       index += 1
+      continue
+    }
+    if (arg === '--reset-worktree') {
+      shouldResetWorktree = true
       continue
     }
   }
@@ -74,7 +81,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     throw new Error('Missing required --plan')
   }
 
-  return { configPath, planPath, repoRoot, resumeRunId }
+  return { configPath, planPath, repoRoot, resumeRunId, resetWorktree: shouldResetWorktree }
 }
 
 export function splitLines(pending: string, chunk: string): { lines: string[]; remaining: string } {
@@ -132,6 +139,19 @@ export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<Spaw
   })
 }
 
+export async function prepareWorktree(config: ReviewLoopConfig, runState: RunState, reset: boolean): Promise<void> {
+  if (!worktreeExists(runState.worktreePath)) {
+    await createWorktree(config.repoRoot, runState.worktreePath, runState.runId)
+  } else if (reset) {
+    await resetWorktree(runState.worktreePath)
+  } else if (await worktreeIsDirty(runState.worktreePath)) {
+    console.warn(
+      `Warning: worktree at ${runState.worktreePath} has uncommitted changes from a previous run. ` +
+        `Pass --reset-worktree to discard them before resuming.`,
+    )
+  }
+}
+
 export async function runCli(argv: readonly string[]): Promise<void> {
   const args = parseCliArgs(argv)
   const config = await loadReviewLoopConfig({
@@ -147,9 +167,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   const ledger: IssueLedger =
     args.resumeRunId === undefined ? await createIssueLedger(runState.runDir) : await loadIssueLedger(runState.runDir)
 
-  if (!worktreeExists(runState.worktreePath)) {
-    await createWorktree(config.repoRoot, runState.worktreePath, runState.runId)
-  }
+  await prepareWorktree(config, runState, args.resetWorktree)
 
   const log = new LiveRenderer(process.stdout)
   const exec = createShellExec(runState.worktreePath, config.checkCommand)
