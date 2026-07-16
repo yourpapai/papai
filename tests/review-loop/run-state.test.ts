@@ -73,4 +73,16 @@ describe('run-state', () => {
     expect(loaded.runDir).toBe(state.runDir)
     expect(loaded.ledgerPath).toBe(state.ledgerPath)
   })
+
+  test('synthesizes tracePath from runDir on create and load (additive, no migration)', async () => {
+    const repoRoot = makeTempDir('run-state-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+
+    const state = await createRunState(config, planPath)
+    expect(state.tracePath).toBe(path.join(state.runDir, 'trace.jsonl'))
+
+    const reloaded = await loadRunState(config.workDir, state.runId)
+    expect(reloaded.tracePath).toBe(state.tracePath)
+  })
 })

@@ -29,6 +29,7 @@ export interface RunState extends PersistedRunState {
   resultPath: string
   matchesPath: string
   logPath: string
+  tracePath: string
   statePath: string
 }
 
@@ -51,6 +52,7 @@ export async function createRunState(config: ReviewLoopConfig, planPath: string)
     resultPath: path.join(runDir, 'result.json'),
     matchesPath: path.join(runDir, 'matches.json'),
     logPath: path.join(runDir, 'agent-output.log'),
+    tracePath: path.join(runDir, 'trace.jsonl'),
     statePath: path.join(runDir, 'state.json'),
     repoRoot: config.repoRoot,
     planPath: path.resolve(planPath),
@@ -76,6 +78,7 @@ export async function loadRunState(workDir: string, runId: string): Promise<RunS
     resultPath: path.join(runDir, 'result.json'),
     matchesPath: path.join(runDir, 'matches.json'),
     logPath: path.join(runDir, 'agent-output.log'),
+    tracePath: path.join(runDir, 'trace.jsonl'),
     statePath,
   }
 }
