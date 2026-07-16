@@ -19,13 +19,13 @@ function createMockExec(results: Array<{ exitCode: number; stdout: string; stder
 describe('build-checker', () => {
   test('returns passed=true when exit code is 0', async () => {
     const exec = createMockExec([{ exitCode: 0, stdout: 'all good', stderr: '' }])
-    const result = await runBuildCheck({ exec, cwd: '/tmp/test', command: 'bun check:full' })
+    const result = await runBuildCheck({ exec })
     expect(result.passed).toBe(true)
   })
 
   test('returns passed=false with stderr when exit code is non-zero', async () => {
     const exec = createMockExec([{ exitCode: 1, stdout: '', stderr: 'TypeError: x is not a function' }])
-    const result = await runBuildCheck({ exec, cwd: '/tmp/test', command: 'bun check:full' })
+    const result = await runBuildCheck({ exec })
     expect(result.passed).toBe(false)
     expect(result.stderr).toContain('TypeError')
   })

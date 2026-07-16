@@ -9,8 +9,6 @@ export type ShellExecFn = () => Promise<{ exitCode: number; stdout: string; stde
 
 export interface BuildCheckDeps {
   exec: ShellExecFn
-  cwd: string
-  command: string
 }
 
 export interface BuildCheckResult {

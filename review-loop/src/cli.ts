@@ -91,11 +91,7 @@ export interface FinalizeDeps {
 }
 
 export async function finalizeRun(config: ReviewLoopConfig, runState: RunState, deps: FinalizeDeps): Promise<void> {
-  const build = await deps.runBuildCheck({
-    exec: deps.exec,
-    cwd: runState.worktreePath,
-    command: config.checkCommand,
-  })
+  const build = await deps.runBuildCheck({ exec: deps.exec })
   if (!build.passed) {
     throw new Error(
       `Final build check failed; worktree preserved at ${runState.worktreePath} for inspection, merge skipped.`,

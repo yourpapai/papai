@@ -76,9 +76,7 @@ function runFixer(deps: ReviewLoopDeps, prompt: string, label: string): Promise<
 }
 
 async function runBuildWithLogging(deps: ReviewLoopDeps): Promise<BuildCheckResult> {
-  const phase = await withLivePhase(deps.log, 'build', () =>
-    runBuildCheck({ exec: deps.exec, cwd: deps.runState.worktreePath, command: deps.config.checkCommand }),
-  )
+  const phase = await withLivePhase(deps.log, 'build', () => runBuildCheck({ exec: deps.exec }))
   deps.log.event(`[build] ${phase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(phase.durationMs)}`)
   return phase.result
 }
