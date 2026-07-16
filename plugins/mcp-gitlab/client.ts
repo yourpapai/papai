@@ -7,8 +7,10 @@ import type { HttpFetch } from './context.js'
 import {
   buildMrFilterParams,
   buildMrQuery,
+  shapeCreatedDiscussion,
   shapeJob,
   shapeMr,
+  shapePostedComment,
   shapeTreeEntry,
   truncateText,
   type MrQueryOptions,
@@ -182,5 +184,49 @@ export class GitLabClient {
     ])
     const { text: log, truncated } = truncateText(trace)
     return shapeJob(jobRaw, log, truncated)
+  }
+
+  private async sendJson(method: 'POST' | 'PUT', path: string, body: unknown): Promise<unknown> {
+    const res = await this.httpFetch(`${this.baseUrl}/api/v4${path}`, {
+      method,
+      headers: {
+        'PRIVATE-TOKEN': this.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      throw new Error(`GitLab API ${res.status} for ${path}`)
+    }
+    return res.json()
+  }
+
+  async postComment(projectPath: string, mrIid: string, body: string): Promise<unknown> {
+    const base = `/projects/${encodeURIComponent(projectPath)}/merge_requests/${encodeURIComponent(mrIid)}`
+    return shapePostedComment(await this.sendJson('POST', `${base}/notes`, { body }))
+  }
+
+  async createDiscussion(projectPath: string, mrIid: string, body: string): Promise<unknown> {
+    const base = `/projects/${encodeURIComponent(projectPath)}/merge_requests/${encodeURIComponent(mrIid)}`
+    return shapeCreatedDiscussion(await this.sendJson('POST', `${base}/discussions`, { body }))
+  }
+
+  async updateMr(
+    projectPath: string,
+    mrIid: string,
+    fields: { title?: string; description?: string; targetBranch?: string },
+  ): Promise<unknown> {
+    const body: Record<string, unknown> = {}
+    if (fields.title !== undefined) body['title'] = fields.title
+    if (fields.description !== undefined) body['description'] = fields.description
+    if (fields.targetBranch !== undefined) body['target_branch'] = fields.targetBranch
+    const path = `/projects/${encodeURIComponent(projectPath)}/merge_requests/${encodeURIComponent(mrIid)}`
+    return shapeMr(await this.sendJson('PUT', path, body))
+  }
+
+  async setMrState(projectPath: string, mrIid: string, stateEvent: 'close' | 'reopen'): Promise<unknown> {
+    const path = `/projects/${encodeURIComponent(projectPath)}/merge_requests/${encodeURIComponent(mrIid)}`
+    return shapeMr(await this.sendJson('PUT', path, { state_event: stateEvent }))
   }
 }

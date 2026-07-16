@@ -236,6 +236,8 @@
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     "strybk.config.ts": ["exports"],
+    // TEMP F4 T2: consumed by write-tools.ts in Task 3
+    "plugins/mcp-gitlab/input-schema.ts": ["exports"],
   },
 
   // Report unused exports even in entry files

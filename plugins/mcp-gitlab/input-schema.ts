@@ -57,6 +57,46 @@ export const gitlabGetMrsSchema = {
   additionalProperties: false,
 } as const
 
+const mrIid = { type: 'string', minLength: 1, description: 'MR iid, e.g. "42"' } as const
+
+export const gitlabPostCommentSchema = {
+  type: 'object',
+  properties: { projectPath, mrIid, body: { type: 'string', minLength: 1, description: 'Comment body (Markdown)' } },
+  required: ['projectPath', 'mrIid', 'body'],
+  additionalProperties: false,
+} as const
+
+export const gitlabCreateDiscussionSchema = {
+  type: 'object',
+  properties: {
+    projectPath,
+    mrIid,
+    body: { type: 'string', minLength: 1, description: 'First note of the new discussion thread (Markdown)' },
+  },
+  required: ['projectPath', 'mrIid', 'body'],
+  additionalProperties: false,
+} as const
+
+export const gitlabUpdateMrSchema = {
+  type: 'object',
+  properties: {
+    projectPath,
+    mrIid,
+    title: { type: 'string', minLength: 1, description: 'New MR title' },
+    description: { type: 'string', description: 'New MR description (Markdown)' },
+    targetBranch: { type: 'string', minLength: 1, description: 'New target branch' },
+  },
+  required: ['projectPath', 'mrIid'],
+  additionalProperties: false,
+} as const
+
+export const gitlabSetMrStateSchema = {
+  type: 'object',
+  properties: { projectPath, mrIid, stateEvent: { type: 'string', enum: ['close', 'reopen'] } },
+  required: ['projectPath', 'mrIid', 'stateEvent'],
+  additionalProperties: false,
+} as const
+
 export const gitlabGetJobSchema = {
   type: 'object',
   properties: {

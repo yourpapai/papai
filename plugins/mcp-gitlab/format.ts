@@ -201,3 +201,21 @@ export function buildMrQuery(opts: MrQueryOptions): string {
   params.set('page', String(opts.page ?? 1))
   return params.toString()
 }
+
+export function shapePostedComment(raw: unknown): { noteId?: number } {
+  if (!isRecord(raw)) return {}
+  const noteId = numberOr(raw['id'])
+  return noteId === undefined ? {} : { noteId }
+}
+
+export function shapeCreatedDiscussion(raw: unknown): { discussionId?: string; noteId?: number } {
+  if (!isRecord(raw)) return {}
+  const discussionId = stringOr(raw['id'])
+  const notes = raw['notes']
+  const firstNote = Array.isArray(notes) && isRecord(notes[0]) ? notes[0] : undefined
+  const noteId = firstNote === undefined ? undefined : numberOr(firstNote['id'])
+  return {
+    ...(discussionId === undefined ? {} : { discussionId }),
+    ...(noteId === undefined ? {} : { noteId }),
+  }
+}
