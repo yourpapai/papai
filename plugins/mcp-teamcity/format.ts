@@ -33,3 +33,49 @@ export function sanitizeTeamCityConfig(value: unknown): unknown {
   }
   return out
 }
+
+// TeamCity's REST API wraps every collection in a single-child envelope
+// (e.g. parameters -> { property: [...] }) and uses hyphenated keys. These
+// tables drive flattenTeamCity: envelope key -> inner array key, and
+// hyphenated key -> camelCase rename. Purely cosmetic; runs AFTER redaction.
+const TC_ENVELOPES: Record<string, string> = {
+  parameters: 'property',
+  properties: 'property',
+  projects: 'project',
+  buildTypes: 'buildType',
+  templates: 'buildType',
+  steps: 'step',
+  triggers: 'trigger',
+  features: 'feature',
+  'vcs-root-entries': 'vcs-root-entry',
+  'artifact-dependencies': 'artifact-dependency',
+  'snapshot-dependencies': 'snapshot-dependency',
+}
+
+const TC_RENAMES: Record<string, string> = {
+  'vcs-root-entries': 'vcsRootEntries',
+  'vcs-root': 'vcsRoot',
+  'checkout-rules': 'checkoutRules',
+  'artifact-dependencies': 'artifactDependencies',
+  'snapshot-dependencies': 'snapshotDependencies',
+  'source-buildType': 'sourceBuildType',
+}
+
+function unwrapTeamCityEnvelope(key: string, value: unknown): unknown {
+  const inner = TC_ENVELOPES[key]
+  if (inner === undefined || !isRecord(value)) return flattenTeamCity(value)
+  const arr = value[inner]
+  if (Array.isArray(arr)) return arr.map((item) => flattenTeamCity(item))
+  return []
+}
+
+export function flattenTeamCity(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => flattenTeamCity(item))
+  if (!isRecord(value)) return value
+  const out: Record<string, unknown> = {}
+  for (const [key, v] of Object.entries(value)) {
+    const outKey = TC_RENAMES[key] ?? key
+    out[outKey] = unwrapTeamCityEnvelope(key, v)
+  }
+  return out
+}
