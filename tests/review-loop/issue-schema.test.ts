@@ -80,4 +80,33 @@ describe('issue-schema', () => {
     }
     expect(() => IssueMatchesSchema.parse(data)).not.toThrow()
   })
+
+  test('FixerResultSchema accepts optional commitMessage and severity', () => {
+    const base = {
+      verdict: 'valid',
+      fixability: 'auto',
+      reasoning: 'r',
+      targetFiles: [],
+      fixed: true,
+    } as const
+    expect(FixerResultSchema.safeParse(base).success).toBe(true)
+    const parsed = FixerResultSchema.parse({
+      ...base,
+      commitMessage: 'fix(review-loop): tighten guard',
+      severity: 'low',
+    })
+    expect(parsed.commitMessage).toBe('fix(review-loop): tighten guard')
+    expect(parsed.severity).toBe('low')
+  })
+
+  test('VerifierDecisionSchema accepts plan_drift verdict (additive)', () => {
+    expect(
+      VerifierDecisionSchema.safeParse({
+        verdict: 'plan_drift',
+        fixability: 'manual',
+        reasoning: 'code diverged from plan',
+        targetFiles: [],
+      }).success,
+    ).toBe(true)
+  })
 })

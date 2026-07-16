@@ -121,4 +121,46 @@ describe('issue ledger', () => {
     const loaded = await loadIssueLedger(runDir)
     expect(Object.keys(loaded.snapshot.issues)).toHaveLength(1)
   })
+
+  test('valid + manual maps to needs_human (terminal); valid + auto maps to verified', async () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
+    tempDirs.push(runDir)
+
+    const ledger = await createIssueLedger(runDir)
+    const records = applyMatchedIssues(
+      ledger,
+      1,
+      [issue, { ...issue, title: 'Second issue' }],
+      [
+        { newIssueIndex: 0, existingId: null },
+        { newIssueIndex: 1, existingId: null },
+      ],
+    )
+    const manualId = records[0]!.id
+    const autoId = records[1]!.id
+
+    recordVerification(ledger, manualId, { ...validDecision, fixability: 'manual' })
+    recordVerification(ledger, autoId, { ...validDecision, fixability: 'auto' })
+
+    expect(ledger.snapshot.issues[manualId]?.status).toBe('needs_human')
+    expect(ledger.snapshot.issues[autoId]?.status).toBe('verified')
+  })
+
+  test('plan_drift maps to needs_human (terminal)', async () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
+    tempDirs.push(runDir)
+
+    const ledger = await createIssueLedger(runDir)
+    const records = applyMatchedIssues(ledger, 1, [issue], [{ newIssueIndex: 0, existingId: null }])
+    const id = records[0]!.id
+
+    recordVerification(ledger, id, {
+      verdict: 'plan_drift',
+      fixability: 'manual',
+      reasoning: 'code diverged from plan',
+      targetFiles: [],
+    })
+
+    expect(ledger.snapshot.issues[id]?.status).toBe('needs_human')
+  })
 })

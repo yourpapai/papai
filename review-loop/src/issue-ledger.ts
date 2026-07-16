@@ -141,7 +141,7 @@ export function recordVerification(ledger: IssueLedger, id: string, decision: Ve
     throw new Error(`Unknown issue id ${id}`)
   }
   record.verifierDecision = decision
-  record.status = mapVerifierDecisionToLedgerStatus(decision.verdict)
+  record.status = mapVerifierDecisionToLedgerStatus(decision)
 }
 
 export function recordFixAttempt(ledger: IssueLedger, id: string): void {
@@ -157,13 +157,15 @@ export async function saveIssueLedger(ledger: IssueLedger): Promise<void> {
   await writeFile(ledger.path, JSON.stringify(ledger.snapshot, null, 2))
 }
 
-function mapVerifierDecisionToLedgerStatus(verdict: VerifierDecision['verdict']): LedgerIssueStatus {
-  switch (verdict) {
+function mapVerifierDecisionToLedgerStatus(decision: VerifierDecision): LedgerIssueStatus {
+  switch (decision.verdict) {
     case 'valid':
-      return 'verified'
+      return decision.fixability === 'manual' ? 'needs_human' : 'verified'
     case 'already_fixed':
       return 'already_fixed'
     case 'needs_human':
+      return 'needs_human'
+    case 'plan_drift':
       return 'needs_human'
     case 'invalid':
       return 'rejected'

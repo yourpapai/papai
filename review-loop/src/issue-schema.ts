@@ -23,7 +23,7 @@ export const ReviewerIssuesSchema = z.object({
 })
 
 export const VerifierDecisionSchema = z.object({
-  verdict: z.enum(['valid', 'invalid', 'already_fixed', 'needs_human']),
+  verdict: z.enum(['valid', 'invalid', 'already_fixed', 'needs_human', 'plan_drift']),
   fixability: z.enum(['auto', 'manual']),
   reasoning: z.string().min(1),
   targetFiles: z.array(z.string().min(1)),
@@ -32,6 +32,8 @@ export const VerifierDecisionSchema = z.object({
 export const FixerResultSchema = VerifierDecisionSchema.extend({
   fixed: z.boolean(),
   commitSha: z.string().nullable().optional(),
+  commitMessage: z.string().optional(),
+  severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
 })
 
 export const IssueMatchSchema = z.object({
