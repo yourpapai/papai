@@ -47,8 +47,20 @@ describe('formatSummary', () => {
     })
     expect(summary).toContain('Done reason: clean')
     expect(summary).toContain('Rounds executed: 3')
+    expect(summary).toContain('Open issues: 0')
     expect(summary).toContain('Closed issues: 2')
     expect(summary).toContain('Rejected issues: 1')
     expect(summary).toContain('Needs human: 1')
+  })
+
+  test('counts non-terminal issues as open on max_rounds termination', () => {
+    const summary = formatSummary({
+      doneReason: 'max_rounds',
+      rounds: 5,
+      ledger: makeSnapshot(['verified', 'fixed_pending_review', 'discovered', 'closed']),
+    })
+    expect(summary).toContain('Done reason: max_rounds')
+    expect(summary).toContain('Open issues: 3')
+    expect(summary).toContain('Closed issues: 1')
   })
 })
