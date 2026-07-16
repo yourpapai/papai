@@ -278,9 +278,12 @@ reads; `identityContext()` resolves it and threads it through all resolvers.
   (`plugins/mcp-mattermost/`) is the sixth — 5 Mattermost read/post tools authenticated via
   Bearer token, posts enriched with author username and attachment metadata via deduped extra
   fetches, responses redacted the same way as `mcp-sentry`/`mcp-confluence`. `mcp-gitlab`
-  (`plugins/mcp-gitlab/`) is the seventh — 5 read-only GitLab repo/MR/job tools authenticated via
-  the `PRIVATE-TOKEN` header, no `mcpResponseRedaction`; write tools (comments, MR state, job
-  retry/cancel) are deferred to magi's forge-write domain. Read completeness: repository tree and
+  (`plugins/mcp-gitlab/`) is the seventh — 9 GitLab repo/MR/job tools (5 reads, 4 MR writes)
+  authenticated via the `PRIVATE-TOKEN` header, no `mcpResponseRedaction`. The 4 write tools
+  (`gitlab_post_comment`, `gitlab_create_discussion`, `gitlab_update_mr`, `gitlab_set_mr_state`)
+  cover review-collaboration only — MR comments/discussions and MR title/description/target
+  branch/state; code delivery (push, PR/MR open, merge) stays outside this plugin and remains
+  magi's forge-write domain. Job retry/cancel is still unimplemented. Read completeness: repository tree and
   MR listing both auto-paginate via `x-total-pages` (parallel `Promise.all` fan-out — plugin code
   cannot import `p-limit` — capped at 50 pages, `capped: true` flags truncation — MR listing only
   when `all: true` is requested), and `gitlab_get_job` accepts a full `jobUrl` as an alternative to

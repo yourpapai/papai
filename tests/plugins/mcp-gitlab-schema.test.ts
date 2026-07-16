@@ -6,11 +6,15 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  gitlabCreateDiscussionSchema,
   gitlabGetFileContentSchema,
   gitlabGetJobSchema,
   gitlabGetMrInfoSchema,
   gitlabGetMrsSchema,
   gitlabGetRepositoryTreeSchema,
+  gitlabPostCommentSchema,
+  gitlabSetMrStateSchema,
+  gitlabUpdateMrSchema,
 } from '../../plugins/mcp-gitlab/input-schema.js'
 
 // papai does not locally validate plugin MCP tool inputs at runtime: the plugin
@@ -60,5 +64,29 @@ describe('mcp-gitlab schemas', () => {
     expect(gitlabGetJobSchema.properties.jobId.type).toBe('string')
     expect(gitlabGetJobSchema.properties.jobUrl.type).toBe('string')
     expect(gitlabGetJobSchema.additionalProperties).toBe(false)
+  })
+
+  test('post_comment requires projectPath, mrIid, and body, and rejects unknown properties', () => {
+    expect(gitlabPostCommentSchema.required).toContain('projectPath')
+    expect(gitlabPostCommentSchema.required).toContain('mrIid')
+    expect(gitlabPostCommentSchema.required).toContain('body')
+    expect(gitlabPostCommentSchema.additionalProperties).toBe(false)
+  })
+
+  test('create_discussion requires projectPath, mrIid, and body, and rejects unknown properties', () => {
+    expect(gitlabCreateDiscussionSchema.required).toContain('projectPath')
+    expect(gitlabCreateDiscussionSchema.required).toContain('mrIid')
+    expect(gitlabCreateDiscussionSchema.required).toContain('body')
+    expect(gitlabCreateDiscussionSchema.additionalProperties).toBe(false)
+  })
+
+  test('update_mr requires only projectPath and mrIid, and rejects unknown properties', () => {
+    expect(gitlabUpdateMrSchema.required).toEqual(['projectPath', 'mrIid'])
+    expect(gitlabUpdateMrSchema.additionalProperties).toBe(false)
+  })
+
+  test('set_mr_state requires stateEvent and constrains it to close/reopen', () => {
+    expect(gitlabSetMrStateSchema.required).toContain('stateEvent')
+    expect(gitlabSetMrStateSchema.properties.stateEvent.enum).toEqual(['close', 'reopen'])
   })
 })

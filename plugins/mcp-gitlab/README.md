@@ -2,8 +2,8 @@
 
 > Plugin ID: `mcp-gitlab` · Version: 1.0.0 · `defaultEnabled: false`
 
-Agent-facing read-only GitLab tools. This plugin does **not** register
-chat-visible tools for end users — it declares `mcpServer: true`, so its 5
+Agent-facing GitLab tools — read and write. This plugin does **not** register
+chat-visible tools for end users — it declares `mcpServer: true`, so its 9
 tools are exposed as an MCP server surface at `/mcp/plugin/mcp-gitlab` for an
 external coding agent (via papai's sandbox MCP broker) to call directly. It is
 the seventh first-party plugin migrated onto the "MCP server as a papai
@@ -19,6 +19,10 @@ plugin" pattern, after `mcp-sentry`, `mcp-confluence`, `mcp-figma`,
 | `gitlab_get_file_content`    | Get the raw content of a file at a given ref, for repo browsing         |
 | `gitlab_get_mr_info`         | Get details of a single merge request by iid                            |
 | `gitlab_get_mrs`             | List/search merge requests in a project with optional filters           |
+| `gitlab_post_comment`        | **WRITE:** post a comment on a merge request                            |
+| `gitlab_create_discussion`   | **WRITE:** open a new discussion thread on a merge request              |
+| `gitlab_update_mr`           | **WRITE:** update a merge request's title/description/target branch     |
+| `gitlab_set_mr_state`        | **WRITE:** close or reopen a merge request                              |
 | `gitlab_get_job`             | Get a CI job's metadata and trace log                                   |
 
 See `plugins/mcp-gitlab/input-schema.ts` for the exact JSON-schema input
@@ -43,9 +47,10 @@ Derived from the admin-scoped `base_url` config via
 Both are deployment-wide (admin scope only); there is no per-context
 override. `token` is sent as the `PRIVATE-TOKEN` header (`client.ts`) on every
 request against `{base_url}/api/v4` — there is no OAuth/Bearer mode. The token
-needs the `api` or `read_repository` scope (read-only usage is sufficient;
-papai does not exercise any write scope). Project paths are the GitLab
-`namespace/project` form (URL-encoded internally), not numeric project ids.
+needs the `api` scope (the four write tools below post/update MR state;
+`read_repository` alone is no longer sufficient once writes are enabled).
+Project paths are the GitLab `namespace/project` form (URL-encoded
+internally), not numeric project ids.
 
 ## Response redaction
 
@@ -55,12 +60,31 @@ to the external coding agent unredacted, matching `mcp-figma`/`mcp-teamcity`/
 request bodies, file contents, and job logs are project-internal, not
 customer data.
 
+## Write tools
+
+Four of the nine tools mutate live GitLab state: `gitlab_post_comment`,
+`gitlab_create_discussion`, `gitlab_update_mr`, and `gitlab_set_mr_state`.
+None of them default to unattended `allow`; operators who want a
+confirmation gate should set the per-tool `tool_prefs` policy to `ask` (or
+`deny`) at enable time via the settings UI. Set all four to `deny` to keep
+this plugin read-only in practice for a given context.
+
+In coding sessions, `ask` enforcement for these tools depends on magi's
+MCP-broker gate (papai itself has no code-level default `ask` for plugin MCP
+tools) — the operator `tool_prefs` policy is the durable configuration, magi
+is what actually pauses the call for confirmation.
+
+**Forge-write boundary.** This plugin's write surface is review-collaboration
+only — MR comments, discussions, and MR title/description/target
+branch/state — made with this plugin's own GitLab token. Code delivery (push,
+opening a PR/MR, merging) stays outside this plugin and remains magi's
+domain.
+
 ## Deviations / scope
 
-- **Read-only.** All 5 tools are read-only GitLab API calls. Write tools
-  (posting MR comments/discussions, changing MR state, retrying/canceling
-  jobs) are deferred — that surface belongs to magi's forge-write domain, not
-  this plugin.
+- **Job actions are still read-only.** `gitlab_get_job` reads a job's
+  metadata and trace log; retrying/canceling jobs is not implemented by this
+  plugin.
 - **Pagination.** `gitlab_get_repository_tree` always returns the full tree
   as `{ entries, capped }`. `gitlab_get_mrs` returns a single GitLab API page
   by default (`perPage`/`page` passed through, `total`/`totalPages`/`page`/
