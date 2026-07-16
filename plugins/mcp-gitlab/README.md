@@ -64,15 +64,22 @@ customer data.
 
 Four of the nine tools mutate live GitLab state: `gitlab_post_comment`,
 `gitlab_create_discussion`, `gitlab_update_mr`, and `gitlab_set_mr_state`.
-None of them default to unattended `allow`; operators who want a
-confirmation gate should set the per-tool `tool_prefs` policy to `ask` (or
-`deny`) at enable time via the settings UI. Set all four to `deny` to keep
+Each carries a `WRITE:` description so it is easy to gate. For coding
+sessions, these tools are governed by the MCP plugin server's **tool policy**
+— the `default_tool_policy` (server-wide default) and optional per-tool
+`tool_policy` (`allow` / `ask` / `deny`) on this plugin's entry in the admin
+**MCP Plugin Servers** settings section. Set the four writes to `ask`
+(confirmation gate) or `deny` (block) there; set them all to `deny` to keep
 this plugin read-only in practice for a given context.
 
-In coding sessions, `ask` enforcement for these tools depends on magi's
-MCP-broker gate (papai itself has no code-level default `ask` for plugin MCP
-tools) — the operator `tool_prefs` policy is the durable configuration, magi
-is what actually pauses the call for confirmation.
+Note: the `tool_prefs` policy in the **Tools** settings section governs
+papai's own chat-facing tool loop, **not** the coding-agent (magi) path — it
+does not gate these MCP tools. Use the **MCP Plugin Servers** tool policy
+above.
+
+In coding sessions, `ask` enforcement additionally depends on magi's
+MCP-broker gate honoring the `ask` state; until that fix lands, `ask` behaves
+as `allow` in the sandbox — use `deny` if you need a hard block today.
 
 **Forge-write boundary.** This plugin's write surface is review-collaboration
 only — MR comments, discussions, and MR title/description/target
