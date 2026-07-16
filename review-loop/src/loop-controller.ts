@@ -266,7 +266,7 @@ async function runRound(round: number, deps: ReviewLoopDeps): Promise<ReviewLoop
   const pending = filterActionable(roundRecords)
   const fixedThisRound = await processNextIssue(pending, 0, deps, 0)
 
-  deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${roundRecords.length} issues`)
+  deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${pending.length} issues`)
 
   const newNoProgress = fixedThisRound === 0 ? deps.runState.noProgressRounds + 1 : 0
   deps.runState.noProgressRounds = newNoProgress
