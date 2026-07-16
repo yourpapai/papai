@@ -121,7 +121,7 @@ async function retryFixAfterBuildFailure(
     verdict: 'needs_human',
     fixability: 'manual',
     reasoning: `Build failed after retry: ${retryBuild.stderr}`,
-    targetFiles: [],
+    targetFiles: result.targetFiles,
   })
   deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (build failed)`)
   return false
