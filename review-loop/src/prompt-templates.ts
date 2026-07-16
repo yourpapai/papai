@@ -31,9 +31,15 @@ export function buildFixPrompt(issue: ReviewerIssue, outputPath: string, checkCo
   ].join('\n\n')
 }
 
-export function buildRetryFixPrompt(issue: ReviewerIssue, outputPath: string, buildError: string): string {
+export function buildRetryFixPrompt(
+  issue: ReviewerIssue,
+  outputPath: string,
+  buildError: string,
+  checkCommand: string,
+): string {
   return [
     'Your previous fix broke the build. Fix the build error and try again.',
+    `After fixing, run \`${checkCommand}\` to verify the build passes.`,
     `Write your updated result as JSON to: ${outputPath}`,
     'Use the same schema as before.',
     '',

@@ -91,7 +91,7 @@ async function retryFixAfterBuildFailure(
 
   const result = await runFixer(
     deps,
-    buildRetryFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), buildError),
+    buildRetryFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), buildError, deps.config.checkCommand),
     'fixer-retry',
   )
 

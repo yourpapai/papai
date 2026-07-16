@@ -40,9 +40,10 @@ describe('prompt-templates', () => {
     expect(prompt).not.toContain('bun check:full')
   })
 
-  test('buildRetryFixPrompt includes error output', () => {
-    const prompt = buildRetryFixPrompt(issue, '/path/to/result.json', 'TypeError: x is not a function')
+  test('buildRetryFixPrompt includes error output and check command', () => {
+    const prompt = buildRetryFixPrompt(issue, '/path/to/result.json', 'TypeError: x is not a function', 'npm test')
     expect(prompt).toContain('TypeError: x is not a function')
     expect(prompt).toContain('/path/to/result.json')
+    expect(prompt).toContain('`npm test`')
   })
 })
