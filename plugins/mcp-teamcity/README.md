@@ -23,6 +23,14 @@ onto the "MCP server as a papai plugin" pattern, after `mcp-sentry`,
 See `plugins/mcp-teamcity/input-schema.ts` for the exact JSON-schema input
 contract per tool.
 
+## Output shape
+
+`teamcity_get_project_config` / `teamcity_get_pipeline_config` return
+TeamCity's config with its single-child envelopes flattened into plain
+camelCase arrays (`parameters`, `steps`, `triggers`, `features`,
+`vcsRootEntries`, `artifactDependencies`, `snapshotDependencies`, …); secret-named
+parameters remain `[REDACTED]`.
+
 ## Permissions
 
 `http`.

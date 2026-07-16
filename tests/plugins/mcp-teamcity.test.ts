@@ -200,7 +200,7 @@ describe('TeamCityClient', () => {
     expect(parsedUrl.searchParams.get('fields')).toBe(PROJECT_FIELDS)
     expect(result).toEqual({
       id: 'MyProj',
-      parameters: { property: [{ name: 'secret.x', value: '[REDACTED]' }] },
+      parameters: [{ name: 'secret.x', value: '[REDACTED]' }],
     })
   })
 
@@ -248,14 +248,12 @@ describe('TeamCityClient', () => {
     expect(req.url.startsWith('https://tc.test/app/rest/buildTypes/id:Bt_1?fields=')).toBe(true)
     expect(result).toEqual({
       id: 'Bt_1',
-      steps: {
-        step: [
-          {
-            id: 'RUNNER_1',
-            properties: { property: [{ name: 'env.DEPLOY_TOKEN', value: '[REDACTED]' }] },
-          },
-        ],
-      },
+      steps: [
+        {
+          id: 'RUNNER_1',
+          properties: [{ name: 'env.DEPLOY_TOKEN', value: '[REDACTED]' }],
+        },
+      ],
     })
   })
 

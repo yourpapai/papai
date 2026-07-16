@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { HttpFetch } from './context.js'
-import { sanitizeTeamCityConfig } from './format.js'
+import { flattenTeamCity, sanitizeTeamCityConfig } from './format.js'
 
 export type { HttpFetch } from './context.js'
 
@@ -66,7 +66,7 @@ export class TeamCityClient {
     const json = await this.request(
       `/projects/id:${encodeURIComponent(projectId)}?fields=${encodeURIComponent(PROJECT_FIELDS)}`,
     )
-    return sanitizeTeamCityConfig(json)
+    return flattenTeamCity(sanitizeTeamCityConfig(json))
   }
 
   async getProjectBuildTypes(projectId: string): Promise<unknown> {
@@ -80,6 +80,6 @@ export class TeamCityClient {
     const json = await this.request(
       `/buildTypes/id:${encodeURIComponent(buildTypeId)}?fields=${encodeURIComponent(BUILD_TYPE_FIELDS)}`,
     )
-    return sanitizeTeamCityConfig(json)
+    return flattenTeamCity(sanitizeTeamCityConfig(json))
   }
 }
