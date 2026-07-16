@@ -36,13 +36,12 @@ function buildMatcherPrompt(
     .join('\n')
 
   return [
-    'Match newly found issues to existing issues from the ledger by semantic similarity.',
-    'Two issues match if they describe the same underlying problem, even if worded differently.',
+    'Match newly found issues to existing issues from the ledger by the underlying problem (same root cause / same location), not surface wording. When in doubt, link to an existing issue; set existingId to null only for genuinely new, unrelated problems.',
+    'Some existing issues may already be rejected / needs_human / already_fixed — still match re-reports to them by underlying problem; the loop decides whether to re-process.',
     'Write the result as JSON to:',
     outputPath,
     'Use this exact schema:',
     '{"matches": [{"newIssueIndex": number, "existingId": string | null}]}',
-    'Set existingId to null for genuinely new issues.',
     '',
     'New issues:',
     newSummary,

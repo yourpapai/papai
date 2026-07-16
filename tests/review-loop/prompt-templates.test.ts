@@ -30,14 +30,13 @@ describe('prompt-templates', () => {
     expect(prompt).toContain('severity')
   })
 
-  test('buildFixPrompt includes issue JSON, output path, commit instructions', () => {
+  test('buildFixPrompt includes issue JSON, output path, and check command', () => {
     const prompt = buildFixPrompt(issue, '/path/to/result.json', 'npm test')
     expect(prompt).toContain('src/message-queue/queue.ts')
     expect(prompt).toContain('/path/to/result.json')
-    expect(prompt).toContain('commit')
-    expect(prompt).toContain('fix(review-loop)')
     expect(prompt).toContain('`npm test`')
     expect(prompt).not.toContain('bun check:full')
+    expect(prompt).not.toContain('fix(review-loop):')
   })
 
   test('buildRetryFixPrompt includes error output and check command', () => {
@@ -45,5 +44,31 @@ describe('prompt-templates', () => {
     expect(prompt).toContain('TypeError: x is not a function')
     expect(prompt).toContain('/path/to/result.json')
     expect(prompt).toContain('`npm test`')
+  })
+
+  test('reviewer prompt keeps sentinel + gains evidence/scope/severity/convention clauses', () => {
+    const p = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(p).toContain('Review the current implementation')
+    expect(p).toContain('AGENTS.md')
+    expect(p).toContain('evidence')
+    expect(p).toContain('critical')
+    expect(p).toContain('low')
+  })
+
+  test('fixer prompt keeps sentinel, drops commit instruction, asks for commitMessage + severity', () => {
+    const p = buildFixPrompt(issue, '/result.json', 'bun check:full')
+    expect(p).toContain('Verify and fix')
+    expect(p).toContain('commitMessage')
+    expect(p).toContain('severity')
+    expect(p).toContain('plan_drift')
+    expect(p).not.toContain('commit with message')
+  })
+
+  test('retry prompt inlines schema (no "same schema as before") + final-attempt', () => {
+    const p = buildRetryFixPrompt(issue, '/result.json', 'TypeError: x', 'bun check:full')
+    expect(p).toContain('build error')
+    expect(p).toContain('"verdict"')
+    expect(p).not.toContain('same schema as before')
+    expect(p).toContain('final attempt')
   })
 })

@@ -55,6 +55,20 @@ function createMockSpawn(outputPath: string, data: unknown): SpawnFn {
   }
 }
 
+function createCapturingSpawn(outputPath: string): { spawn: SpawnFn; lastPrompt: () => string } {
+  let captured = ''
+  const spawn: SpawnFn = (
+    _command: string,
+    args: readonly string[],
+    opts: { cwd: string },
+  ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+    captured = args[args.length - 1] ?? ''
+    writeFileSync(path.join(opts.cwd, '.review-loop', path.basename(outputPath)), JSON.stringify({ matches: [] }))
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+  }
+  return { spawn, lastPrompt: () => captured }
+}
+
 describe('issue-matcher', () => {
   test('returns null matches when ledger is empty', async () => {
     const dir = makeTempDir('matcher-')
@@ -119,5 +133,28 @@ describe('issue-matcher', () => {
 
     expect(result).toEqual([])
     expect(spawn).not.toHaveBeenCalled()
+  })
+
+  test('matcher prompt keeps sentinel and inlines schema', async () => {
+    const dir = makeTempDir('matcher-')
+    const outputPath = path.join(dir, 'matches.json')
+    const { spawn, lastPrompt } = createCapturingSpawn(outputPath)
+
+    await matchIssues({
+      spawn,
+      newIssues: [newIssue],
+      existingRecords: [existingRecord],
+      outputPath,
+      logPath: path.join(dir, 'log.txt'),
+      cwd: dir,
+      model: 'test-model',
+      extraArgs: [],
+      reporter: silentReporter(),
+    })
+
+    const prompt = lastPrompt()
+    expect(prompt).toContain('Match newly found')
+    expect(prompt).toContain('underlying problem')
+    expect(prompt).toContain('"matches"')
   })
 })
