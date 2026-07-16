@@ -27,7 +27,7 @@ It is too early to tune behavior on vibes: the loop has not yet been run enough 
 ## Key decisions (settled during brainstorm)
 
 1. **Approach B (chosen).** Fix obvious correctness bugs + apply conservative, research-validated prompt improvements to all builders + add a structured `trace.jsonl`. Defer speculative behavioral knobs until trace data justifies them.
-2. **Preserve the output JSON contract.** Prompt rewrites change _instructions only_; the Zod output schemas stay the same, with one additive exception: `FixerResultSchema` gains an optional `commitMessage` field (see Section 3 fixer). Optional + additive, so old result files still validate.
+2. **Preserve the output JSON contract.** Prompt rewrites change _instructions only_; the Zod output schemas stay the same, with two additive exceptions: `FixerResultSchema` gains optional `commitMessage` and `severity` fields (see Section 3 fixer), and `VerifierDecisionSchema`'s verdict enum gains `plan_drift` (Section 2 #7). All optional/additive, so old result files and ledgers still validate.
 3. **Trust git, not the agent, for fix outcomes.** The loop verifies `HEAD` actually advanced past `baselineSha` before believing `fixed: true` (a fixer that reports `fixed:true` but changes nothing must not be marked fixed). The real `commitSha = HEAD` comes from git, not the agent. Aligns with the repo's `verification-before-completion` skill.
 4. **Agent composes the commit message; the loop commits.** The fixer agent is the only actor that knows what it actually changed, so it returns a `commitMessage` field describing the real fix. The loop is the single committer (`ensureFixerChangesCommitted`), uses that message (sanitized to one line), and falls back to the issue title only if the agent omitted it. Removes the prior dual-committer reliance and fixes the raw-title commit messages.
 5. **Trace never breaks a run.** Trace logging failures are swallowed; trace is for investigation, not correctness.
@@ -43,22 +43,24 @@ It is too early to tune behavior on vibes: the loop has not yet been run enough 
 
 ## Section 1 — Trace logging (observability pillar)
 
-**Goal:** capture enough structured, per-event data that, after a few real runs, the team can empirically answer _any_ of the four candidate pain questions (FP rate, convergence, coverage, fixer safety) and then decide whether the deferred knobs are worth building.
+**Goal:** capture enough structured, per-event data that, after a few real runs, the team can empirically answer _any_ of the four candidate pain questions (FP rate, convergence, coverage, fixer safety) and then decide whether the deferred knobs are worth building. It also carries the per-round decision and severity data needed for a burndown view (new issues falling, rejections rising, severity declining over rounds).
 
 **Location & format.** New `tracePath` on `RunState` → `<runDir>/trace.jsonl`. **JSON Lines** (one JSON object per line), append-only. Rationale: append is crash-safe (no reserialize/rewrite), streamable, trivially greppable with `jq`. Sits alongside the existing `agent-output.log` (raw agent events) and `ledger.json` (durable issue state); the trace is the _loop-behavior_ view that ties them together.
 
 **Envelope + events.** Discriminated union, typed and Zod-schema'd. Common fields: `ts`, `round`, `phase`. Events, mapped to the questions they answer:
 
-| Event             | Key payload                                                                             | Answers                        |
-| ----------------- | --------------------------------------------------------------------------------------- | ------------------------------ |
-| `round_start`     | `round`, config snapshot (`maxRounds`, `maxNoProgressRounds`, `checkCommand`)           | baseline                       |
-| `review_complete` | `round`, `issueCount`, `issues[]` (title/severity/file/confidence)                      | coverage, severity calibration |
-| `match_complete`  | `round`, `newCount`, `matchedCount`, `matches[]`                                        | convergence, ratchet health    |
-| `verify_complete` | `round`, `issueId`, `verdict`, `fixability`, reasoning (truncated), `targetFiles`       | **FP rate**                    |
-| `build_complete`  | `round`, `issueId`, `passed`, `attempt` (1\|2), `durationMs`                            | fixer safety                   |
-| `fix_complete`    | `round`, `issueId`, `fixed`, `commitSha`, `attempt`                                     | fixer safety — did commit land |
-| `round_summary`   | `round`, reported/new/fixed/rejected/needsHuman/alreadyFixed counts, `noProgressRounds` | convergence at a glance        |
-| `loop_end`        | `doneReason`, `rounds`, totals                                                          | final outcome                  |
+| Event             | Key payload                                                                                                                                                                                                                    | Answers                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `round_start`     | `round`, config snapshot (`maxRounds`, `maxNoProgressRounds`, `checkCommand`)                                                                                                                                                  | baseline                                   |
+| `review_complete` | `round`, `issueCount`, `issues[]` (title/severity/file/confidence)                                                                                                                                                             | coverage, severity calibration             |
+| `match_complete`  | `round`, `newCount`, `matchedCount`, `matches[]`                                                                                                                                                                               | convergence, ratchet health                |
+| `verify_complete` | `round`, `issueId`, `verdict`, `fixability`, `reviewerSeverity`, `fixerSeverity` (nullable), reasoning (truncated), `targetFiles`                                                                                              | **FP rate**, severity drift reviewer↔fixer |
+| `build_complete`  | `round`, `issueId`, `passed`, `attempt` (1\|2), `durationMs`                                                                                                                                                                   | fixer safety                               |
+| `fix_complete`    | `round`, `issueId`, `fixed`, `commitSha`, `attempt`                                                                                                                                                                            | fixer safety — did commit land             |
+| `round_summary`   | `round`, `newIssues`, `cumulativeOpen`, `decisions{fixed,invalid,already_fixed,needs_human,plan_drift,no_commit}`, `reviewerSeverity{critical,high,medium,low}`, `fixerSeverity{critical,high,medium,low}`, `noProgressRounds` | per-round decision + severity distribution |
+| `loop_end`        | `doneReason`, `rounds`, totals, `burndown[]` (per-round `newIssues`/`cumulativeOpen`/decisions/avg reviewer severity/avg fixer severity)                                                                                       | final outcome + burndown series            |
+
+**Dual severity.** The reviewer assigns `severity` per issue (in `review_complete`/`verify_complete.reviewerSeverity`); the fixer **reassesses** severity on verification (`verify_complete.fixerSeverity`, optional — null when the fixer omits it, e.g. on `invalid`). Tracking both exposes severity drift (reviewer flags "critical", fixer agrees "low" or rejects) — a direct measure of reviewer over-flagging, separate from the raw FP rate.
 
 **Component shape** (new file `review-loop/src/trace-log.ts`):
 
@@ -69,6 +71,14 @@ It is too early to tune behavior on vibes: the loop has not yet been run enough 
 **Wiring (fits existing DI).** Add `trace: TraceLogger` to `ReviewLoopDeps` (alongside `spawn`/`exec`/`log`); add `tracePath` to `RunState`. `createRunState`/`loadRunState` synthesize `tracePath` from `runDir` exactly as they already do for `ledgerPath`/`logPath` — **no migration**, old runs load fine. `cli.ts` constructs the file logger.
 
 **Error handling (invariant).** Trace failures must never break a run. The file logger swallows fs errors; `append` is fire-and-forget (`void` return at call sites). Trace is for investigation, not correctness.
+
+**Per-round metrics & burndown artifacts.** The per-round decision + dual-severity data exists primarily in `trace.jsonl`; for at-a-glance review the loop also emits two derived artifacts at run end (computed from the ledger, in `summary.ts` alongside the existing `summary.txt`):
+
+- **`metrics.json`** — machine-readable: `{ doneReason, rounds, totals, burndown: [{ round, newIssues, cumulativeOpen, decisions: {...}, avgReviewerSeverity, avgFixerSeverity }] }`. `avgReviewerSeverity`/`avgFixerSeverity` map severity bands to a 4 (critical) → 1 (low) numeric scale and average per round, so a declining trend is visible at a glance.
+- **`summary.txt` burndown block** — a human-readable ASCII table appended after the existing counts: one row per round showing `new | open | fixed | rejected | needs_human | plan_drift | avgRev | avgFix`. The desired convergence signature is: `new` trending down, `rejected` trending up, both averages trending down.
+- **Ad-hoc `jq`** (documented, not built into the run) — e.g. `jq -c 'select(.event=="round_summary") | {round, new: .newIssues, rej: .decisions.invalid, avgRev: .reviewerSeverity}' trace.jsonl` for quick terminal burndown without parsing `metrics.json`.
+
+These are read-only analytical outputs; like the trace, generation failures are swallowed and never block a run.
 
 ## Section 2 — Correctness fixes (the remaining bugs)
 
@@ -115,7 +125,8 @@ These rewrite the _instructions_ around each builder but **preserve the exact ou
 - **Minimal-change discipline:** "Edit only what's necessary; no drive-by refactors; scope edits to `targetFiles`."
 - **Empirical verification:** "If non-trivial, run a check that reproduces the issue before and confirms resolution after; run `<checkCommand>` to confirm." (`checkCommand` is config-derived — already shipped.)
 - **Do NOT commit; compose the message instead.** Remove the existing "commit with message: fix(review-loop): <issue title>" instruction (the loop owns commits via `ensureFixerChangesCommitted`). Instead instruct: "Do not commit. After editing, return a `commitMessage` field: a single-line conventional-commit subject, `fix(review-loop): <subject>`, that describes the **actual changes you made** (not the issue title)." The loop sanitizes it (strip backticks/quotes/newlines, one line) and falls back to the issue title only if absent.
-- **Schema (additive):** add `commitMessage: z.string().optional()` to `FixerResultSchema`. Optional + additive so old result files still validate.
+- **Schema (additive):** add `commitMessage: z.string().optional()` and `severity: z.enum(['critical','high','medium','low']).optional()` to `FixerResultSchema`. Optional + additive so old result files still validate.
+- **Reassess severity (dual-severity tracking):** "After verifying the issue, report your independently-assessed severity in the `severity` field (critical/high/medium/low). It may differ from the reviewer's — downgrade if the real impact is lower, upgrade if higher. For an `invalid` (false-positive) verdict you may omit it." Captures reviewer↔fixer severity drift in the trace, separate from the raw FP rate.
 - **All-call-sites discipline (Run 1 `9605c2247`→`1325092ef` churn):** "When you edit a shared helper (e.g. `ensureFixerChangesCommitted`, `runBuildCheck`), enumerate _all_ its call sites in your reasoning and confirm each still works. Do not change a helper's signature or guard without surveying every caller."
 - **Plan-drift verdict (Run 1 `a44ea54cb`):** "If the issue is that the code diverged from the plan/spec but is _not_ a code defect (extra files, different structure, scope expansion), do **not** edit the plan/spec and do **not** force a code change. Return `verdict: plan_drift` with `reasoning` describing the divergence. `verdict: valid` means a real defect you fixed; a valid-but-plan-divergence issue is `plan_drift`."
 
@@ -148,7 +159,8 @@ Conventions: `bun:test`, DI-first, `SpawnFn`/`ShellExecFn`/`TraceLogger` injecte
 
 **New tests:**
 
-- `tests/review-loop/trace-log.test.ts` — Zod schema validates each event variant; `createFileTraceLogger` appends correct JSONL; **fs errors are swallowed** (write to a bad path → no throw); in-memory capturing logger for DI in loop tests.
+- `tests/review-loop/trace-log.test.ts` — Zod schema validates each event variant; `createFileTraceLogger` appends correct JSONL; **fs errors are swallowed** (write to a bad path → no throw); in-memory capturing logger for DI in loop tests; `round_summary`/`verify_complete` carry the decision buckets and dual severity; `loop_end.burndown` series is well-formed.
+- `tests/review-loop/summary.test.ts` — `metrics.json` is emitted with the expected `burndown[]` series (per-round newIssues/cumulativeOpen/decisions/avg severities); the `summary.txt` burndown block has one row per round; generation failure is swallowed.
 - Extend `run-state.test.ts` — old persisted state **without** `tracePath` still loads and synthesizes `tracePath` from `runDir` (backward-compat / no migration).
 
 **Correctness-fix tests:**
@@ -178,19 +190,20 @@ Conventions: `bun:test`, DI-first, `SpawnFn`/`ShellExecFn`/`TraceLogger` injecte
 
 ## Drift Log
 
-| Date       | Category                  | Item                                                                         | Decision                                                                                                              |
-| ---------- | ------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| 2026-07-16 | Already shipped           | §2 config-derived check command                                              | Removed from scope; verified at `prompt-templates.ts:19`, `loop-controller.ts:95,148`                                 |
-| 2026-07-16 | Already shipped           | §2 retry-verdict recording                                                   | Removed from scope; verified at `loop-controller.ts:101-106,121-126`                                                  |
-| 2026-07-16 | Already shipped           | §2 matcher ratchet widening                                                  | Removed from scope; verified at `loop-controller.ts:221`, test `loop-controller.test.ts:464`                          |
-| 2026-07-16 | In-plan, partial          | §2 retry prompt schema-inline                                                | Kept; narrowed (checkCommand part already shipped)                                                                    |
-| 2026-07-16 | In-plan, partial          | §2 `fixed:true` trust                                                        | Rewritten to the actual remaining gap (no-commit guard via `postSha === baselineSha`)                                 |
-| 2026-07-16 | In-plan, divergent        | Fixer commit ownership (prompt told agent to commit + loop also commits)     | Resolved with user: agent composes `commitMessage`, loop is single committer; additive schema field                   |
-| 2026-07-16 | Out-of-plan, on-goal      | Run 1 retrospective `2026-07-16-review-loop-run-1-retrospective.md`          | Validated; folded in: §2 #3 `clean -fd`, §2 #4 `valid+manual`→terminal, §2 #5 matcher bounding; evidence-gating cited |
-| 2026-07-16 | Validated, new            | `clean -fd` on revert paths (Run 1 `fa778fcef`)                              | Added as §2 #3                                                                                                        |
-| 2026-07-16 | Validated, new            | `valid+manual` verdict spins as non-terminal `verified` (Run 1 ledger)       | Added as §2 #4                                                                                                        |
-| 2026-07-16 | Promoted from risk-note   | Matcher context unbounded (Run 1: 50 issues / 10 rounds)                     | Added as §2 #5                                                                                                        |
-| 2026-07-16 | Folded in (retrospective) | #4 all-call-sites fixer-prompt discipline                                    | Added to Section 3 fixer                                                                                              |
-| 2026-07-16 | Folded in (retrospective) | #6 `plan_drift` verdict (Run 1 `a44ea54cb`)                                  | Added as §2 #7 + Section 3 fixer clause                                                                               |
-| 2026-07-16 | Folded in (retrospective) | #10 SIGKILL escalation on timeout                                            | Added as §2 #6                                                                                                        |
-| 2026-07-16 | Deferred (follow-up spec) | Run 1 retro #1 issue categories, #3 severity early-stop, #9 `needs_human.md` | Not folded — await trace data from run 2; tracked for a follow-up spec                                                |
+| Date       | Category                  | Item                                                                           | Decision                                                                                                              |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-16 | Already shipped           | §2 config-derived check command                                                | Removed from scope; verified at `prompt-templates.ts:19`, `loop-controller.ts:95,148`                                 |
+| 2026-07-16 | Already shipped           | §2 retry-verdict recording                                                     | Removed from scope; verified at `loop-controller.ts:101-106,121-126`                                                  |
+| 2026-07-16 | Already shipped           | §2 matcher ratchet widening                                                    | Removed from scope; verified at `loop-controller.ts:221`, test `loop-controller.test.ts:464`                          |
+| 2026-07-16 | In-plan, partial          | §2 retry prompt schema-inline                                                  | Kept; narrowed (checkCommand part already shipped)                                                                    |
+| 2026-07-16 | In-plan, partial          | §2 `fixed:true` trust                                                          | Rewritten to the actual remaining gap (no-commit guard via `postSha === baselineSha`)                                 |
+| 2026-07-16 | In-plan, divergent        | Fixer commit ownership (prompt told agent to commit + loop also commits)       | Resolved with user: agent composes `commitMessage`, loop is single committer; additive schema field                   |
+| 2026-07-16 | Out-of-plan, on-goal      | Run 1 retrospective `2026-07-16-review-loop-run-1-retrospective.md`            | Validated; folded in: §2 #3 `clean -fd`, §2 #4 `valid+manual`→terminal, §2 #5 matcher bounding; evidence-gating cited |
+| 2026-07-16 | Validated, new            | `clean -fd` on revert paths (Run 1 `fa778fcef`)                                | Added as §2 #3                                                                                                        |
+| 2026-07-16 | Validated, new            | `valid+manual` verdict spins as non-terminal `verified` (Run 1 ledger)         | Added as §2 #4                                                                                                        |
+| 2026-07-16 | Promoted from risk-note   | Matcher context unbounded (Run 1: 50 issues / 10 rounds)                       | Added as §2 #5                                                                                                        |
+| 2026-07-16 | Folded in (retrospective) | #4 all-call-sites fixer-prompt discipline                                      | Added to Section 3 fixer                                                                                              |
+| 2026-07-16 | Folded in (retrospective) | #6 `plan_drift` verdict (Run 1 `a44ea54cb`)                                    | Added as §2 #7 + Section 3 fixer clause                                                                               |
+| 2026-07-16 | Folded in (retrospective) | #10 SIGKILL escalation on timeout                                              | Added as §2 #6                                                                                                        |
+| 2026-07-16 | Deferred (follow-up spec) | Run 1 retro #1 issue categories, #3 severity early-stop, #9 `needs_human.md`   | Not folded — await trace data from run 2; tracked for a follow-up spec                                                |
+| 2026-07-16 | Added (user request)      | Per-round fixer-decision metrics + dual (reviewer & fixer) severity + burndown | Folded into §1 (events, `metrics.json`, `summary.txt` burndown, jq) + §3 fixer `severity` field                       |
