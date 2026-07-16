@@ -66,6 +66,10 @@ function unwrapTeamCityEnvelope(key: string, value: unknown): unknown {
   if (inner === undefined || !isRecord(value)) return flattenTeamCity(value)
   const arr = value[inner]
   if (Array.isArray(arr)) return arr.map((item) => flattenTeamCity(item))
+  // TeamCity normally wraps a single-child array; tolerate a lone object
+  // (some legacy hyphenated collections) by wrapping it rather than silently
+  // dropping the data. Any other (absent/scalar) inner shape is an empty set.
+  if (isRecord(arr)) return [flattenTeamCity(arr)]
   return []
 }
 

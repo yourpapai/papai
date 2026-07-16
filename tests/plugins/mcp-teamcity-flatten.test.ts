@@ -59,6 +59,19 @@ describe('flattenTeamCity', () => {
     expect(flattenTeamCity({ steps: {} })).toEqual({ steps: [] })
   })
 
+  test('tolerates a lone-object envelope (not an array) by wrapping it, not dropping it', () => {
+    expect(flattenTeamCity({ parameters: { property: { name: 'a', value: '1' } } })).toEqual({
+      parameters: [{ name: 'a', value: '1' }],
+    })
+  })
+
+  test('SECURITY: redaction survives a lone-object envelope', () => {
+    const raw = { parameters: { property: { name: 'api.token', value: 'sekret' } } }
+    expect(flattenTeamCity(sanitizeTeamCityConfig(raw))).toEqual({
+      parameters: [{ name: 'api.token', value: '[REDACTED]' }],
+    })
+  })
+
   test('passes through scalars, non-envelope objects, and arrays', () => {
     expect(flattenTeamCity({ id: 'P', name: 'n', archived: false })).toEqual({ id: 'P', name: 'n', archived: false })
     expect(flattenTeamCity('x')).toBe('x')
