@@ -156,6 +156,7 @@ async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Pr
   })
 
   if (!result.fixed || result.verdict !== 'valid') {
+    await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
     deps.log.log(`[fix] "${shortTitle(record)}" → ${result.verdict}`)
     return { fixed: false }
   }

@@ -356,6 +356,40 @@ describe('runReviewLoop', () => {
     expect(execIndex).toBe(1)
   })
 
+  test('reverts partial fixer edits when fixer reports not fixed', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 1, maxNoProgressRounds: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue]],
+        fixerResults: [{ verdict: 'needs_human', fixability: 'manual', fixed: false }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'README.md'), 'corrupted by partial fix\n')
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+    })
+
+    const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    expect(headAfter).toBe(baselineSha)
+    const status = (await execGit(runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
+    expect(status).toBe('')
+    const readme = readFileSync(path.join(runState.worktreePath, 'README.md'), 'utf8')
+    expect(readme).toBe('hello')
+  })
+
   test('auto-commits uncommitted fixer changes to prevent silent loss on merge', async () => {
     const repoRoot = makeTempDir('loop-ctrl-')
     const config = createReviewLoopConfigFixture(repoRoot)
