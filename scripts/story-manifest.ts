@@ -69,7 +69,7 @@ const DependencySnapshotSchema = z.strictObject({
   treeHash: z.string().regex(FILE_HASH),
   bunVersion: z.string().min(1),
 })
-const SandboxBackendSchema = z.enum(['darwin-sandbox-exec', 'linux-docker'])
+const SandboxBackendSchema = z.enum(['linux-docker'])
 
 export const StoryManifestSchema = z.strictObject({
   version: z.literal(4),

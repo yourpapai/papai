@@ -7,18 +7,15 @@ import { constants } from 'node:fs'
 import { lstat, open, readdir, readlink } from 'node:fs/promises'
 import path from 'node:path'
 
+import { isFrozenEnforcementPath, isFrozenTestSupportPath } from './story-manifest-frozen.js'
+
 const STORIES_PREFIX = 'tests/stories'
 export const REQUIRED_RUNTIME_DIRECTORY_ROOTS = ['src', 'plugins'] as const
 const OPTIONAL_RUNTIME_DIRECTORY_ROOTS = ['public'] as const
 export const REQUIRED_RUNTIME_FILE_ROOTS = ['package.json', 'bun.lock'] as const
 const RUNTIME_FILE_ROOTS = new Set<string>(REQUIRED_RUNTIME_FILE_ROOTS)
-const FROZEN_TEST_SUPPORT = new Set([
-  'bunfig.toml',
-  'tests/mock-reset.ts',
-  'tests/setup.ts',
-  'tests/utils/logger-mock.ts',
-  'tests/utils/test-helpers.ts',
-])
+
+export { isFrozenEnforcementPath, isFrozenTestSupportPath }
 
 export type LoadedStoryFile = Readonly<{ path: string; bytes: Uint8Array }>
 export type LoadedRuntimeFile = Readonly<{ kind: 'file'; path: string; bytes: Uint8Array }>
@@ -28,22 +25,6 @@ export type LoadedRuntimeInputTree = Readonly<{ directories: readonly string[]; 
 export type CandidateCaptureDependencies = Readonly<{
   afterDirectoryRead?(directory: string): Promise<void>
 }>
-export function isFrozenEnforcementPath(filePath: string): boolean {
-  return (
-    filePath === 'scripts/test-stories.ts' ||
-    /^scripts\/story-dependency-snapshot(?:-(?:cleanup|installer|key|root|symlink|tree|workspaces))?\.ts$/u.test(
-      filePath,
-    ) ||
-    filePath === 'scripts/story-manifest-arguments.ts' ||
-    filePath === 'scripts/story-manifest-dependencies.ts' ||
-    filePath === 'scripts/story-reports.ts' ||
-    /^scripts\/story-(?:manifest|runner).*\.ts$/u.test(filePath)
-  )
-}
-
-export function isFrozenTestSupportPath(filePath: string): boolean {
-  return FROZEN_TEST_SUPPORT.has(filePath)
-}
 
 export function isRuntimeInputPath(filePath: string): boolean {
   return (

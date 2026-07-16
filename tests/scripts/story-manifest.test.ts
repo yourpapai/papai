@@ -32,7 +32,7 @@ function buildCandidateStoryManifest(
     root: string
     seed: number
     bunVersion?: string
-    sandboxBackend?: 'darwin-sandbox-exec' | 'linux-docker'
+    sandboxBackend?: 'linux-docker'
   }>,
   dependencySnapshot: StoryDependencySnapshot = TEST_DEPENDENCY_SNAPSHOT,
 ): Promise<Awaited<ReturnType<typeof acquireCandidateStoryManifest>>> {
@@ -86,6 +86,9 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
   writeFileSync(path.join(root, 'scripts/story-manifest.ts'), 'manifest enforcement')
   writeFileSync(path.join(root, 'scripts/story-reports.ts'), 'report enforcement')
   writeFileSync(path.join(root, 'scripts/story-runner-arguments.ts'), 'argument enforcement')
+  writeFileSync(path.join(root, 'scripts/story-sandbox-linux.ts'), 'sandbox backend enforcement')
+  writeFileSync(path.join(root, 'scripts/story-sandbox.ts'), 'sandbox enforcement')
+  writeFileSync(path.join(root, 'scripts/test-story-sandbox.ts'), 'sandbox launcher enforcement')
   writeFileSync(path.join(root, 'tests/setup.ts'), 'test setup')
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'test reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), `export * from './logger-mock.js'`)
@@ -135,7 +138,10 @@ describe('story manifest', () => {
       'scripts/story-manifest.ts',
       'scripts/story-reports.ts',
       'scripts/story-runner-arguments.ts',
+      'scripts/story-sandbox-linux.ts',
+      'scripts/story-sandbox.ts',
       'scripts/test-stories.ts',
+      'scripts/test-story-sandbox.ts',
       'tests/mock-reset.ts',
       'tests/setup.ts',
       'tests/stories/harness/helper.ts',
