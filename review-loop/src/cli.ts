@@ -123,11 +123,11 @@ export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<Spaw
     child.on('error', (err: Error) => {
       resolve({ exitCode: 1, stdout, stderr: stderr + err.message })
     })
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       if (pending.length > 0) {
         onLine?.(pending)
       }
-      resolve({ exitCode: code ?? 0, stdout, stderr })
+      resolve({ exitCode: code ?? (signal === null ? 0 : 1), stdout, stderr })
     })
   })
 }
