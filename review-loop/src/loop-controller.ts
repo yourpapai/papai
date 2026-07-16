@@ -183,6 +183,7 @@ async function processNextIssue(
     return fixed
   }
   const result = await processIssue(pending[index]!, deps)
+  await saveIssueLedger(deps.ledger)
   return processNextIssue(pending, index + 1, deps, result.fixed ? fixed + 1 : fixed)
 }
 

@@ -4,12 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
-import { createIssueLedger } from '../../review-loop/src/issue-ledger.js'
+import { createIssueLedger, IssueLedgerSnapshotSchema } from '../../review-loop/src/issue-ledger.js'
 import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
@@ -461,5 +461,57 @@ describe('runReviewLoop', () => {
     expect(records.length).toBe(1)
     expect(records[0]!.status).toBe('rejected')
     expect(fixerCalls).toBe(1)
+  })
+
+  test('persists ledger after each issue so mid-round crash does not lose state', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    const issue2: ReviewerIssue = {
+      ...issue,
+      title: 'Second issue',
+      evidence: 'src/foo.ts lines 1-10',
+      file: 'src/foo.ts',
+    }
+
+    let ledgerOnDiskAtSecondIssue = ''
+
+    const fixerActions: Array<() => Promise<void>> = [
+      () => Promise.resolve(),
+      () => {
+        ledgerOnDiskAtSecondIssue = readFileSync(ledger.path, 'utf8')
+        return Promise.resolve()
+      },
+    ]
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue, issue2], []],
+        fixerResults: [
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+        ],
+        onFixer: (_cwd, callIndex) => fixerActions[callIndex]!(),
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+    })
+
+    const onDisk = IssueLedgerSnapshotSchema.parse(JSON.parse(ledgerOnDiskAtSecondIssue))
+    const records = Object.values(onDisk.issues)
+    expect(records.length).toBe(2)
+    const firstRecord = records.find((r) => r.issue.title === issue.title)
+    expect(firstRecord).toBeDefined()
+    expect(firstRecord!.status).toBe('fixed_pending_review')
+    expect(firstRecord!.fixAttempts).toBe(1)
   })
 })
