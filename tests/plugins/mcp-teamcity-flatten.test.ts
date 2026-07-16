@@ -84,4 +84,38 @@ describe('flattenTeamCity', () => {
       ],
     })
   })
+
+  test('SECURITY: redaction survives flattening at depth (nested step property)', () => {
+    const raw = {
+      id: 'B',
+      steps: {
+        step: [
+          {
+            id: 'RUNNER_1',
+            name: 'deploy',
+            properties: {
+              property: [
+                { name: 'secret.api.key', value: 'topsecret' },
+                { name: 'timeout', value: '60' },
+              ],
+            },
+          },
+        ],
+      },
+    }
+    const out = flattenTeamCity(sanitizeTeamCityConfig(raw))
+    expect(out).toEqual({
+      id: 'B',
+      steps: [
+        {
+          id: 'RUNNER_1',
+          name: 'deploy',
+          properties: [
+            { name: 'secret.api.key', value: '[REDACTED]' },
+            { name: 'timeout', value: '60' },
+          ],
+        },
+      ],
+    })
+  })
 })
