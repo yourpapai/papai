@@ -4,203 +4,189 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { closeClients, parseCliArgs, runCli } from '../../review-loop/src/cli.js'
-import { loadReviewLoopConfig } from '../../review-loop/src/config.js'
+import { runBuildCheck } from '../../review-loop/src/build-checker.js'
+import { finalizeRun, parseCliArgs, realSpawn, splitLines, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
+import { createRunState, type RunState } from '../../review-loop/src/run-state.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
-describe('review-loop CLI bootstrap', () => {
-  test('parseCliArgs requires --plan and returns resume-run when provided', () => {
-    expect(() => parseCliArgs(['--config', '.review-loop/config.json'])).toThrow('Missing required --plan')
+describe('parseCliArgs', () => {
+  test('defaults configPath to review-loop/config.json', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md'])
+    expect(args.configPath.endsWith('review-loop/config.json')).toBe(true)
+    expect(args.repoRoot).toBeUndefined()
+  })
 
-    expect(
-      parseCliArgs([
-        '--config',
-        '.review-loop/config.json',
-        '--plan',
-        'docs/superpowers/plans/2026-04-11-file-attachments-implementation.md',
-        '--resume-run',
-        '2026-04-12T05-31-44Z',
-      ]),
-    ).toEqual({
-      configPath: '.review-loop/config.json',
-      planPath: 'docs/superpowers/plans/2026-04-11-file-attachments-implementation.md',
-      repoRoot: undefined,
-      resumeRunId: '2026-04-12T05-31-44Z',
+  test('parses --config and --plan', () => {
+    const args = parseCliArgs(['--config', '/path/to/config.json', '--plan', '/path/to/plan.md'])
+    expect(args.configPath).toBe('/path/to/config.json')
+    expect(args.planPath).toBe('/path/to/plan.md')
+  })
+
+  test('parses --resume-run', () => {
+    const args = parseCliArgs([
+      '--config',
+      '/path/to/config.json',
+      '--plan',
+      '/path/to/plan.md',
+      '--resume-run',
+      '2026-07-15T10-30-00-000Z',
+    ])
+    expect(args.resumeRunId).toBe('2026-07-15T10-30-00-000Z')
+  })
+
+  test('resetWorktree defaults to false', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md'])
+    expect(args.resetWorktree).toBe(false)
+  })
+
+  test('parses --reset-worktree as a boolean flag', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md', '--reset-worktree'])
+    expect(args.resetWorktree).toBe(true)
+  })
+
+  test('throws on missing --plan', () => {
+    expect(() => parseCliArgs(['--config', '/path/to/config.json'])).toThrow('Missing required --plan')
+  })
+})
+
+describe('splitLines', () => {
+  const cases: ReadonlyArray<{
+    name: string
+    pending: string
+    chunk: string
+    lines: string[]
+    remaining: string
+  }> = [
+    { name: 'single complete line', pending: '', chunk: '{"a":1}\n', lines: ['{"a":1}'], remaining: '' },
+    {
+      name: 'multiple lines in one chunk',
+      pending: '',
+      chunk: '{"a":1}\n{"b":2}\n',
+      lines: ['{"a":1}', '{"b":2}'],
+      remaining: '',
+    },
+    {
+      name: 'line split across chunks: first half',
+      pending: '',
+      chunk: '{"a":',
+      lines: [],
+      remaining: '{"a":',
+    },
+    {
+      name: 'line split across chunks: second half',
+      pending: '{"a":',
+      chunk: '1}\n',
+      lines: ['{"a":1}'],
+      remaining: '',
+    },
+    { name: 'skips empty lines', pending: '', chunk: '\n\n{"x":1}\n', lines: ['{"x":1}'], remaining: '' },
+    {
+      name: 'trailing partial without newline',
+      pending: '',
+      chunk: '{"a":1}\npartial',
+      lines: ['{"a":1}'],
+      remaining: 'partial',
+    },
+    { name: 'empty input', pending: '', chunk: '', lines: [], remaining: '' },
+  ]
+
+  for (const c of cases) {
+    test(c.name, () => {
+      expect(splitLines(c.pending, c.chunk)).toEqual({ lines: c.lines, remaining: c.remaining })
     })
+  }
+})
+
+async function setupFinalizeFixtures(): Promise<{ config: ReviewLoopConfig; runState: RunState }> {
+  const repoRoot = makeTempDir('cli-')
+  const config = createReviewLoopConfigFixture(repoRoot)
+  const planPath = path.join(repoRoot, 'plan.md')
+  writeFileSync(planPath, '# Plan')
+  const runState = await createRunState(config, planPath)
+  return { config, runState }
+}
+
+describe('realSpawn', () => {
+  test('surfaces spawn error message when binary cannot be spawned', async () => {
+    const result = await realSpawn('this-binary-does-not-exist-12345', [], { cwd: process.cwd() })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr.length).toBeGreaterThan(0)
+    expect(result.stderr).toContain('this-binary-does-not-exist-12345')
   })
 
-  test('loadReviewLoopConfig resolves relative config paths from config and repo roots', async () => {
-    const dir = makeTempDir('review-loop-cli-')
-    const configDir = path.join(dir, 'config')
-    const repoDir = path.join(dir, 'repo')
-    const configPath = path.join(configDir, 'review-loop.config.json')
-
-    mkdirSync(configDir, { recursive: true })
-    writeFileSync(
-      configPath,
-      JSON.stringify(
-        {
-          ...createReviewLoopConfigFixture('../repo', { workDir: '.review-loop' }),
-        },
-        null,
-        2,
-      ),
-    )
-
-    const config = await loadReviewLoopConfig({ configPath })
-
-    expect(config.repoRoot).toBe(repoDir)
-    expect(config.workDir).toBe(path.join(repoDir, '.review-loop'))
-    expect(existsSync(config.workDir)).toBe(true)
-    expect(config.reviewer.invocationPrefix).toBe('/review-code')
-    expect(config.fixer.verifyInvocationPrefix).toBe('/verify-issue')
+  test('kills a hanging subprocess after the configured timeout', async () => {
+    const result = await realSpawn('sleep', ['5'], { cwd: process.cwd(), timeout: 500 })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('timed out')
   })
 
-  test('loadReviewLoopConfig resolves --repo overrides from the caller cwd', async () => {
-    const dir = makeTempDir('review-loop-cli-')
-    const configDir = path.join(dir, 'config')
-    const configPath = path.join(configDir, 'review-loop.config.json')
-    const previousCwd = process.cwd()
+  test('SIGKILLs a child that ignores SIGTERM after the grace period', async () => {
+    const start = Date.now()
+    const result = await realSpawn('sh', ['-c', "trap '' TERM; sleep 30"], {
+      cwd: process.cwd(),
+      timeout: 300,
+      killGraceMs: 200,
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('timed out')
+    expect(Date.now() - start).toBeLessThan(5000)
+  })
 
-    mkdirSync(configDir, { recursive: true })
-    writeFileSync(
-      configPath,
-      JSON.stringify(
-        {
-          ...createReviewLoopConfigFixture('../repo', { workDir: '.review-loop' }),
-        },
-        null,
-        2,
-      ),
-    )
+  test('completes normally when no timeout is configured', async () => {
+    const result = await realSpawn('true', [], { cwd: process.cwd() })
+    expect(result.exitCode).toBe(0)
+  })
+})
 
-    try {
-      process.chdir(dir)
-      const expectedRepoRoot = process.cwd()
-
-      const config = await loadReviewLoopConfig({ configPath, repoRoot: '.' })
-
-      expect(config.repoRoot).toBe(expectedRepoRoot)
-      expect(config.workDir).toBe(path.join(expectedRepoRoot, '.review-loop'))
-      expect(existsSync(config.workDir)).toBe(true)
-    } finally {
-      process.chdir(previousCwd)
+describe('finalizeRun', () => {
+  test('aborts merge and preserves worktree when final build fails', async () => {
+    const { config, runState } = await setupFinalizeFixtures()
+    let merged = 0
+    let removed = 0
+    const deps: FinalizeDeps = {
+      exec: () => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'TypeError: broken' }),
+      runBuildCheck,
+      mergeWorktree: () => {
+        merged += 1
+        return Promise.resolve()
+      },
+      removeWorktree: () => {
+        removed += 1
+        return Promise.resolve()
+      },
     }
+
+    await expect(finalizeRun(config, runState, deps)).rejects.toThrow('Final build check failed')
+    expect(merged).toBe(0)
+    expect(removed).toBe(0)
   })
 
-  test('closeClients aggregates multiple close errors after attempting both closes', async () => {
-    let reviewerClosed = false
-    let fixerClosed = false
-    const reviewerError = new Error('reviewer close failed')
-    const fixerError = new Error('fixer close failed')
-
-    const thrown = await closeClients(
-      {
-        close: () => {
-          reviewerClosed = true
-          return Promise.reject(reviewerError)
-        },
+  test('merges and removes worktree when final build passes', async () => {
+    const { config, runState } = await setupFinalizeFixtures()
+    let merged = 0
+    let removed = 0
+    const deps: FinalizeDeps = {
+      exec: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      runBuildCheck,
+      mergeWorktree: () => {
+        merged += 1
+        return Promise.resolve()
       },
-      {
-        close: () => {
-          fixerClosed = true
-          return Promise.reject(fixerError)
-        },
+      removeWorktree: () => {
+        removed += 1
+        return Promise.resolve()
       },
-    ).catch((error: unknown) => error)
+    }
 
-    expect(thrown).toBeInstanceOf(AggregateError)
-    expect(thrown).toMatchObject({
-      errors: [reviewerError, fixerError],
-      message: 'Failed to close ACP clients',
-    })
-    expect(reviewerClosed).toBe(true)
-    expect(fixerClosed).toBe(true)
-  })
+    await finalizeRun(config, runState, deps)
 
-  test('runCli waits for delayed required command advertisements before starting the loop', async () => {
-    const dir = makeTempDir('review-loop-cli-')
-    const reviewerScenarioPath = path.join(dir, 'reviewer.json')
-    const fixerScenarioPath = path.join(dir, 'fixer.json')
-    const configPath = path.join(dir, 'config.json')
-    const planPath = path.join(dir, 'plan.md')
-
-    writeFileSync(planPath, '# Implementation plan\n')
-    writeFileSync(
-      reviewerScenarioPath,
-      JSON.stringify(
-        {
-          availableCommands: [{ name: 'review-code', description: 'Review code' }],
-          availableCommandsUpdateDelayMs: 25,
-          promptReplies: [
-            {
-              text: '{"round":1,"issues":[]}',
-            },
-          ],
-        },
-        null,
-        2,
-      ),
-    )
-    writeFileSync(
-      fixerScenarioPath,
-      JSON.stringify(
-        {
-          availableCommands: [{ name: 'verify-issue', description: 'Verify issue' }],
-          availableCommandsUpdateDelayMs: 25,
-          promptReplies: [
-            {
-              text: '{"verdict":"invalid","fixability":"manual","reasoning":"False positive.","targetFiles":["src/message-queue/queue.ts"],"needsPlanning":false}',
-            },
-          ],
-        },
-        null,
-        2,
-      ),
-    )
-    writeFileSync(
-      configPath,
-      JSON.stringify(
-        {
-          repoRoot: process.cwd(),
-          workDir: path.join(dir, '.review-loop'),
-          maxRounds: 1,
-          maxNoProgressRounds: 1,
-          reviewer: {
-            command: 'bun',
-            args: ['tests/review-loop/fake-agent.ts'],
-            env: { ACP_SCENARIO_FILE: reviewerScenarioPath },
-            sessionConfig: {},
-            invocationPrefix: '/review-code',
-            requireInvocationPrefix: true,
-          },
-          fixer: {
-            command: 'bun',
-            args: ['tests/review-loop/fake-agent.ts'],
-            env: { ACP_SCENARIO_FILE: fixerScenarioPath },
-            sessionConfig: {},
-            verifyInvocationPrefix: '/verify-issue',
-            fixInvocationPrefix: '/fix-issue',
-            requireVerifyInvocation: true,
-          },
-        },
-        null,
-        2,
-      ),
-    )
-
-    await runCli(['--config', configPath, '--plan', planPath])
-
-    const runRoot = path.join(dir, '.review-loop', 'runs')
-    const runId = readdirSync(runRoot)[0]
-    expect(runId).toBeDefined()
-    const summary = readFileSync(path.join(runRoot, runId!, 'summary.txt'), 'utf8')
-
-    expect(summary).toContain('Done reason: clean')
+    expect(merged).toBe(1)
+    expect(removed).toBe(1)
   })
 })

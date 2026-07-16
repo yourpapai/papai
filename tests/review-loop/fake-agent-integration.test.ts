@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -18,104 +18,131 @@ afterEach(() => {
   }
 })
 
+function createFakeOpencode(binDir: string): void {
+  const scriptPath = path.join(binDir, 'opencode')
+  const script = `#!/usr/bin/env bun
+import { readFileSync, writeFileSync } from 'node:fs'
+
+const args = process.argv.slice(2)
+const prompt = args[args.length - 1] ?? ''
+
+function extractOutputPath(text) {
+  const match = text.match(/(?:to|JSON to):\\s*(\\S+)/)
+  return match?.[1] ?? null
+}
+
+const scenarioPath = process.env.FAKE_OPENCODE_SCENARIO
+const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'))
+const outputPath = extractOutputPath(prompt)
+
+if (prompt.includes('Review the current implementation')) {
+  const issues = scenario.reviewerIssues[scenario._reviewerCall ?? 0] ?? '{"issues":[]}'
+  scenario._reviewerCall = (scenario._reviewerCall ?? 0) + 1
+  writeFileSync(scenarioPath, JSON.stringify(scenario))
+  if (outputPath) writeFileSync(outputPath, issues)
+} else if (prompt.includes('Verify and fix') || prompt.includes('build error')) {
+  const result = scenario.fixerResults[scenario._fixerCall ?? 0] ?? '{}'
+  scenario._fixerCall = (scenario._fixerCall ?? 0) + 1
+  writeFileSync(scenarioPath, JSON.stringify(scenario))
+  if (outputPath) writeFileSync(outputPath, result)
+} else if (prompt.includes('Match newly found')) {
+  if (outputPath) writeFileSync(outputPath, JSON.stringify({ matches: [] }))
+}
+process.exit(0)
+`
+  writeFileSync(scriptPath, script)
+  chmodSync(scriptPath, 0o755)
+}
+
 describe('review-loop fake integration', () => {
-  test('writes summary, transcript, and session files for a clean fake-agent run', async () => {
+  test('writes summary after a clean fake-agent run', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'review-loop-integration-'))
     tempDirs.push(dir)
 
-    const reviewerScenarioPath = path.join(dir, 'reviewer.json')
-    const fixerScenarioPath = path.join(dir, 'fixer.json')
+    const binDir = path.join(dir, 'bin')
+    const scenarioPath = path.join(dir, 'scenario.json')
     const configPath = path.join(dir, 'config.json')
     const planPath = path.join(dir, 'plan.md')
+    const repoPath = path.join(dir, 'repo')
 
     writeFileSync(planPath, '# Implementation plan\n')
-    writeFileSync(
-      reviewerScenarioPath,
-      JSON.stringify(
-        {
-          availableCommands: [{ name: 'review-code', description: 'Review code' }],
-          promptReplies: [
+
+    const scenario = {
+      reviewerIssues: [
+        JSON.stringify({
+          issues: [
             {
-              text: '{"round":1,"issues":[{"title":"Race condition in queue flush path","severity":"high","summary":"Two concurrent messages can bypass the intended lock.","whyItMatters":"This can produce stale assistant replies.","evidence":"src/message-queue/queue.ts lines 84-107","file":"src/message-queue/queue.ts","lineStart":84,"lineEnd":107,"suggestedFix":"Take the processing lock earlier.","confidence":0.92}]}',
+              title: 'Race condition',
+              severity: 'high',
+              summary: 'Concurrent messages bypass lock.',
+              whyItMatters: 'Stale replies.',
+              evidence: 'queue.ts:84',
+              file: 'src/queue.ts',
+              lineStart: 84,
+              lineEnd: 107,
+              suggestedFix: 'Lock earlier.',
+              confidence: 0.9,
             },
-            { text: '{"round":2,"issues":[]}' },
           ],
-        },
-        null,
-        2,
-      ),
-    )
-    writeFileSync(
-      fixerScenarioPath,
-      JSON.stringify(
-        {
-          availableCommands: [
-            { name: 'verify-issue', description: 'Verify issue' },
-            { name: 'fix-issue', description: 'Fix issue' },
-          ],
-          promptReplies: [
-            {
-              text: '{"verdict":"valid","fixability":"auto","reasoning":"The control flow is actually unsafe.","targetFiles":["src/message-queue/queue.ts"],"needsPlanning":false}',
-            },
-            { text: 'Applied fix.' },
-          ],
-        },
-        null,
-        2,
-      ),
-    )
+        }),
+        JSON.stringify({ issues: [] }),
+      ],
+      fixerResults: [
+        JSON.stringify({
+          verdict: 'valid',
+          fixability: 'auto',
+          reasoning: 'Unsafe.',
+          targetFiles: ['src/queue.ts'],
+          fixed: true,
+          commitSha: 'abc123',
+        }),
+      ],
+    }
+    writeFileSync(scenarioPath, JSON.stringify(scenario))
+
     writeFileSync(
       configPath,
-      JSON.stringify(
-        {
-          repoRoot: process.cwd(),
-          workDir: path.join(dir, '.review-loop'),
-          maxRounds: 5,
-          maxNoProgressRounds: 2,
-          reviewer: {
-            command: 'bun',
-            args: ['tests/review-loop/fake-agent.ts'],
-            env: { ACP_SCENARIO_FILE: reviewerScenarioPath },
-            sessionConfig: {},
-            invocationPrefix: '/review-code',
-            requireInvocationPrefix: true,
-          },
-          fixer: {
-            command: 'bun',
-            args: ['tests/review-loop/fake-agent.ts'],
-            env: { ACP_SCENARIO_FILE: fixerScenarioPath },
-            sessionConfig: {},
-            verifyInvocationPrefix: '/verify-issue',
-            fixInvocationPrefix: '/fix-issue',
-            requireVerifyInvocation: true,
-          },
-        },
-        null,
-        2,
-      ),
+      JSON.stringify({
+        repoRoot: repoPath,
+        workDir: path.join(dir, '.review-loop'),
+        maxRounds: 5,
+        maxNoProgressRounds: 2,
+        checkCommand: 'true',
+        reviewer: { model: 'test-reviewer', extraArgs: [] },
+        fixer: { model: 'test-fixer', extraArgs: [] },
+        matcher: { model: 'test-matcher', extraArgs: [] },
+      }),
     )
 
-    await runCli(['--config', configPath, '--plan', planPath])
+    const { execFileSync } = await import('node:child_process')
+    execFileSync('git', ['init', repoPath])
+    execFileSync('git', ['-C', repoPath, 'config', 'user.email', 'test@test.com'])
+    execFileSync('git', ['-C', repoPath, 'config', 'user.name', 'Test'])
+    execFileSync('git', ['-C', repoPath, 'checkout', '-b', 'main'])
+    writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
+    writeFileSync(path.join(repoPath, 'README.md'), 'hello')
+    execFileSync('git', ['-C', repoPath, 'add', '.'])
+    execFileSync('git', ['-C', repoPath, 'commit', '-m', 'init'])
+
+    mkdirSync(binDir, { recursive: true })
+    createFakeOpencode(binDir)
+
+    const oldPath = process.env['PATH']
+    process.env['PATH'] = `${binDir}:${oldPath}`
+    process.env['FAKE_OPENCODE_SCENARIO'] = scenarioPath
+
+    try {
+      await runCli(['--config', configPath, '--plan', planPath])
+    } finally {
+      process.env['PATH'] = oldPath
+      delete process.env['FAKE_OPENCODE_SCENARIO']
+    }
 
     const runRoot = path.join(dir, '.review-loop', 'runs')
+    const { readdirSync } = await import('node:fs')
     const runId = readdirSync(runRoot)[0]
     expect(runId).toBeDefined()
-    const runDirName = runId!
-    const summary = readFileSync(path.join(runRoot, runDirName, 'summary.txt'), 'utf8')
-    const reviewerTranscript = readFileSync(path.join(runRoot, runDirName, 'transcripts', 'reviewer.ndjson'), 'utf8')
-    const fixerTranscript = readFileSync(path.join(runRoot, runDirName, 'transcripts', 'fixer.ndjson'), 'utf8')
-    const reviewerSession = readFileSync(path.join(runRoot, runDirName, 'reviewer-session.json'), 'utf8')
-
+    const summary = readFileSync(path.join(runRoot, runId!, 'summary.txt'), 'utf8')
     expect(summary).toContain('Done reason: clean')
-    expect(reviewerTranscript).toContain('"sessionUpdate":"agent_message_chunk"')
-    expect(reviewerTranscript).toContain(
-      '/review-code Review the current implementation against the implementation plan at:',
-    )
-    expect(reviewerTranscript).toContain(
-      '/review-code Re-review the current implementation against the implementation plan at:',
-    )
-    expect(fixerTranscript).toContain('/verify-issue Verify this issue against the implementation plan at:')
-    expect(fixerTranscript).toContain('/fix-issue Fix exactly the verified issue below.')
-    expect(reviewerSession).toContain('"sessionId"')
   })
 })
