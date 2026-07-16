@@ -23,8 +23,24 @@ describe('ReviewLoopConfigSchema', () => {
 
     expect(parsed.maxRounds).toBe(10)
     expect(parsed.maxNoProgressRounds).toBe(2)
+    expect(parsed.agentTimeoutMs).toBe(600_000)
+    expect(parsed.buildTimeoutMs).toBe(600_000)
     expect(parsed.checkCommand).toBe('bun check:full')
     expect(parsed.reviewer.extraArgs).toEqual([])
+  })
+
+  test('accepts custom timeout values including zero to disable', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      agentTimeoutMs: 0,
+      buildTimeoutMs: 120_000,
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+
+    expect(parsed.agentTimeoutMs).toBe(0)
+    expect(parsed.buildTimeoutMs).toBe(120_000)
   })
 
   test('accepts an optional repoRoot field', () => {

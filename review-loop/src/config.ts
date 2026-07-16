@@ -20,6 +20,8 @@ export const ReviewLoopConfigSchema = z.object({
   workDir: z.string().min(1),
   maxRounds: z.number().int().positive().default(10),
   maxNoProgressRounds: z.number().int().positive().default(2),
+  agentTimeoutMs: z.number().int().min(0).default(600_000),
+  buildTimeoutMs: z.number().int().min(0).default(600_000),
   checkCommand: z.string().min(1).default('bun check:full'),
   reviewer: AgentConfigSchema,
   fixer: AgentConfigSchema,

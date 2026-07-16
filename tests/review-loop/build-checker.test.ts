@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { runBuildCheck, type ShellExecFn } from '../../review-loop/src/build-checker.js'
+import { createShellExec, runBuildCheck, type ShellExecFn } from '../../review-loop/src/build-checker.js'
 
 function createMockExec(results: Array<{ exitCode: number; stdout: string; stderr: string }>): ShellExecFn {
   let index = 0
@@ -28,5 +28,18 @@ describe('build-checker', () => {
     const result = await runBuildCheck({ exec })
     expect(result.passed).toBe(false)
     expect(result.stderr).toContain('TypeError')
+  })
+
+  test('times out a hanging build command and reports the timeout', async () => {
+    const exec = createShellExec(process.cwd(), 'sleep 5', 500)
+    const result = await exec()
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('timed out')
+  })
+
+  test('completes normally when no timeout is configured', async () => {
+    const exec = createShellExec(process.cwd(), 'true')
+    const result = await exec()
+    expect(result.exitCode).toBe(0)
   })
 })

@@ -3,6 +3,8 @@
   "workDir": ".review-loop",
   "maxRounds": 10,
   "maxNoProgressRounds": 2,
+  "agentTimeoutMs": 600000,
+  "buildTimeoutMs": 600000,
   "checkCommand": "bun check:full",
   "reviewer": {
     "model": "ollama-cloud/kimi-k2.6:cloud",

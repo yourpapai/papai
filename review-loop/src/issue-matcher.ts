@@ -19,6 +19,7 @@ export interface MatchIssuesDeps {
   model: string
   extraArgs: readonly string[]
   reporter: ProgressReporter
+  timeoutMs?: number
 }
 
 function buildMatcherPrompt(
@@ -73,6 +74,7 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<IssueMatch[]> 
     reporter: deps.reporter,
     logPath: deps.logPath,
     extraArgs: deps.extraArgs,
+    timeoutMs: deps.timeoutMs,
   })
 
   return result.matches

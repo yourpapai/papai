@@ -23,7 +23,7 @@ export type LineSink = (line: string) => void
 export type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: { cwd: string },
+  options: { cwd: string; timeout?: number },
   onLine?: LineSink,
 ) => Promise<SpawnResult>
 
@@ -39,6 +39,7 @@ export interface RunAgentOptions<T> {
   extraArgs: readonly string[]
   reporter?: ProgressReporter
   onRetry?: () => void
+  timeoutMs?: number
 }
 
 interface AttemptResult<T> {
@@ -165,7 +166,7 @@ function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<
       ...options.extraArgs,
       options.prompt,
     ],
-    { cwd: options.cwd },
+    { cwd: options.cwd, timeout: options.timeoutMs },
     onLine,
   )
 }

@@ -115,6 +115,14 @@ export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<Spaw
     let stdout = ''
     let stderr = ''
     let pending = ''
+    let timedOut = false
+    const timer =
+      options.timeout !== undefined && options.timeout > 0
+        ? setTimeout(() => {
+            timedOut = true
+            child.kill('SIGTERM')
+          }, options.timeout)
+        : null
     child.stdout?.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
       stdout += text
@@ -128,11 +136,21 @@ export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<Spaw
       stderr += chunk.toString()
     })
     child.on('error', (err: Error) => {
+      if (timer !== null) {
+        clearTimeout(timer)
+      }
       resolve({ exitCode: 1, stdout, stderr: stderr + err.message })
     })
     child.on('close', (code, signal) => {
+      if (timer !== null) {
+        clearTimeout(timer)
+      }
       if (pending.length > 0) {
         onLine?.(pending)
+      }
+      if (timedOut) {
+        resolve({ exitCode: 1, stdout, stderr: `${stderr}Process timed out after ${options.timeout}ms\n` })
+        return
       }
       resolve({ exitCode: code ?? (signal === null ? 0 : 1), stdout, stderr })
     })
@@ -170,7 +188,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   await prepareWorktree(config, runState, args.resetWorktree)
 
   const log = new LiveRenderer(process.stdout)
-  const exec = createShellExec(runState.worktreePath, config.checkCommand)
+  const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
 
   try {
     const result = await runReviewLoop({

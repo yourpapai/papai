@@ -119,6 +119,17 @@ describe('realSpawn', () => {
     expect(result.stderr.length).toBeGreaterThan(0)
     expect(result.stderr).toContain('this-binary-does-not-exist-12345')
   })
+
+  test('kills a hanging subprocess after the configured timeout', async () => {
+    const result = await realSpawn('sleep', ['5'], { cwd: process.cwd(), timeout: 500 })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('timed out')
+  })
+
+  test('completes normally when no timeout is configured', async () => {
+    const result = await realSpawn('true', [], { cwd: process.cwd() })
+    expect(result.exitCode).toBe(0)
+  })
 })
 
 describe('finalizeRun', () => {

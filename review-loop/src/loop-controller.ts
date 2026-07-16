@@ -72,6 +72,7 @@ function runFixer(deps: ReviewLoopDeps, prompt: string, label: string): Promise<
     reporter: deps.log,
     logPath: deps.runState.logPath,
     extraArgs: deps.config.fixer.extraArgs,
+    timeoutMs: deps.config.agentTimeoutMs,
   })
 }
 
@@ -206,6 +207,7 @@ async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIss
     reporter: deps.log,
     logPath: deps.runState.logPath,
     extraArgs: deps.config.reviewer.extraArgs,
+    timeoutMs: deps.config.agentTimeoutMs,
   })
 
   return reviewResult.issues
@@ -228,6 +230,7 @@ async function runMatchAndRecord(
     model: deps.config.matcher.model,
     extraArgs: deps.config.matcher.extraArgs,
     reporter: deps.log,
+    timeoutMs: deps.config.agentTimeoutMs,
   })
 
   const roundRecords = applyMatchedIssues(deps.ledger, round, newIssues, matches)

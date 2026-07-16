@@ -23,11 +23,28 @@ interface RawExecResult {
   stderr: string
 }
 
-function runExec(file: string, args: string[], options: { cwd: string; maxBuffer: number }): Promise<RawExecResult> {
+interface ExecOptions {
+  cwd: string
+  maxBuffer: number
+  timeout?: number
+}
+
+function runExec(file: string, args: string[], options: ExecOptions): Promise<RawExecResult> {
   return new Promise((resolve) => {
     execFile(file, args, options, (err, stdout, stderr) => {
-      const exitCode = err === null ? 0 : typeof err.code === 'number' ? err.code : 1
-      resolve({ exitCode, stdout, stderr })
+      let exitCode: number
+      let resolvedStderr = stderr
+      if (err === null) {
+        exitCode = 0
+      } else if (typeof err.code === 'number') {
+        exitCode = err.code
+      } else if (err.killed === true && options.timeout !== undefined && options.timeout > 0) {
+        exitCode = 1
+        resolvedStderr = `${stderr}Process timed out after ${options.timeout}ms\n`
+      } else {
+        exitCode = 1
+      }
+      resolve({ exitCode, stdout, stderr: resolvedStderr })
     })
   })
 }
@@ -41,6 +58,7 @@ export async function runBuildCheck(deps: BuildCheckDeps): Promise<BuildCheckRes
   }
 }
 
-export function createShellExec(cwd: string, command: string): ShellExecFn {
-  return (): Promise<RawExecResult> => runExec('sh', ['-c', command], { cwd, maxBuffer: 10 * 1024 * 1024 })
+export function createShellExec(cwd: string, command: string, timeoutMs?: number): ShellExecFn {
+  return (): Promise<RawExecResult> =>
+    runExec('sh', ['-c', command], { cwd, maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs })
 }
