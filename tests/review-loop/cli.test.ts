@@ -126,6 +126,18 @@ describe('realSpawn', () => {
     expect(result.stderr).toContain('timed out')
   })
 
+  test('SIGKILLs a child that ignores SIGTERM after the grace period', async () => {
+    const start = Date.now()
+    const result = await realSpawn('sh', ['-c', "trap '' TERM; sleep 30"], {
+      cwd: process.cwd(),
+      timeout: 300,
+      killGraceMs: 200,
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('timed out')
+    expect(Date.now() - start).toBeLessThan(5000)
+  })
+
   test('completes normally when no timeout is configured', async () => {
     const result = await realSpawn('true', [], { cwd: process.cwd() })
     expect(result.exitCode).toBe(0)

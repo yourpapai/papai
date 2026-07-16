@@ -12,7 +12,6 @@ import {
   RoundMetricSchema,
   createFileTraceLogger,
   createCapturingTraceLogger,
-  createSilentTraceLogger,
   emptyDecisions,
   emptySeverityCounts,
 } from '../../review-loop/src/trace-log.js'
@@ -123,12 +122,5 @@ describe('trace-log', () => {
     await logger.append({ ts: 'b', round: 1, phase: 'r', event: 'match_complete', newCount: 0, matchedCount: 1 })
     expect(events).toHaveLength(2)
     expect(events[0]!.ts).toBe('a')
-  })
-
-  test('createSilentTraceLogger accepts an event without throwing', async () => {
-    const logger = createSilentTraceLogger()
-    await expect(
-      logger.append({ ts: 'a', round: 1, phase: 'r', event: 'match_complete', newCount: 1, matchedCount: 0 }),
-    ).resolves.toBeUndefined()
   })
 })

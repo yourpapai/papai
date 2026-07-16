@@ -3,19 +3,19 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { SpawnFn, SpawnResult } from './agent-runner.js'
+import type { LineSink, SpawnFn, SpawnResult } from './agent-runner.js'
 import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
 import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
 import { LiveRenderer } from './live-renderer.js'
-import { runReviewLoop } from './loop-controller.js'
+import { runReviewLoop, type ReviewLoopResult } from './loop-controller.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
-import { formatSummary } from './summary.js'
-import { createSilentTraceLogger } from './trace-log.js'
+import { buildMetricsJson, formatSummary } from './summary.js'
+import { createFileTraceLogger } from './trace-log.js'
 import {
   createWorktree,
   mergeWorktree,
@@ -110,50 +110,89 @@ export async function finalizeRun(config: ReviewLoopConfig, runState: RunState, 
   await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
 }
 
+function killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (child.pid === undefined) return
+  try {
+    process.kill(-child.pid, signal)
+  } catch {
+    child.kill(signal)
+  }
+}
+
+interface SpawnCtx {
+  readonly child: ChildProcess
+  stdout: string
+  stderr: string
+  pending: string
+  timedOut: boolean
+  timer: ReturnType<typeof setTimeout> | null
+  killTimer: ReturnType<typeof setTimeout> | null
+  readonly onLine?: LineSink
+}
+
+function setupKillTimers(ctx: SpawnCtx, options: { timeout?: number; killGraceMs?: number }): void {
+  const grace = options.killGraceMs ?? 5000
+  if (options.timeout === undefined || options.timeout <= 0) return
+  ctx.timer = setTimeout(() => {
+    ctx.timedOut = true
+    killGroup(ctx.child, 'SIGTERM')
+    ctx.killTimer = setTimeout(() => {
+      killGroup(ctx.child, 'SIGKILL')
+    }, grace)
+  }, options.timeout)
+}
+
+function clearKillTimers(ctx: SpawnCtx): void {
+  if (ctx.timer !== null) clearTimeout(ctx.timer)
+  if (ctx.killTimer !== null) clearTimeout(ctx.killTimer)
+}
+
 export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
   return new Promise((resolve) => {
-    const child = spawn(command, [...args], { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] })
-    let stdout = ''
-    let stderr = ''
-    let pending = ''
-    let timedOut = false
-    const timer =
-      options.timeout !== undefined && options.timeout > 0
-        ? setTimeout(() => {
-            timedOut = true
-            child.kill('SIGTERM')
-          }, options.timeout)
-        : null
-    child.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString()
-      stdout += text
-      const split = splitLines(pending, text)
-      pending = split.remaining
+    const ctx: SpawnCtx = {
+      child: spawn(command, [...args], {
+        cwd: options.cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+      }),
+      stdout: '',
+      stderr: '',
+      pending: '',
+      timedOut: false,
+      timer: null,
+      killTimer: null,
+      onLine,
+    }
+    setupKillTimers(ctx, options)
+    ctx.child.stdout?.on('data', (chunk: Buffer) => {
+      ctx.stdout += chunk.toString()
+      const split = splitLines(ctx.pending, chunk.toString())
+      ctx.pending = split.remaining
       for (const line of split.lines) {
-        onLine?.(line)
+        ctx.onLine?.(line)
       }
     })
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
+    ctx.child.stderr?.on('data', (chunk: Buffer) => {
+      ctx.stderr += chunk.toString()
     })
-    child.on('error', (err: Error) => {
-      if (timer !== null) {
-        clearTimeout(timer)
-      }
-      resolve({ exitCode: 1, stdout, stderr: stderr + err.message })
+    ctx.child.on('error', (err: Error) => {
+      clearKillTimers(ctx)
+      resolve({ exitCode: 1, stdout: ctx.stdout, stderr: ctx.stderr + err.message })
     })
-    child.on('close', (code, signal) => {
-      if (timer !== null) {
-        clearTimeout(timer)
+    ctx.child.on('close', (code, signal) => {
+      clearKillTimers(ctx)
+      if (ctx.pending.length > 0) {
+        ctx.onLine?.(ctx.pending)
       }
-      if (pending.length > 0) {
-        onLine?.(pending)
-      }
-      if (timedOut) {
-        resolve({ exitCode: 1, stdout, stderr: `${stderr}Process timed out after ${options.timeout}ms\n` })
+      if (ctx.timedOut) {
+        resolve({
+          exitCode: 1,
+          stdout: ctx.stdout,
+          stderr: `${ctx.stderr}Process timed out after ${options.timeout}ms\n`,
+        })
         return
       }
-      resolve({ exitCode: code ?? (signal === null ? 0 : 1), stdout, stderr })
+      resolve({ exitCode: code ?? (signal === null ? 0 : 1), stdout: ctx.stdout, stderr: ctx.stderr })
     })
   })
 }
@@ -169,6 +208,17 @@ export async function prepareWorktree(config: ReviewLoopConfig, runState: RunSta
         `Pass --reset-worktree to discard them before resuming.`,
     )
   }
+}
+
+export async function writeRunArtifacts(runDir: string, result: ReviewLoopResult): Promise<void> {
+  const summary = formatSummary(result)
+  await writeFile(path.join(runDir, 'summary.txt'), `${summary}\n`)
+  try {
+    await writeFile(path.join(runDir, 'metrics.json'), `${JSON.stringify(buildMetricsJson(result), null, 2)}\n`)
+  } catch (error) {
+    console.warn(`[review-loop] metrics.json write failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  console.log(summary)
 }
 
 export async function runCli(argv: readonly string[]): Promise<void> {
@@ -190,7 +240,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   const log = new LiveRenderer(process.stdout)
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
-  const trace = createSilentTraceLogger()
+  const trace = createFileTraceLogger(runState.tracePath)
 
   try {
     const result = await runReviewLoop({
@@ -210,9 +260,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
       removeWorktree,
     })
 
-    const summary = formatSummary(result)
-    await writeFile(path.join(runState.runDir, 'summary.txt'), `${summary}\n`)
-    console.log(summary)
+    await writeRunArtifacts(runState.runDir, result)
   } catch (error) {
     console.error('Review loop failed:', error)
     console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)

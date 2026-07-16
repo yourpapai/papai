@@ -23,7 +23,7 @@ export type LineSink = (line: string) => void
 export type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: { cwd: string; timeout?: number },
+  options: { cwd: string; timeout?: number; killGraceMs?: number },
   onLine?: LineSink,
 ) => Promise<SpawnResult>
 
