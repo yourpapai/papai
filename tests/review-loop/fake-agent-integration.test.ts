@@ -119,6 +119,7 @@ describe('review-loop fake integration', () => {
     execFileSync('git', ['-C', repoPath, 'config', 'user.email', 'test@test.com'])
     execFileSync('git', ['-C', repoPath, 'config', 'user.name', 'Test'])
     execFileSync('git', ['-C', repoPath, 'checkout', '-b', 'main'])
+    writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
     writeFileSync(path.join(repoPath, 'README.md'), 'hello')
     execFileSync('git', ['-C', repoPath, 'add', '.'])
     execFileSync('git', ['-C', repoPath, 'commit', '-m', 'init'])

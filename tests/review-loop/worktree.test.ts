@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { execGit } from '../../review-loop/src/worktree.js'
@@ -13,7 +13,9 @@ import {
   detectGitRoot,
   mergeWorktree,
   removeWorktree,
+  resetWorktree,
   worktreeExists,
+  worktreeIsDirty,
 } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
@@ -27,7 +29,6 @@ describe('worktree', () => {
     await execGit(repoRoot, ['config', 'user.name', 'Test'])
     await execGit(repoRoot, ['checkout', '-b', 'main'])
 
-    const { writeFileSync } = await import('node:fs')
     writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
     await execGit(repoRoot, ['add', '.'])
     await execGit(repoRoot, ['commit', '-m', 'init'])
@@ -46,20 +47,19 @@ describe('worktree', () => {
     await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
     await execGit(repoRoot, ['config', 'user.name', 'Test'])
     await execGit(repoRoot, ['checkout', '-b', 'main'])
-    const { writeFileSync } = await import('node:fs')
     writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
     await execGit(repoRoot, ['add', '.'])
     await execGit(repoRoot, ['commit', '-m', 'init'])
 
     const wtPath = path.join(repoRoot, '.review-loop', 'worktree')
 
-    expect(await worktreeExists(wtPath)).toBe(false)
+    expect(worktreeExists(wtPath)).toBe(false)
 
     await createWorktree(repoRoot, wtPath, 'test-run')
-    expect(await worktreeExists(wtPath)).toBe(true)
+    expect(worktreeExists(wtPath)).toBe(true)
 
     await removeWorktree(repoRoot, wtPath, 'test-run')
-    expect(await worktreeExists(wtPath)).toBe(false)
+    expect(worktreeExists(wtPath)).toBe(false)
   })
 
   test('mergeWorktree merges the branch back to current HEAD', async () => {
@@ -68,7 +68,6 @@ describe('worktree', () => {
     await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
     await execGit(repoRoot, ['config', 'user.name', 'Test'])
     await execGit(repoRoot, ['checkout', '-b', 'main'])
-    const { writeFileSync } = await import('node:fs')
     writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
     await execGit(repoRoot, ['add', '.'])
     await execGit(repoRoot, ['commit', '-m', 'init'])
@@ -90,5 +89,45 @@ describe('worktree', () => {
     await execGit(repoRoot, ['init'])
     const result = await detectGitRoot(repoRoot)
     expect(result).toBe(realpathSync(repoRoot))
+  })
+})
+
+describe('worktree dirty-state helpers', () => {
+  async function setupRepoWithWorktree(): Promise<{ repoRoot: string; wtPath: string }> {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'Test'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+    writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+    const wtPath = path.join(repoRoot, '.review-loop', 'worktree')
+    await createWorktree(repoRoot, wtPath, 'test-run')
+    return { repoRoot, wtPath }
+  }
+
+  test('worktreeIsDirty returns false for a clean worktree', async () => {
+    const { wtPath } = await setupRepoWithWorktree()
+    expect(await worktreeIsDirty(wtPath)).toBe(false)
+  })
+
+  test('worktreeIsDirty returns true when there are uncommitted changes', async () => {
+    const { wtPath } = await setupRepoWithWorktree()
+    writeFileSync(path.join(wtPath, 'dirty.txt'), 'uncommitted')
+    expect(await worktreeIsDirty(wtPath)).toBe(true)
+  })
+
+  test('resetWorktree discards tracked modifications and untracked files', async () => {
+    const { wtPath } = await setupRepoWithWorktree()
+    writeFileSync(path.join(wtPath, 'README.md'), 'changed')
+    writeFileSync(path.join(wtPath, 'untracked.txt'), 'temp')
+    expect(await worktreeIsDirty(wtPath)).toBe(true)
+
+    await resetWorktree(wtPath)
+
+    expect(await worktreeIsDirty(wtPath)).toBe(false)
+    expect(readFileSync(path.join(wtPath, 'README.md'), 'utf8')).toBe('hello')
+    expect(existsSync(path.join(wtPath, 'untracked.txt'))).toBe(false)
   })
 })

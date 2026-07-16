@@ -4,16 +4,17 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger } from '../../review-loop/src/issue-ledger.js'
-import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
+import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
+import { execGit } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -36,9 +37,32 @@ function extractOutputPath(prompt: string): string | null {
   return match?.[1] ?? null
 }
 
+function parseExistingIds(prompt: string): string[] {
+  const section = prompt.split('Existing issues:')[1] ?? ''
+  const ids: string[] = []
+  for (const line of section.split('\n')) {
+    const matched = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):/u.exec(line)
+    if (matched) {
+      ids.push(matched[1]!)
+    }
+  }
+  return ids
+}
+
+function matchFirstToExisting(prompt: string): IssueMatch[] {
+  const newSection = prompt.split('New issues:')[1]?.split('Existing issues:')[0] ?? ''
+  const newCount = (newSection.match(/^\[\d+\]/gmu) ?? []).length
+  const existingId = parseExistingIds(prompt)[0] ?? null
+  return Array.from({ length: newCount }, (_, index) => ({
+    newIssueIndex: index,
+    existingId: index === 0 ? existingId : null,
+  }))
+}
+
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean }>
+  matchFirstOnly?: boolean
 }): SpawnFn {
   let reviewerCall = 0
   let fixerCall = 0
@@ -67,8 +91,9 @@ function createMockSpawn(handlers: {
         )
       }
     } else if (promptText.includes('Match newly found')) {
+      const matches = handlers.matchFirstOnly === true ? matchFirstToExisting(promptText) : []
       if (outputPath !== null) {
-        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches: [] }))
+        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches }))
       }
     }
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
@@ -92,6 +117,16 @@ function makeReporter(messages: string[]): ProgressReporter {
   }
 }
 
+async function setupGitRepo(repoPath: string): Promise<void> {
+  mkdirSync(repoPath, { recursive: true })
+  await execGit(repoPath, ['init'])
+  await execGit(repoPath, ['config', 'user.email', 'test@test.com'])
+  await execGit(repoPath, ['config', 'user.name', 'Test'])
+  writeFileSync(path.join(repoPath, 'README.md'), 'hello')
+  await execGit(repoPath, ['add', '.'])
+  await execGit(repoPath, ['commit', '-m', 'init'])
+}
+
 describe('progress logging', () => {
   test('logs round start, issue discovery, verification, fix, and done for a clean round', async () => {
     const repoRoot = makeTempDir('review-loop-progress-')
@@ -101,6 +136,8 @@ describe('progress logging', () => {
     const runState = await createRunState(config, planPath)
     const ledger = await createIssueLedger(runState.runDir)
     const messages: string[] = []
+
+    await setupGitRepo(runState.worktreePath)
 
     const result = await runReviewLoop({
       config,
@@ -131,6 +168,8 @@ describe('progress logging', () => {
     const runState = await createRunState(config, planPath)
     const ledger = await createIssueLedger(runState.runDir)
     const messages: string[] = []
+
+    await setupGitRepo(runState.worktreePath)
 
     const stallIssue: ReviewerIssue = {
       ...issue,
@@ -163,6 +202,8 @@ describe('progress logging', () => {
     const ledger = await createIssueLedger(runState.runDir)
     const messages: string[] = []
 
+    await setupGitRepo(runState.worktreePath)
+
     const longTitle = 'A'.repeat(80)
     const longIssue: ReviewerIssue = { ...issue, title: longTitle, severity: 'low' }
 
@@ -181,5 +222,39 @@ describe('progress logging', () => {
     const fixMessage = messages.find((m) => m.startsWith('[fix]'))
     expect(fixMessage).toBeDefined()
     expect(fixMessage!.length).toBeLessThan(longTitle.length + 40)
+  })
+
+  test('round summary denominator counts only actionable issues, excluding terminal matches', async () => {
+    const repoRoot = makeTempDir('review-loop-progress-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 5, maxNoProgressRounds: 3 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    const messages: string[] = []
+
+    await setupGitRepo(runState.worktreePath)
+
+    const rejectedIssue: ReviewerIssue = { ...issue, title: 'Already rejected', severity: 'low' }
+    const fixableIssue: ReviewerIssue = { ...issue, title: 'Newly fixable', severity: 'high' }
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[rejectedIssue], [rejectedIssue, fixableIssue], []],
+        fixerResults: [
+          { verdict: 'invalid', fixability: 'manual', fixed: false },
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+        ],
+        matchFirstOnly: true,
+      }),
+      exec: passingExec,
+      log: makeReporter(messages),
+    })
+
+    expect(messages).toContain('[round 2] Fixed 1/1 issues')
+    expect(messages).not.toContain('[round 2] Fixed 1/2 issues')
   })
 })

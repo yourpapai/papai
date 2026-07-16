@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { appendFile, copyFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, copyFile, mkdir, readFile, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { z } from 'zod'
@@ -23,7 +23,7 @@ export type LineSink = (line: string) => void
 export type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: { cwd: string },
+  options: { cwd: string; timeout?: number },
   onLine?: LineSink,
 ) => Promise<SpawnResult>
 
@@ -39,6 +39,7 @@ export interface RunAgentOptions<T> {
   extraArgs: readonly string[]
   reporter?: ProgressReporter
   onRetry?: () => void
+  timeoutMs?: number
 }
 
 interface AttemptResult<T> {
@@ -153,8 +154,19 @@ export function agentWritePath(outputPath: string): string {
 function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<SpawnResult> {
   return options.spawn(
     'opencode',
-    ['run', '--format', 'json', '--model', options.model, '--dir', options.cwd, ...options.extraArgs, options.prompt],
-    { cwd: options.cwd },
+    [
+      'run',
+      '--auto',
+      '--format',
+      'json',
+      '--model',
+      options.model,
+      '--dir',
+      options.cwd,
+      ...options.extraArgs,
+      options.prompt,
+    ],
+    { cwd: options.cwd, timeout: options.timeoutMs },
     onLine,
   )
 }
@@ -174,6 +186,7 @@ async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
     try {
       const agentFile = path.resolve(options.cwd, agentWritePath(options.outputPath))
       await copyFile(agentFile, options.outputPath)
+      await unlink(agentFile)
       const raw = await readFile(options.outputPath, 'utf8')
       return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
     } catch (error) {

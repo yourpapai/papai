@@ -100,6 +100,30 @@ export function formatStepFooter(
   return `  ${label} ${CHECK} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools} ${MIDDLE_DOT} in ${tokens.input} / out ${tokens.output}`
 }
 
+export async function withLivePhase<T>(
+  reporter: ProgressReporter,
+  label: string,
+  fn: () => Promise<T>,
+): Promise<{ result: T; durationMs: number }> {
+  reporter.event(`[${label}] running...`)
+  const start = Date.now()
+  let timer: ReturnType<typeof setInterval> | null = null
+  if (reporter.dynamic) {
+    timer = setInterval(() => {
+      reporter.live(`[${label}] ${formatDuration(Date.now() - start)}...`)
+    }, 1000)
+  }
+  try {
+    const result = await fn()
+    return { result, durationMs: Date.now() - start }
+  } finally {
+    if (timer !== null) {
+      clearInterval(timer)
+    }
+    reporter.clearLive()
+  }
+}
+
 export class LiveRenderer implements ProgressReporter {
   readonly dynamic: boolean
   private readonly stream: RendererStream

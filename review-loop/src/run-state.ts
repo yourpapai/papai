@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -32,7 +33,7 @@ export interface RunState extends PersistedRunState {
 }
 
 function makeRunId(): string {
-  return new Date().toISOString().replace(/[:.]/gu, '-')
+  return `${new Date().toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`
 }
 
 export async function createRunState(config: ReviewLoopConfig, planPath: string): Promise<RunState> {
@@ -44,7 +45,7 @@ export async function createRunState(config: ReviewLoopConfig, planPath: string)
   const state: RunState = {
     runId,
     runDir,
-    worktreePath: path.join(config.workDir, 'worktree'),
+    worktreePath: path.join(config.workDir, 'worktrees', runId),
     ledgerPath: path.join(runDir, 'ledger.json'),
     issuesPath: path.join(runDir, 'issues.json'),
     resultPath: path.join(runDir, 'result.json'),
@@ -52,7 +53,7 @@ export async function createRunState(config: ReviewLoopConfig, planPath: string)
     logPath: path.join(runDir, 'agent-output.log'),
     statePath: path.join(runDir, 'state.json'),
     repoRoot: config.repoRoot,
-    planPath,
+    planPath: path.resolve(planPath),
     currentRound: 0,
     noProgressRounds: 0,
   }
@@ -69,7 +70,7 @@ export async function loadRunState(workDir: string, runId: string): Promise<RunS
   return {
     ...persisted,
     runDir,
-    worktreePath: path.join(workDir, 'worktree'),
+    worktreePath: path.join(workDir, 'worktrees', runId),
     ledgerPath: path.join(runDir, 'ledger.json'),
     issuesPath: path.join(runDir, 'issues.json'),
     resultPath: path.join(runDir, 'result.json'),

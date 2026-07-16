@@ -8,64 +8,72 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { SpawnFn, SpawnResult } from './agent-runner.js'
-import { createShellExec } from './build-checker.js'
-import { loadReviewLoopConfig } from './config.js'
+import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
+import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
 import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop } from './loop-controller.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { formatSummary } from './summary.js'
-import { createWorktree, detectGitRoot, mergeWorktree, removeWorktree, worktreeExists } from './worktree.js'
+import {
+  createWorktree,
+  mergeWorktree,
+  removeWorktree,
+  resetWorktree,
+  worktreeExists,
+  worktreeIsDirty,
+} from './worktree.js'
 
 export interface CliArgs {
   configPath: string
   planPath: string
   repoRoot?: string
   resumeRunId?: string
+  resetWorktree: boolean
 }
 
 const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
+
+function readValueArg(argv: readonly string[], index: number, name: string): string {
+  const value = argv[index + 1]
+  if (value === undefined) {
+    throw new Error(`Missing value for ${name}`)
+  }
+  return value
+}
 
 export function parseCliArgs(argv: readonly string[]): CliArgs {
   let configPath = DEFAULT_CONFIG_PATH
   let planPath: string | undefined
   let repoRoot: string | undefined
   let resumeRunId: string | undefined
+  let shouldResetWorktree = false
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--config') {
-      const value = argv[index + 1]
-      if (value === undefined) {
-        throw new Error('Missing value for --config')
-      }
-      configPath = value
+      configPath = readValueArg(argv, index, '--config')
       index += 1
       continue
     }
     if (arg === '--plan') {
-      planPath = argv[index + 1]
-      if (planPath === undefined) {
-        throw new Error('Missing value for --plan')
-      }
+      planPath = readValueArg(argv, index, '--plan')
       index += 1
       continue
     }
     if (arg === '--repo') {
-      const value = argv[index + 1]
-      if (value === undefined) {
-        throw new Error('Missing value for --repo')
-      }
-      repoRoot = value
+      repoRoot = readValueArg(argv, index, '--repo')
       index += 1
       continue
     }
     if (arg === '--resume-run') {
-      resumeRunId = argv[index + 1]
-      if (resumeRunId === undefined) {
-        throw new Error('Missing value for --resume-run')
-      }
+      resumeRunId = readValueArg(argv, index, '--resume-run')
       index += 1
+      continue
+    }
+    if (arg === '--reset-worktree') {
+      shouldResetWorktree = true
+      continue
     }
   }
 
@@ -73,7 +81,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     throw new Error('Missing required --plan')
   }
 
-  return { configPath, planPath, repoRoot, resumeRunId }
+  return { configPath, planPath, repoRoot, resumeRunId, resetWorktree: shouldResetWorktree }
 }
 
 export function splitLines(pending: string, chunk: string): { lines: string[]; remaining: string } {
@@ -83,12 +91,38 @@ export function splitLines(pending: string, chunk: string): { lines: string[]; r
   return { lines, remaining }
 }
 
-const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
+export interface FinalizeDeps {
+  exec: ShellExecFn
+  runBuildCheck: typeof runBuildCheck
+  mergeWorktree: (repoRoot: string, branchName: string) => Promise<void>
+  removeWorktree: (repoRoot: string, worktreePath: string, runId: string) => Promise<void>
+}
+
+export async function finalizeRun(config: ReviewLoopConfig, runState: RunState, deps: FinalizeDeps): Promise<void> {
+  const build = await deps.runBuildCheck({ exec: deps.exec })
+  if (!build.passed) {
+    throw new Error(
+      `Final build check failed; worktree preserved at ${runState.worktreePath} for inspection, merge skipped.`,
+    )
+  }
+  await deps.mergeWorktree(config.repoRoot, `review-loop/${runState.runId}`)
+  await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
+}
+
+export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
   return new Promise((resolve) => {
     const child = spawn(command, [...args], { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
     let pending = ''
+    let timedOut = false
+    const timer =
+      options.timeout !== undefined && options.timeout > 0
+        ? setTimeout(() => {
+            timedOut = true
+            child.kill('SIGTERM')
+          }, options.timeout)
+        : null
     child.stdout?.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
       stdout += text
@@ -101,24 +135,46 @@ const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString()
     })
-    child.on('error', () => {
-      resolve({ exitCode: 1, stdout, stderr })
+    child.on('error', (err: Error) => {
+      if (timer !== null) {
+        clearTimeout(timer)
+      }
+      resolve({ exitCode: 1, stdout, stderr: stderr + err.message })
     })
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
+      if (timer !== null) {
+        clearTimeout(timer)
+      }
       if (pending.length > 0) {
         onLine?.(pending)
       }
-      resolve({ exitCode: code ?? 0, stdout, stderr })
+      if (timedOut) {
+        resolve({ exitCode: 1, stdout, stderr: `${stderr}Process timed out after ${options.timeout}ms\n` })
+        return
+      }
+      resolve({ exitCode: code ?? (signal === null ? 0 : 1), stdout, stderr })
     })
   })
 }
 
+export async function prepareWorktree(config: ReviewLoopConfig, runState: RunState, reset: boolean): Promise<void> {
+  if (!worktreeExists(runState.worktreePath)) {
+    await createWorktree(config.repoRoot, runState.worktreePath, runState.runId)
+  } else if (reset) {
+    await resetWorktree(runState.worktreePath)
+  } else if (await worktreeIsDirty(runState.worktreePath)) {
+    console.warn(
+      `Warning: worktree at ${runState.worktreePath} has uncommitted changes from a previous run. ` +
+        `Pass --reset-worktree to discard them before resuming.`,
+    )
+  }
+}
+
 export async function runCli(argv: readonly string[]): Promise<void> {
   const args = parseCliArgs(argv)
-  const repoRoot = args.repoRoot === undefined ? await detectGitRoot(process.cwd()) : path.resolve(args.repoRoot)
   const config = await loadReviewLoopConfig({
     configPath: args.configPath,
-    repoRoot,
+    repoRoot: args.repoRoot,
   })
 
   const runState: RunState =
@@ -129,12 +185,10 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   const ledger: IssueLedger =
     args.resumeRunId === undefined ? await createIssueLedger(runState.runDir) : await loadIssueLedger(runState.runDir)
 
-  if (!worktreeExists(runState.worktreePath)) {
-    await createWorktree(config.repoRoot, runState.worktreePath, runState.runId)
-  }
+  await prepareWorktree(config, runState, args.resetWorktree)
 
   const log = new LiveRenderer(process.stdout)
-  const exec = createShellExec(runState.worktreePath, config.checkCommand)
+  const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
 
   try {
     const result = await runReviewLoop({
@@ -146,12 +200,16 @@ export async function runCli(argv: readonly string[]): Promise<void> {
       log,
     })
 
+    await finalizeRun(config, runState, {
+      exec,
+      runBuildCheck,
+      mergeWorktree,
+      removeWorktree,
+    })
+
     const summary = formatSummary(result)
     await writeFile(path.join(runState.runDir, 'summary.txt'), `${summary}\n`)
     console.log(summary)
-
-    await mergeWorktree(config.repoRoot, `review-loop/${runState.runId}`)
-    await removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
   } catch (error) {
     console.error('Review loop failed:', error)
     console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)

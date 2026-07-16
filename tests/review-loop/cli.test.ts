@@ -3,9 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { writeFileSync } from 'node:fs'
+import path from 'node:path'
 
-import { parseCliArgs, splitLines } from '../../review-loop/src/cli.js'
+import { runBuildCheck } from '../../review-loop/src/build-checker.js'
+import { finalizeRun, parseCliArgs, realSpawn, splitLines, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
+import { createRunState, type RunState } from '../../review-loop/src/run-state.js'
+import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
+
+afterEach(cleanupTempDirs)
 
 describe('parseCliArgs', () => {
   test('defaults configPath to review-loop/config.json', () => {
@@ -30,6 +38,16 @@ describe('parseCliArgs', () => {
       '2026-07-15T10-30-00-000Z',
     ])
     expect(args.resumeRunId).toBe('2026-07-15T10-30-00-000Z')
+  })
+
+  test('resetWorktree defaults to false', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md'])
+    expect(args.resetWorktree).toBe(false)
+  })
+
+  test('parses --reset-worktree as a boolean flag', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md', '--reset-worktree'])
+    expect(args.resetWorktree).toBe(true)
   })
 
   test('throws on missing --plan', () => {
@@ -83,4 +101,80 @@ describe('splitLines', () => {
       expect(splitLines(c.pending, c.chunk)).toEqual({ lines: c.lines, remaining: c.remaining })
     })
   }
+})
+
+async function setupFinalizeFixtures(): Promise<{ config: ReviewLoopConfig; runState: RunState }> {
+  const repoRoot = makeTempDir('cli-')
+  const config = createReviewLoopConfigFixture(repoRoot)
+  const planPath = path.join(repoRoot, 'plan.md')
+  writeFileSync(planPath, '# Plan')
+  const runState = await createRunState(config, planPath)
+  return { config, runState }
+}
+
+describe('realSpawn', () => {
+  test('surfaces spawn error message when binary cannot be spawned', async () => {
+    const result = await realSpawn('this-binary-does-not-exist-12345', [], { cwd: process.cwd() })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr.length).toBeGreaterThan(0)
+    expect(result.stderr).toContain('this-binary-does-not-exist-12345')
+  })
+
+  test('kills a hanging subprocess after the configured timeout', async () => {
+    const result = await realSpawn('sleep', ['5'], { cwd: process.cwd(), timeout: 500 })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('timed out')
+  })
+
+  test('completes normally when no timeout is configured', async () => {
+    const result = await realSpawn('true', [], { cwd: process.cwd() })
+    expect(result.exitCode).toBe(0)
+  })
+})
+
+describe('finalizeRun', () => {
+  test('aborts merge and preserves worktree when final build fails', async () => {
+    const { config, runState } = await setupFinalizeFixtures()
+    let merged = 0
+    let removed = 0
+    const deps: FinalizeDeps = {
+      exec: () => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'TypeError: broken' }),
+      runBuildCheck,
+      mergeWorktree: () => {
+        merged += 1
+        return Promise.resolve()
+      },
+      removeWorktree: () => {
+        removed += 1
+        return Promise.resolve()
+      },
+    }
+
+    await expect(finalizeRun(config, runState, deps)).rejects.toThrow('Final build check failed')
+    expect(merged).toBe(0)
+    expect(removed).toBe(0)
+  })
+
+  test('merges and removes worktree when final build passes', async () => {
+    const { config, runState } = await setupFinalizeFixtures()
+    let merged = 0
+    let removed = 0
+    const deps: FinalizeDeps = {
+      exec: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      runBuildCheck,
+      mergeWorktree: () => {
+        merged += 1
+        return Promise.resolve()
+      },
+      removeWorktree: () => {
+        removed += 1
+        return Promise.resolve()
+      },
+    }
+
+    await finalizeRun(config, runState, deps)
+
+    expect(merged).toBe(1)
+    expect(removed).toBe(1)
+  })
 })

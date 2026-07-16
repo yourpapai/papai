@@ -16,11 +16,11 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
   ].join('\n\n')
 }
 
-export function buildFixPrompt(issue: ReviewerIssue, outputPath: string): string {
+export function buildFixPrompt(issue: ReviewerIssue, outputPath: string, checkCommand: string): string {
   return [
     'Verify and fix the issue below.',
     'First, verify whether this issue is valid, already fixed, or a false positive.',
-    'If valid and auto-fixable, fix it, run `bun check:full`, and commit with message: fix(review-loop): <issue title>.',
+    `If valid and auto-fixable, fix it, run \`${checkCommand}\`, and commit with message: fix(review-loop): <issue title>.`,
     'If not fixable automatically, do not modify any files.',
     `Write your result as JSON to: ${outputPath}`,
     'Use this exact schema:',
@@ -31,9 +31,15 @@ export function buildFixPrompt(issue: ReviewerIssue, outputPath: string): string
   ].join('\n\n')
 }
 
-export function buildRetryFixPrompt(issue: ReviewerIssue, outputPath: string, buildError: string): string {
+export function buildRetryFixPrompt(
+  issue: ReviewerIssue,
+  outputPath: string,
+  buildError: string,
+  checkCommand: string,
+): string {
   return [
     'Your previous fix broke the build. Fix the build error and try again.',
+    `After fixing, run \`${checkCommand}\` to verify the build passes.`,
     `Write your updated result as JSON to: ${outputPath}`,
     'Use the same schema as before.',
     '',

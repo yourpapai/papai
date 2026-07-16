@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { agentWritePath, runAgent, type SpawnFn } from './agent-runner.js'
-import { runBuildCheck, type ShellExecFn } from './build-checker.js'
+import { runBuildCheck, type BuildCheckResult, type ShellExecFn } from './build-checker.js'
 import type { ReviewLoopConfig } from './config.js'
 import {
   applyMatchedIssues,
@@ -18,7 +18,7 @@ import {
 import { matchIssues } from './issue-matcher.js'
 import { FixerResultSchema, ReviewerIssuesSchema } from './issue-schema.js'
 import type { FixerResult, ReviewerIssue } from './issue-schema.js'
-import { formatDuration } from './live-renderer.js'
+import { formatDuration, withLivePhase } from './live-renderer.js'
 import type { ProgressReporter } from './progress-log.js'
 import { buildFixPrompt, buildReviewPrompt, buildRetryFixPrompt } from './prompt-templates.js'
 import { saveRunState, type RunState } from './run-state.js'
@@ -60,30 +60,6 @@ function terminalResult(
   return { doneReason, rounds: round, ledger: deps.ledger.snapshot }
 }
 
-async function withLivePhase<T>(
-  reporter: ProgressReporter,
-  label: string,
-  fn: () => Promise<T>,
-): Promise<{ result: T; durationMs: number }> {
-  reporter.event(`[${label}] running...`)
-  const start = Date.now()
-  let timer: ReturnType<typeof setInterval> | null = null
-  if (reporter.dynamic) {
-    timer = setInterval(() => {
-      reporter.live(`[${label}] ${formatDuration(Date.now() - start)}...`)
-    }, 1000)
-  }
-  try {
-    const result = await fn()
-    return { result, durationMs: Date.now() - start }
-  } finally {
-    if (timer !== null) {
-      clearInterval(timer)
-    }
-    reporter.clearLive()
-  }
-}
-
 function runFixer(deps: ReviewLoopDeps, prompt: string, label: string): Promise<FixerResult> {
   return runAgent({
     spawn: deps.spawn,
@@ -96,52 +72,82 @@ function runFixer(deps: ReviewLoopDeps, prompt: string, label: string): Promise<
     reporter: deps.log,
     logPath: deps.runState.logPath,
     extraArgs: deps.config.fixer.extraArgs,
+    timeoutMs: deps.config.agentTimeoutMs,
   })
+}
+
+async function runBuildWithLogging(deps: ReviewLoopDeps): Promise<BuildCheckResult> {
+  const phase = await withLivePhase(deps.log, 'build', () => runBuildCheck({ exec: deps.exec }))
+  deps.log.event(`[build] ${phase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(phase.durationMs)}`)
+  return phase.result
 }
 
 async function retryFixAfterBuildFailure(
   record: LedgerIssueRecord,
   deps: ReviewLoopDeps,
   buildError: string,
+  baselineSha: string,
 ): Promise<boolean> {
   deps.log.log(`[fix] build failed, retrying...`)
-  const preFixSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
 
-  await runFixer(
+  const result = await runFixer(
     deps,
-    buildRetryFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), buildError),
+    buildRetryFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), buildError, deps.config.checkCommand),
     'fixer-retry',
   )
 
-  const retryPhase = await withLivePhase(deps.log, 'build', () =>
-    runBuildCheck({ exec: deps.exec, cwd: deps.runState.worktreePath, command: deps.config.checkCommand }),
-  )
-  deps.log.event(
-    `[build] ${retryPhase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(retryPhase.durationMs)}`,
-  )
-  const retryBuild = retryPhase.result
+  if (!result.fixed || result.verdict !== 'valid') {
+    await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
+    recordVerification(deps.ledger, record.id, {
+      verdict: result.verdict,
+      fixability: result.fixability,
+      reasoning: result.reasoning,
+      targetFiles: result.targetFiles,
+    })
+    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 ${result.verdict} (after retry)`)
+    return false
+  }
+
+  const retryBuild = await runBuildWithLogging(deps)
 
   if (retryBuild.passed) {
+    await ensureFixerChangesCommitted(deps, record)
     recordFixAttempt(deps.ledger, record.id)
-    deps.log.log(`[fix] "${shortTitle(record)}" → fixed (after retry)`)
+    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed (after retry)`)
     return true
   }
 
-  await execGit(deps.runState.worktreePath, ['reset', '--hard', preFixSha])
+  await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
   recordVerification(deps.ledger, record.id, {
     verdict: 'needs_human',
     fixability: 'manual',
     reasoning: `Build failed after retry: ${retryBuild.stderr}`,
-    targetFiles: [],
+    targetFiles: result.targetFiles,
   })
   deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (build failed)`)
   return false
 }
 
+async function ensureFixerChangesCommitted(deps: ReviewLoopDeps, record: LedgerIssueRecord): Promise<void> {
+  const status = (await execGit(deps.runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
+  if (status.length === 0) {
+    return
+  }
+  await execGit(deps.runState.worktreePath, ['add', '-A'])
+  await execGit(deps.runState.worktreePath, ['commit', '-m', `fix(review-loop): ${record.issue.title}`])
+  deps.log.log(`[fix] "${shortTitle(record)}" \u2192 auto-committed uncommitted changes`)
+}
+
 async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Promise<{ fixed: boolean }> {
   deps.log.log(`[fix] "${shortTitle(record)}" — verifying...`)
 
-  const result = await runFixer(deps, buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath)), 'fixer')
+  const baselineSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+
+  const result = await runFixer(
+    deps,
+    buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), deps.config.checkCommand),
+    'fixer',
+  )
 
   recordVerification(deps.ledger, record.id, {
     verdict: result.verdict,
@@ -151,25 +157,21 @@ async function processIssue(record: LedgerIssueRecord, deps: ReviewLoopDeps): Pr
   })
 
   if (!result.fixed || result.verdict !== 'valid') {
+    await execGit(deps.runState.worktreePath, ['reset', '--hard', baselineSha])
     deps.log.log(`[fix] "${shortTitle(record)}" → ${result.verdict}`)
     return { fixed: false }
   }
 
-  const buildPhase = await withLivePhase(deps.log, 'build', () =>
-    runBuildCheck({ exec: deps.exec, cwd: deps.runState.worktreePath, command: deps.config.checkCommand }),
-  )
-  deps.log.event(
-    `[build] ${buildPhase.result.passed ? 'passed' : 'FAILED'} \u00B7 ${formatDuration(buildPhase.durationMs)}`,
-  )
-  const buildResult = buildPhase.result
+  const buildResult = await runBuildWithLogging(deps)
 
   if (buildResult.passed) {
+    await ensureFixerChangesCommitted(deps, record)
     recordFixAttempt(deps.ledger, record.id)
-    deps.log.log(`[fix] "${shortTitle(record)}" → fixed`)
+    deps.log.log(`[fix] "${shortTitle(record)}" \u2192 fixed`)
     return { fixed: true }
   }
 
-  const fixed = await retryFixAfterBuildFailure(record, deps, buildResult.stderr)
+  const fixed = await retryFixAfterBuildFailure(record, deps, buildResult.stderr, baselineSha)
   return { fixed }
 }
 
@@ -183,6 +185,7 @@ async function processNextIssue(
     return fixed
   }
   const result = await processIssue(pending[index]!, deps)
+  await saveIssueLedger(deps.ledger)
   return processNextIssue(pending, index + 1, deps, result.fixed ? fixed + 1 : fixed)
 }
 
@@ -204,6 +207,7 @@ async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIss
     reporter: deps.log,
     logPath: deps.runState.logPath,
     extraArgs: deps.config.reviewer.extraArgs,
+    timeoutMs: deps.config.agentTimeoutMs,
   })
 
   return reviewResult.issues
@@ -214,7 +218,7 @@ async function runMatchAndRecord(
   round: number,
   newIssues: readonly ReviewerIssue[],
 ): Promise<readonly LedgerIssueRecord[]> {
-  const existingRecords = filterActionable(Object.values(deps.ledger.snapshot.issues))
+  const existingRecords = Object.values(deps.ledger.snapshot.issues)
 
   const matches = await matchIssues({
     spawn: deps.spawn,
@@ -226,6 +230,7 @@ async function runMatchAndRecord(
     model: deps.config.matcher.model,
     extraArgs: deps.config.matcher.extraArgs,
     reporter: deps.log,
+    timeoutMs: deps.config.agentTimeoutMs,
   })
 
   const roundRecords = applyMatchedIssues(deps.ledger, round, newIssues, matches)
@@ -261,7 +266,7 @@ async function runRound(round: number, deps: ReviewLoopDeps): Promise<ReviewLoop
   const pending = filterActionable(roundRecords)
   const fixedThisRound = await processNextIssue(pending, 0, deps, 0)
 
-  deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${roundRecords.length} issues`)
+  deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${pending.length} issues`)
 
   const newNoProgress = fixedThisRound === 0 ? deps.runState.noProgressRounds + 1 : 0
   deps.runState.noProgressRounds = newNoProgress

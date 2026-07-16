@@ -31,16 +31,19 @@ describe('prompt-templates', () => {
   })
 
   test('buildFixPrompt includes issue JSON, output path, commit instructions', () => {
-    const prompt = buildFixPrompt(issue, '/path/to/result.json')
+    const prompt = buildFixPrompt(issue, '/path/to/result.json', 'npm test')
     expect(prompt).toContain('src/message-queue/queue.ts')
     expect(prompt).toContain('/path/to/result.json')
     expect(prompt).toContain('commit')
     expect(prompt).toContain('fix(review-loop)')
+    expect(prompt).toContain('`npm test`')
+    expect(prompt).not.toContain('bun check:full')
   })
 
-  test('buildRetryFixPrompt includes error output', () => {
-    const prompt = buildRetryFixPrompt(issue, '/path/to/result.json', 'TypeError: x is not a function')
+  test('buildRetryFixPrompt includes error output and check command', () => {
+    const prompt = buildRetryFixPrompt(issue, '/path/to/result.json', 'TypeError: x is not a function', 'npm test')
     expect(prompt).toContain('TypeError: x is not a function')
     expect(prompt).toContain('/path/to/result.json')
+    expect(prompt).toContain('`npm test`')
   })
 })

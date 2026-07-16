@@ -131,19 +131,19 @@ ROUND N
 
 ```
 START:
-  1. git worktree add .review-loop/worktree -b review-loop/<runId>
-  2. all agent calls get cwd=.review-loop/worktree
+  1. git worktree add .review-loop/worktrees/<runId> -b review-loop/<runId>
+  2. all agent calls get cwd=.review-loop/worktrees/<runId>
   3. all bun check:full runs happen in the worktree
 
 END:
   4. git checkout <original-branch>
   5. git merge review-loop/<runId> --no-edit
-  6. git worktree remove .review-loop/worktree
+  6. git worktree remove .review-loop/worktrees/<runId>
   7. git branch -d review-loop/<runId> (if fully merged)
   8. print summary
 
 RESUME (--resume-run <runId>):
-  9. if worktree exists at .review-loop/worktree → reuse
+  9. if worktree exists at .review-loop/worktrees/<runId> → reuse
   10. if removed → recreate from current HEAD
   11. reload ledger, resume from currentRound + 1
 ```

@@ -414,7 +414,7 @@ describe('run-state', () => {
     expect(state.runId).toBeDefined()
     expect(state.currentRound).toBe(0)
     expect(state.noProgressRounds).toBe(0)
-    expect(state.worktreePath).toBe(path.join(config.workDir, 'worktree'))
+    expect(state.worktreePath).toBe(path.join(config.workDir, 'worktrees', state.runId))
     expect(state.ledgerPath).toBe(path.join(state.runDir, 'ledger.json'))
     expect(state.issuesPath).toBe(path.join(state.runDir, 'issues.json'))
     expect(existsSync(state.statePath)).toBe(true)
@@ -457,6 +457,7 @@ Replace `review-loop/src/run-state.ts` with:
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -486,7 +487,7 @@ export interface RunState extends PersistedRunState {
 }
 
 function makeRunId(): string {
-  return new Date().toISOString().replace(/[:.]/gu, '-')
+  return `${new Date().toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`
 }
 
 export async function createRunState(config: ReviewLoopConfig, planPath: string): Promise<RunState> {
@@ -498,7 +499,7 @@ export async function createRunState(config: ReviewLoopConfig, planPath: string)
   const state: RunState = {
     runId,
     runDir,
-    worktreePath: path.join(config.workDir, 'worktree'),
+    worktreePath: path.join(config.workDir, 'worktrees', runId),
     ledgerPath: path.join(runDir, 'ledger.json'),
     issuesPath: path.join(runDir, 'issues.json'),
     resultPath: path.join(runDir, 'result.json'),
@@ -523,7 +524,7 @@ export async function loadRunState(workDir: string, runId: string): Promise<RunS
   return {
     ...persisted,
     runDir,
-    worktreePath: path.join(workDir, 'worktree'),
+    worktreePath: path.join(workDir, 'worktrees', runId),
     ledgerPath: path.join(runDir, 'ledger.json'),
     issuesPath: path.join(runDir, 'issues.json'),
     resultPath: path.join(runDir, 'result.json'),

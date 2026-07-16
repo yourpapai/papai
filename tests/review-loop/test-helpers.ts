@@ -33,6 +33,8 @@ export function createReviewLoopConfigFixture(
     workDir: path.join(repoRoot, '.review-loop'),
     maxRounds: 5,
     maxNoProgressRounds: 2,
+    agentTimeoutMs: 600_000,
+    buildTimeoutMs: 600_000,
     checkCommand: 'bun check:full',
     reviewer: {
       model: 'ollama-cloud/kimi-k2.6:cloud',
