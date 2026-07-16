@@ -10,7 +10,7 @@ import path from 'node:path'
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger, type LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
-import { processPendingIssues } from '../../review-loop/src/issue-processor.js'
+import { processPendingIssues, sanitizeSubject } from '../../review-loop/src/issue-processor.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { newCollector } from '../../review-loop/src/loop-trace.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
@@ -111,5 +111,24 @@ describe('processPendingIssues', () => {
     expect(types).toContain('fix_complete')
     const summary = types.filter((t) => t === 'fix_complete')
     expect(summary).toHaveLength(1)
+  })
+})
+
+describe('sanitizeSubject', () => {
+  test('strips backticks and quotes while keeping surrounding text', () => {
+    expect(sanitizeSubject('`fix: "x"`')).toBe('fix: x')
+  })
+
+  test('collapses to the first line and trims whitespace', () => {
+    expect(sanitizeSubject('line one\nline two')).toBe('line one')
+  })
+
+  test('returns empty string when input is only backticks and quotes', () => {
+    expect(sanitizeSubject('``````')).toBe('')
+    expect(sanitizeSubject('""\'')).toBe('')
+  })
+
+  test('slices to at most 100 characters', () => {
+    expect(sanitizeSubject('x'.repeat(150)).length).toBe(100)
   })
 })

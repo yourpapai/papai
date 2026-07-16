@@ -67,11 +67,35 @@ function matchAllToFirstExisting(prompt: string): IssueMatch[] {
   return Array.from({ length: newCount }, (_, index) => ({ newIssueIndex: index, existingId }))
 }
 
+const UUID_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+function matchExistingByFile(prompt: string): IssueMatch[] {
+  const newSection = prompt.split('New issues:')[1]?.split('Existing issues:')[0] ?? ''
+  const existingSection = prompt.split('Existing issues:')[1] ?? ''
+  const fileToId = new Map<string, string>()
+  for (const line of existingSection.split('\n')) {
+    const matched = new RegExp(`^(${UUID_PATTERN}):\\s*(\\S+):`, 'u').exec(line)
+    if (matched) {
+      fileToId.set(matched[2]!, matched[1]!)
+    }
+  }
+  const matches: IssueMatch[] = []
+  for (const line of newSection.split('\n')) {
+    const matched = /^\[(\d+)\]\s*(\S+):/u.exec(line)
+    if (matched) {
+      matches.push({ newIssueIndex: Number(matched[1]), existingId: fileToId.get(matched[2]!) ?? null })
+    }
+  }
+  return matches
+}
+
 function createMockSpawn(handlers: {
   reviewerIssues?: ReviewerIssue[][]
   fixerResults?: Array<{ verdict: string; fixability: string; fixed: boolean; commitMessage?: string }>
   onFixer?: (cwd: string, callIndex: number) => Promise<void> | void
   matchExisting?: boolean
+  matchByFile?: boolean
+  onMatch?: (prompt: string) => void
 }): SpawnFn {
   let reviewerCall = 0
   let fixerCall = 0
@@ -103,9 +127,17 @@ function createMockSpawn(handlers: {
         await handlers.onFixer(opts.cwd, fixerCall - 1)
       }
     } else if (promptText.includes('Match newly found')) {
-      const matches = handlers.matchExisting === true ? matchAllToFirstExisting(promptText) : []
+      const matches =
+        handlers.matchByFile === true
+          ? matchExistingByFile(promptText)
+          : handlers.matchExisting === true
+            ? matchAllToFirstExisting(promptText)
+            : []
       if (outputPath !== null) {
         writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ matches }))
+      }
+      if (handlers.onMatch) {
+        handlers.onMatch(promptText)
       }
     }
     return { exitCode: 0, stdout: '', stderr: '' }
@@ -527,6 +559,57 @@ describe('runReviewLoop', () => {
     expect(fixerCalls).toBe(1)
   })
 
+  test('drops stale terminal records from matcher context so a re-report becomes a new ledger entry', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 4, maxNoProgressRounds: 5 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    const fillerIssue: ReviewerIssue = {
+      ...issue,
+      title: 'Unrelated typo in readme',
+      evidence: 'README.md line 1',
+      file: 'README.md',
+    }
+
+    const matcherPrompts: string[] = []
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], [fillerIssue], [fillerIssue], [issue]],
+        fixerResults: [
+          { verdict: 'invalid', fixability: 'manual', fixed: false },
+          { verdict: 'invalid', fixability: 'manual', fixed: false },
+          { verdict: 'invalid', fixability: 'manual', fixed: false },
+        ],
+        matchByFile: true,
+        onMatch: (prompt) => {
+          matcherPrompts.push(prompt)
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    expect(matcherPrompts).toHaveLength(3)
+    const rejectedId = parseExistingIds(matcherPrompts[0]!)[0]!
+    expect(parseExistingIds(matcherPrompts[0]!)).toContain(rejectedId)
+    expect(parseExistingIds(matcherPrompts[2]!)).not.toContain(rejectedId)
+
+    const sameTitle = Object.values(ledger.snapshot.issues).filter((r) => r.issue.title === issue.title)
+    expect(sameTitle).toHaveLength(2)
+    expect(sameTitle.some((r) => r.firstSeenRound === 1)).toBe(true)
+    expect(sameTitle.some((r) => r.firstSeenRound === 4)).toBe(true)
+  })
+
   test('persists ledger after each issue so mid-round crash does not lose state', async () => {
     const repoRoot = makeTempDir('loop-ctrl-')
     const config = createReviewLoopConfigFixture(repoRoot)
@@ -716,6 +799,40 @@ describe('runReviewLoop', () => {
     })
 
     const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
+    expect(subject).toBe(`fix(review-loop): ${issue.title}`)
+  })
+
+  test('falls back to issue-title subject when commitMessage sanitizes to empty', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+
+    await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        reviewerIssues: [[issue], []],
+        fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true, commitMessage: '``````' }],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          return Promise.resolve()
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    expect(headAfter).not.toBe(baselineSha)
+    const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
+    expect(subject.length).toBeGreaterThan(0)
     expect(subject).toBe(`fix(review-loop): ${issue.title}`)
   })
 

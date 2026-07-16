@@ -45,7 +45,7 @@ function shortTitle(record: LedgerIssueRecord): string {
   return truncate(record.issue.title, 60)
 }
 
-function sanitizeSubject(text: string): string {
+export function sanitizeSubject(text: string): string {
   const oneLine = text.split(/\r?\n/u)[0] ?? ''
   return oneLine.replace(/[`"']/gu, '').trim().slice(0, 100)
 }
@@ -135,7 +135,8 @@ async function ensureFixerChangesCommitted(
   }
   const provided = commitMessage?.trim()
   const fallback = `fix(review-loop): ${record.issue.title}`
-  const subject = sanitizeSubject(provided !== undefined && provided !== '' ? provided : fallback)
+  const sanitized = sanitizeSubject(provided !== undefined && provided !== '' ? provided : fallback)
+  const subject = sanitized.length > 0 ? sanitized : sanitizeSubject(fallback)
   await execGit(worktreePath, ['add', '-A'])
   await execGit(worktreePath, ['commit', '-m', subject])
   deps.log.log(`[fix] "${shortTitle(record)}" → auto-committed uncommitted changes`)
