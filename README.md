@@ -563,6 +563,20 @@ bun test:e2e
 
 Runs the Docker-backed Kaneo end-to-end suite.
 
+### Hermetic Story Tests
+
+```bash
+bun test:stories
+```
+
+Runs deterministic full-stack user stories against the real in-process runtime with fake
+transports. Every run executes inside the pinned `oven/bun:1.3.13` Docker image — including
+on macOS and Windows via Docker Desktop — with no network, a read-only app snapshot, and a
+read-only bind-mounted dependency cache, so a working Docker daemon is required. There is no
+unsandboxed fallback: missing Docker or an image mismatch fails before any test spawns. See
+`docs/architecture/commands.md` for the story tiers, contracts, stress lane, and refactor
+compatibility mode.
+
 ### Mutation Testing
 
 ```bash
