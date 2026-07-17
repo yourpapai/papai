@@ -259,6 +259,15 @@ const QUALIFICATION_STORY_IDS: Partial<Record<CatalogScenarioId, NonEmptyReadonl
   'SCN-coding-acp-guest-denied': [
     'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-guest-denied: hides session start from a guest group turn',
   ],
+  'SCN-settings-bootstrap': [
+    'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-bootstrap: first-run session bootstraps a fresh personal context end to end',
+  ],
+  'SCN-settings-instances': [
+    'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-instances: an admin-created task instance becomes assignable and serves the next turn',
+  ],
+  'SCN-settings-context-config': [
+    'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-context-config: tool visibility config changes what the next turn posts',
+  ],
   'SCN-settings-coding-agent-provider': [
     'tests/stories/settings/module-settings-qualification.story.test.ts#SCN-settings-coding-agent-provider: updates coding credentials through settings and changes the next chat turn',
   ],
