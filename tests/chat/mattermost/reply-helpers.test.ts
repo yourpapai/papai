@@ -6,7 +6,11 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { createMattermostReplyFn } from '../../../src/chat/mattermost/reply-helpers.js'
+import type {
+  MattermostActionContextInput,
+  MattermostSignedActionContext,
+} from '../../../src/chat/mattermost/action-signing.js'
+import { createMattermostReplyFn, sendMattermostDeferredButtons } from '../../../src/chat/mattermost/reply-helpers.js'
 import type { ReplyFn } from '../../../src/chat/types.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
@@ -272,5 +276,138 @@ describe('createMattermostReplyFn', () => {
       assert(reply.createStatus !== undefined, 'expected createStatus')
       expect(await reply.createStatus('💭 Thinking…')).toBeUndefined()
     })
+  })
+})
+
+function fakeButtonActionContext(input: MattermostActionContextInput): MattermostSignedActionContext {
+  const threadPatch = input.threadId === undefined ? {} : { threadId: input.threadId }
+  return {
+    version: 1,
+    platformInstanceId: input.platformInstanceId,
+    channelId: input.channelId,
+    callbackData: input.callbackData,
+    sourceMessageText: input.sourceMessageText,
+    expiresAt: input.expiresAt,
+    nonce: 'nonce-nonce-nonce',
+    signature: 'signature-signature-signature-signature-signature',
+    ...threadPatch,
+  }
+}
+
+function makeRecordingApiFetch(
+  calls: Array<{ method: string; path: string; body: unknown }>,
+  responses: Partial<Record<string, unknown>>,
+): (method: string, path: string, body: unknown) => Promise<unknown> {
+  return (method: string, path: string, body: unknown): Promise<unknown> => {
+    calls.push({ method, path, body })
+    return Promise.resolve(responses[path] ?? { id: 'post-1' })
+  }
+}
+
+describe('sendMattermostDeferredButtons', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('posts props.attachments.actions for a group thread', async () => {
+    const calls: Array<{ method: string; path: string; body: unknown }> = []
+    const apiFetch = makeRecordingApiFetch(calls, {})
+    const id = await sendMattermostDeferredButtons(
+      'bot-user',
+      {
+        contextId: 'chan-1',
+        contextType: 'group',
+        threadId: 'root-1',
+        audience: 'shared',
+        mentionUserIds: [],
+        createdByUserId: '',
+        createdByUsername: null,
+      },
+      '🔐 Approve?',
+      [
+        { text: '✅ Allow', callbackData: 'mperm:a:abc', style: 'primary' },
+        { text: '🚫 Deny', callbackData: 'mperm:d:abc', style: 'danger' },
+      ],
+      {
+        platformInstanceId: 'pi-1',
+        callbackBaseUrl: 'https://papai.example',
+        createActionContext: fakeButtonActionContext,
+        apiFetch,
+      },
+    )
+    expect(id).toBe('post-1')
+    const post = calls.find((c) => c.path === '/api/v4/posts')!
+    expect(post.body).toMatchObject({
+      root_id: 'root-1',
+      props: {
+        attachments: [
+          {
+            actions: [
+              { integration: { context: { callbackData: 'mperm:a:abc' } } },
+              { integration: { context: { callbackData: 'mperm:d:abc' } } },
+            ],
+          },
+        ],
+      },
+    })
+  })
+
+  test('resolves the direct channel first for a DM target', async () => {
+    const calls: Array<{ method: string; path: string; body: unknown }> = []
+    const apiFetch = makeRecordingApiFetch(calls, { '/api/v4/channels/direct': { id: 'dm-chan-1' } })
+    const id = await sendMattermostDeferredButtons(
+      'bot-user',
+      {
+        contextId: 'user-1',
+        contextType: 'dm',
+        threadId: null,
+        audience: 'personal',
+        mentionUserIds: [],
+        createdByUserId: 'user-1',
+        createdByUsername: null,
+      },
+      '🔐 Approve?',
+      [{ text: '✅ Allow', callbackData: 'mperm:a:abc', style: 'primary' }],
+      {
+        platformInstanceId: 'pi-1',
+        callbackBaseUrl: 'https://papai.example',
+        createActionContext: fakeButtonActionContext,
+        apiFetch,
+      },
+    )
+    expect(id).toBe('post-1')
+    const dmCall = calls.find((c) => c.path === '/api/v4/channels/direct')
+    expect(dmCall).toBeDefined()
+    expect(dmCall!.body).toEqual(['bot-user', 'user-1'])
+    const post = calls.find((c) => c.path === '/api/v4/posts')!
+    expect(post.body).toMatchObject({ channel_id: 'dm-chan-1' })
+  })
+
+  test('throws when callback base URL is missing', async () => {
+    const apiFetch = (): Promise<unknown> => Promise.resolve({ id: 'post-1' })
+    await expect(
+      sendMattermostDeferredButtons(
+        'bot-user',
+        {
+          contextId: 'chan-1',
+          contextType: 'group',
+          threadId: null,
+          audience: 'shared',
+          mentionUserIds: [],
+          createdByUserId: '',
+          createdByUsername: null,
+        },
+        '🔐 Approve?',
+        [{ text: '✅ Allow', callbackData: 'mperm:a:abc', style: 'primary' }],
+        {
+          platformInstanceId: 'pi-1',
+          callbackBaseUrl: null,
+          createActionContext: () => {
+            throw new Error('not used in this test')
+          },
+          apiFetch,
+        },
+      ),
+    ).rejects.toThrow('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL')
   })
 })

@@ -5,6 +5,7 @@
 
 import type {
   ButtonReplyOptions,
+  ChatButton,
   DeferredDeliveryTarget,
   PromptHandle,
   ReplyFn,
@@ -210,27 +211,75 @@ export function createMattermostReplyFn(params: MattermostReplyHelpersParams): R
   }
 }
 
+async function resolveMattermostPost(
+  botUserId: string | null,
+  target: DeferredDeliveryTarget,
+  markdown: string,
+  apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
+): Promise<{ channelId: string; message: string; rootId: string | undefined }> {
+  if (target.contextType === 'dm') {
+    if (botUserId === null) throw new Error('Bot not started')
+    const dmData = await apiFetch('POST', '/api/v4/channels/direct', [botUserId, target.contextId])
+    return { channelId: ChannelSchema.parse(dmData).id, message: markdown, rootId: undefined }
+  }
+  const mention =
+    target.audience === 'personal'
+      ? await buildMattermostMentionPrefix(target.mentionUserIds, target.createdByUsername, apiFetch)
+      : ''
+  return {
+    channelId: target.contextId,
+    message: `${mention}${markdown}`,
+    rootId: target.threadId ?? undefined,
+  }
+}
+
 export async function sendMattermostDeferredMessage(
   botUserId: string | null,
   target: DeferredDeliveryTarget,
   markdown: string,
   apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
 ): Promise<string | undefined> {
-  if (target.contextType === 'dm') {
-    if (botUserId === null) throw new Error('Bot not started')
-    const dmData = await apiFetch('POST', '/api/v4/channels/direct', [botUserId, target.contextId])
-    const channelId = ChannelSchema.parse(dmData).id
-    const created = await apiFetch('POST', '/api/v4/posts', { channel_id: channelId, message: markdown })
-    return extractPostId(created)
-  }
-  const mention =
-    target.audience === 'personal'
-      ? await buildMattermostMentionPrefix(target.mentionUserIds, target.createdByUsername, apiFetch)
-      : ''
+  const { channelId, message, rootId } = await resolveMattermostPost(botUserId, target, markdown, apiFetch)
   const created = await apiFetch('POST', '/api/v4/posts', {
-    channel_id: target.contextId,
-    message: `${mention}${markdown}`,
-    ...(target.threadId === null ? {} : { root_id: target.threadId }),
+    channel_id: channelId,
+    message,
+    ...(rootId === undefined ? {} : { root_id: rootId }),
+  })
+  return extractPostId(created)
+}
+
+export interface MattermostButtonSendDeps {
+  platformInstanceId: string
+  callbackBaseUrl: string | null
+  createActionContext: (input: MattermostActionContextInput) => MattermostSignedActionContext
+  apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>
+}
+
+export async function sendMattermostDeferredButtons(
+  botUserId: string | null,
+  target: DeferredDeliveryTarget,
+  markdown: string,
+  buttons: ChatButton[],
+  deps: MattermostButtonSendDeps,
+): Promise<string | undefined> {
+  const { channelId, message, rootId } = await resolveMattermostPost(botUserId, target, markdown, deps.apiFetch)
+  if (deps.callbackBaseUrl === null) {
+    throw new Error('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL')
+  }
+  const actions = buildActions(
+    message,
+    { buttons },
+    deps.platformInstanceId,
+    channelId,
+    deps.callbackBaseUrl,
+    deps.createActionContext,
+    rootId,
+  )
+  const created = await deps.apiFetch('POST', '/api/v4/posts', {
+    channel_id: channelId,
+    message,
+    props: { attachments: [{ actions }] },
+    ...(rootId === undefined ? {} : { root_id: rootId }),
   })
   return extractPostId(created)
 }
