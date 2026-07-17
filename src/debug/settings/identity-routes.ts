@@ -39,7 +39,7 @@ function handleGet(req: Request, url: URL): Response {
   return settingsJson(200, {
     contextId: scope.scope.contextId,
     providerName: provider,
-    mapping: getIdentityMapping(scope.scope.contextId, provider),
+    mapping: getIdentityMapping(auth.authed.principal.platformUserId, provider),
   })
 }
 
@@ -75,7 +75,7 @@ async function handlePut(req: Request): Promise<Response> {
   if (!resolved.ok) return resolved.response
 
   setIdentityMapping({
-    contextId: resolved.scope.contextId,
+    contextId: auth.authed.principal.platformUserId,
     providerName: resolved.provider,
     providerUserId: body.data.providerUserId,
     providerUserLogin: body.data.providerUserLogin ?? null,
@@ -94,7 +94,7 @@ function handleDelete(req: Request, url: URL): Response {
   if (csrf !== null) return csrf
   const resolved = resolveProviderScope(auth.authed, url.searchParams.get('contextId') ?? undefined)
   if (!resolved.ok) return resolved.response
-  clearIdentityMapping(resolved.scope.contextId, resolved.provider)
+  clearIdentityMapping(auth.authed.principal.platformUserId, resolved.provider)
   log.info(
     { contextId: resolved.scope.contextId, providerName: resolved.provider },
     'Settings identity mapping cleared',

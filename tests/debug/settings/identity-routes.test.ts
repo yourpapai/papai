@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import { handleIdentityRoutes } from '../../../src/debug/settings/identity-routes.js'
+import { getIdentityMapping } from '../../../src/identity/mapping.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { resolveSettingsPrincipal } from '../../../src/settings/principal.js'
@@ -40,6 +41,7 @@ describe('settings identity routes', () => {
       new URL('https://x/settings/api/identity'),
     )
     expect(put.status).toBe(200)
+    expect(getIdentityMapping('u-1', 'kaneo')?.providerUserId).toBe('kaneo-42')
 
     const get = await handleIdentityRoutes(
       new Request('https://x/settings/api/identity', { headers: authHeaders(session) }),
@@ -79,6 +81,7 @@ describe('settings identity routes', () => {
       new URL('https://x/settings/api/identity'),
     )
     expect(del.status).toBe(200)
+    expect(getIdentityMapping('u-1', 'kaneo')?.providerUserId).toBeNull()
 
     const get = await handleIdentityRoutes(
       new Request('https://x/settings/api/identity', { headers: authHeaders(session) }),
