@@ -101,7 +101,7 @@ function generateRequestId(): string {
 // bold, italics, code spans, or links into the permission prompt.
 const MARKDOWN_ESCAPE_PATTERN = /[\\`*_~[\]()]/gu
 
-function escapeMarkdown(text: string): string {
+export function escapeMarkdown(text: string): string {
   return text.replace(MARKDOWN_ESCAPE_PATTERN, (ch) => `\\${ch}`)
 }
 

@@ -9,8 +9,12 @@ import { z } from 'zod'
 
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
 import { ChatRouter } from '../../src/chat/router.js'
-import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  toScopedContextId,
+  toScopedThreadContextId,
+} from '../../src/chat/scoped-context.js'
+import type { ChatButton, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { buildNotifyTarget, handleNotifyRoute } from '../../src/debug/notify-route.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
@@ -35,12 +39,26 @@ interface ReactionCall {
   previousEmoji: string | null | undefined
 }
 
+interface ButtonCall {
+  platformInstanceId: string
+  target: DeferredDeliveryTarget
+  markdown: string
+  buttons: ChatButton[]
+}
+
 class RecordingRouter extends ChatRouter {
   readonly sent: Sent[] = []
   readonly reactionCalls: ReactionCall[] = []
+  readonly buttonCalls: ButtonCall[] = []
   /** Controls {@link setReaction}'s outcome: `'throw'` simulates a provider error; everything
    *  else is the resolved return value. */
   reactionResult: boolean | 'throw' = true
+  /** Controls {@link sendProactiveButtonsReturningId}'s outcome. */
+  buttonOutcome: { delivered: boolean; messageId: string | null; supported: boolean } = {
+    delivered: true,
+    messageId: 'post-1',
+    supported: true,
+  }
   constructor() {
     super(() => {
       throw new Error('unused test factory')
@@ -57,6 +75,15 @@ class RecordingRouter extends ChatRouter {
   ): Promise<{ delivered: boolean; messageId: string | null }> {
     const delivered = await this.sendMessage(platformInstanceId, target, markdown)
     return { delivered, messageId: delivered ? 'P1' : null }
+  }
+  override sendProactiveButtonsReturningId(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+    buttons: ChatButton[],
+  ): Promise<{ delivered: boolean; messageId: string | null; supported: boolean }> {
+    this.buttonCalls.push({ platformInstanceId, target, markdown, buttons })
+    return Promise.resolve(this.buttonOutcome)
   }
   override setReaction(
     platformInstanceId: string,
@@ -504,5 +531,81 @@ describe('buildNotifyTarget', () => {
     const target = buildNotifyTarget({ contextId: scoped, markdown: 'hi' }, false)
     expect(target.contextType).toBe('dm')
     expect(target.contextId).toBe('6q9cpoqy4tb35gozuo1darzgra')
+  })
+})
+
+describe('handleNotifyRoute — needs_permission buttons', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    resetNotifyTokenCacheForTesting()
+    process.env['NOTIFY_TOKEN'] = 'tok'
+    insertPlatformInstance({ id: 'pi-1', type: 'telegram', config: {}, status: 'active' })
+    insertTaskInstance({ id: 'ti-1', type: 'kaneo', config: {}, status: 'active' })
+    setContextSettings({ contextId: 'user-1', taskInstanceId: 'ti-1', platformInstanceId: 'pi-1' })
+  })
+  afterEach(() => {
+    delete process.env['NOTIFY_TOKEN']
+    delete process.env['SETTINGS_PUBLIC_BASE_URL']
+    resetNotifyTokenCacheForTesting()
+    clearRuntimeChatRouter()
+  })
+
+  test('needs_permission notify renders Allow/Deny buttons and writes kv', async () => {
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(
+      notifyReq('tok', {
+        contextId: 'user-1',
+        markdown: "[needs_permission] MCP tool 'delete_repo' on 'gitlab'",
+        kind: 'needs_permission',
+        magiSessionId: 'sess-1',
+        toolCallId: 'mcp-1',
+        title: "MCP tool 'delete_repo' on 'gitlab'",
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(router.buttonCalls).toHaveLength(1)
+    const cbs = router.buttonCalls[0]!.buttons.map((b) => b.callbackData)
+    expect(cbs[0]).toMatch(/^mperm:a:/u)
+    expect(cbs[1]).toMatch(/^mperm:d:/u)
+    const cbid = cbs[0]!.slice('mperm:a:'.length)
+    const stored = kvGet('nerv-magi-permission', getConfigContextIdFromStorageContextId('user-1'), cbid)
+    expect(JSON.parse(stored!)).toEqual({ sessionId: 'sess-1', toolCallId: 'mcp-1' })
+  })
+
+  test('needs_permission falls back to markdown when buttons unsupported', async () => {
+    const router = new RecordingRouter()
+    router.buttonOutcome = { delivered: false, messageId: null, supported: false }
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(
+      notifyReq('tok', {
+        contextId: 'user-1',
+        markdown: '[needs_permission] x',
+        kind: 'needs_permission',
+        magiSessionId: 's',
+        toolCallId: 'mcp-1',
+        title: 'x',
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(router.buttonCalls).toHaveLength(1)
+    expect(router.sent).toHaveLength(1)
+  })
+
+  test('notify without kind still uses the markdown path (regression)', async () => {
+    const router = new RecordingRouter()
+    setRuntimeChatRouter(router)
+
+    const res = await handleNotifyRoute(notifyReq('tok', { contextId: 'user-1', markdown: 'hello' }))
+
+    expect(res.status).toBe(200)
+    expect(router.buttonCalls).toHaveLength(0)
+    expect(router.sent).toHaveLength(1)
+    expect(router.sent[0]?.markdown).toBe('hello')
   })
 })

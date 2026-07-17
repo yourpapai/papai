@@ -27,6 +27,7 @@ import { recordProactiveInHistory } from '../proactive-history.js'
 import { getSettingsPublicBaseUrl } from '../settings/config.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { jsonResponse } from './json-response.js'
+import { tryPermissionButtons } from './notify-permission-buttons.js'
 
 const log = logger.child({ scope: 'debug:notify-route' })
 
@@ -62,6 +63,12 @@ const NotifyBodySchema = z.object({
    *  reply) — kept separate from the redundant status-line `markdown` so a successful reaction
    *  still surfaces it instead of being fully suppressed. */
   extraMarkdown: z.string().optional(),
+  /** Milestone kind; when 'needs_permission', papai renders Allow/Deny buttons. */
+  kind: z.string().min(1).optional(),
+  /** The specific parked permission ask this notify is for (magi PermissionEngine id). */
+  toolCallId: z.string().min(1).optional(),
+  /** Human-readable ask title, e.g. "MCP tool 'delete_repo' on 'gitlab'". */
+  title: z.string().min(1).optional(),
 })
 
 export type NotifyBody = z.infer<typeof NotifyBodySchema>
@@ -271,6 +278,13 @@ export const handleNotifyRoute = async (req: Request): Promise<Response> => {
   const target = buildNotifyTarget(parsed.data, isAuthorizedGroup(parsed.data.contextId))
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
   if (platformInstanceId === null) return jsonResponse({ error: 'context not deliverable' }, { status: 404 })
+
+  if (parsed.data.kind === 'needs_permission') {
+    if (await tryPermissionButtons(chat, platformInstanceId, target, parsed.data)) {
+      return jsonResponse({ sent: true })
+    }
+    // fall through to the markdown path below
+  }
 
   if (await tryReact(chat, platformInstanceId, target, parsed.data)) {
     return respondAfterReact(chat, platformInstanceId, target, parsed.data)
