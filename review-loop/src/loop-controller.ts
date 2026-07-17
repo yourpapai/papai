@@ -117,7 +117,7 @@ async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIss
     reporter: deps.log,
     logPath: deps.runState.logPath,
     extraArgs: deps.config.reviewer.extraArgs,
-    timeoutMs: deps.config.agentTimeoutMs,
+    timeoutMs: deps.config.reviewer.timeoutMs ?? deps.config.agentTimeoutMs,
   })
 
   return reviewResult.issues
@@ -143,7 +143,7 @@ async function runMatchAndRecord(
     model: deps.config.matcher.model,
     extraArgs: deps.config.matcher.extraArgs,
     reporter: deps.log,
-    timeoutMs: deps.config.agentTimeoutMs,
+    timeoutMs: deps.config.matcher.timeoutMs ?? deps.config.agentTimeoutMs,
   })
 
   const newCount = matches.filter((m) => m.existingId === null).length

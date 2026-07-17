@@ -3,17 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { spawn, type ChildProcess } from 'node:child_process'
-import { writeFile } from 'node:fs/promises'
+import { access, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { LineSink, SpawnFn, SpawnResult } from './agent-runner.js'
-import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
+import { createShellExec, runBuildCheck, type BuildCheckResult, type ShellExecFn } from './build-checker.js'
 import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
 import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop, type ReviewLoopResult } from './loop-controller.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
+import { realSpawn } from './spawn.js'
 import { buildMetricsJson, formatSummary } from './summary.js'
 import { createFileTraceLogger } from './trace-log.js'
 import {
@@ -85,13 +84,6 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
   return { configPath, planPath, repoRoot, resumeRunId, resetWorktree: shouldResetWorktree }
 }
 
-export function splitLines(pending: string, chunk: string): { lines: string[]; remaining: string } {
-  const parts = (pending + chunk).split('\n')
-  const remaining = parts.pop() ?? ''
-  const lines = parts.filter((line) => line.length > 0)
-  return { lines, remaining }
-}
-
 export interface FinalizeDeps {
   exec: ShellExecFn
   runBuildCheck: typeof runBuildCheck
@@ -99,102 +91,48 @@ export interface FinalizeDeps {
   removeWorktree: (repoRoot: string, worktreePath: string, runId: string) => Promise<void>
 }
 
+const BUILD_OUTPUT_TAIL_LINES = 40
+
+function tailLines(text: string, maxLines: number): string {
+  if (text.length === 0) return ''
+  const lines = text.split('\n')
+  if (lines.length <= maxLines) return text
+  const skipped = lines.length - maxLines
+  return `…(${skipped} earlier lines truncated; full output in build-check.log)…\n${lines.slice(-maxLines).join('\n')}`
+}
+
+function formatBuildFailureMessage(runState: RunState, build: BuildCheckResult): string {
+  const combined = tailLines(
+    [build.stdout, build.stderr].filter((part) => part.length > 0).join('\n'),
+    BUILD_OUTPUT_TAIL_LINES,
+  )
+  const logPath = path.join(runState.runDir, 'build-check.log')
+  return (
+    `Final build check failed; worktree preserved at ${runState.worktreePath} for inspection, merge skipped.\n` +
+    `Full build output written to ${logPath}.\n` +
+    `----- build output (tail) -----\n${combined}\n-------------------------------`
+  )
+}
+
 export async function finalizeRun(config: ReviewLoopConfig, runState: RunState, deps: FinalizeDeps): Promise<void> {
   const build = await deps.runBuildCheck({ exec: deps.exec })
-  if (!build.passed) {
-    throw new Error(
-      `Final build check failed; worktree preserved at ${runState.worktreePath} for inspection, merge skipped.`,
-    )
+  if (build.passed) {
+    await deps.mergeWorktree(config.repoRoot, `review-loop/${runState.runId}`)
+    await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
+    return
   }
-  await deps.mergeWorktree(config.repoRoot, `review-loop/${runState.runId}`)
-  await deps.removeWorktree(config.repoRoot, runState.worktreePath, runState.runId)
+  await writeFile(path.join(runState.runDir, 'build-check.log'), `${build.stdout}\n--- stderr ---\n${build.stderr}\n`)
+  throw new Error(formatBuildFailureMessage(runState, build))
 }
 
-function killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
-  if (child.pid === undefined) return
+export async function resolvePlanPath(planPath: string, repoRoot: string): Promise<string> {
+  const resolved = path.isAbsolute(planPath) ? planPath : path.resolve(repoRoot, planPath)
   try {
-    process.kill(-child.pid, signal)
+    await access(resolved)
   } catch {
-    child.kill(signal)
+    throw new Error(`Plan file not found: ${resolved} (--plan "${planPath}" resolved against repo root ${repoRoot})`)
   }
-}
-
-interface SpawnCtx {
-  readonly child: ChildProcess
-  stdout: string
-  stderr: string
-  pending: string
-  timedOut: boolean
-  timer: ReturnType<typeof setTimeout> | null
-  killTimer: ReturnType<typeof setTimeout> | null
-  readonly onLine?: LineSink
-}
-
-function setupKillTimers(ctx: SpawnCtx, options: { timeout?: number; killGraceMs?: number }): void {
-  const grace = options.killGraceMs ?? 5000
-  if (options.timeout === undefined || options.timeout <= 0) return
-  ctx.timer = setTimeout(() => {
-    ctx.timedOut = true
-    killGroup(ctx.child, 'SIGTERM')
-    ctx.killTimer = setTimeout(() => {
-      killGroup(ctx.child, 'SIGKILL')
-    }, grace)
-  }, options.timeout)
-}
-
-function clearKillTimers(ctx: SpawnCtx): void {
-  if (ctx.timer !== null) clearTimeout(ctx.timer)
-  if (ctx.killTimer !== null) clearTimeout(ctx.killTimer)
-}
-
-export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
-  return new Promise((resolve) => {
-    const ctx: SpawnCtx = {
-      child: spawn(command, [...args], {
-        cwd: options.cwd,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        detached: true,
-      }),
-      stdout: '',
-      stderr: '',
-      pending: '',
-      timedOut: false,
-      timer: null,
-      killTimer: null,
-      onLine,
-    }
-    setupKillTimers(ctx, options)
-    ctx.child.stdout?.on('data', (chunk: Buffer) => {
-      ctx.stdout += chunk.toString()
-      const split = splitLines(ctx.pending, chunk.toString())
-      ctx.pending = split.remaining
-      for (const line of split.lines) {
-        ctx.onLine?.(line)
-      }
-    })
-    ctx.child.stderr?.on('data', (chunk: Buffer) => {
-      ctx.stderr += chunk.toString()
-    })
-    ctx.child.on('error', (err: Error) => {
-      clearKillTimers(ctx)
-      resolve({ exitCode: 1, stdout: ctx.stdout, stderr: ctx.stderr + err.message })
-    })
-    ctx.child.on('close', (code, signal) => {
-      clearKillTimers(ctx)
-      if (ctx.pending.length > 0) {
-        ctx.onLine?.(ctx.pending)
-      }
-      if (ctx.timedOut) {
-        resolve({
-          exitCode: 1,
-          stdout: ctx.stdout,
-          stderr: `${ctx.stderr}Process timed out after ${options.timeout}ms\n`,
-        })
-        return
-      }
-      resolve({ exitCode: code ?? (signal === null ? 0 : 1), stdout: ctx.stdout, stderr: ctx.stderr })
-    })
-  })
+  return resolved
 }
 
 export async function prepareWorktree(config: ReviewLoopConfig, runState: RunState, reset: boolean): Promise<void> {
@@ -230,7 +168,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   const runState: RunState =
     args.resumeRunId === undefined
-      ? await createRunState(config, args.planPath)
+      ? await createRunState(config, await resolvePlanPath(args.planPath, config.repoRoot))
       : await loadRunState(config.workDir, args.resumeRunId)
 
   const ledger: IssueLedger =
@@ -262,7 +200,6 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
     await writeRunArtifacts(runState.runDir, result)
   } catch (error) {
-    console.error('Review loop failed:', error)
     console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
     throw error
   }

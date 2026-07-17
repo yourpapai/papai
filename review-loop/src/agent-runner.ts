@@ -16,6 +16,7 @@ export interface SpawnResult {
   exitCode: number
   stdout: string
   stderr: string
+  timedOut?: boolean
 }
 
 export type LineSink = (line: string) => void
@@ -50,6 +51,7 @@ interface AttemptResult<T> {
 interface AttemptError {
   ok: false
   error: Error
+  timedOut: boolean
 }
 
 type Attempt<T> = AttemptResult<T> | AttemptError
@@ -181,6 +183,7 @@ async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
       return {
         ok: false,
         error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
+        timedOut: result.timedOut === true,
       }
     }
     try {
@@ -190,7 +193,7 @@ async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
       const raw = await readFile(options.outputPath, 'utf8')
       return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error : new Error(String(error)) }
+      return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
     }
   } finally {
     handler.dispose()
@@ -201,6 +204,10 @@ export async function runAgent<T>(options: RunAgentOptions<T>): Promise<T> {
   const first = await runAttempt(options)
   if (first.ok) {
     return first.value
+  }
+
+  if (first.timedOut) {
+    throw first.error
   }
 
   if (options.onRetry !== undefined) {

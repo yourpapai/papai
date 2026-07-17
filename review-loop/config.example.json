@@ -8,7 +8,8 @@
   "checkCommand": "bun check:full",
   "reviewer": {
     "model": "ollama-cloud/kimi-k2.6:cloud",
-    "extraArgs": []
+    "extraArgs": [],
+    "timeoutMs": 1800000
   },
   "fixer": {
     "model": "opencode/claude-sonnet-4-6",

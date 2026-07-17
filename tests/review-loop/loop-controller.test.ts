@@ -153,6 +153,28 @@ function createMockExec(passed: boolean): ShellExecFn {
     })
 }
 
+interface AgentTimeouts {
+  reviewer: Array<number | undefined>
+  matcher: Array<number | undefined>
+  fixer: Array<number | undefined>
+}
+
+function createTimeoutRecordingSpawn(base: SpawnFn): { spawn: SpawnFn; timeouts: AgentTimeouts } {
+  const timeouts: AgentTimeouts = { reviewer: [], matcher: [], fixer: [] }
+  const spawn: SpawnFn = (command, args, opts) => {
+    const promptText = args[args.length - 1] ?? ''
+    if (promptText.includes('Review the current implementation')) {
+      timeouts.reviewer.push(opts.timeout)
+    } else if (promptText.includes('Match newly found')) {
+      timeouts.matcher.push(opts.timeout)
+    } else {
+      timeouts.fixer.push(opts.timeout)
+    }
+    return base(command, args, opts)
+  }
+  return { spawn, timeouts }
+}
+
 async function setupGitRepo(repoPath: string): Promise<void> {
   mkdirSync(repoPath, { recursive: true })
   await execGit(repoPath, ['init'])
@@ -175,6 +197,81 @@ async function setupBareGitRepo(repoPath: string): Promise<void> {
 }
 
 describe('runReviewLoop', () => {
+  test('passes per-agent timeout overrides to reviewer, matcher, and fixer spawns', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, {
+      agentTimeoutMs: 600_000,
+      reviewer: { model: 'm1', extraArgs: [], timeoutMs: 111_000 },
+      fixer: { model: 'm2', extraArgs: [], timeoutMs: 333_000 },
+      matcher: { model: 'm3', extraArgs: [], timeoutMs: 222_000 },
+    })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    const base = createMockSpawn({
+      reviewerIssues: [[issue], [issue]],
+      fixerResults: [
+        { verdict: 'valid', fixability: 'auto', fixed: true },
+        { verdict: 'valid', fixability: 'auto', fixed: true },
+      ],
+      onFixer: (cwd) => {
+        writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+        return Promise.resolve()
+      },
+    })
+    const { spawn, timeouts } = createTimeoutRecordingSpawn(base)
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn,
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    expect(result.doneReason).toBe('clean')
+    expect(timeouts.reviewer).toEqual([111_000, 111_000, 111_000])
+    expect(timeouts.matcher).toEqual([222_000])
+    expect(timeouts.fixer).toEqual([333_000, 333_000])
+  })
+
+  test('falls back to agentTimeoutMs when no per-agent override is set', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { agentTimeoutMs: 600_000 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+
+    await setupGitRepo(runState.worktreePath)
+
+    const timeouts: Array<number | undefined> = []
+    const base = createMockSpawn({ reviewerIssues: [[]] })
+    const spawn: SpawnFn = (command, args, opts) => {
+      timeouts.push(opts.timeout)
+      return base(command, args, opts)
+    }
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn,
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+    })
+
+    expect(result.doneReason).toBe('clean')
+    expect(timeouts).toEqual([600_000])
+  })
+
   test('runs until reviewer reports no issues', async () => {
     const repoRoot = makeTempDir('loop-ctrl-')
     const config = createReviewLoopConfigFixture(repoRoot)
