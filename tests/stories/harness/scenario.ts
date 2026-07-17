@@ -97,6 +97,7 @@ type ScenarioGiven = Readonly<{
   taskCapabilities(capabilities: readonly TaskCapability[]): void
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
   settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
+  settingsAdminSession(user: UserHandle, options?: Readonly<{ superAdmin?: boolean }>): Promise<SettingsSessionHandle>
   plugin(plugin: DiscoveredPlugin): PluginHandle
   codingSession(
     config: Readonly<{
@@ -364,6 +365,15 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     },
     settingsSession(user): Promise<SettingsSessionHandle> {
       prerequisite('given.settingsSession')
+      return createSettingsSession(world, user)
+    },
+    settingsAdminSession(user, options): Promise<SettingsSessionHandle> {
+      prerequisite('given.settingsAdminSession')
+      world.fixtures.seedAdmin({
+        userId: user.id,
+        platformInstanceId: user.platformInstanceId,
+        superAdmin: options?.superAdmin ?? false,
+      })
       return createSettingsSession(world, user)
     },
     plugin(plugin): PluginHandle {

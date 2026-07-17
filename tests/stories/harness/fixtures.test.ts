@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { isAuthorizedGroup } from '../../../src/authorized-groups.js'
 import { isGroupMember } from '../../../src/groups.js'
+import { isAdmin, isSuperAdmin } from '../../../src/instances/admin-store.js'
 import { getContextSettings } from '../../../src/instances/context-store.js'
 import { getPlatformInstance } from '../../../src/instances/platform-store.js'
 import { getTaskInstance } from '../../../src/instances/task-store.js'
@@ -138,6 +139,18 @@ describe('scenario fixtures', () => {
     expect(isAuthorized(SCENARIO_USER_ID, SCENARIO_PLATFORM_INSTANCE_ID)).toBe(true)
     expect(isAuthorizedGroup(SCENARIO_GROUP_ID)).toBe(true)
     expect(isGroupMember(SCENARIO_GROUP_ID, SCENARIO_USER_ID)).toBe(true)
+  })
+
+  test('seedAdmin grants platform and super admin roles', async () => {
+    await fixtures.setupDatabase()
+    fixtures.seedPlatformInstance()
+
+    expect(isAdmin('carol', SCENARIO_PLATFORM_INSTANCE_ID)).toBe(false)
+    fixtures.seedAdmin({ userId: 'carol' })
+    expect(isAdmin('carol', SCENARIO_PLATFORM_INSTANCE_ID)).toBe(true)
+    expect(isSuperAdmin('carol')).toBe(false)
+    fixtures.seedAdmin({ userId: 'carol', superAdmin: true })
+    expect(isSuperAdmin('carol')).toBe(true)
   })
 
   test('seeds a complete central LLM configuration', async () => {

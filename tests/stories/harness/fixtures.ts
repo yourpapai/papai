@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { addAuthorizedGroup, setGuestMode } from '../../../src/authorized-groups.js'
 import { addGroupMember } from '../../../src/groups.js'
 import { setIdentityMapping } from '../../../src/identity/mapping.js'
+import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../../src/instances/admin-store.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import type { PlatformInstanceType } from '../../../src/instances/types.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
@@ -167,6 +168,7 @@ export type ScenarioFixtures = Readonly<{
   seedTaskInstance(input?: Readonly<{ id?: string; type?: string }>): void
   assignContext(input?: Readonly<{ contextId?: string; platformInstanceId?: string; taskInstanceId?: string }>): void
   authorizeUser(input?: Readonly<{ userId?: string; platformInstanceId?: string; username?: string }>): void
+  seedAdmin(input?: Readonly<{ userId?: string; platformInstanceId?: string; superAdmin?: boolean }>): void
   authorizeGroup(input?: Readonly<{ groupId?: string }>): void
   enableGuestMode(groupId: string): void
   addGroupMember(input?: Readonly<{ groupId?: string; userId?: string }>): void
@@ -229,6 +231,14 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
         addedBy: 'scenario-admin',
         username: input.username,
       })
+    },
+    seedAdmin(input = {}): void {
+      addAdmin(
+        input.userId ?? SCENARIO_USER_ID,
+        input.superAdmin === true
+          ? SUPER_ADMIN_PLATFORM_ID
+          : (input.platformInstanceId ?? SCENARIO_PLATFORM_INSTANCE_ID),
+      )
     },
     authorizeGroup(input = {}): void {
       addAuthorizedGroup(input.groupId ?? SCENARIO_GROUP_ID, 'scenario-admin')
