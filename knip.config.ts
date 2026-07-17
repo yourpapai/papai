@@ -13,8 +13,8 @@
 // install layout. Register an equivalent script-body extractor here.
 const svelteCompiler = (source: string): string => {
   const scripts: string[] = []
-  for (const m of source.matchAll(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gm)) {
-    if (m[1]) scripts.push(m[1])
+  for (const m of source.matchAll(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gmu)) {
+    if (m[1] !== undefined && m[1] !== '') scripts.push(m[1])
   }
   return scripts.join(';\n')
 }
@@ -51,7 +51,7 @@ export default {
     // Plugin runtime bridges loaded via import.meta.require(); declaring them
     // entries lets knip trace their static imports (provider clients, config).
     'plugins/audio-transcribe/runtime.ts!',
-    'plugins/task-provider-kaneo/provision.ts!',
+    'plugins/task-provider-kaneo/auto-provision.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
@@ -100,8 +100,10 @@ export default {
     'client/**/*.testing.ts': ['exports', 'types'],
     // Plugin entry-point default exports, provider classes, and validateConfig
     // are resolved dynamically by the plugin loader (path-based import +
-    // manifest `providerConfigValidator`); no static consumer exists.
-    'plugins/*/{index,validate-config,provider}.ts': ['exports'],
+    // manifest `providerConfigValidator`); bridge modules (runtime,
+    // auto-provision, provision, client) are consumed through
+    // import.meta.require() chains knip cannot trace. No static consumer exists.
+    'plugins/*/{index,validate-config,provider,runtime,auto-provision,provision,client}.ts': ['exports'],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     'strybk.config.ts': ['exports'],
