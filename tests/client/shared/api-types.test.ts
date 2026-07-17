@@ -22,7 +22,6 @@ import type {
   DeferredPrompt,
   Memo,
   IdentityMappingEntry,
-  AuthorizedGroupEntry,
   BillingWindow,
   BillingRoleTotals,
   BillingSubject,
@@ -172,12 +171,6 @@ describe('api-types', () => {
       confidence: 0.95,
     }
 
-    const authorizedGroup: AuthorizedGroupEntry = {
-      group_id: 'group123',
-      added_by: 'user123',
-      added_at: '2026-05-21T00:00:00.000Z',
-    }
-
     const billingWindow: BillingWindow = '30d'
 
     const billingTotals: BillingRoleTotals = {
@@ -255,7 +248,6 @@ describe('api-types', () => {
     expect(deferredPrompt.id).toBe('def1')
     expect(memo.id).toBe('memo1')
     expect(identityMapping.contextId).toBe('user123')
-    expect(authorizedGroup.group_id).toBe('group123')
     expect(billingWindow).toBe('30d')
     expect(billingTotals.calls).toBe(15)
     expect(billingSubject.storageContextId).toBe('ctx123')
