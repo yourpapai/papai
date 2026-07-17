@@ -160,7 +160,7 @@ describe('acp cancel_session tool', () => {
 })
 
 describe('acp answer_permission tool', () => {
-  test('GETs pending permissions and POSTs a decision for each toolCallId', async () => {
+  test('with >1 pending and no toolCallId, disambiguates without resolving', async () => {
     const [httpFetch, postCalls] = makePermissionFetch([
       { toolCallId: 't1', title: 'x' },
       { toolCallId: 't2', title: 'y' },
@@ -169,12 +169,50 @@ describe('acp answer_permission tool', () => {
     const result = await tools
       .get('answer_permission')!
       .execute({ sessionId: 's-1', decision: 'allow' }, runtimeCtx(), options())
-    expect(postCalls).toHaveLength(2)
+    expect(postCalls).toHaveLength(0)
+    expect(result).toMatchObject({
+      needs_disambiguation: true,
+      pending: [
+        { toolCallId: 't1', title: 'x' },
+        { toolCallId: 't2', title: 'y' },
+      ],
+    })
+  })
+
+  test('with a single pending ask and no toolCallId, resolves it', async () => {
+    const [httpFetch, postCalls] = makePermissionFetch([{ toolCallId: 't1', title: 'x' }])
+    const { tools } = activate(httpFetch)
+    const result = await tools
+      .get('answer_permission')!
+      .execute({ sessionId: 's-1', decision: 'allow' }, runtimeCtx(), options())
+    expect(postCalls).toHaveLength(1)
     expect(postCalls[0]!.url).toBe('http://magi:8787/sessions/s-1/permission')
-    expect(postCalls[1]!.url).toBe('http://magi:8787/sessions/s-1/permission')
     expect(postCalls[0]!.body).toEqual({ toolCallId: 't1', decision: 'allow' })
-    expect(postCalls[1]!.body).toEqual({ toolCallId: 't2', decision: 'allow' })
-    expect(result).toEqual({ resolved: 2, decision: 'allow' })
+    expect(result).toEqual({ resolved: 1, decision: 'allow' })
+  })
+
+  test('with an explicit toolCallId, resolves only that ask', async () => {
+    const [httpFetch, postCalls] = makePermissionFetch([
+      { toolCallId: 't1', title: 'x' },
+      { toolCallId: 't2', title: 'y' },
+    ])
+    const { tools } = activate(httpFetch)
+    const result = await tools
+      .get('answer_permission')!
+      .execute({ sessionId: 's-1', decision: 'deny', toolCallId: 't2' }, runtimeCtx(), options())
+    expect(postCalls).toHaveLength(1)
+    expect(postCalls[0]!.body).toEqual({ toolCallId: 't2', decision: 'deny' })
+    expect(result).toEqual({ resolved: 1, decision: 'deny' })
+  })
+
+  test('with an unknown toolCallId, returns not_found without POSTing', async () => {
+    const [httpFetch, postCalls] = makePermissionFetch([{ toolCallId: 't1', title: 'x' }])
+    const { tools } = activate(httpFetch)
+    const result = await tools
+      .get('answer_permission')!
+      .execute({ sessionId: 's-1', decision: 'allow', toolCallId: 'nope' }, runtimeCtx(), options())
+    expect(postCalls).toHaveLength(0)
+    expect(result).toEqual({ error: 'not_found', message: 'no pending ask with toolCallId nope' })
   })
 
   test('no pending permissions returns resolved:0 without POSTing', async () => {

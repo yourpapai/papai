@@ -92,8 +92,9 @@ function extractActivationContext(ctx: unknown): ActivationContext {
 const ACP_PROMPT_FRAGMENT =
   'Coding sessions: use start_session(project, prompt) to run a sandboxed AI coding agent on a ' +
   'configured project, list_sessions/session_status to check progress, answer_permission(sessionId, ' +
-  'decision) when the agent needs approval, finish_session(sessionId, action) to commit/push or open a ' +
-  'PR, cancel_session to stop one. ' +
+  'decision, toolCallId?) when the agent needs approval — the user can also tap Allow/Deny buttons; ' +
+  'pass toolCallId when more than one ask is pending, finish_session(sessionId, action) to commit/push ' +
+  'or open a PR, cancel_session to stop one. ' +
   "Use continue_session(sessionId or prNumber, prompt) to keep working on a prior session's " +
   'branch/PR — it updates the existing PR. ' +
   'Use list_projects/list_agents to discover what is configured. The user is notified when a session ' +

@@ -54,7 +54,14 @@ export const finishSessionSchema = {
 
 export const answerPermissionSchema = {
   type: 'object',
-  properties: { sessionId: { type: 'string' }, decision: { type: 'string', enum: ['allow', 'deny'] } },
+  properties: {
+    sessionId: { type: 'string' },
+    decision: { type: 'string', enum: ['allow', 'deny'] },
+    toolCallId: {
+      type: 'string',
+      description: 'Resolve only this specific pending ask; required when more than one is pending.',
+    },
+  },
   required: ['sessionId', 'decision'],
   additionalProperties: false,
 } as const

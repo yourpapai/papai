@@ -212,22 +212,37 @@ export function answerPermissionTool(httpFetch: HttpFetch | undefined): Tool {
       const decision = asString(args, 'decision')
       if (sessionId === null || (decision !== 'allow' && decision !== 'deny'))
         return { error: 'invalid_input', message: 'sessionId and decision (allow|deny) are required' }
+      const wantedToolCallId = optionalString(args, 'toolCallId')
       const pending = await callMagi(httpFetch, cfg, 'GET', `/sessions/${encodeURIComponent(sessionId)}/permissions`)
       if (!Array.isArray(pending)) return pending
-      const toolCallIds = pending
-        .map((p): string | null => asString(asObject(p), 'toolCallId'))
-        .filter((id): id is string => id !== null)
-      if (toolCallIds.length === 0) return { resolved: 0, message: 'no pending permission requests' }
-      await Promise.all(
-        toolCallIds.map(
-          (toolCallId): Promise<unknown> =>
-            callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/permission`, {
-              toolCallId,
-              decision,
-            }),
-        ),
-      )
-      return { resolved: toolCallIds.length, decision }
+      const asks = pending
+        .map((p): { toolCallId: string | null; title: string | null } => ({
+          toolCallId: asString(asObject(p), 'toolCallId'),
+          title: optionalString(asObject(p), 'title') ?? null,
+        }))
+        .filter((a): a is { toolCallId: string; title: string | null } => a.toolCallId !== null)
+      if (asks.length === 0) return { resolved: 0, message: 'no pending permission requests' }
+
+      let target: string
+      if (wantedToolCallId !== undefined) {
+        if (!asks.some((a) => a.toolCallId === wantedToolCallId))
+          return { error: 'not_found', message: `no pending ask with toolCallId ${wantedToolCallId}` }
+        target = wantedToolCallId
+      } else if (asks.length === 1) {
+        target = asks[0]!.toolCallId
+      } else {
+        return {
+          needs_disambiguation: true,
+          message: 'More than one pending ask; call again with a specific toolCallId.',
+          pending: asks.map((a) => ({ toolCallId: a.toolCallId, title: a.title })),
+        }
+      }
+
+      await callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/permission`, {
+        toolCallId: target,
+        decision,
+      })
+      return { resolved: 1, decision }
     },
   }
 }
