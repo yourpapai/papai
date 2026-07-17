@@ -7,15 +7,6 @@
 export const LLM_PROVIDER_TYPES = ['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'groq', 'custom'] as const
 export type LlmProviderType = (typeof LLM_PROVIDER_TYPES)[number]
 
-export const PROVIDER_TYPE_BASE_URLS: Readonly<Partial<Record<LlmProviderType, string>>> = {
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com/v1/openai',
-  google: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  openrouter: 'https://openrouter.ai/api/v1',
-  ollama: 'http://localhost:11434/v1',
-  groq: 'https://api.groq.com/openai/v1',
-}
-
 export const VERIFICATION_STATUSES = ['verified', 'unverified', 'error'] as const
 export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number]
 
@@ -36,8 +27,6 @@ export type LlmProviderAccount = {
   readonly apiKey: string
   readonly verification: Verification
 }
-
-export type LlmRole = 'main' | 'small' | 'embedding'
 
 export type RoleBinding = { readonly providerId: string; readonly model: string } | null
 
