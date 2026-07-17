@@ -22,6 +22,12 @@ See LICENSE in the project root for details.
 3. **SCN-settings-bootstrap:** no first-run bootstrap route exists. The story qualifies the first-run _flow_: SPA session bootstrap → empty assignment → assign → config served → working turn.
 4. Identity route method is **PUT**, not PATCH.
 
+**Execution learnings (from Task 2, apply to Tasks 3-6):**
+
+1. Session-creating givens (`given.settingsSession`, `given.settingsAdminSession`) start the world, and `assertPrerequisitesOpen` rejects any further given afterwards — at most **one** session given per scenario; obtain additional sessions post-start via `await when.settingsSession(user)`.
+2. The final LLM answer posts **before** the tool-visibility flush (`src/llm-orchestrator-support.ts:241-244`), so with `ai_tool_visibility=on` the last reply is the tool message — assert via `world.chat.allReplies()` membership, not `then.replyTo(...)`.
+3. Role-seeding givens (`settingsAdminSession`) must precede session-creating givens only when both are givens; prefer one given session + `when.settingsSession` for the rest.
+
 ---
 
 ### Task 1: `given.settingsAdminSession` harness helper
