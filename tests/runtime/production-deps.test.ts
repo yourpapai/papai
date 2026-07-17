@@ -7,8 +7,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { ChatRouter } from '../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../src/chat/types.js'
+import { loadTrustedModules } from '../../src/composition/load-trusted-modules.js'
 import { subscribeCountForTest } from '../../src/debug/event-bus.js'
 import { armMemoryCapture, type ArmCaptureDeps } from '../../src/long-term-memory/capture-debounce.js'
+import { taskTrackerModule } from '../../src/modules/task-tracker/module.js'
 import { toolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { createPapaiRuntime } from '../../src/runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from '../../src/runtime/production-deps.js'
@@ -248,6 +250,17 @@ describe('createProductionRuntimeDeps', () => {
     second.chat.setRuntime(secondRouter)
     expect(subscribeCountForTest()).toBe(baseline + 1)
     second.chat.clearRuntime()
+    expect(subscribeCountForTest()).toBe(baseline)
+  })
+
+  test('unloads trusted modules during production extension shutdown', async () => {
+    const baseline = subscribeCountForTest()
+    await loadTrustedModules([taskTrackerModule], () => {})
+    expect(subscribeCountForTest()).toBe(baseline + 1)
+
+    const deps = createProductionRuntimeDeps()
+    await deps.extensions.stop()
+
     expect(subscribeCountForTest()).toBe(baseline)
   })
 })

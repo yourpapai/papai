@@ -7,7 +7,6 @@ import { loadAttachmentRecord } from '../attachments/store.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
-import { buildCodingReposFacade, buildCodingSecretsFacade } from './coding-secrets-facade.js'
 import { deny } from './deny.js'
 import { buildIdentityFacade } from './identity-facade.js'
 import { consumePluginQuota } from './rate-limit.js'
@@ -24,6 +23,12 @@ export type PluginToolSetRuntime = {
   provider?: TaskProvider
   storageContextId: string
   chatUserId: string
+  /**
+   * Tool assembly mode: 'normal' (default) or 'proactive' (unattended / deferred-prompt
+   * turns). Used by `buildPluginToolSet` to skip tools declared
+   * `availableInProactiveMode: false`.
+   */
+  mode?: 'normal' | 'proactive'
 }
 
 function buildRuntimeKv(
@@ -120,6 +125,12 @@ export function buildPluginTaskProviderFacade(
       if (!canWrite) deny(pluginId, 'tasks.write')
       if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
       return provider.updateTask(taskId, params)
+    },
+    applyCommand(params) {
+      if (!canWrite) deny(pluginId, 'tasks.write')
+      if (provider === undefined) throw new Error(`Plugin ${pluginId} task provider unavailable`)
+      if (provider.applyCommand === undefined) throw new Error(`Plugin ${pluginId} provider has no command support`)
+      return provider.applyCommand(params)
     },
   }) satisfies PluginTaskProviderFacade
 }
@@ -227,12 +238,5 @@ export function buildPluginToolRuntimeContext(
     ...(identity === undefined ? {} : { identity }),
     rateLimit: buildRateLimit(pluginId),
     attachments: buildAttachmentsFacade(pluginId, runtime.storageContextId, permissions.has('attachments.read')),
-    codingSecrets: buildCodingSecretsFacade(
-      pluginId,
-      runtime.storageContextId,
-      permissions.has('coding.secrets'),
-      runtime.chatUserId,
-    ),
-    codingRepos: buildCodingReposFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
   })
 }

@@ -32,7 +32,6 @@ describe('settings kaneo provision route', () => {
     provisionCalls.push(ctx)
     return Promise.resolve({ status: 'failed', error: 'Kaneo task instance public URL is missing' })
   }
-  const originalUrl = process.env['KANEO_CLIENT_URL']
 
   beforeEach(async () => {
     mockLogger()
@@ -51,11 +50,9 @@ describe('settings kaneo provision route', () => {
       displayName: 'Kaneo',
     })
     session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-1' })
-    delete process.env['KANEO_CLIENT_URL']
   })
 
   afterEach(() => {
-    process.env['KANEO_CLIENT_URL'] = originalUrl
     unregisterContributedTaskProviderType('task-provider-kaneo')
   })
 
@@ -90,6 +87,35 @@ describe('settings kaneo provision route', () => {
     expect(provisionCalls[0]!.internalUrl).toBeUndefined()
   })
 
+  test('sources publicUrl/internalUrl from the bound task instance config, not global env', async () => {
+    delete process.env['KANEO_CLIENT_URL']
+    delete process.env['KANEO_INTERNAL_URL']
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    insertTaskInstance({
+      id: 'ti-kaneo-configured',
+      type: 'kaneo',
+      config: { baseUrl: 'https://pub.example', internalUrl: 'https://int.example' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: personalConfigContextId,
+      taskInstanceId: 'ti-kaneo-configured',
+      platformInstanceId: 'pi-1',
+    })
+
+    const res = await handleProvisionKaneo(
+      new Request('https://x/settings/api/provision/kaneo', {
+        method: 'POST',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    )
+    expect(res.status).toBe(422)
+    expect(provisionCalls).toHaveLength(1)
+    expect(provisionCalls[0]!.publicUrl).toBe('https://pub.example')
+    expect(provisionCalls[0]!.internalUrl).toBe('https://int.example')
+  })
+
   test('returns 422 with unsupported when the task instance type has no provision hook', async () => {
     unregisterContributedTaskProviderType('task-provider-kaneo')
     const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
@@ -114,7 +140,7 @@ describe('settings kaneo provision route', () => {
         status: 'provisioned',
         email: 'u@example.com',
         password: 'pw',
-        kaneoUrl: 'https://k.example.com',
+        instanceUrl: 'https://k.example.com',
         apiKey: 'k',
         workspaceId: 'ws',
       })

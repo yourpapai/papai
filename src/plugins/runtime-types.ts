@@ -21,21 +21,12 @@ import type { PluginIdentityFacade } from './identity-facade.js'
 
 export type PluginTaskProviderFacade = Pick<
   TaskProvider,
-  'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
+  'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask' | 'applyCommand'
 >
 
 /** Context-scoped plugin config declared in configRequirements with scope 'context'. */
 export type PluginContextConfig = {
   get(key: string): string | undefined
-}
-
-/** Repo record surfaced to plugins via the `codingRepos` facade. */
-export type CodingRepoEntry = {
-  name: string
-  repoUrl: string
-  baseBranch: string
-  permissionPreset: string
-  additionalEgressDomains?: string[]
 }
 
 export type PluginToolRuntimeContext = {
@@ -53,32 +44,6 @@ export type PluginToolRuntimeContext = {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }
   }
   attachments: PluginAttachmentFacade
-  codingSecrets: {
-    resolve(): Record<string, string> | null
-    resolveForgeToken(): string | null
-    resolveAgent(): string | null
-    resolveForge(): { kind: 'github' | 'gitlab'; apiBaseUrl: string } | null
-    resolveProviderHost(): string | null
-    resolveModel(): string | null
-    resolveMcpServers():
-      | {
-          ok: true
-          servers: Array<{
-            id: string
-            url: string
-            host: string
-            header: string
-            allowedHosts: string[]
-            toolPolicy?: { default: 'allow' | 'ask' | 'deny'; tools?: Record<string, 'allow' | 'ask' | 'deny'> }
-          }>
-        }
-      | { ok: false; error: string }
-    resolveMcpTokens(): Record<string, string>
-  }
-  codingRepos: {
-    list(): { name: string; baseBranch: string }[]
-    get(name: string): CodingRepoEntry | null
-  }
 }
 
 export type PluginScheduledJobRuntimeContext = {
@@ -95,6 +60,17 @@ export type PluginTool = {
   capabilityId?: string
   description: string
   inputSchema?: z.ZodType
+  /**
+   * Access gate. `'operator'` restricts the tool to the who-may-use allowlist; omitted means
+   * unrestricted. Recorded into the ToolGatePort at assembly and enforced by the orchestrator.
+   */
+  gate?: 'operator'
+  /**
+   * When false, this tool is omitted from tool sets assembled in `proactive` mode (unattended /
+   * deferred-prompt turns). Defaults to available. Used for tools that should only run in
+   * attended turns (e.g. command-execution tools with a confirmation gate).
+   */
+  availableInProactiveMode?: boolean
   execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
 }
 

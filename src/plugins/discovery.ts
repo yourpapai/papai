@@ -9,6 +9,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { logger } from '../logger.js'
 import { readPluginSourceGraph } from './discovery-imports.js'
+import { appendRetiredPluginDiscoveries } from './retired-discovery.js'
 import { pluginManifestSchema } from './types.js'
 import type { DiscoveredPlugin } from './types.js'
 
@@ -225,6 +226,32 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   }
 }
 
+function addFilesystemPluginDiscoveries(
+  pluginsDir: string,
+  entries: readonly string[],
+  plugins: DiscoveredPlugin[],
+  errors: DiscoveryError[],
+  seenIds: Set<string>,
+): void {
+  for (const entry of entries) {
+    if (entry === '.gitkeep' || entry.startsWith('.')) continue
+    const result = discoverOne(pluginsDir, entry)
+    if ('reason' in result) {
+      errors.push(result)
+      log.warn({ dirName: entry, reason: result.reason }, 'Plugin discovery error')
+      continue
+    }
+    if (seenIds.has(result.manifest.id)) {
+      errors.push({ directoryName: entry, reason: `Duplicate plugin ID: ${result.manifest.id}` })
+      log.warn({ pluginId: result.manifest.id }, 'Duplicate plugin ID detected during discovery')
+      continue
+    }
+    seenIds.add(result.manifest.id)
+    plugins.push(result)
+    log.info({ pluginId: result.manifest.id, version: result.manifest.version }, 'Plugin discovered')
+  }
+}
+
 export function discoverPlugins(pluginsDir: string): DiscoveryResult {
   log.debug({ pluginsDir }, 'Starting plugin discovery')
 
@@ -248,26 +275,10 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
   const errors: DiscoveryError[] = []
   const seenIds = new Set<string>()
 
-  for (const entry of entries) {
-    if (entry === '.gitkeep' || entry.startsWith('.')) continue
+  addFilesystemPluginDiscoveries(pluginsDir, entries, plugins, errors, seenIds)
+  appendRetiredPluginDiscoveries(plugins, errors, seenIds)
 
-    const result = discoverOne(pluginsDir, entry)
-    if ('reason' in result) {
-      errors.push(result)
-      log.warn({ dirName: entry, reason: result.reason }, 'Plugin discovery error')
-      continue
-    }
-
-    if (seenIds.has(result.manifest.id)) {
-      errors.push({ directoryName: entry, reason: `Duplicate plugin ID: ${result.manifest.id}` })
-      log.warn({ pluginId: result.manifest.id }, 'Duplicate plugin ID detected during discovery')
-      continue
-    }
-
-    seenIds.add(result.manifest.id)
-    plugins.push(result)
-    log.info({ pluginId: result.manifest.id, version: result.manifest.version }, 'Plugin discovered')
-  }
+  plugins.sort((left, right) => left.manifest.id.localeCompare(right.manifest.id))
 
   log.info({ discovered: plugins.length, errors: errors.length }, 'Plugin discovery complete')
   return { plugins, errors, directoryMissing: false }

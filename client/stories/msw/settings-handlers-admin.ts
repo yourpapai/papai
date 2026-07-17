@@ -135,6 +135,40 @@ export const adminPluginConfigHandlers: HandlerFamily = {
   ],
 }
 
+// --- Admin: module sections (GET /settings/api/admin/module-sections) ---
+// ModuleSectionsResponseSchema: { sections: Array<{ id, label, fields: Array<{ key, label, value, sensitive, required }> }> }
+
+const adminModuleSectionsPopulated = {
+  sections: [
+    {
+      id: 'acp',
+      label: 'Coding sessions (magi)',
+      fields: [
+        {
+          key: 'magi_base_url',
+          label: 'Magi Base URL',
+          value: 'https://magi.example.com',
+          sensitive: false,
+          required: true,
+        },
+        { key: 'magi_token', label: 'Magi Token', value: '****abcd', sensitive: true, required: true },
+      ],
+    },
+  ],
+}
+
+export const adminModuleSectionsHandlers: HandlerFamily = {
+  populated: [http.get('/settings/api/admin/module-sections', () => HttpResponse.json(adminModuleSectionsPopulated))],
+  empty: [http.get('/settings/api/admin/module-sections', () => HttpResponse.json({ sections: [] }))],
+  error: [http.get('/settings/api/admin/module-sections', boom)],
+  loading: [
+    http.get('/settings/api/admin/module-sections', async () => {
+      await delay(NEVER_RESOLVE_MS)
+      return HttpResponse.json({ sections: [] })
+    }),
+  ],
+}
+
 // --- Admin: tool defaults (GET /settings/api/admin/tool-defaults) ---
 // ToolsResponseSchema: { contextId, domains: Array<{ domain, summary, tools: Array<{ name, permission, risk }> }>, activePreset, hasStoredDefaults }
 

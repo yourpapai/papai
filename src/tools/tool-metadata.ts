@@ -68,7 +68,6 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   get_task: read('task'),
   count_tasks: read('task'),
   delete_task: destructive('task'),
-  apply_youtrack_command: write('task', 'update'),
 
   get_current_time: read('time'),
 
@@ -185,6 +184,11 @@ export function getToolMetadata(toolName: string): ToolClassification | undefine
 
   // Plugin tools: plugin_<plugin-id>__<tool_name>
   if (toolName.startsWith('plugin_')) {
+    return { domain: 'plugin', operation: 'read', risk: 'open-world' }
+  }
+
+  // Module tools: module_<module-id>__<tool_name> (trusted modules, reuse the plugin domain)
+  if (toolName.startsWith('module_')) {
     return { domain: 'plugin', operation: 'read', risk: 'open-world' }
   }
 

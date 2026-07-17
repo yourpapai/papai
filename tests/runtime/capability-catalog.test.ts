@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { codingAcpTools } from '../../src/modules/coding/acp/contributions.js'
 import { createToolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
-import { activate } from '../plugins/acp/support.js'
 
 describe('ToolCapabilityCatalog', () => {
   test('registers and resolves capability ids', () => {
@@ -54,9 +54,7 @@ describe('ToolCapabilityCatalog', () => {
 
 describe('ACP tool capability metadata', () => {
   test('assigns stable capabilities without changing tool wire names', () => {
-    const { tools } = activate(() => Promise.resolve(new Response('{}')))
-
-    expect(Array.from(tools.values()).map(({ name, capabilityId }) => [name, capabilityId])).toEqual([
+    expect(codingAcpTools.map(({ name, capabilityId }) => [name, capabilityId])).toEqual([
       ['list_projects', 'coding-session.projects.list'],
       ['list_agents', 'coding-session.agents.list'],
       ['start_session', 'coding-session.start'],

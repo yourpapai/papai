@@ -5,8 +5,8 @@
 
 import { z } from 'zod'
 
-import { mcpCatalogSchema, resolveMcpCatalog, setMcpCatalog } from '../../../coding-credentials/mcp-catalog.js'
 import { logger } from '../../../logger.js'
+import { mcpCatalogSchema, resolveMcpCatalog, setMcpCatalog } from '../../../modules/coding/credentials/mcp-catalog.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
 import { requireAdmin } from './admin-guard.js'

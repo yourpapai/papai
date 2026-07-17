@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { logger } from '../../../logger.js'
+import { buildPluginLogger } from '../../../plugins/context-facade-builders.js'
+import { buildProviderRuntime, type DynamicHostsFn } from '../../../plugins/provider-runtime.js'
+import type { ProviderRuntimeDeps } from '../../../plugins/provider-runtime.js'
+import { getPluginAdminConfig } from '../../../plugins/store.js'
+import { assertPublicUrl } from '../../../web/safe-fetch.js'
+
+type HttpFetch = (url: string, init?: RequestInit) => Promise<Response>
+
+const log = logger.child({ scope: 'modules:coding:acp:http' })
+
+/**
+ * Hosts contributed by the operator-configured magi base URL. Host-only and port-agnostic
+ * (matching the plugin loader's `buildDynamicHosts`). Evaluated lazily per request so an admin
+ * changing `magi_base_url` applies without a restart. Admin config is operator-trusted, so these
+ * hosts intentionally bypass the https + public-IP checks in the provider runtime.
+ */
+export const magiDynamicHosts: DynamicHostsFn = (): ReadonlySet<string> => {
+  const hosts = new Set<string>()
+  const value = getPluginAdminConfig('acp', 'magi_base_url')
+  if (value !== undefined && value.trim() !== '') {
+    try {
+      hosts.add(new URL(value).hostname.toLowerCase())
+    } catch {
+      log.warn({ key: 'magi_base_url' }, 'magi_base_url is not a valid URL; skipping allowlist entry')
+    }
+  }
+  return hosts
+}
+
+const safeDefaultDeps: ProviderRuntimeDeps = {
+  fetch: (url, init): Promise<Response> => globalThis.fetch(url, init),
+  assertPublicUrl,
+}
+
+const buildMagiHttpFetch = (deps?: ProviderRuntimeDeps): HttpFetch =>
+  buildProviderRuntime([], buildPluginLogger('coding'), deps ?? safeDefaultDeps, magiDynamicHosts).httpFetch
+
+// The tools retain this delegating function, while composition replaces its
+// implementation before module contributions are registered. That lets ACP use
+// the same guarded HTTP dependencies as plugins in production and the strict
+// dispatcher in hermetic worlds without coupling tool code to either runtime.
+let currentMagiHttpFetch = buildMagiHttpFetch()
+
+export function configureMagiHttpFetch(deps?: ProviderRuntimeDeps): void {
+  currentMagiHttpFetch = buildMagiHttpFetch(deps)
+}
+
+export const magiHttpFetch = (url: string, init?: RequestInit): Promise<Response> => currentMagiHttpFetch(url, init)

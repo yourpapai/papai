@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { CODING_NAMESPACES } from '../../../src/coding-credentials/types.js'
 import { FIELDS_META } from '../../../src/debug/settings/coding-credentials-fields-meta.js'
+import { CODING_NAMESPACES } from '../../../src/modules/coding/credentials/types.js'
 
 describe('FIELDS_META', () => {
   test('declares field metadata for every coding-credentials namespace', () => {

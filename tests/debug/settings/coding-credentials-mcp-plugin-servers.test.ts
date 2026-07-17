@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { setMcpCatalog } from '../../../src/coding-credentials/mcp-catalog.js'
-import { setMcpPluginServerConfigs } from '../../../src/coding-credentials/mcp-plugin-servers.js'
+import { setMcpCatalog } from '../../../src/modules/coding/credentials/mcp-catalog.js'
+import { setMcpPluginServerConfigs } from '../../../src/modules/coding/credentials/mcp-plugin-servers.js'
 import { handleCodingCredentialsRoutes } from '../../../src/debug/settings/coding-credentials-routes.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../../src/plugins/types.js'

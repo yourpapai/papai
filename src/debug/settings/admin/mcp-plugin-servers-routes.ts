@@ -9,7 +9,7 @@ import {
   mcpPluginServerConfigsSchema,
   resolveMcpPluginServerConfigs,
   setMcpPluginServerConfigs,
-} from '../../../coding-credentials/mcp-plugin-servers.js'
+} from '../../../modules/coding/credentials/mcp-plugin-servers.js'
 import { logger } from '../../../logger.js'
 import { contributionRegistry } from '../../../plugins/contributions.js'
 import { pluginRegistry } from '../../../plugins/registry.js'

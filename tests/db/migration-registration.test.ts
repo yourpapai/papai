@@ -23,8 +23,24 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('051_legacy_context_id_backfill')
   })
 
-  test('066_coding_repos_egress is the last migration', () => {
+  test('069_youtrack_command_tool_prefs_rename is the last core migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('066_coding_repos_egress')
+    expect(lastMigration.id).toBe('069_youtrack_command_tool_prefs_rename')
+  })
+
+  test('coding-table migrations are owned by the coding module, not core', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).not.toContain('061_coding_session_credentials')
+    expect(ids).not.toContain('064_coding_session_repos')
+    expect(ids).not.toContain('066_coding_repos_egress')
+    expect(ids).not.toContain('067_acp_tool_prefs_rename')
+    // 065 alters the core-owned authorized_groups table, so it stays in core.
+    expect(ids).toContain('065_coding_identity')
+  })
+
+  test('membership-store migrations are owned by the task-tracker module, not core', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).not.toContain('060_kaneo_workspace_members')
+    expect(ids).not.toContain('068_task_provider_members')
   })
 })

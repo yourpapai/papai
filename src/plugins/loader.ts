@@ -147,8 +147,16 @@ function handleActivationFailure(pluginId: string, msg: string): false {
   return false
 }
 
+function shouldSkipRetiredPluginActivation(plugin: DiscoveredPlugin): boolean {
+  if (plugin.retired !== true) return false
+  log.warn({ pluginId: plugin.manifest.id }, 'Skipping retired plugin compatibility record during activation')
+  return true
+}
+
 async function activateOne(plugin: DiscoveredPlugin, options: ActivatePluginsOptions): Promise<boolean> {
   const { manifest, entryPoint } = plugin
+
+  if (shouldSkipRetiredPluginActivation(plugin)) return false
 
   if (activeInstances.has(manifest.id) || activationOrder.includes(manifest.id)) {
     pluginRegistry.markActive(manifest.id)

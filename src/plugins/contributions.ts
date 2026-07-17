@@ -25,6 +25,7 @@ import { getPluginToolInputSchema } from './input-schema.js'
 import { getPluginContextEligibility } from './registry.js'
 import { getScheduledJobContextIds } from './scheduled-contexts.js'
 import { recordRuntimeEvent } from './store.js'
+import { registerToolGates } from './tool-gate-registration.js'
 import {
   buildPluginScheduledJobRuntimeContext,
   buildPluginToolRuntimeContext,
@@ -219,7 +220,11 @@ export function buildPluginToolSet(
     const contributions = contributionRegistry.getContributions(pluginId)
     if (contributions === undefined) continue
 
+    registerToolGates(pluginId, contributions.tools)
+
     for (const pluginTool of contributions.tools) {
+      if (runtime.mode === 'proactive' && pluginTool.availableInProactiveMode === false) continue
+
       const namespacedName = namespacedToolName(pluginId, pluginTool.name)
 
       if (usedNames.has(namespacedName)) {

@@ -6,8 +6,8 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 
-import { MIGRATIONS } from '../../../src/db/index.js'
 import { runMigrations } from '../../../src/db/migrate.js'
+import { migration064CodingSessionRepos } from '../../../src/db/migrations/064_coding_session_repos.js'
 import { migration066CodingReposEgress } from '../../../src/db/migrations/066_coding_repos_egress.js'
 
 const cols = (db: Database, table: string): string[] =>
@@ -16,6 +16,10 @@ const cols = (db: Database, table: string): string[] =>
     .all()
     .map((r) => r.name)
 
+// This migration ALTERs coding_session_repos, so its own dependency chain (owned by the coding
+// module) must run first — core MIGRATIONS no longer contains these coding-table migrations.
+const CODING_REPOS_MIGRATIONS = [migration064CodingSessionRepos, migration066CodingReposEgress]
+
 describe('migration 066', () => {
   test('has correct id', () => {
     expect(migration066CodingReposEgress.id).toBe('066_coding_repos_egress')
@@ -23,13 +27,13 @@ describe('migration 066', () => {
 
   test('adds additional_egress_domains to coding_session_repos', () => {
     const db = new Database(':memory:')
-    runMigrations(db, MIGRATIONS)
+    runMigrations(db, CODING_REPOS_MIGRATIONS)
     expect(cols(db, 'coding_session_repos')).toContain('additional_egress_domains')
   })
 
   test("additional_egress_domains defaults to '[]'", () => {
     const db = new Database(':memory:')
-    runMigrations(db, MIGRATIONS)
+    runMigrations(db, CODING_REPOS_MIGRATIONS)
     db.run(
       `INSERT INTO coding_session_repos (context_id, repo_id, name, repo_url, base_branch, permission_preset, updated_at, updated_by) VALUES ('c1', 'r1', 'name1', 'url', 'main', 'preset', 0, 'admin')`,
     )

@@ -19,5 +19,5 @@ export const YOUTRACK_PROMPT_ADDENDUM = [
   '- Reactions (emoji) can be added to comments.',
   '- Saved queries allow storing and reusing search filters.',
   '- Activity history tracks changes to issues, comments, and custom fields.',
-  '- Use `apply_youtrack_command` only when the user explicitly asks for a YouTrack command-style operation or when structured tools cannot express the requested field mutation safely.',
+  '- Use `plugin_task_provider_youtrack__apply_youtrack_command` only when the user explicitly asks for a YouTrack command-style operation or when structured tools cannot express the requested field mutation safely.',
 ].join('\n')

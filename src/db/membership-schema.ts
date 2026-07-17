@@ -5,8 +5,8 @@
 
 import { primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
-export const kaneoWorkspaceMembers = sqliteTable(
-  'kaneo_workspace_members',
+export const taskProviderMembers = sqliteTable(
+  'task_provider_members',
   {
     groupContextId: text('group_context_id').notNull(),
     chatUserId: text('chat_user_id').notNull(),
@@ -22,4 +22,4 @@ export const kaneoWorkspaceMembers = sqliteTable(
   (table) => [primaryKey({ columns: [table.groupContextId, table.chatUserId, table.providerName] })],
 )
 
-export type KaneoWorkspaceMember = typeof kaneoWorkspaceMembers.$inferSelect
+export type TaskProviderMember = typeof taskProviderMembers.$inferSelect

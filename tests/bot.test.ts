@@ -42,6 +42,7 @@ import { setOpenDmAccess } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
+import { moduleCommandRegistry } from '../src/ports/module-contributions.js'
 import { KANEO_PLUGIN_CREDENTIAL_KEY } from '../src/types/config.js'
 import {
   addUser as addScopedUser,
@@ -564,6 +565,38 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     expect(commandHandlers.has('plugin_bot_command_plugin_sync')).toBe(true)
     contributionRegistry.deregister(pluginId)
+  })
+
+  test('fails startup instead of letting a module legacy command overwrite a plugin command', () => {
+    const pluginId = 'command-collision'
+    contributionRegistry.register(
+      pluginId,
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [{ name: 'sync', description: 'Sync', execute: (): Promise<void> => Promise.resolve() }],
+        jobs: [],
+      },
+      makePluginCommandManifest(pluginId),
+    )
+    moduleCommandRegistry.register('fixture', [
+      {
+        name: 'sync',
+        legacyWireName: 'plugin_command_collision_sync',
+        description: 'Sync module',
+        execute: (): Promise<void> => Promise.resolve(),
+      },
+    ])
+    const { provider } = createMockChatWithCommandHandlers()
+
+    try {
+      expect(() =>
+        setupBot(provider, ADMIN_ID, withSynchronousQueue({ processMessage: (): Promise<void> => Promise.resolve() })),
+      ).toThrow("Duplicate command registration 'plugin_command_collision_sync'")
+    } finally {
+      contributionRegistry.deregister(pluginId)
+      moduleCommandRegistry.clear()
+    }
   })
 
   describe('Unauthorized user — silent drop', () => {

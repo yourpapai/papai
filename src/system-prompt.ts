@@ -6,6 +6,7 @@
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ContextType } from './chat/types.js'
 import { buildInstructionsBlock } from './instructions.js'
+import { appendModulePromptSection } from './plugins/module-prompt-contributions.js'
 import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { filterProviderlessPluginIds } from './plugins/providerless.js'
 import { getPluginsForContext } from './plugins/registry.js'
@@ -276,7 +277,7 @@ export function buildSystemPrompt(
   const addendum = provider.getPromptAddendum()
   const basePrompt = assembleSystemPrompt(CORE_INTRO, contextId, enabledToolNames, options)
   const withAddendum = addendum === '' ? basePrompt : `${basePrompt}\n\n${addendum}`
-  return appendPluginPromptSection(withAddendum, sharedContextId)
+  return appendModulePromptSection(appendPluginPromptSection(withAddendum, sharedContextId), contextId)
 }
 
 export function buildProviderlessSystemPrompt(
@@ -291,5 +292,5 @@ export function buildProviderlessSystemPrompt(
     ...options,
     deferredFragmentText: PROVIDERLESS_DEFERRED,
   })
-  return appendProviderlessPluginPromptSection(basePrompt, sharedContextId)
+  return appendModulePromptSection(appendProviderlessPluginPromptSection(basePrompt, sharedContextId), contextId)
 }

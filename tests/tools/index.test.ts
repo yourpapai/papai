@@ -12,6 +12,7 @@ import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfigValue, setPluginConfig } from '../../src/config.js'
 import { setPluginEnabledForContext } from '../../src/plugins/registry.js'
+import { moduleToolRegistry, type ModuleTool } from '../../src/ports/module-tools.js'
 import { applyToolPreferences, makeTools } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -87,6 +88,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   userCachesForTesting.clear()
+  moduleToolRegistry.clear()
 })
 
 describe('makeTools', () => {
@@ -228,6 +230,17 @@ function fakeTool(name: string): ToolSet[string] {
   })
 }
 
+const registerDeprecatedModuleTool = (): void => {
+  const moduleTool: ModuleTool = {
+    name: 'run',
+    legacyWireName: 'plugin_legacy__run',
+    description: 'run',
+    inputSchema: z.object({ id: z.string() }),
+    execute: (): Promise<null> => Promise.resolve(null),
+  }
+  moduleToolRegistry.register('example', [moduleTool])
+}
+
 describe('applyToolPreferences (ask integration)', () => {
   const contextId = 'ctx-ask-1'
 
@@ -236,6 +249,39 @@ describe('applyToolPreferences (ask integration)', () => {
     const tools: ToolSet = { create_task: fakeTool('create_task'), list_tasks: fakeTool('list_tasks') }
     const result = applyToolPreferences(tools, contextId, undefined)
     expect(Object.keys(result).toSorted()).toEqual(['list_tasks'])
+  })
+
+  test('canonical module deny override removes its deprecated wire alias', () => {
+    registerDeprecatedModuleTool()
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { module_example__run: 'deny' } })
+    const tools: ToolSet = { plugin_legacy__run: fakeTool('plugin_legacy__run') }
+
+    const result = applyToolPreferences(tools, contextId, undefined)
+
+    expect(result).not.toHaveProperty('plugin_legacy__run')
+  })
+
+  test('deprecated module override remains a fallback for the current wire name', () => {
+    registerDeprecatedModuleTool()
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { plugin_legacy__run: 'deny' } })
+    const tools: ToolSet = { module_example__run: fakeTool('module_example__run') }
+
+    const result = applyToolPreferences(tools, contextId, undefined)
+
+    expect(result).not.toHaveProperty('module_example__run')
+  })
+
+  test('current module override wins over a deprecated preference for its legacy wire alias', () => {
+    registerDeprecatedModuleTool()
+    setToolPrefs(contextId, {
+      domainDefaults: {},
+      toolOverrides: { module_example__run: 'deny', plugin_legacy__run: 'allow' },
+    })
+    const tools: ToolSet = { plugin_legacy__run: fakeTool('plugin_legacy__run') }
+
+    const result = applyToolPreferences(tools, contextId, undefined)
+
+    expect(result).not.toHaveProperty('plugin_legacy__run')
   })
 
   test('allow leaves tool unwrapped', () => {
@@ -259,6 +305,24 @@ describe('applyToolPreferences (ask integration)', () => {
     expect(executeFn).toBeDefined()
     const out: unknown = await executeFn!({ id: 'X', _permission_reason: 'r' }, { toolCallId: 't1', messages: [] })
     expect(out).toBe('create_task:X')
+  })
+
+  test('canonical module ask override gates its deprecated wire alias', async () => {
+    registerDeprecatedModuleTool()
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { module_example__run: 'ask' } })
+    const tools: ToolSet = { plugin_legacy__run: fakeTool('plugin_legacy__run') }
+
+    const result = applyToolPreferences(tools, contextId, undefined)
+    const wrapped = result['plugin_legacy__run']
+    const execute = wrapped?.execute
+
+    expect(wrapped?.inputSchema).not.toBe(tools['plugin_legacy__run']?.inputSchema)
+    expect(execute).toBeDefined()
+    await expect(
+      execute!({ id: 'X', _permission_reason: 'r' }, { toolCallId: 't1', messages: [] }),
+    ).resolves.toMatchObject({
+      status: 'permission_denied',
+    })
   })
 
   test('ask denies when no askPermission provided', async () => {

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatRouter } from '../chat/router.js'
+import { loadTrustedModules, unloadTrustedModules } from '../composition/load-trusted-modules.js'
 import { warnUnresolvedTaskInstances } from '../instances/health.js'
 import { runKaneoLegacyRepair } from '../instances/kaneo-legacy-repair.js'
 import { listActivePlatformInstancesSafe } from '../instances/platform-store.js'
@@ -22,6 +23,7 @@ import { evaluateStartupGuard } from '../plugins/startup-guard.js'
 import { warnIfLegacyDebugToken } from '../startup-helpers.js'
 
 type ProductionExtensionLogger = Pick<import('pino').Logger, 'error' | 'fatal' | 'info' | 'warn'>
+const skipModuleMigrations = (): void => undefined
 
 export type ProductionExtensionState = {
   activePlatforms: readonly PlatformInstance[]
@@ -76,8 +78,30 @@ function evaluateCompatibility(
   }
 }
 
+export async function stopProductionExtensions(): Promise<void> {
+  const pluginCleanup = await deactivateAllPlugins().then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ ok: false as const, error }),
+  )
+  const moduleCleanup = ((): { ok: true } | { ok: false; error: unknown } => {
+    try {
+      unloadTrustedModules()
+      return { ok: true as const }
+    } catch (error) {
+      return { ok: false as const, error }
+    }
+  })()
+  if (!pluginCleanup.ok && !moduleCleanup.ok) {
+    throw new AggregateError([pluginCleanup.error, moduleCleanup.error], 'Plugin and trusted-module shutdown failed', {
+      cause: pluginCleanup.error,
+    })
+  }
+  if (!pluginCleanup.ok) throw pluginCleanup.error
+  if (!moduleCleanup.ok) throw moduleCleanup.error
+}
+
 async function compensatePluginStartup(startupFailure: unknown): Promise<never> {
-  const cleanup = await deactivateAllPlugins().then(
+  const cleanup = await stopProductionExtensions().then(
     () => ({ ok: true as const }),
     (error: unknown) => ({ ok: false as const, error }),
   )
@@ -109,12 +133,15 @@ async function activateAndFinalizePlugins(
   }
 }
 
-export function startProductionExtensions(
+export async function startProductionExtensions(
   router: ChatRouter,
   state: ProductionExtensionState,
   log: ProductionExtensionLogger,
   options: ActivatePluginsOptions = {},
 ): Promise<readonly string[]> {
+  // Core startup owns schema migration. At this point runtime extensions only
+  // compose module contributions against the already-initialized database.
+  await loadTrustedModules(undefined, skipModuleMigrations, { http: options.providerRuntimeDeps })
   loadActivePlatforms(router, state, log)
   const { plugins, errors, directoryMissing } = discoverPlugins('plugins')
   if (errors.length > 0) log.warn({ errors: errors.map((error) => error.reason) }, 'Some plugins failed discovery')
@@ -127,7 +154,14 @@ export function startProductionExtensions(
     process.exit(1)
   }
   if (guard.action === 'warn') log.warn({ reason: guard.reason }, 'Starting in degraded mode')
-  syncRegistryFromDb(plugins)
+  const activatablePlugins = plugins.filter((plugin) => plugin.retired !== true)
+  if (activatablePlugins.length !== plugins.length) {
+    log.info(
+      { retiredCount: plugins.length - activatablePlugins.length },
+      'Skipped retired plugin compatibility records',
+    )
+  }
+  syncRegistryFromDb(activatablePlugins)
   evaluateCompatibility(router, state, log)
   return activateAndFinalizePlugins(pluginRegistry.getApprovedCompatiblePlugins(), log, options)
 }

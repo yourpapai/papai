@@ -77,6 +77,9 @@ import { migration063ReleaseAnnouncements } from './migrations/063_release_annou
 import { migration064CodingSessionRepos } from './migrations/064_coding_session_repos.js'
 import { migration065CodingIdentity } from './migrations/065_coding_identity.js'
 import { migration066CodingReposEgress } from './migrations/066_coding_repos_egress.js'
+import { migration067AcpToolPrefsRename } from './migrations/067_acp_tool_prefs_rename.js'
+import { migration068TaskProviderMembers } from './migrations/068_task_provider_members.js'
+import { migration069YoutrackCommandToolPrefsRename } from './migrations/069_youtrack_command_tool_prefs_rename.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -111,7 +114,7 @@ const closeMigrationDb = (): void => {
   }
 }
 
-export const MIGRATIONS: readonly Migration[] = [
+export const CORE_MIGRATIONS: readonly Migration[] = [
   migration001Initial,
   migration002ConversationHistory,
   migration003MultiuserSupport,
@@ -171,17 +174,42 @@ export const MIGRATIONS: readonly Migration[] = [
   migration057AttachmentGroupContext,
   migration058OpenDmAccess,
   migration059GuestMode,
-  migration060KaneoWorkspaceMembers,
-  migration061CodingSessionCredentials,
   migration062NullableContextTaskInstance,
   migration063ReleaseAnnouncements,
-  migration064CodingSessionRepos,
   migration065CodingIdentity,
-  migration066CodingReposEgress,
+  migration069YoutrackCommandToolPrefsRename,
 ]
 
+/**
+ * Backwards-compatible aggregate for callers that historically provisioned a
+ * complete local schema directly. Runtime startup deliberately uses
+ * `CORE_MIGRATIONS` and applies each trusted module's migrations separately,
+ * preserving module ownership while old setup code continues to create a
+ * usable all-feature schema.
+ */
+const legacyModuleMigrations: readonly Migration[] = [
+  migration060KaneoWorkspaceMembers,
+  migration061CodingSessionCredentials,
+  migration064CodingSessionRepos,
+  migration066CodingReposEgress,
+  migration067AcpToolPrefsRename,
+  migration068TaskProviderMembers,
+]
+
+export const MIGRATIONS: readonly Migration[] = [...CORE_MIGRATIONS, ...legacyModuleMigrations].toSorted(
+  (left, right) => Number.parseInt(left.id, 10) - Number.parseInt(right.id, 10),
+)
+
 export const initDb = (): void => {
-  runMigrations(getMigrationDb(), MIGRATIONS)
+  runMigrations(getMigrationDb(), CORE_MIGRATIONS)
+}
+
+/**
+ * Run a trusted module's migrations through the shared migration mechanism and bookkeeping
+ * table. Generic: names no feature. `db` defaults to the process connection; tests inject one.
+ */
+export const applyModuleMigrations = (migrations: readonly Migration[], db: Database = getMigrationDb()): void => {
+  runMigrations(db, migrations)
 }
 
 export const closeMigrationDbInstance = (): void => {

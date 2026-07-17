@@ -7,9 +7,9 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { setCodingGuardrails } from '../../../src/coding-credentials/guardrails.js'
-import { parseMcpSelections } from '../../../src/coding-credentials/mcp-selections.js'
-import { getCodingCredentials } from '../../../src/coding-credentials/store.js'
+import { setCodingGuardrails } from '../../../src/modules/coding/credentials/guardrails.js'
+import { parseMcpSelections } from '../../../src/modules/coding/credentials/mcp-selections.js'
+import { getCodingCredentials } from '../../../src/modules/coding/credentials/store.js'
 import { handleCodingCredentialsRoutes } from '../../../src/debug/settings/coding-credentials-routes.js'
 import { resolveSettingsPrincipal } from '../../../src/settings/principal.js'
 import { addUser } from '../../../src/users.js'
