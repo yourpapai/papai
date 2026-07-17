@@ -22,6 +22,7 @@ See LICENSE in the project root for details.
 3. Test seams use **re-export shims**, not code moves: seams like `resetNotifyTokenCacheForTesting` mutate module-private state and cannot move without exporting that state. The shim is `export { seam } from './module.js'` in `module.testing.ts`; one `ignoreIssues` glob covers all shims.
 4. Phase 3 mostly evaporated: svelte tracing resolved `byok-provider-fetchers.ts` and `fetcher-schemas-llm-providers.ts`; mattermost/providers-registry entries were stale. Remaining deletes: `PROVIDER_TYPE_BASE_URLS`, `LlmRole`, and genuinely dead client symbols the audit surfaced.
 5. New finding: 4 UI components (`PanelShell`, `StatusDot`, `FormRow`, `Tag`) are consumed only by stories/visual tests — move under the already-ignored `client/stories/` dev harness.
+6. Task-1 implementation finding: under `--strict`, production-graph imports of `svelte` (26 sites) report `unlisted` because `svelte` sat in `devDependencies`. Root-cause fix: move `svelte` to `dependencies` (the client production graph genuinely imports it; it is bundled into production client assets). Also the kaneo bridge root is `auto-provision.ts` (the plugin index does `import.meta.require('./auto-provision.js')`), so the bridge entry is `plugins/task-provider-kaneo/auto-provision.ts!`, not `provision.ts!`.
 
 ---
 
@@ -107,7 +108,7 @@ export default {
     // Plugin runtime bridges loaded via import.meta.require(); declaring them
     // entries lets knip trace their static imports (provider clients, config).
     'plugins/audio-transcribe/runtime.ts!',
-    'plugins/task-provider-kaneo/provision.ts!',
+    'plugins/task-provider-kaneo/auto-provision.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
@@ -156,8 +157,10 @@ export default {
     'client/**/*.testing.ts': ['exports', 'types'],
     // Plugin entry-point default exports, provider classes, and validateConfig
     // are resolved dynamically by the plugin loader (path-based import +
-    // manifest `providerConfigValidator`); no static consumer exists.
-    'plugins/*/{index,validate-config,provider}.ts': ['exports'],
+    // manifest `providerConfigValidator`); bridge modules (runtime,
+    // auto-provision, provision, client) are consumed through
+    // import.meta.require() chains knip cannot trace. No static consumer exists.
+    'plugins/*/{index,validate-config,provider,runtime,auto-provision,provision,client}.ts': ['exports'],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     'strybk.config.ts': ['exports'],
@@ -173,14 +176,17 @@ export default {
 }
 ```
 
-- [ ] **Step 2: Delete `knip.jsonc` and verify the expected report**
+- [ ] **Step 2: Move `svelte` to `dependencies`, delete `knip.jsonc`, verify the expected report**
+
+In `package.json`, move the `"svelte": "^5"` line from `devDependencies` to `dependencies` (alphabetical position), then run `bun install` to update `bun.lock`. Rationale: the client production graph imports `svelte` in 26 places and it is bundled into production client assets; under `--strict` a devDependency placement makes every such import `unlisted`.
 
 Run: `rm knip.jsonc && bun run knip`
-Expected: exit 1 with EXACTLY this issue set (from the pre-verified audit; counts may shift by ±1 if master moved):
+Expected: exit 1 with ONLY this residual issue set (from the pre-verified audit; counts may shift by ±1 if master moved):
 
-- Unused files (10): `client/debug/types.ts`, `client/shared/PanelShell.svelte`, `client/shared/StatusDot.svelte`, `client/shared/ui/FormRow.svelte`, `client/shared/ui/Tag.svelte`, `plugins/audio-transcribe/runtime.ts`, `plugins/audio-transcribe/transcription.ts`, `plugins/task-provider-kaneo/auto-provision.ts`, `plugins/task-provider-kaneo/provision-messages.ts`, `plugins/task-provider-kaneo/provision.ts`
-- Unused exports (~54) and unused types (~11) matching the audit list
-- The plugin-bridge entries may cascade-resolve some items (runtime.ts, provision.ts were declared entries) — that is expected and fine
+- Unused files (≤6): `client/debug/types.ts`, `client/shared/PanelShell.svelte`, `client/shared/StatusDot.svelte`, `client/shared/ui/FormRow.svelte`, `client/shared/ui/Tag.svelte`, and possibly `plugins/task-provider-kaneo/auto-provision.ts` if the bridge entry does not cascade. The bridge entries (`runtime.ts!`, `auto-provision.ts!`) should cascade-resolve `transcription.ts`, `provision.ts`, `provision-messages.ts`
+- Unused exports (~46): 8 client symbols (sectionLabel, syncSectionFromLocation, fetchAdminIdentity, LOG_CAP, emptyFilter, patchByok, getKaneoCredentials, escapeHtml); all src test seams; bridge-module exports the widened plugin glob does not cover (registerAudioTranscribe, maybeProvisionKaneo, isKaneoSessionCookie SHOULD be covered by the glob — if they still appear, verify the glob matches and fix it)
+- Unused types (11): AdminSection, SubjectGrowthPoint, ByokField, PluginEligibility, AuthorizedGroupEntry, TaskInstanceView, PlatformProviderTypeView, TaskProviderTypeView, AdminInstanceView, ApplyInstancesResult, LlmRole
+- NO `Unlisted dependencies` section (the svelte move must eliminate it)
 
 If anything ELSE appears, stop and reconcile before continuing.
 
