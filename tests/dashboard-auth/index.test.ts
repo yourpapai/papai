@@ -19,7 +19,8 @@ import {
   revokeSession,
   sweepExpired,
 } from '../../src/dashboard-auth/index.js'
-import { insertSession, setStoreDb } from '../../src/dashboard-auth/store.js'
+import { insertSession } from '../../src/dashboard-auth/store.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.testing.js'
 import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import { mockLogger } from '../utils/test-helpers.js'
 

@@ -2,10 +2,11 @@
   "workDir": ".review-loop",
   "maxRounds": 10,
   "maxNoProgressRounds": 2,
-  "checkCommand": "bun check:full",
+  "checkCommand": "export CI=true; bun build:client && bun check:full",
   "reviewer": {
     "model": "zai-coding-plan/glm-5.2",
-    "extraArgs": []
+    "extraArgs": [],
+    "timeoutMs": 1800000
   },
   "fixer": {
     "model": "zai-coding-plan/glm-5.2",

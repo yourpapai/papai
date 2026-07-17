@@ -5,7 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { emptyFilter, filterFromParams, filterToParams, filterToQuery } from '../../../client/debug/log-filter-url.js'
+import { filterFromParams, filterToParams, filterToQuery } from '../../../client/debug/log-filter-url.js'
+import { emptyFilter } from '../../../client/debug/log-filter-url.testing.js'
 
 describe('log-filter-url', () => {
   test('emptyFilter is pass-all', () => {

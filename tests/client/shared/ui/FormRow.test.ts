@@ -8,7 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { createRawSnippet, mount, unmount } from 'svelte'
 import type { Snippet } from 'svelte'
 
-import FormRow from '../../../../client/shared/ui/FormRow.svelte'
+import FormRow from '../../../../client/stories/components/ui/FormRow.svelte'
 
 function snip(text: string): Snippet {
   return createRawSnippet((): { render: () => string } => ({ render: (): string => `<span>${text}</span>` }))

@@ -13,10 +13,10 @@ import {
   isPlatformAdmin,
   isSuperAdmin,
   listAdmins,
-  listAdminsForPlatform,
   removeAdmin,
   SUPER_ADMIN_PLATFORM_ID,
 } from '../../src/instances/admin-store.js'
+import { listAdminsForPlatform } from '../../src/instances/admin-store.testing.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const seedPlatform = (id: string): void => {

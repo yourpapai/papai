@@ -20,10 +20,12 @@ function legacyStore(configContextId: string): {
   }
 }
 
+/** @public Intentional public seam for the plugin-core-separation refactor. */
 export function getCodingSessionRecord(configContextId: string, sessionId: string): SessionRecord | null {
   return readRecord(legacyStore(configContextId), sessionId)
 }
 
+/** @public Intentional public seam for the plugin-core-separation refactor. */
 export function setCodingSessionRecord(configContextId: string, sessionId: string, record: SessionRecord): void {
   writeRecord(legacyStore(configContextId), sessionId, record)
 }

@@ -4,16 +4,20 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { runBuildCheck } from '../../review-loop/src/build-checker.js'
-import { finalizeRun, parseCliArgs, realSpawn, splitLines, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import { finalizeRun, parseCliArgs, resolvePlanPath, type FinalizeDeps } from '../../review-loop/src/cli.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import { createRunState, type RunState } from '../../review-loop/src/run-state.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
 
 describe('parseCliArgs', () => {
   test('defaults configPath to review-loop/config.json', () => {
@@ -55,54 +59,6 @@ describe('parseCliArgs', () => {
   })
 })
 
-describe('splitLines', () => {
-  const cases: ReadonlyArray<{
-    name: string
-    pending: string
-    chunk: string
-    lines: string[]
-    remaining: string
-  }> = [
-    { name: 'single complete line', pending: '', chunk: '{"a":1}\n', lines: ['{"a":1}'], remaining: '' },
-    {
-      name: 'multiple lines in one chunk',
-      pending: '',
-      chunk: '{"a":1}\n{"b":2}\n',
-      lines: ['{"a":1}', '{"b":2}'],
-      remaining: '',
-    },
-    {
-      name: 'line split across chunks: first half',
-      pending: '',
-      chunk: '{"a":',
-      lines: [],
-      remaining: '{"a":',
-    },
-    {
-      name: 'line split across chunks: second half',
-      pending: '{"a":',
-      chunk: '1}\n',
-      lines: ['{"a":1}'],
-      remaining: '',
-    },
-    { name: 'skips empty lines', pending: '', chunk: '\n\n{"x":1}\n', lines: ['{"x":1}'], remaining: '' },
-    {
-      name: 'trailing partial without newline',
-      pending: '',
-      chunk: '{"a":1}\npartial',
-      lines: ['{"a":1}'],
-      remaining: 'partial',
-    },
-    { name: 'empty input', pending: '', chunk: '', lines: [], remaining: '' },
-  ]
-
-  for (const c of cases) {
-    test(c.name, () => {
-      expect(splitLines(c.pending, c.chunk)).toEqual({ lines: c.lines, remaining: c.remaining })
-    })
-  }
-})
-
 async function setupFinalizeFixtures(): Promise<{ config: ReviewLoopConfig; runState: RunState }> {
   const repoRoot = makeTempDir('cli-')
   const config = createReviewLoopConfigFixture(repoRoot)
@@ -112,35 +68,30 @@ async function setupFinalizeFixtures(): Promise<{ config: ReviewLoopConfig; runS
   return { config, runState }
 }
 
-describe('realSpawn', () => {
-  test('surfaces spawn error message when binary cannot be spawned', async () => {
-    const result = await realSpawn('this-binary-does-not-exist-12345', [], { cwd: process.cwd() })
-    expect(result.exitCode).toBe(1)
-    expect(result.stderr.length).toBeGreaterThan(0)
-    expect(result.stderr).toContain('this-binary-does-not-exist-12345')
+describe('resolvePlanPath', () => {
+  test('resolves a repo-root-relative plan path against the repo root', async () => {
+    const repoRoot = makeTempDir('plan-rel-')
+    writeFileSync(path.join(repoRoot, 'plan.md'), '# Plan')
+
+    const resolved = await resolvePlanPath('./plan.md', repoRoot)
+
+    expect(resolved).toBe(path.join(repoRoot, 'plan.md'))
   })
 
-  test('kills a hanging subprocess after the configured timeout', async () => {
-    const result = await realSpawn('sleep', ['5'], { cwd: process.cwd(), timeout: 500 })
-    expect(result.exitCode).toBe(1)
-    expect(result.stderr).toContain('timed out')
+  test('passes through an existing absolute plan path', async () => {
+    const repoRoot = makeTempDir('plan-abs-repo-')
+    const dir = makeTempDir('plan-abs-')
+    const absolute = path.join(dir, 'plan.md')
+    writeFileSync(absolute, '# Plan')
+
+    await expect(resolvePlanPath(absolute, repoRoot)).resolves.toBe(absolute)
   })
 
-  test('SIGKILLs a child that ignores SIGTERM after the grace period', async () => {
-    const start = Date.now()
-    const result = await realSpawn('sh', ['-c', "trap '' TERM; sleep 30"], {
-      cwd: process.cwd(),
-      timeout: 300,
-      killGraceMs: 200,
-    })
-    expect(result.exitCode).toBe(1)
-    expect(result.stderr).toContain('timed out')
-    expect(Date.now() - start).toBeLessThan(5000)
-  })
+  test('throws a clear error naming the resolved path when the plan is missing', async () => {
+    const repoRoot = makeTempDir('plan-missing-')
+    const expected = path.resolve(repoRoot, 'docs/plans/nope.md')
 
-  test('completes normally when no timeout is configured', async () => {
-    const result = await realSpawn('true', [], { cwd: process.cwd() })
-    expect(result.exitCode).toBe(0)
+    await expect(resolvePlanPath('./docs/plans/nope.md', repoRoot)).rejects.toThrow(expected)
   })
 })
 
@@ -162,9 +113,37 @@ describe('finalizeRun', () => {
       },
     }
 
-    await expect(finalizeRun(config, runState, deps)).rejects.toThrow('Final build check failed')
+    const promise = finalizeRun(config, runState, deps)
+    await expect(promise).rejects.toThrow(/Final build check failed[\s\S]*TypeError: broken/u)
+    expect(readFileSync(path.join(runState.runDir, 'build-check.log'), 'utf8')).toContain('TypeError: broken')
     expect(merged).toBe(0)
     expect(removed).toBe(0)
+  })
+
+  test('truncates long build output in the error but keeps the full log', async () => {
+    const { config, runState } = await setupFinalizeFixtures()
+    const firstLine = 'LINE-ZERO-SHOULD-BE-TRUNCATED-FROM-TAIL'
+    const stdout = [firstLine, ...Array.from({ length: 60 }, (_, i) => `output-line-${i + 1}`)].join('\n')
+    const deps: FinalizeDeps = {
+      exec: () => Promise.resolve({ exitCode: 1, stdout, stderr: '' }),
+      runBuildCheck,
+      mergeWorktree: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
+    }
+
+    let message = ''
+    await finalizeRun(config, runState, deps).catch((error: unknown) => {
+      message = errorMessage(error)
+    })
+
+    expect(message).toContain('Final build check failed')
+    expect(message).toContain('output-line-60')
+    expect(message).toContain('truncated')
+    expect(message).not.toContain(firstLine)
+
+    const log = readFileSync(path.join(runState.runDir, 'build-check.log'), 'utf8')
+    expect(log).toContain(firstLine)
+    expect(log).toContain('output-line-60')
   })
 
   test('merges and removes worktree when final build passes', async () => {

@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { ChatRouter } from '../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../src/chat/types.js'
-import { subscribeCountForTest } from '../../src/debug/event-bus.js'
+import { subscribeCountForTest } from '../../src/debug/event-bus.testing.js'
 import { armMemoryCapture, type ArmCaptureDeps } from '../../src/long-term-memory/capture-debounce.js'
 import { toolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { createPapaiRuntime } from '../../src/runtime/create-runtime.js'

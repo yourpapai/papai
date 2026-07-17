@@ -6,7 +6,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { userCacheStore } from '../src/cache-store.js'
-import { clearCachedToolsByPrefix, getLatestCachedToolsForContext, setCachedTools } from '../src/cache.js'
+import { clearCachedToolsByPrefix, setCachedTools } from '../src/cache.js'
+import { getLatestCachedToolsForContext } from '../src/cache.testing.js'
 
 const FAKE_TOOLS = { some_tool: { description: 'tool' } }
 

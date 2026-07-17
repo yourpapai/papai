@@ -55,6 +55,13 @@ describe('prompt-templates', () => {
     expect(p).toContain('low')
   })
 
+  test('review prompt forbids running test suites and build checks', () => {
+    const p = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(p).toContain('do NOT run')
+    expect(p).toContain('git diff')
+    expect(p).toContain('fixer')
+  })
+
   test('fixer prompt keeps sentinel, drops commit instruction, asks for commitMessage + severity', () => {
     const p = buildFixPrompt(issue, '/result.json', 'bun check:full')
     expect(p).toContain('Verify and fix')

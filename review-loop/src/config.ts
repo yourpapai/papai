@@ -13,6 +13,7 @@ import { detectGitRoot } from './worktree.js'
 const AgentConfigSchema = z.object({
   model: z.string().min(1),
   extraArgs: z.array(z.string()).default([]),
+  timeoutMs: z.number().int().min(0).optional(),
 })
 
 export const ReviewLoopConfigSchema = z.object({

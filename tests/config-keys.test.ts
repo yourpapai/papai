@@ -14,7 +14,7 @@ import {
   getRequiredProviderConfigKeysForContext,
   isSensitiveProviderStorageKey,
 } from '../src/config-keys.js'
-import { setConfig, getAllConfig } from '../src/config.js'
+import { getAllConfig, setConfig } from '../src/config.testing.js'
 import { taskInstances } from '../src/db/schema.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'

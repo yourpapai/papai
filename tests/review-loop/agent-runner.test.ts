@@ -14,7 +14,7 @@ import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
-type MockSpawnResult = { exitCode: number; stdout: string; stderr: string }
+type MockSpawnResult = { exitCode: number; stdout: string; stderr: string; timedOut?: boolean }
 
 function createMockSpawn(results: MockSpawnResult[]): {
   calls: Array<{ command: string; args: readonly string[]; cwd: string }>
@@ -172,6 +172,54 @@ describe('agent-runner', () => {
         extraArgs: [],
       }),
     ).rejects.toThrow()
+  })
+
+  test('does not retry when the agent times out', async () => {
+    const dir = makeTempDir('agent-runner-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = createMockSpawn([
+      { exitCode: 1, stdout: '', stderr: 'Process timed out after 600000ms\n', timedOut: true },
+      { exitCode: 0, stdout: 'done', stderr: '' },
+    ])
+
+    await expect(
+      runAgent({
+        spawn: mock.spawn,
+        model: 'test-model',
+        cwd: dir,
+        prompt: 'review the code',
+        outputPath,
+        outputSchema: ReviewerIssuesSchema,
+        label: 'reviewer',
+        logPath: path.join(dir, 'log.txt'),
+        extraArgs: [],
+      }),
+    ).rejects.toThrow('timed out')
+    expect(mock.calls).toHaveLength(1)
+  })
+
+  test('retries once on non-timeout spawn failure', async () => {
+    const dir = makeTempDir('agent-runner-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = createMockSpawn([
+      { exitCode: 1, stdout: '', stderr: 'opencode crashed' },
+      { exitCode: 1, stdout: '', stderr: 'opencode crashed' },
+    ])
+
+    await expect(
+      runAgent({
+        spawn: mock.spawn,
+        model: 'test-model',
+        cwd: dir,
+        prompt: 'review the code',
+        outputPath,
+        outputSchema: ReviewerIssuesSchema,
+        label: 'reviewer',
+        logPath: path.join(dir, 'log.txt'),
+        extraArgs: [],
+      }),
+    ).rejects.toThrow('opencode crashed')
+    expect(mock.calls).toHaveLength(2)
   })
 
   test('streams live progress from agent events', async () => {

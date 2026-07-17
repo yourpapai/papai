@@ -5,7 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { emitGlobal, subscribeCountForTest } from '../../src/debug/event-bus.js'
+import { emitGlobal } from '../../src/debug/event-bus.js'
+import { subscribeCountForTest } from '../../src/debug/event-bus.testing.js'
 import {
   addClient,
   init,

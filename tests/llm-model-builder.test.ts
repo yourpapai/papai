@@ -7,12 +7,8 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 
-import {
-  buildChatModel,
-  clearModelBuilderCacheForTesting,
-  getOpenAICompatibleProvider,
-  type ModelBuilderDeps,
-} from '../src/llm-model-builder.js'
+import { buildChatModel, getOpenAICompatibleProvider, type ModelBuilderDeps } from '../src/llm-model-builder.js'
+import { clearModelBuilderCacheForTesting } from '../src/llm-model-builder.testing.js'
 import { fetchWithoutTimeout } from '../src/utils/fetch.js'
 
 function makeDeps(): { create: ReturnType<typeof mock>; deps: ModelBuilderDeps } {

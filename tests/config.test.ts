@@ -7,20 +7,16 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedConfig, setCachedConfig } from '../src/cache.js'
 import {
-  getAllConfig,
   getConfig,
   getConfigValue,
   getPluginConfig,
-  isConfigKey,
-  isSensitiveKey,
   listPluginConfigValues,
-  maskValue,
-  setConfig,
   setConfigValue,
   setPluginConfig,
   unsetConfigValue,
   unsetPluginConfig,
 } from '../src/config.js'
+import { getAllConfig, isConfigKey, isSensitiveKey, maskValue, setConfig } from '../src/config.testing.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
 import {
