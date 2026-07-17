@@ -18,24 +18,27 @@ import {
   writeFile,
   type FileHandle,
 } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 
-import { removeDependencyCacheTree, sealDependencyCacheTree } from './story-dependency-snapshot-cleanup.js'
 import {
+  dependencySnapshotKey,
   installStagedDependencies,
+  loadStoryWorkspaceManifests,
   type StoryDependencyInstallerOptions,
-} from './story-dependency-snapshot-installer.js'
-import { dependencySnapshotKey, type StoryDependencyPlatform } from './story-dependency-snapshot-key.js'
-import { ensurePrivateDependencyCacheRoot } from './story-dependency-snapshot-root.js'
+  type StoryDependencyPlatform,
+  type StoryWorkspaceManifest,
+} from './dependencies-install.js'
 import {
   assertDependencyTreeSealed,
   hashDependencyTree,
+  removeDependencyCacheTree,
   safeReadDependencyFile,
-} from './story-dependency-snapshot-tree.js'
-import { loadStoryWorkspaceManifests, type StoryWorkspaceManifest } from './story-dependency-snapshot-workspaces.js'
+  sealDependencyCacheTree,
+} from './dependencies-tree.js'
+import { resolveStoryDependencyPlatform } from './sandbox.js'
 
-export type { StoryDependencyInstallerOptions } from './story-dependency-snapshot-installer.js'
-export type { StoryDependencyPlatform } from './story-dependency-snapshot-key.js'
+export type { StoryDependencyInstallerOptions, StoryDependencyPlatform } from './dependencies-install.js'
 export type StoryDependencySnapshot = Readonly<{ key: string; root: string; treeHash: string }>
 
 export type StoryDependencySnapshotDependencies = Readonly<{
@@ -88,7 +91,7 @@ const defaults: Dependencies = {
   writeFile,
 }
 
-function dependencies(overrides: StoryDependencySnapshotDependencies): Dependencies {
+function withDefaultDependencies(overrides: StoryDependencySnapshotDependencies): Dependencies {
   return { ...defaults, ...overrides }
 }
 
@@ -192,11 +195,42 @@ async function createStagingEntry(
   await deps.writeFile(path.join(staging, MANIFEST_FILE), `${JSON.stringify(manifest)}\n`)
 }
 
+export type DependencyCacheRootDependencies = Readonly<{
+  chmod(target: string, mode: number): Promise<void>
+  lstat(target: string): Promise<Stats>
+  mkdir(target: string, options: Readonly<{ recursive: true; mode: number }>): Promise<string | undefined>
+}>
+
+function isOwnedByCurrentUser(stats: Stats): boolean {
+  const getuid = process.getuid
+  return getuid === undefined || stats.uid === getuid.call(process)
+}
+
+function assertPrivateCacheRoot(root: string, stats: Stats): void {
+  if (!stats.isDirectory() || stats.isSymbolicLink() || !isOwnedByCurrentUser(stats) || (stats.mode & 0o077) !== 0) {
+    throw new Error(`Unsafe story dependency cache root: ${root}`)
+  }
+}
+
+export async function ensurePrivateDependencyCacheRoot(
+  root: string,
+  deps: DependencyCacheRootDependencies,
+): Promise<void> {
+  const existing = await deps.lstat(root).catch((error: unknown) => {
+    if (errorCode(error) === 'ENOENT') return undefined
+    throw error
+  })
+  if (existing === undefined) await deps.mkdir(root, { recursive: true, mode: 0o700 })
+  const stats = await deps.lstat(root)
+  assertPrivateCacheRoot(root, stats)
+  await deps.chmod(root, 0o700)
+}
+
 export async function acquireStoryDependencySnapshot(
   options: SnapshotOptions,
   overrides: StoryDependencySnapshotDependencies = {},
 ): Promise<StoryDependencySnapshot> {
-  const deps = dependencies(overrides)
+  const deps = withDefaultDependencies(overrides)
   const packageBytes = await safeReadDependencyFile(
     path.join(options.projectRoot, 'package.json'),
     'package.json',
@@ -228,7 +262,7 @@ export async function acquireStoryDependencySnapshot(
       await deps.rename(staging, entryRoot)
       published = true
     } catch (error) {
-      if (errorCode(error) !== 'EEXIST') throw error
+      if (errorCode(error) !== 'EEXIST' && errorCode(error) !== 'ENOTEMPTY') throw error
       await removeDependencyCacheTree(staging, deps)
       return await verifyEntry(entryRoot, expected, deps)
     }
@@ -237,4 +271,30 @@ export async function acquireStoryDependencySnapshot(
     if (!published) await removeDependencyCacheTree(staging, deps)
     throw error
   }
+}
+
+export type CandidateStoryManifestDependencies = Readonly<{
+  acquireDependencySnapshot?(
+    options: Readonly<{
+      projectRoot: string
+      cacheRoot: string
+      bunVersion: string
+      platform: StoryDependencyPlatform
+    }>,
+  ): Promise<StoryDependencySnapshot>
+  inspectDependencyPlatform?(): Promise<StoryDependencyPlatform>
+}>
+
+export function storyDependencyCacheRoot(): string {
+  return process.env['PAPAI_STORY_DEPENDENCY_CACHE_ROOT'] ?? path.join(homedir(), '.cache', 'papai-story-dependencies')
+}
+
+export async function acquireCandidateDependencySnapshot(
+  root: string,
+  bunVersion: string,
+  dependencies: CandidateStoryManifestDependencies,
+): Promise<StoryDependencySnapshot> {
+  const acquire = dependencies.acquireDependencySnapshot ?? acquireStoryDependencySnapshot
+  const platform = await (dependencies.inspectDependencyPlatform ?? resolveStoryDependencyPlatform)()
+  return acquire({ projectRoot: root, cacheRoot: storyDependencyCacheRoot(), bunVersion, platform })
 }

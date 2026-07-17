@@ -6,8 +6,8 @@
 import { describe, expect, test } from 'bun:test'
 import nodePath from 'node:path'
 
-import { loadCandidateStoryFiles } from '../../../scripts/story-manifest-candidate.js'
-import { extractStoryScenarios } from '../../../scripts/story-manifest-scenarios.js'
+import { loadCandidateStoryFiles } from '../../../scripts/story/inputs.js'
+import { extractStoryScenarios } from '../../../scripts/story/scenarios.js'
 import { CATALOG_SCENARIO_IDS, catalogCoverage, toPendingReason } from '../catalog/coverage.js'
 
 function sorted(values: readonly string[]): readonly string[] {

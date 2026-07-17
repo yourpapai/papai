@@ -19,7 +19,7 @@ test('default Bun discovery excludes the entire hermetic story tree', () => {
 test('package scripts retain an explicit harness contract command', () => {
   const packageJson = readFileSync(path.join(ROOT, 'package.json'), 'utf8')
 
-  expect(packageJson).toContain('"test:stories:contracts": "bun scripts/test-stories.ts --contracts"')
+  expect(packageJson).toContain('"test:stories:contracts": "bun scripts/story/test-stories.ts --contracts"')
 })
 
 test('Knip declares the coding-session compatibility seams as narrow public entries', () => {

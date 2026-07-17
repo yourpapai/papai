@@ -19,16 +19,14 @@ import path from 'node:path'
 
 import {
   assertLinuxStorySandboxBackend,
+  buildStorySandboxCommand,
   isLinuxStorySandboxRequired,
   resolveLinuxStorySandboxUser,
-  type StorySandboxProcessRunner,
-} from '../../scripts/story-sandbox-linux.js'
-import {
-  buildStorySandboxCommand,
   selectStorySandboxBackend,
+  type StorySandboxProcessRunner,
   type StorySandboxRequest,
-} from '../../scripts/story-sandbox.js'
-import { classifyStorySandboxDockerMode } from '../../scripts/test-story-sandbox.js'
+} from '../../scripts/story/sandbox.js'
+import { classifyStorySandboxDockerMode } from '../../scripts/story/test-story-sandbox.js'
 
 const roots: string[] = []
 

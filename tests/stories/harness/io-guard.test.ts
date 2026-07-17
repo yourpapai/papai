@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dir, '../../..')
-const RUNNER = `${ROOT}/scripts/test-stories.ts`
+const RUNNER = `${ROOT}/scripts/story/test-stories.ts`
 const PROBE = 'tests/stories/harness/io-guard-probe.ts'
 
 type ChildResult = Readonly<{ exitCode: number; output: string }>

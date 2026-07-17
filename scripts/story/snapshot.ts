@@ -5,8 +5,7 @@
 
 import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
-import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, realpath, rm, symlink } from 'node:fs/promises'
-import os from 'node:os'
+import { chmod, mkdir, open, readdir, symlink } from 'node:fs/promises'
 import path from 'node:path'
 
 import {
@@ -15,23 +14,22 @@ import {
   type LoadedRuntimeInput,
   type LoadedStoryFile,
   type StoryManifest,
-} from './story-manifest.js'
+} from './manifest.js'
+import type { StorySandboxBackend } from './sandbox.js'
 import {
-  writeGeneratedStorySnapshotEntry,
   type GeneratedStorySnapshotEntry,
-} from './story-runner-snapshot-generated.js'
-import type { StorySnapshotOptions } from './story-runner-snapshot-options.js'
-import {
-  captureStorySnapshotConstructionSignals,
-  type StorySnapshotConstructionSignals,
-} from './story-runner-snapshot-signals.js'
-import { verifySnapshotTopology } from './story-runner-snapshot-topology.js'
+  verifySnapshotFile,
+  verifySnapshotRuntimeInput,
+  verifySnapshotTopology,
+} from './snapshot-integrity.js'
 
-export type CandidateStorySnapshot = Readonly<{
+export type { GeneratedStorySnapshotEntry } from './snapshot-integrity.js'
+
+export type StorySnapshotOptions = Readonly<{
   root: string
-  manifest: StoryManifest
-  verifyIntegrity(): Promise<void>
-  cleanup(): Promise<void>
+  seed: number
+  bunVersion?: string
+  sandboxBackend?: StorySandboxBackend
 }>
 
 export type SnapshotDependencies = Readonly<{
@@ -49,7 +47,29 @@ export type CandidateStorySnapshotSource = Readonly<{
   ): Promise<Readonly<{ verifyIntegrity(): Promise<void> }>>
 }>
 
-export type { GeneratedStorySnapshotEntry } from './story-runner-snapshot-generated.js'
+export type StorySnapshotConstructionSignals = Readonly<{
+  current(): 'SIGINT' | 'SIGTERM' | undefined
+  dispose(): void
+}>
+
+export function captureStorySnapshotConstructionSignals(): StorySnapshotConstructionSignals {
+  let signal: 'SIGINT' | 'SIGTERM' | undefined
+  const onInterrupt = (): void => {
+    signal ??= 'SIGINT'
+  }
+  const onTerminate = (): void => {
+    signal ??= 'SIGTERM'
+  }
+  process.once('SIGINT', onInterrupt)
+  process.once('SIGTERM', onTerminate)
+  return {
+    current: () => signal,
+    dispose: (): void => {
+      process.off('SIGINT', onInterrupt)
+      process.off('SIGTERM', onTerminate)
+    },
+  }
+}
 
 export class StorySnapshotInterruptedError extends Error {
   readonly exitCode: 130 | 143
@@ -105,22 +125,6 @@ async function makeTreeReadOnly(
   await changeMode(directory, 0o500)
 }
 
-async function makeTreeRemovable(directory: string): Promise<void> {
-  await chmod(directory, 0o700).catch(() => undefined)
-  const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
-  await Promise.all(
-    entries.filter((entry) => entry.isDirectory()).map((entry) => makeTreeRemovable(path.join(directory, entry.name))),
-  )
-}
-
-function createCleanup(snapshotRoot: string): () => Promise<void> {
-  let cleanup: Promise<void> | undefined
-  return () => {
-    cleanup ??= makeTreeRemovable(snapshotRoot).then(() => rm(snapshotRoot, { recursive: true, force: true }))
-    return cleanup
-  }
-}
-
 async function writeCapturedSymlink(
   root: string,
   file: Extract<LoadedRuntimeInput, Readonly<{ kind: 'symlink' }>>,
@@ -132,6 +136,10 @@ async function writeCapturedSymlink(
 
 async function writeCapturedDirectory(root: string, directory: string): Promise<void> {
   await mkdir(path.join(root, directory), { recursive: true })
+}
+
+async function writeGeneratedStorySnapshotEntry(root: string, entry: GeneratedStorySnapshotEntry): Promise<void> {
+  await mkdir(path.join(root, entry.path), { recursive: true })
 }
 
 async function materializeSnapshot(
@@ -184,62 +192,6 @@ function sha256(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-async function assertSnapshotDirectories(snapshotRoot: string, filePath: string): Promise<void> {
-  const parts = filePath.split('/').slice(0, -1)
-  const directories = parts.map((_, index) => path.join(snapshotRoot, ...parts.slice(0, index + 1)))
-  const statsByDirectory = await Promise.all(directories.map((directory) => lstat(directory).catch(() => undefined)))
-  for (const stats of statsByDirectory) {
-    if (stats === undefined || !stats.isDirectory() || stats.isSymbolicLink()) {
-      throw new Error(`Snapshot integrity check failed: ${filePath} has an unsafe directory`)
-    }
-  }
-}
-
-async function verifySnapshotFile(snapshotRoot: string, file: StoryManifest['files'][number]): Promise<void> {
-  await assertSnapshotDirectories(snapshotRoot, file.path)
-  const absolute = path.join(snapshotRoot, file.path)
-  const before = await lstat(absolute).catch(() => undefined)
-  if (before === undefined || !before.isFile() || before.isSymbolicLink()) {
-    throw new Error(`Snapshot integrity check failed: ${file.path} is not a regular file`)
-  }
-  let handle: Awaited<ReturnType<typeof open>> | undefined
-  try {
-    handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW)
-    const after = await handle.stat()
-    const bytes = await handle.readFile()
-    if (!after.isFile() || sha256(bytes) !== file.sha256) {
-      throw new Error(`Snapshot integrity check failed: ${file.path} hash changed`)
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Snapshot integrity check failed')) throw error
-    throw new Error(`Snapshot integrity check failed: ${file.path} cannot be read safely`, { cause: error })
-  } finally {
-    await handle?.close()
-  }
-}
-
-async function verifySnapshotRuntimeInput(
-  snapshotRoot: string,
-  input: StoryManifest['runtimeInputs']['files'][number],
-): Promise<void> {
-  if (input.kind === 'file') {
-    await verifySnapshotFile(snapshotRoot, input)
-    return
-  }
-  await assertSnapshotDirectories(snapshotRoot, input.path)
-  const absolute = path.join(snapshotRoot, input.path)
-  const entry = await lstat(absolute).catch(() => undefined)
-  if (entry === undefined || !entry.isSymbolicLink()) {
-    throw new Error(`Snapshot integrity check failed: ${input.path} is not a symbolic link`)
-  }
-  const target = await readlink(absolute).catch((error: unknown) => {
-    throw new Error(`Snapshot integrity check failed: ${input.path} cannot be read safely`, { cause: error })
-  })
-  if (target !== input.target || sha256(target) !== input.sha256) {
-    throw new Error(`Snapshot integrity check failed: ${input.path} symlink target changed`)
-  }
-}
-
 export async function createCandidateStorySnapshotSource(
   options: StorySnapshotOptions,
   dependencies: SnapshotDependencies = {},
@@ -272,22 +224,5 @@ export async function createCandidateStorySnapshotSource(
         signals.dispose()
       }
     },
-  }
-}
-
-export async function createCandidateStorySnapshot(
-  options: StorySnapshotOptions,
-  dependencies: SnapshotDependencies = {},
-): Promise<CandidateStorySnapshot> {
-  const source = await createCandidateStorySnapshotSource(options, dependencies)
-  const temporaryParent = await realpath(os.tmpdir())
-  const snapshotRoot = await mkdtemp(path.join(temporaryParent, 'papai-story-snapshot-'))
-  const cleanup = createCleanup(snapshotRoot)
-  try {
-    const materialized = await source.materialize(snapshotRoot)
-    return { root: snapshotRoot, manifest: source.manifest, ...materialized, cleanup }
-  } catch (error) {
-    await cleanup()
-    throw error
   }
 }

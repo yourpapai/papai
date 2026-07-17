@@ -6,7 +6,26 @@
 import { lstatSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
-import type { StorySandboxRequest } from './story-sandbox.js'
+import type { StoryDependencyPlatform } from './dependencies-install.js'
+
+export type StorySandboxBackend = 'linux-docker'
+
+const UNSUPPORTED_PLATFORMS: ReadonlySet<NodeJS.Platform> = new Set(['aix', 'freebsd', 'openbsd', 'sunos'])
+
+export type StorySandboxRequest = Readonly<{
+  platform: NodeJS.Platform
+  appRoot: string
+  dependencyRoot: string
+  tempRoot: string
+  reportPaths: readonly string[]
+  bunExecutable: string
+  command: readonly string[]
+}>
+
+export function selectStorySandboxBackend(platform: NodeJS.Platform): StorySandboxBackend {
+  if (UNSUPPORTED_PLATFORMS.has(platform)) throw new Error(`Story sandbox backend is not implemented for ${platform}`)
+  return 'linux-docker'
+}
 
 export const STORY_SANDBOX_LINUX_IMAGE =
   'docker.io/oven/bun:1.3.13@sha256:87416c977a612a204eb54ab9f3927023c2a3c971f4f345a01da08ea6262ae30e'
@@ -195,6 +214,11 @@ export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): rea
   ]
 }
 
+export function buildStorySandboxCommand(request: StorySandboxRequest): readonly string[] {
+  selectStorySandboxBackend(request.platform)
+  return buildLinuxStorySandboxCommand(request)
+}
+
 function defaultProcessRunner(command: readonly string[]): StorySandboxProcessResult {
   const child = Bun.spawnSync([...command], { stdout: 'pipe', stderr: 'pipe' })
   return {
@@ -219,4 +243,21 @@ export function assertLinuxStorySandboxBackend(run: StorySandboxProcessRunner = 
       `Story sandbox Docker image must run Bun ${REQUIRED_BUN_VERSION}, received ${JSON.stringify(version.stdout.trim())}`,
     )
   }
+}
+
+export function hostStoryDependencyPlatform(): StoryDependencyPlatform {
+  return { os: process.platform === 'win32' ? 'windows' : process.platform, cpu: process.arch }
+}
+
+const DOCKER_CPU: Readonly<Record<string, string>> = { amd64: 'x64', arm64: 'arm64' }
+
+export function resolveStoryDependencyPlatform(
+  run: StorySandboxProcessRunner = defaultProcessRunner,
+): Promise<StoryDependencyPlatform> {
+  const result = run(['docker', 'image', 'inspect', STORY_SANDBOX_LINUX_IMAGE, '--format', '{{.Os}}/{{.Architecture}}'])
+  if (result.exitCode !== 0) return Promise.resolve(hostStoryDependencyPlatform())
+  const [osName, architecture] = result.stdout.trim().split('/')
+  const cpu = architecture === undefined ? undefined : DOCKER_CPU[architecture]
+  if (osName !== 'linux' || cpu === undefined) return Promise.resolve(hostStoryDependencyPlatform())
+  return Promise.resolve({ os: osName, cpu })
 }

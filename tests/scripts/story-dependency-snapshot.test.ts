@@ -22,12 +22,9 @@ import { lstat, open as openFile, rename, type FileHandle } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 
-import { acquireStoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
-import type { StoryDependencyInstallerOptions } from '../../scripts/story-dependency-snapshot.js'
-import {
-  hostStoryDependencyPlatform,
-  resolveStoryDependencyPlatform,
-} from '../../scripts/story-manifest-dependencies.js'
+import { acquireStoryDependencySnapshot } from '../../scripts/story/dependencies.js'
+import type { StoryDependencyInstallerOptions } from '../../scripts/story/dependencies.js'
+import { hostStoryDependencyPlatform, resolveStoryDependencyPlatform } from '../../scripts/story/sandbox.js'
 
 const roots: string[] = []
 

@@ -9,31 +9,24 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
-import { parseStoryManifestArguments } from './story-manifest-arguments.js'
 import {
   currentStoryManifestCommit,
   loadBaselineRuntimeInputs,
   loadBaselineStoryFiles,
   resolveStoryManifestCommit,
-} from './story-manifest-baseline.js'
-import {
-  loadCandidateRuntimeInputTree,
-  loadCandidateStoryFiles,
-  type LoadedRuntimeInput,
-  type LoadedStoryFile,
-} from './story-manifest-candidate.js'
-import {
-  acquireCandidateDependencySnapshot,
-  type CandidateStoryManifestDependencies,
-} from './story-manifest-dependencies.js'
-import { candidateManifestEvidence } from './story-manifest-evidence.js'
-import { hashRuntimeTree } from './story-manifest-runtime.js'
-import { extractStoryScenarios } from './story-manifest-scenarios.js'
-import { removeStoryReport, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
-import { selectStorySandboxBackend, type StorySandboxBackend } from './story-sandbox.js'
+} from './baseline.js'
+import { acquireCandidateDependencySnapshot, type CandidateStoryManifestDependencies } from './dependencies.js'
+import type { StoryDependencySnapshot } from './dependencies.js'
+import { loadCandidateStoryFiles, type LoadedStoryFile } from './inputs.js'
+import { removeStoryReport } from './reports.js'
+import { hashRuntimeTree, loadCandidateRuntimeInputTree, type LoadedRuntimeInput } from './runtime-inputs.js'
+import { selectStorySandboxBackend, type StorySandboxBackend } from './sandbox.js'
+import { extractStoryScenarios } from './scenarios.js'
 
-export { parseStoryManifestArguments } from './story-manifest-arguments.js'
-export type { StorySandboxBackend } from './story-sandbox.js'
+export type { CandidateStoryManifestDependencies } from './dependencies.js'
+export type { LoadedStoryFile } from './inputs.js'
+export type { LoadedRuntimeInput } from './runtime-inputs.js'
+export type { StorySandboxBackend } from './sandbox.js'
 
 const FILE_HASH = /^[a-f0-9]{64}$/u
 
@@ -94,8 +87,6 @@ type ManifestOptions = Readonly<{
   sandboxBackend?: StorySandboxBackend
 }>
 type BaselineOptions = ManifestOptions & Readonly<{ ref: string }>
-export type { CandidateStoryManifestDependencies } from './story-manifest-dependencies.js'
-export type { LoadedRuntimeInput, LoadedStoryFile } from './story-manifest-candidate.js'
 export type CapturedCandidateStoryInputs = Readonly<{
   manifest: StoryManifest
   files: readonly LoadedStoryFile[]
@@ -141,6 +132,30 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
+type CandidateEvidenceMetadata = Readonly<{
+  bunVersion: string
+  dependencySnapshot?: StoryDependencySnapshot
+  sandboxBackend?: StorySandboxBackend
+}>
+
+function candidateManifestEvidence(metadata: CandidateEvidenceMetadata): Readonly<{
+  dependencySnapshot?: Readonly<{ key: string; treeHash: string; bunVersion: string }>
+  sandboxBackend?: StorySandboxBackend
+}> {
+  const dependencySnapshot =
+    metadata.dependencySnapshot === undefined
+      ? {}
+      : {
+          dependencySnapshot: {
+            key: metadata.dependencySnapshot.key,
+            treeHash: metadata.dependencySnapshot.treeHash,
+            bunVersion: metadata.bunVersion,
+          },
+        }
+  const sandboxBackend = metadata.sandboxBackend === undefined ? {} : { sandboxBackend: metadata.sandboxBackend }
+  return { ...dependencySnapshot, ...sandboxBackend }
+}
+
 function assembleManifest(
   loaded: readonly LoadedStoryFile[],
   runtimeInputFiles: readonly LoadedRuntimeInput[],
@@ -149,7 +164,7 @@ function assembleManifest(
     commit: string
     bunVersion: string
     seed: number
-    dependencySnapshot?: Awaited<ReturnType<typeof acquireCandidateDependencySnapshot>>
+    dependencySnapshot?: StoryDependencySnapshot
     sandboxBackend?: StorySandboxBackend
   }>,
 ): StoryManifest {
@@ -269,24 +284,5 @@ export async function writeStoryManifest(
       throw aggregate
     }
     throw error
-  }
-}
-
-async function main(): Promise<number> {
-  const outputPath = path.join(process.cwd(), STORY_MANIFEST_REPORT_PATH)
-  await removeStoryReport(outputPath)
-  const { seed } = parseStoryManifestArguments(process.argv.slice(2))
-  const manifest = await buildCandidateStoryManifest({ root: process.cwd(), seed })
-  await writeStoryManifest(manifest, outputPath)
-  console.log(`Story manifest: ${manifest.treeHash}`)
-  return 0
-}
-
-if (import.meta.main) {
-  try {
-    process.exitCode = await main()
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 2
   }
 }

@@ -9,15 +9,14 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, w
 import os from 'node:os'
 import path from 'node:path'
 
-import type { StoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
+import type { StoryDependencySnapshot } from '../../scripts/story/dependencies.js'
 import {
   buildBaselineStoryManifest,
   buildCandidateStoryManifest as acquireCandidateStoryManifest,
   compareStoryManifests,
-  parseStoryManifestArguments,
   StoryManifestSchema,
   writeStoryManifest,
-} from '../../scripts/story-manifest.js'
+} from '../../scripts/story/manifest.js'
 
 const roots: string[] = []
 const PROJECT_ROOT = path.resolve(import.meta.dir, '../..')
@@ -62,7 +61,7 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
   mkdirSync(path.join(root, 'tests/stories/harness'), { recursive: true })
   mkdirSync(path.join(root, 'tests/stories/user stories'), { recursive: true })
   mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
-  mkdirSync(path.join(root, 'scripts'), { recursive: true })
+  mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
   mkdirSync(path.join(root, 'src'), { recursive: true })
   mkdirSync(path.join(root, 'plugins/example'), { recursive: true })
   if (includesPublic) mkdirSync(path.join(root, 'public'), { recursive: true })
@@ -73,22 +72,15 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
     `scenario('alpha story', async ({ then }) => {\n  then.replyIn(context).equals('ok')\n  await then.task('A').exists()\n})\n` +
       `test('wrapped', async () => {\n  await executeScenario('nested story', async ({ then }) => {\n    then.responseStatus(response, 200)\n  })\n})\n`,
   )
-  writeFileSync(path.join(root, 'scripts/test-stories.ts'), 'runner enforcement')
-  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-cleanup.ts'), 'dependency cleanup enforcement')
-  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-installer.ts'), 'dependency installer enforcement')
-  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-key.ts'), 'dependency key enforcement')
-  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-root.ts'), 'dependency root enforcement')
-  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-symlink.ts'), 'dependency symlink enforcement')
-  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot-tree.ts'), 'dependency tree enforcement')
-  writeFileSync(path.join(root, 'scripts/story-dependency-snapshot.ts'), 'dependency snapshot enforcement')
-  writeFileSync(path.join(root, 'scripts/story-manifest-arguments.ts'), 'manifest arguments enforcement')
-  writeFileSync(path.join(root, 'scripts/story-manifest-dependencies.ts'), 'manifest dependency enforcement')
-  writeFileSync(path.join(root, 'scripts/story-manifest.ts'), 'manifest enforcement')
-  writeFileSync(path.join(root, 'scripts/story-reports.ts'), 'report enforcement')
-  writeFileSync(path.join(root, 'scripts/story-runner-arguments.ts'), 'argument enforcement')
-  writeFileSync(path.join(root, 'scripts/story-sandbox-linux.ts'), 'sandbox backend enforcement')
-  writeFileSync(path.join(root, 'scripts/story-sandbox.ts'), 'sandbox enforcement')
-  writeFileSync(path.join(root, 'scripts/test-story-sandbox.ts'), 'sandbox launcher enforcement')
+  writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'runner enforcement')
+  writeFileSync(path.join(root, 'scripts/story/dependencies-install.ts'), 'dependency installer enforcement')
+  writeFileSync(path.join(root, 'scripts/story/dependencies-tree.ts'), 'dependency tree enforcement')
+  writeFileSync(path.join(root, 'scripts/story/dependencies.ts'), 'dependency snapshot enforcement')
+  writeFileSync(path.join(root, 'scripts/story/cli.ts'), 'argument enforcement')
+  writeFileSync(path.join(root, 'scripts/story/manifest.ts'), 'manifest enforcement')
+  writeFileSync(path.join(root, 'scripts/story/reports.ts'), 'report enforcement')
+  writeFileSync(path.join(root, 'scripts/story/sandbox.ts'), 'sandbox enforcement')
+  writeFileSync(path.join(root, 'scripts/story/test-story-sandbox.ts'), 'sandbox launcher enforcement')
   writeFileSync(path.join(root, 'tests/setup.ts'), 'test setup')
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'test reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), `export * from './logger-mock.js'`)
@@ -126,22 +118,15 @@ describe('story manifest', () => {
     expect(repeated.treeHash).toBe(manifest.treeHash)
     expect(manifest.files.map(({ path: filePath }) => filePath)).toEqual([
       'bunfig.toml',
-      'scripts/story-dependency-snapshot-cleanup.ts',
-      'scripts/story-dependency-snapshot-installer.ts',
-      'scripts/story-dependency-snapshot-key.ts',
-      'scripts/story-dependency-snapshot-root.ts',
-      'scripts/story-dependency-snapshot-symlink.ts',
-      'scripts/story-dependency-snapshot-tree.ts',
-      'scripts/story-dependency-snapshot.ts',
-      'scripts/story-manifest-arguments.ts',
-      'scripts/story-manifest-dependencies.ts',
-      'scripts/story-manifest.ts',
-      'scripts/story-reports.ts',
-      'scripts/story-runner-arguments.ts',
-      'scripts/story-sandbox-linux.ts',
-      'scripts/story-sandbox.ts',
-      'scripts/test-stories.ts',
-      'scripts/test-story-sandbox.ts',
+      'scripts/story/cli.ts',
+      'scripts/story/dependencies-install.ts',
+      'scripts/story/dependencies-tree.ts',
+      'scripts/story/dependencies.ts',
+      'scripts/story/manifest.ts',
+      'scripts/story/reports.ts',
+      'scripts/story/sandbox.ts',
+      'scripts/story/test-stories.ts',
+      'scripts/story/test-story-sandbox.ts',
       'tests/mock-reset.ts',
       'tests/setup.ts',
       'tests/stories/harness/helper.ts',
@@ -395,12 +380,12 @@ describe('story manifest', () => {
     const root = fixture()
     const ref = git(root, 'rev-parse', 'HEAD')
     const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021 })
-    writeFileSync(path.join(root, 'scripts/story-manifest.ts'), 'changed enforcement')
-    writeFileSync(path.join(root, 'scripts/story-runner-new-guard.ts'), 'new enforcement')
+    writeFileSync(path.join(root, 'scripts/story/manifest.ts'), 'changed enforcement')
+    writeFileSync(path.join(root, 'scripts/story/new-guard.ts'), 'new enforcement')
     const candidate = await buildCandidateStoryManifest({ root, seed: 41021 })
 
-    expect(() => compareStoryManifests(candidate, baseline)).toThrow('changed: scripts/story-manifest.ts')
-    expect(() => compareStoryManifests(candidate, baseline)).toThrow('added: scripts/story-runner-new-guard.ts')
+    expect(() => compareStoryManifests(candidate, baseline)).toThrow('changed: scripts/story/manifest.ts')
+    expect(() => compareStoryManifests(candidate, baseline)).toThrow('added: scripts/story/new-guard.ts')
   })
 
   test('fails closed on symlinks in the candidate tree', async () => {
@@ -515,13 +500,11 @@ describe('story manifest', () => {
     const eligibility = manifest.scenarios.filter(({ id }) => id.includes('/eligibility.story.test.ts#'))
     const filePaths = manifest.files.map(({ path: filePath }) => filePath)
     const enforcementPaths = [
-      'scripts/test-stories.ts',
-      'scripts/story-manifest.ts',
-      'scripts/story-manifest-scenarios.ts',
-      'scripts/story-reports.ts',
-      'scripts/story-runner-arguments.ts',
-      'scripts/story-runner-environment.ts',
-      'scripts/story-runner-integers.ts',
+      'scripts/story/cli.ts',
+      'scripts/story/manifest.ts',
+      'scripts/story/reports.ts',
+      'scripts/story/scenarios.ts',
+      'scripts/story/test-stories.ts',
     ]
 
     expect(enforcementPaths.filter((enforcementPath) => !filePaths.includes(enforcementPath))).toEqual([])
@@ -542,41 +525,5 @@ describe('story manifest', () => {
         checkpoints: [],
       },
     ])
-  })
-
-  test('direct manifest CLI removes a stale standard manifest before a build failure', async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-cli-failure-'))
-    roots.push(root)
-    const report = path.join(root, 'reports/stories/manifest.json')
-    mkdirSync(path.dirname(report), { recursive: true })
-    writeFileSync(report, 'stale')
-    const script = path.join(PROJECT_ROOT, 'scripts/story-manifest.ts')
-    const child = Bun.spawn(['bun', script], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
-    await child.exited
-
-    expect(existsSync(report)).toBe(false)
-  })
-
-  test('direct manifest argument parser shares Bun integer lexical rules', () => {
-    expect(parseStoryManifestArguments(['--seed=+001'])).toEqual({ seed: 1 })
-    expect(parseStoryManifestArguments(['--seed', '0002'])).toEqual({ seed: 2 })
-    expect(() => parseStoryManifestArguments(['--seed=1e2'])).toThrow('--seed requires an integer')
-    expect(() => parseStoryManifestArguments(['--seed', '1.5'])).toThrow('--seed requires an integer')
-    expect(() => parseStoryManifestArguments(['--seed='])).toThrow('--seed requires a non-empty value')
-  })
-
-  test('direct manifest CLI clears stale output before rejecting malformed seed syntax', async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-cli-seed-'))
-    roots.push(root)
-    const report = path.join(root, 'reports/stories/manifest.json')
-    mkdirSync(path.dirname(report), { recursive: true })
-    writeFileSync(report, 'stale')
-    const script = path.join(PROJECT_ROOT, 'scripts/story-manifest.ts')
-    const child = Bun.spawn(['bun', script, '--seed=1e2'], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
-    const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-
-    expect(exitCode).toBe(2)
-    expect(stderr).toContain('--seed requires an integer')
-    expect(existsSync(report)).toBe(false)
   })
 })

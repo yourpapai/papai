@@ -3,23 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import pLimit from 'p-limit'
+
+import { compareText, isFrozenEnforcementPath, isFrozenTestSupportPath, type LoadedStoryFile } from './inputs.js'
 import {
   assertRuntimeSymlinkTarget,
-  isFrozenEnforcementPath,
-  isFrozenTestSupportPath,
   isRuntimeInputPath,
   REQUIRED_RUNTIME_DIRECTORY_ROOTS,
   REQUIRED_RUNTIME_FILE_ROOTS,
   type LoadedRuntimeInput,
   type LoadedRuntimeInputTree,
-  type LoadedStoryFile,
-} from './story-manifest-candidate.js'
+} from './runtime-inputs.js'
 
 const STORIES_PREFIX = 'tests/stories'
-
-function compareText(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0
-}
+const GIT_BLOB_CONCURRENCY = 16
 
 async function gitBytes(root: string, args: readonly string[], context: string): Promise<Uint8Array> {
   const child = Bun.spawn(['git', ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
@@ -93,12 +90,15 @@ async function loadBaselineFiles(
   const entries = [...parseGitTree(tree, selected, allowSymlinks)].sort((left, right) =>
     compareText(left.path, right.path),
   )
+  const limit = pLimit(GIT_BLOB_CONCURRENCY)
   return Promise.all(
-    entries.map(
-      async (entry): Promise<LoadedStoryFile> => ({
-        path: entry.path,
-        bytes: await gitBytes(root, ['cat-file', 'blob', entry.object], `Cannot read baseline blob ${entry.path}`),
-      }),
+    entries.map((entry) =>
+      limit(
+        async (): Promise<LoadedStoryFile> => ({
+          path: entry.path,
+          bytes: await gitBytes(root, ['cat-file', 'blob', entry.object], `Cannot read baseline blob ${entry.path}`),
+        }),
+      ),
     ),
   )
 }
@@ -141,14 +141,21 @@ export async function loadBaselineRuntimeInputs(root: string, commit: string): P
     ...REQUIRED_RUNTIME_FILE_ROOTS.filter((filePath) => !paths.includes(filePath)),
   ]
   if (missing.length > 0) throw new Error(`Baseline runtime inputs missing: ${missing.join(', ')}`)
+  const limit = pLimit(GIT_BLOB_CONCURRENCY)
   const files = await Promise.all(
-    entries.map(async (entry): Promise<LoadedRuntimeInput> => {
-      const bytes = await gitBytes(root, ['cat-file', 'blob', entry.object], `Cannot read baseline blob ${entry.path}`)
-      if (entry.mode !== '120000') return { kind: 'file', path: entry.path, bytes }
-      const target = new TextDecoder().decode(bytes)
-      assertRuntimeSymlinkTarget(root, entry.path, target)
-      return { kind: 'symlink', path: entry.path, target }
-    }),
+    entries.map((entry) =>
+      limit(async (): Promise<LoadedRuntimeInput> => {
+        const bytes = await gitBytes(
+          root,
+          ['cat-file', 'blob', entry.object],
+          `Cannot read baseline blob ${entry.path}`,
+        )
+        if (entry.mode !== '120000') return { kind: 'file', path: entry.path, bytes }
+        const target = new TextDecoder().decode(bytes)
+        assertRuntimeSymlinkTarget(root, entry.path, target)
+        return { kind: 'symlink', path: entry.path, target }
+      }),
+    ),
   )
   return { directories: runtimeDirectories(paths), files }
 }

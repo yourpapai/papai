@@ -10,8 +10,10 @@ import {
   lstatSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -20,8 +22,8 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 
-import type { StoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
-import { createCandidateStorySnapshot, StorySnapshotInterruptedError } from '../../scripts/story-runner-snapshot.js'
+import type { StoryDependencySnapshot } from '../../scripts/story/dependencies.js'
+import { createCandidateStorySnapshotSource, StorySnapshotInterruptedError } from '../../scripts/story/snapshot.js'
 
 const roots: string[] = []
 const TEST_DEPENDENCY_SNAPSHOT: StoryDependencySnapshot = {
@@ -29,18 +31,45 @@ const TEST_DEPENDENCY_SNAPSHOT: StoryDependencySnapshot = {
   root: '/dependency-cache/node_modules',
   treeHash: 'b'.repeat(64),
 }
-type SnapshotTestDependencies = NonNullable<Parameters<typeof createCandidateStorySnapshot>[1]>
+type SnapshotTestDependencies = NonNullable<Parameters<typeof createCandidateStorySnapshotSource>[1]>
 
-function createSnapshot(
+function makeRemovableTree(directory: string): void {
+  chmodSync(directory, 0o700)
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) makeRemovableTree(path.join(directory, entry.name))
+  }
+}
+
+async function createSnapshot(
   options: Readonly<{ root: string; seed: number; bunVersion?: string }>,
   dependencies: SnapshotTestDependencies = {},
-): ReturnType<typeof createCandidateStorySnapshot> {
-  return createCandidateStorySnapshot(options, {
+): Promise<
+  Readonly<{
+    root: string
+    manifest: Awaited<ReturnType<typeof createCandidateStorySnapshotSource>>['manifest']
+    verifyIntegrity(): Promise<void>
+    cleanup(): Promise<void>
+  }>
+> {
+  const source = await createCandidateStorySnapshotSource(options, {
     candidateCaptureDependencies: {
       acquireDependencySnapshot: (): Promise<StoryDependencySnapshot> => Promise.resolve(TEST_DEPENDENCY_SNAPSHOT),
     },
     ...dependencies,
   })
+  const snapshotRoot = mkdtempSync(path.join(realpathSync(os.tmpdir()), 'papai-story-snapshot-'))
+  const cleanup = (): Promise<void> => {
+    makeRemovableTree(snapshotRoot)
+    rmSync(snapshotRoot, { recursive: true, force: true })
+    return Promise.resolve()
+  }
+  try {
+    const materialized = await source.materialize(snapshotRoot)
+    return { root: snapshotRoot, manifest: source.manifest, verifyIntegrity: materialized.verifyIntegrity, cleanup }
+  } catch (error) {
+    await cleanup()
+    throw error
+  }
 }
 
 function requireInterruptedError(value: unknown): StorySnapshotInterruptedError {
@@ -66,7 +95,7 @@ function fixture(): string {
   roots.push(root)
   mkdirSync(path.join(root, 'tests/stories'), { recursive: true })
   mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
-  mkdirSync(path.join(root, 'scripts'), { recursive: true })
+  mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
   mkdirSync(path.join(root, 'src'), { recursive: true })
   mkdirSync(path.join(root, 'plugins/example'), { recursive: true })
   mkdirSync(path.join(root, 'public'), { recursive: true })
@@ -76,7 +105,7 @@ function fixture(): string {
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), 'helper')
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger')
-  writeFileSync(path.join(root, 'scripts/test-stories.ts'), 'captured runner')
+  writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'captured runner')
   writeFileSync(path.join(root, 'src/live.ts'), 'production v1')
   symlinkSync('live.ts', path.join(root, 'src/alias.ts'))
   writeFileSync(path.join(root, 'plugins/example/plugin.json'), '{"name":"example"}')

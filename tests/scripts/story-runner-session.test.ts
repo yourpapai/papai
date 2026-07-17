@@ -24,7 +24,7 @@ import { chmod, open, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { createStoryRunnerSession } from '../../scripts/story-runner-session.js'
+import { createStoryRunnerSession } from '../../scripts/story/session.js'
 
 const roots: string[] = []
 
@@ -119,7 +119,7 @@ function makeRemovable(root: string): void {
 function fixture(): Readonly<{ root: string; dependencyRoot: string }> {
   const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-session-'))
   roots.push(root)
-  for (const directory of ['tests/stories', 'tests/utils', 'scripts', 'src', 'plugins', 'public']) {
+  for (const directory of ['tests/stories', 'tests/utils', 'scripts/story', 'src', 'plugins', 'public']) {
     mkdirSync(path.join(root, directory), { recursive: true })
   }
   writeFileSync(path.join(root, 'tests/stories/preload.ts'), 'preload')
@@ -128,7 +128,7 @@ function fixture(): Readonly<{ root: string; dependencyRoot: string }> {
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), 'helpers')
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger')
-  writeFileSync(path.join(root, 'scripts/test-stories.ts'), 'runner')
+  writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'runner')
   writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime v1')
   writeFileSync(path.join(root, 'package.json'), '{"name":"fixture"}')
   writeFileSync(path.join(root, 'bun.lock'), 'lock')

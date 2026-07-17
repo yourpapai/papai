@@ -3,11 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { lstat, readdir } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { constants } from 'node:fs'
+import { lstat, open, readdir, readlink } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { StoryManifest } from './story-manifest.js'
-import type { GeneratedStorySnapshotEntry } from './story-runner-snapshot-generated.js'
+import type { StoryManifest } from './manifest.js'
+
+export type GeneratedStorySnapshotEntry = Readonly<{ kind: 'directory'; path: 'node_modules' }>
 
 type SnapshotEntryKind = 'directory' | 'file' | 'symlink' | 'opaque-directory'
 type SnapshotControlFile = Readonly<{ path: string; sha256: string }>
@@ -124,4 +127,64 @@ export function verifySnapshotTopology(
     verifyExpectedEntries(snapshotRoot, expected),
     verifyDirectoryTopology(expected, snapshotRoot, ''),
   ]).then(() => undefined)
+}
+
+function sha256(bytes: Uint8Array | string): string {
+  return createHash('sha256').update(bytes).digest('hex')
+}
+
+async function assertSnapshotDirectories(snapshotRoot: string, filePath: string): Promise<void> {
+  const parts = filePath.split('/').slice(0, -1)
+  const directories = parts.map((_, index) => path.join(snapshotRoot, ...parts.slice(0, index + 1)))
+  const statsByDirectory = await Promise.all(directories.map((directory) => lstat(directory).catch(() => undefined)))
+  for (const stats of statsByDirectory) {
+    if (stats === undefined || !stats.isDirectory() || stats.isSymbolicLink()) {
+      throw new Error(`Snapshot integrity check failed: ${filePath} has an unsafe directory`)
+    }
+  }
+}
+
+export async function verifySnapshotFile(snapshotRoot: string, file: StoryManifest['files'][number]): Promise<void> {
+  await assertSnapshotDirectories(snapshotRoot, file.path)
+  const absolute = path.join(snapshotRoot, file.path)
+  const before = await lstat(absolute).catch(() => undefined)
+  if (before === undefined || !before.isFile() || before.isSymbolicLink()) {
+    throw new Error(`Snapshot integrity check failed: ${file.path} is not a regular file`)
+  }
+  let handle: Awaited<ReturnType<typeof open>> | undefined
+  try {
+    handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const after = await handle.stat()
+    const bytes = await handle.readFile()
+    if (!after.isFile() || sha256(bytes) !== file.sha256) {
+      throw new Error(`Snapshot integrity check failed: ${file.path} hash changed`)
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Snapshot integrity check failed')) throw error
+    throw new Error(`Snapshot integrity check failed: ${file.path} cannot be read safely`, { cause: error })
+  } finally {
+    await handle?.close()
+  }
+}
+
+export async function verifySnapshotRuntimeInput(
+  snapshotRoot: string,
+  input: StoryManifest['runtimeInputs']['files'][number],
+): Promise<void> {
+  if (input.kind === 'file') {
+    await verifySnapshotFile(snapshotRoot, input)
+    return
+  }
+  await assertSnapshotDirectories(snapshotRoot, input.path)
+  const absolute = path.join(snapshotRoot, input.path)
+  const entry = await lstat(absolute).catch(() => undefined)
+  if (entry === undefined || !entry.isSymbolicLink()) {
+    throw new Error(`Snapshot integrity check failed: ${input.path} is not a symbolic link`)
+  }
+  const target = await readlink(absolute).catch((error: unknown) => {
+    throw new Error(`Snapshot integrity check failed: ${input.path} cannot be read safely`, { cause: error })
+  })
+  if (target !== input.target || sha256(target) !== input.sha256) {
+    throw new Error(`Snapshot integrity check failed: ${input.path} symlink target changed`)
+  }
 }

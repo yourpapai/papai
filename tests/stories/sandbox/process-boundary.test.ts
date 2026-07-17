@@ -8,12 +8,11 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 
-import type { StoryManifest } from '../../../scripts/story-manifest.js'
-import { spawnStorySandboxedChild, type SpawnedStoryChild } from '../../../scripts/story-runner-child.js'
-import type { StoryRunnerSession } from '../../../scripts/story-runner-session.js'
-import { assertLinuxStorySandboxBackend } from '../../../scripts/story-sandbox-linux.js'
-import { buildStorySandboxCommand } from '../../../scripts/story-sandbox.js'
-import { classifyStorySandboxDockerMode } from '../../../scripts/test-story-sandbox.js'
+import { spawnStorySandboxedChild, type SpawnedStoryChild } from '../../../scripts/story/child.js'
+import type { StoryManifest } from '../../../scripts/story/manifest.js'
+import { assertLinuxStorySandboxBackend, buildStorySandboxCommand } from '../../../scripts/story/sandbox.js'
+import type { StoryRunnerSession } from '../../../scripts/story/session.js'
+import { classifyStorySandboxDockerMode } from '../../../scripts/story/test-story-sandbox.js'
 
 const operations = [
   'file-import',

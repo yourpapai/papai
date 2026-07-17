@@ -6,9 +6,13 @@ import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, realpath, rm, sy
 import os from 'node:os'
 import path from 'node:path'
 
-import type { StoryDependencyPlatform, StoryDependencySnapshot } from './story-dependency-snapshot.js'
-import { acquireCandidateDependencySnapshot, resolveStoryDependencyPlatform } from './story-manifest-dependencies.js'
-import type { StoryManifest, StorySandboxBackend } from './story-manifest.js'
+import {
+  acquireStoryDependencySnapshot,
+  storyDependencyCacheRoot,
+  type StoryDependencyPlatform,
+  type StoryDependencySnapshot,
+} from './dependencies.js'
+import type { StoryManifest } from './manifest.js'
 import {
   copyReports,
   createReportFiles,
@@ -16,13 +20,13 @@ import {
   type ReportMapping,
   type SessionFileSystem,
   verifyReportFiles,
-} from './story-runner-session-reports.js'
+} from './reports.js'
+import { resolveStoryDependencyPlatform, selectStorySandboxBackend, type StorySandboxBackend } from './sandbox.js'
 import {
   createCandidateStorySnapshotSource,
   type CandidateStorySnapshotSource,
   type SnapshotDependencies,
-} from './story-runner-snapshot.js'
-import { selectStorySandboxBackend } from './story-sandbox.js'
+} from './snapshot.js'
 
 export type StoryRunnerSession = Readonly<{
   root: string
@@ -129,40 +133,42 @@ export async function createStoryRunnerSession(
     ...options,
     sandboxBackend: options.sandboxBackend ?? selectStorySandboxBackend(process.platform),
   }
-  const dependency = await acquireSessionDependency(selectedOptions, dependencies)
-  await verifyDependencySnapshotSeal(dependency, fs)
-  const source = await captureSessionSource(selectedOptions, dependencies, dependency)
+  const acquired = await acquireSessionDependency(selectedOptions, dependencies)
+  await verifyDependencySnapshotSeal(acquired.dependency, fs)
+  const source = await captureSessionSource(selectedOptions, dependencies, acquired)
   if (source.manifest.sandboxBackend !== selectedOptions.sandboxBackend) {
     throw new Error('Story session manifest does not record the selected sandbox backend')
   }
-  return materializeSession(selectedOptions, source, dependency, fs)
+  return materializeSession(selectedOptions, source, acquired.dependency, fs)
 }
 
 async function acquireSessionDependency(
   options: StoryRunnerSessionOptions,
   dependencies: StoryRunnerSessionDependencies,
-): Promise<StoryDependencySnapshot> {
+): Promise<Readonly<{ dependency: StoryDependencySnapshot; platform: StoryDependencyPlatform }>> {
   const bunVersion = options.bunVersion ?? Bun.version
-  if (dependencies.acquireDependencySnapshot === undefined) {
-    return acquireCandidateDependencySnapshot(options.root, bunVersion, {})
-  }
   const platform = await (dependencies.inspectDependencyPlatform ?? resolveStoryDependencyPlatform)()
-  return dependencies.acquireDependencySnapshot({
+  const acquire = dependencies.acquireDependencySnapshot ?? acquireStoryDependencySnapshot
+  const dependency = await acquire({
     projectRoot: options.root,
-    cacheRoot: process.env['PAPAI_STORY_DEPENDENCY_CACHE_ROOT'] ?? path.join(options.root, '.story-dependencies'),
+    cacheRoot: storyDependencyCacheRoot(),
     bunVersion,
     platform,
   })
+  return { dependency, platform }
 }
 
 function captureSessionSource(
   options: StoryRunnerSessionOptions,
   dependencies: StoryRunnerSessionDependencies,
-  dependency: StoryDependencySnapshot,
+  acquired: Readonly<{ dependency: StoryDependencySnapshot; platform: StoryDependencyPlatform }>,
 ): Promise<CandidateStorySnapshotSource> {
   const sourceFactory = dependencies.createSnapshotSource ?? createCandidateStorySnapshotSource
   return sourceFactory(options, {
-    candidateCaptureDependencies: { acquireDependencySnapshot: () => Promise.resolve(dependency) },
+    candidateCaptureDependencies: {
+      acquireDependencySnapshot: () => Promise.resolve(acquired.dependency),
+      inspectDependencyPlatform: () => Promise.resolve(acquired.platform),
+    },
   })
 }
 

@@ -20,13 +20,12 @@ import { rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { acquireStoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
-import { resolveStoryDependencyPlatform } from '../../scripts/story-manifest-dependencies.js'
-import { buildCandidateStoryManifest, type StoryManifest, writeStoryManifest } from '../../scripts/story-manifest.js'
-import { resolveReporterOutfiles } from '../../scripts/story-runner-arguments.js'
-import type { StoryRunnerSession } from '../../scripts/story-runner-session.js'
-import type { StorySandboxRequest } from '../../scripts/story-sandbox.js'
-import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/test-stories.js'
+import { acquireStoryDependencySnapshot } from '../../scripts/story/dependencies.js'
+import { buildCandidateStoryManifest, type StoryManifest, writeStoryManifest } from '../../scripts/story/manifest.js'
+import { resolveStoryDependencyPlatform } from '../../scripts/story/sandbox.js'
+import type { StorySandboxRequest } from '../../scripts/story/sandbox.js'
+import type { StoryRunnerSession } from '../../scripts/story/session.js'
+import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/story/test-stories.js'
 
 const manifest = (treeHash: string): StoryManifest => ({
   version: 4,
@@ -133,14 +132,15 @@ describe('story runner reports and compatibility', () => {
     } as StoryRunnerSession
     const dependencies = {
       cwd: '/repo',
-      env: { HOME: '/must-not-leak' },
+      env: { HOME: '/docker-client-home', SECRET_TOKEN: 'must-not-leak' },
       spawn: mock((command: readonly string[], options: Parameters<typeof Bun.spawn>[1]) => {
         actions.push('spawn')
         expect(command).toEqual(['docker', 'run', 'sandboxed', '/bun', 'test'])
         expect(options?.cwd).toBe(session.appRoot)
         expect(options?.env?.['TMPDIR']).toBe(session.tempRoot)
         expect(options?.env?.['PAPAI_STORY_EXECUTION_ROOT']).toBe(session.appRoot)
-        expect(options?.env?.['HOME']).toBeUndefined()
+        expect(options?.env?.['HOME']).toBe('/docker-client-home')
+        expect(options?.env?.['SECRET_TOKEN']).toBeUndefined()
         return { exited: Promise.resolve(0), kill: (): void => undefined }
       }),
       buildCandidateManifest: () => Promise.resolve(candidate),
@@ -441,68 +441,6 @@ describe('story runner reports and compatibility', () => {
     expect(parsed.forwarded).toEqual(['--seed=7', '--reporter', 'dots'])
   })
 
-  test.each([
-    ['split', ['--reporter-outfile', '../../outside.xml']],
-    ['equals', ['--reporter-outfile=/tmp/outside.xml']],
-  ])('rejects a %s reporter outfile outside the live report directory', (_form, argv) => {
-    const parsed = parseStoryRunnerArguments(argv)
-
-    expect(() => resolveReporterOutfiles(parsed.forwarded, '/repo')).toThrow(
-      'Story reporter outfile must stay within /repo/reports/stories',
-    )
-  })
-
-  test.each([
-    ['split', ['--reporter-outfile', 'reports/stories/custom.xml']],
-    ['equals', ['--reporter-outfile=./reports/stories/custom.xml']],
-  ])('resolves a %s canonical reporter outfile within the live report directory', (_form, argv) => {
-    const parsed = parseStoryRunnerArguments(argv)
-
-    expect(resolveReporterOutfiles(parsed.forwarded, '/repo').join(' ')).toContain('/repo/reports/stories/custom.xml')
-  })
-
-  test('rejects a bare reporter outfile instead of resolving it outside the live report directory', () => {
-    const parsed = parseStoryRunnerArguments(['--reporter-outfile', 'custom.xml'])
-
-    expect(() => resolveReporterOutfiles(parsed.forwarded, '/repo')).toThrow(
-      'Story reporter outfile must stay within /repo/reports/stories',
-    )
-  })
-
-  test('rejects a reporter outfile through an existing report-directory symlink', () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-reporter-link-'))
-    const outside = mkdtempSync(path.join(os.tmpdir(), 'papai-story-reporter-outside-'))
-    try {
-      mkdirSync(path.join(root, 'reports/stories'), { recursive: true })
-      symlinkSync(outside, path.join(root, 'reports/stories/external'))
-      const parsed = parseStoryRunnerArguments(['--reporter-outfile', 'reports/stories/external/custom.xml'])
-
-      expect(() => resolveReporterOutfiles(parsed.forwarded, root)).toThrow(
-        'Story reporter outfile must not traverse symbolic links',
-      )
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-      rmSync(outside, { recursive: true, force: true })
-    }
-  })
-
-  test('rejects a reporter outfile through an existing reports ancestor symlink', () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-reporter-root-link-'))
-    const outside = mkdtempSync(path.join(os.tmpdir(), 'papai-story-reporter-root-outside-'))
-    try {
-      mkdirSync(path.join(outside, 'stories'), { recursive: true })
-      symlinkSync(outside, path.join(root, 'reports'))
-      const parsed = parseStoryRunnerArguments(['--reporter-outfile', 'reports/stories/custom.xml'])
-
-      expect(() => resolveReporterOutfiles(parsed.forwarded, root)).toThrow(
-        'Story reporter outfile must not traverse symbolic links',
-      )
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-      rmSync(outside, { recursive: true, force: true })
-    }
-  })
-
   test('an explicit baseline ref implies compatibility without a separate flag', () => {
     const parsed = parseStoryRunnerArguments(['--baseline-ref=abc1234'])
 
@@ -693,7 +631,7 @@ describe('story runner reports and compatibility', () => {
     try {
       mkdirSync(path.join(root, 'tests/stories'), { recursive: true })
       mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
-      mkdirSync(path.join(root, 'scripts'), { recursive: true })
+      mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
       mkdirSync(path.join(root, 'src'), { recursive: true })
       mkdirSync(path.join(root, 'plugins'), { recursive: true })
       writeFileSync(path.join(root, 'bunfig.toml'), '[test]')
@@ -727,7 +665,7 @@ describe('story runner reports and compatibility', () => {
       runGit(root, 'config', 'commit.gpgsign', 'false')
       runGit(root, 'add', '--', 'tests/stories')
       runGit(root, 'commit', '-qm', 'candidate')
-      const runner = path.resolve(import.meta.dir, '../../scripts/test-stories.ts')
+      const runner = path.resolve(import.meta.dir, '../../scripts/story/test-stories.ts')
       const child = Bun.spawn(['bun', runner, '--manifest-only', '--baseline-ref=missing-ref'], {
         cwd: root,
         env: { ...process.env, PAPAI_STORY_DEPENDENCY_CACHE_ROOT: dependencyCacheRoot },

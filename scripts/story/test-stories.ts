@@ -5,20 +5,19 @@
 
 import path from 'node:path'
 
+import { spawnStorySandboxedChild, type SpawnedStoryChild } from './child.js'
+import { type ParsedStoryRunnerArguments, parseStoryRunnerArguments, STORY_SEED } from './cli.js'
 import {
   buildBaselineStoryManifest,
   buildCandidateStoryManifest,
   compareStoryManifests,
   type StoryManifest,
   writeStoryManifest,
-} from './story-manifest.js'
-import { removeStoryReport, STORY_JUNIT_REPORT_PATH, STORY_MANIFEST_REPORT_PATH } from './story-reports.js'
-import { type ParsedStoryRunnerArguments, parseStoryRunnerArguments, STORY_SEED } from './story-runner-arguments.js'
-import { spawnStorySandboxedChild, type SpawnedStoryChild } from './story-runner-child.js'
-import { createStoryRunnerSession, type StoryRunnerSession } from './story-runner-session.js'
-import { StorySnapshotInterruptedError } from './story-runner-snapshot.js'
-import { assertLinuxStorySandboxBackend } from './story-sandbox-linux.js'
-import { selectStorySandboxBackend, type StorySandboxRequest } from './story-sandbox.js'
+} from './manifest.js'
+import { removeStoryReport, STORY_JUNIT_REPORT_PATH, STORY_MANIFEST_REPORT_PATH } from './reports.js'
+import { assertLinuxStorySandboxBackend, selectStorySandboxBackend, type StorySandboxRequest } from './sandbox.js'
+import { createStoryRunnerSession, type StoryRunnerSession } from './session.js'
+import { StorySnapshotInterruptedError } from './snapshot.js'
 
 export { parseStoryRunnerArguments, STORY_SEED }
 

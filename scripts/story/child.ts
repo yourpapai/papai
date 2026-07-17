@@ -5,10 +5,9 @@
 
 import path from 'node:path'
 
-import type { ParsedStoryRunnerArguments } from './story-runner-arguments.js'
-import { sanitizedStoryEnvironment } from './story-runner-environment.js'
-import type { StoryRunnerSession } from './story-runner-session.js'
-import { buildStorySandboxCommand, type StorySandboxRequest } from './story-sandbox.js'
+import type { ParsedStoryRunnerArguments } from './cli.js'
+import { buildStorySandboxCommand, type StorySandboxRequest } from './sandbox.js'
+import type { StoryRunnerSession } from './session.js'
 
 export type SpawnedStoryChild = Readonly<{
   exited: Promise<number>
@@ -23,6 +22,21 @@ export type StoryChildDependencies = Readonly<{
   bunExecutable?: string
 }>
 
+const HOST_ENVIRONMENT_PASSTHROUGH = ['PATH', 'CI', 'HOME', 'DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_CONFIG'] as const
+
+export function sanitizedStoryEnvironment(
+  source: Record<string, string | undefined>,
+  tempRoot: string,
+): Record<string, string> {
+  const env = Object.fromEntries(
+    HOST_ENVIRONMENT_PASSTHROUGH.flatMap((key) => (source[key] === undefined ? [] : [[key, source[key]] as const])),
+  )
+  env['TMPDIR'] = tempRoot
+  env['TZ'] = 'UTC'
+  env['PAPAI_STORY_RUNNER'] = '1'
+  return env
+}
+
 function childCommand(
   parsed: ParsedStoryRunnerArguments,
   session: StoryRunnerSession,
@@ -32,7 +46,6 @@ function childCommand(
   return [
     bunExecutable,
     'test',
-    '--no-env-file',
     `--config=${path.join(session.appRoot, 'scripts/snapshot-bunfig.toml')}`,
     '--path-ignore-patterns',
     '',
@@ -73,9 +86,5 @@ export function spawnStorySandboxedChild(
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',
-    ipc(message) {
-      if (message === 'PAPAI_STORY_CHILD_READY') console.log('CHILD_READY')
-      if (message === 'PAPAI_STORY_CHILD_SIGTERM') console.log('CHILD_SIGTERM')
-    },
   })
 }
