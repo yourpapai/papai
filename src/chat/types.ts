@@ -289,4 +289,11 @@ export type ChatProvider = {
     emoji: string | null,
     previousEmoji?: string | null,
   ) => Promise<boolean>
+  /** Like sendMessageReturningId, but renders interactive buttons. Absent on providers that don't support proactive buttons; the router falls back to markdown. */
+  sendButtonsReturningId: (
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+    buttons: ChatButton[],
+  ) => Promise<string | null>
 }>

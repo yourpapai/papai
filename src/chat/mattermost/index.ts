@@ -6,11 +6,11 @@
 import { logger } from '../../logger.js'
 import { getSettingsPublicBaseUrl } from '../../settings/config.js'
 import type {
+  ChatButton,
   ChatProvider,
   CommandHandler,
   ContextRendered,
   ContextSnapshot,
-  ContextType,
   DeferredDeliveryTarget,
   IncomingInteraction,
   IncomingMessage,
@@ -30,26 +30,27 @@ import { makeMattermostApiFetch } from './api-fetch.js'
 import { triggerMattermostCatchUpOnHello } from './catch-up-deps.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
-import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
 import { renderMattermostContext } from './context-renderer.js'
 import {
   downloadMattermostFile,
   parsePostedEvent,
-  resolveMattermostPostFiles,
   resolveMattermostUserId,
   uploadMattermostFile,
 } from './file-helpers.js'
 import { resolveMattermostGroupLabel, resolveMattermostUserLabel } from './label-helpers.js'
-import { determineMattermostThreadId, normalizeMattermostMessageText } from './message-normalization.js'
 import { mattermostCapabilities, mattermostConfigRequirements, mattermostTraits } from './metadata.js'
+import { buildMattermostPostedMessage } from './posted-message-builder.js'
 import {
   cachePostOnly as cachePostOnlyPipeline,
   processPost as processPostPipeline,
   type PostedMessageResult,
 } from './process-post.js'
 import { setMattermostReaction } from './reactions.js'
-import { buildMattermostReplyContext } from './reply-context.js'
-import { createMattermostReplyFn, sendMattermostDeferredMessage } from './reply-helpers.js'
+import {
+  createMattermostReplyFn,
+  sendMattermostDeferredButtons,
+  sendMattermostDeferredMessage,
+} from './reply-helpers.js'
 import { MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
 import { connectMattermostWebSocket } from './websocket.js'
 
@@ -103,6 +104,21 @@ export class MattermostChatProvider implements ChatProvider {
 
   async sendMessageReturningId(_pi: string, target: DeferredDeliveryTarget, markdown: string): Promise<string | null> {
     return (await sendMattermostDeferredMessage(this.botUserId, target, markdown, this.apiFetch.bind(this))) ?? null
+  }
+
+  async sendButtonsReturningId(
+    _pi: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+    buttons: ChatButton[],
+  ): Promise<string | null> {
+    const created = await sendMattermostDeferredButtons(this.botUserId, target, markdown, buttons, {
+      platformInstanceId: this.platformInstanceId,
+      callbackBaseUrl: getSettingsPublicBaseUrl(),
+      createActionContext: (input) => createMattermostActionContext(input, getMattermostActionSigningSecret()),
+      apiFetch: this.apiFetch.bind(this),
+    })
+    return created ?? null
   }
 
   isGroupAdmin(_platformInstanceId: string, groupId: string, userId: string): Promise<boolean> {
@@ -188,55 +204,20 @@ export class MattermostChatProvider implements ChatProvider {
     return Promise.resolve()
   }
 
-  async buildPostedMessage(
+  buildPostedMessage(
     post: MattermostPost,
     senderName: string | undefined,
     replyToMessageId: string | undefined,
   ): Promise<PostedMessageResult> {
-    const api = this.apiFetch.bind(this)
-    const replyContext =
-      replyToMessageId === undefined ? undefined : await buildMattermostReplyContext(post, replyToMessageId, api)
-    const channelInfo: MattermostChannelInfo = await fetchMattermostChannelInfo(api, post.channel_id)
-    const contextType: ContextType = channelInfo.type === 'D' ? 'dm' : 'group'
-    const teamId = contextType === 'group' ? channelInfo.team_id : undefined
-    const teamInfo = teamId === undefined ? null : await fetchMattermostTeamInfo(api, teamId)
-    const isAdmin = await checkChannelAdmin(post.channel_id, post.user_id, api)
-    const normalized = normalizeMattermostMessageText(post.message, this.botUsername)
-    const isMentioned = normalized.isMentioned
-    const threadId = determineMattermostThreadId(post, isMentioned, contextType, replyToMessageId)
-    const reply = this.buildReplyFn(post.channel_id, post.id, threadId)
-    const command = normalized.commandInput === null ? null : this.matchCommand(normalized.commandInput)
-    const uname = post.user_name
-    const username = typeof uname === 'string' ? uname : typeof senderName === 'string' ? senderName : null
-    const dispName = typeof channelInfo.display_name === 'string' ? channelInfo.display_name : channelInfo.name
-    const contextName =
-      contextType === 'group' ? (typeof dispName === 'string' ? dispName : post.channel_id) : undefined
-    const pt = contextType === 'group' ? teamInfo : null
-    const contextParentName = pt === null ? undefined : typeof pt.display_name === 'string' ? pt.display_name : pt.name
-    const { files, fileCandidates } = await resolveMattermostPostFiles(
-      post.file_ids,
-      contextType === 'group',
-      this.apiFetch.bind(this),
-      (fid) => downloadMattermostFile(this.baseUrl, this.token, fid),
-    )
-    const msg: IncomingMessage = {
-      user: { id: post.user_id, username, isAdmin },
-      contextId: post.channel_id,
-      contextType,
-      contextName,
-      contextParentName,
-      isMentioned,
-      text: normalized.text,
+    return buildMattermostPostedMessage(post, senderName, replyToMessageId, {
       platformInstanceId: this.platformInstanceId,
-      commandMatch: command === null ? undefined : command.match,
-      messageId: post.id,
-      replyToMessageId,
-      replyContext,
-      threadId,
-      ...(files ? { files } : {}),
-      ...(fileCandidates ? { fileCandidates } : {}),
-    }
-    return { msg, reply, command, isAdmin }
+      botUsername: this.botUsername,
+      baseUrl: this.baseUrl,
+      token: this.token,
+      apiFetch: this.apiFetch.bind(this),
+      buildReplyFn: this.buildReplyFn.bind(this),
+      matchCommand: this.matchCommand.bind(this),
+    })
   }
 
   private matchCommand(text: string): { handler: CommandHandler; match: string } | null {
