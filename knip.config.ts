@@ -95,15 +95,18 @@ export default {
 
   ignoreIssues: {
     // Test-seam shims: exports exist only for tests; production modules keep
-    // the symbols (they mutate module-private state and cannot move).
+    // the symbols (most mutate module-private state and cannot move).
     'src/**/*.testing.ts': ['exports', 'types'],
     'client/**/*.testing.ts': ['exports', 'types'],
     // Plugin entry-point default exports, provider classes, and validateConfig
     // are resolved dynamically by the plugin loader (path-based import +
     // manifest `providerConfigValidator`); bridge modules (runtime,
-    // auto-provision, provision, client) are consumed through
-    // import.meta.require() chains knip cannot trace. No static consumer exists.
-    'plugins/*/{index,validate-config,provider,runtime,auto-provision,provision,client}.ts': ['exports'],
+    // auto-provision, provision) are consumed through import.meta.require()
+    // chains knip cannot trace. No static consumer exists.
+    'plugins/*/{index,validate-config,provider,runtime,auto-provision,provision}.ts': ['exports'],
+    // Task-provider plugin clients are reached only via those same dynamic
+    // bridges. Scoped to task-provider-* so other plugins' clients stay checked.
+    'plugins/task-provider-*/client.ts': ['exports'],
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     'strybk.config.ts': ['exports'],
