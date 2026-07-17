@@ -7,6 +7,12 @@ See LICENSE in the project root for details.
 
 # App-local dependencies for hermetic story sessions
 
+**Status:** Superseded by
+[`2026-07-17-hermetic-story-zero-copy-dependencies-design.md`](./2026-07-17-hermetic-story-zero-copy-dependencies-design.md)
+(read-only bind mount instead of per-run copy) after
+[`2026-07-14-hermetic-story-docker-all-hosts-design.md`](./2026-07-14-hermetic-story-docker-all-hosts-design.md)
+retired the Seatbelt backend this layout was built for.
+
 ## Decision
 
 Every story-runner session materializes the verified dependency snapshot at

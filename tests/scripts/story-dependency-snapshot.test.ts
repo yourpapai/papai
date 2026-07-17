@@ -18,7 +18,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { lstat, open as openFile, type FileHandle } from 'node:fs/promises'
+import { lstat, open as openFile, rename, type FileHandle } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -419,6 +419,35 @@ describe('story dependency snapshot', () => {
     expect(result).toEqual(winner)
     expect(existsSync(winnerRoot)).toBe(true)
     expect(readdirSync(cacheRoot)).toEqual([winner.key])
+  })
+
+  test('keeps a published entry when post-publication verification fails transiently', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    const options = { projectRoot, cacheRoot, bunVersion: '1.2.3' }
+    const readActual = (target: string): Promise<Stats> => lstat(target)
+    const transientFailure = (): Promise<Stats> =>
+      Promise.reject(Object.assign(new Error('transient EMFILE'), { code: 'EMFILE' }))
+    const lstatByTarget = new Map<string, typeof readActual>()
+    const readSnapshotEntry = (target: string): Promise<Stats> => {
+      const action = mappedAction(lstatByTarget, target, readActual)
+      lstatByTarget.delete(target)
+      return action(target)
+    }
+
+    await expect(
+      acquireStoryDependencySnapshot(options, {
+        install: installer([]),
+        lstat: readSnapshotEntry,
+        rename: (source: string, destination: string): Promise<void> => {
+          lstatByTarget.set(destination, transientFailure)
+          return rename(source, destination)
+        },
+      }),
+    ).rejects.toThrow('EMFILE')
+
+    expect(readdirSync(cacheRoot)).toHaveLength(1)
+    const second = await acquireStoryDependencySnapshot(options, { install: installer([]) })
+    expect(second.key).toMatch(/^[a-f0-9]{64}$/u)
   })
 
   test('rejects a symlinked cache root before installing dependencies', async () => {

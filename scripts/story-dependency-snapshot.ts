@@ -234,7 +234,7 @@ export async function acquireStoryDependencySnapshot(
     }
     return await verifyEntry(entryRoot, expected, deps)
   } catch (error) {
-    await removeDependencyCacheTree(published ? entryRoot : staging, deps)
+    if (!published) await removeDependencyCacheTree(staging, deps)
     throw error
   }
 }
