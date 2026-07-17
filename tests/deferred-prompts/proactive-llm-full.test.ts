@@ -9,7 +9,7 @@ import type { ToolSet } from 'ai'
 
 import { userCachesForTesting } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { saveMemoryProfile } from '../../src/long-term-memory/store.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'

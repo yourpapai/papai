@@ -6,7 +6,8 @@
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { getConfig, setConfig } from '../../src/config.js'
+import { getConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { makeGetTaskTool } from '../../src/tools/get-task.js'
 import { mockLogger, setupTestDb, getToolExecutor } from '../utils/test-helpers.js'
 import { createMockProvider, createMockYouTrackProvider } from './mock-provider.js'

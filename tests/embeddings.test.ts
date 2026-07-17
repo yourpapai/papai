@@ -9,7 +9,7 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { llmUsageEvents } from '../src/db/schema.js'
 import { getEmbedding, getEmbeddingForContext, tryGetEmbedding } from '../src/embeddings.js'
-import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
 import { mockLogger, seedAdminLlmBinding, setupTestDb } from './utils/test-helpers.js'
 
 type EmbedResult = { embedding: number[]; usage?: { tokens: number } }

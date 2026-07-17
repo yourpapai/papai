@@ -15,7 +15,7 @@ import {
   toScopedThreadContextId,
 } from '../../src/chat/scoped-context.js'
 import { appendHistory } from '../../src/history.js'
-import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import { mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 type GenerateTextResult = {

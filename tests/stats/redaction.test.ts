@@ -24,7 +24,8 @@ import {
   users,
   webCache,
 } from '../../src/db/schema.js'
-import { clearStatsCacheForTesting, getGlobalStats, getSubjectStats } from '../../src/stats/index.js'
+import { getGlobalStats, getSubjectStats } from '../../src/stats/index.js'
+import { clearStatsCacheForTesting } from '../../src/stats/index.testing.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 const FORBIDDEN_MARKERS = [

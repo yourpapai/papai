@@ -6,13 +6,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
-  fetchAdminIdentity,
   fetchAdminIdentityMappings,
   fetchDeferredPrompts,
   fetchMemos,
   fetchRecentRequests,
   fetchRecurringTasks,
 } from '../../../client/admin/fetchers.js'
+import { fetchAdminIdentity } from '../../../client/admin/fetchers.testing.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []

@@ -5,14 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import {
-  adminSections,
-  adminState,
-  refreshAll,
-  setSection,
-  setWindow,
-  syncSectionFromLocation,
-} from '../../../client/admin/admin.svelte.js'
+import { adminSections, adminState, refreshAll, setSection, setWindow } from '../../../client/admin/admin.svelte.js'
+import { syncSectionFromLocation } from '../../../client/admin/admin.testing.js'
 import { adminGlobals } from '../../../client/admin/global-stats.svelte.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 

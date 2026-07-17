@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { buildScheduleUpdates } from '../../src/deferred-prompts/schedule-update-helpers.js'
 import { executeCreate, executeList } from '../../src/deferred-prompts/tool-handlers.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'

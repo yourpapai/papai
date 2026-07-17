@@ -8,7 +8,8 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { updateByokLlmConfig } from '../../src/byok-llm/store.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { llmUsageEvents } from '../../src/db/schema.js'
-import { clearLlmAdminCacheForTesting, createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
+import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import { mockLogger, seedAdminLlmBinding, setupTestDb } from '../utils/test-helpers.js'
 
 const MAX_EXCERPT_CHARS = 8_000
