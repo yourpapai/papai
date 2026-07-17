@@ -7,8 +7,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { routeInteraction } from '../../src/chat/interaction-router.js'
 import { askPermissionViaChat, resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.js'
+import { getConfigContextIdFromStorageContextId } from '../../src/chat/scoped-context.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
-import { createMockReply } from '../utils/test-helpers.js'
+import { kvGet, kvSet } from '../../src/plugins/store.js'
+import { createMockReply, setupTestDb } from '../utils/test-helpers.js'
 
 const auth = (allowed: boolean, storageContextId = 'tg:u1'): AuthorizationResult => ({
   allowed,
@@ -255,5 +257,75 @@ describe('routeInteraction (post-retirement)', () => {
     expect(handled).toBe(true)
     expect(spyHandle.remove.mock.calls).toHaveLength(0)
     expect(replacements).toEqual(['Run `delete_task`?\n\nDenied delete_task 🚫'])
+  })
+})
+
+describe('routeInteraction (mperm: magi permission buttons)', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('mperm click resolves the stored toolCallId to magi and confirms', async () => {
+    const cbid = 'abc123'
+    const configContextId = getConfigContextIdFromStorageContextId('tg:u1')
+    kvSet('nerv-magi-permission', configContextId, cbid, JSON.stringify({ sessionId: 'sess-1', toolCallId: 'mcp-1' }))
+    const posted: Array<{ sessionId: string; toolCallId: string; decision: string }> = []
+    const { reply } = createMockReply()
+    const replacements: string[] = []
+    reply.replaceText = (content: string): Promise<void> => {
+      replacements.push(content)
+      return Promise.resolve()
+    }
+
+    const handled = await routeInteraction(interaction(`mperm:a:${cbid}`), reply, auth(true), {
+      resolveMagiPermission: (sessionId: string, toolCallId: string, decision: string) => {
+        posted.push({ sessionId, toolCallId, decision })
+        return Promise.resolve(true)
+      },
+    })
+
+    expect(handled).toBe(true)
+    expect(posted).toEqual([{ sessionId: 'sess-1', toolCallId: 'mcp-1', decision: 'allow' }])
+    expect(replacements[0]).toContain('Allowed')
+  })
+
+  test('mperm click on an unknown cbid says no longer available and does not call magi', async () => {
+    let called = false
+    const { reply, getReplies } = createMockReply()
+
+    const handled = await routeInteraction(interaction('mperm:d:missing'), reply, auth(true), {
+      resolveMagiPermission: () => {
+        called = true
+        return Promise.resolve(true)
+      },
+    })
+
+    expect(handled).toBe(true)
+    expect(called).toBe(false)
+    expect(getReplies()[0]).toContain('no longer available')
+  })
+
+  test('tombstones the ask before the magi POST so a double-click cannot double-resolve', async () => {
+    const cbid = 'abc456'
+    const configContextId = getConfigContextIdFromStorageContextId('tg:u1')
+    kvSet('nerv-magi-permission', configContextId, cbid, JSON.stringify({ sessionId: 'sess-1', toolCallId: 'mcp-1' }))
+    let callCount = 0
+    const { reply: reply1 } = createMockReply()
+    const { reply: reply2, getReplies: getReplies2 } = createMockReply()
+    const deps = {
+      resolveMagiPermission: (): Promise<boolean> => {
+        callCount++
+        return Promise.resolve(true)
+      },
+    }
+
+    const first = await routeInteraction(interaction(`mperm:a:${cbid}`), reply1, auth(true), deps)
+    const second = await routeInteraction(interaction(`mperm:a:${cbid}`), reply2, auth(true), deps)
+
+    expect(first).toBe(true)
+    expect(second).toBe(true)
+    expect(callCount).toBe(1)
+    expect(getReplies2()[0]).toContain('no longer available')
+    expect(kvGet('nerv-magi-permission', configContextId, cbid)).toBe('')
   })
 })
