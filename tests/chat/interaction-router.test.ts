@@ -328,4 +328,46 @@ describe('routeInteraction (mperm: magi permission buttons)', () => {
     expect(getReplies2()[0]).toContain('no longer available')
     expect(kvGet('nerv-magi-permission', configContextId, cbid)).toBe('')
   })
+
+  test('restores the kv entry and asks for a retry when the magi POST fails', async () => {
+    const cbid = 'abc789'
+    const configContextId = getConfigContextIdFromStorageContextId('tg:u1')
+    const original = JSON.stringify({ sessionId: 'sess-1', toolCallId: 'mcp-1' })
+    kvSet('nerv-magi-permission', configContextId, cbid, original)
+    const { reply, getReplies } = createMockReply()
+    const replacements: string[] = []
+    reply.replaceText = (content: string): Promise<void> => {
+      replacements.push(content)
+      return Promise.resolve()
+    }
+
+    const handled = await routeInteraction(interaction(`mperm:a:${cbid}`), reply, auth(true), {
+      resolveMagiPermission: () => Promise.resolve(false),
+    })
+
+    expect(handled).toBe(true)
+    expect(kvGet('nerv-magi-permission', configContextId, cbid)).toBe(original)
+    expect(replacements).toHaveLength(0)
+    expect(getReplies()[0]).toContain('Could not reach the approval service')
+    expect(getReplies()[0]).toContain('again')
+  })
+
+  test('mperm click on a malformed kv entry says no longer available, does not throw, and does not call magi', async () => {
+    const cbid = 'abcdef'
+    const configContextId = getConfigContextIdFromStorageContextId('tg:u1')
+    kvSet('nerv-magi-permission', configContextId, cbid, '{not json')
+    let called = false
+    const { reply, getReplies } = createMockReply()
+
+    const handled = await routeInteraction(interaction(`mperm:a:${cbid}`), reply, auth(true), {
+      resolveMagiPermission: () => {
+        called = true
+        return Promise.resolve(true)
+      },
+    })
+
+    expect(handled).toBe(true)
+    expect(called).toBe(false)
+    expect(getReplies()[0]).toContain('no longer available')
+  })
 })

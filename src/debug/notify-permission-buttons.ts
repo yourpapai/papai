@@ -52,6 +52,9 @@ export const tryPermissionButtons = async (
   }
   if (!outcome.supported || !outcome.delivered) return false
   const configContextId = getConfigContextIdFromStorageContextId(body.contextId)
+  // If magi re-sends a needs_permission notify for the same toolCallId (at-least-once delivery),
+  // this renders an independent button pair per notify; we rely on magi's PermissionEngine being
+  // idempotent against a second decision for an already-settled toolCallId.
   kvSet(PERMISSION_KV_PLUGIN_ID, configContextId, cbid, JSON.stringify({ sessionId: magiSessionId, toolCallId }))
   return true
 }

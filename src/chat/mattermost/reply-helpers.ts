@@ -262,10 +262,10 @@ export async function sendMattermostDeferredButtons(
   buttons: ChatButton[],
   deps: MattermostButtonSendDeps,
 ): Promise<string | undefined> {
-  const { channelId, message, rootId } = await resolveMattermostPost(botUserId, target, markdown, deps.apiFetch)
   if (deps.callbackBaseUrl === null) {
     throw new Error('Mattermost interactive buttons require SETTINGS_PUBLIC_BASE_URL')
   }
+  const { channelId, message, rootId } = await resolveMattermostPost(botUserId, target, markdown, deps.apiFetch)
   const actions = buildActions(
     message,
     { buttons },

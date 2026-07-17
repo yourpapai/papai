@@ -30,33 +30,9 @@ interface RouteDeps {
   resolveMagiPermission: typeof resolveMagiPermission
 }
 
-async function routeMagiPermission(
-  interaction: IncomingInteraction,
-  reply: ReplyFn,
-  auth: AuthorizationResult,
-  code: string,
-  cbid: string,
-  deps: RouteDeps,
-): Promise<void> {
-  const decision = permissionDecisionFromCode(code)
-  const configContextId = getConfigContextIdFromStorageContextId(auth.storageContextId)
-  const raw = kvGet(PERMISSION_KV_PLUGIN_ID, configContextId, cbid)
-  if (raw === undefined || raw === '') {
-    await reply.text('Action is no longer available.')
-    return
-  }
-  const parsedEntry = magiPermissionKvEntrySchema.safeParse(JSON.parse(raw))
-  // Tombstone before the magi POST so a double-click (or a retry) can never resolve the same ask twice.
-  kvSet(PERMISSION_KV_PLUGIN_ID, configContextId, cbid, '')
-  if (!parsedEntry.success) {
-    await reply.text('This request is no longer available.')
-    return
-  }
-  const entry = parsedEntry.data
-  const ok = await deps.resolveMagiPermission(entry.sessionId, entry.toolCallId, decision)
-  const confirmation = ok ? formatDecisionConfirmation('the request', decision) : 'This request is no longer available.'
-  const src = interaction.sourceMessageText
-  const content = src === undefined ? confirmation : `${src.trimEnd()}\n\n${confirmation}`
+// Shared by both permission-decision routes: prefer editing the prompt in place, falling back to
+// a plain text reply when the platform has no replaceText or the edit itself fails.
+async function replaceOrSendText(reply: ReplyFn, content: string): Promise<void> {
   if (reply.replaceText !== undefined) {
     try {
       await reply.replaceText(content)
@@ -67,6 +43,72 @@ async function routeMagiPermission(
     }
   }
   await reply.text(content)
+}
+
+type MagiPermissionKvValue =
+  | { kind: 'malformed' }
+  | { kind: 'invalid' }
+  | { kind: 'ok'; entry: { sessionId: string; toolCallId: string } }
+
+// A malformed (non-JSON) kv value is treated the same as a missing entry: JSON.parse must never
+// throw out of this handler, per the router's "never throws" contract.
+function parseMagiPermissionKvValue(raw: string): MagiPermissionKvValue {
+  let parsedJson: unknown
+  try {
+    parsedJson = JSON.parse(raw)
+  } catch {
+    return { kind: 'malformed' }
+  }
+  const parsedEntry = magiPermissionKvEntrySchema.safeParse(parsedJson)
+  if (!parsedEntry.success) return { kind: 'invalid' }
+  return { kind: 'ok', entry: parsedEntry.data }
+}
+
+async function routeMagiPermission(
+  interaction: IncomingInteraction,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+  code: string,
+  cbid: string,
+  deps: RouteDeps,
+): Promise<void> {
+  const decision = permissionDecisionFromCode(code)
+  // This ask is authorized at config-context (channel/DM) granularity by design: papai's
+  // checkAuthorizationExtended gate is already channel-wide, and cbid is high-entropy and
+  // only ever exposed inside the HMAC-signed button, so config-context keying is sufficient
+  // (exact thread-level storageContextId comparison could false-reject valid clicks whose
+  // notify- vs click-derived id formats differ).
+  const configContextId = getConfigContextIdFromStorageContextId(auth.storageContextId)
+  const raw = kvGet(PERMISSION_KV_PLUGIN_ID, configContextId, cbid)
+  if (raw === undefined || raw === '') {
+    await reply.text('Action is no longer available.')
+    return
+  }
+  const parsed = parseMagiPermissionKvValue(raw)
+  if (parsed.kind === 'malformed') {
+    await reply.text('This request is no longer available.')
+    return
+  }
+  // Tombstone before the magi POST so a double-click (or a retry) can never resolve the same ask twice.
+  kvSet(PERMISSION_KV_PLUGIN_ID, configContextId, cbid, '')
+  if (parsed.kind === 'invalid') {
+    await reply.text('This request is no longer available.')
+    return
+  }
+  const { entry } = parsed
+  const ok = await deps.resolveMagiPermission(entry.sessionId, entry.toolCallId, decision)
+  if (!ok) {
+    // The magi POST failed (network/restart/5xx), not the user's decision being invalid.
+    // Restore the entry so a retried click within the HMAC TTL can still resolve the ask,
+    // and leave the prompt buttons intact instead of redacting them.
+    kvSet(PERMISSION_KV_PLUGIN_ID, configContextId, cbid, raw)
+    await reply.text('Could not reach the approval service — please tap Allow or Deny again.')
+    return
+  }
+  const confirmation = formatDecisionConfirmation('the request', decision)
+  const src = interaction.sourceMessageText
+  const content = src === undefined ? confirmation : `${src.trimEnd()}\n\n${confirmation}`
+  await replaceOrSendText(reply, content)
 }
 
 async function finalizePermissionDecision(
