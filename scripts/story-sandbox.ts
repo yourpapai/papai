@@ -12,6 +12,7 @@ const UNSUPPORTED_PLATFORMS: ReadonlySet<NodeJS.Platform> = new Set(['aix', 'fre
 export type StorySandboxRequest = Readonly<{
   platform: NodeJS.Platform
   appRoot: string
+  dependencyRoot: string
   tempRoot: string
   reportPaths: readonly string[]
   bunExecutable: string

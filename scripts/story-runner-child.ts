@@ -58,6 +58,7 @@ export function spawnStorySandboxedChild(
   const sandboxCommand = buildSandbox({
     platform: dependencies.platform ?? process.platform,
     appRoot: session.appRoot,
+    dependencyRoot: session.dependencyRoot,
     tempRoot: session.tempRoot,
     reportPaths: session.childReportPaths,
     bunExecutable,

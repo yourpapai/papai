@@ -141,6 +141,10 @@ export async function hashDependencyTree(
   return hash.digest('hex')
 }
 
+export async function assertDependencyTreeSealed(root: string, deps: DependencyTreeDependencies): Promise<void> {
+  await collectDependencyTree(root, root, deps, true)
+}
+
 async function canonicalDependencySymlinkTarget(
   root: string,
   target: string,

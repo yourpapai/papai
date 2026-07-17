@@ -316,6 +316,24 @@ describe('story dependency snapshot', () => {
     ).resolves.toEqual(snapshot)
   })
 
+  test('rejects an absolute dependency symlink that would break inside the sandbox mount', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    const options = { projectRoot, cacheRoot, bunVersion: '1.2.3' }
+
+    await expect(
+      acquireStoryDependencySnapshot(options, {
+        install: (installerOptions): Promise<void> => {
+          const dependencies = path.join(installerOptions.cwd, 'node_modules/example')
+          mkdirSync(dependencies, { recursive: true })
+          const target = path.join(dependencies, 'target.js')
+          writeFileSync(target, 'export default 1\n')
+          symlinkSync(target, path.join(dependencies, 'absolute-link.js'))
+          return Promise.resolve()
+        },
+      }),
+    ).rejects.toThrow('Unsafe story dependency symlink')
+  })
+
   test('does not publish an entry when staging seal fails', async () => {
     const { projectRoot, cacheRoot } = fixture()
     const normalChmod = (target: string, mode: number): Promise<void> => {

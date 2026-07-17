@@ -42,7 +42,7 @@ function fixture(): Readonly<{
   roots.push(root)
   const appRoot = path.join(root, 'session', 'app')
   const dependencyCacheRoot = path.join(root, 'dependency-cache', 'node_modules')
-  const dependencyRoot = path.join(appRoot, 'node_modules')
+  const dependencyMountpoint = path.join(appRoot, 'node_modules')
   const tempRoot = path.join(root, 'session', 'tmp')
   const reportsRoot = path.join(root, 'session', 'reports')
   const outsideRoot = path.join(root, 'session', 'outside')
@@ -50,7 +50,7 @@ function fixture(): Readonly<{
   for (const directory of [
     appRoot,
     dependencyCacheRoot,
-    dependencyRoot,
+    dependencyMountpoint,
     tempRoot,
     reportsRoot,
     outsideRoot,
@@ -60,8 +60,8 @@ function fixture(): Readonly<{
   }
   writeFileSync(path.join(appRoot, 'source.txt'), 'captured source')
   writeFileSync(path.join(appRoot, 'package.json'), '{"name":"sandbox-fixture"}')
-  writeFileSync(path.join(dependencyRoot, 'dependency.txt'), 'captured dependency')
-  const packageRoot = path.join(dependencyRoot, '@fixture', 'dependency')
+  writeFileSync(path.join(dependencyCacheRoot, 'dependency.txt'), 'captured dependency')
+  const packageRoot = path.join(dependencyCacheRoot, '@fixture', 'dependency')
   mkdirSync(packageRoot, { recursive: true })
   writeFileSync(path.join(packageRoot, 'package.json'), '{"name":"@fixture/dependency","exports":"./index.ts"}')
   writeFileSync(path.join(packageRoot, 'index.ts'), "export const capturedDependency = 'captured dependency module'\n")
@@ -72,6 +72,7 @@ function fixture(): Readonly<{
     request: {
       platform: 'darwin',
       appRoot: realpathSync(appRoot),
+      dependencyRoot: realpathSync(dependencyCacheRoot),
       tempRoot: realpathSync(tempRoot),
       reportPaths: [realpathSync(path.join(reportsRoot, 'junit.xml'))],
       bunExecutable: realpathSync(process.execPath),
@@ -186,7 +187,7 @@ describe('Linux story sandbox', () => {
   })
 
   test('builds a pinned, capability-restricted Docker command with only declared mounts', () => {
-    const { request, liveRoot } = fixture()
+    const { request, dependencyCacheRoot, liveRoot } = fixture()
 
     const command = buildStorySandboxCommand({ ...request, platform: 'linux' })
 
@@ -213,10 +214,9 @@ describe('Linux story sandbox', () => {
     ]) {
       expect(command).toContain(argument)
     }
-    expect('dependencyRoot' in request).toBe(false)
-    expect(command.filter((argument) => argument === '--mount')).toHaveLength(3)
+    expect(command.filter((argument) => argument === '--mount')).toHaveLength(4)
     expect(command).toContain(`type=bind,src=${request.appRoot},dst=/session/app,readonly`)
-    expect(command).not.toContain('dst=/session/node_modules')
+    expect(command).toContain(`type=bind,src=${dependencyCacheRoot},dst=/session/app/node_modules,readonly`)
     expect(command).toContain(`type=bind,src=${request.tempRoot},dst=/session/tmp`)
     expect(command).toContain(`type=bind,src=${request.reportPaths[0]},dst=/session/reports/junit.xml`)
     expect(command).toContain('TMPDIR=/session/tmp')
@@ -229,6 +229,23 @@ describe('Linux story sandbox', () => {
     expect(command).not.toContain(liveRoot)
     expect(command).not.toContain(os.homedir())
     expect(command.some((argument) => argument.includes(os.tmpdir()))).toBe(true)
+  })
+
+  test('rejects a dependency root that is unsafe for the app-local mount', () => {
+    const { request } = fixture()
+    const nested = path.join(request.appRoot, 'vendor', 'node_modules')
+    mkdirSync(nested, { recursive: true })
+
+    expect(() => buildStorySandboxCommand({ ...request, dependencyRoot: 'relative' })).toThrow('absolute')
+    expect(() =>
+      buildStorySandboxCommand({ ...request, dependencyRoot: `${request.dependencyRoot}/../node_modules` }),
+    ).toThrow('canonical')
+    expect(() => buildStorySandboxCommand({ ...request, dependencyRoot: realpathSync(nested) })).toThrow(
+      'inside the app root',
+    )
+    expect(() =>
+      buildStorySandboxCommand({ ...request, dependencyRoot: realpathSync(path.dirname(request.dependencyRoot)) }),
+    ).toThrow('node_modules')
   })
 
   test('rejects a Linux command whose host Bun executable is not the declared command', () => {

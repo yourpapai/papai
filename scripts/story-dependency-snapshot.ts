@@ -27,7 +27,11 @@ import {
 } from './story-dependency-snapshot-installer.js'
 import { dependencySnapshotKey } from './story-dependency-snapshot-key.js'
 import { ensurePrivateDependencyCacheRoot } from './story-dependency-snapshot-root.js'
-import { hashDependencyTree, safeReadDependencyFile } from './story-dependency-snapshot-tree.js'
+import {
+  assertDependencyTreeSealed,
+  hashDependencyTree,
+  safeReadDependencyFile,
+} from './story-dependency-snapshot-tree.js'
 import { loadStoryWorkspaceManifests, type StoryWorkspaceManifest } from './story-dependency-snapshot-workspaces.js'
 
 export type { StoryDependencyInstallerOptions } from './story-dependency-snapshot-installer.js'
@@ -131,6 +135,7 @@ async function verifyEntry(
   entryRoot: string,
   expected: Readonly<{ key: string; bunVersion: string }>,
   deps: Dependencies,
+  options: Readonly<{ fingerprint?: boolean }> = {},
 ): Promise<StoryDependencySnapshot> {
   try {
     const entry = await deps.lstat(entryRoot)
@@ -147,9 +152,13 @@ async function verifyEntry(
       await safeReadDependencyFile(path.join(entryRoot, MANIFEST_FILE), MANIFEST_FILE, deps),
       expected,
     )
-    const treeHash = await hashDependencyTree(nodeModules, deps, true)
-    if (treeHash !== manifest.treeHash) throw new Error('tree fingerprint does not match manifest')
-    return { key: expected.key, root: nodeModules, treeHash }
+    if (options.fingerprint === true) {
+      const treeHash = await hashDependencyTree(nodeModules, deps, true)
+      if (treeHash !== manifest.treeHash) throw new Error('tree fingerprint does not match manifest')
+    } else {
+      await assertDependencyTreeSealed(nodeModules, deps)
+    }
+    return { key: expected.key, root: nodeModules, treeHash: manifest.treeHash }
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Story dependency cache entry is invalid')) throw error
     throw new Error(
@@ -203,7 +212,7 @@ export async function acquireStoryDependencySnapshot(
   try {
     await createStagingEntry(staging, packageBytes, lockBytes, workspaceManifests, expected, deps)
     await sealDependencyCacheTree(staging, deps)
-    await verifyEntry(staging, expected, deps)
+    await verifyEntry(staging, expected, deps, { fingerprint: true })
     try {
       await deps.rename(staging, entryRoot)
       published = true

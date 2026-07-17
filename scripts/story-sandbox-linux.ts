@@ -66,6 +66,16 @@ function canonicalFile(value: string, label: string): string {
   return resolved
 }
 
+function canonicalDependencyRoot(value: string, appRoot: string): string {
+  const resolved = canonicalDirectory(value, 'dependency root')
+  if (path.basename(resolved) !== 'node_modules') throw new Error('Story sandbox dependency root must be node_modules')
+  const relative = path.relative(appRoot, resolved)
+  if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
+    throw new Error('Story sandbox dependency root must not be inside the app root')
+  }
+  return resolved
+}
+
 function sessionOutputs(appRoot: string, tempRoot: string, reportPaths: readonly string[]): readonly string[] {
   if (path.basename(appRoot) !== 'app') throw new Error('Story sandbox app root must be the session app directory')
   const sessionRoot = path.dirname(appRoot)
@@ -139,6 +149,7 @@ function translateLinuxSessionPath(
 
 export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): readonly string[] {
   const appRoot = canonicalDirectory(request.appRoot, 'app root')
+  const dependencyRoot = canonicalDependencyRoot(request.dependencyRoot, appRoot)
   const tempRoot = canonicalDirectory(request.tempRoot, 'temporary root')
   const reports = sessionOutputs(appRoot, tempRoot, request.reportPaths)
   const bunExecutable = canonicalFile(request.bunExecutable, 'bun executable')
@@ -175,6 +186,7 @@ export function buildLinuxStorySandboxCommand(request: StorySandboxRequest): rea
     '--env',
     'PAPAI_STORY_EXECUTION_ROOT=/session/app',
     ...dockerMount(appRoot, '/session/app', true),
+    ...dockerMount(dependencyRoot, '/session/app/node_modules', true),
     ...dockerMount(tempRoot, '/session/tmp'),
     ...reportMounts,
     STORY_SANDBOX_LINUX_IMAGE,

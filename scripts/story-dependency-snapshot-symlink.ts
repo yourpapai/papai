@@ -33,6 +33,7 @@ export async function assertSafeDependencySymlink(
   requireReadOnly: boolean,
 ): Promise<string> {
   const linkTarget = await deps.readlink(target)
+  if (path.isAbsolute(linkTarget)) throw new Error(`Unsafe story dependency symlink: ${relative}`)
   const resolved = await deps.realpath(path.resolve(path.dirname(target), linkTarget)).catch((error: unknown) => {
     throw new Error(`Unsafe story dependency symlink: ${relative}`, { cause: error })
   })

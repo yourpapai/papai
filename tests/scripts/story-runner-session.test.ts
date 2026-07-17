@@ -13,7 +13,6 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
-  readlinkSync,
   realpathSync,
   readdirSync,
   rmSync,
@@ -29,13 +28,12 @@ import { createStoryRunnerSession } from '../../scripts/story-runner-session.js'
 
 const roots: string[] = []
 
-function dependencyTreeHash(withAbsoluteInternalLink = false): string {
+function dependencyTreeHash(): string {
   const hash = createHash('sha256').update('papai-story-dependency-tree-v2\0')
   const entries: [string, string, string][] = [
     ['directory', '@scope', ''],
     ['directory', '@scope/pkg', ''],
   ]
-  if (withAbsoluteInternalLink) entries.push(['symlink', '@scope/pkg/absolute-alias.js', '@scope/pkg/payload.js'])
   entries.push(
     ['symlink', '@scope/pkg/alias.js', '@scope/pkg/payload.js'],
     ['file', '@scope/pkg/payload.js', 'export const value = 1\n'],
@@ -118,7 +116,7 @@ function makeRemovable(root: string): void {
   chmodSync(root, 0o700)
 }
 
-function fixture(withAbsoluteInternalLink = false): Readonly<{ root: string; dependencyRoot: string }> {
+function fixture(): Readonly<{ root: string; dependencyRoot: string }> {
   const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-session-'))
   roots.push(root)
   for (const directory of ['tests/stories', 'tests/utils', 'scripts', 'src', 'plugins', 'public']) {
@@ -141,12 +139,6 @@ function fixture(withAbsoluteInternalLink = false): Readonly<{ root: string; dep
   mkdirSync(path.join(dependencyRoot, '@scope', 'pkg'), { recursive: true })
   writeFileSync(path.join(dependencyRoot, '@scope', 'pkg', 'payload.js'), 'export const value = 1\n')
   symlinkSync('payload.js', path.join(dependencyRoot, '@scope', 'pkg', 'alias.js'))
-  if (withAbsoluteInternalLink) {
-    symlinkSync(
-      path.join(dependencyRoot, '@scope', 'pkg', 'payload.js'),
-      path.join(dependencyRoot, '@scope', 'pkg', 'absolute-alias.js'),
-    )
-  }
   chmodSync(path.join(dependencyRoot, '@scope'), 0o500)
   chmodSync(path.join(dependencyRoot, '@scope', 'pkg'), 0o500)
   chmodSync(path.join(dependencyRoot, '@scope', 'pkg', 'payload.js'), 0o400)
@@ -169,7 +161,7 @@ afterEach(() => {
 })
 
 describe('story runner session', () => {
-  test('materializes an immutable app-local dependency tree with only temp and reports siblings', async () => {
+  test('exposes the sealed dependency cache through an empty read-only app mountpoint', async () => {
     const { root, dependencyRoot } = fixture()
     mkdirSync(path.join(root, 'node_modules'), { recursive: true })
     writeFileSync(path.join(root, 'node_modules', 'captured.txt'), 'live dependency')
@@ -187,13 +179,12 @@ describe('story runner session', () => {
       expect(path.dirname(session.root)).toBe(realpathSync(os.tmpdir()))
       expect(path.relative(root, session.root).startsWith(`..${path.sep}`)).toBe(true)
       expect(readdirSync(session.root).sort()).toEqual(['app', 'reports', 'tmp'])
-      expect(lstatSync(path.join(session.appRoot, 'node_modules')).isDirectory()).toBe(true)
-      expect(lstatSync(path.join(session.appRoot, 'node_modules')).isSymbolicLink()).toBe(false)
-      expect(readFileSync(path.join(session.appRoot, 'node_modules', 'captured.txt'), 'utf8')).toBe('dependency v1')
-      expect(readFileSync(path.join(session.appRoot, 'node_modules/@scope/pkg/payload.js'), 'utf8')).toBe(
-        'export const value = 1\n',
-      )
-      expect(readlinkSync(path.join(session.appRoot, 'node_modules/@scope/pkg/alias.js'))).toBe('payload.js')
+      expect(session.dependencyRoot).toBe(dependencyRoot)
+      const mountpoint = path.join(session.appRoot, 'node_modules')
+      expect(lstatSync(mountpoint).isDirectory()).toBe(true)
+      expect(lstatSync(mountpoint).isSymbolicLink()).toBe(false)
+      expect(statSync(mountpoint).mode & 0o222).toBe(0)
+      expect(readdirSync(mountpoint)).toEqual([])
       expect(session.childReporterArguments).toEqual([
         '--reporter-outfile',
         path.join(session.root, 'reports/junit.xml'),
@@ -203,34 +194,12 @@ describe('story runner session', () => {
       expect(lstatSync(path.join(session.root, 'reports/junit.xml')).isFile()).toBe(true)
       expect(readdirSync(path.join(session.root, 'reports'))).toEqual(['junit.xml'])
       writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime v2')
-      writeFileSync(path.join(root, 'node_modules', 'captured.txt'), 'live dependency v2')
       expect(readFileSync(path.join(session.appRoot, 'src/runtime.ts'), 'utf8')).toBe('runtime v1')
-      expect(readFileSync(path.join(session.appRoot, 'node_modules', 'captured.txt'), 'utf8')).toBe('dependency v1')
       await session.verifyIntegrity()
     } finally {
       await session.cleanup()
     }
     expect(existsSync(session.root)).toBe(false)
-  })
-
-  test('rewrites an absolute cache-internal symlink for the app-local dependency tree', async () => {
-    const { root, dependencyRoot } = fixture(true)
-    const session = await createStoryRunnerSession(
-      { root, seed: 41021, reporterArguments: [] },
-      {
-        acquireDependencySnapshot: () =>
-          Promise.resolve({ key: 'a'.repeat(64), root: dependencyRoot, treeHash: dependencyTreeHash(true) }),
-      },
-    )
-    try {
-      expect(readlinkSync(path.join(session.appRoot, 'node_modules/@scope/pkg/absolute-alias.js'))).toBe('payload.js')
-      expect(readFileSync(path.join(session.appRoot, 'node_modules/@scope/pkg/absolute-alias.js'), 'utf8')).toBe(
-        'export const value = 1\n',
-      )
-      await session.verifyIntegrity()
-    } finally {
-      await session.cleanup()
-    }
   })
 
   test('refuses to copy a session report through a live report-directory symlink', async () => {
@@ -275,7 +244,7 @@ describe('story runner session', () => {
     }
   })
 
-  test('rejects a sealed cache dependency snapshot mutation after session creation', async () => {
+  test('rejects a dependency cache seal mutation after session creation', async () => {
     const { root, dependencyRoot } = fixture()
     const session = await createStoryRunnerSession(
       { root, seed: 41021, reporterArguments: [] },
@@ -286,28 +255,7 @@ describe('story runner session', () => {
     )
     try {
       chmodSync(dependencyRoot, 0o700)
-      chmodSync(path.join(dependencyRoot, 'captured.txt'), 0o600)
-      writeFileSync(path.join(dependencyRoot, 'captured.txt'), 'dependency mutation')
       await expect(session.verifyIntegrity()).rejects.toThrow('dependency snapshot')
-    } finally {
-      await session.cleanup()
-    }
-  })
-
-  test('rejects an app-local dependency mutation after session creation', async () => {
-    const { root, dependencyRoot } = fixture()
-    const session = await createStoryRunnerSession(
-      { root, seed: 41021, reporterArguments: [] },
-      {
-        acquireDependencySnapshot: () =>
-          Promise.resolve({ key: 'a'.repeat(64), root: dependencyRoot, treeHash: dependencyTreeHash() }),
-      },
-    )
-    try {
-      const copied = path.join(session.appRoot, 'node_modules', 'captured.txt')
-      chmodSync(copied, 0o600)
-      writeFileSync(copied, 'dependency mutation')
-      await expect(session.verifyIntegrity()).rejects.toThrow('dependency')
     } finally {
       await session.cleanup()
     }

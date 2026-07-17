@@ -6,11 +6,9 @@ import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, realpath, rm, sy
 import os from 'node:os'
 import path from 'node:path'
 
-import { hashDependencyTree } from './story-dependency-snapshot-tree.js'
 import type { StoryDependencySnapshot } from './story-dependency-snapshot.js'
 import { acquireCandidateDependencySnapshot } from './story-manifest-dependencies.js'
 import type { StoryManifest, StorySandboxBackend } from './story-manifest.js'
-import { materializeSessionDependencies } from './story-runner-session-dependencies.js'
 import {
   copyReports,
   createReportFiles,
@@ -29,6 +27,7 @@ import { selectStorySandboxBackend } from './story-sandbox.js'
 export type StoryRunnerSession = Readonly<{
   root: string
   appRoot: string
+  dependencyRoot: string
   tempRoot: string
   manifest: StoryManifest
   childReporterArguments: readonly string[]
@@ -97,26 +96,22 @@ async function verifySession(
   fs: SessionFileSystem,
 ): Promise<void> {
   await appIntegrity.verifyIntegrity()
-  await verifyDependencySnapshot(dependency)
-  const nodeModulesEntry = await fs.lstat(nodeModules)
-  if (!nodeModulesEntry.isDirectory() || nodeModulesEntry.isSymbolicLink())
-    throw new Error('Story session dependency tree is unsafe')
-  const treeHash = await hashDependencyTree(nodeModules, fs, true)
-  if (treeHash !== dependency.treeHash) throw new Error('Story session dependency fingerprint changed')
+  await verifyDependencySnapshotSeal(dependency, fs)
+  const mountpoint = await fs.lstat(nodeModules)
+  if (!mountpoint.isDirectory() || mountpoint.isSymbolicLink() || (mountpoint.mode & 0o222) !== 0) {
+    throw new Error('Story session dependency mountpoint is unsafe')
+  }
   await verifyReportFiles(reports, fs)
 }
 
-async function verifyDependencySnapshot(dependency: StoryDependencySnapshot): Promise<void> {
-  const root = await lstat(dependency.root)
+async function verifyDependencySnapshotSeal(
+  dependency: StoryDependencySnapshot,
+  fs: Pick<SessionFileSystem, 'lstat'>,
+): Promise<void> {
+  const root = await fs.lstat(dependency.root)
   if (!root.isDirectory() || root.isSymbolicLink() || (root.mode & 0o222) !== 0) {
     throw new Error('Story session dependency snapshot is unsafe')
   }
-  const treeHash = await hashDependencyTree(
-    dependency.root,
-    { lstat, open, readlink, readdir: (target) => readdir(target, { withFileTypes: true }), realpath },
-    true,
-  )
-  if (treeHash !== dependency.treeHash) throw new Error('Story session dependency snapshot fingerprint changed')
 }
 
 export async function createStoryRunnerSession(
@@ -129,7 +124,7 @@ export async function createStoryRunnerSession(
     sandboxBackend: options.sandboxBackend ?? selectStorySandboxBackend(process.platform),
   }
   const dependency = await acquireSessionDependency(selectedOptions, dependencies)
-  await verifyDependencySnapshot(dependency)
+  await verifyDependencySnapshotSeal(dependency, fs)
   const source = await captureSessionSource(selectedOptions, dependencies, dependency)
   if (source.manifest.sandboxBackend !== selectedOptions.sandboxBackend) {
     throw new Error('Story session manifest does not record the selected sandbox backend')
@@ -180,11 +175,6 @@ async function materializeSession(
     const mapped = reporterMappings(options.reporterArguments, options.root, root)
     await fs.mkdir(appRoot, { recursive: true, mode: 0o700 })
     const appIntegrity = await source.materialize(appRoot, [{ kind: 'directory', path: 'node_modules' }])
-    await fs.chmod(appRoot, 0o700)
-    await fs.chmod(nodeModules, 0o700)
-    const treeHash = await materializeSessionDependencies(dependency.root, nodeModules, fs)
-    if (treeHash !== dependency.treeHash) throw new Error('Story session dependency copy fingerprint changed')
-    await fs.chmod(appRoot, 0o500)
     await fs.mkdir(tempRoot, { recursive: true, mode: 0o700 })
     await fs.chmod(tempRoot, 0o700)
     await fs.mkdir(reportsRoot, { recursive: true, mode: 0o700 })
@@ -195,6 +185,7 @@ async function materializeSession(
     return {
       root,
       appRoot,
+      dependencyRoot: dependency.root,
       tempRoot,
       manifest: source.manifest,
       childReporterArguments: mapped.argumentsForChild,

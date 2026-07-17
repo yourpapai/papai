@@ -5,7 +5,8 @@
 
 import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
-import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, rm, symlink } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, realpath, rm, symlink } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 
 import {
@@ -16,7 +17,6 @@ import {
   type StoryManifest,
 } from './story-manifest.js'
 import {
-  generatedStorySnapshotVerifications,
   writeGeneratedStorySnapshotEntry,
   type GeneratedStorySnapshotEntry,
 } from './story-runner-snapshot-generated.js'
@@ -265,7 +265,6 @@ export async function createCandidateStorySnapshotSource(
             verifySnapshotTopology(snapshotRoot, captured.manifest, controlManifestFile, generatedEntries),
             ...captured.manifest.files.map((file) => verifySnapshotFile(snapshotRoot, file)),
             ...captured.manifest.runtimeInputs.files.map((input) => verifySnapshotRuntimeInput(snapshotRoot, input)),
-            ...generatedStorySnapshotVerifications(snapshotRoot, generatedEntries),
             verifySnapshotFile(snapshotRoot, controlManifestFile),
           ]).then(() => undefined)
         return { verifyIntegrity }
@@ -281,7 +280,8 @@ export async function createCandidateStorySnapshot(
   dependencies: SnapshotDependencies = {},
 ): Promise<CandidateStorySnapshot> {
   const source = await createCandidateStorySnapshotSource(options, dependencies)
-  const snapshotRoot = await mkdtemp(path.join(options.root, '.papai-story-snapshot-'))
+  const temporaryParent = await realpath(os.tmpdir())
+  const snapshotRoot = await mkdtemp(path.join(temporaryParent, 'papai-story-snapshot-'))
   const cleanup = createCleanup(snapshotRoot)
   try {
     const materialized = await source.materialize(snapshotRoot)

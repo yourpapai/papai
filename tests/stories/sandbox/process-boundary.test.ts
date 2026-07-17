@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -15,7 +15,16 @@ import { assertLinuxStorySandboxBackend } from '../../../scripts/story-sandbox-l
 import { buildStorySandboxCommand } from '../../../scripts/story-sandbox.js'
 import { classifyStorySandboxDockerMode } from '../../../scripts/test-story-sandbox.js'
 
-const operations = ['file-import', 'bun-stat', 'bun-glob', 'network', 'stream-race', 'cp-dereference', 'write'] as const
+const operations = [
+  'file-import',
+  'bun-stat',
+  'bun-glob',
+  'network',
+  'stream-race',
+  'cp-dereference',
+  'write',
+  'dependency-mount-write',
+] as const
 const roots: string[] = []
 const emptyHash = '0'.repeat(64)
 const fixtureManifest: StoryManifest = {
@@ -92,6 +101,9 @@ function renderFixture(outsideRoot: string, directNetworkUrl: string, sandboxNet
     "  await writeFile(target, 'written outside declared outputs')",
     "  expect(await readFile(target, 'utf8')).toBe('written outside declared outputs')",
     '})',
+    "test('dependency-mount-write', async () => {",
+    "  await writeFile(`${executionRoot}/node_modules/blocked.txt`, 'written into the dependency mount')",
+    '})',
   ].join('\n')
 }
 
@@ -110,6 +122,7 @@ function createSession(
   const report = path.join(reportsRoot, 'junit.xml')
   mkdirSync(path.dirname(fixture), { recursive: true })
   mkdirSync(path.join(appRoot, 'scripts'), { recursive: true })
+  mkdirSync(path.join(appRoot, 'node_modules'), { recursive: true })
   mkdirSync(tempRoot, { recursive: true, mode: 0o700 })
   mkdirSync(reportsRoot, { recursive: true, mode: 0o700 })
   mkdirSync(outsideRoot, { recursive: true, mode: 0o700 })
@@ -120,7 +133,6 @@ function createSession(
   writeFileSync(path.join(appRoot, 'tests/mock-reset.ts'), '')
   writeFileSync(fixture, renderFixture(realpathSync(outsideRoot), directNetworkUrl, sandboxNetworkUrl))
   writeFileSync(report, '')
-  symlinkSync(dependencyRoot, path.join(root, 'node_modules'), 'dir')
   const canonicalAppRoot = realpathSync(appRoot)
   return {
     fixture: path.join(canonicalAppRoot, 'tests/stories/harness/process-boundary.fixture.ts'),
@@ -128,6 +140,7 @@ function createSession(
     session: {
       root,
       appRoot: canonicalAppRoot,
+      dependencyRoot,
       tempRoot: realpathSync(tempRoot),
       manifest: fixtureManifest,
       childReporterArguments: [],

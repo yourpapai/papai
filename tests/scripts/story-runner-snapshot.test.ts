@@ -111,6 +111,7 @@ describe('candidate story snapshot', () => {
     const snapshot = await createSnapshot({ root, seed: 41021 })
     const capturedStory = path.join(snapshot.root, 'tests/stories/example.story.test.ts')
     try {
+      expect(path.relative(root, snapshot.root).startsWith(`..${path.sep}`)).toBe(true)
       writeFileSync(path.join(root, 'tests/stories/example.story.test.ts'), 'mutated story')
       writeFileSync(path.join(root, 'src/live.ts'), 'production v2')
 

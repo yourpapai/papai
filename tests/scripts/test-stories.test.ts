@@ -53,6 +53,7 @@ function testSession(
   return {
     root,
     appRoot,
+    dependencyRoot: path.join(root, 'node_modules'),
     tempRoot: path.join(root, 'tmp'),
     manifest: candidate,
     childReporterArguments: ['--reporter', 'junit', '--reporter-outfile', reportPath],
@@ -110,6 +111,7 @@ describe('story runner reports and compatibility', () => {
     const session = {
       root: '/session',
       appRoot: '/session/app',
+      dependencyRoot: '/dependency-cache/node_modules',
       tempRoot: '/session/tmp',
       manifest: candidate,
       childReporterArguments: ['--reporter', 'junit', '--reporter-outfile', '/session/reports/junit.xml'],
@@ -156,6 +158,7 @@ describe('story runner reports and compatibility', () => {
         expect(request).toMatchObject({
           platform: 'darwin',
           appRoot: session.appRoot,
+          dependencyRoot: session.dependencyRoot,
           tempRoot: session.tempRoot,
           reportPaths: session.childReportPaths,
           bunExecutable: '/bun',
