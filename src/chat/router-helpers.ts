@@ -194,7 +194,7 @@ export const errorMessage = (error: unknown): string => (error instanceof Error 
 const routerLog = logger.child({ scope: 'chat:router' })
 
 /** Looks up `platformInstanceId`, warning and returning null when it is missing or inactive. */
-const resolveActiveManagedInstance = (
+export const resolveActiveManagedInstance = (
   instances: Map<string, ManagedChatInstance>,
   isInstanceActive: (id: string) => boolean,
   platformInstanceId: string,

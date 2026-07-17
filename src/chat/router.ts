@@ -17,13 +17,9 @@ import {
   isGroupAdminForManagedInstance,
   managedInstanceOrNull,
   managedInstanceSnapshots,
-  providerForResolveContext,
-  registerCommandForManagedInstance,
-  registerInteractionHandlerForManagedInstance,
   renderContextForManagedInstance,
   renderContextFromManagedInstances,
   resolveGroupLabelForManagedInstance,
-  routedMessageHandler,
   sendMessageForManagedInstance,
   sendProactiveReturningIdForManagedInstance,
   setReactionForManagedInstance,
@@ -32,8 +28,19 @@ import {
   traitsForManagedInstance,
   traitsForManagedInstances,
 } from './router-helpers.js'
+import {
+  onInteractionForAllManagedInstances,
+  onMessageForAllManagedInstances,
+  registerCommandForAllManagedInstances,
+  registerExistingHandlersForInstance,
+  resolveUserIdForManagedInstance,
+  resolveUserLabelForManagedInstance,
+  sendProactiveButtonsReturningIdForManagedInstance,
+  setCommandsForManagedInstance,
+} from './router-instance-helpers.js'
 import type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstanceSnapshot } from './router-types.js'
 import type {
+  ChatButton,
   ChatCapability,
   ChatProvider,
   ChatProviderTraits,
@@ -75,9 +82,7 @@ export class ChatRouter implements ChatProvider {
   }
 
   addInstance(id: string, type: PlatformInstanceType, config: InstanceConfig): ManagedChatInstance {
-    if (this.instances.has(id)) {
-      throw new Error(`Chat instance already exists: ${id}`)
-    }
+    if (this.instances.has(id)) throw new Error(`Chat instance already exists: ${id}`)
     const provider = this.factory(id, type, config)
     const instance: ManagedChatInstance = {
       id,
@@ -171,23 +176,17 @@ export class ChatRouter implements ChatProvider {
 
   registerCommand(name: string, handler: CommandHandler): void {
     this.commandHandlers.set(name, handler)
-    for (const instance of this.instances.values()) {
-      registerCommandForManagedInstance(instance, name, handler)
-    }
+    registerCommandForAllManagedInstances(this.instances.values(), name, handler)
   }
 
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
     this.messageHandler = handler
-    for (const instance of this.instances.values()) {
-      instance.provider.onMessage(routedMessageHandler(instance.id, handler))
-    }
+    onMessageForAllManagedInstances(this.instances.values(), handler)
   }
 
   onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
     this.interactionHandler = handler
-    for (const instance of this.instances.values()) {
-      registerInteractionHandlerForManagedInstance(instance, handler)
-    }
+    onInteractionForAllManagedInstances(this.instances.values(), handler)
   }
 
   sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
@@ -212,6 +211,22 @@ export class ChatRouter implements ChatProvider {
       platformInstanceId,
       target,
       markdown,
+    )
+  }
+  /** Proactive button send with a `supported` flag. Named distinctly from `ChatProvider.sendButtonsReturningId`. */
+  sendProactiveButtonsReturningId(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+    buttons: ChatButton[],
+  ): Promise<{ delivered: boolean; messageId: string | null; supported: boolean }> {
+    return sendProactiveButtonsReturningIdForManagedInstance(
+      this.instances,
+      (id) => this.isInstanceActive(id),
+      platformInstanceId,
+      target,
+      markdown,
+      buttons,
     )
   }
   /** Sets or clears a reaction on an existing message. Router-only; no-ops when the target provider lacks support. */
@@ -255,16 +270,10 @@ export class ChatRouter implements ChatProvider {
     return downloadFileFromManagedInstance(this.instances.get(platformInstanceId), sourceProvider, fileId)
   }
   resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
-    const provider = providerForResolveContext(this.instances, context)
-    if (provider === null) return Promise.resolve(null)
-    if (provider.resolveUserId === undefined) return Promise.resolve(null)
-    return provider.resolveUserId(username, context)
+    return resolveUserIdForManagedInstance(this.instances, username, context)
   }
   resolveUserLabel(userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
-    const provider = context === undefined ? null : providerForResolveContext(this.instances, context)
-    if (provider === null) return Promise.resolve(null)
-    if (provider.resolveUserLabel === undefined) return Promise.resolve(null)
-    return provider.resolveUserLabel(userId, context)
+    return resolveUserLabelForManagedInstance(this.instances, userId, context)
   }
   resolveGroupLabel(groupId: string): Promise<string | null> {
     return resolveGroupLabelForManagedInstance(this.instances, groupId)
@@ -277,24 +286,12 @@ export class ChatRouter implements ChatProvider {
   }
 
   private registerExistingHandlers(instance: ManagedChatInstance): void {
-    for (const [name, handler] of this.commandHandlers.entries()) {
-      registerCommandForManagedInstance(instance, name, handler)
-    }
-    if (this.messageHandler !== null) {
-      instance.provider.onMessage(routedMessageHandler(instance.id, this.messageHandler))
-    }
-    if (this.interactionHandler !== null) {
-      registerInteractionHandlerForManagedInstance(instance, this.interactionHandler)
-    }
+    registerExistingHandlersForInstance(instance, this.commandHandlers, this.messageHandler, this.interactionHandler)
   }
 
-  private async setCommandsForInstance(instance: ManagedChatInstance, adminUserId: string): Promise<void> {
-    if (instance.provider.setCommands === undefined) return
-    try {
-      await instance.provider.setCommands(adminUserId)
-    } catch (error) {
+  private setCommandsForInstance(instance: ManagedChatInstance, adminUserId: string): Promise<void> {
+    return setCommandsForManagedInstance(instance, adminUserId, (error) => {
       log.warn({ platformInstanceId: instance.id, error: errorMessage(error) }, 'failed to set chat commands')
-      throw error
-    }
+    })
   }
 }
