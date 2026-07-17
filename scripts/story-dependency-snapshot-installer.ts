@@ -5,6 +5,7 @@
 
 import path from 'node:path'
 
+import type { StoryDependencyPlatform } from './story-dependency-snapshot-key.js'
 import type { StoryWorkspaceManifest } from './story-dependency-snapshot-workspaces.js'
 
 export type StoryDependencyInstallerOptions = Readonly<{
@@ -38,6 +39,7 @@ export async function installStagedDependencies(
   lockBytes: Uint8Array,
   workspaceManifests: readonly StoryWorkspaceManifest[],
   deps: StagingInstallerDependencies,
+  platform: StoryDependencyPlatform,
 ): Promise<void> {
   const env = installEnvironment(staging)
   await Promise.all(
@@ -54,7 +56,7 @@ export async function installStagedDependencies(
     }),
   )
   await deps.install({
-    args: ['install', '--frozen-lockfile', '--backend=copyfile'],
+    args: ['install', '--frozen-lockfile', '--backend=copyfile', `--os=${platform.os}`, `--cpu=${platform.cpu}`],
     cwd: staging,
     env,
     stdin: 'ignore',

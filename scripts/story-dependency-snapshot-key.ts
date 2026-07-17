@@ -5,6 +5,8 @@
 
 import { createHash } from 'node:crypto'
 
+export type StoryDependencyPlatform = Readonly<{ os: string; cpu: string }>
+
 function frame(bytes: Uint8Array): Uint8Array {
   return Buffer.concat([Buffer.from(String(bytes.byteLength)), Buffer.from('\0'), bytes, Buffer.from('\0')])
 }
@@ -14,13 +16,16 @@ export function dependencySnapshotKey(
   lockBytes: Uint8Array,
   bunVersion: string,
   workspaceManifests: ReadonlyArray<Readonly<{ path: string; bytes: Uint8Array }>> = [],
+  platform: StoryDependencyPlatform = { os: process.platform, cpu: process.arch },
 ): string {
   const hash = createHash('sha256')
-  hash.update('papai-story-dependency-key-v3\0')
+  hash.update('papai-story-dependency-key-v4\0')
   for (const value of [packageBytes, lockBytes, Buffer.from(bunVersion)]) hash.update(frame(value))
   for (const workspace of workspaceManifests) {
     hash.update(frame(Buffer.from(workspace.path)))
     hash.update(frame(workspace.bytes))
   }
+  hash.update(frame(Buffer.from(platform.os)))
+  hash.update(frame(Buffer.from(platform.cpu)))
   return hash.digest('hex')
 }

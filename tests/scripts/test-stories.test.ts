@@ -21,6 +21,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { acquireStoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
+import { resolveStoryDependencyPlatform } from '../../scripts/story-manifest-dependencies.js'
 import { buildCandidateStoryManifest, type StoryManifest, writeStoryManifest } from '../../scripts/story-manifest.js'
 import { resolveReporterOutfiles } from '../../scripts/story-runner-arguments.js'
 import type { StoryRunnerSession } from '../../scripts/story-runner-session.js'
@@ -711,6 +712,7 @@ describe('story runner reports and compatibility', () => {
           projectRoot: root,
           cacheRoot: dependencyCacheRoot,
           bunVersion: Bun.version,
+          platform: await resolveStoryDependencyPlatform(),
         },
         {
           install: (options): Promise<void> => {

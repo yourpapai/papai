@@ -24,6 +24,10 @@ import path from 'node:path'
 
 import { acquireStoryDependencySnapshot } from '../../scripts/story-dependency-snapshot.js'
 import type { StoryDependencyInstallerOptions } from '../../scripts/story-dependency-snapshot.js'
+import {
+  hostStoryDependencyPlatform,
+  resolveStoryDependencyPlatform,
+} from '../../scripts/story-manifest-dependencies.js'
 
 const roots: string[] = []
 
@@ -481,7 +485,7 @@ describe('story dependency snapshot', () => {
     let received: StoryDependencyInstallerOptions | undefined
 
     await acquireStoryDependencySnapshot(
-      { projectRoot, cacheRoot, bunVersion: '1.2.3' },
+      { projectRoot, cacheRoot, bunVersion: '1.2.3', platform: { os: 'linux', cpu: 'x64' } },
       {
         install: (options): Promise<void> => {
           received = options
@@ -493,11 +497,83 @@ describe('story dependency snapshot', () => {
 
     const installerOptions = capturedInstallerOptions(received)
     expect(installerOptions).toMatchObject({
-      args: ['install', '--frozen-lockfile', '--backend=copyfile'],
+      args: ['install', '--frozen-lockfile', '--backend=copyfile', '--os=linux', '--cpu=x64'],
       stdin: 'ignore',
       stdout: 'ignore',
       stderr: 'pipe',
     })
     expect(installerOptions.env).toEqual(installerEnvironment(installerOptions.cwd))
+  })
+
+  test('installs dependencies for the declared container platform', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    let received: StoryDependencyInstallerOptions | undefined
+
+    const snapshot = await acquireStoryDependencySnapshot(
+      { projectRoot, cacheRoot, bunVersion: '1.2.3', platform: { os: 'linux', cpu: 'arm64' } },
+      {
+        install: (options): Promise<void> => {
+          received = options
+          mkdirSync(path.join(options.cwd, 'node_modules'), { recursive: true })
+          return Promise.resolve()
+        },
+      },
+    )
+
+    expect(capturedInstallerOptions(received).args).toEqual([
+      'install',
+      '--frozen-lockfile',
+      '--backend=copyfile',
+      '--os=linux',
+      '--cpu=arm64',
+    ])
+    await expect(
+      acquireStoryDependencySnapshot(
+        { projectRoot, cacheRoot, bunVersion: '1.2.3', platform: { os: 'linux', cpu: 'arm64' } },
+        { install: (): Promise<void> => Promise.reject(new Error('installer must not run for a cache hit')) },
+      ),
+    ).resolves.toEqual(snapshot)
+  })
+
+  test('keys the dependency cache by target platform', async () => {
+    const { projectRoot, cacheRoot } = fixture()
+    const calls: string[] = []
+
+    const linux = await acquireStoryDependencySnapshot(
+      { projectRoot, cacheRoot, bunVersion: '1.2.3', platform: { os: 'linux', cpu: 'x64' } },
+      { install: installer(calls) },
+    )
+    const darwin = await acquireStoryDependencySnapshot(
+      { projectRoot, cacheRoot, bunVersion: '1.2.3', platform: { os: 'darwin', cpu: 'x64' } },
+      { install: installer(calls) },
+    )
+    const linuxArm = await acquireStoryDependencySnapshot(
+      { projectRoot, cacheRoot, bunVersion: '1.2.3', platform: { os: 'linux', cpu: 'arm64' } },
+      { install: installer(calls) },
+    )
+
+    expect(new Set([linux.key, darwin.key, linuxArm.key]).size).toBe(3)
+    expect(calls).toHaveLength(3)
+  })
+})
+
+describe('story dependency platform', () => {
+  test('resolves the container platform from the pinned image', async () => {
+    await expect(
+      resolveStoryDependencyPlatform(() => ({ exitCode: 0, stdout: 'linux/amd64\n', stderr: '' })),
+    ).resolves.toEqual({ os: 'linux', cpu: 'x64' })
+    await expect(
+      resolveStoryDependencyPlatform(() => ({ exitCode: 0, stdout: 'linux/arm64\n', stderr: '' })),
+    ).resolves.toEqual({ os: 'linux', cpu: 'arm64' })
+  })
+
+  test('falls back to the host platform when the image cannot be inspected', async () => {
+    const host = hostStoryDependencyPlatform()
+    await expect(
+      resolveStoryDependencyPlatform(() => ({ exitCode: 1, stdout: '', stderr: 'daemon unavailable' })),
+    ).resolves.toEqual(host)
+    await expect(
+      resolveStoryDependencyPlatform(() => ({ exitCode: 0, stdout: 'not-a-platform\n', stderr: '' })),
+    ).resolves.toEqual(host)
   })
 })

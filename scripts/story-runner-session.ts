@@ -6,8 +6,8 @@ import { chmod, lstat, mkdir, mkdtemp, open, readdir, readlink, realpath, rm, sy
 import os from 'node:os'
 import path from 'node:path'
 
-import type { StoryDependencySnapshot } from './story-dependency-snapshot.js'
-import { acquireCandidateDependencySnapshot } from './story-manifest-dependencies.js'
+import type { StoryDependencyPlatform, StoryDependencySnapshot } from './story-dependency-snapshot.js'
+import { acquireCandidateDependencySnapshot, resolveStoryDependencyPlatform } from './story-manifest-dependencies.js'
 import type { StoryManifest, StorySandboxBackend } from './story-manifest.js'
 import {
   copyReports,
@@ -48,8 +48,14 @@ export type StoryRunnerSessionOptions = Readonly<{
 
 export type StoryRunnerSessionDependencies = Readonly<{
   acquireDependencySnapshot?(
-    options: Readonly<{ projectRoot: string; cacheRoot: string; bunVersion: string }>,
+    options: Readonly<{
+      projectRoot: string
+      cacheRoot: string
+      bunVersion: string
+      platform: StoryDependencyPlatform
+    }>,
   ): Promise<StoryDependencySnapshot>
+  inspectDependencyPlatform?(): Promise<StoryDependencyPlatform>
   createSnapshotSource?(
     options: Readonly<{ root: string; seed: number; bunVersion?: string; sandboxBackend?: StorySandboxBackend }>,
     dependencies: SnapshotDependencies,
@@ -132,7 +138,7 @@ export async function createStoryRunnerSession(
   return materializeSession(selectedOptions, source, dependency, fs)
 }
 
-function acquireSessionDependency(
+async function acquireSessionDependency(
   options: StoryRunnerSessionOptions,
   dependencies: StoryRunnerSessionDependencies,
 ): Promise<StoryDependencySnapshot> {
@@ -140,10 +146,12 @@ function acquireSessionDependency(
   if (dependencies.acquireDependencySnapshot === undefined) {
     return acquireCandidateDependencySnapshot(options.root, bunVersion, {})
   }
+  const platform = await (dependencies.inspectDependencyPlatform ?? resolveStoryDependencyPlatform)()
   return dependencies.acquireDependencySnapshot({
     projectRoot: options.root,
     cacheRoot: process.env['PAPAI_STORY_DEPENDENCY_CACHE_ROOT'] ?? path.join(options.root, '.story-dependencies'),
     bunVersion,
+    platform,
   })
 }
 

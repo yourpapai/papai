@@ -25,7 +25,7 @@ import {
   installStagedDependencies,
   type StoryDependencyInstallerOptions,
 } from './story-dependency-snapshot-installer.js'
-import { dependencySnapshotKey } from './story-dependency-snapshot-key.js'
+import { dependencySnapshotKey, type StoryDependencyPlatform } from './story-dependency-snapshot-key.js'
 import { ensurePrivateDependencyCacheRoot } from './story-dependency-snapshot-root.js'
 import {
   assertDependencyTreeSealed,
@@ -35,6 +35,7 @@ import {
 import { loadStoryWorkspaceManifests, type StoryWorkspaceManifest } from './story-dependency-snapshot-workspaces.js'
 
 export type { StoryDependencyInstallerOptions } from './story-dependency-snapshot-installer.js'
+export type { StoryDependencyPlatform } from './story-dependency-snapshot-key.js'
 export type StoryDependencySnapshot = Readonly<{ key: string; root: string; treeHash: string }>
 
 export type StoryDependencySnapshotDependencies = Readonly<{
@@ -51,7 +52,12 @@ export type StoryDependencySnapshotDependencies = Readonly<{
   writeFile?(target: string, data: Uint8Array | string): Promise<void>
 }>
 
-type SnapshotOptions = Readonly<{ projectRoot: string; cacheRoot: string; bunVersion: string }>
+type SnapshotOptions = Readonly<{
+  projectRoot: string
+  cacheRoot: string
+  bunVersion: string
+  platform?: StoryDependencyPlatform
+}>
 type EntryManifest = Readonly<{ version: 2; key: string; bunVersion: string; treeHash: string }>
 type Dependencies = Required<StoryDependencySnapshotDependencies>
 
@@ -177,8 +183,9 @@ async function createStagingEntry(
   workspaceManifests: readonly StoryWorkspaceManifest[],
   expected: Readonly<{ key: string; bunVersion: string }>,
   deps: Dependencies,
+  platform: StoryDependencyPlatform,
 ): Promise<void> {
-  await installStagedDependencies(staging, packageBytes, lockBytes, workspaceManifests, deps)
+  await installStagedDependencies(staging, packageBytes, lockBytes, workspaceManifests, deps, platform)
   const nodeModules = path.join(staging, 'node_modules')
   const treeHash = await hashDependencyTree(nodeModules, deps)
   const manifest: EntryManifest = { version: 2, ...expected, treeHash }
@@ -197,7 +204,11 @@ export async function acquireStoryDependencySnapshot(
   )
   const lockBytes = await safeReadDependencyFile(path.join(options.projectRoot, 'bun.lock'), 'bun.lock', deps)
   const workspaceManifests = await loadStoryWorkspaceManifests(options.projectRoot, packageBytes, deps)
-  const key = dependencySnapshotKey(packageBytes, lockBytes, options.bunVersion, workspaceManifests)
+  const platform = options.platform ?? {
+    os: process.platform === 'win32' ? 'windows' : process.platform,
+    cpu: process.arch,
+  }
+  const key = dependencySnapshotKey(packageBytes, lockBytes, options.bunVersion, workspaceManifests, platform)
   const expected = { key, bunVersion: options.bunVersion }
   const entryRoot = path.join(options.cacheRoot, key)
   await ensurePrivateDependencyCacheRoot(options.cacheRoot, deps)
@@ -210,7 +221,7 @@ export async function acquireStoryDependencySnapshot(
   await deps.mkdir(staging, { recursive: true, mode: 0o700 })
   let published = false
   try {
-    await createStagingEntry(staging, packageBytes, lockBytes, workspaceManifests, expected, deps)
+    await createStagingEntry(staging, packageBytes, lockBytes, workspaceManifests, expected, deps, platform)
     await sealDependencyCacheTree(staging, deps)
     await verifyEntry(staging, expected, deps, { fingerprint: true })
     try {
