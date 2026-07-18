@@ -4,12 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 import { z } from 'zod'
 
 import type { Phase2aDeps } from '../../scripts/behavior-audit/classify.js'
+import { reloadBehaviorAuditConfig } from '../../scripts/behavior-audit/config.js'
 import type { Phase2bDeps } from '../../scripts/behavior-audit/consolidate.js'
 import { writeReports } from '../../scripts/behavior-audit/evaluate-reporting.js'
 import type { Phase3Deps } from '../../scripts/behavior-audit/evaluate.js'
@@ -960,6 +962,130 @@ describe('behavior-audit phase 3 incremental selection', () => {
     expect(selectedFeatureRecords[0]?.consolidatedId).toBe(freshSelectedId)
     const unrelatedFeatureArtifact = Bun.file(path.join(root, buildRelativeArtifactPath('evaluated', 'group-routing')))
     expect(await unrelatedFeatureArtifact.exists()).toBe(false)
+  })
+
+  test('runPhase3 at CONCURRENCY=4 preserves every evaluated feature key when evaluations run in parallel', async () => {
+    process.env['BEHAVIOR_AUDIT_CONCURRENCY'] = '4'
+    reloadBehaviorAuditConfig()
+
+    const evaluate = await loadEvaluateModule(crypto.randomUUID())
+    const progress = createEmptyProgressFixture(4)
+    const featureSpecs = [
+      {
+        featureKey: 'task-creation',
+        consolidatedId: 'task-creation::parallel-case',
+        featureName: 'Parallel task creation',
+        domain: 'tools',
+      },
+      {
+        featureKey: 'task-listing',
+        consolidatedId: 'task-listing::parallel-case',
+        featureName: 'Parallel task listing',
+        domain: 'tools',
+      },
+      {
+        featureKey: 'task-completion',
+        consolidatedId: 'task-completion::parallel-case',
+        featureName: 'Parallel task completion',
+        domain: 'tools',
+      },
+      {
+        featureKey: 'task-deletion',
+        consolidatedId: 'task-deletion::parallel-case',
+        featureName: 'Parallel task deletion',
+        domain: 'tools',
+      },
+    ] as const
+
+    const consolidatedManifest: ConsolidatedManifest = {
+      version: 1,
+      entries: Object.fromEntries(
+        featureSpecs.map((spec) => [
+          spec.consolidatedId,
+          createConsolidatedManifestEntry({
+            consolidatedId: spec.consolidatedId,
+            domain: spec.domain,
+            featureName: spec.featureName,
+            sourceTestKeys: [`tests/tools/${spec.featureKey}.test.ts::suite > parallel`],
+            sourceBehaviorIds: [`tests/tools/${spec.featureKey}.test.ts::suite > parallel`],
+            supportingInternalBehaviorIds: [],
+            isUserFacing: true,
+            featureKey: spec.featureKey,
+            consolidatedArtifactPath: buildRelativeArtifactPath('consolidated', spec.featureKey),
+            evaluatedArtifactPath: null,
+            keywords: [spec.featureKey],
+            sourceDomains: [spec.domain],
+            phase2Fingerprint: `phase2-fp-${spec.featureKey}`,
+            phase3Fingerprint: null,
+            lastConsolidatedAt: '2026-04-21T12:00:00.000Z',
+            lastEvaluatedAt: null,
+          }),
+        ]),
+      ),
+    }
+
+    for (const spec of featureSpecs) {
+      await writeJsonArtifact(path.join(root, buildRelativeArtifactPath('consolidated', spec.featureKey)), [
+        {
+          id: spec.consolidatedId,
+          domain: spec.domain,
+          featureName: spec.featureName,
+          isUserFacing: true,
+          behavior: `When the user requests ${spec.featureKey}, the bot handles it in parallel.`,
+          userStory: `As a user, I can ${spec.featureKey} concurrently.`,
+          context: `Calls ${spec.featureKey} handler.`,
+          sourceTestKeys: [`tests/tools/${spec.featureKey}.test.ts::suite > parallel`],
+          sourceBehaviorIds: [`tests/tools/${spec.featureKey}.test.ts::suite > parallel`],
+          supportingInternalRefs: [],
+        } satisfies ConsolidatedArtifactRecord,
+      ])
+    }
+
+    const evaluatedFeatureKeys = new Set<string>()
+    await evaluate.runPhase3(
+      {
+        progress,
+        selectedConsolidatedIds: new Set(featureSpecs.map((spec) => spec.consolidatedId)),
+        consolidatedManifest,
+      },
+      {
+        evaluateWithRetry: (prompt) => {
+          const spec = featureSpecs.find((item) => prompt.includes(item.featureName))
+          assert(spec !== undefined, `Expected prompt to match a known feature spec: ${prompt}`)
+          evaluatedFeatureKeys.add(spec.featureKey)
+          return Promise.resolve({
+            result: createEvaluationResult({
+              maria: { discover: 4, use: 4, retain: 4, notes: `${spec.featureKey} Maria notes` },
+              dani: { discover: 3, use: 3, retain: 3, notes: `${spec.featureKey} Dani notes` },
+              viktor: { discover: 5, use: 5, retain: 5, notes: `${spec.featureKey} Viktor notes` },
+              flaws: [`${spec.featureKey} flaw`],
+              improvements: [`${spec.featureKey} improvement`],
+            }),
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
+          })
+        },
+      },
+    )
+
+    expect(evaluatedFeatureKeys.size).toBe(featureSpecs.length)
+    for (const spec of featureSpecs) {
+      expect(progress.phase3.completedConsolidatedIds[spec.consolidatedId]).toBe('done')
+      const records = await readEvaluatedArtifact(root, spec.featureKey)
+      expect(records).toHaveLength(1)
+      expect(records[0]?.consolidatedId).toBe(spec.consolidatedId)
+      expect(records[0]?.maria.notes).toBe(`${spec.featureKey} Maria notes`)
+    }
+    expect(progress.phase3.stats.consolidatedIdsDone).toBe(featureSpecs.length)
+
+    const savedProgressText = await Bun.file(progressPath).text()
+    for (const spec of featureSpecs) {
+      expect(savedProgressText).toContain(`"${spec.consolidatedId}": "done"`)
+    }
   })
 })
 
