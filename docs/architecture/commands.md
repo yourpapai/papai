@@ -45,6 +45,13 @@ To establish a baseline on master:
 
 Neither normal nor compatibility runs retry failures. `reports/stories/**` is ignored build output and must not be committed.
 
+The compatibility proof is a **behavioral and seam-API proof**, not purely behavioral. The frozen harness bytes consume production dependency-injection seams, so a candidate refactor must preserve their TypeScript signatures — or land the seam change on master before the baseline is recorded, because candidate-side harness edits are forbidden by the frozen-tree rule. The consumed seams are:
+
+- `createPapaiRuntime` and `createProductionRuntimeDeps` (`src/runtime/`), consumed by `tests/stories/harness/world.ts`;
+- the world's per-dependency override points: `database`, `chat.createRouter`, `application.setupBot`, `web.route`, the `extensions` lifecycle, and `capabilities.resolve`;
+- the scripted-model seam `buildModel` in the LLM orchestrator;
+- the tool capability catalog contract (`src/runtime/capability-catalog.ts`): registration throws on duplicate ids with different wire names, resolution throws on unknown ids.
+
 ## TDD Enforcement (Hooks)
 
 Every `Write`/`Edit`/`MultiEdit` on an implementation file in `src/` or `client/` triggers an automated hook pipeline enforcing Red → Green → Refactor; it runs checks sequentially and **blocks** on failure.
