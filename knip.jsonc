@@ -223,6 +223,9 @@
     "strybk.config.ts": ["exports"],
     // buildCommitMessage and other exports are consumed by runPublish and tests.
     "scripts/behavior-audit/publish-snapshot.ts": ["exports"],
+    // CONCURRENCY is a forward-compat export wired in downstream Tier 2 tasks
+    // (replaces pLimit(1) with pLimit(CONCURRENCY) across the pipeline phases).
+    "scripts/behavior-audit/config.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
