@@ -3,7 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   buildCommitMessage,
@@ -11,6 +14,8 @@ import {
   resolveBranchName,
   resolveTagName,
 } from '../../../scripts/behavior-audit/publish-snapshot.js'
+import type { GitOps, PublishResult } from '../../../scripts/behavior-audit/publish-snapshot.js'
+import { runPublish } from '../../../scripts/behavior-audit/publish-snapshot.js'
 
 describe('publish-snapshot helpers', () => {
   afterEach(() => {
@@ -45,5 +50,68 @@ describe('publish-snapshot helpers', () => {
 
   test('buildCommitMessage formats date stamp', () => {
     expect(buildCommitMessage('2026-07-19')).toBe('chore(audit): snapshot for 2026-07-19')
+  })
+})
+
+describe('publishSnapshot flow', () => {
+  let tempStories: string
+  let tempWorktree: string
+  let recordedCommands: ReadonlyArray<readonly string[]>
+
+  beforeEach(() => {
+    tempStories = mkdtempSync(join(tmpdir(), 'stories-'))
+    tempWorktree = mkdtempSync(join(tmpdir(), 'worktree-'))
+    mkdirSync(tempStories, { recursive: true })
+    writeFileSync(join(tempStories, 'index.md'), '# Audit\n')
+    recordedCommands = []
+  })
+
+  afterEach(() => {
+    rmSync(tempStories, { recursive: true, force: true })
+    rmSync(tempWorktree, { recursive: true, force: true })
+  })
+
+  function makeFakeGitOps(): GitOps {
+    return {
+      run(args: readonly string[]): Promise<void> {
+        recordedCommands = [...recordedCommands, args]
+        return Promise.resolve()
+      },
+      branchExists(): Promise<boolean> {
+        return Promise.resolve(false)
+      },
+      checkoutOrphan(branch: string): Promise<void> {
+        recordedCommands = [...recordedCommands, ['checkout', '--orphan', branch]]
+        return Promise.resolve()
+      },
+      worktreePath(): Promise<string> {
+        return Promise.resolve(tempWorktree)
+      },
+    }
+  }
+
+  test('publishes snapshot to orphan branch on first run', async () => {
+    const ops = makeFakeGitOps()
+    const result: PublishResult = await runPublish({
+      storiesPath: tempStories,
+      dateStamp: '2026-07-19',
+      gitOps: ops,
+      log: { log: () => {}, error: () => {} },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.commitMessage).toBe('chore(audit): snapshot for 2026-07-19')
+    expect(recordedCommands).toContainEqual(['checkout', '--orphan', 'audit-output'])
+  })
+
+  test('exits 1 when stories path is empty', async () => {
+    rmSync(join(tempStories, 'index.md'), { force: true })
+    const ops = makeFakeGitOps()
+    const result = await runPublish({
+      storiesPath: tempStories,
+      dateStamp: '2026-07-19',
+      gitOps: ops,
+      log: { log: () => {}, error: () => {} },
+    })
+    expect(result.exitCode).toBe(1)
   })
 })

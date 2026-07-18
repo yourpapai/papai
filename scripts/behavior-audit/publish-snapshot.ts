@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import { STORIES_DIR } from './config.js'
 
 export function formatDateStamp(date: Date): string {
@@ -28,34 +31,121 @@ export function resolveStoriesPath(): string {
   return STORIES_DIR
 }
 
-async function publishSnapshot(): Promise<number> {
-  const storiesPath = resolveStoriesPath()
+export interface GitOps {
+  run(args: readonly string[]): Promise<void>
+  branchExists(): Promise<boolean>
+  checkoutOrphan(branch: string): Promise<void>
+  worktreePath(): Promise<string>
+}
+
+export interface PublishDeps {
+  readonly storiesPath: string
+  readonly dateStamp: string
+  readonly gitOps: GitOps
+  readonly log: Pick<Console, 'log' | 'error'>
+}
+
+export interface PublishResult {
+  readonly exitCode: number
+  readonly commitMessage: string | null
+}
+
+export async function runPublish(input: PublishDeps): Promise<PublishResult> {
+  let entries: readonly string[]
+  try {
+    entries = await readdir(input.storiesPath)
+  } catch {
+    input.log.error(`Error: no audit output to publish (${input.storiesPath} does not exist)`)
+    return { exitCode: 1, commitMessage: null }
+  }
+  if (entries.length === 0) {
+    input.log.error(`Error: no audit output to publish (${input.storiesPath} is empty)`)
+    return { exitCode: 1, commitMessage: null }
+  }
+
   const branch = resolveBranchName()
   const tag = resolveTagName()
+  const commitMessage = buildCommitMessage(input.dateStamp)
+  const worktreePath = await input.gitOps.worktreePath()
+
+  const exists = await input.gitOps.branchExists()
+  if (!exists) {
+    await input.gitOps.checkoutOrphan(branch)
+  }
+
+  await rm(join(worktreePath, 'stories'), { recursive: true, force: true })
+  await mkdir(join(worktreePath, 'stories'), { recursive: true })
+
+  await Promise.all(
+    entries.map((entry) => copyFile(join(input.storiesPath, entry), join(worktreePath, 'stories', entry))),
+  )
+
+  await input.gitOps.run(['add', 'stories'])
+  await input.gitOps.run(['commit', '-m', commitMessage])
+  await input.gitOps.run(['tag', '-f', tag, 'HEAD'])
+
+  input.log.log(`Published ${entries.length} entries to ${branch} (tag ${tag}) at ${input.dateStamp}`)
+  return { exitCode: 0, commitMessage }
+}
+
+class RealGitOps implements GitOps {
+  constructor(
+    private readonly worktree: string,
+    private readonly branch: string,
+  ) {}
+
+  async run(args: readonly string[]): Promise<void> {
+    const proc = Bun.spawn(['git', ...args], {
+      cwd: this.worktree,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    await proc.exited
+  }
+
+  async branchExists(): Promise<boolean> {
+    const proc = Bun.spawn(['git', 'ls-remote', '--heads', 'origin', this.branch], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const out = await new Response(proc.stdout).text()
+    await proc.exited
+    return out.trim().length > 0
+  }
+
+  async checkoutOrphan(branch: string): Promise<void> {
+    await this.run(['checkout', '--orphan', branch])
+  }
+
+  worktreePath(): Promise<string> {
+    return Promise.resolve(this.worktree)
+  }
+}
+
+async function publishSnapshotMain(): Promise<number> {
   const dateStamp = formatDateStamp(new Date())
-
-  const fs = await import('node:fs/promises')
-  const constants = await import('node:fs')
-  try {
-    await fs.access(storiesPath, constants.constants.F_OK)
-  } catch {
-    console.error(`Error: no audit output to publish (${storiesPath} does not exist)`)
-    return 1
-  }
-  const entries = await fs.readdir(storiesPath)
-  if (entries.length === 0) {
-    console.error(`Error: no audit output to publish (${storiesPath} is empty)`)
-    return 1
-  }
-
-  console.log(`Publishing ${entries.length} entries from ${storiesPath} to branch ${branch} (tag ${tag})`)
-  console.log(`Date stamp: ${dateStamp}`)
-  console.log('Orphan-branch publish requires git plumbing; run within GitHub Actions.')
-
-  return 0
+  const branch = resolveBranchName()
+  const worktree = process.env['BEHAVIOR_AUDIT_WORKTREE_DIR'] ?? '.audit-worktree'
+  const ops = new RealGitOps(worktree, branch)
+  const result = await runPublish({
+    storiesPath: resolveStoriesPath(),
+    dateStamp,
+    gitOps: ops,
+    log: console,
+  })
+  if (result.exitCode !== 0) return result.exitCode
+  const pushProc = Bun.spawn(
+    ['git', 'push', '--force', 'origin', `${branch}:${branch}`, `refs/tags/${resolveTagName()}`],
+    {
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  )
+  await pushProc.exited
+  return pushProc.exitCode === 0 ? 0 : 1
 }
 
 if (import.meta.main) {
-  const exitCode = await publishSnapshot()
+  const exitCode = await publishSnapshotMain()
   process.exit(exitCode)
 }
