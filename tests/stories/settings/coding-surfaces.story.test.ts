@@ -20,6 +20,17 @@ const MCP_TOKEN = 'scenario-coding-settings-mcp-upstream-token'
 
 const ReposSchema = z.object({ repos: z.array(z.object({ repoId: z.string(), name: z.string() })) })
 
+const credentialResponseSchema = z.object({
+  configured: z.boolean(),
+  complete: z.boolean(),
+  missing: z.array(z.string()),
+  fields: z.array(z.object({ key: z.string(), hasValue: z.boolean(), value: z.string() })),
+})
+
+const mcpViewSchema = z.object({
+  selections: z.array(z.object({ server: z.string(), hasToken: z.boolean() })),
+})
+
 scenario(
   'SCN-settings-coding-forge: forge credentials saved through settings reach the session start',
   async ({ given, when, then, world }) => {
@@ -46,6 +57,21 @@ scenario(
     })
     const session = await given.settingsSession(alice)
 
+    const rejected = await when.settingsRequest(session, '/settings/api/coding-credentials', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contextId,
+        namespace: 'forge',
+        values: { kind: 'gitlab-self-hosted', instance_url: 'http://git.acme.invalid', forge_token: FORGE_TOKEN },
+      }),
+    })
+    then.responseStatus(rejected, 422)
+
+    const unconfigured = await when.settingsRequest(session, '/settings/api/coding-credentials?namespace=forge')
+    then.responseStatus(unconfigured, 200)
+    expect(JSON.stringify(await unconfigured.json())).toContain('"configured":false')
+
     const saved = await when.settingsRequest(session, '/settings/api/coding-credentials', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -59,7 +85,12 @@ scenario(
 
     const observed = await when.settingsRequest(session, '/settings/api/coding-credentials?namespace=forge')
     then.responseStatus(observed, 200)
-    expect(JSON.stringify(await observed.json())).not.toContain(FORGE_TOKEN)
+    const forgeView = credentialResponseSchema.parse(await observed.json())
+    expect(JSON.stringify(forgeView)).not.toContain(FORGE_TOKEN)
+    expect(forgeView).toMatchObject({ configured: true, complete: true })
+    const forgeToken = forgeView.fields.find(({ key }) => key === 'forge_token')
+    expect(forgeToken?.hasValue).toBe(true)
+    expect(forgeToken?.value).not.toBe(FORGE_TOKEN)
 
     const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     magi.expectStartSession({
@@ -82,6 +113,7 @@ scenario(
     const trace = JSON.stringify(world.events.all())
     expect(trace).not.toContain(FORGE_TOKEN)
     expect(trace).not.toContain(MAGI_TOKEN)
+    expect(trace).not.toContain(PROVIDER_KEY)
   },
 )
 
@@ -132,6 +164,10 @@ scenario(
     })
     then.responseStatus(malformed, 422)
 
+    const intact = await when.settingsRequest(session, '/settings/api/coding-credentials?namespace=mcp')
+    then.responseStatus(intact, 200)
+    expect(mcpViewSchema.parse(await intact.json()).selections).toEqual([])
+
     const saved = await when.settingsRequest(session, '/settings/api/coding-credentials', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -142,6 +178,12 @@ scenario(
       }),
     })
     then.responseStatus(saved, 200)
+
+    const observed = await when.settingsRequest(session, '/settings/api/coding-credentials?namespace=mcp')
+    then.responseStatus(observed, 200)
+    const mcpView = mcpViewSchema.parse(await observed.json())
+    expect(JSON.stringify(mcpView)).not.toContain(MCP_TOKEN)
+    expect(mcpView.selections).toContainEqual({ server: 'docs', hasToken: true })
 
     const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     magi.expectStartSession({
@@ -174,6 +216,7 @@ scenario(
     const trace = JSON.stringify(world.events.all())
     expect(trace).not.toContain(MCP_TOKEN)
     expect(trace).not.toContain(MAGI_TOKEN)
+    expect(trace).not.toContain(PROVIDER_KEY)
   },
 )
 
@@ -183,12 +226,17 @@ scenario(
     const alice = given.user('alice')
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-    given.codingSession({
+    const coding = given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
       magiToken: MAGI_TOKEN,
       updatedBy: alice.id,
+    })
+    given.codingCredentials({
+      context: dm,
+      updatedBy: alice.id,
+      agentProvider: { agent: 'claude', provider: 'anthropic', apiKey: PROVIDER_KEY },
     })
     const session = await given.settingsSession(alice)
 
@@ -222,10 +270,20 @@ scenario(
     then.responseStatus(listed, 200)
     expect(ReposSchema.parse(await listed.json()).repos.map((repo) => repo.name)).toContain('papai')
 
-    createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
-    given.llm([callCapability('coding-session.projects.list', {}), answer('papai is configured.')])
-    await when.message(alice, dm, 'List my coding projects')
+    const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
+    magi.expectStartSession({
+      id: 'repos-settings-session',
+      expected: { contextId: coding.contextId, project: 'papai', prompt: 'Add a health check', agent: 'claude' },
+    })
+    given.llm([
+      callCapability('coding-session.start', { project: 'papai', prompt: 'Add a health check' }),
+      answer('The registered repo is running.'),
+    ])
+    await when.message(alice, dm, 'Add a health check')
 
-    then.replyTo(alice).equals('papai is configured.')
+    then.replyTo(alice).equals('The registered repo is running.')
+    const trace = JSON.stringify(world.events.all())
+    expect(trace).not.toContain(PROVIDER_KEY)
+    expect(trace).not.toContain(MAGI_TOKEN)
   },
 )
