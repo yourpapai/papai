@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { lstatSync, realpathSync } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import type { StoryDependencyPlatform } from './dependencies-install.js'
@@ -32,8 +32,13 @@ export function selectStorySandboxBackend(platform: NodeJS.Platform): StorySandb
   return 'linux-docker'
 }
 
-export const STORY_SANDBOX_LINUX_IMAGE =
-  'docker.io/oven/bun:1.3.13@sha256:87416c977a612a204eb54ab9f3927023c2a3c971f4f345a01da08ea6262ae30e'
+function loadStorySandboxLinuxImage(): string {
+  const image = readFileSync(path.join(import.meta.dir, 'sandbox-image.txt'), 'utf8').trim()
+  if (image === '') throw new Error('Story sandbox image reference must not be empty')
+  return image
+}
+
+export const STORY_SANDBOX_LINUX_IMAGE = loadStorySandboxLinuxImage()
 
 const REQUIRED_BUN_VERSION = '1.3.13'
 

@@ -16,7 +16,7 @@ const FROZEN_TEST_SUPPORT = new Set([
 ])
 
 export function isFrozenEnforcementPath(filePath: string): boolean {
-  return /^scripts\/story\/[^/]+\.ts$/u.test(filePath)
+  return /^scripts\/story\/(?:[^/]+\.ts|sandbox-image\.txt)$/u.test(filePath)
 }
 
 export function isFrozenTestSupportPath(filePath: string): boolean {

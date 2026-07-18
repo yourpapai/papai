@@ -23,6 +23,7 @@ import {
   isLinuxStorySandboxRequired,
   resolveLinuxStorySandboxUser,
   selectStorySandboxBackend,
+  STORY_SANDBOX_LINUX_IMAGE,
   type StorySandboxProcessRunner,
   type StorySandboxRequest,
 } from '../../scripts/story/sandbox.js'
@@ -212,7 +213,7 @@ describe('Linux story sandbox', () => {
       'none',
       '--user',
       resolveLinuxStorySandboxUser(),
-      'docker.io/oven/bun:1.3.13@sha256:87416c977a612a204eb54ab9f3927023c2a3c971f4f345a01da08ea6262ae30e',
+      STORY_SANDBOX_LINUX_IMAGE,
       '--no-env-file',
       'test',
     ]) {
