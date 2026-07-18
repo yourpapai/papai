@@ -75,8 +75,8 @@ scenario(
       updatedBy: bob.id,
       agentProvider: { agent: 'claude', provider: 'anthropic', apiKey: PROVIDER_KEY },
     })
-    const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     const admin = await given.settingsAdminSession(alice)
+    const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
 
     magi.expectStartSession({
       id: 'bob-guardrail-session',
@@ -91,6 +91,20 @@ scenario(
     then.codingSessions(bobDm).count(1)
     expect(world.model.inspections().some(({ availableTools }) => availableTools.includes(START_WIRE_NAME))).toBe(true)
     const preGuardrailGenerations = world.model.inspections().length
+
+    const unauthenticated = await when.request('/settings/api/admin/coding-guardrails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'policy', guardrails: { whoMayUse: [alice.id] } }),
+    })
+    then.responseStatus(unauthenticated, 401)
+
+    const unknownKind = await when.settingsRequest(admin, '/settings/api/admin/coding-guardrails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'bogus', guardrails: {} }),
+    })
+    then.responseStatus(unknownKind, 422)
 
     const denied = await when.settingsRequest(
       await when.settingsSession(bob),
@@ -156,6 +170,9 @@ scenario(
     const carolSession = await when.settingsSession(carol)
     const grantBody = JSON.stringify({ userId: bob.id, platformInstanceId: bob.platformInstanceId })
 
+    const unauthenticated = await when.request('/settings/api/admin/admins')
+    then.responseStatus(unauthenticated, 401)
+
     const before = await when.settingsRequest(bobSession, '/settings/api/admin/admins')
     then.responseStatus(before, 403)
 
@@ -197,6 +214,13 @@ scenario(
     const admin = await given.settingsAdminSession(alice)
     const bobSession = await when.settingsSession(bob)
     const body = JSON.stringify({ message: 'Maintenance tonight at 22:00.' })
+
+    const emptyMessage = await when.settingsRequest(admin, '/settings/api/admin/announce', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '' }),
+    })
+    then.responseStatus(emptyMessage, 422)
 
     const denied = await when.settingsRequest(bobSession, '/settings/api/admin/announce', {
       method: 'POST',
