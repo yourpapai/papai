@@ -128,9 +128,10 @@ describe('migration046DashboardSessions', () => {
   test('creates dashboard_sessions admin lookup index', () => {
     migration046DashboardSessions.up(db)
     const idx = db
-      .query<{ name: string }, []>(
-        `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='dashboard_sessions'`,
-      )
+      .query<
+        { name: string },
+        []
+      >(`SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='dashboard_sessions'`)
       .all()
     expect(idx.map((r) => r.name)).toContain('idx_dashboard_sessions_admin')
   })
@@ -442,9 +443,10 @@ describe('dashboard-auth/store', () => {
     insertSession({ idHash: 'sid4', adminUserId: 'u1', issuedAt: 100, expiresAt: 200 })
     touchSession('sid4', 150, '127.0.0.1', 'agent/1')
     const row = db
-      .query<{ last_seen_at: number; last_seen_ip: string; user_agent: string }, []>(
-        `SELECT last_seen_at, last_seen_ip, user_agent FROM dashboard_sessions WHERE id='sid4'`,
-      )
+      .query<
+        { last_seen_at: number; last_seen_ip: string; user_agent: string },
+        []
+      >(`SELECT last_seen_at, last_seen_ip, user_agent FROM dashboard_sessions WHERE id='sid4'`)
       .get()
     expect(row?.last_seen_at).toBe(150)
     expect(row?.last_seen_ip).toBe('127.0.0.1')
@@ -513,17 +515,19 @@ export const insertClaim = (claim: ClaimInsert): void => {
 
 export const consumeClaimByHash = (nonceHash: string, now: number): { adminUserId: string } | null => {
   const row = db()
-    .query<{ admin_user_id: string; expires_at: number; consumed_at: number | null }, [string]>(
-      `SELECT admin_user_id, expires_at, consumed_at FROM dashboard_claims WHERE nonce_hash = ?`,
-    )
+    .query<
+      { admin_user_id: string; expires_at: number; consumed_at: number | null },
+      [string]
+    >(`SELECT admin_user_id, expires_at, consumed_at FROM dashboard_claims WHERE nonce_hash = ?`)
     .get(nonceHash)
   if (row === null) return null
   if (row.consumed_at !== null) return null
   if (row.expires_at <= now) return null
   const result = db()
-    .query<{ rowsAffected: number }, [number, string]>(
-      `UPDATE dashboard_claims SET consumed_at = ? WHERE nonce_hash = ? AND consumed_at IS NULL`,
-    )
+    .query<
+      { rowsAffected: number },
+      [number, string]
+    >(`UPDATE dashboard_claims SET consumed_at = ? WHERE nonce_hash = ? AND consumed_at IS NULL`)
     .run(now, nonceHash)
   if (result.changes !== 1) return null
   return { adminUserId: row.admin_user_id }
@@ -537,9 +541,10 @@ export const insertSession = (session: SessionInsert): void => {
 
 export const loadSessionByHash = (idHash: string, now: number): SessionRow | null => {
   const row = db()
-    .query<{ admin_user_id: string; expires_at: number; revoked_at: number | null }, [string]>(
-      `SELECT admin_user_id, expires_at, revoked_at FROM dashboard_sessions WHERE id = ?`,
-    )
+    .query<
+      { admin_user_id: string; expires_at: number; revoked_at: number | null },
+      [string]
+    >(`SELECT admin_user_id, expires_at, revoked_at FROM dashboard_sessions WHERE id = ?`)
     .get(idHash)
   if (row === null) return null
   if (row.revoked_at !== null) return null

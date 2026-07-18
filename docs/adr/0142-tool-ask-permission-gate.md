@@ -91,22 +91,22 @@ Add a third button to the prompt that persists the decision in `tool_prefs`.
 
 **Option B** for the prompt mechanism, with the following subsidiary decisions:
 
-| Topic | Decision |
+| Topic                   | Decision                                                                                                                                                                                            |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------------------------------------------------------------------------------------------------- |
-| Permission type | Tri-state: `allow                                                                                                                                                                                   | ask | deny`. `allow`= exposed normally;`deny`= removed from ToolSet;`ask` = exposed with per-call gate. |
-| Storage shape | `ToolPrefs { domainDefaults: Partial<Record<ToolDomain, Permission>>, toolOverrides: Record<string, Permission> }`. Lazy migration from legacy `disabledDomains` + boolean overrides at parse time. |
-| Resolution order | `toolOverrides[name]` > `domainDefaults[meta.domain]` > `'allow'` default. Plugin/MCP tools (no metadata) use only steps 1 and 3. |
-| Gate location | Per-tool `execute` wrapping inside `applyToolPreferences()` in `src/tools/index.ts`. |
-| Schema extension | `ask` tools get `_permission_reason` (string, 1–280 chars) added to input schema; gate strips it before forwarding. |
-| Prompt format | `🔐 Run \`<tool>\`?`+ reason paragraph + Allow/Deny buttons.                                                                                                                                       |
-| Callback wire format    |`perm:a:<8-char-id>`(Allow),`perm:d:<8-char-id>`(Deny). 8-char base64url ID from`randomBytes(6)`.                                                                                               |
+| Permission type         | Tri-state: `allow                                                                                                                                                                                   | ask | deny`. `allow`= exposed normally;`deny`= removed from ToolSet;`ask` = exposed with per-call gate. |
+| Storage shape           | `ToolPrefs { domainDefaults: Partial<Record<ToolDomain, Permission>>, toolOverrides: Record<string, Permission> }`. Lazy migration from legacy `disabledDomains` + boolean overrides at parse time. |
+| Resolution order        | `toolOverrides[name]` > `domainDefaults[meta.domain]` > `'allow'` default. Plugin/MCP tools (no metadata) use only steps 1 and 3.                                                                   |
+| Gate location           | Per-tool `execute` wrapping inside `applyToolPreferences()` in `src/tools/index.ts`.                                                                                                                |
+| Schema extension        | `ask` tools get `_permission_reason` (string, 1–280 chars) added to input schema; gate strips it before forwarding.                                                                                 |
+| Prompt format           | `🔐 Run \`<tool>\`?` + reason paragraph + Allow/Deny buttons.                                                                                                                                       |
+| Callback wire format    | `perm:a:<8-char-id>` (Allow), `perm:d:<8-char-id>` (Deny). 8-char base64url ID from `randomBytes(6)`.                                                                                               |
 | Timeout                 | 5 minutes; resolves as Deny; prompt edited to show timeout.                                                                                                                                         |
-| Missing `askPermission`| Deny (safe fallback for proactive mode and test harnesses).                                                                                                                                         |
-| Cache strategy          | Cache pre-permission tool descriptors; apply`applyToolPreferences()`each turn so the per-turn`askPermission`closure is captured fresh.                                                          |
-| Cycling UI              |`allow → ask → deny → allow`on each tap (domain or tool).`cycleDomain`clears per-tool overrides in that domain.                                                                                  |
-| System prompt fragment  | Lists`ask`-gated tool names and instructs the LLM to include `_permission_reason`. Omitted when no tool is `ask`.                                                                                  |
-| External pseudo-domain  | Plugin (`plugin__\_**`) and MCP (`mcp**\___`) tools appear under "External" in the config UI; no bulk-toggle, only per-tool cycling. |
-| Process restart | In-memory pending-request registry; stale clicks hit "expired" branch. No recovery flow. |
+| Missing `askPermission` | Deny (safe fallback for proactive mode and test harnesses).                                                                                                                                         |
+| Cache strategy          | Cache pre-permission tool descriptors; apply `applyToolPreferences()` each turn so the per-turn `askPermission` closure is captured fresh.                                                          |
+| Cycling UI              | `allow → ask → deny → allow` on each tap (domain or tool). `cycleDomain` clears per-tool overrides in that domain.                                                                                  |
+| System prompt fragment  | Lists `ask`-gated tool names and instructs the LLM to include `_permission_reason`. Omitted when no tool is `ask`.                                                                                  |
+| External pseudo-domain  | Plugin (`plugin_*__*`) and MCP (`mcp_*__*`) tools appear under "External" in the config UI; no bulk-toggle, only per-tool cycling.                                                                  |
+| Process restart         | In-memory pending-request registry; stale clicks hit "expired" branch. No recovery flow.                                                                                                            |
 
 ## Consequences
 

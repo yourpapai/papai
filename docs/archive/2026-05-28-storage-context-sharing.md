@@ -576,9 +576,10 @@ const promoteSimpleColumn = (db: Database, table: string, column: string): void 
 const promotePluginContextState = (db: Database): void => {
   if (!tableExists(db, 'plugin_context_state')) return
   const rows = db
-    .query<Row & { plugin_id: string }, []>(
-      `SELECT rowid, plugin_id, context_id AS value FROM plugin_context_state WHERE context_id IS NOT NULL`,
-    )
+    .query<
+      Row & { plugin_id: string },
+      []
+    >(`SELECT rowid, plugin_id, context_id AS value FROM plugin_context_state WHERE context_id IS NOT NULL`)
     .all()
   for (const row of rows) {
     if (!isThreadValue(row.value)) continue
@@ -594,9 +595,10 @@ const promotePluginContextState = (db: Database): void => {
 const promotePluginKv = (db: Database): void => {
   if (!tableExists(db, 'plugin_kv')) return
   const rows = db
-    .query<Row & { plugin_id: string; key: string }, []>(
-      `SELECT rowid, plugin_id, key, context_id AS value FROM plugin_kv WHERE context_id IS NOT NULL`,
-    )
+    .query<
+      Row & { plugin_id: string; key: string },
+      []
+    >(`SELECT rowid, plugin_id, key, context_id AS value FROM plugin_kv WHERE context_id IS NOT NULL`)
     .all()
   for (const row of rows) {
     if (!isThreadValue(row.value)) continue

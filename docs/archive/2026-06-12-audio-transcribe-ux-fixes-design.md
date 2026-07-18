@@ -102,7 +102,8 @@ type PluginAttachmentTransformer = {
 }
 
 type AttachmentTransformResult =
-  { ok: true; text: string; meta?: { language?: string; durationSec?: number } } | { ok: false; reason: string } // short human-readable, rendered into the failure line
+  | { ok: true; text: string; meta?: { language?: string; durationSec?: number } }
+  | { ok: false; reason: string } // short human-readable, rendered into the failure line
 ```
 
 The transformer receives only the attachment record and pulls bytes through `runtimeContext.attachments.read()` — the same permission-gated path the tool uses. It returns plain text; **core owns all message formatting**, so a plugin cannot inject unfenced content into prompt structure.

@@ -254,7 +254,10 @@ import { logger } from '../logger.js'
 const log = logger.child({ scope: 'security:audit' })
 
 type SecurityEventType =
-  'injection_detected' | 'high_confidence_destructive' | 'suspicious_alert_content' | 'confirmation_gate_triggered'
+  | 'injection_detected'
+  | 'high_confidence_destructive'
+  | 'suspicious_alert_content'
+  | 'confirmation_gate_triggered'
 
 export function logSecurityEvent(type: SecurityEventType, userId: string, details?: Record<string, unknown>): void {
   log.warn({ securityEvent: type, userId, ...details }, `Security: ${type}`)

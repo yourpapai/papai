@@ -52,14 +52,14 @@ See LICENSE in the project root for details.
 
 ## Deviation 4: Event `detail` field converted to typed `ProgressOutcome`
 
-| Field | Value |
+| Field         | Value                                                                                                                                                                                                                                                                |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | --------- | ------------------------------------ |
 | **Plan spec** | `item-finish` event has `outcome: 'done'                                                                                                                                                                                                                             | 'failed' | 'skipped' | 'reused'`and a flat`detail: string`. |
-| **Expected** | Uniform structure: all outcomes carry a `detail` string explaining what happened. |
-| **Actual** | `ProgressOutcome` is a discriminated union: `done` carries `{ usage, elapsedMs }`; `failed`/`skipped`/`reused` carry `{ detail }`. Text renderer calls `formatPerItemSuffix(usage, elapsedMs)` for `done` outcomes instead of passing a pre-formatted detail string. |
-| **Why** | Avoids string-formatting token/tool/time data inside the event object. Keeps `ProgressOutcome` typed and serializable. The spec's `formatPerItemSuffix` from `phase-stats.ts` remains the single source of truth for rendering metrics. |
-| **Impact** | Type safety improved — `done` outcomes must provide numeric usage, preventing silent loss of per-item statistics. Event shape is richer but still deterministic. |
-| **Correct?** | Yes — type-safe refinement that preserves formatter centralization. |
+| **Expected**  | Uniform structure: all outcomes carry a `detail` string explaining what happened.                                                                                                                                                                                    |
+| **Actual**    | `ProgressOutcome` is a discriminated union: `done` carries `{ usage, elapsedMs }`; `failed`/`skipped`/`reused` carry `{ detail }`. Text renderer calls `formatPerItemSuffix(usage, elapsedMs)` for `done` outcomes instead of passing a pre-formatted detail string. |
+| **Why**       | Avoids string-formatting token/tool/time data inside the event object. Keeps `ProgressOutcome` typed and serializable. The spec's `formatPerItemSuffix` from `phase-stats.ts` remains the single source of truth for rendering metrics.                              |
+| **Impact**    | Type safety improved — `done` outcomes must provide numeric usage, preventing silent loss of per-item statistics. Event shape is richer but still deterministic.                                                                                                     |
+| **Correct?**  | Yes — type-safe refinement that preserves formatter centralization.                                                                                                                                                                                                  |
 
 ---
 

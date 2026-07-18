@@ -1964,28 +1964,28 @@ Expected: branch published, no force-push required.
 
 **Spec coverage:**
 
-| Spec section / requirement | Implementing task(s) |
+| Spec section / requirement                                                                                                                              | Implementing task(s)                                                                                                                                      |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------- | ---------- | ------ |
-| `platform_instances` table | Tasks 1, 2 |
-| `task_instances` table | Tasks 1, 2 |
-| `context_settings` table + indexes | Tasks 1, 2 |
-| `admins` table with composite PK | Tasks 1, 2 |
-| `users.platform_instance_id` column added (nullable) | Task 2 |
-| `user_config`, plugin tables, history etc. untouched | (none — verified by leaving schema.ts re-exports unchanged and not editing those migrations) |
-| Encryption: AES-256-GCM, 12-byte IV, 16-byte tag, base64(IV‖TAG‖CT) | Task 4 |
-| `INSTANCE_CONFIG_KEY` resolution (hex / hash / fallback + WARN) | Task 4 |
-| Tamper detection raises clear error | Task 4 (test + impl) |
+| `platform_instances` table                                                                                                                              | Tasks 1, 2                                                                                                                                                |
+| `task_instances` table                                                                                                                                  | Tasks 1, 2                                                                                                                                                |
+| `context_settings` table + indexes                                                                                                                      | Tasks 1, 2                                                                                                                                                |
+| `admins` table with composite PK                                                                                                                        | Tasks 1, 2                                                                                                                                                |
+| `users.platform_instance_id` column added (nullable)                                                                                                    | Task 2                                                                                                                                                    |
+| `user_config`, plugin tables, history etc. untouched                                                                                                    | (none — verified by leaving schema.ts re-exports unchanged and not editing those migrations)                                                              |
+| Encryption: AES-256-GCM, 12-byte IV, 16-byte tag, base64(IV‖TAG‖CT)                                                                                     | Task 4                                                                                                                                                    |
+| `INSTANCE_CONFIG_KEY` resolution (hex / hash / fallback + WARN)                                                                                         | Task 4                                                                                                                                                    |
+| Tamper detection raises clear error                                                                                                                     | Task 4 (test + impl)                                                                                                                                      |
 | `maskConfig()` masks `/token                                                                                                                            | key                                                                                                                                                       | secret | password | cookie/iu` | Task 4 |
-| Bootstrap on empty DB seeds platform + task + 2 admin rows | Task 9 |
-| Bootstrap idempotent (non-zero counts → already-bootstrapped) | Task 9 |
-| Bootstrap silent + warn when empty env + empty DB | Task 9 |
-| Bootstrap aborts with `partial-env` and the list of missing names | Task 9 |
-| Bootstrap wrapped per-row (transactionality already provided by per-migration tx + per-store inserts; idempotency precondition prevents partial writes) | Task 9 (precondition check before any insert) |
-| Startup wiring: call after `initDb()` | Task 10 |
-| Migration 040 registered in `MIGRATIONS` list | Task 3 |
-| Test files at the paths listed in spec Section 5 | Tasks 2, 4, 5, 6, 7, 8, 9 |
-| `INSTANCE_CONFIG_KEY` documented | Task 11 |
-| Phases 2–5 deferred (no `TaskProviderResolver`, no `ChatRouter`, no dashboard, no `/setup` change, no plugin re-eval) | Out of scope — confirmed nothing in tasks 1–11 touches `src/providers/factory.ts`, `src/chat/registry.ts`, `src/debug/`, `src/wizard/`, or `src/plugins/` |
+| Bootstrap on empty DB seeds platform + task + 2 admin rows                                                                                              | Task 9                                                                                                                                                    |
+| Bootstrap idempotent (non-zero counts → already-bootstrapped)                                                                                           | Task 9                                                                                                                                                    |
+| Bootstrap silent + warn when empty env + empty DB                                                                                                       | Task 9                                                                                                                                                    |
+| Bootstrap aborts with `partial-env` and the list of missing names                                                                                       | Task 9                                                                                                                                                    |
+| Bootstrap wrapped per-row (transactionality already provided by per-migration tx + per-store inserts; idempotency precondition prevents partial writes) | Task 9 (precondition check before any insert)                                                                                                             |
+| Startup wiring: call after `initDb()`                                                                                                                   | Task 10                                                                                                                                                   |
+| Migration 040 registered in `MIGRATIONS` list                                                                                                           | Task 3                                                                                                                                                    |
+| Test files at the paths listed in spec Section 5                                                                                                        | Tasks 2, 4, 5, 6, 7, 8, 9                                                                                                                                 |
+| `INSTANCE_CONFIG_KEY` documented                                                                                                                        | Task 11                                                                                                                                                   |
+| Phases 2–5 deferred (no `TaskProviderResolver`, no `ChatRouter`, no dashboard, no `/setup` change, no plugin re-eval)                                   | Out of scope — confirmed nothing in tasks 1–11 touches `src/providers/factory.ts`, `src/chat/registry.ts`, `src/debug/`, `src/wizard/`, or `src/plugins/` |
 
 **Placeholder scan:** No `TBD`, `TODO`, `FIXME`, or "implement later" in any task body. Each code block is the full file or full snippet to insert.
 

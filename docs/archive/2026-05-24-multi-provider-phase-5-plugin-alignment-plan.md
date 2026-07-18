@@ -298,8 +298,9 @@ const taskInstance = (id: string, type: TaskInstance['type'], status: TaskInstan
 
 describe('startup plugin compatibility collection', () => {
   test('builds compatibility entries from active task and platform instances', () => {
-    const router = new ChatRouter((_id, _type, _config): ChatProvider =>
-      createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
+    const router = new ChatRouter(
+      (_id, _type, _config): ChatProvider =>
+        createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
     )
     router.addInstance('telegram-a', 'telegram', { token: 'x' })
 

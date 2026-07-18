@@ -464,7 +464,7 @@ Order chosen so isolated/leaf code (no downstream consumers) goes first and the 
 - [ ] **Task 2.1 — `review-loop/**`\*\* (16) — standalone workspace, zero src consumers.
 - [ ] **Task 2.2 — `scripts/**`** (144) — tooling; not imported by `src`.
 - [ ] **Task 2.3 — `client/**`\*\* (56) — browser SPA; isolated from server.
-- [ ] **Task 2.4 — `tests/**`(split into sub-tasks if large)** (621) — tests import`src`but nothing imports tests, so fixing them never ripples outward. Split by subtree to keep commits reviewable:`tests/tools`, `tests/plugins`, `tests/web`, `tests/chat`, `tests/client`, then the remainder. Note: tests under `tests/**` already have a _separate_ override (max-lines etc.); only remove their entries from the **baseline\*\* override, not the pre-existing one.
+- [ ] **Task 2.4 — `tests/**`(split into sub-tasks if large)** (621) — tests import`src`but nothing imports tests, so fixing them never ripples outward. Split by subtree to keep commits reviewable:`tests/tools`, `tests/plugins`, `tests/web`, `tests/chat`, `tests/client`, then the remainder. Note: tests under `tests/**` already have a *separate* override (max-lines etc.); only remove their entries from the **baseline\*\* override, not the pre-existing one.
 - [ ] **Task 2.5 — `src/web/**`\*\* (49) — leaf module.
 - [ ] **Task 2.6 — `src/mcp/**`\*\* (35) — leaf-ish adapter.
 - [ ] **Task 2.7 — `src/stats/**`\*\* (35).

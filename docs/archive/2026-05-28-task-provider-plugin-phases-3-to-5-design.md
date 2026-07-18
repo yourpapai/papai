@@ -84,7 +84,9 @@ The plugin imports `TaskProvider`, `TaskCapability`, `ProviderConfigRequirement`
   "contributes": {
     "taskProviderTypes": ["kaneo"],
   },
-  "providerCapabilities": [/* ALL_CAPABILITIES — every TaskCapability the plugin supports */],
+  "providerCapabilities": [
+    /* ALL_CAPABILITIES — every TaskCapability the plugin supports */
+  ],
   "providerConfigSchema": [
     { "key": "baseUrl", "label": "Kaneo URL", "required": true, "sensitive": false, "scope": "instance" },
     { "key": "internalUrl", "label": "Kaneo Internal URL", "required": false, "sensitive": false, "scope": "instance" },

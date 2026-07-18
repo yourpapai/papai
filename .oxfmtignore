@@ -2,3 +2,6 @@ CHANGELOG.md
 .codex/
 .opencode/package.json
 client/assets/
+# oxfmt 0.59 re-flows markdown tables and breaks cells containing pipes inside
+# code spans; keep long-form docs prose out of the formatter.
+docs/

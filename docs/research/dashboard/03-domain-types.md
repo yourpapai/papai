@@ -172,7 +172,9 @@ type TurnToolCall = {
 }
 
 type Scope =
-  { kind: 'user'; userId: string } | { kind: 'group'; groupId: string; threadId?: string } | { kind: 'global' }
+  | { kind: 'user'; userId: string }
+  | { kind: 'group'; groupId: string; threadId?: string }
+  | { kind: 'global' }
 ```
 
 ## Notification

@@ -689,11 +689,12 @@ function answerPermissionTool(httpFetch: HttpFetch | undefined): {
         .filter((id): id is string => id !== null)
       if (toolCallIds.length === 0) return { resolved: 0, message: 'no pending permission requests' }
       await Promise.all(
-        toolCallIds.map((toolCallId): Promise<unknown> =>
-          callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/permission`, {
-            toolCallId,
-            decision,
-          }),
+        toolCallIds.map(
+          (toolCallId): Promise<unknown> =>
+            callMagi(httpFetch, cfg, 'POST', `/sessions/${encodeURIComponent(sessionId)}/permission`, {
+              toolCallId,
+              decision,
+            }),
         ),
       )
       return { resolved: toolCallIds.length, decision }

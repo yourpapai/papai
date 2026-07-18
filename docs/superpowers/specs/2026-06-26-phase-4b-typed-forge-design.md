@@ -37,12 +37,12 @@ gate; the sandbox egress stays at its 4a value until 4c.
 2. **papai owns `kind → apiBaseUrl` derivation; magi's API host is always either a
    fixed well-known SaaS host or the validated instance host** (never an arbitrary
    user string for SaaS):
-   | connection kind      | magi `forge.kind` | `apiBaseUrl`                        |
-   | -------------------- | ----------------- | ----------------------------------- |
-   | `github` (SaaS)      | `github`          | `https://api.github.com` (fixed)    |
-   | `github-enterprise`  | `github`          | `<instanceUrl>/api/v3`              |
-   | `gitlab` (SaaS)      | `gitlab`          | `https://gitlab.com/api/v4` (fixed) |
-   | `gitlab-self-hosted` | `gitlab`          | `<instanceUrl>/api/v4`              |
+   | connection kind | magi `forge.kind` | `apiBaseUrl` |
+   | --------------- | ----------------- | ------------ |
+   | `github` (SaaS) | `github` | `https://api.github.com` (fixed) |
+   | `github-enterprise` | `github` | `<instanceUrl>/api/v3` |
+   | `gitlab` (SaaS) | `gitlab` | `https://gitlab.com/api/v4` (fixed) |
+   | `gitlab-self-hosted` | `gitlab` | `<instanceUrl>/api/v4` |
 3. **One forge connection per config-context** (per-user in DM, group in group),
    in the existing `forge` vault. The repo's host must match the connection's host
    (the repo lives on the connected forge). Multiple simultaneous connections are

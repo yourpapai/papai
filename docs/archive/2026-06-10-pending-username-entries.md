@@ -364,7 +364,9 @@ Create `src/debug/settings/resolve-user-id.ts`:
 import { getRuntimeChatRouter } from '../chat-router-runtime.js'
 
 export type SettingsUserIdResolution =
-  { kind: 'id'; userId: string } | { kind: 'resolved'; userId: string } | { kind: 'unresolved'; username: string }
+  | { kind: 'id'; userId: string }
+  | { kind: 'resolved'; userId: string }
+  | { kind: 'unresolved'; username: string }
 
 /**
  * Resolve a settings-route user input (numeric ID or @username) to a platform user ID.

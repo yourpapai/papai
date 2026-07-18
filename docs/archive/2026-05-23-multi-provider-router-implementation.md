@@ -1958,7 +1958,9 @@ export type IncomingMessage = {
   text: string
   /** ID of the chat instance this message arrived on. Set by ChatRouter. */
   platformInstanceId: string
-} & Partial<{/* unchanged optional fields */}>
+} & Partial<{
+  /* unchanged optional fields */
+}>
 
 // In IncomingInteraction:
 export type IncomingInteraction = {
