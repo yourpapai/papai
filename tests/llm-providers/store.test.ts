@@ -15,8 +15,8 @@ import {
   setAdminRoleBindings,
   updateLlmProvider,
   updateProviderVerification,
-  clearLlmAdminCacheForTesting,
 } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 beforeEach(async () => {

@@ -67,7 +67,7 @@ function runFixer(deps: IssueProcessorDeps, prompt: string, label: string): Prom
     reporter: deps.log,
     logPath: deps.runState.logPath,
     extraArgs: deps.config.fixer.extraArgs,
-    timeoutMs: deps.config.agentTimeoutMs,
+    timeoutMs: deps.config.fixer.timeoutMs ?? deps.config.agentTimeoutMs,
   })
 }
 

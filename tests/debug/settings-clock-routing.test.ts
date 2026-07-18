@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { routeRequestForTest } from '../../src/debug/server.js'
+import { routeRequestForTest } from '../../src/debug/server.testing.js'
 import { CODE_TTL_MS, issueAuthCode } from '../../src/settings/auth-code-store.js'
 import { SESSION_COOKIE_NAME } from '../../src/settings/cookies.js'
 import { SESSION_TTL_MS } from '../../src/settings/session-store.js'

@@ -87,6 +87,7 @@
     "p-limit": "^7.3.0",
     "pino": "^10.3.1",
     "rrule-temporal": "^2.0.0",
+    "svelte": "^5.56.6",
     "typescript": "^6.0.3",
     "unpdf": "^1.6.2",
     "zod": "^4.4.3"
@@ -120,7 +121,6 @@
     "oxlint": "1.74.0",
     "oxlint-tsgolint": "^0.22.1",
     "storybook": "^10.5.2",
-    "svelte": "^5.56.6",
     "vite": "^6.4.2"
   },
   "overrides": {

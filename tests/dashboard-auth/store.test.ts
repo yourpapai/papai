@@ -13,9 +13,9 @@ import {
   insertSession,
   loadSessionByHash,
   revokeSessionByHash,
-  setStoreDb,
   touchSession,
 } from '../../src/dashboard-auth/store.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.testing.js'
 import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import { mockLogger } from '../utils/test-helpers.js'
 

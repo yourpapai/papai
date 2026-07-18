@@ -9,12 +9,8 @@ import { z } from 'zod'
 
 import { handleAdminLlmProvidersRoutes } from '../../../../src/debug/settings/admin/llm-providers-routes.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
-import {
-  clearLlmAdminCacheForTesting,
-  createLlmProvider,
-  getLlmProvider,
-  setAdminRoleBindings,
-} from '../../../../src/llm-providers/store.js'
+import { createLlmProvider, getLlmProvider, setAdminRoleBindings } from '../../../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../../../src/llm-providers/store.testing.js'
 import { addUser } from '../../../../src/users.js'
 import {
   mockLogger,

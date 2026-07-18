@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { CommandHandler } from '../../src/chat/types.js'
 import { registerDashboardCommand } from '../../src/commands/dashboard.js'
-import { setStoreDb } from '../../src/dashboard-auth/store.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.testing.js'
 import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import {
   createAuth,

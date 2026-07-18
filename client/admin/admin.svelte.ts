@@ -17,11 +17,6 @@ export const adminSections = [
 
 export type AdminSectionId = (typeof adminSections)[number]['id']
 
-export interface AdminSection {
-  readonly id: AdminSectionId
-  readonly label: string
-}
-
 const sectionIds: ReadonlySet<string> = new Set(adminSections.map((section) => section.id))
 
 function isAdminSectionId(value: string): value is AdminSectionId {
@@ -31,12 +26,6 @@ function isAdminSectionId(value: string): value is AdminSectionId {
 export function sectionFromHash(hash: string): AdminSectionId {
   const normalized = hash.replace(/^#/u, '').toLowerCase()
   return isAdminSectionId(normalized) ? normalized : 'overview'
-}
-
-export function sectionLabel(sectionId: AdminSectionId): string {
-  const section = adminSections.find((candidate) => candidate.id === sectionId)
-  if (section === undefined) return 'Overview'
-  return section.label
 }
 
 export const adminState = $state({

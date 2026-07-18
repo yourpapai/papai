@@ -10,7 +10,7 @@ import { z } from 'zod'
 
 import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import { issueClaim, mintSession } from '../../src/dashboard-auth/index.js'
-import { setStoreDb } from '../../src/dashboard-auth/store.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.testing.js'
 import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import {
   handleAuthClaim,

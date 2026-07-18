@@ -7,7 +7,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { seedDefaultLlmProviderFromEnv } from '../../src/llm-providers/env-bootstrap.js'
-import { clearLlmAdminCacheForTesting, getAdminRoleBindings, listLlmProviders } from '../../src/llm-providers/store.js'
+import { getAdminRoleBindings, listLlmProviders } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const clearEnv = (): void => {

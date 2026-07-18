@@ -19,22 +19,19 @@ import {
   contributionRegistry,
   namespacedJobName,
   namespacedToolName,
-  resetContributionCollisionStateForTesting,
   runPluginScheduledJob,
   sanitizePluginId,
   type PluginScheduledJobDeps,
   type PluginToolSetRuntime,
 } from '../../src/plugins/contributions.js'
+import { resetContributionCollisionStateForTesting } from '../../src/plugins/contributions.testing.js'
 import {
   MAX_FRAGMENT_LENGTH_PER_PLUGIN,
   MAX_TOTAL_PLUGIN_PROMPT_LENGTH,
   buildPluginPromptSection,
 } from '../../src/plugins/prompt-contributions.js'
-import {
-  pluginRegistry,
-  resetPluginRegistryForTesting,
-  setPluginEnabledForContext,
-} from '../../src/plugins/registry.js'
+import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
+import { resetPluginRegistryForTesting } from '../../src/plugins/registry.testing.js'
 import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
 import { pluginManifestSchema } from '../../src/plugins/types.js'
 import { createToolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'

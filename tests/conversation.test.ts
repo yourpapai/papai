@@ -11,7 +11,7 @@ import { enableByokForContext, updateByokLlmConfig } from '../src/byok-llm/store
 import * as cacheModule from '../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
-import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../src/llm-providers/store.testing.js'
 import { logger } from '../src/logger.js'
 import * as longTermMemoryStore from '../src/long-term-memory/store.js'
 import { saveMemoryProfile, saveMemoryRecord } from '../src/long-term-memory/store.js'

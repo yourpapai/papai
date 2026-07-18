@@ -8,11 +8,11 @@ import assert from 'node:assert/strict'
 
 import { RESULT_STORE_TTL_MS } from '../../../src/tools/compaction/constants.js'
 import { makeExpandResultTool } from '../../../src/tools/compaction/expand-result.js'
+import { putResult } from '../../../src/tools/compaction/result-store.js'
 import {
-  putResult,
   clearResultStoreForTesting,
   setResultStoreClockForTesting,
-} from '../../../src/tools/compaction/result-store.js'
+} from '../../../src/tools/compaction/result-store.testing.js'
 import { getToolExecutor } from '../../utils/test-helpers.js'
 
 function isPageResult(v: unknown): v is { chunk: string; done: boolean } {

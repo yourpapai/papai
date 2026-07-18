@@ -10,7 +10,8 @@ import {
   unregisterMattermostActionDispatcher,
 } from '../../src/chat/mattermost/action-callbacks.js'
 import { createMattermostActionContext } from '../../src/chat/mattermost/action-signing.js'
-import { routeRequestForTest, routeSettingsStatic } from '../../src/debug/server.js'
+import { routeSettingsStatic } from '../../src/debug/server.js'
+import { routeRequestForTest } from '../../src/debug/server.testing.js'
 
 describe('routeSettingsStatic', () => {
   test('serves the settings shell for /settings', () => {

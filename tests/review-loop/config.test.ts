@@ -54,6 +54,19 @@ describe('ReviewLoopConfigSchema', () => {
 
     expect(parsed.repoRoot).toBe('/some/repo')
   })
+
+  test('accepts optional per-agent timeoutMs overrides, undefined by default', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1', timeoutMs: 1_800_000 },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+
+    expect(parsed.reviewer.timeoutMs).toBe(1_800_000)
+    expect(parsed.fixer.timeoutMs).toBeUndefined()
+    expect(parsed.matcher.timeoutMs).toBeUndefined()
+  })
 })
 
 function writeConfig(dir: string, config: Record<string, unknown>): string {

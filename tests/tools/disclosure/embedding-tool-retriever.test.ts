@@ -8,11 +8,11 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { EmbeddingCallContext } from '../../../src/embeddings.js'
 import type { LlmConfigResult } from '../../../src/llm-providers/types.js'
 import {
-  clearBriefEmbeddingCachesForTesting,
   EmbeddingToolRetriever,
   getToolRetriever,
   type ToolRetrieverFactoryDeps,
 } from '../../../src/tools/disclosure/embedding-tool-retriever.js'
+import { clearBriefEmbeddingCachesForTesting } from '../../../src/tools/disclosure/embedding-tool-retriever.testing.js'
 import type { ToolBrief } from '../../../src/tools/disclosure/tool-brief.js'
 import { LexicalToolRetriever } from '../../../src/tools/disclosure/tool-retriever.js'
 

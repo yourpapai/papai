@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import type { ToolSet } from 'ai'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { alertPrompts, scheduledPrompts } from '../../src/db/schema.js'
 import { getAlertPrompt } from '../../src/deferred-prompts/alerts.js'

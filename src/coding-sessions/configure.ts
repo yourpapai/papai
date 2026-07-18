@@ -52,6 +52,7 @@ function ensureCurrentImplementation(pluginDirectory: string, updatedBy: string)
   if (!approved) throw unavailableImplementation('registration could not be approved')
 }
 
+/** @public Intentional public seam for the plugin-core-separation refactor. */
 export function configureCodingSessionCapability(
   config: CodingSessionCapabilityConfig,
 ): ConfiguredCodingSessionCapability {

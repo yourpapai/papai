@@ -8,11 +8,11 @@ import assert from 'node:assert/strict'
 
 import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import { mintSession } from '../../src/dashboard-auth/index.js'
-import { setStoreDb } from '../../src/dashboard-auth/store.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.testing.js'
 import { users } from '../../src/db/schema.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel } from '../../src/logger.js'
-import { clearStatsCacheForTesting } from '../../src/stats/index.js'
+import { clearStatsCacheForTesting } from '../../src/stats/index.testing.js'
 import {
   getTestDb,
   mockLogger,

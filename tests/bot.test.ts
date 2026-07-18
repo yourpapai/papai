@@ -15,7 +15,7 @@ import {
 } from '../src/auth.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
-import { clearGroupAdminLiveCache } from '../src/chat/group-admin-live.js'
+import { clearGroupAdminLiveCache } from '../src/chat/group-admin-live.testing.js'
 import type {
   AuthorizationResult,
   ChatProvider,
@@ -29,7 +29,8 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../src/chat/types.js'
-import { setConfig, setConfigValue } from '../src/config.js'
+import { setConfigValue } from '../src/config.js'
+import { setConfig } from '../src/config.testing.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'

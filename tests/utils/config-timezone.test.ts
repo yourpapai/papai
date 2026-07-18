@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { setConfig } from '../../src/config.js'
+import { setConfig } from '../../src/config.testing.js'
 import { getUserTimezoneOrDefault, getUserTimezoneOrError } from '../../src/utils/config-timezone.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 

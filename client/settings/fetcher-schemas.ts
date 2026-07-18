@@ -58,7 +58,6 @@ export const ByokResponseSchema = z.object({
     embedding: null,
   }),
 })
-export type ByokField = z.infer<typeof ByokFieldSchema>
 export type ByokResponse = z.infer<typeof ByokResponseSchema>
 
 export const AdminByokContextSchema = z.object({
@@ -149,8 +148,6 @@ export const PluginEligibilitySchema = z.union([
     missingCapabilities: z.array(z.string()),
   }),
 ])
-export type PluginEligibility = z.infer<typeof PluginEligibilitySchema>
-
 export const PluginConfigFieldSchema = StoredConfigValueSchema.omit({ value: true })
 export const PluginEntrySchema = z.object({
   id: z.string(),

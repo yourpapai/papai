@@ -6,7 +6,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { routeInteraction } from '../../src/chat/interaction-router.js'
-import { askPermissionViaChat, resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.js'
+import { askPermissionViaChat } from '../../src/chat/permission-prompt.js'
+import { resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.testing.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
 import { createMockReply } from '../utils/test-helpers.js'
 
