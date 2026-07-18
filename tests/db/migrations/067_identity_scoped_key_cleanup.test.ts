@@ -26,11 +26,12 @@ describe('migration 067', () => {
     const db = new Database(':memory:')
     runMigrations(db, MIGRATIONS)
     insertMapping(db, 'alice-raw', 'kaneo-alice')
+    insertMapping(db, 'ctx:alice', 'kaneo-unscoped')
     insertMapping(db, 'pi:dGVzdA:ctx:dGVzdA', 'kaneo-orphan')
 
     migration067IdentityScopedKeyCleanup.up(db)
 
     const remaining = db.query<{ context_id: string }, []>(`SELECT context_id FROM user_identity_mappings`).all()
-    expect(remaining.map((row) => row.context_id)).toEqual(['alice-raw'])
+    expect(remaining.map((row) => row.context_id)).toEqual(['alice-raw', 'ctx:alice'])
   })
 })
