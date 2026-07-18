@@ -136,7 +136,7 @@ afterEach(() => {
 })
 
 describe('story sandbox backend selection', () => {
-  test.each(['darwin', 'linux', 'win32'] as const)('selects the Docker backend on %s', (platform) => {
+  test.each(['darwin', 'linux'] as const)('selects the Docker backend on %s', (platform) => {
     expect(selectStorySandboxBackend(platform)).toBe('linux-docker')
   })
 
@@ -144,7 +144,13 @@ describe('story sandbox backend selection', () => {
     expect(() => selectStorySandboxBackend(platform)).toThrow('not implemented')
   })
 
-  test.each(['darwin', 'linux', 'win32'] as const)(
+  test('rejects win32 with an actionable unsupported-host error', () => {
+    expect(() => selectStorySandboxBackend('win32')).toThrow(
+      'Story sandbox is not supported on Windows: the linux-docker backend requires a POSIX host uid/gid. Run the story suite on Linux or macOS with Docker (see docs/architecture/commands.md).',
+    )
+  })
+
+  test.each(['darwin', 'linux'] as const)(
     'builds a Docker command on %s with no native sandbox fallback',
     (platform) => {
       const { request } = fixture()

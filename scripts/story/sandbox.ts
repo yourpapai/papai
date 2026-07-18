@@ -23,6 +23,11 @@ export type StorySandboxRequest = Readonly<{
 }>
 
 export function selectStorySandboxBackend(platform: NodeJS.Platform): StorySandboxBackend {
+  if (platform === 'win32') {
+    throw new Error(
+      'Story sandbox is not supported on Windows: the linux-docker backend requires a POSIX host uid/gid. Run the story suite on Linux or macOS with Docker (see docs/architecture/commands.md).',
+    )
+  }
   if (UNSUPPORTED_PLATFORMS.has(platform)) throw new Error(`Story sandbox backend is not implemented for ${platform}`)
   return 'linux-docker'
 }
