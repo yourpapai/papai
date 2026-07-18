@@ -192,6 +192,11 @@ const FORWARD_ONLY_SCENARIO_IDS = new Set<CatalogScenarioId>([
   'SCN-http-mattermost-action',
 ])
 
+const REQUIRED_SEAMS: Partial<Record<CatalogScenarioId, string>> = {
+  'SCN-settings-admin-mcp-catalog': 'fake-mcp-server',
+  'SCN-settings-admin-mcp-plugin-servers': 'fake-mcp-server',
+}
+
 function catalogStatusFor(scenarioId: CatalogScenarioId): CatalogStatus {
   if (GAP_SCENARIO_IDS.has(scenarioId)) return 'gap'
   if (scenarioId === 'SCN-coding-nerv-forge-event-source') return 'contract-only'
@@ -294,7 +299,9 @@ const QUALIFICATION_STORY_IDS: Partial<Record<CatalogScenarioId, NonEmptyReadonl
   ],
 }
 
-function pendingReasonFor(catalogStatus: CatalogStatus): PendingReason {
+function pendingReasonFor(scenarioId: CatalogScenarioId, catalogStatus: CatalogStatus): PendingReason {
+  if (REQUIRED_SEAMS[scenarioId] !== undefined)
+    return toPendingReason('Deferred to the MCP-focused spec: behavioral proof requires a fake-MCP-server seam.')
   if (catalogStatus === 'gap') return toPendingReason('Catalog gap: awaiting a local executable story.')
   if (catalogStatus === 'contract-only')
     return toPendingReason('Contract-only non-trigger: no executable story is expected.')
@@ -317,12 +324,15 @@ export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
         verifiedAt: '2026-07-13' as const,
         storyIds,
       })
+    const catalogStatus = catalogStatusFor(scenarioId)
+    const requiredSeam = REQUIRED_SEAMS[scenarioId]
     return Object.freeze({
       scenarioId,
-      catalogStatus: catalogStatusFor(scenarioId),
+      catalogStatus,
       kind: 'pending' as const,
       verifiedAt: '2026-07-13' as const,
-      reason: pendingReasonFor(catalogStatusFor(scenarioId)),
+      reason: pendingReasonFor(scenarioId, catalogStatus),
+      ...(requiredSeam === undefined ? {} : { requiredSeam }),
     })
   }),
 )

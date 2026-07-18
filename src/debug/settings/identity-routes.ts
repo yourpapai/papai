@@ -36,6 +36,7 @@ function handleGet(req: Request, url: URL): Response {
   if (!scope.ok) return scope.response
   const provider = providerNameFor(scope.scope.contextId)
   if (provider === null) return settingsJson(422, { error: 'no task instance configured for this context' })
+  // Envelope contextId is the resolved scope; the mapping itself is keyed by the raw platform user id.
   return settingsJson(200, {
     contextId: scope.scope.contextId,
     providerName: provider,
