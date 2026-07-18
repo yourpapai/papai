@@ -83,7 +83,14 @@ async function handlePut(req: Request): Promise<Response> {
     matchMethod: 'manual_nl',
     confidence: 1,
   })
-  log.info({ contextId: resolved.scope.contextId, providerName: resolved.provider }, 'Settings identity mapping set')
+  log.info(
+    {
+      contextId: auth.authed.principal.platformUserId,
+      scopedContextId: resolved.scope.contextId,
+      providerName: resolved.provider,
+    },
+    'Settings identity mapping set',
+  )
   return settingsJson(200, { ok: true, contextId: resolved.scope.contextId })
 }
 
@@ -96,7 +103,11 @@ function handleDelete(req: Request, url: URL): Response {
   if (!resolved.ok) return resolved.response
   clearIdentityMapping(auth.authed.principal.platformUserId, resolved.provider)
   log.info(
-    { contextId: resolved.scope.contextId, providerName: resolved.provider },
+    {
+      contextId: auth.authed.principal.platformUserId,
+      scopedContextId: resolved.scope.contextId,
+      providerName: resolved.provider,
+    },
     'Settings identity mapping cleared',
   )
   return settingsJson(200, { ok: true, contextId: resolved.scope.contextId })
