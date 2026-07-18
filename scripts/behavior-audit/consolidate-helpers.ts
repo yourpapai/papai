@@ -12,7 +12,12 @@ import { PROJECT_ROOT } from './config.js'
 import type { ConsolidateBehaviorInput, ConsolidationResult } from './consolidate-agent.js'
 import type { ExtractedBehaviorRecord } from './extracted-store.js'
 import { readExtractedFile } from './extracted-store.js'
-import type { ConsolidatedManifest, IncrementalManifest, ManifestTestEntry } from './incremental.js'
+import type {
+  ConsolidatedManifest,
+  ConsolidatedManifestEntry,
+  IncrementalManifest,
+  ManifestTestEntry,
+} from './incremental.js'
 import { buildPhase2ConsolidationFingerprint } from './incremental.js'
 import type { ConsolidatedBehavior } from './report-writer.js'
 
@@ -147,45 +152,65 @@ export function toConsolidations(
   }))
 }
 
-export function updateManifestEntries(input: {
-  readonly currentEntries: ConsolidatedManifest['entries']
+export interface ConsolidatedManifestDelta {
+  readonly featureKey: string
+  readonly entries: readonly ConsolidatedManifestEntry[]
+}
+
+export function buildConsolidatedManifestEntries(input: {
   readonly featureKey: string
   readonly inputs: readonly ConsolidateBehaviorInput[]
   readonly consolidations: readonly ConsolidatedBehavior[]
   readonly phase2Version: string
-}): ConsolidatedManifest['entries'] {
-  const baseEntries = Object.fromEntries(
-    Object.entries(input.currentEntries).filter(([, entry]) => entry.featureKey !== input.featureKey),
-  )
+}): readonly ConsolidatedManifestEntry[] {
   const keywords = [...new Set(input.inputs.flatMap((item) => item.keywords))].toSorted()
   const sourceDomains = [...new Set(input.inputs.map((item) => item.domain))].toSorted()
   const consolidatedArtifactPath = relative(PROJECT_ROOT, consolidatedArtifactPathForFeatureKey(input.featureKey))
   const lastConsolidatedAt = new Date().toISOString()
 
-  return input.consolidations.reduce((entries, consolidated) => {
-    entries[consolidated.id] = {
-      consolidatedId: consolidated.id,
-      domain: consolidated.domain,
-      featureName: consolidated.featureName,
-      consolidatedArtifactPath,
-      evaluatedArtifactPath: null,
-      sourceTestKeys: consolidated.sourceTestKeys,
-      sourceBehaviorIds: consolidated.sourceBehaviorIds,
-      supportingInternalBehaviorIds: consolidated.supportingInternalRefs.map((item) => item.behaviorId),
-      isUserFacing: consolidated.isUserFacing,
+  return input.consolidations.map((consolidated) => ({
+    consolidatedId: consolidated.id,
+    domain: consolidated.domain,
+    featureName: consolidated.featureName,
+    consolidatedArtifactPath,
+    evaluatedArtifactPath: null,
+    sourceTestKeys: consolidated.sourceTestKeys,
+    sourceBehaviorIds: consolidated.sourceBehaviorIds,
+    supportingInternalBehaviorIds: consolidated.supportingInternalRefs.map((item) => item.behaviorId),
+    isUserFacing: consolidated.isUserFacing,
+    featureKey: input.featureKey,
+    keywords,
+    sourceDomains,
+    phase2Fingerprint: buildPhase2ConsolidationFingerprint({
       featureKey: input.featureKey,
-      keywords,
-      sourceDomains,
-      phase2Fingerprint: buildPhase2ConsolidationFingerprint({
-        featureKey: input.featureKey,
-        sourceBehaviorIds: consolidated.sourceBehaviorIds,
-        behaviors: input.inputs.map((item) => item.behavior),
-        phaseVersion: input.phase2Version,
-      }),
-      phase3Fingerprint: null,
-      lastConsolidatedAt,
-      lastEvaluatedAt: null,
+      sourceBehaviorIds: consolidated.sourceBehaviorIds,
+      behaviors: input.inputs.map((item) => item.behavior),
+      phaseVersion: input.phase2Version,
+    }),
+    phase3Fingerprint: null,
+    lastConsolidatedAt,
+    lastEvaluatedAt: null,
+  }))
+}
+
+export function mergeConsolidatedManifestDeltas(
+  currentManifest: ConsolidatedManifest,
+  deltas: readonly ConsolidatedManifestDelta[],
+): ConsolidatedManifest {
+  if (deltas.length === 0) {
+    return currentManifest
+  }
+  const replacedFeatureKeys = new Set(deltas.map((delta) => delta.featureKey))
+  const mergedEntries: Record<string, ConsolidatedManifestEntry> = {}
+  for (const [id, entry] of Object.entries(currentManifest.entries)) {
+    if (!replacedFeatureKeys.has(entry.featureKey)) {
+      mergedEntries[id] = entry
     }
-    return entries
-  }, baseEntries)
+  }
+  for (const delta of deltas) {
+    for (const entry of delta.entries) {
+      mergedEntries[entry.consolidatedId] = entry
+    }
+  }
+  return { ...currentManifest, entries: mergedEntries }
 }

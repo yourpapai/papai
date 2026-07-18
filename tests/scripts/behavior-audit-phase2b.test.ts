@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
+import { reloadBehaviorAuditConfig } from '../../scripts/behavior-audit/config.js'
 import type { runPhase2b as runPhase2bType } from '../../scripts/behavior-audit/consolidate.js'
 import type { ExtractedBehaviorRecord } from '../../scripts/behavior-audit/extracted-store.js'
 import type { IncrementalManifest } from '../../scripts/behavior-audit/incremental.js'
@@ -439,4 +440,162 @@ test('runPhase2b groups joined artifact inputs by feature key and preserves cros
   expect(savedEntries).toHaveLength(1)
   expect(getArrayItem(savedEntries, 0).domain).toBe('cross-domain')
   expect(getArrayItem(savedEntries, 0).sourceDomains).toEqual(['commands', 'tools'])
+})
+
+test('runPhase2b at CONCURRENCY=4 preserves every feature key delta when consolidations run in parallel', async () => {
+  process.env['BEHAVIOR_AUDIT_CONCURRENCY'] = '4'
+  reloadBehaviorAuditConfig()
+
+  const root = makeTempDir()
+  mockAuditBehaviorConfig(root, null)
+
+  const consolidate: LoadedConsolidateModule = await loadConsolidateModule(crypto.randomUUID())
+  const progress = createEmptyProgressFixture(3)
+  const writtenFiles = new Set<string>()
+  const featureSpecs = [
+    {
+      featureKey: 'task-creation',
+      testFile: 'tests/tools/task-creation.test.ts',
+      testKey: 'tests/tools/task-creation.test.ts::suite > create',
+      testName: 'suite > create',
+      featureName: 'Task creation',
+      consolidationId: 'task-creation::task-creation',
+    },
+    {
+      featureKey: 'task-listing',
+      testFile: 'tests/tools/task-listing.test.ts',
+      testKey: 'tests/tools/task-listing.test.ts::suite > list',
+      testName: 'suite > list',
+      featureName: 'Task listing',
+      consolidationId: 'task-listing::task-listing',
+    },
+    {
+      featureKey: 'task-completion',
+      testFile: 'tests/tools/task-completion.test.ts',
+      testKey: 'tests/tools/task-completion.test.ts::suite > complete',
+      testName: 'suite > complete',
+      featureName: 'Task completion',
+      consolidationId: 'task-completion::task-completion',
+    },
+  ] as const
+
+  const manifest: IncrementalManifest = {
+    version: 1,
+    lastStartCommit: null,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    phaseVersions: { phase1: 'phase1-v1', phase2: 'phase2-v1', reports: 'reports-v1' },
+    tests: Object.fromEntries(
+      featureSpecs.map((spec) => [
+        spec.testKey,
+        createManifestTestEntry({
+          testFile: spec.testFile,
+          testName: spec.testName,
+          dependencyPaths: [spec.testFile],
+          phase1Fingerprint: `phase1-${spec.featureKey}`,
+          phase2aFingerprint: `phase2a-${spec.featureKey}`,
+          phase2Fingerprint: null,
+          behaviorId: spec.testKey,
+          featureKey: spec.featureKey,
+          extractedArtifactPath: buildRelativeArtifactPath('extracted', spec.testFile),
+          classifiedArtifactPath: buildRelativeArtifactPath('classified', spec.testFile),
+          domain: 'tools',
+          lastPhase1CompletedAt: '2026-04-21T12:00:00.000Z',
+          lastPhase2aCompletedAt: '2026-04-21T12:05:00.000Z',
+          lastPhase2CompletedAt: null,
+        }),
+      ]),
+    ),
+  }
+
+  for (const spec of featureSpecs) {
+    await writeJsonArtifact(path.join(root, buildRelativeArtifactPath('extracted', spec.testFile)), [
+      createExtractedRecord({
+        testKey: spec.testKey,
+        testFile: spec.testFile,
+        testName: spec.testName,
+        fullPath: spec.testName,
+        behavior: `When the user requests ${spec.featureKey}, the bot handles it.`,
+        context: `Calls ${spec.featureKey} handler.`,
+        keywords: [spec.featureKey],
+      }),
+    ])
+    await writeJsonArtifact(path.join(root, buildRelativeArtifactPath('classified', spec.testFile)), [
+      createClassifiedRecord({
+        behaviorId: spec.testKey,
+        testKey: spec.testKey,
+        domain: 'tools',
+        visibility: 'user-facing',
+        featureKey: spec.featureKey,
+        featureLabel: spec.featureName,
+        classificationNotes: `Classification for ${spec.featureKey}.`,
+      }),
+    ])
+  }
+
+  const result = await consolidate.runPhase2b(
+    progress,
+    { version: 1, entries: {} },
+    'phase2-v1',
+    new Set(featureSpecs.map((spec) => spec.featureKey)),
+    manifest,
+    {
+      consolidateWithRetry: (
+        featureKey: string,
+      ): Promise<AgentResult<
+        readonly {
+          readonly id: string
+          readonly item: {
+            featureName: string
+            isUserFacing: boolean
+            behavior: string
+            userStory: string | null
+            context: string
+            sourceTestKeys: string[]
+            sourceBehaviorIds: string[]
+            supportingInternalRefs: { behaviorId: string; summary: string }[]
+          }
+        }[]
+      > | null> => {
+        const spec = featureSpecs.find((item) => item.featureKey === featureKey)
+        assert(spec !== undefined, `Unexpected feature key: ${featureKey}`)
+        return Promise.resolve({
+          result: [
+            {
+              id: spec.consolidationId,
+              item: {
+                featureName: spec.featureName,
+                isUserFacing: true,
+                behavior: `When the user requests ${spec.featureKey}, the bot handles it.`,
+                userStory: `As a user, I can ${spec.featureKey}.`,
+                context: `Calls ${spec.featureKey} handler.`,
+                sourceTestKeys: [spec.testKey],
+                sourceBehaviorIds: [spec.testKey],
+                supportingInternalRefs: [],
+              },
+            },
+          ],
+          usage: { inputTokens: 100, outputTokens: 50, toolCalls: 1, toolNames: ['readFile'] },
+        })
+      },
+      writeConsolidatedFile: (featureKey): Promise<void> => {
+        writtenFiles.add(featureKey)
+        return Promise.resolve()
+      },
+    },
+  )
+
+  expect(writtenFiles.size).toBe(featureSpecs.length)
+  for (const spec of featureSpecs) {
+    expect(writtenFiles.has(spec.featureKey)).toBe(true)
+    const entry = result.entries[spec.consolidationId]
+    assert(entry !== undefined, `Expected consolidated entry for ${spec.consolidationId}`)
+    expect(entry.featureKey).toBe(spec.featureKey)
+    expect(entry.featureName).toBe(spec.featureName)
+    expect(entry.consolidatedArtifactPath).toBe(buildRelativeArtifactPath('consolidated', spec.featureKey))
+  }
+  expect(progress.phase2b.stats.featureKeysDone).toBe(featureSpecs.length)
+  for (const spec of featureSpecs) {
+    expect(progress.phase2b.completedFeatureKeys[spec.featureKey]).toBe('done')
+  }
 })
