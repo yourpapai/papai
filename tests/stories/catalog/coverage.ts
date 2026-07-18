@@ -283,6 +283,15 @@ const QUALIFICATION_STORY_IDS: Partial<Record<CatalogScenarioId, NonEmptyReadonl
   'SCN-settings-coding-repos': [
     'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-repos: a repository registered through settings is listed and startable',
   ],
+  'SCN-settings-admin-guardrails': [
+    'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-guardrails: a guardrail saved through settings changes the advertised toolset',
+  ],
+  'SCN-settings-admin-system-access': [
+    'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-system-access: granting admin through settings flips admin authorization',
+  ],
+  'SCN-settings-admin-roster-announce': [
+    'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-roster-announce: an admin broadcast reaches every authorized user',
+  ],
 }
 
 function pendingReasonFor(catalogStatus: CatalogStatus): PendingReason {
