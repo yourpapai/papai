@@ -65,6 +65,23 @@ describe('pruneDependencyCacheEntries', () => {
     expect((await readdir(root)).sort()).toEqual(names.sort())
   })
 
+  test('warns and resolves when the cache root cannot be read', async () => {
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (message?: unknown): void => {
+      warnings.push(String(message))
+    }
+    try {
+      await pruneDependencyCacheEntries(path.join(root, 'missing'), key('a'), {
+        readdir: () => Promise.reject(new Error('boom')),
+      })
+    } finally {
+      console.warn = originalWarn
+    }
+
+    expect(warnings).toEqual(['Story dependency cache prune skipped: boom'])
+  })
+
   test('ignores staging directories and non-hash entries', async () => {
     const names = ['a', 'b', 'c', 'd'].map(key)
     const base = Date.parse('2026-07-19T00:00:00Z')
