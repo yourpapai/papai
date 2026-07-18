@@ -51,7 +51,7 @@ describe('ENTITY_SCOPES reconciliation', () => {
     expect(missingFromRegistry).toEqual([])
   })
 
-  test('no user-scoped table beyond the grandfathered identity entry is context-owned', () => {
+  test('no user-scoped table beyond the grandfathered entries is context-owned', () => {
     expect(userScopedOwnedEntries).toEqual([])
   })
 })
