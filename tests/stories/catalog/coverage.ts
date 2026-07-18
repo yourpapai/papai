@@ -274,6 +274,15 @@ const QUALIFICATION_STORY_IDS: Partial<Record<CatalogScenarioId, NonEmptyReadonl
   'SCN-settings-coding-agent-provider': [
     'tests/stories/settings/module-settings-qualification.story.test.ts#SCN-settings-coding-agent-provider: updates coding credentials through settings and changes the next chat turn',
   ],
+  'SCN-settings-coding-forge': [
+    'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-forge: forge credentials saved through settings reach the session start',
+  ],
+  'SCN-settings-coding-mcp': [
+    'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-mcp: MCP selections saved through settings reach the session start',
+  ],
+  'SCN-settings-coding-repos': [
+    'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-repos: a repository registered through settings is listed and startable',
+  ],
 }
 
 function pendingReasonFor(catalogStatus: CatalogStatus): PendingReason {
