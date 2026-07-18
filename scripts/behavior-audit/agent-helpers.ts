@@ -26,13 +26,7 @@ const log = pino({
 type GenerateTextInput = Parameters<typeof generateText>[0]
 type GenerateTextOutput = Awaited<ReturnType<typeof generateText>>
 
-type CallbackKeys =
-  | 'onStart'
-  | 'onStepStart'
-  | 'onToolExecutionStart'
-  | 'onToolExecutionEnd'
-  | 'onStepFinish'
-  | 'onFinish'
+type CallbackKeys = 'onStart' | 'onStepStart' | 'onToolExecutionStart' | 'onToolExecutionEnd' | 'onStepEnd' | 'onEnd'
 
 const verboseCallbacks: Pick<GenerateTextInput, CallbackKeys> = {
   onStart: ({ modelId, provider }) => {
@@ -59,7 +53,7 @@ const verboseCallbacks: Pick<GenerateTextInput, CallbackKeys> = {
       )
     }
   },
-  onStepFinish: ({ stepNumber, finishReason, usage }) => {
+  onStepEnd: ({ stepNumber, finishReason, usage }) => {
     log.debug(
       {
         stepNumber,
@@ -70,7 +64,7 @@ const verboseCallbacks: Pick<GenerateTextInput, CallbackKeys> = {
       'step finish',
     )
   },
-  onFinish: ({ usage, steps }) => {
+  onEnd: ({ usage, steps }) => {
     log.debug(
       {
         steps: steps.length,

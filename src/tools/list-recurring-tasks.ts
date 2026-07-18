@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -34,10 +34,7 @@ const describeSchedule = (t: RecurringTaskRecord): string => {
   return 'after completion'
 }
 
-export function makeListRecurringTasksTool(
-  userId: string,
-  deps: ListRecurringTasksDeps = defaultDeps,
-): ToolSet[string] {
+export function makeListRecurringTasksTool(userId: string, deps: ListRecurringTasksDeps = defaultDeps): Tool {
   return tool({
     description:
       'List all recurring task definitions for the current user, including schedule, status, and next run date.',

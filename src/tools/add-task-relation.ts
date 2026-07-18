@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:add-task-relation' })
 
-export function makeAddTaskRelationTool(provider: TaskProvider): ToolSet[string] {
+export function makeAddTaskRelationTool(provider: TaskProvider): Tool {
   return tool({
     description: 'Create a directed relation between two tasks (e.g. one blocks another, or marks a duplicate).',
     inputSchema: z.object({

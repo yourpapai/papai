@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
@@ -14,11 +14,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:get-task' })
 
-export function makeGetTaskTool(
-  provider: Readonly<TaskProvider>,
-  userId?: string,
-  storageContextId?: string,
-): ToolSet[string] {
+export function makeGetTaskTool(provider: Readonly<TaskProvider>, userId?: string, storageContextId?: string): Tool {
   return tool({
     description:
       'Fetch complete details of a single task including description, status, priority, assignee, due date, and relations. For a full picture including comments, also call get_comments with the same task ID.',

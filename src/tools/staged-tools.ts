@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { resolveStagedFile, searchStagedFiles } from '../attachments/staged.js'
@@ -13,7 +13,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:staged-files' })
 
-export function makeSearchStagedFilesTool(contextId: string, groupContextId?: string): ToolSet[string] {
+export function makeSearchStagedFilesTool(contextId: string, groupContextId?: string): Tool {
   return tool({
     description:
       'Search staged files in the current conversation that have not yet been resolved. Staged files are files sent by any group member that are available to be brought into the workspace. Search by sender username or filename.',
@@ -40,7 +40,7 @@ export function makeResolveStagedFileTool(
   contextId: string,
   downloadFn: StagedFileDownloadFn,
   groupContextId?: string,
-): ToolSet[string] {
+): Tool {
   return tool({
     description:
       'Resolve a staged file by downloading it from the chat platform and adding it to the conversation workspace. After resolution, the file can be uploaded to tasks or referenced by its attachment ID.',

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -150,7 +150,7 @@ const resolveTaskLabelId = (
   return resolveWorkspaceLabelId(provider, labelId, labelName)
 }
 
-export function makeRemoveTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[string] {
+export function makeRemoveTaskLabelTool(provider: Readonly<TaskProvider>): Tool {
   return tool({
     description:
       'Remove a label from a task. For Kaneo, labelName resolves against labels currently attached to the task and returns already_absent when the task does not have that label.',

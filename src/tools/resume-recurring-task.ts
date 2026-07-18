@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -75,7 +75,7 @@ async function executeResume(input: Input, deps: ResumeRecurringTaskDeps): Promi
   }
 }
 
-export function makeResumeRecurringTaskTool(deps: ResumeRecurringTaskDeps = defaultDeps): ToolSet[string] {
+export function makeResumeRecurringTaskTool(deps: ResumeRecurringTaskDeps = defaultDeps): Tool {
   return tool({
     description: 'Resume a paused recurring task series. Optionally create missed occurrences retroactively.',
     inputSchema,

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -21,7 +21,7 @@ const defaultDeps: PauseRecurringTaskDeps = {
   pauseRecurringTask: (...args) => defaultPauseRecurringTask(...args),
 }
 
-export function makePauseRecurringTaskTool(deps: PauseRecurringTaskDeps = defaultDeps): ToolSet[string] {
+export function makePauseRecurringTaskTool(deps: PauseRecurringTaskDeps = defaultDeps): Tool {
   return tool({
     description: 'Pause a recurring task series. No further occurrences are created until explicitly resumed.',
     inputSchema: z.object({

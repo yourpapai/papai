@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:list-watchers' })
 
-export function makeListWatchersTool(provider: TaskProvider): ToolSet[string] {
+export function makeListWatchersTool(provider: TaskProvider): Tool {
   return tool({
     description: 'List the watchers on a task so you can see who is currently following updates.',
     inputSchema: z.object({

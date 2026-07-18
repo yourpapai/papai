@@ -16,7 +16,7 @@ describe('hoistSystemMessages', () => {
       { role: 'assistant', content: 'hello' },
     ]
     const result = hoistSystemMessages('BASE', messages)
-    expect(result.system).toBe('BASE')
+    expect(result.instructions).toBe('BASE')
     expect(result.messages).toEqual(messages)
     expect(result.messages).not.toBe(messages)
   })
@@ -28,7 +28,7 @@ describe('hoistSystemMessages', () => {
       { role: 'system', content: 'MEMORY B' },
     ]
     const result = hoistSystemMessages('BASE', messages)
-    expect(result.system).toBe('BASE\n\nMEMORY A\n\nMEMORY B')
+    expect(result.instructions).toBe('BASE\n\nMEMORY A\n\nMEMORY B')
     expect(result.messages).toEqual([{ role: 'user', content: 'do a thing' }])
   })
 
@@ -38,7 +38,7 @@ describe('hoistSystemMessages', () => {
       { role: 'user', content: 'q' },
     ]
     const result = hoistSystemMessages('', messages)
-    expect(result.system).toBe('ONLY SYSTEM')
+    expect(result.instructions).toBe('ONLY SYSTEM')
     expect(result.messages).toEqual([{ role: 'user', content: 'q' }])
   })
 })

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { generateText, stepCountIs, type LanguageModel, type ModelMessage } from 'ai'
+import { generateText, isStepCount, type LanguageModel, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
@@ -47,13 +47,13 @@ const makeMinimalTools = (userId: string): { get_current_time: ReturnType<typeof
 
 export interface ProactiveLlmDeps {
   generateText: typeof generateText
-  stepCountIs: typeof stepCountIs
+  stepCountIs: typeof isStepCount
   buildModel: (config: { apiKey: string; baseURL: string }, modelId: string) => LanguageModel
 }
 
 const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   generateText: (...args) => generateText(...args),
-  stepCountIs: (...args) => stepCountIs(...args),
+  stepCountIs: (...args) => isStepCount(...args),
   buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
 }
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string; smallModel: string }

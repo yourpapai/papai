@@ -7,19 +7,22 @@ import type { ModelMessage } from 'ai'
 
 /**
  * AI SDK v7 rejects `role: 'system'` entries inside the `messages` array
- * (they must be supplied via the `system` option). Hoist any such messages out
- * of the array and fold their content into the system string, preserving order.
+ * (they must be supplied via the `instructions` option). Hoist any such messages out
+ * of the array and fold their content into the instructions string, preserving order.
  */
 export const hoistSystemMessages = (
-  system: string,
+  instructions: string,
   messages: readonly ModelMessage[],
-): { system: string; messages: ModelMessage[] } => {
+): { instructions: string; messages: ModelMessage[] } => {
   const systemParts: string[] = []
   const rest: ModelMessage[] = []
   for (const message of messages) {
     if (message.role === 'system') systemParts.push(message.content)
     else rest.push(message)
   }
-  if (systemParts.length === 0) return { system, messages: [...messages] }
-  return { system: [system, ...systemParts].filter((part) => part.length > 0).join('\n\n'), messages: rest }
+  if (systemParts.length === 0) return { instructions, messages: [...messages] }
+  return {
+    instructions: [instructions, ...systemParts].filter((part) => part.length > 0).join('\n\n'),
+    messages: rest,
+  }
 }

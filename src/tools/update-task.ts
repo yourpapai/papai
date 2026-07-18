@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
@@ -149,7 +149,7 @@ export function makeUpdateTaskTool(
   completionHook?: CompletionHookFn,
   userId?: string,
   storageContextId?: string,
-): ToolSet[string] {
+): Tool {
   return tool({
     description: "Update an existing task's status, priority, assignee, due date, title, description, or project.",
     inputSchema,

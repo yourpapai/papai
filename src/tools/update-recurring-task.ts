@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { rruleInputSchema } from '../deferred-prompts/types.js'
@@ -134,10 +134,7 @@ function executeUpdate(userId: string, input: Input, deps: UpdateRecurringTaskDe
   }
 }
 
-export function makeUpdateRecurringTaskTool(
-  userId: string,
-  deps: UpdateRecurringTaskDeps = defaultDeps,
-): ToolSet[string] {
+export function makeUpdateRecurringTaskTool(userId: string, deps: UpdateRecurringTaskDeps = defaultDeps): Tool {
   return tool({
     description:
       'Update a recurring task definition (title, description, priority, assignee, labels, schedule, catch-up setting).',

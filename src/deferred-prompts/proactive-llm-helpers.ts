@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { generateText, stepCountIs, LanguageModel, ModelMessage, ToolSet } from 'ai'
+import type { generateText, isStepCount, LanguageModel, ModelMessage, ToolSet } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
@@ -29,7 +29,7 @@ import type { ExecutionMetadata } from './types.js'
 const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
 
 export const buildProactiveVerification = (
-  deps: { generateText: typeof generateText; stepCountIs: typeof stepCountIs },
+  deps: { generateText: typeof generateText; stepCountIs: typeof isStepCount },
   model: LanguageModel,
   tools: ToolSet,
   history: readonly ModelMessage[],
