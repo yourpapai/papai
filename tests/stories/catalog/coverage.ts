@@ -268,6 +268,9 @@ const QUALIFICATION_STORY_IDS: Partial<Record<CatalogScenarioId, NonEmptyReadonl
   'SCN-settings-context-config': [
     'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-context-config: tool visibility config changes what the next turn posts',
   ],
+  'SCN-settings-identity': [
+    'tests/stories/settings/identity.story.test.ts#SCN-settings-identity: identity saved through settings resolves me in the next chat turn',
+  ],
   'SCN-settings-coding-agent-provider': [
     'tests/stories/settings/module-settings-qualification.story.test.ts#SCN-settings-coding-agent-provider: updates coding credentials through settings and changes the next chat turn',
   ],
