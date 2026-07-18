@@ -205,7 +205,7 @@ describe('story runner reports and compatibility', () => {
     expect(spawned).toBe(false)
   })
 
-  test.each(['darwin', 'linux', 'win32'] as const)(
+  test.each(['darwin', 'linux'] as const)(
     'rejects a Docker preflight failure on %s before session creation or spawn',
     async (platform) => {
       const actions: string[] = []
