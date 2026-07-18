@@ -226,6 +226,10 @@
     // CONCURRENCY is a forward-compat export wired in downstream Tier 2 tasks
     // (replaces pLimit(1) with pLimit(CONCURRENCY) across the pipeline phases).
     "scripts/behavior-audit/config.ts": ["exports"],
+    // async-mutex helper is consumed by downstream Tier 2 tasks (3/4/5) to
+    // raise concurrency on Phases 2a/2b/3 without write races. No static
+    // importer exists yet.
+    "scripts/behavior-audit/async-mutex.ts": ["files", "exports"],
   },
 
   // Report unused exports even in entry files
