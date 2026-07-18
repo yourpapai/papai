@@ -19,6 +19,7 @@
     "scripts/behavior-audit/reset.ts!",
     "scripts/behavior-audit/migrate-trust.ts!",
     "scripts/behavior-audit/preflight.ts!",
+    "scripts/behavior-audit/publish-snapshot.ts!",
     // Stable production/public compatibility boundaries consumed by the
     // plugin-core-separation refactor. They intentionally remain independent
     // entries so current master and the refactor share the same API surface.
@@ -220,6 +221,9 @@
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     "strybk.config.ts": ["exports"],
+    // buildCommitMessage is consumed by tests now and will be wired into the
+    // orphan-branch git plumbing in the downstream publish-snapshot task.
+    "scripts/behavior-audit/publish-snapshot.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
