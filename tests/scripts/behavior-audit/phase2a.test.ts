@@ -795,4 +795,126 @@ describe('behavior-audit phase 2a classification', () => {
     expect([...dirty]).toEqual([])
     expect(progress.phase2a.failedBehaviors[testKey]).toBeUndefined()
   })
+
+  test('runPhase2a at CONCURRENCY=4 preserves all behaviors from the same test file', async () => {
+    process.env['BEHAVIOR_AUDIT_CONCURRENCY'] = '4'
+    reloadBehaviorAuditConfig()
+
+    const classify = await importWithGuard(
+      `../../scripts/behavior-audit/classify.js?test=${crypto.randomUUID()}`,
+      isClassifyModule,
+      'Unexpected classify module shape',
+    )
+    const progressModule = await loadProgressModule(crypto.randomUUID())
+    const incremental = await loadIncrementalModule(crypto.randomUUID())
+
+    const testFilePath = 'tests/tools/multi.test.ts'
+    const behaviorCases = [
+      { suffix: 'alpha', behavior: 'When the user creates a task, the bot saves it.', keywords: ['task-create'] },
+      {
+        suffix: 'beta',
+        behavior: 'When the user lists tasks, the bot returns all of them.',
+        keywords: ['task-list'],
+      },
+      {
+        suffix: 'gamma',
+        behavior: 'When the user completes a task, the bot marks it done.',
+        keywords: ['task-complete'],
+      },
+      {
+        suffix: 'delta',
+        behavior: 'When the user deletes a task, the bot removes it.',
+        keywords: ['task-delete'],
+      },
+    ] as const
+    const behaviorSpecs = behaviorCases.map((item) => ({
+      ...item,
+      testKey: `${testFilePath}::suite > ${item.suffix}`,
+    }))
+
+    classifyBehaviorWithRetryImpl = (prompt): ReturnType<Phase2aDeps['classifyBehaviorWithRetry']> => {
+      const match = behaviorSpecs.find((spec) => prompt.includes(spec.testKey))
+      assert(match !== undefined, `Expected prompt to match a known behavior spec: ${prompt}`)
+      const featureKey = `feat-${match.suffix}`
+      return Promise.resolve({
+        result: {
+          visibility: 'user-facing',
+          featureKey,
+          featureLabel: featureKey,
+          supportingBehaviorRefs: [],
+          relatedBehaviorHints: [],
+          classificationNotes: `Classification for ${match.suffix}.`,
+        },
+        usage: { inputTokens: 100, outputTokens: 50, toolCalls: 1, toolNames: ['readFile'] },
+      })
+    }
+
+    const progress = progressModule.createEmptyProgress(1)
+    const manifest: IncrementalManifest = {
+      ...incremental.createEmptyManifest(),
+      phaseVersions: { phase1: 'phase1-v1', phase2: 'phase2-v1', reports: 'reports-v1' },
+      tests: Object.fromEntries(
+        behaviorSpecs.map((spec) => [
+          spec.testKey,
+          createManifestTestEntry({
+            testFile: testFilePath,
+            testName: `suite > ${spec.suffix}`,
+            dependencyPaths: [testFilePath],
+            phase1Fingerprint: 'phase1-fp',
+            phase2Fingerprint: null,
+            extractedArtifactPath: buildRelativeArtifactPath('extracted', testFilePath),
+            classifiedArtifactPath: null,
+            domain: 'tools',
+            lastPhase1CompletedAt: '2026-04-21T12:00:00.000Z',
+            lastPhase2CompletedAt: null,
+          }),
+        ]),
+      ),
+    }
+    await writeExtractedArtifact(
+      testFilePath,
+      behaviorSpecs.map((spec) =>
+        createExtractedRecord({
+          testKey: spec.testKey,
+          testFile: testFilePath,
+          testName: spec.suffix,
+          fullPath: `suite > ${spec.suffix}`,
+          behavior: spec.behavior,
+          context: `Context for ${spec.suffix}.`,
+          keywords: spec.keywords,
+        }),
+      ),
+    )
+
+    const dirty = await classify.runPhase2a(
+      {
+        progress,
+        selectedTestKeys: new Set(behaviorSpecs.map((spec) => spec.testKey)),
+        manifest,
+      },
+      createPhase2aDeps(),
+    )
+
+    expect(classifyBehaviorWithRetryCalls).toBe(behaviorSpecs.length)
+    expect([...dirty].sort()).toEqual(behaviorSpecs.map((spec) => `feat-${spec.suffix}`).sort())
+
+    const classifiedList = await readTypedClassifiedArtifact(testFilePath)
+    expect(classifiedList).toHaveLength(behaviorSpecs.length)
+    const byTestKey = new Map(classifiedList.map((record) => [record.testKey, record]))
+    for (const spec of behaviorSpecs) {
+      const record = byTestKey.get(spec.testKey)
+      assert(record !== undefined, `Expected classified record for ${spec.testKey}`)
+      expect(record.behaviorId).toBe(spec.testKey)
+      expect(record.featureKey).toBe(`feat-${spec.suffix}`)
+    }
+
+    const savedManifest = await readSavedManifest(manifestPath)
+    for (const spec of behaviorSpecs) {
+      const entry = getManifestEntry(savedManifest, spec.testKey)
+      expect(entry.featureKey).toBe(`feat-${spec.suffix}`)
+      expect(entry.behaviorId).toBe(spec.testKey)
+      expect(entry.classifiedArtifactPath).toBe(buildRelativeArtifactPath('classified', testFilePath))
+      expect(entry.lastPhase2aCompletedAt).toBeTruthy()
+    }
+  })
 })
