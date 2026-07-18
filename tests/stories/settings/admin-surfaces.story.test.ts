@@ -170,11 +170,11 @@ scenario(
 
 scenario(
   'SCN-settings-admin-system-access: granting admin through settings flips admin authorization',
-  async ({ given, when, then, world }) => {
+  async ({ given, when, then }) => {
     const root = given.user('root')
     const bob = given.user('bob')
     const carol = given.user('carol')
-    world.fixtures.seedAdmin({ userId: carol.id, platformInstanceId: carol.platformInstanceId })
+    given.admin(carol)
     const superSession = await given.settingsAdminSession(root, { superAdmin: true })
     const bobSession = await when.settingsSession(bob)
     const carolSession = await when.settingsSession(carol)

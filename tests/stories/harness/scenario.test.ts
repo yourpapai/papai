@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { resolveMcpServers } from '../../../src/coding-credentials/resolve-mcp-servers.js'
 import { getRepoByName } from '../../../src/coding-repos/store.js'
+import { isAdmin, isSuperAdmin } from '../../../src/instances/admin-store.js'
 import { getActivatedPluginIds } from '../../../src/plugins/loader.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
 import { SESSION_TTL_MS } from '../../../src/settings/session-store.js'
@@ -297,6 +298,29 @@ describe('scenario execution', () => {
       })
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
     })
+  })
+
+  test('admin prerequisite seeds the admin role without starting the runtime', async () => {
+    const world = await createScenarioWorld('admin prerequisite')
+
+    try {
+      const carol = world.api.given.user('carol')
+      const root = world.api.given.user('root')
+
+      world.api.given.admin(carol)
+      world.api.given.admin(root, { superAdmin: true })
+
+      expect(isAdmin(carol.id, carol.platformInstanceId)).toBe(true)
+      expect(isSuperAdmin(carol.id)).toBe(false)
+      expect(isAdmin(root.id, root.platformInstanceId)).toBe(true)
+      expect(isSuperAdmin(root.id)).toBe(true)
+      expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
+
+      await world.ensureStarted()
+      expect(() => world.api.given.admin(carol)).toThrow('given.admin requires an unstarted scenario world')
+    } finally {
+      await world.stop()
+    }
   })
 
   test('reply history assertion preserves all replies from a multi-turn conversation', async () => {

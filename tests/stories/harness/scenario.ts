@@ -97,6 +97,7 @@ type ScenarioGiven = Readonly<{
   taskCapabilities(capabilities: readonly TaskCapability[]): void
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
   settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
+  admin(user: UserHandle, options?: Readonly<{ superAdmin?: boolean }>): void
   settingsAdminSession(user: UserHandle, options?: Readonly<{ superAdmin?: boolean }>): Promise<SettingsSessionHandle>
   plugin(plugin: DiscoveredPlugin): PluginHandle
   codingSession(
@@ -312,6 +313,13 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     world.events.setPhase(operation)
     world.assertPrerequisitesOpen(operation)
   }
+  const seedAdminRole = (user: UserHandle, options?: Readonly<{ superAdmin?: boolean }>): void => {
+    world.fixtures.seedAdmin({
+      userId: user.id,
+      platformInstanceId: user.platformInstanceId,
+      superAdmin: options?.superAdmin ?? false,
+    })
+  }
   return {
     user(id): UserHandle {
       prerequisite('given.user')
@@ -367,13 +375,13 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.settingsSession')
       return createSettingsSession(world, user)
     },
+    admin(user, options): void {
+      prerequisite('given.admin')
+      seedAdminRole(user, options)
+    },
     settingsAdminSession(user, options): Promise<SettingsSessionHandle> {
       prerequisite('given.settingsAdminSession')
-      world.fixtures.seedAdmin({
-        userId: user.id,
-        platformInstanceId: user.platformInstanceId,
-        superAdmin: options?.superAdmin ?? false,
-      })
+      seedAdminRole(user, options)
       return createSettingsSession(world, user)
     },
     plugin(plugin): PluginHandle {
