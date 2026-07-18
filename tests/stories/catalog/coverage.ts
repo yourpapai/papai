@@ -32,14 +32,14 @@ export type CatalogCoverage =
       scenarioId: CatalogScenarioId
       catalogStatus: CatalogStatus
       kind: 'executable'
-      verifiedAt: '2026-07-13'
+      verifiedAt: string
       storyIds: NonEmptyReadonlyTuple<string>
     }>
   | Readonly<{
       scenarioId: CatalogScenarioId
       catalogStatus: CatalogStatus
       kind: 'pending'
-      verifiedAt: '2026-07-13'
+      verifiedAt: string
       reason: PendingReason
       requiredSeam?: string
     }>
@@ -208,95 +208,189 @@ export function toPendingReason(value: string): PendingReason {
   return PendingReason.from(value)
 }
 
-const ACP_COMMAND_STORY_IDS = [
-  'tests/stories/integrations/runtime-extensions/command-prompt.story.test.ts#SCN-coding-acp-command: eligible and ineligible runtime extension command and prompt',
-] as const satisfies NonEmptyReadonlyTuple<string>
+type ExecutableStoryMapping = Readonly<{ verifiedAt: string; storyIds: NonEmptyReadonlyTuple<string> }>
 
-const QUALIFICATION_STORY_IDS: Partial<Record<CatalogScenarioId, NonEmptyReadonlyTuple<string>>> = {
-  'SCN-coding-acp-start-fresh': [
-    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-start-fresh: starts a configured session through the real ACP tool loop',
-  ],
-  'SCN-coding-acp-start-on-pr': [
-    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-start-on-pr: starts a configured session with PR and forge token',
-  ],
-  'SCN-coding-acp-cautious-permission-roundtrip': [
-    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-cautious-permission-roundtrip: resolves matching cautious decisions and leaves empty queues untouched',
-  ],
-  'SCN-coding-acp-list-sessions': [
-    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-sessions: returns only sessions known to this chat',
-  ],
-  'SCN-coding-acp-session-status': [
-    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-session-status: preserves a declared missing-session response without local mutation',
-  ],
-  'SCN-coding-acp-list-projects': [
-    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-projects: lists the local repository catalogue without Magi',
-  ],
-  'SCN-coding-acp-list-agents': [
-    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-agents: gets available agents through guarded Magi HTTP',
-  ],
-  'SCN-coding-acp-finish-push': [
-    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-finish-push: pushes with the exact requested finish payload',
-  ],
-  'SCN-coding-acp-finish-pr': [
-    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-finish-pr: opens a PR with the exact requested title and body',
-  ],
-  'SCN-coding-acp-cancel': [
-    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-cancel: cancels exactly the selected coding session',
-  ],
-  'SCN-coding-acp-continue-followup': [
-    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-continue-followup: continues a locally known session and records its child',
-  ],
-  'SCN-coding-acp-continue-by-pr': [
-    'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-continue-by-pr: follows up only the locally known matching PR session',
-  ],
-  'SCN-coding-acp-mcp-session': [
-    'tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#SCN-coding-acp-mcp-session: starts a session with an exact configured MCP upstream and credential map',
-  ],
-  'SCN-coding-acp-not-configured': [
-    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-not-configured: refuses an unconfigured start without creating a session',
-  ],
-  'SCN-coding-acp-self-hosted-forge-preflight': [
-    'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-self-hosted-forge-preflight: refuses a self-hosted repository without forge settings',
-  ],
-  'SCN-coding-acp-whomayuse-denied': [
-    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-whomayuse-denied: hides session start from an operator-denied member',
-  ],
-  'SCN-coding-acp-guest-denied': [
-    'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-guest-denied: hides session start from a guest group turn',
-  ],
-  'SCN-settings-bootstrap': [
-    'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-bootstrap: first-run session bootstraps a fresh personal context end to end',
-  ],
-  'SCN-settings-instances': [
-    'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-instances: an admin-created task instance becomes assignable and serves the next turn',
-  ],
-  'SCN-settings-context-config': [
-    'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-context-config: tool visibility config changes what the next turn posts',
-  ],
-  'SCN-settings-identity': [
-    'tests/stories/settings/identity.story.test.ts#SCN-settings-identity: identity saved through settings resolves me in the next chat turn',
-  ],
-  'SCN-settings-coding-agent-provider': [
-    'tests/stories/settings/module-settings-qualification.story.test.ts#SCN-settings-coding-agent-provider: updates coding credentials through settings and changes the next chat turn',
-  ],
-  'SCN-settings-coding-forge': [
-    'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-forge: forge credentials saved through settings reach the session start',
-  ],
-  'SCN-settings-coding-mcp': [
-    'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-mcp: MCP selections saved through settings reach the session start',
-  ],
-  'SCN-settings-coding-repos': [
-    'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-repos: a repository registered through settings is listed and startable',
-  ],
-  'SCN-settings-admin-guardrails': [
-    'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-guardrails: a guardrail saved through settings changes the advertised toolset',
-  ],
-  'SCN-settings-admin-system-access': [
-    'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-system-access: granting admin through settings flips admin authorization',
-  ],
-  'SCN-settings-admin-roster-announce': [
-    'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-roster-announce: an admin broadcast reaches every authorized user',
-  ],
+const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableStoryMapping>> = {
+  'SCN-coding-acp-command': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/runtime-extensions/command-prompt.story.test.ts#SCN-coding-acp-command: eligible and ineligible runtime extension command and prompt',
+    ],
+  },
+  'SCN-coding-acp-start-fresh': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-start-fresh: starts a configured session through the real ACP tool loop',
+    ],
+  },
+  'SCN-coding-acp-start-on-pr': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-start-on-pr: starts a configured session with PR and forge token',
+    ],
+  },
+  'SCN-coding-acp-cautious-permission-roundtrip': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-cautious-permission-roundtrip: resolves matching cautious decisions and leaves empty queues untouched',
+    ],
+  },
+  'SCN-coding-acp-list-sessions': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-sessions: returns only sessions known to this chat',
+    ],
+  },
+  'SCN-coding-acp-session-status': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-session-status: preserves a declared missing-session response without local mutation',
+    ],
+  },
+  'SCN-coding-acp-list-projects': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-projects: lists the local repository catalogue without Magi',
+    ],
+  },
+  'SCN-coding-acp-list-agents': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-list-agents: gets available agents through guarded Magi HTTP',
+    ],
+  },
+  'SCN-coding-acp-finish-push': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-finish-push: pushes with the exact requested finish payload',
+    ],
+  },
+  'SCN-coding-acp-finish-pr': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-finish-pr: opens a PR with the exact requested title and body',
+    ],
+  },
+  'SCN-coding-acp-cancel': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-cancel: cancels exactly the selected coding session',
+    ],
+  },
+  'SCN-coding-acp-continue-followup': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-continue-followup: continues a locally known session and records its child',
+    ],
+  },
+  'SCN-coding-acp-continue-by-pr': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-controls.story.test.ts#SCN-coding-acp-continue-by-pr: follows up only the locally known matching PR session',
+    ],
+  },
+  'SCN-coding-acp-mcp-session': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#SCN-coding-acp-mcp-session: starts a session with an exact configured MCP upstream and credential map',
+    ],
+  },
+  'SCN-coding-acp-not-configured': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-not-configured: refuses an unconfigured start without creating a session',
+    ],
+  },
+  'SCN-coding-acp-self-hosted-forge-preflight': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-lifecycle.story.test.ts#SCN-coding-acp-self-hosted-forge-preflight: refuses a self-hosted repository without forge settings',
+    ],
+  },
+  'SCN-coding-acp-whomayuse-denied': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-whomayuse-denied: hides session start from an operator-denied member',
+    ],
+  },
+  'SCN-coding-acp-guest-denied': {
+    verifiedAt: '2026-07-13',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-guest-denied: hides session start from a guest group turn',
+    ],
+  },
+  'SCN-settings-bootstrap': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-bootstrap: first-run session bootstraps a fresh personal context end to end',
+    ],
+  },
+  'SCN-settings-instances': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-instances: an admin-created task instance becomes assignable and serves the next turn',
+    ],
+  },
+  'SCN-settings-context-config': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/context-and-instances.story.test.ts#SCN-settings-context-config: tool visibility config changes what the next turn posts',
+    ],
+  },
+  'SCN-settings-identity': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/identity.story.test.ts#SCN-settings-identity: identity saved through settings resolves me in the next chat turn',
+    ],
+  },
+  'SCN-settings-coding-agent-provider': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/module-settings-qualification.story.test.ts#SCN-settings-coding-agent-provider: updates coding credentials through settings and changes the next chat turn',
+    ],
+  },
+  'SCN-settings-coding-forge': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-forge: forge credentials saved through settings reach the session start',
+    ],
+  },
+  'SCN-settings-coding-mcp': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-mcp: MCP selections saved through settings reach the session start',
+    ],
+  },
+  'SCN-settings-coding-repos': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/coding-surfaces.story.test.ts#SCN-settings-coding-repos: a repository registered through settings is listed and startable',
+    ],
+  },
+  'SCN-settings-admin-guardrails': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-guardrails: a guardrail saved through settings changes the advertised toolset',
+    ],
+  },
+  'SCN-settings-admin-system-access': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-system-access: granting admin through settings flips admin authorization',
+    ],
+  },
+  'SCN-settings-admin-roster-announce': {
+    verifiedAt: '2026-07-18',
+    storyIds: [
+      'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-roster-announce: an admin broadcast reaches every authorized user',
+    ],
+  },
+  'SCN-task-guest-readonly': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/context/guest-readonly.story.test.ts#guest group turns can read tasks but cannot advertise writes',
+    ],
+  },
 }
 
 function pendingReasonFor(scenarioId: CatalogScenarioId, catalogStatus: CatalogStatus): PendingReason {
@@ -308,22 +402,18 @@ function pendingReasonFor(scenarioId: CatalogScenarioId, catalogStatus: CatalogS
   return toPendingReason('Awaiting branch audit before classifying an executable story.')
 }
 
-function executableStoryIdsFor(scenarioId: CatalogScenarioId): NonEmptyReadonlyTuple<string> | undefined {
-  if (scenarioId === 'SCN-coding-acp-command') return ACP_COMMAND_STORY_IDS
-  return QUALIFICATION_STORY_IDS[scenarioId]
-}
-
 export const catalogCoverage: readonly CatalogCoverage[] = Object.freeze(
   CATALOG_SCENARIO_IDS.map((scenarioId) => {
-    const storyIds = executableStoryIdsFor(scenarioId)
-    if (storyIds !== undefined)
+    const mapping = EXECUTABLE_STORY_MAPPINGS[scenarioId]
+    if (mapping !== undefined) {
       return Object.freeze({
         scenarioId,
         catalogStatus: catalogStatusFor(scenarioId),
         kind: 'executable' as const,
-        verifiedAt: '2026-07-13' as const,
-        storyIds,
+        verifiedAt: mapping.verifiedAt,
+        storyIds: mapping.storyIds,
       })
+    }
     const catalogStatus = catalogStatusFor(scenarioId)
     const requiredSeam = REQUIRED_SEAMS[scenarioId]
     return Object.freeze({

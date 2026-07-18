@@ -133,4 +133,29 @@ describe('scenario catalog coverage', () => {
 
     expect(new Set(executableReferences).size).toBe(executableReferences.length)
   })
+
+  test('stamps settings catalog records with their verification date', () => {
+    const settingsCoverage = catalogCoverage
+      .filter((coverage) => coverage.kind === 'executable')
+      .filter((coverage) => coverage.scenarioId.startsWith('SCN-settings-'))
+
+    expect(settingsCoverage).toHaveLength(11)
+    for (const coverage of settingsCoverage) expect(coverage.verifiedAt).toBe('2026-07-18')
+  })
+
+  test('maps the guest-readonly catalog record to its executable story', () => {
+    expect(catalogCoverage.find(({ scenarioId }) => scenarioId === 'SCN-task-guest-readonly')).toEqual({
+      scenarioId: 'SCN-task-guest-readonly',
+      catalogStatus: 'confirmed',
+      kind: 'executable',
+      verifiedAt: '2026-07-19',
+      storyIds: [
+        'tests/stories/context/guest-readonly.story.test.ts#guest group turns can read tasks but cannot advertise writes',
+      ],
+    })
+  })
+
+  test('tracks the executable coverage total', () => {
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(30)
+  })
 })
