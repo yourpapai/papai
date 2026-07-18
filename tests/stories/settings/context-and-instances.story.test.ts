@@ -20,6 +20,8 @@ const AssignmentSchema = z.object({ contextId: z.string(), taskInstanceId: z.str
 
 const ConfigSchema = z.object({ contextId: z.string(), fields: z.array(z.object({ key: z.string() })) })
 
+const InstancesSchema = z.object({ instances: z.array(z.object({ id: z.string() })) })
+
 scenario(
   'SCN-settings-bootstrap: first-run session bootstraps a fresh personal context end to end',
   async ({ given, when, then }) => {
@@ -40,10 +42,20 @@ scenario(
     then.responseStatus(before, 200)
     expect(AssignmentSchema.parse(await before.json()).taskInstanceId).toBeNull()
 
+    const assignBody = JSON.stringify({ taskInstanceId: memory.id })
+
+    const csrfRejected = await when.settingsRequest(
+      session,
+      '/settings/api/context/task-instance',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: assignBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
     const assigned = await when.settingsRequest(session, '/settings/api/context/task-instance', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskInstanceId: memory.id }),
+      body: assignBody,
     })
     then.responseStatus(assigned, 200)
 
@@ -87,6 +99,14 @@ scenario(
     })
     then.responseStatus(unauthenticated, 401)
 
+    const csrfRejected = await when.settingsRequest(
+      admin,
+      '/settings/api/admin/task-instances',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: createBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
     const created = await when.settingsRequest(admin, '/settings/api/admin/task-instances', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -96,7 +116,9 @@ scenario(
 
     const listed = await when.settingsRequest(admin, '/settings/api/admin/task-instances')
     then.responseStatus(listed, 200)
-    expect(JSON.stringify(await listed.json())).toContain('memory-tasks-late')
+    expect(InstancesSchema.parse(await listed.json()).instances.map((instance) => instance.id)).toContain(
+      'memory-tasks-late',
+    )
 
     const assigned = await when.settingsRequest(session, '/settings/api/context/task-instance', {
       method: 'PATCH',
@@ -137,10 +159,20 @@ scenario(
     })
     then.responseStatus(unknownField, 422)
 
+    const updateBody = JSON.stringify({ action: 'set', key: 'ai_tool_visibility', value: 'on' })
+
+    const csrfRejected = await when.settingsRequest(
+      session,
+      '/settings/api/config',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: updateBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
     const updated = await when.settingsRequest(session, '/settings/api/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'set', key: 'ai_tool_visibility', value: 'on' }),
+      body: updateBody,
     })
     then.responseStatus(updated, 200)
 

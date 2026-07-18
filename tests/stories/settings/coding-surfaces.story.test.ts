@@ -35,8 +35,10 @@ scenario(
   'SCN-settings-coding-forge: forge credentials saved through settings reach the session start',
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
+    const bob = given.user('bob')
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
+    const bobContextId = toScopedContextId({ platformInstanceId: bob.platformInstanceId, nativeContextId: bob.id })
     const coding = given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
@@ -70,16 +72,37 @@ scenario(
 
     const unconfigured = await when.settingsRequest(session, '/settings/api/coding-credentials?namespace=forge')
     then.responseStatus(unconfigured, 200)
-    expect(JSON.stringify(await unconfigured.json())).toContain('"configured":false')
+    expect(credentialResponseSchema.parse(await unconfigured.json()).configured).toBe(false)
+
+    const forgeBody = JSON.stringify({
+      contextId,
+      namespace: 'forge',
+      values: { kind: 'gitlab', instance_url: 'https://git.acme.invalid', forge_token: FORGE_TOKEN },
+    })
+
+    const csrfRejected = await when.settingsRequest(
+      session,
+      '/settings/api/coding-credentials',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: forgeBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
+    const crossContext = await when.settingsRequest(session, '/settings/api/coding-credentials', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contextId: bobContextId,
+        namespace: 'forge',
+        values: { kind: 'gitlab', instance_url: 'https://git.acme.invalid', forge_token: FORGE_TOKEN },
+      }),
+    })
+    then.responseStatus(crossContext, 403)
 
     const saved = await when.settingsRequest(session, '/settings/api/coding-credentials', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contextId,
-        namespace: 'forge',
-        values: { kind: 'gitlab', instance_url: 'https://git.acme.invalid', forge_token: FORGE_TOKEN },
-      }),
+      body: forgeBody,
     })
     then.responseStatus(saved, 200)
 
@@ -168,14 +191,24 @@ scenario(
     then.responseStatus(intact, 200)
     expect(mcpViewSchema.parse(await intact.json()).selections).toEqual([])
 
+    const mcpBody = JSON.stringify({
+      contextId,
+      namespace: 'mcp',
+      values: { servers: JSON.stringify([{ server: 'docs', upstream_token: MCP_TOKEN }]) },
+    })
+
+    const csrfRejected = await when.settingsRequest(
+      session,
+      '/settings/api/coding-credentials',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: mcpBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
     const saved = await when.settingsRequest(session, '/settings/api/coding-credentials', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contextId,
-        namespace: 'mcp',
-        values: { servers: JSON.stringify([{ server: 'docs', upstream_token: MCP_TOKEN }]) },
-      }),
+      body: mcpBody,
     })
     then.responseStatus(saved, 200)
 
@@ -253,16 +286,30 @@ scenario(
     })
     then.responseStatus(invalid, 422)
 
+    const empty = await when.settingsRequest(session, '/settings/api/coding-repos')
+    then.responseStatus(empty, 200)
+    expect(ReposSchema.parse(await empty.json()).repos).toEqual([])
+
+    const repoBody = JSON.stringify({
+      contextId,
+      name: 'papai',
+      repoUrl: 'https://github.com/acme/papai.git',
+      baseBranch: 'main',
+      permissionPreset: 'cautious',
+    })
+
+    const csrfRejected = await when.settingsRequest(
+      session,
+      '/settings/api/coding-repos',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: repoBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
     const registered = await when.settingsRequest(session, '/settings/api/coding-repos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contextId,
-        name: 'papai',
-        repoUrl: 'https://github.com/acme/papai.git',
-        baseBranch: 'main',
-        permissionPreset: 'cautious',
-      }),
+      body: repoBody,
     })
     then.responseStatus(registered, 200)
 

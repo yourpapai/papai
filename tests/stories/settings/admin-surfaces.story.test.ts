@@ -117,10 +117,20 @@ scenario(
     )
     then.responseStatus(denied, 403)
 
+    const policyBody = JSON.stringify({ kind: 'policy', guardrails: { whoMayUse: [alice.id] } })
+
+    const csrfRejected = await when.settingsRequest(
+      admin,
+      '/settings/api/admin/coding-guardrails',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: policyBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
     const saved = await when.settingsRequest(admin, '/settings/api/admin/coding-guardrails', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'policy', guardrails: { whoMayUse: [alice.id] } }),
+      body: policyBody,
     })
     then.responseStatus(saved, 200)
     expect(GuardrailsViewSchema.parse(await saved.json()).guardrails.whoMayUse).toEqual([alice.id])
@@ -183,6 +193,14 @@ scenario(
     })
     then.responseStatus(notSuper, 403)
 
+    const csrfRejected = await when.settingsRequest(
+      superSession,
+      '/settings/api/admin/admins',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: grantBody },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
     const granted = await when.settingsRequest(superSession, '/settings/api/admin/admins', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -228,6 +246,14 @@ scenario(
       body,
     })
     then.responseStatus(denied, 403)
+
+    const csrfRejected = await when.settingsRequest(
+      admin,
+      '/settings/api/admin/announce',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
 
     const sent = await when.settingsRequest(admin, '/settings/api/admin/announce', {
       method: 'POST',

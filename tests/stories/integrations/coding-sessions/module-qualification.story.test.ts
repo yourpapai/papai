@@ -184,9 +184,10 @@ scenario(
     await when.message(alice, dm, 'Start a coding session')
 
     then.replyTo(alice).equals('Coding sessions are not permitted for this member.')
-    expect(world.model.inspections().every(({ availableTools }) => !availableTools.includes(START_WIRE_NAME))).toBe(
-      true,
-    )
+    // Progressive disclosure never advertises plugin tools in a pure-answer generation, so an
+    // advertised-tools check cannot discriminate guardrail denial here. Non-vacuous whomayuse
+    // coverage (before/after + allowlisted positive control) lives in
+    // tests/stories/settings/admin-surfaces.story.test.ts (SCN-settings-admin-guardrails).
     expect(world.events.all().some(({ kind }) => kind === 'http.request')).toBe(false)
     expect(persistedSessionRecordCount(contextId)).toBe(0)
     expectTraceRedacted(JSON.stringify(world.events.all()))

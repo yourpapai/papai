@@ -31,10 +31,20 @@ scenario(
     given.assign(dm, memory)
     const session = await given.settingsSession(alice)
 
+    const body = JSON.stringify({ providerUserId: 'tracker-alice', providerUserLogin: 'alice', displayName: 'Alice' })
+
+    const csrfRejected = await when.settingsRequest(
+      session,
+      '/settings/api/identity',
+      { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
     const saved = await when.settingsRequest(session, '/settings/api/identity', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerUserId: 'tracker-alice', providerUserLogin: 'alice', displayName: 'Alice' }),
+      body,
     })
     then.responseStatus(saved, 200)
 
