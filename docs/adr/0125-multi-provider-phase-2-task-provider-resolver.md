@@ -59,18 +59,18 @@ Introduce `TaskProviderResolver` as the single runtime path from `contextId` to 
 
 **Option B**, with the following subsidiary decisions:
 
-| Topic                      | Decision                                                                                                                                                                   |
+| Topic | Decision |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Resolver interface         | `TaskProviderResolver.resolve(contextId) → TaskProvider                                                                                                                    | null`; `resolveStrict(contextId) → TaskProvider` (throws "Context X needs /setup") |
-| Resolution flow            | `context_settings` → `task_instances` (active check) → normalize `url`/`baseUrl` → merge per-context credentials → `createProvider(type, config)`                          |
-| Credential model           | Unchanged: per-context credentials in `user_config` keyed by storage `contextId`. Kaneo session-cookie detection via `isKaneoSessionCookie()`.                             |
-| Config keys                | `getConfigKeysForContext(contextId)` returns `['timezone']` for unassigned contexts, plus the assigned provider's visible key. `kaneo_workspace_id` remains internal.      |
-| Setup flow                 | `/setup` assigns a task instance before the credential wizard starts. Single active instance auto-picks; no instances aborts with guidance.                                |
-| Config editor validation   | Rejects edits for keys outside the per-context allow-list with "Config key X is not valid for this context."                                                               |
-| `TASK_PROVIDER` at runtime | Removed from required env validation. Retained only in `bootstrapInstancesFromEnv()` for first-run seeding and `admin-system.ts` for status display.                       |
-| Callsite migration         | All `buildProviderForUser` callers → `resolve(contextId)`: `llm-orchestrator`, `scheduler`, `deferred-prompts/poller`, `context-tool-resolution`, `index.ts` admin warmup. |
-| Null handling              | LLM orchestrator replies "I need /setup before I can do that."; scheduler and poller skip with a WARN; admin warmup logs WARN and continues.                               |
-| Factory deletion           | `src/providers/factory.ts` deleted after all callers are migrated (Task 9).                                                                                                |
+| Resolver interface | `TaskProviderResolver.resolve(contextId) → TaskProvider                                                                                                                    | null`; `resolveStrict(contextId) → TaskProvider` (throws "Context X needs /setup") |
+| Resolution flow | `context_settings` → `task_instances` (active check) → normalize `url`/`baseUrl` → merge per-context credentials → `createProvider(type, config)` |
+| Credential model | Unchanged: per-context credentials in `user_config` keyed by storage `contextId`. Kaneo session-cookie detection via `isKaneoSessionCookie()`. |
+| Config keys | `getConfigKeysForContext(contextId)` returns `['timezone']` for unassigned contexts, plus the assigned provider's visible key. `kaneo_workspace_id` remains internal. |
+| Setup flow | `/setup` assigns a task instance before the credential wizard starts. Single active instance auto-picks; no instances aborts with guidance. |
+| Config editor validation | Rejects edits for keys outside the per-context allow-list with "Config key X is not valid for this context." |
+| `TASK_PROVIDER` at runtime | Removed from required env validation. Retained only in `bootstrapInstancesFromEnv()` for first-run seeding and `admin-system.ts` for status display. |
+| Callsite migration | All `buildProviderForUser` callers → `resolve(contextId)`: `llm-orchestrator`, `scheduler`, `deferred-prompts/poller`, `context-tool-resolution`, `index.ts` admin warmup. |
+| Null handling | LLM orchestrator replies "I need /setup before I can do that."; scheduler and poller skip with a WARN; admin warmup logs WARN and continues. |
+| Factory deletion | `src/providers/factory.ts` deleted after all callers are migrated (Task 9). |
 
 ## Consequences
 

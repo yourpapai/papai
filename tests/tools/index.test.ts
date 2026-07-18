@@ -257,7 +257,10 @@ describe('applyToolPreferences (ask integration)', () => {
     // Execute must pass through when permission is granted.
     const executeFn = wrapped!.execute
     expect(executeFn).toBeDefined()
-    const out: unknown = await executeFn!({ id: 'X', _permission_reason: 'r' }, { toolCallId: 't1', messages: [] })
+    const out: unknown = await executeFn!(
+      { id: 'X', _permission_reason: 'r' },
+      { toolCallId: 't1', messages: [], context: {} },
+    )
     expect(out).toBe('create_task:X')
   })
 
@@ -267,7 +270,10 @@ describe('applyToolPreferences (ask integration)', () => {
     const result = applyToolPreferences(tools, contextId, undefined)
     const executeFn = result['create_task']!.execute
     expect(executeFn).toBeDefined()
-    const out: unknown = await executeFn!({ id: 'X', _permission_reason: 'r' }, { toolCallId: 't1', messages: [] })
+    const out: unknown = await executeFn!(
+      { id: 'X', _permission_reason: 'r' },
+      { toolCallId: 't1', messages: [], context: {} },
+    )
     expect(out).toMatchObject({ status: 'permission_denied' })
   })
 })

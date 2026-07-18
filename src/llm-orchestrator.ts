@@ -144,7 +144,7 @@ type CallLlmArgs = InvocationSource & {
 }
 
 // `finishReason` distinguishes a step-cap truncation ('tool-calls') from a normal stop.
-type CallLlmResult = { response: { messages: ModelMessage[] }; finishReason?: string }
+type CallLlmResult = { finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string }
 
 const callLlm = async (args: CallLlmArgs): Promise<CallLlmResult> => {
   const { reply, contextId, chatUserId, username, contextType, actorRole, deps, configId, resolvedLlm, turnId } = args

@@ -51,7 +51,7 @@ describe('Set Visibility Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)(
       { taskId: 'task-1', visibility: 'public' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     assert(isVisibilityResult(result))
@@ -80,7 +80,7 @@ describe('Set Visibility Tool', () => {
         userIds: ['user-1'],
         groupIds: ['group-1'],
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     assert(isVisibilityResult(result))

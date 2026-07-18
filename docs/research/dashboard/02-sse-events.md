@@ -27,9 +27,7 @@ type DebugEvent = {
 }
 
 type Scope =
-  | { kind: 'user'; userId: string }
-  | { kind: 'group'; groupId: string; threadId?: string }
-  | { kind: 'global' }
+  { kind: 'user'; userId: string } | { kind: 'group'; groupId: string; threadId?: string } | { kind: 'global' }
 ```
 
 The client unwraps `data` (or falls back to the whole envelope) before

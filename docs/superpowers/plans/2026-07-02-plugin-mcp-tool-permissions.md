@@ -706,8 +706,8 @@ const USER_ID = 'u-1'
 const MCP_TOOL = 'mcp_search-server__fetch_page'
 
 const buildMcpToolSetSpy = mock((_contextId: string): Promise<ToolSet> => Promise.resolve({}))
-const buildPluginMcpToolSetSpy = mock(
-  (_ids: string[], _desc: unknown, _pool: unknown): Promise<ToolSet> => Promise.resolve({}),
+const buildPluginMcpToolSetSpy = mock((_ids: string[], _desc: unknown, _pool: unknown): Promise<ToolSet> =>
+  Promise.resolve({}),
 )
 
 // The tools assembler imports { adaptMcpPool, buildMcpToolSet, buildPluginMcpToolSet }

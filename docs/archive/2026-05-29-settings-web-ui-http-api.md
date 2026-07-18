@@ -233,8 +233,7 @@ export function requireCsrf(req: Request, authed: AuthenticatedSettingsRequest):
 }
 
 export type ParsedBody =
-  | { readonly ok: true; readonly value: unknown }
-  | { readonly ok: false; readonly response: Response }
+  { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly response: Response }
 
 export async function parseJsonBody(req: Request): Promise<ParsedBody> {
   try {
@@ -246,8 +245,7 @@ export async function parseJsonBody(req: Request): Promise<ParsedBody> {
 
 export type ContextScope = { readonly contextId: string; readonly kind: 'personal' | 'group' }
 export type ScopeOutcome =
-  | { readonly ok: true; readonly scope: ContextScope }
-  | { readonly ok: false; readonly response: Response }
+  { readonly ok: true; readonly scope: ContextScope } | { readonly ok: false; readonly response: Response }
 
 /**
  * Resolve a client-supplied raw contextId into a validated, canonical contextId.

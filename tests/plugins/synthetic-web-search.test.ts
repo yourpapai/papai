@@ -121,10 +121,11 @@ function createMockRuntimeContext(
   } as PluginToolRuntimeContext
 }
 
-function createMockOptions(): ToolExecutionOptions {
+function createMockOptions(): ToolExecutionOptions<unknown> {
   return {
     toolCallId: 'test-call-id',
     messages: [],
+    context: {},
   }
 }
 
@@ -418,7 +419,7 @@ describe('synthetic-web-search plugin', () => {
     const tool = registeredTool.value!
     const runtimeCtx = createMockRuntimeContext()
     const abortController = new AbortController()
-    const options: ToolExecutionOptions = {
+    const options: ToolExecutionOptions<unknown> = {
       ...createMockOptions(),
       abortSignal: abortController.signal,
     }

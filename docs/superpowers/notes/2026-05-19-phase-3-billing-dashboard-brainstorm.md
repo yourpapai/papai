@@ -230,7 +230,7 @@ NOT return the API key in cleartext. Two options:
 - **F1. Return `null` for `llm_apikey`, return the rest as-is.** The UI
   knows the value is "set but hidden" via a `hasValue: true` flag.
 - **F2. Return masked values everywhere (`\*\***6f5a`).** Match the
-existing `maskValue`helper that`src/config.ts`uses for`kaneo_apikey`.
+  existing `maskValue`helper that`src/config.ts`uses for`kaneo_apikey`.
 
 Looking at `src/config.ts`: `maskValue` keeps the last 4 chars. Useful
 for "did we paste the right key" verification.

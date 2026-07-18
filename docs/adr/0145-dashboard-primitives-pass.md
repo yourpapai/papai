@@ -86,18 +86,18 @@ Change only the CSS class name without fixing any primitives.
 
 **Option B** — shared-primitive pass with collision removal. Subsidiary decisions:
 
-| Topic                 | Decision                                                                                           |
+| Topic | Decision |
 | --------------------- | -------------------------------------------------------------------------------------------------- | ---------------- | ------ | -------------------------------- |
-| Btn hover             | Add `:hover:not(:disabled)` rules for all five variants using design tokens.                       |
-| Btn icon              | Add optional `icon` Snippet prop, rendered before children in a `.ui-btn__icon` span.              |
-| Panel pad             | Add optional `pad` number prop, forwarded as inline `padding` on `.ui-panel__body`.                |
-| KV value              | Broaden `v` from `string                                                                           | number`to`string | number | Snippet`; render via type guard. |
-| TopBar statusRow      | Make `statusRow` optional; conditionally render the status row block.                              |
-| TreeView / PropsTable | Add scoped `<style>` blocks defining all template-referenced classes using design tokens.          |
-| Missing CSS classes   | Define `.status-success`, `.status-error`, `.truncation-banner` in `base.css`; `.masked-value` and |
-|                       | `.masked-hint` in `admin.css`.                                                                     |
-| `.panel` collision    | Remove bare `.panel` rule from `admin.css`; strip `panel` from six section class lists; add        |
-|                       | `.admin-section { padding: 20px }` as the replacement.                                             |
+| Btn hover | Add `:hover:not(:disabled)` rules for all five variants using design tokens. |
+| Btn icon | Add optional `icon` Snippet prop, rendered before children in a `.ui-btn__icon` span. |
+| Panel pad | Add optional `pad` number prop, forwarded as inline `padding` on `.ui-panel__body`. |
+| KV value | Broaden `v` from `string                                                                           | number`to`string | number | Snippet`; render via type guard. |
+| TopBar statusRow | Make `statusRow` optional; conditionally render the status row block. |
+| TreeView / PropsTable | Add scoped `<style>` blocks defining all template-referenced classes using design tokens. |
+| Missing CSS classes | Define `.status-success`, `.status-error`, `.truncation-banner` in `base.css`; `.masked-value` and |
+| | `.masked-hint` in `admin.css`. |
+| `.panel` collision | Remove bare `.panel` rule from `admin.css`; strip `panel` from six section class lists; add |
+| | `.admin-section { padding: 20px }` as the replacement. |
 
 ## Consequences
 

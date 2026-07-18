@@ -94,10 +94,11 @@ type ToolCallStartHandler = (event: ToolCallStartEvent) => void
 type GenerateTextArgs = Partial<{
   messages: unknown[]
   tools: Record<string, unknown>
-  experimental_onToolCallStart: ToolCallStartHandler | undefined
-  experimental_onToolCallFinish: ToolCallFinishHandler | undefined
+  onToolExecutionStart: ToolCallStartHandler | undefined
+  onToolExecutionEnd: ToolCallFinishHandler | undefined
 }>
 
+// Legacy-friendly shape accepted by callToolFinish; converted to the v7 event below.
 type ToolCallFinishEvent = {
   toolCall: { toolName: string; toolCallId: string; input: unknown }
   durationMs: number
@@ -107,27 +108,48 @@ type ToolCallFinishEvent = {
   error: unknown
 }>
 
-type ToolCallFinishHandler = (event: ToolCallFinishEvent) => void
+// AI SDK v7 ToolExecutionEndEvent shape delivered to onToolExecutionEnd.
+type ToolExecutionEndEventV7 = {
+  callId: string
+  toolExecutionMs: number
+  messages: unknown[]
+  toolCall: { type: 'tool-call'; toolName: string; toolCallId: string; input: unknown; dynamic: true }
+  toolContext: unknown
+  toolOutput:
+    | { type: 'tool-result'; toolCallId: string; toolName: string; input: unknown; output: unknown; dynamic: true }
+    | { type: 'tool-error'; toolCallId: string; toolName: string; input: unknown; error: unknown; dynamic: true }
+}
+
+type ToolCallFinishHandler = (event: ToolExecutionEndEventV7) => void
 
 type GenerateTextResult = {
   text: string
   toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>
   toolResults: Array<{ toolName: string; toolCallId: string; output: unknown }>
   steps: unknown[]
-  response: { messages: ModelMessage[] } & ResponseMetadata
+  finalStep: { response: { messages: ModelMessage[] } & ResponseMetadata } & Partial<
+    Readonly<{ reasoningText: string; reasoning: unknown }>
+  >
   usage: Record<string, unknown>
   finishReason: string
   warnings: unknown[] | undefined
   request: unknown
   providerMetadata: unknown
-} & Partial<Readonly<{ reasoningText: string; reasoning: unknown }>>
+}
 
-const callToolFinish = (
-  handler: GenerateTextArgs['experimental_onToolCallFinish'],
-  event: ToolCallFinishEvent,
-): void => {
+const callToolFinish = (handler: GenerateTextArgs['onToolExecutionEnd'], event: ToolCallFinishEvent): void => {
   assert.ok(handler !== undefined, 'expected tool-call finish handler')
-  handler(event)
+  const { toolName, toolCallId, input } = event.toolCall
+  handler({
+    callId: 'call',
+    toolExecutionMs: event.durationMs,
+    messages: [],
+    toolCall: { type: 'tool-call', toolName, toolCallId, input, dynamic: true },
+    toolContext: undefined,
+    toolOutput: event.success
+      ? { type: 'tool-result', toolCallId, toolName, input, output: event.output, dynamic: true }
+      : { type: 'tool-error', toolCallId, toolName, input, error: event.error, dynamic: true },
+  })
 }
 
 const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
@@ -136,7 +158,7 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
     toolCalls: [],
     toolResults: [],
     steps: [],
-    response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] },
+    finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] } },
     usage: {},
     finishReason: 'stop',
     warnings: undefined,
@@ -497,7 +519,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Hello!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -509,7 +531,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -873,7 +895,7 @@ describe('processMessage', () => {
               usage: { inputTokens: 10, outputTokens: 5 },
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -934,7 +956,7 @@ describe('processMessage', () => {
               usage: { inputTokens: 10, outputTokens: 5 },
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -972,7 +994,7 @@ describe('processMessage', () => {
       void mock.module('ai', () => ({
         ...realAi,
         generateText: (args: GenerateTextArgs): Promise<GenerateTextResult> => {
-          capturedOnToolCallFinish = args.experimental_onToolCallFinish
+          capturedOnToolCallFinish = args.onToolExecutionEnd
           return generateTextImpl(args)
         },
         stepCountIs: (): (() => boolean) => () => false,
@@ -983,7 +1005,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        callToolFinish(args.experimental_onToolCallFinish, {
+        callToolFinish(args.onToolExecutionEnd, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
           durationMs: 100,
           success: false,
@@ -994,7 +1016,7 @@ describe('processMessage', () => {
           toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } }],
           toolResults: [{ toolName: 'create_task', toolCallId: 'call-1', output: { error: 'failed' } }],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1016,7 +1038,7 @@ describe('processMessage', () => {
       setCachedConfig('tool-details-ctx', AI_TOOL_VISIBILITY_KEY, 'on')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        callToolFinish(args.experimental_onToolCallFinish, {
+        callToolFinish(args.onToolExecutionEnd, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
           durationMs: 100,
           success: false,
@@ -1027,7 +1049,7 @@ describe('processMessage', () => {
           toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } }],
           toolResults: [{ toolName: 'create_task', toolCallId: 'call-1', output: { error: 'failed' } }],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1048,7 +1070,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-string-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        callToolFinish(args.experimental_onToolCallFinish, {
+        callToolFinish(args.onToolExecutionEnd, {
           toolCall: { toolName: 'search_tasks', toolCallId: 'call-2', input: { q: 'test' } },
           durationMs: 50,
           success: false,
@@ -1059,7 +1081,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1080,7 +1102,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-structured-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        callToolFinish(args.experimental_onToolCallFinish, {
+        callToolFinish(args.onToolExecutionEnd, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-3', input: { title: 'Test' } },
           durationMs: 75,
           success: true,
@@ -1091,7 +1113,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1114,12 +1136,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'hidden chain of thought',
-          reasoning: [{ type: 'reasoning', text: 'hidden chain of thought' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'hidden chain of thought',
+            reasoning: [{ type: 'reasoning', text: 'hidden chain of thought' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1141,12 +1165,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'visible reasoning summary',
-          reasoning: [{ type: 'reasoning', text: 'visible reasoning summary' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'visible reasoning summary',
+            reasoning: [{ type: 'reasoning', text: 'visible reasoning summary' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1172,12 +1198,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'Provider reasoning text',
-          reasoning: [{ type: 'reasoning', text: 'raw reasoning payload' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'Provider reasoning text',
+            reasoning: [{ type: 'reasoning', text: 'raw reasoning payload' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1204,12 +1232,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'thread scoped reasoning',
-          reasoning: [{ type: 'reasoning', text: 'thread scoped reasoning' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'thread scoped reasoning',
+            reasoning: [{ type: 'reasoning', text: 'thread scoped reasoning' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1235,12 +1265,14 @@ describe('processMessage', () => {
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
           text: 'Done!',
-          reasoningText: 'details that fail to send',
-          reasoning: [{ type: 'reasoning', text: 'details that fail to send' }],
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: {
+            response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+            reasoningText: 'details that fail to send',
+            reasoning: [{ type: 'reasoning', text: 'details that fail to send' }],
+          },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1280,7 +1312,7 @@ describe('processMessage', () => {
           toolCalls: [],
           toolResults: [],
           steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Hi!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Hi!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1319,24 +1351,26 @@ describe('processMessage', () => {
           toolCalls: [{ toolName: 'search_tasks', toolCallId: 'c-1', input: { q: 'x' } }],
           toolResults: [{ toolName: 'search_tasks', toolCallId: 'c-1', output: { hits: 1 } }],
           steps: [],
-          response: {
-            messages: [
-              {
-                role: 'assistant' as const,
-                content: [{ type: 'tool-call', toolCallId: 'c-1', toolName: 'search_tasks', input: { q: 'x' } }],
-              },
-              {
-                role: 'tool' as const,
-                content: [
-                  {
-                    type: 'tool-result',
-                    toolCallId: 'c-1',
-                    toolName: 'search_tasks',
-                    output: { type: 'json', value: { hits: 1 } },
-                  },
-                ],
-              },
-            ] as ModelMessage[],
+          finalStep: {
+            response: {
+              messages: [
+                {
+                  role: 'assistant' as const,
+                  content: [{ type: 'tool-call', toolCallId: 'c-1', toolName: 'search_tasks', input: { q: 'x' } }],
+                },
+                {
+                  role: 'tool' as const,
+                  content: [
+                    {
+                      type: 'tool-result',
+                      toolCallId: 'c-1',
+                      toolName: 'search_tasks',
+                      output: { type: 'json', value: { hits: 1 } },
+                    },
+                  ],
+                },
+              ] as ModelMessage[],
+            },
           },
           usage: {},
           finishReason: 'tool-calls',
@@ -1402,7 +1436,7 @@ describe('processMessage', () => {
               ],
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Task created!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Task created!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1432,7 +1466,7 @@ describe('processMessage', () => {
               toolResults: [{ toolCallId: 'call-2', output: { result: 'data' } }],
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1487,7 +1521,7 @@ describe('processMessage', () => {
               ],
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Created both tasks' }] },
+          finalStep: { response: { messages: [{ role: 'assistant' as const, content: 'Created both tasks' }] } },
           usage: {},
           finishReason: 'stop',
           warnings: undefined,
@@ -1876,10 +1910,10 @@ describe('processMessage', () => {
     }
 
     generateTextImpl = (args: GenerateTextArgs): Promise<GenerateTextResult> => {
-      args.experimental_onToolCallStart?.({
+      args.onToolExecutionStart?.({
         toolCall: { toolName: 'create_task', toolCallId: 'c1', input: { title: 'X' } },
       })
-      callToolFinish(args.experimental_onToolCallFinish, {
+      callToolFinish(args.onToolExecutionEnd, {
         toolCall: { toolName: 'create_task', toolCallId: 'c1', input: { title: 'X' } },
         durationMs: 1,
         success: true,

@@ -1403,8 +1403,7 @@ export type ScopeRequest = {
 }
 
 export type ScopeResult =
-  | { readonly ok: true; readonly contextId: string }
-  | { readonly ok: false; readonly status: 403 }
+  { readonly ok: true; readonly contextId: string } | { readonly ok: false; readonly status: 403 }
 
 const DENY: ScopeResult = { ok: false, status: 403 }
 

@@ -4,11 +4,14 @@
 // See LICENSE in the project root for details.
 
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import type { StorybookConfig } from '@storybook/svelte-vite'
 import { mergeConfig } from 'vite'
 
-const ROOT = path.resolve(__dirname, '..')
+// Storybook 10 evaluates main.ts as an ES module, so __dirname is unavailable;
+// derive it from import.meta.url.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const config: StorybookConfig = {
   // docgen is disabled: its plugin chokes parsing .stories.svelte module
@@ -22,9 +25,9 @@ const config: StorybookConfig = {
   // project's Vite config to provide it, and this repo has no root vite.config
   // (production builds via Bun). So we add svelte() here (with vitePreprocess
   // for `lang="ts"`); addon-svelte-csf's enforce:'post' transform then sees the
-  // compiled output. The plugin is imported dynamically because it is ESM-only
-  // and main.ts is evaluated as CJS. Also widen the fs allowlist so components
-  // can import transitively from ../src (zod schemas).
+  // compiled output. The plugin is imported dynamically to defer loading the
+  // ESM-only module until viteFinal runs. Also widen the fs allowlist so
+  // components can import transitively from ../src (zod schemas).
   viteFinal: async (viteConfig) => {
     const { svelte, vitePreprocess } = await import('@sveltejs/vite-plugin-svelte')
     return mergeConfig(viteConfig, {

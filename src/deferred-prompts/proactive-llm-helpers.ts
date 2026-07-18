@@ -17,6 +17,7 @@ import {
 import type { VerifierDeps, VerifierPrompt } from '../completion/verified-completion.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
+import { hoistSystemMessages } from '../llm-message-utils.js'
 import { logger } from '../logger.js'
 import { runMemoryExtractionInBackground } from '../long-term-memory/runner.js'
 import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
@@ -39,8 +40,7 @@ export const buildProactiveVerification = (
     invokeVerifier: async ({ system, messages }: VerifierPrompt) => {
       const res = await deps.generateText({
         model,
-        system,
-        messages,
+        ...hoistSystemMessages(system, messages),
         tools: readOnlyToolset ?? {},
         stopWhen: deps.stepCountIs(VERIFIER_MAX_STEPS),
         timeout: 1_200_000,
@@ -114,7 +114,7 @@ export const finalizeDeliveryText = (result: DeliveryResultLike): string => {
  * tool call, or a tool failure), runs a verify-and-report pass before returning.
  */
 export const finalizeAndLog = async (
-  result: DeliveryResultLike & { response?: { messages: readonly ModelMessage[] } },
+  result: DeliveryResultLike & { finalStep?: { response: { messages: readonly ModelMessage[] } } },
   userId: string,
   mode: ExecutionMetadata['mode'],
   verification?: { verifier: VerifierDeps; history: readonly ModelMessage[] },
@@ -128,7 +128,7 @@ export const finalizeAndLog = async (
   }
 
   if (verification !== undefined) {
-    const messages = result.response?.messages ?? []
+    const messages = result.finalStep?.response.messages ?? []
     const hadToolFailure = detectToolFailure(messages)
     const isRisky =
       result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
@@ -259,7 +259,11 @@ export async function resolveFullProvider(
   return null
 }
 
-type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCalls: unknown[] | undefined }
+type LlmResult = {
+  finalStep: { response: { messages: ModelMessage[] } }
+  text: string
+  toolCalls: unknown[] | undefined
+}
 
 export function persistProactiveResults(
   creatorId: string,
@@ -278,7 +282,7 @@ export function persistProactiveResults(
       'Facts persisted from proactive results',
     )
 
-  const msgs = result.response.messages
+  const msgs = result.finalStep.response.messages
   if (msgs.length > 0) {
     appendHistory(storageContextId, msgs)
     const updated = [...history, ...msgs]

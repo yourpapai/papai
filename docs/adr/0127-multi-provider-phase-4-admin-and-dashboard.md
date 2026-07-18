@@ -76,19 +76,19 @@ Each platform instance gets its own `admins` table.
 
 **Option B** with the following subsidiary decisions:
 
-| Topic                        | Decision                                                                                                                                                                     |
+| Topic | Decision |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Admin hierarchy              | Super-admin (`admins(user_id, '__super__')`) has all powers; platform admin (`admins(user_id, '<platformInstanceId>)`) manages users and plugin enablement on that instance. |
-| Auth predicates              | `isSuperAdmin(userId)`, `isPlatformAdmin(userId, platformInstanceId)`, `isAdmin(userId, platformInstanceId) = isSuperAdmin \|\| isPlatformAdmin`.                            |
-| User authorization           | `isAuthorized(userId, platformInstanceId)` checks `users` rows scoped by `platform_instance_id` and also accepts any super-admin.                                            |
-| Command scoping              | `/user add`/`/user remove` write and delete rows scoped to `msg.platformInstanceId`. `/plugin approve                                                                        | reject` is super-admin only. |
-| `checkAuthorizationExtended` | Receives `platformInstanceId` as a parameter; replaces env-var admin check with `isAdmin()` from `admins` table.                                                             |
-| Dashboard API                | `src/debug/instance-routes.ts` — JSON CRUD for platform instances, task instances, admins; Zod-validated; secret masking via `maskConfig()`.                                 |
-| Apply endpoint               | `POST /api/platform-instances/apply` reconciles the running `ChatRouter` against `listActivePlatformInstances()`. Returns `503` when the router is not initialized.          |
-| Router listing               | `ChatRouter.listInstances()` returns readonly snapshots of managed instances for apply reconciliation.                                                                       |
-| Runtime router access        | `src/debug/chat-router-runtime.ts` holds the active `ChatRouter` reference; set at startup, cleared at shutdown.                                                             |
-| Migration                    | `041_users_platform_instance_index` adds composite indexes on `users(platform_instance_id, platform_user_id)` and `(platform_instance_id, username)`.                        |
-| Client section               | `/admin#instances` — three tables (platform instances, task instances, admins) with add forms, start/stop/delete actions, and apply button.                                  |
+| Admin hierarchy | Super-admin (`admins(user_id, '__super__')`) has all powers; platform admin (`admins(user_id, '<platformInstanceId>)`) manages users and plugin enablement on that instance. |
+| Auth predicates | `isSuperAdmin(userId)`, `isPlatformAdmin(userId, platformInstanceId)`, `isAdmin(userId, platformInstanceId) = isSuperAdmin \|\| isPlatformAdmin`. |
+| User authorization | `isAuthorized(userId, platformInstanceId)` checks `users` rows scoped by `platform_instance_id` and also accepts any super-admin. |
+| Command scoping | `/user add`/`/user remove` write and delete rows scoped to `msg.platformInstanceId`. `/plugin approve                                                                        | reject` is super-admin only. |
+| `checkAuthorizationExtended` | Receives `platformInstanceId` as a parameter; replaces env-var admin check with `isAdmin()` from `admins` table. |
+| Dashboard API | `src/debug/instance-routes.ts` — JSON CRUD for platform instances, task instances, admins; Zod-validated; secret masking via `maskConfig()`. |
+| Apply endpoint | `POST /api/platform-instances/apply` reconciles the running `ChatRouter` against `listActivePlatformInstances()`. Returns `503` when the router is not initialized. |
+| Router listing | `ChatRouter.listInstances()` returns readonly snapshots of managed instances for apply reconciliation. |
+| Runtime router access | `src/debug/chat-router-runtime.ts` holds the active `ChatRouter` reference; set at startup, cleared at shutdown. |
+| Migration | `041_users_platform_instance_index` adds composite indexes on `users(platform_instance_id, platform_user_id)` and `(platform_instance_id, username)`. |
+| Client section | `/admin#instances` — three tables (platform instances, task instances, admins) with add forms, start/stop/delete actions, and apply button. |
 
 ## Consequences
 
@@ -127,17 +127,17 @@ Each platform instance gets its own `admins` table.
 
 Key modules:
 
-| File                                            | Role                                                                                                    |
+| File | Role |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------- |
-| `src/instances/admin-store.ts`                  | `isSuperAdmin()`, `isPlatformAdmin()`, `isAdmin()`, `listAdmins()` predicates                           |
-| `src/auth.ts`                                   | `checkAuthorizationExtended()` receives `platformInstanceId`, delegates to `isAdmin()`                  |
-| `src/users.ts`                                  | Platform-scoped `addUser()`, `removeUser()`, `isAuthorized()`, `resolveUserByUsername()`, `listUsers()` |
-| `src/commands/admin.ts`                         | `/user`, `/users`, `/announce` gated by `isAdmin()` and scoped to source platform                       |
-| `src/commands/plugin.ts`                        | `/plugin approve                                                                                        | reject`gated by`isSuperAdmin()`; `enable | disable` checks target context ownership |
-| `src/debug/instance-routes.ts`                  | CRUD handlers for `/api/platform-instances`, `/api/task-instances`, `/api/admins`; apply endpoint       |
-| `src/debug/chat-router-runtime.ts`              | Holds and clears the active `ChatRouter` reference for apply                                            |
-| `src/chat/router.ts`                            | `listInstances()` returns readonly snapshots                                                            |
-| `client/admin/sections/InstancesSection.svelte` | `/admin#instances` dashboard section with three tables and apply button                                 |
+| `src/instances/admin-store.ts` | `isSuperAdmin()`, `isPlatformAdmin()`, `isAdmin()`, `listAdmins()` predicates |
+| `src/auth.ts` | `checkAuthorizationExtended()` receives `platformInstanceId`, delegates to `isAdmin()` |
+| `src/users.ts` | Platform-scoped `addUser()`, `removeUser()`, `isAuthorized()`, `resolveUserByUsername()`, `listUsers()` |
+| `src/commands/admin.ts` | `/user`, `/users`, `/announce` gated by `isAdmin()` and scoped to source platform |
+| `src/commands/plugin.ts` | `/plugin approve                                                                                        | reject`gated by`isSuperAdmin()`; `enable | disable` checks target context ownership |
+| `src/debug/instance-routes.ts` | CRUD handlers for `/api/platform-instances`, `/api/task-instances`, `/api/admins`; apply endpoint |
+| `src/debug/chat-router-runtime.ts` | Holds and clears the active `ChatRouter` reference for apply |
+| `src/chat/router.ts` | `listInstances()` returns readonly snapshots |
+| `client/admin/sections/InstancesSection.svelte` | `/admin#instances` dashboard section with three tables and apply button |
 
 Migration: `041_users_platform_instance_index`.
 

@@ -96,16 +96,16 @@ only generic methods, keeping provider-specific code behind the adapter.
 
 **Option B** with the following subsidiary decisions:
 
-| Topic               | Decision                                                                                                                                                     |
+| Topic | Decision |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | ------------------------------------- |
-| Error handling      | Remove `KaneoClassifiedError`/`YouTrackClassifiedError` imports from `llm-orchestrator.ts`; use the base `ProviderClassifiedError` exclusively.              |
-| Provisioning        | Add `provisionUser?()` to the `TaskProvider` interface as an optional method gated by the `provisioning` capability. Kaneo implements it; YouTrack does not. |
-| ProvisioningResult  | Discriminated union: `{ status: 'provisioned' }                                                                                                              | { status: 'registration_disabled' } | { status: 'failed'; error: string }`. |
-| Workspace functions | Add `getWorkspaceId()`/`setWorkspaceId()` to `users.ts`; deprecate `getKaneoWorkspace`/`setKaneoWorkspace` as thin wrappers.                                 |
-| Factory/scheduler   | Replace `getKaneoWorkspace` calls with `getWorkspaceId`.                                                                                                     |
-| Provider metadata   | Add `ProviderMetadata` type and `readonly metadata` field to `TaskProvider`; wizard uses `metadata.authPrompt`/`tokenLabel` instead of hardcoded strings.    |
-| Admin commands      | Remove direct `provisionAndConfigure` import; provisioning goes through `provider.provisionUser()` or is deferred.                                           |
-| Backward compat     | Deprecated workspace functions remain exported; no config-key renames at this stage.                                                                         |
+| Error handling | Remove `KaneoClassifiedError`/`YouTrackClassifiedError` imports from `llm-orchestrator.ts`; use the base `ProviderClassifiedError` exclusively. |
+| Provisioning | Add `provisionUser?()` to the `TaskProvider` interface as an optional method gated by the `provisioning` capability. Kaneo implements it; YouTrack does not. |
+| ProvisioningResult | Discriminated union: `{ status: 'provisioned' }                                                                                                              | { status: 'registration_disabled' } | { status: 'failed'; error: string }`. |
+| Workspace functions | Add `getWorkspaceId()`/`setWorkspaceId()` to `users.ts`; deprecate `getKaneoWorkspace`/`setKaneoWorkspace` as thin wrappers. |
+| Factory/scheduler | Replace `getKaneoWorkspace` calls with `getWorkspaceId`. |
+| Provider metadata | Add `ProviderMetadata` type and `readonly metadata` field to `TaskProvider`; wizard uses `metadata.authPrompt`/`tokenLabel` instead of hardcoded strings. |
+| Admin commands | Remove direct `provisionAndConfigure` import; provisioning goes through `provider.provisionUser()` or is deferred. |
+| Backward compat | Deprecated workspace functions remain exported; no config-key renames at this stage. |
 
 ## Consequences
 

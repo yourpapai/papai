@@ -36,7 +36,7 @@ describe('makeUpdateStatusTool', () => {
     assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', statusId: 'col-1', name: 'Updated Name' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({ id: 'col-1', name: 'Updated Name' })
@@ -61,7 +61,7 @@ describe('makeUpdateStatusTool', () => {
     assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       { projectId: 'proj-1', statusId: 'col-1', name: 'Updated', confirm: true },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(updateStatus).toHaveBeenCalledWith(
@@ -87,7 +87,7 @@ describe('makeUpdateStatusTool', () => {
     assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', statusId: 'col-1', name: 'Updated' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
@@ -101,7 +101,7 @@ describe('makeUpdateStatusTool', () => {
     const tool = makeUpdateStatusTool(provider)
     const promise = getToolExecutor(tool)(
       { projectId: 'proj-1', statusId: 'invalid', name: 'Test' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
     await expect(promise).rejects.toThrow('Status not found')
     try {

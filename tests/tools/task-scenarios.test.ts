@@ -6,6 +6,8 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import type { ToolExecutionOptions } from 'ai'
+
 import type { Task, TaskListItem, TaskRelation } from '../../src/providers/types.js'
 import { makeGetTaskTool } from '../../src/tools/get-task.js'
 import { makeListTasksTool } from '../../src/tools/list-tasks.js'
@@ -95,12 +97,12 @@ function hasRelationType(relationType: string): (t: TaskWithRelations) => boolea
 
 async function collectTasksByRelationType(
   tasks: Array<TaskListItem>,
-  getTaskExecute: (args: { taskId: string }, opts: { toolCallId: string; messages: [] }) => Promise<unknown>,
+  getTaskExecute: (args: { taskId: string }, opts: ToolExecutionOptions<unknown>) => Promise<unknown>,
   relationType: string,
 ): Promise<Array<TaskWithRelations>> {
   const result: Array<TaskWithRelations> = []
   for (const task of tasks) {
-    const details: unknown = await getTaskExecute({ taskId: task.id }, { toolCallId: '1', messages: [] })
+    const details: unknown = await getTaskExecute({ taskId: task.id }, { toolCallId: '1', messages: [], context: {} })
     assert(isTaskWithRelations(details), 'Invalid result')
     if (hasRelationType(relationType)(details)) {
       result.push(details)
@@ -216,7 +218,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const getTool = makeGetTaskTool(provider)
@@ -248,7 +253,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const getTool = makeGetTaskTool(provider)
@@ -282,7 +290,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const getTool = makeGetTaskTool(provider)
@@ -327,7 +338,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const inProgressTasks = tasksResult.filter((t) => t.status === 'in-progress')
@@ -336,7 +350,7 @@ describe('Task Scenarios', () => {
       assert(updateTool.execute, 'Tool execute is undefined')
 
       for (const task of inProgressTasks) {
-        await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [] })
+        await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [], context: {} })
       }
 
       expect(updateTask).toHaveBeenCalledTimes(3)
@@ -371,7 +385,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const inProgressTasks = tasksResult.filter((t) => t.status === 'in-progress')
@@ -380,7 +397,7 @@ describe('Task Scenarios', () => {
       assert(updateTool.execute, 'Tool execute is undefined')
 
       for (const task of inProgressTasks) {
-        await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [] })
+        await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [], context: {} })
       }
 
       expect(updateTask).toHaveBeenCalledTimes(2)
@@ -417,7 +434,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const updateTool = makeUpdateTaskTool(provider)
@@ -426,7 +446,7 @@ describe('Task Scenarios', () => {
       const errors: Array<{ taskId: string; error: string }> = []
       for (const task of tasksResult) {
         try {
-          await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [] })
+          await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [], context: {} })
         } catch (error) {
           errors.push({ taskId: task.id, error: extractErrorMessage(error) })
         }
@@ -482,7 +502,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const highPriorityThisWeek = tasksResult.filter(isHighPriorityDueInWindow(startOfWeek, endOfWeek))
@@ -520,7 +543,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const highPriorityThisWeek = tasksResult.filter(isHighOrUrgentPriorityDueInWindow(startOfWeek, endOfWeek))
@@ -557,7 +583,10 @@ describe('Task Scenarios', () => {
 
       const listTool = makeListTasksTool(provider)
       assert(listTool.execute, 'Tool execute is undefined')
-      const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const tasksResult: unknown = await listTool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskList(tasksResult), 'Invalid result')
 
       const highPriorityThisWeek = tasksResult.filter(isHighOrUrgentPriorityDueInWindow(startOfWeek, endOfWeek))

@@ -35,7 +35,10 @@ describe('Find User Tool', () => {
     const provider = createMockProvider({ listUsers })
     const tool = makeFindUserTool(provider)
 
-    const result: unknown = await getToolExecutor(tool)({ query: 'ali', limit: 2 }, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)(
+      { query: 'ali', limit: 2 },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     assert(isUserArray(result), 'Invalid result')
     expect(result).toHaveLength(2)
@@ -47,7 +50,7 @@ describe('Find User Tool', () => {
     const provider = createMockProvider({ listUsers })
     const tool = makeFindUserTool(provider)
 
-    await getToolExecutor(tool)({ query: 'alice' }, { toolCallId: '1', messages: [] })
+    await getToolExecutor(tool)({ query: 'alice' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(listUsers).toHaveBeenCalledWith('alice', undefined)
   })
@@ -59,9 +62,9 @@ describe('Find User Tool', () => {
       }),
     )
 
-    await expect(getToolExecutor(tool)({ query: 'alice' }, { toolCallId: '1', messages: [] })).rejects.toThrow(
-      'Lookup failed',
-    )
+    await expect(
+      getToolExecutor(tool)({ query: 'alice' }, { toolCallId: '1', messages: [], context: {} }),
+    ).rejects.toThrow('Lookup failed')
   })
 
   test('validates required query and optional positive limit', () => {

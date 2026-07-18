@@ -10,6 +10,7 @@ import { z } from 'zod'
 
 import { getCachedHistory } from '../cache.js'
 import { getMainContextIdFromThreadContextId } from '../chat/scoped-context.js'
+import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
 import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
@@ -43,7 +44,9 @@ Provide a concise answer based only on the chat history.`
 const defaultDeps: LookupGroupHistoryDeps = {
   getCachedHistory,
   generateText: async (options) => {
-    const result = await generateText(options)
+    // AI SDK v7 disallows system messages in the messages array; hoist them into `system`.
+    const { system, messages } = hoistSystemMessages('', options.messages)
+    const result = await generateText({ model: options.model, system, messages })
     return { text: result.text }
   },
   getSmallModel: (configContextId) => {

@@ -773,8 +773,7 @@ Expected: FAIL — `registerAttachmentTransformer` does not exist
 import type { PluginAttachmentRecord } from './attachment-types.js'
 
 export type AttachmentTransformResult =
-  | { ok: true; text: string; meta?: { language?: string; durationSec?: number } }
-  | { ok: false; reason: string }
+  { ok: true; text: string; meta?: { language?: string; durationSec?: number } } | { ok: false; reason: string }
 
 export type PluginAttachmentTransformer = {
   name: string

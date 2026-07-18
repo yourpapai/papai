@@ -79,8 +79,8 @@ async function extractSingle(
       stopWhen: stepCountIs(MAX_STEPS + 1),
       abortSignal: AbortSignal.timeout(timeout),
     })
-    usage.inputTokens = result.totalUsage.inputTokens ?? 0
-    usage.outputTokens = result.totalUsage.outputTokens ?? 0
+    usage.inputTokens = result.usage.inputTokens ?? 0
+    usage.outputTokens = result.usage.outputTokens ?? 0
     for (const step of result.steps) {
       for (const tc of step.toolCalls) {
         usage.toolCalls += 1

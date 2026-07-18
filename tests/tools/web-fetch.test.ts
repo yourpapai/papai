@@ -106,7 +106,7 @@ describe('makeWebFetchTool', () => {
 
     await getToolExecutor(tools['web_fetch']!)(
       { url: 'https://example.com/article' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     const actors = getTestDb().select({ actorId: webRateLimit.actorId }).from(webRateLimit).all()
@@ -135,11 +135,11 @@ describe('makeWebFetchTool', () => {
 
     await getToolExecutor(tools1['web_fetch']!)(
       { url: 'https://example.com/article' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
     await getToolExecutor(tools2['web_fetch']!)(
       { url: 'https://example.com/article' },
-      { toolCallId: '2', messages: [] },
+      { toolCallId: '2', messages: [], context: {} },
     )
 
     const actors = getTestDb().select({ actorId: webRateLimit.actorId }).from(webRateLimit).all()
@@ -152,7 +152,7 @@ describe('makeWebFetchTool', () => {
     const tools3 = buildTools(createMockProvider(), otherUserId, otherContextId, 'normal', 'group')
     await getToolExecutor(tools3['web_fetch']!)(
       { url: 'https://example.com/article' },
-      { toolCallId: '3', messages: [] },
+      { toolCallId: '3', messages: [], context: {} },
     )
 
     const allActors = getTestDb()

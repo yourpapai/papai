@@ -92,18 +92,18 @@ Continue developing dashboard components without isolation tooling.
 
 **Option C** with the following subsidiary decisions:
 
-| Topic             | Decision                                                                                                                                         |
+| Topic | Decision |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
-| Toolchain         | Storybook 9 + Vite, dev-only. Production builds stay on `scripts/build-client.ts` (Bun-native). Vite never reaches `public/` output.             |
-| Story format      | Svelte CSF (`*.stories.svelte`) only. No `*.stories.ts` — avoids the TDD write-hook gate while keeping stories colocated next to components.     |
-| Mock layer        | MSW 2.x handlers + `msw-storybook-addon` for HTTP; custom `StubEventSource` for SSE; `IntersectionObserver` no-op stub; fixture-reset decorator. |
-| Fixture factories | Typed factories in `client/stories/fixtures/`, validated at module load against live zod schemas from `client/admin/fetcher-schemas.ts`.         |
-| Scenario bundles  | Named MSW handler sets in `client/stories/msw/scenarios.ts` (e.g. `admin-populated`, `billing-error`).                                           |
-| Decorator pattern | `withFixtures` resets `$state` singletons via per-field mutation, swaps MSW handlers per story `parameters.fixtures`, and seeds SSE events.      |
-| Theme             | `@storybook/addon-themes` toggles `data-theme="dark                                                                                              | light"`via`client/shared/tokens.css`. |
-| Rollout           | PR 1: scaffold + 5 vertical-slice stories. PRs 2–4: phased fan-out across all ~50 components.                                                    |
-| Bundle guard      | Byte-size assertion on `bun build:client` output (±1%) catches any future story-to-production import leak.                                       |
-| Story files       | `Btn` (primitive), `PanelShell` (composite), `SubjectsTable` (fixtures), `BillingSection` (MSW + rune reset), `AdminApp` (full stack).           |
+| Toolchain | Storybook 9 + Vite, dev-only. Production builds stay on `scripts/build-client.ts` (Bun-native). Vite never reaches `public/` output. |
+| Story format | Svelte CSF (`*.stories.svelte`) only. No `*.stories.ts` — avoids the TDD write-hook gate while keeping stories colocated next to components. |
+| Mock layer | MSW 2.x handlers + `msw-storybook-addon` for HTTP; custom `StubEventSource` for SSE; `IntersectionObserver` no-op stub; fixture-reset decorator. |
+| Fixture factories | Typed factories in `client/stories/fixtures/`, validated at module load against live zod schemas from `client/admin/fetcher-schemas.ts`. |
+| Scenario bundles | Named MSW handler sets in `client/stories/msw/scenarios.ts` (e.g. `admin-populated`, `billing-error`). |
+| Decorator pattern | `withFixtures` resets `$state` singletons via per-field mutation, swaps MSW handlers per story `parameters.fixtures`, and seeds SSE events. |
+| Theme | `@storybook/addon-themes` toggles `data-theme="dark                                                                                              | light"`via`client/shared/tokens.css`. |
+| Rollout | PR 1: scaffold + 5 vertical-slice stories. PRs 2–4: phased fan-out across all ~50 components. |
+| Bundle guard | Byte-size assertion on `bun build:client` output (±1%) catches any future story-to-production import leak. |
+| Story files | `Btn` (primitive), `PanelShell` (composite), `SubjectsTable` (fixtures), `BillingSection` (MSW + rune reset), `AdminApp` (full stack). |
 
 ## Consequences
 

@@ -96,15 +96,15 @@ See LICENSE in the project root for details.
 
 ## Deviation 7: `assertScopeAllowed` helper not implemented
 
-| Field              | Value                                                                                                                        |
+| Field | Value |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Plan task**      | Implicit in Task 22 and spec §6                                                                                              |
+| **Plan task** | Implicit in Task 22 and spec §6 |
 | **Spec reference** | §6: "REST endpoints ... share the `isAuthorizedRequest` token gate, and additionally call `assertScopeAllowed(vis, params)`" |
-| **Expected**       | A shared helper `assertScopeAllowed(vis: AdminVisibility, params: { userId?: string; groupId?: string }): Response           | undefined` that returns HTTP 403 Response if the requested scope is outside the admin's allow-list. |
-| **Actual**         | No such helper exists. REST endpoints trust the token gate only.                                                             |
-| **Why**            | Same root cause as Deviation 2 — `AdminVisibility` is scoped to the collector, not shared with the server.                   |
-| **Impact**         | Same as Deviation 2 — REST layer lacks scope enforcement.                                                                    |
-| **Correct?**       | No — should be fixed alongside Deviation 2.                                                                                  |
+| **Expected** | A shared helper `assertScopeAllowed(vis: AdminVisibility, params: { userId?: string; groupId?: string }): Response           | undefined` that returns HTTP 403 Response if the requested scope is outside the admin's allow-list. |
+| **Actual** | No such helper exists. REST endpoints trust the token gate only. |
+| **Why** | Same root cause as Deviation 2 — `AdminVisibility` is scoped to the collector, not shared with the server. |
+| **Impact** | Same as Deviation 2 — REST layer lacks scope enforcement. |
+| **Correct?** | No — should be fixed alongside Deviation 2. |
 
 ---
 

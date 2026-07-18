@@ -34,7 +34,10 @@ describe('search_tasks', () => {
     const provider = createMockProvider({ searchTasks })
     const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
-    await getToolExecutor(tool)({ query: 'tasks', limit: 25, offset: 50 }, { toolCallId: '1', messages: [] })
+    await getToolExecutor(tool)(
+      { query: 'tasks', limit: 25, offset: 50 },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(searchTasks).toHaveBeenCalledWith({
       query: 'tasks',
@@ -67,7 +70,7 @@ describe('search_tasks', () => {
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       expect(capturedAssigneeId).toBe('jsmith')
@@ -94,7 +97,7 @@ describe('search_tasks', () => {
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       expect(capturedAssigneeId).toBe('resolved-user-789')
@@ -111,7 +114,7 @@ describe('search_tasks', () => {
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ query: 'my tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'my tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       expect(capturedQuery).toBe('my tasks')
@@ -128,7 +131,7 @@ describe('search_tasks', () => {
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ query: 'tasks', assigneeId: 'user-123' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'tasks', assigneeId: 'user-123' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       expect(capturedAssigneeId).toBe('user-123')
@@ -145,7 +148,7 @@ describe('search_tasks', () => {
       const tool = makeSearchTasksTool(provider, undefined)
 
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       expect(capturedAssigneeId).toBe('me')
@@ -162,7 +165,7 @@ describe('search_tasks', () => {
       const tool = makeSearchTasksTool(provider, 'no-mapping-user')
 
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       expect(capturedAssigneeId).toBe('me')
@@ -179,7 +182,7 @@ describe('search_tasks', () => {
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
       assert(tool.execute, 'Tool execute is undefined')
-      await tool.execute({ query: 'bug fix' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'bug fix' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       expect(capturedParams?.query).toBe('bug fix')

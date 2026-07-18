@@ -422,10 +422,7 @@ In `src/chat/types.ts`:
 
 ```typescript
 export type AuthorizationDenyReason =
-  | 'group_not_allowed'
-  | 'group_member_not_allowed'
-  | 'dm_not_allowed'
-  | 'user_blocked'
+  'group_not_allowed' | 'group_member_not_allowed' | 'dm_not_allowed' | 'user_blocked'
 ```
 
 - [ ] **Step 2: Write the failing auth test**

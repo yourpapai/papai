@@ -257,8 +257,8 @@ import { userCachesForTesting } from '../src/cache.js'
 import { prepareLlmInvocation } from '../src/llm-orchestrator-tools.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
-const buildProviderlessToolDescriptorsSpy = mock(
-  (_opts: unknown): Promise<ToolSet> => Promise.resolve({ web_fetch: {} as ToolSet[string] }),
+const buildProviderlessToolDescriptorsSpy = mock((_opts: unknown): Promise<ToolSet> =>
+  Promise.resolve({ web_fetch: {} as ToolSet[string] }),
 )
 
 void mock.module('../src/tools/index.js', () => ({

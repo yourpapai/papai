@@ -63,7 +63,7 @@ describe('makeLookupGroupHistoryTool', () => {
     const tool = makeLookupGroupHistoryTool(undefined, 'group123')
     assert(tool.execute, 'Tool execute is undefined')
     const input: LookupGroupHistoryInput = { queries: ['test'] }
-    const result: unknown = await tool.execute(input, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute(input, { toolCallId: '1', messages: [], context: {} })
     expect(result).toBe('Unable to search: missing user or context information.')
   })
 
@@ -73,7 +73,7 @@ describe('makeLookupGroupHistoryTool', () => {
     const tool = makeLookupGroupHistoryTool('user123', undefined)
     assert(tool.execute, 'Tool execute is undefined')
     const input: LookupGroupHistoryInput = { queries: ['test'] }
-    const result: unknown = await tool.execute(input, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute(input, { toolCallId: '1', messages: [], context: {} })
     expect(result).toBe('Unable to search: missing user or context information.')
   })
 

@@ -63,7 +63,7 @@ describe('Task Relation Tools', () => {
       const tool = makeAddTaskRelationTool(provider)
       const result: unknown = await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'blocks' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isTaskRelation(result))
 
@@ -85,7 +85,7 @@ describe('Task Relation Tools', () => {
       const tool = makeAddTaskRelationTool(provider)
       await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'duplicate' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(addRelation).toHaveBeenCalledWith('task-1', 'task-2', 'duplicate')
@@ -104,7 +104,7 @@ describe('Task Relation Tools', () => {
       const tool = makeAddTaskRelationTool(provider)
       await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'related' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(addRelation).toHaveBeenCalledWith('task-1', 'task-2', 'related')
@@ -123,7 +123,7 @@ describe('Task Relation Tools', () => {
       const tool = makeAddTaskRelationTool(provider)
       await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'parent' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(addRelation).toHaveBeenCalledWith('task-1', 'task-2', 'parent')
@@ -137,7 +137,7 @@ describe('Task Relation Tools', () => {
       const tool = makeAddTaskRelationTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'invalid', relatedTaskId: 'task-2', type: 'blocks' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await expect(promise).rejects.toThrow('Task not found')
       try {
@@ -184,7 +184,7 @@ describe('Task Relation Tools', () => {
       const tool = makeAddTaskRelationTool(provider)
       const result: unknown = await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-1', type: 'blocks' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isTaskRelation(result))
 
@@ -206,11 +206,11 @@ describe('Task Relation Tools', () => {
       const tool = makeAddTaskRelationTool(provider)
       await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'blocks' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'blocks' },
-        { toolCallId: '2', messages: [] },
+        { toolCallId: '2', messages: [], context: {} },
       )
 
       expect(addRelation).toHaveBeenCalledTimes(2)
@@ -238,7 +238,7 @@ describe('Task Relation Tools', () => {
       const tool = makeUpdateTaskRelationTool(provider)
       const result: unknown = await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'related' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isTaskRelation(result))
 
@@ -260,7 +260,7 @@ describe('Task Relation Tools', () => {
       const tool = makeUpdateTaskRelationTool(provider)
       await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'duplicate' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(updateRelation).toHaveBeenCalledWith('task-1', 'task-2', 'duplicate')
@@ -279,7 +279,7 @@ describe('Task Relation Tools', () => {
       const tool = makeUpdateTaskRelationTool(provider)
       await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'parent' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(updateRelation).toHaveBeenCalledWith('task-1', 'task-2', 'parent')
@@ -293,7 +293,7 @@ describe('Task Relation Tools', () => {
       const tool = makeUpdateTaskRelationTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'task-1', relatedTaskId: 'invalid', type: 'blocks' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await expect(promise).rejects.toThrow('Relation not found')
       try {
@@ -337,7 +337,7 @@ describe('Task Relation Tools', () => {
       const tool = makeRemoveTaskRelationTool(provider)
       const result: unknown = await tool.execute!(
         { taskId: 'task-1', relatedTaskId: 'task-2' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isRemoveResult(result))
 
@@ -353,7 +353,7 @@ describe('Task Relation Tools', () => {
       const tool = makeRemoveTaskRelationTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'invalid', relatedTaskId: 'task-2' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await expect(promise).rejects.toThrow('Task not found')
       try {
@@ -371,7 +371,7 @@ describe('Task Relation Tools', () => {
       const tool = makeRemoveTaskRelationTool(provider)
       const promise = getToolExecutor(tool)(
         { taskId: 'task-1', relatedTaskId: 'invalid' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       await expect(promise).rejects.toThrow('Relation not found')
       try {

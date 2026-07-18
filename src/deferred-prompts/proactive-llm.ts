@@ -7,6 +7,7 @@ import { generateText, stepCountIs, type LanguageModel, type ModelMessage } from
 
 import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
+import { hoistSystemMessages } from '../llm-message-utils.js'
 import { buildChatModel } from '../llm-model-builder.js'
 import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
@@ -112,20 +113,19 @@ async function invokeLightweight(
   const tools = makeMinimalTools(createdByUserId)
   const result = await deps.generateText({
     model,
-    system: buildMinimalSystemPrompt(type),
-    messages,
+    ...hoistSystemMessages(buildMinimalSystemPrompt(type), messages),
     tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
 
-  const assistantMessages = result.response.messages
+  const assistantMessages = result.finalStep.response.messages
   persistLightweightResponse(createdByUserId, storageContextId, configContextId, config.mainModel, assistantMessages)
   return finalizeAndLog(
     result,
     createdByUserId,
     'lightweight',
-    buildProactiveVerification(deps, model, tools, [...messages, ...result.response.messages]),
+    buildProactiveVerification(deps, model, tools, [...messages, ...result.finalStep.response.messages]),
   )
 }
 
@@ -154,8 +154,7 @@ async function invokeWithContext(
   const tools = makeMinimalTools(createdByUserId)
   const result = await deps.generateText({
     model,
-    system: buildMinimalSystemPrompt(type),
-    messages,
+    ...hoistSystemMessages(buildMinimalSystemPrompt(type), messages),
     tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
@@ -167,13 +166,13 @@ async function invokeWithContext(
     deliveryTarget.contextType,
     history,
     config.mainModel,
-    result.response.messages,
+    result.finalStep.response.messages,
   )
   return finalizeAndLog(
     result,
     createdByUserId,
     'context',
-    buildProactiveVerification(deps, model, tools, [...messages, ...result.response.messages]),
+    buildProactiveVerification(deps, model, tools, [...messages, ...result.finalStep.response.messages]),
   )
 }
 
@@ -227,13 +226,13 @@ async function runFullGeneration(
   )
   const result = await deps.generateText({
     model,
-    system: prepared.systemPrompt,
-    messages: prepared.messages,
+    ...hoistSystemMessages(prepared.systemPrompt, prepared.messages),
     tools: prepared.tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
   })
   const previousHistory = getCachedHistory(prepared.storageContextId)
+  const assistantMessages = result.finalStep.response.messages
   persistProactiveResults(
     createdByUserId,
     prepared.storageContextId,
@@ -247,7 +246,7 @@ async function runFullGeneration(
     result,
     createdByUserId,
     'full',
-    buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...result.response.messages]),
+    buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...assistantMessages]),
   )
 }
 

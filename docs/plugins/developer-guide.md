@@ -248,8 +248,7 @@ type PluginAttachmentTransformer = {
 }
 
 type AttachmentTransformResult =
-  | { ok: true; text: string; meta?: { language?: string; durationSec?: number } }
-  | { ok: false; reason: string }
+  { ok: true; text: string; meta?: { language?: string; durationSec?: number } } | { ok: false; reason: string }
 ```
 
 ### Dispatch rules

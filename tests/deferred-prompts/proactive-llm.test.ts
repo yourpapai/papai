@@ -34,7 +34,7 @@ type GenerateTextResult = {
   toolCalls: unknown[]
   toolResults: unknown[]
   steps: unknown[] | undefined
-  response: { messages: ModelMessage[] }
+  finalStep: { response: { messages: ModelMessage[] } }
 }
 type GenerateTextCall = {
   model: string
@@ -121,7 +121,7 @@ describe('dispatchExecution', () => {
       toolCalls: [],
       toolResults: [],
       steps: undefined,
-      response: { messages: [] },
+      finalStep: { response: { messages: [] } },
     })
   }
 
@@ -137,7 +137,7 @@ describe('dispatchExecution', () => {
         toolCalls: [],
         toolResults: [],
         steps: undefined,
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
     void mock.module('ai', () => ({
@@ -206,7 +206,7 @@ describe('dispatchExecution', () => {
           toolCalls: [{ toolName: 'get_current_time', input: {} }],
           toolResults: [],
           steps: [{}],
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         },
         // Second call is the verifier — returns a neutral completion summary
         {
@@ -215,7 +215,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         },
       ]
       generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
@@ -234,13 +234,13 @@ describe('dispatchExecution', () => {
       expect(system).not.toContain('DEFERRED PROMPTS')
     })
 
-    test('includes delivery brief in messages', async () => {
+    test('includes delivery brief in the system prompt', async () => {
       setupUserConfig()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      const messages = generateTextCalls[0]!.messages
-      const systemMsgs = messages.filter((m) => m.role === 'system')
-      expect(messageIncludesText(systemMsgs, '[DELIVERY BRIEF]')).toBe(true)
-      expect(messageIncludesText(systemMsgs, 'Friendly hydration reminder')).toBe(true)
+      // AI SDK v7 hoists system content out of `messages` into the `system` option.
+      const system = generateTextCalls[0]!.system
+      expect(system).toContain('[DELIVERY BRIEF]')
+      expect(system).toContain('Friendly hydration reminder')
     })
 
     test('wraps prompt in deferred task delimiters', async () => {
@@ -267,16 +267,13 @@ describe('dispatchExecution', () => {
         context_snapshot: 'User discussed migration',
       }
       await dispatchExecution(makeExecCtx(), 'scheduled', 'remind about migration', withSnapshot, () => null)
-      const messages = generateTextCalls[0]!.messages
-      const systemMsgs = messages.filter((m) => m.role === 'system')
-      expect(messageIncludesText(systemMsgs, '[CONTEXT FROM CREATION TIME]')).toBe(true)
+      expect(generateTextCalls[0]!.system).toContain('[CONTEXT FROM CREATION TIME]')
     })
 
     test('omits context snapshot message when null', async () => {
       setupUserConfig()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'drink water', metadata, () => null)
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, '[CONTEXT FROM CREATION TIME]')).toBe(false)
+      expect(generateTextCalls[0]!.system).not.toContain('[CONTEXT FROM CREATION TIME]')
     })
 
     test('persists lightweight history to group thread delivery context instead of creator DM', async () => {
@@ -288,7 +285,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [{ role: 'assistant', content: 'Thread reminder' }] },
+          finalStep: { response: { messages: [{ role: 'assistant', content: 'Thread reminder' }] } },
         })
       }
 
@@ -336,9 +333,9 @@ describe('dispatchExecution', () => {
 
       await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'standup reminder', metadata, () => null)
 
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, 'Group standups happen at 10:00')).toBe(true)
-      expect(messageIncludesText(messages, 'This personal thread scope should not be injected')).toBe(false)
+      const system = generateTextCalls[0]!.system
+      expect(system).toContain('Group standups happen at 10:00')
+      expect(system).not.toContain('This personal thread scope should not be injected')
     })
 
     test('includes get_current_time tool only', async () => {
@@ -450,9 +447,9 @@ describe('dispatchExecution', () => {
 
       await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
 
-      const messages = generateTextCalls[0]!.messages
-      expect(messageIncludesText(messages, 'Group escalations use the incident queue')).toBe(true)
-      expect(messageIncludesText(messages, 'This personal thread profile should not be injected')).toBe(false)
+      const system = generateTextCalls[0]!.system
+      expect(system).toContain('Group escalations use the incident queue')
+      expect(system).not.toContain('This personal thread profile should not be injected')
     })
 
     test('falls back to providerless full execution when provider cannot be built', async () => {
@@ -474,7 +471,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Thread task', number: 17 } }],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 
@@ -519,7 +516,7 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Scoped thread task', number: 21 } }],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 
@@ -584,21 +581,21 @@ describe('dispatchExecution', () => {
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [{ role: 'assistant', content: 'new response' }] },
+          finalStep: { response: { messages: [{ role: 'assistant', content: 'new response' }] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ keep_indices: Array.from({ length: 50 }, (_, index) => index), summary: 'trimmed' }),
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         }),
         Promise.resolve({
           text: JSON.stringify({ profile: null, records: [], updates: [] }),
           toolCalls: [],
           toolResults: [],
           steps: undefined,
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         }),
       ]
       let callIndex = 0
@@ -666,7 +663,7 @@ describe('dispatchExecution', () => {
               ],
             },
           ],
-          response: { messages: [] },
+          finalStep: { response: { messages: [] } },
         })
       }
 

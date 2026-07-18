@@ -102,9 +102,7 @@ describe('migration 019: add foreign keys', () => {
     db.run('PRAGMA journal_mode=WAL')
     db.run('PRAGMA foreign_keys=ON')
     // Run all migrations 001–019
-    runMigrations(db, [
-      /* all 19 migrations */
-    ])
+    runMigrations(db, [/* all 19 migrations */])
   })
 
   afterAll(() => {

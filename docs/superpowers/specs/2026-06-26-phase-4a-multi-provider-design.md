@@ -42,10 +42,10 @@ provider/agent half of Phase 4.
    `claude → anthropic`, `codex → openai`, `opencode → anthropic | openai`.
 3. **provider → env table (papai-owned)**, the generalization of the Phase-1
    deferral:
-   | provider | env staged into the sandbox |
-   | -------- | --------------------------- |
+   | provider    | env staged into the sandbox                         |
+   | ----------- | --------------------------------------------------- |
    | `anthropic` | `ANTHROPIC_API_KEY` (+ `ANTHROPIC_BASE_URL` if set) |
-   | `openai` | `OPENAI_API_KEY` (+ `OPENAI_BASE_URL` if set) |
+   | `openai`    | `OPENAI_API_KEY` (+ `OPENAI_BASE_URL` if set)       |
 4. **The agent travels in the projectSpec** the acp plugin sends (assembled from
    the per-repo catalogue entry + the per-user agent). magi derives
    `provisioning.agent` from it.

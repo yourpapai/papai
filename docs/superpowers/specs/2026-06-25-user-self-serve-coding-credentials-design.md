@@ -96,12 +96,8 @@ additively (every new field optional; absent → today's behavior):
     "ANTHROPIC_API_KEY": "…",
     "FORGE_TOKEN": "…", // Phase 2+
   },
-  "forge": {
-    /* per-session forge identity/token */
-  }, // Phase 2+
-  "projectSpec": {
-    /* inline ephemeral project */
-  }, // Phase 3+
+  "forge": {/* per-session forge identity/token */}, // Phase 2+
+  "projectSpec": {/* inline ephemeral project */}, // Phase 3+
 }
 ```
 

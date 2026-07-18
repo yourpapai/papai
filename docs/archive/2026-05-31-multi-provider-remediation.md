@@ -959,8 +959,7 @@ Change `collectMissing` to also surface the validated values so the success path
 
 ```typescript
 type CollectMissingResult =
-  | { ok: true; chatType: PlatformInstanceType; adminUserId: string }
-  | { ok: false; missing: string[] }
+  { ok: true; chatType: PlatformInstanceType; adminUserId: string } | { ok: false; missing: string[] }
 
 const collectMissing = (parsed: ParsedEnv): CollectMissingResult => {
   const missing: string[] = []

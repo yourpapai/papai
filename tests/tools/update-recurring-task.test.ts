@@ -17,7 +17,7 @@ function getToolExecute(tool: ReturnType<typeof makeUpdateRecurringTaskTool>): N
   return tool.execute
 }
 
-const toolCtx = { toolCallId: '1', messages: [] as never[] }
+const toolCtx = { toolCallId: '1', messages: [] as never[], context: {} }
 
 function makeRecord(overrides: Partial<RecurringTaskRecord> = {}): RecurringTaskRecord {
   return {

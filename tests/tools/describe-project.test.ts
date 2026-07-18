@@ -20,7 +20,7 @@ describe('describe_project', () => {
     const describeProjectFields = mock((_id: string) => Promise.resolve(descriptors))
     const provider = createMockProvider({ describeProjectFields })
     const tool = makeDescribeProjectTool(provider)
-    const result = await getToolExecutor(tool)({ projectId: '0-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ projectId: '0-1' }, { toolCallId: '1', messages: [], context: {} })
     expect(result).toEqual({ projectId: '0-1', fields: descriptors })
     expect(describeProjectFields).toHaveBeenCalledWith('0-1')
   })
@@ -31,7 +31,7 @@ describe('describe_project', () => {
       describeProjectFields: mock((_id: string) => Promise.resolve([])),
     })
     const tool = makeDescribeProjectTool(provider)
-    const result = await getToolExecutor(tool)({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ projectId: 'proj-1' }, { toolCallId: '1', messages: [], context: {} })
     expect(result).toEqual({ projectId: 'proj-1', fields: [] })
   })
 
@@ -41,7 +41,7 @@ describe('describe_project', () => {
       describeProjectFields: undefined,
     })
     const tool = makeDescribeProjectTool(provider)
-    const result = await getToolExecutor(tool)({ projectId: 'proj-2' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ projectId: 'proj-2' }, { toolCallId: '1', messages: [], context: {} })
     expect(result).toEqual({ projectId: 'proj-2', fields: [] })
   })
 })

@@ -448,8 +448,7 @@ type NamedProjectCustomField = ProjectCustomField & {
 }
 
 export type FieldPair =
-  | { source: 'dedicated'; kind: DedicatedKind; value: string }
-  | { source: 'generic'; name: string; value: string }
+  { source: 'dedicated'; kind: DedicatedKind; value: string } | { source: 'generic'; name: string; value: string }
 
 export type ResolvedFieldPair = { field: ProjectCustomField; value: string }
 

@@ -216,15 +216,13 @@ export function listRepos(contextId: string): RepoRecord[] {
     .from(codingSessionRepos)
     .where(eq(codingSessionRepos.contextId, contextId))
     .all()
-    .map(
-      (r): RepoRecord => ({
-        repoId: r.repoId,
-        name: r.name,
-        repoUrl: r.repoUrl,
-        baseBranch: r.baseBranch,
-        permissionPreset: r.permissionPreset as RepoRecord['permissionPreset'],
-      }),
-    )
+    .map((r): RepoRecord => ({
+      repoId: r.repoId,
+      name: r.name,
+      repoUrl: r.repoUrl,
+      baseBranch: r.baseBranch,
+      permissionPreset: r.permissionPreset as RepoRecord['permissionPreset'],
+    }))
 }
 export function getRepoByName(contextId: string, name: string): RepoRecord | null {
   const r = getDrizzleDb()

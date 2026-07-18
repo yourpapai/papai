@@ -69,7 +69,7 @@ describe('expand_result tool', () => {
 
   it('uses the SDK toolCallId in failure results, not the handle', async () => {
     const exec = getToolExecutor(makeExpandResultTool('ctx-1'))
-    const out: unknown = await exec({ handle: 'res_missing' }, { toolCallId: 'call_42', messages: [] })
+    const out: unknown = await exec({ handle: 'res_missing' }, { toolCallId: 'call_42', messages: [], context: {} })
     assert(isFailureResult(out), 'Expected a structured failure result')
     expect(out.toolCallId).toBe('call_42')
   })

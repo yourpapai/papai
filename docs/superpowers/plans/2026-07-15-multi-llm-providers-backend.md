@@ -214,20 +214,18 @@ describe('migration067MultiLlmProviders', () => {
     migration067MultiLlmProviders.up(db)
 
     const providers = db
-      .query<
-        { id: string; label: string; base_url: string; provider_type: string },
-        []
-      >(`SELECT id, label, base_url, provider_type FROM llm_providers`)
+      .query<{ id: string; label: string; base_url: string; provider_type: string }, []>(
+        `SELECT id, label, base_url, provider_type FROM llm_providers`,
+      )
       .all()
     expect(providers).toHaveLength(1)
     expect(providers[0]?.base_url).toBe('https://legacy.invalid/v1')
     expect(providers[0]?.provider_type).toBe('custom')
 
     const roles = db
-      .query<
-        { main_model: string; small_model: string; embedding_model: string },
-        []
-      >(`SELECT main_model, small_model, embedding_model FROM llm_admin_roles WHERE id = 1`)
+      .query<{ main_model: string; small_model: string; embedding_model: string }, []>(
+        `SELECT main_model, small_model, embedding_model FROM llm_admin_roles WHERE id = 1`,
+      )
       .get()
     expect(roles?.main_model).toBe('legacy-main')
     expect(roles?.small_model).toBe('legacy-small')

@@ -99,22 +99,22 @@ Undo the namespace migration and keep flat keys everywhere.
 
 **Option B** with the following subsidiary decisions:
 
-| Topic                           | Decision                                                                                                                                                                                     |
+| Topic | Decision |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Required-key resolution         | `getRequiredProviderConfigKeysForContext(contextId)` filters `getConfigFieldsForContext` to `required && kind !== 'preference'`, returning storage keys. No hardcoded provider key literals. |
-| Sensitivity                     | `isSensitiveProviderStorageKey(key)` derives from `field.sensitive` on active provider descriptors, replacing `SENSITIVE_KEYS`.                                                              |
-| Wizard prompts/validation       | Drive prompt text, labels, and validation from descriptor field metadata (`label`, `required`). Remove `BUILTIN_PROMPTS` provider branches and `validateApiKey`/`validateToken`.             |
-| Config key type                 | `ConfigKey` union retains only static keys (`timezone`, `mcp_endpoints`). Provider keys are descriptor-derived runtime strings, not union members.                                           |
-| Migration resilience            | Per-row try/catch in migration `045`; undecryptable rows are skipped with a `WARN`. Migration completes regardless.                                                                          |
-| Instance read resilience        | Switch `admin-system`, `task-instance-selection`, and `task-provider-lifecycle` to `listTaskInstancesSafe` / `listPlatformInstancesSafe`.                                                    |
-| Preserve running instances      | `/apply` excludes undecryptable-row ids from `runtimeIdsToRemove`; a running instance whose DB row is unreadable is left untouched and surfaced in diagnostics.                              |
-| Remove instance on stop failure | `removeInstance` (renamed from `removeInstanceStrict`) uses try/finally so the map entry is cleared even when `provider.stop()` throws, enabling retry.                                      |
-| Discord adapter                 | Remove `process.env['ADMIN_USER_ID']` read and dead `_adminUserId` threading. `isAdmin` continues to come from the interaction.                                                              |
-| Bootstrap narrowing             | `collectMissing` returns a discriminated union (`{ ok: true, chatType, adminUserId }                                                                                                         | { ok: false, missing }`) so the success path has no second null-check. |
-| Dead naming                     | `removeInstanceStrict` → `removeInstance`; `'stop'` removed from `ApplyFailureAction`.                                                                                                       |
-| Resolver early return           | Return `null` early on `descriptor === undefined` with a `WARN`, skipping the unused config build and validator round-trip.                                                                  |
-| Validator comments              | Corrected to state that resolver-time validation passes the merged config including context-scoped fields. Comment-only change.                                                              |
-| ADR-0009                        | Updated Implementation Status to reflect plugin-contributed providers and resolver/descriptor flow; removed references to deleted `src/providers/kaneo/` and `TASK_PROVIDER`.                |
+| Required-key resolution | `getRequiredProviderConfigKeysForContext(contextId)` filters `getConfigFieldsForContext` to `required && kind !== 'preference'`, returning storage keys. No hardcoded provider key literals. |
+| Sensitivity | `isSensitiveProviderStorageKey(key)` derives from `field.sensitive` on active provider descriptors, replacing `SENSITIVE_KEYS`. |
+| Wizard prompts/validation | Drive prompt text, labels, and validation from descriptor field metadata (`label`, `required`). Remove `BUILTIN_PROMPTS` provider branches and `validateApiKey`/`validateToken`. |
+| Config key type | `ConfigKey` union retains only static keys (`timezone`, `mcp_endpoints`). Provider keys are descriptor-derived runtime strings, not union members. |
+| Migration resilience | Per-row try/catch in migration `045`; undecryptable rows are skipped with a `WARN`. Migration completes regardless. |
+| Instance read resilience | Switch `admin-system`, `task-instance-selection`, and `task-provider-lifecycle` to `listTaskInstancesSafe` / `listPlatformInstancesSafe`. |
+| Preserve running instances | `/apply` excludes undecryptable-row ids from `runtimeIdsToRemove`; a running instance whose DB row is unreadable is left untouched and surfaced in diagnostics. |
+| Remove instance on stop failure | `removeInstance` (renamed from `removeInstanceStrict`) uses try/finally so the map entry is cleared even when `provider.stop()` throws, enabling retry. |
+| Discord adapter | Remove `process.env['ADMIN_USER_ID']` read and dead `_adminUserId` threading. `isAdmin` continues to come from the interaction. |
+| Bootstrap narrowing | `collectMissing` returns a discriminated union (`{ ok: true, chatType, adminUserId }                                                                                                         | { ok: false, missing }`) so the success path has no second null-check. |
+| Dead naming | `removeInstanceStrict` → `removeInstance`; `'stop'` removed from `ApplyFailureAction`. |
+| Resolver early return | Return `null` early on `descriptor === undefined` with a `WARN`, skipping the unused config build and validator round-trip. |
+| Validator comments | Corrected to state that resolver-time validation passes the merged config including context-scoped fields. Comment-only change. |
+| ADR-0009 | Updated Implementation Status to reflect plugin-contributed providers and resolver/descriptor flow; removed references to deleted `src/providers/kaneo/` and `TASK_PROVIDER`. |
 
 ## Consequences
 
