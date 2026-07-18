@@ -21,6 +21,7 @@ import {
 import { homedir } from 'node:os'
 import path from 'node:path'
 
+import { ensurePrivateDependencyCacheRoot, pruneDependencyCacheEntries } from './dependencies-cache.js'
 import {
   dependencySnapshotKey,
   installStagedDependencies,
@@ -38,6 +39,12 @@ import {
 } from './dependencies-tree.js'
 import { resolveStoryDependencyPlatform } from './sandbox.js'
 
+export {
+  ensurePrivateDependencyCacheRoot,
+  pruneDependencyCacheEntries,
+  resolveDependencyCacheKeep,
+} from './dependencies-cache.js'
+export type { DependencyCachePruneDependencies, DependencyCacheRootDependencies } from './dependencies-cache.js'
 export type { StoryDependencyInstallerOptions, StoryDependencyPlatform } from './dependencies-install.js'
 export type StoryDependencySnapshot = Readonly<{ key: string; root: string; treeHash: string }>
 
@@ -195,42 +202,7 @@ async function createStagingEntry(
   await deps.writeFile(path.join(staging, MANIFEST_FILE), `${JSON.stringify(manifest)}\n`)
 }
 
-export type DependencyCacheRootDependencies = Readonly<{
-  chmod(target: string, mode: number): Promise<void>
-  lstat(target: string): Promise<Stats>
-  mkdir(target: string, options: Readonly<{ recursive: true; mode: number }>): Promise<string | undefined>
-}>
-
-function isOwnedByCurrentUser(stats: Stats): boolean {
-  const getuid = process.getuid
-  return getuid === undefined || stats.uid === getuid.call(process)
-}
-
-function assertPrivateCacheRoot(root: string, stats: Stats): void {
-  if (!stats.isDirectory() || stats.isSymbolicLink() || !isOwnedByCurrentUser(stats) || (stats.mode & 0o077) !== 0) {
-    throw new Error(`Unsafe story dependency cache root: ${root}`)
-  }
-}
-
-export async function ensurePrivateDependencyCacheRoot(
-  root: string,
-  deps: DependencyCacheRootDependencies,
-): Promise<void> {
-  const existing = await deps.lstat(root).catch((error: unknown) => {
-    if (errorCode(error) === 'ENOENT') return undefined
-    throw error
-  })
-  if (existing === undefined) await deps.mkdir(root, { recursive: true, mode: 0o700 })
-  const stats = await deps.lstat(root)
-  assertPrivateCacheRoot(root, stats)
-  await deps.chmod(root, 0o700)
-}
-
-export async function acquireStoryDependencySnapshot(
-  options: SnapshotOptions,
-  overrides: StoryDependencySnapshotDependencies = {},
-): Promise<StoryDependencySnapshot> {
-  const deps = withDefaultDependencies(overrides)
+async function acquireSnapshotEntry(options: SnapshotOptions, deps: Dependencies): Promise<StoryDependencySnapshot> {
   const packageBytes = await safeReadDependencyFile(
     path.join(options.projectRoot, 'package.json'),
     'package.json',
@@ -271,6 +243,16 @@ export async function acquireStoryDependencySnapshot(
     if (!published) await removeDependencyCacheTree(staging, deps)
     throw error
   }
+}
+
+export async function acquireStoryDependencySnapshot(
+  options: SnapshotOptions,
+  overrides: StoryDependencySnapshotDependencies = {},
+): Promise<StoryDependencySnapshot> {
+  const deps = withDefaultDependencies(overrides)
+  const snapshot = await acquireSnapshotEntry(options, deps)
+  await pruneDependencyCacheEntries(options.cacheRoot, snapshot.key, deps)
+  return snapshot
 }
 
 export type CandidateStoryManifestDependencies = Readonly<{
