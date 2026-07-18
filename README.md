@@ -570,12 +570,17 @@ bun test:stories
 ```
 
 Runs deterministic full-stack user stories against the real in-process runtime with fake
-transports. Every run executes inside the pinned `oven/bun:1.3.13` Docker image — on Linux,
+transports. Every run executes inside the pinned `oven/bun:1.3.13` Docker image (digest
+single-sourced in `scripts/story/sandbox-image.txt`) — on Linux,
 and on macOS via Docker Desktop — with no network, a read-only app snapshot, and a read-only
 bind-mounted dependency cache, so a working Docker daemon is required. Windows hosts are not
 supported yet: the launcher fails closed with an actionable error before any test spawns.
 There is no unsandboxed fallback: missing Docker or an image mismatch fails before any test
-spawns. See
+spawns. The shared dependency cache (`~/.cache/papai-story-dependencies`, overridable via
+`PAPAI_STORY_DEPENDENCY_CACHE_ROOT`) is pruned after every successful acquire — the newest
+three entries by directory mtime are kept, plus the just-acquired key; set
+`PAPAI_STORY_DEPENDENCY_CACHE_KEEP` (positive integer) to change the keep count. Pruning is
+best-effort and never fails a run. See
 `docs/architecture/commands.md` for the story tiers, contracts, stress lane, and refactor
 compatibility mode.
 
