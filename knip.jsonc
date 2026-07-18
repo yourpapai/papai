@@ -18,6 +18,7 @@
     "scripts/behavior-audit/tune-embedding.ts!",
     "scripts/behavior-audit/reset.ts!",
     "scripts/behavior-audit/migrate-trust.ts!",
+    "scripts/behavior-audit/preflight.ts!",
     // Stable production/public compatibility boundaries consumed by the
     // plugin-core-separation refactor. They intentionally remain independent
     // entries so current master and the refactor share the same API surface.
