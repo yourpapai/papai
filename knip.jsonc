@@ -221,8 +221,7 @@
     // strybk.config.ts default export is consumed by the crvy-strybk CLI at
     // runtime via --config; no static importer exists.
     "strybk.config.ts": ["exports"],
-    // buildCommitMessage is consumed by tests now and will be wired into the
-    // orphan-branch git plumbing in the downstream publish-snapshot task.
+    // buildCommitMessage and other exports are consumed by runPublish and tests.
     "scripts/behavior-audit/publish-snapshot.ts": ["exports"],
   },
 

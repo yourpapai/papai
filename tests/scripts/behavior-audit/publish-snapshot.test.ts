@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -101,6 +101,15 @@ describe('publishSnapshot flow', () => {
     expect(result.exitCode).toBe(0)
     expect(result.commitMessage).toBe('chore(audit): snapshot for 2026-07-19')
     expect(recordedCommands).toContainEqual(['checkout', '--orphan', 'audit-output'])
+    expect(recordedCommands).toContainEqual(['add', 'stories'])
+    expect(recordedCommands).toContainEqual(['commit', '-m', 'chore(audit): snapshot for 2026-07-19'])
+    expect(recordedCommands).toContainEqual(['tag', '-f', 'audit-output-latest', 'HEAD'])
+    const addIdx = recordedCommands.findIndex((c) => c[0] === 'add')
+    const commitIdx = recordedCommands.findIndex((c) => c[0] === 'commit')
+    const tagIdx = recordedCommands.findIndex((c) => c[0] === 'tag')
+    expect(addIdx).toBeGreaterThanOrEqual(0)
+    expect(addIdx).toBeLessThan(commitIdx)
+    expect(commitIdx).toBeLessThan(tagIdx)
   })
 
   test('exits 1 when stories path is empty', async () => {
@@ -113,5 +122,21 @@ describe('publishSnapshot flow', () => {
       log: { log: () => {}, error: () => {} },
     })
     expect(result.exitCode).toBe(1)
+  })
+
+  test('propagates git errors from run and aborts the publish', async () => {
+    const run = mock((_args: readonly string[]): Promise<void> => Promise.resolve())
+    run.mockResolvedValueOnce(undefined)
+    run.mockRejectedValueOnce(new Error('git commit exited 1: identity missing'))
+    const failingOps: GitOps = { ...makeFakeGitOps(), run }
+    await expect(
+      runPublish({
+        storiesPath: tempStories,
+        dateStamp: '2026-07-19',
+        gitOps: failingOps,
+        log: { log: () => {}, error: () => {} },
+      }),
+    ).rejects.toThrow('git commit exited 1: identity missing')
+    expect(run.mock.calls).toHaveLength(2)
   })
 })

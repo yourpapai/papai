@@ -100,7 +100,11 @@ class RealGitOps implements GitOps {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    await proc.exited
+    const stderrText = await new Response(proc.stderr).text()
+    const code = await proc.exited
+    if (code !== 0) {
+      throw new Error(`git ${args.join(' ')} exited ${code}: ${stderrText.trim()}`)
+    }
   }
 
   async branchExists(): Promise<boolean> {
@@ -109,7 +113,11 @@ class RealGitOps implements GitOps {
       stderr: 'pipe',
     })
     const out = await new Response(proc.stdout).text()
-    await proc.exited
+    const stderrText = await new Response(proc.stderr).text()
+    const code = await proc.exited
+    if (code !== 0) {
+      throw new Error(`git ls-remote --heads origin ${this.branch} exited ${code}: ${stderrText.trim()}`)
+    }
     return out.trim().length > 0
   }
 
