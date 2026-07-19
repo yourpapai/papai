@@ -46,6 +46,11 @@ export async function runInspector(
   // equals baselineSha, so `diff baselineSha..HEAD` would always be empty.
   // Diffing the working tree against baseline captures the fixer's uncommitted
   // edits (and also handles the retry case, where the worker was reset).
+  // `git diff <commit>` only shows tracked files, so mark untracked files as
+  // intent-to-add first; otherwise a fix that creates a new file would be
+  // invisible to the inspector and always rejected. The marker is overwritten
+  // by the subsequent `git add -A` in ensureFixerChangesCommitted.
+  await execGit(deps.cwd, ['add', '-N', '.'])
   const { stdout: diff } = await execGit(deps.cwd, ['diff', deps.baselineSha])
   const result = await runAgent({
     spawn: deps.spawn,
