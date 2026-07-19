@@ -94,8 +94,8 @@ describe('scenario execution', () => {
     const world = await createScenarioWorld('unsupported task capability')
 
     try {
-      expect(() => world.api.given.taskCapabilities(['tasks.delete'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: tasks.delete',
+      expect(() => world.api.given.taskCapabilities(['projects.read'])).toThrow(
+        'MemoryTaskProvider does not support task capabilities: projects.read',
       )
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
     } finally {
@@ -127,7 +127,7 @@ describe('scenario execution', () => {
     }
   })
 
-  test('task capability prerequisite accepts implemented label operations but rejects task deletion', async () => {
+  test('task capability prerequisite accepts implemented label operations but rejects unsupported operations', async () => {
     const world = await createScenarioWorld('label task capabilities')
 
     try {
@@ -143,8 +143,8 @@ describe('scenario execution', () => {
 
       expect([...world.tasks.capabilities]).toEqual(capabilities)
       expect(world.events.all().some(({ kind }) => kind === 'runtime.start.begin')).toBe(false)
-      expect(() => world.api.given.taskCapabilities(['tasks.delete'])).toThrow(
-        'MemoryTaskProvider does not support task capabilities: tasks.delete',
+      expect(() => world.api.given.taskCapabilities(['projects.read'])).toThrow(
+        'MemoryTaskProvider does not support task capabilities: projects.read',
       )
     } finally {
       await world.stop()
