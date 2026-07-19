@@ -24,7 +24,7 @@ describe('core tool capabilities', () => {
     expect(Object.isFrozen(CORE_TOOL_CAPABILITIES)).toBe(true)
   })
 
-  test('registers the four stable task capabilities when their real wire tools are offered', () => {
+  test('registers the stable core capabilities when their real wire tools are offered', () => {
     const catalog = createToolCapabilityCatalog()
 
     registerOfferedCoreToolCapabilities(offered(...Object.values(CORE_TOOL_CAPABILITIES)), catalog)
@@ -34,6 +34,7 @@ describe('core tool capabilities', () => {
       ['tasks.get', 'get_task'],
       ['tasks.list', 'list_tasks'],
       ['tasks.search', 'search_tasks'],
+      ['meta.expand-result', 'expand_result'],
     ])
   })
 

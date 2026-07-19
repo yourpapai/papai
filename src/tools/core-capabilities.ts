@@ -12,6 +12,7 @@ export const CORE_TOOL_CAPABILITIES = Object.freeze({
   'tasks.get': 'get_task',
   'tasks.list': 'list_tasks',
   'tasks.search': 'search_tasks',
+  'meta.expand-result': 'expand_result',
 } as const)
 
 export function registerOfferedCoreToolCapabilities(tools: ToolSet, catalog: ToolCapabilityCatalog): void {
