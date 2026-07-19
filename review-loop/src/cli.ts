@@ -246,7 +246,6 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   try {
     await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect)
-    await pool.close()
   } catch (error) {
     const workerPaths = pool.workerPaths()
     console.error(`Worktrees preserved for inspection (cleaned on next run start):`)
@@ -255,6 +254,8 @@ export async function runCli(argv: readonly string[]): Promise<void> {
       console.error(`  worker:  ${p}`)
     }
     throw error
+  } finally {
+    await pool.close()
   }
 }
 
