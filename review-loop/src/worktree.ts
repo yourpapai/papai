@@ -91,6 +91,11 @@ export async function rebaseOnto(
       await runGit(repoRoot, ['rebase', '--abort'])
       return { ok: false, conflictFiles }
     }
+    // Defensive cleanup: git may have started replaying commits before failing
+    // for a non-conflict reason (e.g. transient FS error). Mirror the conflict
+    // branch so we never leave the worktree mid-rebase. runGit never throws,
+    // so the original error below still propagates.
+    await runGit(repoRoot, ['rebase', '--abort'])
     throw error
   }
   return { ok: true }
