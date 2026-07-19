@@ -9,6 +9,7 @@ import type { FailedItem } from './report-index-helpers.js'
 import type { DomainSummary } from './report-index-helpers.js'
 import { buildSummary, collectStoryEvaluations, loadPriorSnapshot } from './report-rebuild-helpers.js'
 import { writeIndexFile, writeStoryFile, type ConsolidatedBehavior, type StoryEvaluation } from './report-writer.js'
+import type { ScoresFile } from './scores-types.js'
 import { groupConsolidatedByDomain, writeScoresJson } from './scores-writer.js'
 
 interface WriteReportsInput {
@@ -26,12 +27,16 @@ function buildFailedItems(progress: Progress): readonly FailedItem[] {
   }))
 }
 
-async function writeStoryReports(evaluationsByDomain: ReadonlyMap<string, readonly StoryEvaluation[]>): Promise<void> {
+async function writeStoryReports(
+  evaluationsByDomain: ReadonlyMap<string, readonly StoryEvaluation[]>,
+  scores: ScoresFile,
+): Promise<void> {
   await Promise.all(
     [...evaluationsByDomain.entries()].map(([domain, evaluations]) =>
       writeStoryFile(
         domain,
         [...evaluations].toSorted((a, b) => a.testName.localeCompare(b.testName)),
+        scores,
       ),
     ),
   )
@@ -52,8 +57,8 @@ export async function writeReports(input: WriteReportsInput): Promise<void> {
   })
   const consolidatedByDomain = groupConsolidatedByDomain(input.consolidatedByFeatureKey)
   const prior = await loadPriorSnapshot()
-  await writeScoresJson(consolidatedByDomain, evaluationsByDomain, prior)
-  await writeStoryReports(evaluationsByDomain)
+  const scores = await writeScoresJson(consolidatedByDomain, evaluationsByDomain, prior)
+  await writeStoryReports(evaluationsByDomain, scores)
   const summaries = buildSummaries(evaluationsByDomain)
 
   await writeIndexFile(
@@ -63,5 +68,6 @@ export async function writeReports(input: WriteReportsInput): Promise<void> {
     flawFreq,
     improvementFreq,
     buildFailedItems(input.progress),
+    scores,
   )
 }

@@ -9,14 +9,8 @@ import { dirname, join } from 'node:path'
 
 import { z } from 'zod'
 
-import { CONSOLIDATED_DIR, STORIES_DIR } from './config.js'
-import {
-  buildFailedSection,
-  buildSummaryHeader,
-  buildTopItemsSection,
-  type DomainSummary,
-  type FailedItem,
-} from './report-index-helpers.js'
+import { CONSOLIDATED_DIR } from './config.js'
+import { writeIndexFile, writeStoryFile } from './report-markdown.js'
 import {
   buildSummary,
   collectStoryEvaluations,
@@ -24,10 +18,11 @@ import {
   loadEvaluatedArtifacts,
   loadPriorSnapshot,
 } from './report-rebuild-helpers.js'
-import type { ClosureResult, EntryPointHint } from './scores-types.js'
+import type { ClosureResult, EntryPointHint, ScoresFile } from './scores-types.js'
 import { groupConsolidatedByDomain, writeScoresJson } from './scores-writer.js'
 
 export type { DomainSummary, FailedItem } from './report-index-helpers.js'
+export { writeIndexFile, writeStoryFile } from './report-markdown.js'
 
 export interface StoryEvaluation {
   readonly testName: string
@@ -145,55 +140,16 @@ export async function readConsolidatedFile(domain: string): Promise<readonly Con
   return ConsolidatedBehaviorArraySchema.parse(raw)
 }
 
-function domainTitle(domain: string): string {
-  return domain
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ')
-}
-
-export async function writeStoryFile(domain: string, evaluations: readonly StoryEvaluation[]): Promise<void> {
-  const outPath = join(STORIES_DIR, `${domain}.md`)
-  await mkdir(dirname(outPath), { recursive: true })
-
-  const lines: string[] = [`# ${domainTitle(domain)} — User Stories & UX Evaluation\n`]
-
-  for (const e of evaluations) {
-    lines.push(`## "${e.testName}"\n`)
-    lines.push(`**User Story:** ${e.userStory}\n`)
-    lines.push('| Persona | Discover | Use | Retain | Notes |')
-    lines.push('|---------|----------|-----|--------|-------|')
-    lines.push(
-      `| Maria   | ${e.maria.discover}        | ${e.maria.use}   | ${e.maria.retain}      | ${e.maria.notes} |`,
-    )
-    lines.push(`| Dani    | ${e.dani.discover}        | ${e.dani.use}   | ${e.dani.retain}      | ${e.dani.notes} |`)
-    lines.push(
-      `| Viktor  | ${e.viktor.discover}        | ${e.viktor.use}   | ${e.viktor.retain}      | ${e.viktor.notes} |`,
-    )
-    lines.push('')
-    if (e.flaws.length > 0) {
-      lines.push('**Flaws:**\n')
-      for (const flaw of e.flaws) lines.push(`- ${flaw}`)
-      lines.push('')
-    }
-    if (e.improvements.length > 0) {
-      lines.push('**Improvements:**\n')
-      for (const imp of e.improvements) lines.push(`- ${imp}`)
-      lines.push('')
-    }
-  }
-
-  await Bun.write(outPath, lines.join('\n'))
-}
-
 async function writeRebuiltStoryFiles(
   evaluationsByDomain: ReadonlyMap<string, readonly StoryEvaluation[]>,
+  scores: ScoresFile,
 ): Promise<void> {
   await Promise.all(
     [...evaluationsByDomain.entries()].map(([domain, evaluations]) =>
       writeStoryFile(
         domain,
         [...evaluations].toSorted((a, b) => a.testName.localeCompare(b.testName)),
+        scores,
       ),
     ),
   )
@@ -201,27 +157,6 @@ async function writeRebuiltStoryFiles(
 
 function countStoryEvaluations(evaluationsByDomain: ReadonlyMap<string, readonly StoryEvaluation[]>): number {
   return [...evaluationsByDomain.values()].reduce((sum, evaluations) => sum + evaluations.length, 0)
-}
-
-export async function writeIndexFile(
-  summaries: readonly DomainSummary[],
-  totalProcessed: number,
-  totalFailed: number,
-  flawFrequency: ReadonlyMap<string, number>,
-  improvementFrequency: ReadonlyMap<string, number>,
-  failedItems: readonly FailedItem[],
-): Promise<void> {
-  const outPath = join(STORIES_DIR, 'index.md')
-  await mkdir(dirname(outPath), { recursive: true })
-
-  const lines = [
-    ...buildSummaryHeader(summaries, totalProcessed, totalFailed),
-    ...buildTopItemsSection('Top 10 Flaws (by frequency)', flawFrequency),
-    ...buildTopItemsSection('Top 10 Improvements (by frequency)', improvementFrequency),
-    ...buildFailedSection(failedItems),
-  ]
-
-  await Bun.write(outPath, lines.join('\n'))
 }
 
 export async function rebuildReportsFromStoredResults({ consolidatedManifest }: RebuildReportsInput): Promise<void> {
@@ -242,9 +177,9 @@ export async function rebuildReportsFromStoredResults({ consolidatedManifest }: 
 
   const consolidatedByDomain = groupConsolidatedByDomain(consolidatedByFeatureKey)
   const prior = await loadPriorSnapshot()
-  await writeScoresJson(consolidatedByDomain, evaluationsByDomain, prior)
+  const scores = await writeScoresJson(consolidatedByDomain, evaluationsByDomain, prior)
 
-  await writeRebuiltStoryFiles(evaluationsByDomain)
+  await writeRebuiltStoryFiles(evaluationsByDomain, scores)
 
   const summaries = [...evaluationsByDomain.entries()]
     .map(([domain, evaluations]) => buildSummary(domain, evaluations))
@@ -252,5 +187,5 @@ export async function rebuildReportsFromStoredResults({ consolidatedManifest }: 
 
   const totalProcessed = countStoryEvaluations(evaluationsByDomain)
 
-  await writeIndexFile(summaries, totalProcessed, 0, flawFreq, improvementFreq, [])
+  await writeIndexFile(summaries, totalProcessed, 0, flawFreq, improvementFreq, [], scores)
 }
