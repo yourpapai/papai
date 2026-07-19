@@ -68,6 +68,12 @@ describe('prompt-templates', () => {
     expect(p).toContain('fixer')
   })
 
+  test('pins confidence to a 0-1 probability range (regression: reviewer emitted 1-5 scale)', () => {
+    const p = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(p).toContain('between 0 and 1')
+    expect(p).toContain('NOT a 1-5 rating')
+  })
+
   test('fixer prompt keeps sentinel, drops commit instruction, asks for commitMessage + severity', () => {
     const p = buildFixPrompt(issue, '/result.json', 'bun check:full')
     expect(p).toContain('Verify and fix')
@@ -109,6 +115,12 @@ describe('buildInspectPrompt', () => {
     expect(prompt).toContain('out.json')
     expect(prompt).toContain('"addresses": boolean')
     expect(prompt).toContain('Do not flag unrelated problems')
+  })
+
+  test('pins confidence to a 0-1 probability range (regression: reviewer emitted 1-5 scale)', () => {
+    const prompt = buildInspectPrompt(inspectorIssue, 'd', 'r', 'o.json')
+    expect(prompt).toContain('between 0 and 1')
+    expect(prompt).toContain('NOT a 1-5 rating')
   })
 })
 

@@ -22,6 +22,7 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     '',
     'Use this exact schema:',
     '{"issues": [{"title": string, "severity": "critical" | "high" | "medium" | "low", "summary": string, "whyItMatters": string, "evidence": string, "file": string, "lineStart": number, "lineEnd": number, "suggestedFix": string, "confidence": number}]}',
+    '`confidence` is a probability between 0 and 1 (e.g. 0.85), NOT a 1-5 rating.',
     'If there are no issues, write: {"issues": []}',
   ].join('\n\n')
 }
@@ -86,6 +87,7 @@ export function buildInspectPrompt(
     `Write your result as JSON to: ${outputPath}`,
     'Use this exact schema:',
     '{"addresses": boolean, "reasoning": string, "confidence": number}',
+    '`confidence` is a probability between 0 and 1 (e.g. 0.85), NOT a 1-5 rating.',
     '',
     'Issue:',
     JSON.stringify(issue, null, 2),
