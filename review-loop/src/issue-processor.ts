@@ -56,8 +56,19 @@ async function processIssue(
   round: number,
   collector: RoundCollector,
 ): Promise<{ fixed: boolean }> {
+  let baselineSha: string | null = null
   try {
+    baselineSha = await worker.headSha()
     return await processIssueAttempt(record, deps, worker, round, collector, 1, null)
+  } catch (error) {
+    if (baselineSha !== null) {
+      try {
+        await worker.resetToBaseline(baselineSha)
+      } catch {
+        // Best-effort cleanup; do not mask the original error.
+      }
+    }
+    throw error
   } finally {
     deps.pool.release(worker)
   }
