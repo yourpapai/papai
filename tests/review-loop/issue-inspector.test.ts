@@ -152,7 +152,7 @@ describe('runInspector', () => {
         issue,
         baselineSha,
         fixerReasoning: 'mock',
-        outputPath: runState.inspectPath,
+        outputPath: path.join(runState.runDir, 'inspect.json'),
         logPath: runState.logPath,
         reporter: silentReporter(),
         model: 'm',

@@ -108,7 +108,7 @@ export async function runInspectorOrTreatAsRejection(
     }
     return {
       kind: 'unavailable',
-      reasoning: 'inspector unavailable',
+      reasoning: `inspector unavailable: ${originalReasoning}`,
       usage:
         error instanceof AgentRunError
           ? error.usage
