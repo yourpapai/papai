@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-// tests/deferred-prompts/execution-modes.test.ts
+// tests/deferred-prompts/proactive-llm.test.ts
 //
 // Mocked modules: ai, @ai-sdk/openai-compatible, ../src/logger.js
 // (Uses mockLogger + setupTestDb helpers; mocks ai + openai-compatible in beforeEach)
