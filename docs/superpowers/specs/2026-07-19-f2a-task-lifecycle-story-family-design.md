@@ -104,17 +104,17 @@ The permission-prompt flow composes from existing primitives, documented in the 
 with an assigned task instance (`given.assign(dm, instance)`). Scenario names match the
 ledger mapping byte-for-byte.
 
-| Scenario                  | Shape                                                                                                                                                      |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SCN-task-create-update`  | Create (with `projectId`) → `tasks.update` rename → `then.task(new).exists()` + `.absent()` on the old title. RED→GREEN proof of the capability-ids seam   |
-| `SCN-task-query`          | Seed 3 tasks in one turn → `count_tasks` filtered → reply carries the count → `list_tasks` scoped by `projectId` → events assert `task.create` ×3          |
-| `SCN-task-delete`         | `delete_task` at `confidence: 0.9` (clears the 0.85 gate) → `.absent()`; low-confidence attempt returns `confirmation_required` → task still exists        |
-| `SCN-task-history`        | Create + update → `get_task_history` → self-seeded activities page back → `promptToolResultTokenFingerprints` assert activity categories reached the model |
-| `SCN-task-comments`       | `add_comment` → `get_comments` → `update_comment` → `remove_comment`; effects asserted via `world.tasks.getComments` + replies                             |
-| `SCN-task-labels`         | `create_label` → `add_task_label` by `labelName` (exercises `getLabelByName` resolution) → `world.tasks.listTaskLabels` → `remove_task_label` → absent     |
-| `SCN-task-not-configured` | No task instance assigned; scripted refusal only; `availableTools` lacks `create_task`/`list_tasks`                                                        |
-| `SCN-task-ask-confirm`    | The ask-flow above for allow, then the same flow with `perm:d:` for deny; allowed task exists, denied task absent                                          |
-| `SCN-task-deny`           | `toolOverrides: { create_task: 'deny' }` → scripted refusal; `availableTools` contains `list_tasks` but not `create_task`                                  |
+| Scenario                  | Shape                                                                                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SCN-task-create-update`  | Create (with `projectId`) → `tasks.update` rename → `then.task(new).exists()` + `.absent()` on the old title. RED→GREEN proof of the capability-ids seam                                         |
+| `SCN-task-query`          | Seed 3 tasks in one turn → `count_tasks` filtered → reply carries the count → `list_tasks` scoped by `projectId` → events assert `task.create` ×3                                                |
+| `SCN-task-delete`         | `delete_task` at `confidence: 0.9` (clears the 0.85 gate) → `.absent()`; low-confidence attempt returns `confirmation_required` → task still exists                                              |
+| `SCN-task-history`        | Create + update → `get_task_history` → self-seeded activities page back → `promptToolResultTokenFingerprints` assert activity categories reached the model                                       |
+| `SCN-task-comments`       | `add_comment` → `get_comments` → `update_comment` → `remove_comment`; effects asserted via `world.tasks.getComments` + replies                                                                   |
+| `SCN-task-labels`         | `create_label` → `add_task_label` by `labelName` (exercises `getLabelByName` resolution) → `world.tasks.listTaskLabels` → `remove_task_label` → absent                                           |
+| `SCN-task-not-configured` | No task instance assigned; scripted refusal only; `resolveToolCapability('tasks.create')` throws (capability never registered) — `availableTools` absence is non-discriminating under disclosure |
+| `SCN-task-ask-confirm`    | The ask-flow above for allow, then the same flow with `perm:d:` for deny; allowed task exists, denied task absent                                                                                |
+| `SCN-task-deny`           | `toolOverrides: { create_task: 'deny' }` → scripted refusal; `resolveToolCapability('tasks.create')` throws while `tasks.list` still resolves                                                    |
 
 ## Deliberate exclusions
 
@@ -147,3 +147,25 @@ Nine `AUDIT_RECORDS` entries move to `EXECUTABLE_STORY_MAPPINGS` with
 - The capability-ids additions are proven RED→GREEN by `SCN-task-create-update`.
 - `bun test:stories:contracts`, typecheck, and lint stay green; the compat baseline is
   re-recorded after landing.
+
+## Post-implementation deviations (2026-07-19)
+
+- **Zero-default provider capabilities:** the world constructs `MemoryTaskProvider`
+  with no capabilities, so every story whose tool is provider-capability-gated must
+  seed them explicitly via `given.taskCapabilities` (stories using ungated tools seed
+  nothing). F2b's gated-surface scenarios must do the same.
+- **Disclosure makes `availableTools` non-discriminating:** non-core tools are never
+  advertised until a `load_tool` hop, so absence from `availableTools` cannot
+  distinguish a denied or unconfigured tool from a merely unloaded one. Policy
+  scenarios assert `world.runtime.resolveToolCapability(...)` instead (registration
+  happens on the post-deny, pre-disclosure tool set; the catalog is cleared per
+  runtime).
+- **The ask flow needs a polling wait:** the synchronous buttons read raced the
+  fire-and-forget turn, so the story polls (`setImmediate`-yield, bounded attempts —
+  no wall-clock sleep) for the buttons reply, and the extraction snapshots the reply
+  count at wait-entry (`since`) so a later prompt cannot match an earlier prompt's
+  stale buttons.
+- **`then.task(...).absent()` and `given.toolPrefs` landed as specced;** the
+  `SCN-task-not-configured`/`SCN-task-deny` rows above replace the planned
+  `availableTools` assertions with capability-registration assertions (the
+  `availableTools` deny behavior remains covered by the harness fixture test).
