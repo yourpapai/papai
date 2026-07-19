@@ -802,3 +802,37 @@ describe('traits', () => {
     expect(captured.has('supports-command-language')).toBe(true)
   })
 })
+
+describe('attachments', () => {
+  test('uploads, lists, and deletes attachment metadata', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Documented' })
+    const content = new TextEncoder().encode('hello')
+
+    const uploaded = await provider.uploadAttachment(task.id, { name: 'spec.txt', content, mimeType: 'text/plain' })
+    expect(uploaded).toMatchObject({
+      id: 'attachment-1',
+      name: 'spec.txt',
+      size: 5,
+      url: 'memory://attachments/attachment-1',
+    })
+    await expect(provider.listAttachments(task.id)).resolves.toHaveLength(1)
+    await expect(provider.deleteAttachment(task.id, 'attachment-1')).resolves.toEqual({ id: 'attachment-1' })
+    await expect(provider.deleteAttachment(task.id, 'attachment-1')).rejects.toThrow(
+      'Attachment not found: attachment-1',
+    )
+  })
+})
+
+describe('applyCommand', () => {
+  test('records and echoes the command payload', async () => {
+    const provider = new MemoryTaskProvider()
+
+    await expect(
+      provider.applyCommand({ query: 'state Fixed', taskIds: ['task-1'], comment: 'done', silent: true }),
+    ).resolves.toEqual({ query: 'state Fixed', taskIds: ['task-1'], comment: 'done', silent: true })
+    expect(provider.commandCalls).toEqual([
+      { query: 'state Fixed', taskIds: ['task-1'], comment: 'done', silent: true },
+    ])
+  })
+})

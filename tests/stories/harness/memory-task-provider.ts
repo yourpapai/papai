@@ -7,6 +7,7 @@ import { systemError, type AppError } from '../../../src/errors.js'
 import type {
   Activity,
   Agile,
+  Attachment,
   Column,
   ListTasksParams,
   Comment,
@@ -22,6 +23,7 @@ import type {
   Sprint,
   Task,
   TaskCapability,
+  TaskCommandResult,
   TaskLabel,
   TaskListItem,
   TaskProvider,
@@ -120,6 +122,8 @@ const taskSearchResult = (task: Task): TaskSearchResult => ({
 
 const compareText = (left: string | null | undefined, right: string | null | undefined): number =>
   (left ?? '').localeCompare(right ?? '')
+
+const contentSize = (content: Uint8Array | Blob): number => ('size' in content ? content.size : content.length)
 
 const compareTasks = (left: Task, right: Task, params: Readonly<ListTasksParams>): number => {
   const direction = params.sortOrder === 'desc' ? -1 : 1
@@ -233,6 +237,9 @@ export class MemoryTaskProvider implements TaskProvider {
     member: ProvisionMemberInput
     opts?: { existingProviderUserId?: string; existingLogin?: string; existingPassword?: string }
   }> = []
+  private readonly attachments = new Map<string, Attachment[]>()
+  private attachmentSequence = 0
+  readonly commandCalls: Array<{ query: string; taskIds: string[]; comment?: string; silent?: boolean }> = []
 
   get capabilities(): ReadonlySet<TaskCapability> {
     return this.capabilitySet
@@ -1145,6 +1152,60 @@ export class MemoryTaskProvider implements TaskProvider {
     this.events?.record('member.provision', { login: member.username ?? member.chatUserId })
     const login = member.username ?? member.chatUserId
     return Promise.resolve({ providerUserId: `prov-${login}`, login, password: 'memory-password' })
+  }
+
+  listAttachments(taskId: string): Promise<Attachment[]> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const result = this.attachments.get(taskId) ?? []
+      this.events?.record('attachment.list', { taskId, count: result.length })
+      return clone(result)
+    })
+  }
+
+  uploadAttachment(
+    taskId: string,
+    file: Readonly<{ name: string; content: Uint8Array | Blob; mimeType?: string }>,
+  ): Promise<Attachment> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const id = `attachment-${++this.attachmentSequence}`
+      const attachment: Attachment = {
+        id,
+        name: file.name,
+        url: `memory://attachments/${id}`,
+        size: contentSize(file.content),
+        ...(file.mimeType === undefined ? {} : { mimeType: file.mimeType }),
+      }
+      this.attachments.set(taskId, [...(this.attachments.get(taskId) ?? []), clone(attachment)])
+      this.events?.record('attachment.upload', { taskId, attachmentId: id })
+      return clone(attachment)
+    })
+  }
+
+  deleteAttachment(taskId: string, attachmentId: string): Promise<{ id: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const attachments = this.attachments.get(taskId) ?? []
+      if (!attachments.some((attachment) => attachment.id === attachmentId)) {
+        throw new Error(`Attachment not found: ${attachmentId}`)
+      }
+      this.attachments.set(
+        taskId,
+        attachments.filter((attachment) => attachment.id !== attachmentId),
+      )
+      this.events?.record('attachment.delete', { taskId, attachmentId })
+      return { id: attachmentId }
+    })
+  }
+
+  applyCommand(
+    params: Readonly<{ query: string; taskIds: string[]; comment?: string; silent?: boolean }>,
+  ): Promise<TaskCommandResult> {
+    const input = clone(params)
+    this.commandCalls.push(clone(input))
+    this.events?.record('command.apply', { taskIds: input.taskIds })
+    return Promise.resolve(clone(input))
   }
 
   buildTaskUrl(taskId: string): string {
