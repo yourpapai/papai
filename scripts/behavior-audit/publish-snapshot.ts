@@ -109,11 +109,10 @@ export class RealGitOps implements GitOps {
   async run(args: readonly string[]): Promise<void> {
     const proc = Bun.spawn(['git', ...args], {
       cwd: this.worktree,
-      stdout: 'pipe',
+      stdout: 'ignore',
       stderr: 'pipe',
     })
-    const stderrText = await new Response(proc.stderr).text()
-    const code = await proc.exited
+    const [code, stderrText] = await Promise.all([proc.exited, new Response(proc.stderr).text()])
     if (code !== 0) {
       throw new Error(`git ${args.join(' ')} exited ${code}: ${stderrText.trim()}`)
     }
