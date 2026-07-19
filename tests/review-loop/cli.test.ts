@@ -429,6 +429,32 @@ describe('runCli', () => {
     expect(existsSync(staleWorkerPath)).toBe(false)
   })
 
+  test('stale worker worktrees from a prior crashed run are cleaned on a fresh start (no --resume-run)', async () => {
+    const fixture = await setupRunCliFixtures({ poolSize: 1 })
+    const crashedRunId = '2026-07-15T10-30-00-000Z-crashed'
+    const crashedWorkerPath = path.join(fixture.workDir, 'worktrees', `${crashedRunId}-worker-1`)
+
+    // Simulate a crashed prior run that left a worker worktree + branch behind,
+    // with no resumable run state (so the only recovery path is a fresh start).
+    await execGit(fixture.repoPath, [
+      'worktree',
+      'add',
+      crashedWorkerPath,
+      '-b',
+      `review-loop/${crashedRunId}-worker-1`,
+    ])
+
+    const scenario = {
+      reviewerIssues: [JSON.stringify({ issues: [] })],
+      fixerResults: [],
+    }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    expect(existsSync(crashedWorkerPath)).toBe(false)
+  })
+
   test('on fixer timeout (non-zero exit), the crashing issue is marked needs_human and the run still completes', async () => {
     const fixture = await setupRunCliFixtures({ poolSize: 2 })
     // Reviewer reports one issue; fixer exits non-zero (simulating timeout/error).

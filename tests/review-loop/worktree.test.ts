@@ -9,6 +9,7 @@ import path from 'node:path'
 
 import { execGit } from '../../review-loop/src/worktree.js'
 import {
+  cleanWorkerWorktrees,
   createWorktree,
   detectGitRoot,
   mergeWorktree,
@@ -90,6 +91,64 @@ describe('worktree', () => {
     await execGit(repoRoot, ['init'])
     const result = await detectGitRoot(repoRoot)
     expect(result).toBe(realpathSync(repoRoot))
+  })
+})
+
+describe('cleanWorkerWorktrees', () => {
+  async function setupRepoWithStaleWorkers(): Promise<{
+    repoRoot: string
+    worktreesDir: string
+    workerPath: (runId: string, id: number) => string
+  }> {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'Test'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+    writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+    const worktreesDir = path.join(repoRoot, '.review-loop', 'worktrees')
+    const workerPath = (runId: string, id: number): string => path.join(worktreesDir, `${runId}-worker-${id}`)
+    return { repoRoot, worktreesDir, workerPath }
+  }
+
+  test('without a runId, sweeps all worker worktrees regardless of runId', async () => {
+    const { repoRoot, workerPath } = await setupRepoWithStaleWorkers()
+    const crashedA = workerPath('2026-07-15T10-30-00-000Z-crashedA', 1)
+    const crashedB = workerPath('2026-07-15T11-00-00-000Z-crashedB', 2)
+    await execGit(repoRoot, [
+      'worktree',
+      'add',
+      crashedA,
+      '-b',
+      'review-loop/2026-07-15T10-30-00-000Z-crashedA-worker-1',
+    ])
+    await execGit(repoRoot, [
+      'worktree',
+      'add',
+      crashedB,
+      '-b',
+      'review-loop/2026-07-15T11-00-00-000Z-crashedB-worker-2',
+    ])
+
+    await cleanWorkerWorktrees(repoRoot)
+
+    expect(existsSync(crashedA)).toBe(false)
+    expect(existsSync(crashedB)).toBe(false)
+  })
+
+  test('with a runId, removes only workers tagged with that runId', async () => {
+    const { repoRoot, workerPath } = await setupRepoWithStaleWorkers()
+    const sameRun = workerPath('2026-07-15T10-30-00-000Z-stale', 1)
+    const otherRun = workerPath('2026-07-15T11-00-00-000Z-other', 1)
+    await execGit(repoRoot, ['worktree', 'add', sameRun, '-b', 'review-loop/2026-07-15T10-30-00-000Z-stale-worker-1'])
+    await execGit(repoRoot, ['worktree', 'add', otherRun, '-b', 'review-loop/2026-07-15T11-00-00-000Z-other-worker-1'])
+
+    await cleanWorkerWorktrees(repoRoot, '2026-07-15T10-30-00-000Z-stale')
+
+    expect(existsSync(sameRun)).toBe(false)
+    expect(existsSync(otherRun)).toBe(true)
   })
 })
 
