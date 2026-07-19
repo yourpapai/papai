@@ -6,13 +6,18 @@
 import { systemError, type AppError } from '../../../src/errors.js'
 import type {
   Activity,
+  Agile,
   Column,
   ListTasksParams,
   Comment,
   CommentReaction,
+  CreateWorkItemParams,
   IdentityUser,
   Label,
   Project,
+  RelationType,
+  SavedQuery,
+  Sprint,
   Task,
   TaskCapability,
   TaskLabel,
@@ -21,7 +26,9 @@ import type {
   TaskProviderTrait,
   TaskSearchResult,
   ToolDueDateInput,
+  UpdateWorkItemParams,
   UserRef,
+  WorkItem,
 } from '../../../src/providers/types.js'
 import type { ScenarioEvents } from './events.js'
 
@@ -196,6 +203,16 @@ export class MemoryTaskProvider implements TaskProvider {
   private readonly projectTeam = new Map<string, UserRef[]>()
   private projectSequence = 0
   private statusSequence = 0
+  private readonly relations = new Map<string, Map<string, RelationType>>()
+  private readonly workItems = new Map<string, WorkItem[]>()
+  private readonly agiles = new Map<string, Agile>()
+  private readonly sprints = new Map<string, Sprint[]>()
+  private readonly taskSprints = new Map<string, string>()
+  private readonly savedQueries = new Map<string, SavedQuery>()
+  private workSequence = 0
+  private agileSequence = 0
+  private sprintSequence = 0
+  private querySequence = 0
 
   get capabilities(): ReadonlySet<TaskCapability> {
     return this.capabilitySet
@@ -755,6 +772,249 @@ export class MemoryTaskProvider implements TaskProvider {
     })
   }
 
+  addRelation(
+    taskId: string,
+    relatedTaskId: string,
+    type: RelationType,
+  ): Promise<{ taskId: string; relatedTaskId: string; type: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      this.requireTask(relatedTaskId)
+      const relations = this.relations.get(taskId) ?? new Map<string, RelationType>()
+      if (relations.has(relatedTaskId)) throw new Error(`Task relation already exists: ${taskId} ${relatedTaskId}`)
+      relations.set(relatedTaskId, type)
+      this.relations.set(taskId, relations)
+      this.events?.record('task.relation.create', { taskId, relatedTaskId, type })
+      return { taskId, relatedTaskId, type }
+    })
+  }
+
+  updateRelation(
+    taskId: string,
+    relatedTaskId: string,
+    type: RelationType,
+  ): Promise<{ taskId: string; relatedTaskId: string; type: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      this.requireTask(relatedTaskId)
+      const relations = this.relations.get(taskId)
+      if (relations === undefined || !relations.has(relatedTaskId))
+        throw new Error(`Task relation not found: ${taskId} ${relatedTaskId}`)
+      relations.set(relatedTaskId, type)
+      this.events?.record('task.relation.update', { taskId, relatedTaskId, type })
+      return { taskId, relatedTaskId, type }
+    })
+  }
+
+  removeRelation(taskId: string, relatedTaskId: string): Promise<{ taskId: string; relatedTaskId: string }> {
+    return Promise.resolve().then(() => {
+      const relations = this.relations.get(taskId)
+      if (relations === undefined || !relations.delete(relatedTaskId))
+        throw new Error(`Task relation not found: ${taskId} ${relatedTaskId}`)
+      this.events?.record('task.relation.delete', { taskId, relatedTaskId })
+      return { taskId, relatedTaskId }
+    })
+  }
+
+  listWorkItems(taskId: string, params: Readonly<{ limit?: number; offset?: number }> = {}): Promise<WorkItem[]> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const items = this.workItems.get(taskId) ?? []
+      const offset = Math.max(0, params.offset ?? 0)
+      const limit = params.limit ?? items.length
+      const result = items.slice(offset, offset + limit)
+      this.events?.record('work.list', { taskId, count: result.length })
+      return clone(result)
+    })
+  }
+
+  createWorkItem(taskId: string, params: CreateWorkItemParams): Promise<WorkItem> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const item: WorkItem = {
+        id: `work-${++this.workSequence}`,
+        taskId,
+        author: input.author ?? 'unknown',
+        date: input.date ?? '2026-01-01',
+        duration: input.duration,
+        ...(input.description === undefined ? {} : { description: input.description }),
+        ...(input.type === undefined ? {} : { type: input.type }),
+      }
+      this.workItems.set(taskId, [...(this.workItems.get(taskId) ?? []), clone(item)])
+      this.events?.record('work.create', { taskId, workItemId: item.id })
+      return clone(item)
+    })
+  }
+
+  updateWorkItem(taskId: string, workItemId: string, params: UpdateWorkItemParams): Promise<WorkItem> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const items = this.workItems.get(taskId) ?? []
+      const existing = items.find((item) => item.id === workItemId)
+      if (existing === undefined) throw new Error(`Work item not found: ${workItemId}`)
+      const updated: WorkItem = {
+        ...existing,
+        ...(input.duration === undefined ? {} : { duration: input.duration }),
+        ...(input.date === undefined ? {} : { date: input.date }),
+        ...(input.description === undefined ? {} : { description: input.description }),
+        ...(input.type === undefined ? {} : { type: input.type }),
+      }
+      this.workItems.set(
+        taskId,
+        items.map((item) => (item.id === workItemId ? clone(updated) : item)),
+      )
+      this.events?.record('work.update', { taskId, workItemId })
+      return clone(updated)
+    })
+  }
+
+  deleteWorkItem(taskId: string, workItemId: string): Promise<{ id: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const items = this.workItems.get(taskId) ?? []
+      if (!items.some((item) => item.id === workItemId)) throw new Error(`Work item not found: ${workItemId}`)
+      this.workItems.set(
+        taskId,
+        items.filter((item) => item.id !== workItemId),
+      )
+      this.events?.record('work.delete', { taskId, workItemId })
+      return { id: workItemId }
+    })
+  }
+
+  addAgile(input: Readonly<{ name: string }>): Agile {
+    const agile: Agile = { id: `agile-${++this.agileSequence}`, name: input.name }
+    this.agiles.set(agile.id, clone(agile))
+    return clone(agile)
+  }
+
+  listAgiles(): Promise<Agile[]> {
+    return Promise.resolve().then(() => {
+      const result = [...this.agiles.values()]
+      this.events?.record('agile.list', { count: result.length })
+      return clone(result)
+    })
+  }
+
+  listSprints(agileId: string): Promise<Sprint[]> {
+    return Promise.resolve().then(() => {
+      this.requireAgile(agileId)
+      const result = this.sprints.get(agileId) ?? []
+      this.events?.record('sprint.list', { agileId, count: result.length })
+      return clone(result)
+    })
+  }
+
+  createSprint(
+    agileId: string,
+    params: Readonly<{
+      name: string
+      goal?: string
+      start?: string
+      finish?: string
+      previousSprintId?: string
+      isDefault?: boolean
+    }>,
+  ): Promise<Sprint> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      this.requireAgile(agileId)
+      const sprint: Sprint = {
+        id: `sprint-${++this.sprintSequence}`,
+        agileId,
+        name: input.name,
+        archived: false,
+        ...(input.goal === undefined ? {} : { goal: input.goal }),
+        ...(input.start === undefined ? {} : { start: input.start }),
+        ...(input.finish === undefined ? {} : { finish: input.finish }),
+        ...(input.isDefault === undefined ? {} : { isDefault: input.isDefault }),
+      }
+      this.sprints.set(agileId, [...(this.sprints.get(agileId) ?? []), clone(sprint)])
+      this.events?.record('sprint.create', { agileId, sprintId: sprint.id })
+      return clone(sprint)
+    })
+  }
+
+  updateSprint(
+    agileId: string,
+    sprintId: string,
+    params: Readonly<{
+      name?: string
+      goal?: string | null
+      start?: string | null
+      finish?: string | null
+      archived?: boolean
+    }>,
+  ): Promise<Sprint> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      const sprint = this.requireSprint(agileId, sprintId)
+      const updated: Sprint = {
+        ...sprint,
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.goal === undefined ? {} : { goal: input.goal }),
+        ...(input.start === undefined ? {} : { start: input.start ?? undefined }),
+        ...(input.finish === undefined ? {} : { finish: input.finish ?? undefined }),
+        ...(input.archived === undefined ? {} : { archived: input.archived }),
+      }
+      this.sprints.set(
+        agileId,
+        (this.sprints.get(agileId) ?? []).map((entry) => (entry.id === sprintId ? clone(updated) : entry)),
+      )
+      this.events?.record('sprint.update', { agileId, sprintId })
+      return clone(updated)
+    })
+  }
+
+  assignTaskToSprint(taskId: string, sprintId: string): Promise<{ taskId: string; sprintId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      const agileId = [...this.sprints.entries()].find(([, sprints]) =>
+        sprints.some((sprint) => sprint.id === sprintId),
+      )?.[0]
+      if (agileId === undefined) throw new Error(`Sprint not found: ${sprintId}`)
+      this.taskSprints.set(taskId, sprintId)
+      this.events?.record('sprint.assign', { taskId, sprintId })
+      return { taskId, sprintId }
+    })
+  }
+
+  taskSprintId(taskId: string): string | undefined {
+    return this.taskSprints.get(taskId)
+  }
+
+  addSavedQuery(input: Readonly<{ name: string; query?: string }>): SavedQuery {
+    const savedQuery: SavedQuery = {
+      id: `query-${++this.querySequence}`,
+      name: input.name,
+      ...(input.query === undefined ? {} : { query: input.query }),
+    }
+    this.savedQueries.set(savedQuery.id, clone(savedQuery))
+    return clone(savedQuery)
+  }
+
+  listSavedQueries(): Promise<SavedQuery[]> {
+    return Promise.resolve().then(() => {
+      const result = [...this.savedQueries.values()]
+      this.events?.record('query.list', { count: result.length })
+      return clone(result)
+    })
+  }
+
+  runSavedQuery(queryId: string): Promise<TaskSearchResult[]> {
+    return Promise.resolve().then(() => {
+      const savedQuery = this.savedQueries.get(queryId)
+      if (savedQuery === undefined) throw new Error(`Saved query not found: ${queryId}`)
+      this.events?.record('query.run', { queryId })
+      if (savedQuery.query === undefined || savedQuery.query === null || savedQuery.query === '') {
+        return Promise.resolve(clone([...this.tasks.values()].map(taskSearchResult)))
+      }
+      return this.searchTasks({ query: savedQuery.query })
+    })
+  }
+
   buildTaskUrl(taskId: string): string {
     return `memory://tasks/${taskId}`
   }
@@ -828,5 +1088,17 @@ export class MemoryTaskProvider implements TaskProvider {
     const column = (this.statuses.get(projectId) ?? []).find((entry) => entry.id === statusId)
     if (column === undefined) throw new Error(`Status not found: project ${projectId}, status ${statusId}`)
     return column
+  }
+
+  private requireAgile(agileId: string): Agile {
+    const agile = this.agiles.get(agileId)
+    if (agile === undefined) throw new Error(`Agile not found: ${agileId}`)
+    return agile
+  }
+
+  private requireSprint(agileId: string, sprintId: string): Sprint {
+    const sprint = (this.sprints.get(agileId) ?? []).find((entry) => entry.id === sprintId)
+    if (sprint === undefined) throw new Error(`Sprint not found: agile ${agileId}, sprint ${sprintId}`)
+    return sprint
   }
 }

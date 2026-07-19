@@ -637,3 +637,101 @@ describe('project team', () => {
     await expect(provider.listProjectTeam('project-1')).resolves.toEqual([])
   })
 })
+
+describe('relations', () => {
+  test('adds, updates, and removes relations with duplicate and missing errors', async () => {
+    const provider = new MemoryTaskProvider()
+    const first = await provider.createTask({ projectId: 'proj-1', title: 'First' })
+    const second = await provider.createTask({ projectId: 'proj-1', title: 'Second' })
+
+    await expect(provider.addRelation(first.id, second.id, 'blocks')).resolves.toEqual({
+      taskId: first.id,
+      relatedTaskId: second.id,
+      type: 'blocks',
+    })
+    await expect(provider.addRelation(first.id, second.id, 'related')).rejects.toThrow(
+      `Task relation already exists: ${first.id} ${second.id}`,
+    )
+    await expect(provider.updateRelation(first.id, second.id, 'related')).resolves.toEqual({
+      taskId: first.id,
+      relatedTaskId: second.id,
+      type: 'related',
+    })
+    await expect(provider.removeRelation(first.id, second.id)).resolves.toEqual({
+      taskId: first.id,
+      relatedTaskId: second.id,
+    })
+    await expect(provider.removeRelation(first.id, second.id)).rejects.toThrow(
+      `Task relation not found: ${first.id} ${second.id}`,
+    )
+    await expect(provider.updateRelation(first.id, second.id, 'blocks')).rejects.toThrow(
+      `Task relation not found: ${first.id} ${second.id}`,
+    )
+  })
+
+  test('requires both tasks to exist', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'First' })
+
+    await expect(provider.addRelation(task.id, 'task-404', 'blocks')).rejects.toThrow('Task not found: task-404')
+  })
+})
+
+describe('worklog', () => {
+  test('logs, lists, updates, and deletes work items with defaults', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Worked' })
+
+    const item = await provider.createWorkItem(task.id, { duration: 'PT1H30M', description: 'deep work' })
+    expect(item).toMatchObject({
+      id: 'work-1',
+      taskId: task.id,
+      duration: 'PT1H30M',
+      author: 'unknown',
+      date: '2026-01-01',
+    })
+    await expect(provider.listWorkItems(task.id)).resolves.toHaveLength(1)
+    await expect(provider.updateWorkItem(task.id, 'work-1', { duration: 'PT2H' })).resolves.toMatchObject({
+      duration: 'PT2H',
+    })
+    await expect(provider.deleteWorkItem(task.id, 'work-1')).resolves.toEqual({ id: 'work-1' })
+    await expect(provider.deleteWorkItem(task.id, 'work-1')).rejects.toThrow('Work item not found: work-1')
+  })
+})
+
+describe('sprints and saved queries', () => {
+  test('manages agiles, sprints, and task assignment', async () => {
+    const provider = new MemoryTaskProvider()
+    const agile = provider.addAgile({ name: 'Main Board' })
+    expect(agile).toEqual({ id: 'agile-1', name: 'Main Board' })
+    await expect(provider.listAgiles()).resolves.toEqual([{ id: 'agile-1', name: 'Main Board' }])
+
+    const sprint = await provider.createSprint('agile-1', { name: 'Sprint 1', goal: 'ship' })
+    expect(sprint).toMatchObject({ id: 'sprint-1', agileId: 'agile-1', archived: false, goal: 'ship' })
+    await expect(provider.listSprints('agile-1')).resolves.toHaveLength(1)
+    await expect(provider.updateSprint('agile-1', 'sprint-1', { goal: 'ship harder' })).resolves.toMatchObject({
+      goal: 'ship harder',
+    })
+    await expect(provider.listSprints('agile-404')).rejects.toThrow('Agile not found: agile-404')
+
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Planned' })
+    await expect(provider.assignTaskToSprint(task.id, 'sprint-1')).resolves.toEqual({
+      taskId: task.id,
+      sprintId: 'sprint-1',
+    })
+    expect(provider.taskSprintId(task.id)).toBe('sprint-1')
+  })
+
+  test('runs saved queries through search semantics', async () => {
+    const provider = new MemoryTaskProvider()
+    await provider.createTask({ projectId: 'proj-1', title: 'Release 7' })
+    await provider.createTask({ projectId: 'proj-1', title: 'Backlog grooming' })
+    const query = provider.addSavedQuery({ name: 'Releases', query: 'release' })
+
+    expect(query).toEqual({ id: 'query-1', name: 'Releases', query: 'release' })
+    await expect(provider.listSavedQueries()).resolves.toEqual([{ id: 'query-1', name: 'Releases', query: 'release' }])
+    const results = await provider.runSavedQuery('query-1')
+    expect(results.map((task) => task.title)).toEqual(['Release 7'])
+    await expect(provider.runSavedQuery('query-404')).rejects.toThrow('Saved query not found: query-404')
+  })
+})
