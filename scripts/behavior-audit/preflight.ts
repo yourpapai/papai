@@ -16,10 +16,10 @@ const ModelsPayloadSchema = z.object({
 })
 
 function readPreflightConfig(): PreflightConfig | undefined {
-  const baseUrl = process.env['BEHAVIOR_AUDIT_BASE_URL']
+  const baseUrl = (process.env['BEHAVIOR_AUDIT_BASE_URL'] ?? '').replace(/\/+$/u, '')
   const model = process.env['BEHAVIOR_AUDIT_MODEL']
   const apiKey = process.env['OPENAI_API_KEY']
-  if (baseUrl === undefined || baseUrl === '') {
+  if (baseUrl === '') {
     console.error('Error: BEHAVIOR_AUDIT_BASE_URL is not set')
     return undefined
   }

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 
 import { runPreflight } from '../../../scripts/behavior-audit/preflight.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
@@ -93,5 +93,24 @@ describe('preflight', () => {
     process.env['OPENAI_API_KEY'] = 'k'
     setMockFetch(() => Promise.resolve(new Response('not-json', { status: 200 })))
     expect(await runPreflight()).toBe(1)
+  })
+
+  test('strips trailing slash from BEHAVIOR_AUDIT_BASE_URL when calling /models', async () => {
+    process.env['BEHAVIOR_AUDIT_BASE_URL'] = 'https://gateway.example.com/v1/'
+    process.env['BEHAVIOR_AUDIT_MODEL'] = 'm'
+    process.env['OPENAI_API_KEY'] = 'k'
+    const handler = mock((_url: string, _init: RequestInit) =>
+      Promise.resolve(
+        new Response(JSON.stringify({ data: [{ id: 'm' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    )
+    setMockFetch(handler)
+
+    expect(await runPreflight()).toBe(0)
+    expect(handler.mock.calls).toHaveLength(1)
+    expect(handler.mock.calls[0]![0]).toBe('https://gateway.example.com/v1/models')
   })
 })
