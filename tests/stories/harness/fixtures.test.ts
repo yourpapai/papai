@@ -34,6 +34,7 @@ import {
   createSettingsSessionVault,
 } from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
+import { executeScenario } from './scenario.js'
 
 describe('scenario fixtures', () => {
   const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
@@ -219,5 +220,18 @@ describe('scenario fixtures', () => {
     )
 
     await expect(parsing).rejects.toThrow(`Missing ${SESSION_COOKIE_NAME} cookie`)
+  })
+
+  test('given.groupAdmin marks the member as a group admin for command auth', async () => {
+    await executeScenario('group admin fixture', async ({ given, when, then }) => {
+      const carol = given.user('carol')
+      const team = given.group('team')
+      given.member(team, carol)
+      given.groupAdmin(team, carol)
+
+      await when.message(carol, team, '/config')
+
+      then.replyIn(team).contains('Open a DM with me and run /config')
+    })
   })
 })

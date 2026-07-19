@@ -85,6 +85,7 @@ type ScenarioGiven = Readonly<{
   group(id: string): GroupHandle
   guestMode(group: GroupHandle, enabled: true): void
   member(group: GroupHandle, user: UserHandle): void
+  groupAdmin(group: GroupHandle, user: UserHandle): void
   identity(
     user: UserHandle,
     identity: Readonly<{ providerUserId: string; login: string; displayName: string }>,
@@ -151,7 +152,7 @@ type ScenarioWhen = Readonly<{
   ): Promise<Response>
 }>
 
-type ReplyAssertion = Readonly<{ equals(expected: string): void }>
+type ReplyAssertion = Readonly<{ equals(expected: string): void; contains(expected: string): void }>
 type ReplyHistoryAssertion = Readonly<{ equal(expected: readonly string[]): void }>
 type TaskAssertion = Readonly<{ exists(): Promise<void> }>
 type CodingSessionAssertion = Readonly<{
@@ -268,6 +269,10 @@ function replyAssertion(world: ScenarioWorld, replies: () => readonly { content?
       const captured = replies().filter(({ content }) => content !== undefined)
       tracedAssertion(world, () => expect(captured.at(-1)?.content).toBe(expected))
     },
+    contains(expected): void {
+      const captured = replies().filter(({ content }) => content !== undefined)
+      tracedAssertion(world, () => expect(captured.at(-1)?.content).toContain(expected))
+    },
   }
 }
 
@@ -343,6 +348,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     member(group, user): void {
       prerequisite('given.member')
       world.fixtures.addGroupMember({ groupId: scopedGroupId(group), userId: user.id })
+    },
+    groupAdmin(group, user): void {
+      prerequisite('given.groupAdmin')
+      world.fixtures.seedGroupAdmin({ groupId: scopedGroupId(group), userId: user.id })
     },
     identity(user, identity, providerName = 'kaneo'): void {
       prerequisite('given.identity')

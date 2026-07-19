@@ -402,7 +402,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     },
   })
   const tasks = new MemoryTaskProvider({ events, nextId: (): string => ids.next('task') })
-  const fixtures = createScenarioFixtures({ taskProvider: tasks })
+  const fixtures = createScenarioFixtures({ taskProvider: tasks, chat })
   const resources: CleanupResources = { runtime: undefined, databaseAttempted: false, providerAttempted: false }
   let runtimeExtensions: readonly ScenarioRuntimeExtension[] = [...(options.runtimeExtensions ?? [])]
   const runtimeExtensionLifecycle = createScenarioRuntimeExtensionLifecycle(() => runtimeExtensions, {

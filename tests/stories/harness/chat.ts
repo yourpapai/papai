@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { buildScopedCommandAuth } from '../../../src/chat/command-auth.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type {
   ButtonReplyOptions,
   ChatCapability,
@@ -39,6 +40,7 @@ export type ScenarioChat = Omit<ChatProvider, 'onInteraction'> &
   Readonly<{
     onInteraction: NonNullable<ChatProvider['onInteraction']>
     allReplies(): readonly ScenarioReply[]
+    addGroupAdmin(groupId: string, userId: string): void
   }>
 
 const clone = <T>(value: T): T => structuredClone(value)
@@ -88,6 +90,16 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
   let interactionHandler: InteractionHandler | undefined
   let replies: readonly ScenarioReply[] = []
   const commands = new Map<string, CommandHandler>()
+  const groupAdmins = new Set<string>()
+
+  const hasGroupAdmin = (platformInstanceId: string, nativeGroupId: string, userId: string): boolean =>
+    groupAdmins.has(`${toScopedContextId({ platformInstanceId, nativeContextId: nativeGroupId })}:${userId}`)
+
+  const withSeededGroupAdmin = (message: IncomingMessage): IncomingMessage => {
+    if (message.contextType !== 'group') return message
+    if (!hasGroupAdmin(message.platformInstanceId, message.contextId, message.user.id)) return message
+    return { ...message, user: { ...message.user, isAdmin: true } }
+  }
 
   const capture = (reply: Omit<ScenarioReply, 'seq'>): ScenarioReply => {
     const captured = { ...clone(reply), seq: replies.length + 1 } satisfies ScenarioReply
@@ -246,6 +258,9 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
     renderContext(snapshot: ContextSnapshot) {
       return { method: 'text', content: JSON.stringify(snapshot) }
     },
+    isGroupAdmin(platformInstanceId, groupId, userId): Promise<boolean> {
+      return Promise.resolve(hasGroupAdmin(platformInstanceId, groupId, userId))
+    },
     start(): Promise<void> {
       if (state === 'stopped') throw new Error(events.formatFailure('chat cannot restart after stop'))
       if (state === 'started') return complete()
@@ -261,7 +276,7 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
     },
     async dispatch(message): Promise<void> {
       assertDispatchable('message')
-      const normalized = cloneMessage(message)
+      const normalized = withSeededGroupAdmin(cloneMessage(message))
       const command = registeredCommandFor(normalized.text, commands)
       if (command !== undefined) {
         const commandMessage = { ...normalized, commandMatch: command.match }
@@ -287,5 +302,8 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
       await handler(normalized, createReply(normalized))
     },
     allReplies: () => clone(replies),
+    addGroupAdmin(groupId: string, userId: string): void {
+      groupAdmins.add(`${groupId}:${userId}`)
+    },
   }
 }

@@ -336,6 +336,20 @@ describe('scenario execution', () => {
     })
   })
 
+  test('replyTo.contains asserts a substring of the latest reply', async () => {
+    await executeScenario('contains matcher', async ({ given, when, then }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      given.llm([answer('the code is xyzzy — do not share it')])
+
+      await when.message(alice, dm, 'give me a secret')
+
+      then.replyTo(alice).contains('the code is')
+      then.replyTo(alice).contains('do not share it')
+      expect(() => then.replyTo(alice).contains('not present')).toThrow()
+    })
+  })
+
   test('settings requests reject unsafe URLs before dispatching and accept a settings query', async () => {
     await executeScenario('settings URL safety', async ({ given, when, world }) => {
       const alice = given.user('alice')

@@ -156,8 +156,13 @@ const SCENARIO_PLUGIN: DiscoveredPlugin = {
   manifestHash: 'scenario-approved-plugin-hash',
 }
 
+export type ScenarioGroupAdminSeed = Readonly<{
+  addGroupAdmin(groupId: string, userId: string): void
+}>
+
 export type ScenarioFixturesOptions = Readonly<{
   taskProvider?: TaskProvider
+  chat?: ScenarioGroupAdminSeed
 }>
 
 export type ScenarioFixtures = Readonly<{
@@ -172,6 +177,7 @@ export type ScenarioFixtures = Readonly<{
   authorizeGroup(input?: Readonly<{ groupId?: string }>): void
   enableGuestMode(groupId: string): void
   addGroupMember(input?: Readonly<{ groupId?: string; userId?: string }>): void
+  seedGroupAdmin(input: Readonly<{ groupId: string; userId: string }>): void
   seedIdentity(
     input: Readonly<{
       userId: string
@@ -248,6 +254,11 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
     },
     addGroupMember(input = {}): void {
       addGroupMember(input.groupId ?? SCENARIO_GROUP_ID, input.userId ?? SCENARIO_USER_ID, 'scenario-admin')
+    },
+    seedGroupAdmin(input): void {
+      const chat = options.chat
+      if (chat === undefined) throw new Error('Scenario fixtures require a chat instance to seed group admins')
+      chat.addGroupAdmin(input.groupId, input.userId)
     },
     seedIdentity(input): void {
       setIdentityMapping({
