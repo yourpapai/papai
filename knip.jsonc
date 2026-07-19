@@ -223,38 +223,13 @@
     "strybk.config.ts": ["exports"],
     // buildCommitMessage and other exports are consumed by runPublish and tests.
     "scripts/behavior-audit/publish-snapshot.ts": ["exports"],
-    // CONCURRENCY is a forward-compat export wired in downstream Tier 2 tasks
-    // (replaces pLimit(1) with pLimit(CONCURRENCY) across the pipeline phases).
-    "scripts/behavior-audit/config.ts": ["exports"],
-    // async-mutex helper is consumed by downstream Tier 2 tasks (3/4/5) to
-    // raise concurrency on Phases 2a/2b/3 without write races. No static
-    // importer exists yet.
-    "scripts/behavior-audit/async-mutex.ts": ["files", "exports"],
     // resetGrepCache is a test-only seam (clears the grep tool's file-content
     // cache between tests in tools-grep.test.ts).
     "scripts/behavior-audit/tools.ts": ["exports"],
-    // Shared types for the scores sidecar + codeindex closure check. Consumed
-    // by downstream Tier 3 tasks (scores generator, closure checker); no static
-    // importer exists yet.
-    "scripts/behavior-audit/scores-types.ts": ["files", "types"],
     // parseConsolidationResult is consumed by tests/scripts/behavior-audit/
     // consolidate-agent-schema.test.ts, but knip's project scope is production-
     // only, so the test importer is invisible to it.
     "scripts/behavior-audit/consolidate-agent.ts": ["exports"],
-    // Entry-point map builders + loaders are consumed by the downstream Tier 3
-    // closure verifier (Task 5) via dynamic import; no static importer exists yet.
-    "scripts/behavior-audit/entry-point-maps.ts": ["files", "exports"],
-    // Closure verifier is wired into the Tier 3 pipeline (Task 6) via dynamic
-    // import; no static importer exists yet.
-    "scripts/behavior-audit/closure-verifier.ts": ["files", "exports"],
-    // Percentile + bottom-decile helpers are consumed by the downstream Tier 3
-    // scores sidecar generator (Task 9) via report-writer.ts; no static importer
-    // exists yet. Other exports in this file are already consumed.
-    "scripts/behavior-audit/report-index-helpers.ts": ["exports"],
-    // Trend delta + prior-snapshot loader are consumed by the downstream Tier 3
-    // scores sidecar generator (Task 9) via report-writer.ts; no static importer
-    // exists yet. Other exports in this file are already consumed.
-    "scripts/behavior-audit/report-rebuild-helpers.ts": ["exports"],
     // listToolNames is a forward-compat export consumed by the behavior-audit
     // closure verifier (Tier 3 Task 5) via dynamic import from
     // scripts/behavior-audit/entry-point-maps.ts. Tool surface is built per
