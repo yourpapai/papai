@@ -1348,7 +1348,11 @@ describe('delivery target routing', () => {
     await pollAlertsOnce(chat, resolveProvider)
 
     expect(sentMessages).toHaveLength(2)
-    expect(resolvedContextIds).toEqual([groupContextId])
+    // One resolution for the shared task-fetch/snapshot cycle, plus one per alert's own
+    // full-toolset generation (every deferred prompt now runs the unified full path) — all for
+    // the same shared delivery context, never a distinct context per creator.
+    expect(resolvedContextIds.every((id) => id === groupContextId)).toBe(true)
+    expect(resolvedContextIds.length).toBeGreaterThanOrEqual(1)
     expect(getSnapshotsForUser(groupContextId).get('shared-task:status')).toBe('done')
   })
 

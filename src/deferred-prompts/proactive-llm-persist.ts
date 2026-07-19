@@ -5,7 +5,6 @@
 
 import type { ModelMessage } from 'ai'
 
-import { getCachedHistory } from '../cache.js'
 import { runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { logger } from '../logger.js'
@@ -23,47 +22,6 @@ export const toolCallCount = (result: unknown): number | undefined => {
   const toolCalls = result['toolCalls']
   if (!Array.isArray(toolCalls)) return undefined
   return toolCalls.length
-}
-
-export const persistLightweightResponse = (
-  creatorId: string,
-  storageContextId: string,
-  configContextId: string,
-  mainModel: string,
-  assistantMessages: readonly ModelMessage[],
-): void => {
-  if (assistantMessages.length === 0) return
-  const history = getCachedHistory(storageContextId)
-  appendHistory(storageContextId, assistantMessages)
-  log.debug(
-    { userId: creatorId, storageContextId, count: assistantMessages.length },
-    'Lightweight response appended to history',
-  )
-  const updatedHistory = [...history, ...assistantMessages]
-  if (shouldTriggerTrim(updatedHistory, mainModel))
-    void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
-}
-
-export const persistContextResponse = (
-  storageContextId: string,
-  configContextId: string,
-  contextType: 'dm' | 'group',
-  history: readonly ModelMessage[],
-  mainModel: string,
-  assistantMessages: ModelMessage[],
-): void => {
-  if (assistantMessages.length === 0) return
-  appendHistory(storageContextId, assistantMessages)
-  const updatedHistory = [...history, ...assistantMessages]
-  if (shouldTriggerTrim(updatedHistory, mainModel)) {
-    void runTrimInBackground(storageContextId, updatedHistory, undefined, configContextId)
-    void runMemoryExtractionInBackground({
-      storageContextId,
-      configContextId,
-      contextType,
-      history: updatedHistory,
-    })
-  }
 }
 
 type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCalls: unknown[] | undefined }

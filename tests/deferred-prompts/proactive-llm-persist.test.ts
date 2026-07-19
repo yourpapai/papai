@@ -8,11 +8,7 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import type { ModelMessage } from 'ai'
 
 import * as conversationModule from '../../src/conversation.js'
-import {
-  persistContextResponse,
-  persistProactiveResults,
-  toolCallCount,
-} from '../../src/deferred-prompts/proactive-llm-persist.js'
+import { persistProactiveResults, toolCallCount } from '../../src/deferred-prompts/proactive-llm-persist.js'
 import * as historyModule from '../../src/history.js'
 import * as memoryRunnerModule from '../../src/long-term-memory/runner.js'
 
@@ -33,30 +29,6 @@ describe('proactive-llm-persist', () => {
     expect(toolCallCount({ toolCalls: [{ toolName: 'create_task' }] })).toBe(1)
     expect(toolCallCount({ toolCalls: 'not-an-array' })).toBeUndefined()
     expect(toolCallCount(null)).toBeUndefined()
-  })
-
-  test('context-mode persistence triggers long-term extraction when trimming', () => {
-    const extractionCalls: unknown[][] = []
-    track(spyOn(historyModule, 'appendHistory').mockImplementation(() => undefined))
-    track(spyOn(conversationModule, 'shouldTriggerTrim').mockReturnValue(true))
-    track(spyOn(conversationModule, 'runTrimInBackground').mockResolvedValue(undefined))
-    track(
-      spyOn(memoryRunnerModule, 'runMemoryExtractionInBackground').mockImplementation((...args: unknown[]) => {
-        extractionCalls.push(args)
-        return Promise.resolve()
-      }),
-    )
-    const history: ModelMessage[] = [{ role: 'user', content: 'Remember the release cadence.' }]
-    const assistantMessages: ModelMessage[] = [{ role: 'assistant', content: 'Captured.' }]
-
-    persistContextResponse('ctx:thread', 'cfg', 'group', history, 'gpt-main', assistantMessages)
-
-    expect(extractionCalls[0]?.[0]).toEqual({
-      storageContextId: 'ctx:thread',
-      configContextId: 'cfg',
-      contextType: 'group',
-      history: [...history, ...assistantMessages],
-    })
   })
 
   test('full-mode persistence triggers long-term extraction when trimming', () => {

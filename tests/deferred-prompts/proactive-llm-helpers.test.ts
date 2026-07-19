@@ -8,13 +8,10 @@ import { describe, expect, test } from 'bun:test'
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
 import {
   buildMetadataMessages,
-  buildMinimalSystemPrompt,
   finalizeAndLog,
   finalizeDeliveryText,
   getStorageContextId,
-  modelIdForLightweight,
   timezoneOrUtc,
-  wrapPrompt,
 } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { mockLogger } from '../utils/test-helpers.js'
@@ -48,8 +45,6 @@ describe('proactive-llm-helpers', () => {
   test('resolves fallback values without fallback expressions at call sites', () => {
     expect(finalizeDeliveryText({ text: undefined, finishReason: 'stop' })).toBe('Done.')
     expect(finalizeDeliveryText({ text: 'Ready', finishReason: 'stop' })).toBe('Ready')
-    expect(modelIdForLightweight(null, 'main-model')).toBe('main-model')
-    expect(modelIdForLightweight('small-model', 'main-model')).toBe('small-model')
     expect(timezoneOrUtc(null)).toBe('UTC')
     expect(timezoneOrUtc('Europe/Berlin')).toBe('Europe/Berlin')
   })
@@ -67,19 +62,17 @@ describe('proactive-llm-helpers', () => {
     expect(finalizeDeliveryText({ text: '', finishReason: 'stop' })).toBe('Done.')
   })
 
-  test('builds minimal prompt and metadata messages', () => {
+  test('builds metadata messages', () => {
     const metadata: ExecutionMetadata = {
-      mode: 'lightweight',
+      mode: 'full',
       delivery_brief: 'Brief',
       context_snapshot: 'Snapshot',
     }
 
-    expect(buildMinimalSystemPrompt('scheduled')).toContain('[PROACTIVE EXECUTION]')
     expect(buildMetadataMessages(metadata)).toEqual([
       { role: 'system', content: '[DELIVERY BRIEF]\nBrief' },
       { role: 'system', content: '[CONTEXT FROM CREATION TIME]\nSnapshot' },
     ])
-    expect(wrapPrompt('drink water')).toBe('===DEFERRED_TASK===\ndrink water\n===END_DEFERRED_TASK===')
   })
 })
 

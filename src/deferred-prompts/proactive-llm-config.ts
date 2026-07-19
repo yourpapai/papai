@@ -8,7 +8,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm-config' })
 
-export type LlmConfig = { apiKey: string; baseURL: string; mainModel: string; smallModel: string }
+export type LlmConfig = { apiKey: string; baseURL: string; mainModel: string }
 
 export interface LlmConfigDeps {
   resolveLlmConfig: typeof resolveLlmConfig
@@ -41,6 +41,5 @@ export function getLlmConfig(configContextId: string, deps: LlmConfigDeps = defa
     apiKey: resolved.main.apiKey,
     baseURL: resolved.main.baseUrl,
     mainModel: resolved.main.model,
-    smallModel: resolved.small.model,
   }
 }

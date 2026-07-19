@@ -25,13 +25,12 @@ const okResult: LlmConfigResult = {
 }
 
 describe('getLlmConfig', () => {
-  test('returns apiKey/baseURL/model fields from the resolved main+small roles when config resolves', () => {
+  test('returns apiKey/baseURL/model fields from the resolved main role when config resolves', () => {
     const result = getLlmConfig('ctx-1', { resolveLlmConfig: () => okResult })
     expect(result).toEqual({
       apiKey: 'sk-main',
       baseURL: 'https://main.invalid/v1',
       mainModel: 'main-model',
-      smallModel: 'small-model',
     })
   })
 

@@ -14,19 +14,11 @@ import {
   VERIFIER_MAX_STEPS,
 } from '../completion/verified-completion.js'
 import type { VerifierDeps, VerifierPrompt } from '../completion/verified-completion.js'
-import { buildMessagesWithMemory } from '../conversation.js'
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt } from '../system-prompt.js'
 import type { DisclosureSession } from '../tools/disclosure/registry.js'
 import type { ExecutionMetadata } from './types.js'
-
-export {
-  persistContextResponse,
-  persistLightweightResponse,
-  persistProactiveResults,
-  toolCallCount,
-} from './proactive-llm-persist.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
 
@@ -144,11 +136,6 @@ export const finalizeAndLog = async (
   return finalizeDeliveryText(result)
 }
 
-export const modelIdForLightweight = (smallModel: string | null, mainModel: string): string => {
-  if (smallModel === null) return mainModel
-  return smallModel
-}
-
 export const timezoneOrUtc = (timezone: string | null): string => {
   if (timezone === null) return 'UTC'
   return timezone
@@ -160,35 +147,11 @@ export const getStorageContextId = (target: DeferredDeliveryTarget): string => {
   return target.contextId
 }
 
-export function buildMinimalSystemPrompt(type: 'scheduled' | 'alert'): string {
-  return [
-    '[PROACTIVE EXECUTION]',
-    `Trigger type: ${type}`,
-    '',
-    'A deferred prompt has fired. Deliver the result warmly and conversationally.',
-    'Do not mention scheduling, triggers, or system events.',
-    'Do not create new deferred prompts.',
-  ].join('\n')
-}
-
 export function buildMetadataMessages(m: ExecutionMetadata): ModelMessage[] {
   const msgs: ModelMessage[] = [{ role: 'system', content: `[DELIVERY BRIEF]\n${m.delivery_brief}` }]
   if (m.context_snapshot !== null)
     msgs.push({ role: 'system', content: `[CONTEXT FROM CREATION TIME]\n${m.context_snapshot}` })
   return msgs
-}
-
-export const wrapPrompt = (prompt: string): string => `===DEFERRED_TASK===\n${prompt}\n===END_DEFERRED_TASK===`
-
-export const buildContextMessages = (
-  storageContextId: string,
-  contextType: 'dm' | 'group',
-  history: readonly ModelMessage[],
-  metadata: ExecutionMetadata,
-  prompt: string,
-): ModelMessage[] => {
-  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history, contextType)
-  return [...messagesWithMemory, ...buildMetadataMessages(metadata), { role: 'user', content: wrapPrompt(prompt) }]
 }
 
 export const buildFullSystemPrompt = (
