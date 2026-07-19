@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { runAgent } from '../../review-loop/src/agent-runner.js'
+import { agentWritePath, runAgent } from '../../review-loop/src/agent-runner.js'
 import { ReviewerIssuesSchema } from '../../review-loop/src/issue-schema.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
@@ -32,6 +32,22 @@ function createMockSpawn(results: MockSpawnResult[]): {
     },
   }
 }
+
+describe('agentWritePath', () => {
+  test('returns an absolute path resolved against the provided cwd', () => {
+    const result = agentWritePath('/repo/.review-loop/runs/123/matches.json', '/repo/.review-loop/worktrees/123')
+    expect(path.isAbsolute(result)).toBe(true)
+    expect(result).toBe(path.join('/repo/.review-loop/worktrees/123', '.review-loop', 'matches.json'))
+  })
+
+  test('produces different paths for different cwds (no implicit process.cwd resolution)', () => {
+    const a = agentWritePath('/x/runs/1/issues.json', '/wt-a')
+    const b = agentWritePath('/x/runs/1/issues.json', '/wt-b')
+    expect(a).toBe(path.join('/wt-a', '.review-loop', 'issues.json'))
+    expect(b).toBe(path.join('/wt-b', '.review-loop', 'issues.json'))
+    expect(a).not.toBe(b)
+  })
+})
 
 describe('agent-runner', () => {
   test('runs opencode and reads validated output file', async () => {
@@ -220,6 +236,38 @@ describe('agent-runner', () => {
       }),
     ).rejects.toThrow('opencode crashed')
     expect(mock.calls).toHaveLength(2)
+  })
+
+  test('error names a misplaced scratch file when agent writes outside the expected path', async () => {
+    const tmpRoot = makeTempDir('agent-misplace-')
+    const worktree = path.join(tmpRoot, 'worktree')
+    mkdirSync(worktree, { recursive: true })
+    mkdirSync(path.join(worktree, '.review-loop'), { recursive: true })
+    const misplacedDir = path.join(tmpRoot, '.review-loop')
+    mkdirSync(misplacedDir, { recursive: true })
+    const misplacedPath = path.join(misplacedDir, 'issues.json')
+    writeFileSync(misplacedPath, JSON.stringify({ issues: [] }))
+    const outputPath = path.join(tmpRoot, 'runs', '123', 'issues.json')
+    mkdirSync(path.dirname(outputPath), { recursive: true })
+
+    const mock = createMockSpawn([
+      { exitCode: 0, stdout: '', stderr: '' },
+      { exitCode: 0, stdout: '', stderr: '' },
+    ])
+
+    await expect(
+      runAgent({
+        spawn: mock.spawn,
+        model: 'test-model',
+        cwd: worktree,
+        prompt: 'review the code',
+        outputPath,
+        outputSchema: ReviewerIssuesSchema,
+        label: 'reviewer',
+        logPath: path.join(tmpRoot, 'log.txt'),
+        extraArgs: [],
+      }),
+    ).rejects.toThrow(new RegExp(misplacedPath.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
   })
 
   test('streams live progress from agent events', async () => {

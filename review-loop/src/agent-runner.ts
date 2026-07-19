@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
 import { appendFile, copyFile, mkdir, readFile, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -149,8 +150,26 @@ function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
   return { onLine, dispose }
 }
 
-export function agentWritePath(outputPath: string): string {
-  return path.join('.review-loop', path.basename(outputPath))
+export function agentWritePath(outputPath: string, cwd: string): string {
+  return path.resolve(cwd, '.review-loop', path.basename(outputPath))
+}
+
+const MISPLACEMENT_SEARCH_DEPTH = 8
+
+export function findMisplacedScratches(expectedPath: string, cwd: string, basename: string): string[] {
+  const expected = path.resolve(expectedPath)
+  const found: string[] = []
+  let current = path.resolve(cwd)
+  for (let i = 0; i < MISPLACEMENT_SEARCH_DEPTH; i += 1) {
+    const candidate = path.resolve(current, '.review-loop', basename)
+    if (candidate !== expected && existsSync(candidate)) {
+      found.push(candidate)
+    }
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  return found
 }
 
 function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<SpawnResult> {
@@ -176,7 +195,8 @@ function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<
 async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
   const handler = createLineHandler(options)
   try {
-    await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
+    const agentFile = agentWritePath(options.outputPath, options.cwd)
+    await mkdir(path.dirname(agentFile), { recursive: true })
     const result = await attemptRun(options, handler.onLine)
     if (result.exitCode !== 0) {
       await appendFile(options.logPath, `[${options.label}] stderr: ${result.stderr}\n`)
@@ -187,12 +207,25 @@ async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
       }
     }
     try {
-      const agentFile = path.resolve(options.cwd, agentWritePath(options.outputPath))
       await copyFile(agentFile, options.outputPath)
       await unlink(agentFile)
       const raw = await readFile(options.outputPath, 'utf8')
       return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
     } catch (error) {
+      const isEnoent =
+        error !== null &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOENT'
+      if (isEnoent) {
+        const misplaced = findMisplacedScratches(agentFile, options.cwd, path.basename(options.outputPath))
+        const hint = misplaced.length === 0 ? '' : ` Possible misplaced file(s): ${misplaced.join(', ')}.`
+        return {
+          ok: false,
+          error: new Error(`${options.label} did not write to the expected scratch path: ${agentFile}.${hint}`),
+          timedOut: false,
+        }
+      }
       return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
     }
   } finally {

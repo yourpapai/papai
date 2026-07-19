@@ -180,7 +180,12 @@ async function retryFixAfterBuildFailure(
   deps.log.log(`[fix] build failed, retrying...`)
   const result = await runFixer(
     deps,
-    buildRetryFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), buildError, deps.config.checkCommand),
+    buildRetryFixPrompt(
+      record.issue,
+      agentWritePath(deps.runState.resultPath, deps.runState.worktreePath),
+      buildError,
+      deps.config.checkCommand,
+    ),
     'fixer-retry',
   )
 
@@ -220,7 +225,11 @@ async function processIssue(
   const baselineSha = (await execGit(deps.runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
   const result = await runFixer(
     deps,
-    buildFixPrompt(record.issue, agentWritePath(deps.runState.resultPath), deps.config.checkCommand),
+    buildFixPrompt(
+      record.issue,
+      agentWritePath(deps.runState.resultPath, deps.runState.worktreePath),
+      deps.config.checkCommand,
+    ),
     'fixer',
   )
   recordVerify(deps, round, record, result)

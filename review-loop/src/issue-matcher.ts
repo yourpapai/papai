@@ -60,7 +60,7 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<IssueMatch[]> 
     return deps.newIssues.map((_, index) => ({ newIssueIndex: index, existingId: null }))
   }
 
-  const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, agentWritePath(deps.outputPath))
+  const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, agentWritePath(deps.outputPath, deps.cwd))
 
   const result = await runAgent({
     spawn: deps.spawn,
