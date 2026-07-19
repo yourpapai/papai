@@ -608,6 +608,30 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/tasks/provider-surface.story.test.ts#SCN-task-saved-queries: lists and runs saved queries',
     ],
   },
+  'SCN-task-collaboration': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/integration-surface.story.test.ts#SCN-task-collaboration: manages watchers, votes, and visibility',
+    ],
+  },
+  'SCN-task-identity': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/integration-surface.story.test.ts#SCN-task-identity: finds users and provisions members on group turns',
+    ],
+  },
+  'SCN-task-attachments': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/integration-surface.story.test.ts#SCN-task-attachments: uploads from the relay and removes attachments',
+    ],
+  },
+  'SCN-task-youtrack-command': {
+    verifiedAt: '2026-07-19',
+    storyIds: [
+      'tests/stories/tasks/integration-surface.story.test.ts#SCN-task-youtrack-command: applies a YouTrack command to one task only',
+    ],
+  },
 }
 
 function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: string): AuditRecord {
@@ -630,27 +654,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-cmd-announce': blocked(
     'F1',
     'No chat /announce command exists; admin broadcast via the settings route is covered by SCN-settings-admin-roster-announce. Keeps gap status.',
-  ),
-  // F2 — conversational task operations
-  'SCN-task-collaboration': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs watchers/votes/visibility on the memory provider.',
-  ),
-  'SCN-task-identity': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs listUsers/getCurrentUser/provisionWorkspaceMember; per-user me-resolution is already covered by SCN-context-group-identity.',
-  ),
-  'SCN-task-attachments': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion', 'attachments-relay'],
-    'Needs the attachment surface plus the incoming-file relay workspace.',
-  ),
-  'SCN-task-youtrack-command': needs(
-    'F2',
-    ['capability-ids', 'memory-task-provider-expansion'],
-    'Needs applyCommand with YouTrack traits on the memory provider.',
   ),
   // F3 — memory, memos, instructions, history, chat links
   'SCN-memo-save': needs(
