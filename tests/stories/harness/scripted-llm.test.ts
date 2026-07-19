@@ -10,7 +10,7 @@ import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod'
 
 import { createScenarioEvents } from './events.js'
-import { answer, callCapability, createScriptedModel, promptTextFingerprint } from './scripted-llm.js'
+import { answer, callCapability, createScriptedModel, gateCall, promptTextFingerprint } from './scripted-llm.js'
 
 const resolveCapability = (capabilityId: string): string => {
   if (capabilityId === 'tasks.create') return 'provider_tasks__create_task'
@@ -39,6 +39,14 @@ const promptWithToolResult = (toolCallId: string, toolName = 'provider_tasks__cr
     ],
   },
 ]
+
+const gatedTool = {
+  type: 'function' as const,
+  name: 'create_task',
+  inputSchema: { type: 'object' as const },
+}
+
+const baseCallOptions = { prompt: promptWithoutToolResult, tools: [gatedTool] }
 
 const captureError = (operation: PromiseLike<unknown>): Promise<Error> =>
   Promise.resolve(operation).then(
@@ -211,6 +219,50 @@ describe('scripted language model', () => {
     ).rejects.toThrow(
       "Capability 'tasks.create' resolved to 'provider_tasks__create_task', but it was not advertised; available tools: load_tool",
     )
+  })
+
+  test('gate decision parks doGenerate until released', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'create_task' })
+    model.enqueue([gateCall('tasks.create', { title: 'x' })])
+    const gatePromise = model.nextGate()
+
+    let settled = false
+    const generation = model.model.doGenerate(baseCallOptions).then((result) => {
+      settled = true
+      return result
+    })
+    const gate = await gatePromise
+
+    expect(settled).toBe(false)
+    gate.release()
+    const result = await generation
+    expect(settled).toBe(true)
+    expect(result.content[0]).toMatchObject({ type: 'tool-call', toolName: 'create_task' })
+  })
+
+  test('gate rejects on abort and clears the pending tool call', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'create_task' })
+    model.enqueue([gateCall('tasks.create', { title: 'x' })])
+    const controller = new AbortController()
+    const gatePromise = model.nextGate()
+
+    const generation = model.model.doGenerate({ ...baseCallOptions, abortSignal: controller.signal })
+    await gatePromise
+    controller.abort(new Error('stop'))
+
+    await expect(generation).rejects.toThrow('stop')
+    expect(() => model.verifyConsumed()).not.toThrow()
+  })
+
+  test('verifyConsumed fails an unreleased gate and releases it for teardown', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'create_task' })
+    model.enqueue([gateCall('tasks.create', { title: 'x' })])
+    const gatePromise = model.nextGate()
+    void Promise.resolve(model.model.doGenerate(baseCallOptions)).catch(() => undefined)
+    await gatePromise
+
+    expect(() => model.verifyConsumed()).toThrow('gate was never released')
+    expect(() => model.verifyConsumed()).not.toThrow()
   })
 
   test('includes capability context when resolution fails', async () => {

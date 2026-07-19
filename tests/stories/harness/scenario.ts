@@ -141,6 +141,7 @@ type ScenarioGiven = Readonly<{
 
 type ScenarioWhen = Readonly<{
   message(user: UserHandle, context: ContextHandle, text: string): Promise<void>
+  dispatchMessage(user: UserHandle, context: ContextHandle, text: string): Promise<void>
   interaction(user: UserHandle, context: ContextHandle, callbackData: string): Promise<void>
   settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
   request(path: string, init?: RequestInit): Promise<Response>
@@ -500,6 +501,11 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
       await world.ensureStarted()
       await world.runtime.dispatch(messageForContext(world, user, context, text))
       await world.settle()
+    },
+    async dispatchMessage(user, context, text): Promise<void> {
+      world.events.setPhase('when.dispatchMessage')
+      await world.ensureStarted()
+      await world.runtime.dispatch(messageForContext(world, user, context, text))
     },
     async interaction(user, context, callbackData): Promise<void> {
       world.events.setPhase('when.interaction')

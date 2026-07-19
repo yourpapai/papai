@@ -10,7 +10,12 @@ import { MockLanguageModelV3 } from 'ai/test'
 
 import type { ScenarioEvents } from './events.js'
 
-export type ModelDecision = { kind: 'tool'; capabilityId: string; input: unknown } | { kind: 'answer'; text: string }
+export type ModelDecision =
+  | { kind: 'tool'; capabilityId: string; input: unknown }
+  | { kind: 'tool-gate'; capabilityId: string; input: unknown }
+  | { kind: 'answer'; text: string }
+
+export type GatedToolCall = Readonly<{ release(): void }>
 
 export type ScriptedModelInspection = Readonly<{
   generation: number
@@ -23,6 +28,7 @@ export type ScriptedModelInspection = Readonly<{
 export type ScriptedModel = Readonly<{
   model: MockLanguageModelV3
   enqueue(decisions: readonly ModelDecision[]): void
+  nextGate(): Promise<GatedToolCall>
   verifyConsumed(): void
   inspections(): readonly ScriptedModelInspection[]
 }>
@@ -60,6 +66,12 @@ export const callCapability = (capabilityId: string, input: unknown): ModelDecis
 })
 
 export const answer = (text: string): ModelDecision => ({ kind: 'answer', text })
+
+export const gateCall = (capabilityId: string, input: unknown): ModelDecision => ({
+  kind: 'tool-gate',
+  capabilityId,
+  input,
+})
 
 export const promptTextFingerprint = (text: string): string =>
   createHash('sha256').update(text).digest('hex').slice(0, 16)
@@ -136,7 +148,7 @@ function resolveWireName(
   }
 }
 
-function serializeToolInput(decision: Extract<ModelDecision, { kind: 'tool' }>, generation: number): string {
+function serializeToolInput(decision: Exclude<ModelDecision, { kind: 'answer' }>, generation: number): string {
   let serialized: string | undefined
   try {
     serialized = JSON.stringify(decision.input)
@@ -159,6 +171,8 @@ function serializeToolInput(decision: Extract<ModelDecision, { kind: 'tool' }>, 
 export function createScriptedModel(options: ScriptedModelOptions): ScriptedModel {
   let decisions: readonly ModelDecision[] = []
   let pendingToolCall: PendingToolCall | undefined
+  let parkedGate: GatedToolCall | undefined
+  const gateWaiters: Array<(gate: GatedToolCall) => void> = []
   let generation = 0
   let localId = 0
   let recordedInspections: readonly ScriptedModelInspection[] = []
@@ -222,8 +236,30 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
     decisions = decisions.slice(1)
     return generationResult([{ type: 'tool-call', toolCallId, toolName, input }], 'tool-calls')
   }
-  const doGenerate = (callOptions: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> =>
-    Promise.resolve(runDecision(callOptions))
+  const doGenerate = (callOptions: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> => {
+    const gated = decisions[0]?.kind === 'tool-gate'
+    const result = runDecision(callOptions)
+    if (!gated) return Promise.resolve(result)
+    return new Promise<LanguageModelV3GenerateResult>((resolve, reject) => {
+      const signal = callOptions.abortSignal
+      const onAbort = (): void => {
+        pendingToolCall = undefined
+        parkedGate = undefined
+        const reason: unknown = signal?.reason
+        reject(reason instanceof Error ? reason : new Error('Generation aborted'))
+      }
+      const gate: GatedToolCall = {
+        release: () => {
+          signal?.removeEventListener('abort', onAbort)
+          if (parkedGate === gate) parkedGate = undefined
+          resolve(result)
+        },
+      }
+      parkedGate = gate
+      for (const waiter of gateWaiters.splice(0)) waiter(gate)
+      signal?.addEventListener('abort', onAbort, { once: true })
+    })
+  }
 
   const model = new MockLanguageModelV3({ doGenerate })
 
@@ -232,7 +268,20 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
     enqueue(nextDecisions): void {
       decisions = [...decisions, ...nextDecisions]
     },
+    nextGate(): Promise<GatedToolCall> {
+      if (parkedGate !== undefined) return Promise.resolve(parkedGate)
+      return new Promise((resolve) => {
+        gateWaiters.push(resolve)
+      })
+    },
     verifyConsumed(): void {
+      if (parkedGate !== undefined) {
+        const gate = parkedGate
+        parkedGate = undefined
+        pendingToolCall = undefined
+        gate.release()
+        throw new Error('Scripted model gate was never released')
+      }
       if (pendingToolCall !== undefined) {
         const queued =
           decisions.length === 0
