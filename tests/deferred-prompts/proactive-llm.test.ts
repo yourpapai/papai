@@ -249,7 +249,7 @@ describe('dispatchExecution', () => {
       const provider = createMockProvider()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
       expect(generateTextCalls[0]!.tools).toBeDefined()
-      // Full mode with proactive delivery should exclude deferred prompt tools
+      // Proactive delivery excludes deferred-prompt tools
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_deferred_prompt')
       expect(generateTextCalls[0]!.tools).toHaveProperty('create_task')
       expect(generateTextCalls[0]!.tools).toHaveProperty('search_tasks')
