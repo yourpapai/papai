@@ -43,34 +43,37 @@ export async function runCommitAttempt(
   collector: RoundCollector,
 ): Promise<{ fixed: boolean }> {
   const mergeStart = Date.now()
-  const postSha = await ensureFixerChangesCommitted(deps, worker, record, fixerResult.commitMessage)
-  tallyPhaseMs(collector, 'fix', Date.now() - mergeStart)
-  if (postSha === baselineSha) {
-    collector.decisions.no_commit += 1
-    tallyFixerSeverity(collector, fixerResult.severity)
-    emitFixComplete(deps.trace, round, record.id, false, null, attempt)
-    deps.log.log(`[fix] "${shortTitle(record)}" → no change (fixed:true was a false claim)`)
-    return { fixed: false }
-  }
+  try {
+    const postSha = await ensureFixerChangesCommitted(deps, worker, record, fixerResult.commitMessage)
+    if (postSha === baselineSha) {
+      collector.decisions.no_commit += 1
+      tallyFixerSeverity(collector, fixerResult.severity)
+      emitFixComplete(deps.trace, round, record.id, false, null, attempt)
+      deps.log.log(`[fix] "${shortTitle(record)}" → no change (fixed:true was a false claim)`)
+      return { fixed: false }
+    }
 
-  const mergeResult = await deps.pool.mergeWorkerIntoPrimary(worker)
-  if (!mergeResult.ok) {
-    await worker.resetToBaseline(baselineSha)
-    const reasoning = `Merge conflict on ${mergeResult.conflictFiles.join(', ')}`
-    recordNeedsHuman(deps.ledger, deps.trace, round, record, reasoning, fixerResult)
-    tallyDecision(collector, 'needs_human', false)
-    tallyFixerSeverity(collector, fixerResult.severity)
-    deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (merge conflict)`)
-    emitFixComplete(deps.trace, round, record.id, false, null, attempt)
-    return { fixed: false }
-  }
+    const mergeResult = await deps.pool.mergeWorkerIntoPrimary(worker)
+    if (!mergeResult.ok) {
+      await worker.resetToBaseline(baselineSha)
+      const reasoning = `Merge conflict on ${mergeResult.conflictFiles.join(', ')}`
+      recordNeedsHuman(deps.ledger, deps.trace, round, record, reasoning, fixerResult)
+      tallyDecision(collector, 'needs_human', false)
+      tallyFixerSeverity(collector, fixerResult.severity)
+      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (merge conflict)`)
+      emitFixComplete(deps.trace, round, record.id, false, null, attempt)
+      return { fixed: false }
+    }
 
-  recordFixAttempt(deps.ledger, record.id)
-  tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
-  tallyFixerSeverity(collector, fixerResult.severity)
-  deps.log.log(
-    attempt === 1 ? `[fix] "${shortTitle(record)}" → fixed` : `[fix] "${shortTitle(record)}" → fixed (after retry)`,
-  )
-  emitFixComplete(deps.trace, round, record.id, true, postSha, attempt)
-  return { fixed: true }
+    recordFixAttempt(deps.ledger, record.id)
+    tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
+    tallyFixerSeverity(collector, fixerResult.severity)
+    deps.log.log(
+      attempt === 1 ? `[fix] "${shortTitle(record)}" → fixed` : `[fix] "${shortTitle(record)}" → fixed (after retry)`,
+    )
+    emitFixComplete(deps.trace, round, record.id, true, postSha, attempt)
+    return { fixed: true }
+  } finally {
+    tallyPhaseMs(collector, 'fix', Date.now() - mergeStart)
+  }
 }
