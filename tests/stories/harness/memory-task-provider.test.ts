@@ -44,13 +44,13 @@ describe('MemoryTaskProvider', () => {
     provider.setCapabilities(capabilities)
 
     expect([...provider.capabilities]).toEqual(capabilities)
-    expect(() => provider.setCapabilities(['tasks.delete'])).toThrow(
-      'MemoryTaskProvider does not support task capabilities: tasks.delete',
+    expect(() => provider.setCapabilities(['projects.read'])).toThrow(
+      'MemoryTaskProvider does not support task capabilities: projects.read',
     )
     expect([...provider.capabilities]).toEqual(capabilities)
   })
 
-  test('advertises implemented label capabilities without accepting task deletion', () => {
+  test('advertises implemented label capabilities alongside existing safe capabilities', () => {
     const provider = new MemoryTaskProvider()
     const capabilities: TaskCapability[] = [
       'labels.list',
@@ -63,8 +63,8 @@ describe('MemoryTaskProvider', () => {
     provider.setCapabilities(capabilities)
 
     expect([...provider.capabilities]).toEqual(capabilities)
-    expect(() => provider.setCapabilities(['tasks.delete'])).toThrow(
-      'MemoryTaskProvider does not support task capabilities: tasks.delete',
+    expect(() => provider.setCapabilities(['projects.read'])).toThrow(
+      'MemoryTaskProvider does not support task capabilities: projects.read',
     )
     expect([...provider.capabilities]).toEqual(capabilities)
   })
@@ -485,6 +485,77 @@ describe('MemoryTaskProvider', () => {
       queryLength: 5,
       limit: 5,
       matchedUserIds: ['tracker-alice'],
+    })
+  })
+
+  describe('deleteTask', () => {
+    test('removes the task with its comments, labels, and history', async () => {
+      const provider = new MemoryTaskProvider()
+      const task = await provider.createTask({ projectId: 'proj-1', title: 'Doomed' })
+      await provider.addComment(task.id, 'note')
+      const label = await provider.createLabel({ name: 'urgent' })
+      await provider.addTaskLabel(task.id, label.id)
+
+      await expect(provider.deleteTask(task.id)).resolves.toEqual({ id: task.id })
+      await expect(provider.getTask(task.id)).rejects.toThrow(`Task not found: ${task.id}`)
+      await expect(provider.getComments(task.id)).rejects.toThrow(`Task not found: ${task.id}`)
+      await expect(provider.listTaskLabels(task.id)).rejects.toThrow(`Task not found: ${task.id}`)
+      await expect(provider.getTaskHistory(task.id)).rejects.toThrow(`Task not found: ${task.id}`)
+    })
+
+    test('rejects a missing task', async () => {
+      const provider = new MemoryTaskProvider()
+
+      await expect(provider.deleteTask('task-404')).rejects.toThrow('Task not found: task-404')
+    })
+  })
+
+  describe('countTasks', () => {
+    test('counts search matches with query and project filters', async () => {
+      const provider = new MemoryTaskProvider()
+      await provider.createTask({ projectId: 'proj-1', title: 'Release 7' })
+      await provider.createTask({ projectId: 'proj-1', title: 'Release 8' })
+      await provider.createTask({ projectId: 'proj-2', title: 'Release 9' })
+      await provider.createTask({ projectId: 'proj-1', title: 'Backlog grooming' })
+
+      await expect(provider.countTasks({ query: 'release' })).resolves.toBe(3)
+      await expect(provider.countTasks({ query: 'release', projectId: 'proj-1' })).resolves.toBe(2)
+      await expect(provider.countTasks({ query: 'grooming' })).resolves.toBe(1)
+    })
+  })
+
+  describe('getTaskHistory', () => {
+    test('self-seeds activities from mutating operations with filtering and ordering', async () => {
+      const provider = new MemoryTaskProvider()
+      const task = await provider.createTask({ projectId: 'proj-1', title: 'Tracked' })
+      await provider.updateTask(task.id, { title: 'Tracked harder' })
+      await provider.addComment(task.id, 'first')
+
+      const history = await provider.getTaskHistory(task.id)
+      expect(history.map((entry) => entry.category)).toEqual(['task.created', 'task.updated', 'comment.created'])
+      expect(history[1]).toMatchObject({ field: 'title', added: 'Tracked harder' })
+
+      await expect(provider.getTaskHistory(task.id, { categories: ['task.updated'] })).resolves.toHaveLength(1)
+      const reversed = await provider.getTaskHistory(task.id, { reverse: true })
+      expect(reversed.map((entry) => entry.category)).toEqual(['comment.created', 'task.updated', 'task.created'])
+      await expect(provider.getTaskHistory(task.id, { limit: 1, offset: 1 })).resolves.toHaveLength(1)
+    })
+
+    test('rejects start/end filtering loudly', async () => {
+      const provider = new MemoryTaskProvider()
+      const task = await provider.createTask({ projectId: 'proj-1', title: 'Tracked' })
+
+      await expect(provider.getTaskHistory(task.id, { start: '2026-01-01' })).rejects.toThrow(
+        'MemoryTaskProvider does not support start/end history filtering',
+      )
+    })
+  })
+
+  describe('capabilities', () => {
+    test('accepts the lifecycle capabilities', () => {
+      const provider = new MemoryTaskProvider()
+
+      expect(() => provider.setCapabilities(['tasks.delete', 'tasks.count', 'activities.read'])).not.toThrow()
     })
   })
 })

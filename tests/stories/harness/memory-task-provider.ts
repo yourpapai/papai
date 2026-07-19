@@ -5,6 +5,7 @@
 
 import { systemError, type AppError } from '../../../src/errors.js'
 import type {
+  Activity,
   ListTasksParams,
   Comment,
   CommentReaction,
@@ -40,6 +41,9 @@ const supportedMemoryTaskCapabilities: readonly TaskCapability[] = [
   'labels.update',
   'labels.delete',
   'labels.assign',
+  'tasks.delete',
+  'tasks.count',
+  'activities.read',
 ]
 
 export type MemoryTaskProviderOptions = Readonly<{
@@ -144,6 +148,7 @@ export class MemoryTaskProvider implements TaskProvider {
   private readonly comments = new Map<string, Map<string, Comment>>()
   private readonly labels = new Map<string, Label>()
   private readonly taskLabelIds = new Map<string, Set<string>>()
+  private readonly history = new Map<string, Activity[]>()
   private readonly identityUsers = new Map<string, IdentityUser>()
   private readonly events: ScenarioEvents | undefined
   private readonly nextId: () => string
@@ -151,6 +156,7 @@ export class MemoryTaskProvider implements TaskProvider {
   private commentSequence = 0
   private reactionSequence = 0
   private labelSequence = 0
+  private activitySequence = 0
 
   get capabilities(): ReadonlySet<TaskCapability> {
     return this.capabilitySet
@@ -182,6 +188,7 @@ export class MemoryTaskProvider implements TaskProvider {
     const id = this.nextId()
     const task: Task = { ...clone(params), id, url: this.buildTaskUrl(id) }
     this.tasks.set(id, clone(task))
+    this.recordActivity(id, { category: 'task.created' })
     this.events?.record('task.create', {
       taskId: id,
       projectId: params.projectId,
@@ -204,8 +211,28 @@ export class MemoryTaskProvider implements TaskProvider {
       const patch = clone(definedUpdate(params))
       const updated: Task = { ...existing, ...patch, id: taskId, url: existing.url }
       this.tasks.set(taskId, clone(updated))
+      for (const [field, value] of Object.entries(patch)) {
+        this.recordActivity(taskId, {
+          category: 'task.updated',
+          field,
+          added: typeof value === 'string' ? value : JSON.stringify(value),
+        })
+      }
       this.events?.record('task.update', { taskId, fields: Object.keys(patch).sort() })
       return clone(updated)
+    })
+  }
+
+  deleteTask(taskId: string): Promise<{ id: string }> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      this.recordActivity(taskId, { category: 'task.deleted' })
+      this.tasks.delete(taskId)
+      this.comments.delete(taskId)
+      this.taskLabelIds.delete(taskId)
+      this.history.delete(taskId)
+      this.events?.record('task.delete', { taskId })
+      return { id: taskId }
     })
   }
 
@@ -250,6 +277,40 @@ export class MemoryTaskProvider implements TaskProvider {
     return Promise.resolve(clone(result))
   }
 
+  countTasks(params: Readonly<{ query: string; projectId?: string }>): Promise<number> {
+    return Promise.resolve().then(async () => (await this.searchTasks({ ...params })).length)
+  }
+
+  getTaskHistory(
+    taskId: string,
+    params: Readonly<{
+      categories?: string[]
+      limit?: number
+      offset?: number
+      reverse?: boolean
+      start?: string
+      end?: string
+      author?: string
+    }> = {},
+  ): Promise<Activity[]> {
+    return Promise.resolve().then(() => {
+      this.requireTask(taskId)
+      if (params.start !== undefined || params.end !== undefined) {
+        throw new Error('MemoryTaskProvider does not support start/end history filtering')
+      }
+      const entries = [...(this.history.get(taskId) ?? [])]
+      const filtered = entries
+        .filter((entry) => params.categories === undefined || params.categories.includes(entry.category))
+        .filter((entry) => params.author === undefined || entry.author === params.author)
+      const ordered = params.reverse === true ? filtered.reverse() : filtered
+      const offset = Math.max(0, params.offset ?? 0)
+      const limit = params.limit ?? ordered.length
+      const result = ordered.slice(offset, offset + limit)
+      this.events?.record('task.history', { taskId, count: result.length })
+      return clone(result)
+    })
+  }
+
   getComment(taskId: string, commentId: string): Promise<Comment> {
     return Promise.resolve().then(() => {
       const comment = this.requireComment(taskId, commentId)
@@ -278,6 +339,7 @@ export class MemoryTaskProvider implements TaskProvider {
       const comments = this.comments.get(taskId) ?? new Map<string, Comment>()
       comments.set(comment.id, clone(comment))
       this.comments.set(taskId, comments)
+      this.recordActivity(taskId, { category: 'comment.created' })
       this.events?.record('comment.create', { taskId, commentId: comment.id })
       return clone(comment)
     })
@@ -289,6 +351,7 @@ export class MemoryTaskProvider implements TaskProvider {
       const existing = this.requireComment(input.taskId, input.commentId)
       const updated: Comment = { ...existing, body: input.body }
       this.requireCommentMap(input.taskId).set(input.commentId, clone(updated))
+      this.recordActivity(input.taskId, { category: 'comment.updated', field: 'comment' })
       this.events?.record('comment.update', { taskId: input.taskId, commentId: input.commentId })
       return clone(updated)
     })
@@ -299,6 +362,7 @@ export class MemoryTaskProvider implements TaskProvider {
       const input = clone(params)
       const comment = this.requireComment(input.taskId, input.commentId)
       this.requireCommentMap(input.taskId).delete(input.commentId)
+      this.recordActivity(input.taskId, { category: 'comment.deleted' })
       this.events?.record('comment.delete', {
         taskId: input.taskId,
         commentId: input.commentId,
@@ -421,6 +485,7 @@ export class MemoryTaskProvider implements TaskProvider {
       if (labelIds.has(labelId)) throw new Error(`Task label already exists: task ${taskId}, label ${labelId}`)
       labelIds.add(labelId)
       this.taskLabelIds.set(taskId, labelIds)
+      this.recordActivity(taskId, { category: 'task.label.added', field: 'label', added: labelId })
       this.events?.record('task.label.create', { taskId, labelId })
       return { taskId, labelId }
     })
@@ -433,6 +498,7 @@ export class MemoryTaskProvider implements TaskProvider {
       if (labelIds === undefined || !labelIds.delete(labelId)) {
         throw new Error(`Task label not found: task ${taskId}, label ${labelId}`)
       }
+      this.recordActivity(taskId, { category: 'task.label.removed', field: 'label', removed: labelId })
       this.events?.record('task.label.delete', { taskId, labelId })
       return { taskId, labelId }
     })
@@ -464,6 +530,18 @@ export class MemoryTaskProvider implements TaskProvider {
 
   normalizeListTaskParams(params: Readonly<ListTasksParams>): ListTasksParams {
     return clone(params)
+  }
+
+  private recordActivity(taskId: string, entry: Readonly<Omit<Activity, 'id' | 'timestamp'>>): void {
+    this.activitySequence += 1
+    const activity: Activity = {
+      id: `activity-${this.activitySequence}`,
+      timestamp: String(this.activitySequence),
+      ...entry,
+    }
+    const entries = this.history.get(taskId) ?? []
+    entries.push(clone(activity))
+    this.history.set(taskId, entries)
   }
 
   private requireTask(taskId: string): Task {
