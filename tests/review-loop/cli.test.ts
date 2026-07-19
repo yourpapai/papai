@@ -403,7 +403,7 @@ describe('runCli', () => {
     ])
 
     const runDir = fixture.getRunDir()
-    expect(existsSync(path.join(runDir, 'inspect.json'))).toBe(false)
+    expect(existsSync(path.join(runDir, 'workers', 'w1', 'inspect.json'))).toBe(false)
     const summary = readFileSync(path.join(runDir, 'summary.txt'), 'utf8')
     expect(summary).not.toContain('Inspector:')
   })
