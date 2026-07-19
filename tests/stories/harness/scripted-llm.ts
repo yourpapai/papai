@@ -148,6 +148,47 @@ function resolveWireName(
   }
 }
 
+export const COMPACTION_LATEST = '$compaction:latest'
+
+const findCompactionHandle = (value: unknown): string | undefined => {
+  if (typeof value !== 'object' || value === null) return undefined
+  if ('_compacted' in value && value['_compacted'] === true && 'handle' in value && typeof value.handle === 'string') {
+    return value.handle
+  }
+  for (const nested of Object.values(value)) {
+    const handle = findCompactionHandle(nested)
+    if (handle !== undefined) return handle
+  }
+  return undefined
+}
+
+const latestCompactionHandle = (options: LanguageModelV3CallOptions): string | undefined => {
+  let handle: string | undefined
+  for (const message of options.prompt) {
+    if (typeof message.content === 'string') continue
+    for (const part of message.content) {
+      if (part.type !== 'tool-result') continue
+      handle = findCompactionHandle(part) ?? handle
+    }
+  }
+  return handle
+}
+
+const resolveCompactionInput = (input: unknown, callOptions: LanguageModelV3CallOptions): unknown => {
+  let serialized: string | undefined
+  try {
+    serialized = JSON.stringify(input)
+  } catch {
+    return input
+  }
+  if (serialized === undefined || !serialized.includes(COMPACTION_LATEST)) return input
+  const handle = latestCompactionHandle(callOptions)
+  if (handle === undefined) {
+    throw new Error(`'${COMPACTION_LATEST}' was used before any compacted tool result was observed`)
+  }
+  return JSON.parse(serialized.split(JSON.stringify(COMPACTION_LATEST)).join(JSON.stringify(handle)))
+}
+
 function serializeToolInput(decision: Exclude<ModelDecision, { kind: 'answer' }>, generation: number): string {
   let serialized: string | undefined
   try {
@@ -213,6 +254,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
       return generationResult([{ type: 'text', text: decision.text }], 'stop')
     }
 
+    const decisionInput = resolveCompactionInput(decision.input, callOptions)
     const toolName = resolveWireName(decision.capabilityId, options.resolveCapability, tools)
     if (!tools.includes(toolName)) {
       if (options.autoLoadTools === true && tools.includes('load_tool') && !attemptedLoads.has(decision.capabilityId)) {
@@ -229,7 +271,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
         `Capability '${decision.capabilityId}' resolved to '${toolName}', but it was not advertised; available tools: ${listedTools}`,
       )
     }
-    const input = serializeToolInput(decision, generation)
+    const input = serializeToolInput({ ...decision, input: decisionInput }, generation)
     const toolCallId = nextId()
     attemptedLoads.delete(decision.capabilityId)
     pendingToolCall = { capabilityId: decision.capabilityId, toolCallId, toolName }

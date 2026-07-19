@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { LanguageModelV3Prompt } from '@ai-sdk/provider'
+import type { JSONValue, LanguageModelV3CallOptions, LanguageModelV3Prompt } from '@ai-sdk/provider'
 import { generateText, stepCountIs, tool } from 'ai'
 import { z } from 'zod'
 
@@ -39,6 +39,34 @@ const promptWithToolResult = (toolCallId: string, toolName = 'provider_tasks__cr
     ],
   },
 ]
+
+const expandResultTool = {
+  type: 'function' as const,
+  name: 'expand_result',
+  inputSchema: { type: 'object' as const },
+}
+
+const promptWithToolResultPayload = (
+  toolCallId: string,
+  toolName: string,
+  payload: JSONValue,
+): LanguageModelV3CallOptions => {
+  const prompt: LanguageModelV3Prompt = [
+    ...promptWithoutToolResult,
+    {
+      role: 'tool' as const,
+      content: [
+        {
+          type: 'tool-result' as const,
+          toolCallId,
+          toolName,
+          output: { type: 'json' as const, value: payload },
+        },
+      ],
+    },
+  ]
+  return { prompt, tools: [expandResultTool] }
+}
 
 const gatedTool = {
   type: 'function' as const,
@@ -405,5 +433,33 @@ describe('scripted language model', () => {
     expect(script.inspections()).toHaveLength(2)
     expect(script.inspections()[1]?.hasToolResult).toBe(true)
     expect(() => script.verifyConsumed()).not.toThrow()
+  })
+
+  test('resolves $compaction:latest from the latest compacted tool result', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'expand_result' })
+    model.enqueue([callCapability('meta.expand-result', { handle: '$compaction:latest', limit: 100 })])
+    const compactedPrompt = promptWithToolResultPayload('call-1', 'list_tasks', {
+      _compacted: true,
+      handle: 'res_3',
+      summary: 'compacted',
+      totalBytes: 9000,
+    })
+
+    const result = await model.model.doGenerate(compactedPrompt)
+
+    expect(result.content[0]).toMatchObject({
+      type: 'tool-call',
+      toolName: 'expand_result',
+      input: JSON.stringify({ handle: 'res_3', limit: 100 }),
+    })
+  })
+
+  test('fails when $compaction:latest has no compacted tool result to resolve', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'expand_result' })
+    model.enqueue([callCapability('meta.expand-result', { handle: '$compaction:latest' })])
+
+    await expect(model.model.doGenerate(baseCallOptions)).rejects.toThrow(
+      `'$compaction:latest' was used before any compacted tool result was observed`,
+    )
   })
 })
