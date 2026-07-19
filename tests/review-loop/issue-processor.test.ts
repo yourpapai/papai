@@ -384,7 +384,8 @@ describe('processIssue unified retry budget', () => {
     const inspectEvents = events.filter((e) => e.event === 'inspect_complete')
     expect(inspectEvents).toHaveLength(2)
     for (const e of inspectEvents) {
-      expect(e.reasoning).toBe('inspector unavailable')
+      expect(e.reasoning.startsWith('inspector unavailable:')).toBe(true)
+      expect(e.reasoning).not.toBe('inspector unavailable')
     }
     expect(collector.inspector.runs).toBe(2)
     expect(collector.inspector.rejected).toBe(2)
