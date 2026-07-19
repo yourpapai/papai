@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { executeGet } from '../deferred-prompts/tool-handlers.js'
@@ -12,7 +12,7 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:get-deferred-prompt' })
 
-export function makeGetDeferredPromptTool(userId: string): ToolSet[string] {
+export function makeGetDeferredPromptTool(userId: string): Tool {
   return tool({
     description: 'Get full details of a deferred prompt by ID.',
     inputSchema: z.object({ id: z.string().describe('The deferred prompt ID') }),

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -20,7 +20,7 @@ const defaultDeps: DeleteRecurringTaskDeps = {
   deleteRecurringTask: (...args) => defaultDeleteRecurringTask(...args),
 }
 
-export function makeDeleteRecurringTaskTool(deps: DeleteRecurringTaskDeps = defaultDeps): ToolSet[string] {
+export function makeDeleteRecurringTaskTool(deps: DeleteRecurringTaskDeps = defaultDeps): Tool {
   return tool({
     description: 'Permanently cancel/stop a recurring task series. No further occurrences will be created.',
     inputSchema: z.object({

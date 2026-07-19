@@ -36,7 +36,7 @@ describe('get_task', () => {
     const provider = createMockProvider({ getTask })
     const tool = makeGetTaskTool(provider, 'user-123')
 
-    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(getTask).toHaveBeenCalledTimes(1)
     expect(getTask).toHaveBeenCalledWith('task-1')
@@ -58,7 +58,7 @@ describe('get_task', () => {
     const provider = createMockProvider({ getTask })
     const tool = makeGetTaskTool(provider, 'user-123')
 
-    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(result).toHaveProperty('dueDate', '2026-03-25T17:00:00')
   })
@@ -77,7 +77,7 @@ describe('get_task', () => {
     const provider = createMockYouTrackProvider({ getTask })
     const tool = makeGetTaskTool(provider, 'user-123')
 
-    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(result).toHaveProperty('dueDate', '2026-03-25')
   })
@@ -97,7 +97,7 @@ describe('get_task', () => {
     )
 
     const tool = makeGetTaskTool(createMockProvider({ getTask }))
-    const result = await getToolExecutor(tool)({ taskId: 'TEST-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ taskId: 'TEST-1' }, { toolCallId: '1', messages: [], context: {} })
     expect(result).toMatchObject({
       customFields: [
         { name: 'Environment', value: 'staging' },
@@ -127,7 +127,7 @@ describe('get_task', () => {
       const provider = createMockProvider({ getTask })
       const tool = makeGetTaskTool(provider, chatUserId, storageContextId)
 
-      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(JSON.stringify(result)).toContain('13:00')
     })
@@ -149,7 +149,7 @@ describe('get_task', () => {
       const provider = createMockProvider({ getTask })
       const tool = makeGetTaskTool(provider, chatUserId, storageContextId)
 
-      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(JSON.stringify(result)).toContain('12:00')
     })
@@ -171,7 +171,7 @@ describe('get_task', () => {
       const provider = createMockProvider({ getTask })
       const tool = makeGetTaskTool(provider, userId, userId)
 
-      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(JSON.stringify(result)).toContain('14:00')
     })
@@ -199,7 +199,7 @@ describe('get_task', () => {
       const provider = createMockProvider({ getTask })
       const tool = makeGetTaskTool(provider, chatUserId, threadContextId)
 
-      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
 
       // 12:00 UTC in Europe/London (BST, +1) = 13:00. A regression using the thread-scoped id
       // would miss the config and render 12:00 (UTC).

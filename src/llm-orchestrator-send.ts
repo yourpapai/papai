@@ -17,7 +17,7 @@ type SendResult = {
   text: string | undefined
   finishReason?: string
   toolCalls: unknown[] | undefined
-  response: { messages: ModelMessage[] }
+  finalStep: { response: { messages: ModelMessage[] } }
 }
 type Verification = { verifier: VerifierDeps; history: readonly ModelMessage[] }
 
@@ -63,7 +63,7 @@ export const sendLlmResponse = async (
   /** Runs once right before the first reply posts (after verification), to dismiss the live-status placeholder. */
   beforeFirstMessage?: () => Promise<void>,
 ): Promise<void> => {
-  const hadToolFailure = detectToolFailure(result.response.messages)
+  const hadToolFailure = detectToolFailure(result.finalStep.response.messages)
   const textToFormat = await resolveFinalText(result, hadToolFailure, verification)
 
   const responseLength = result.text === undefined ? 0 : result.text.length

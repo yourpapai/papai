@@ -42,7 +42,7 @@ describe('Remove Comment Reaction Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)(
       { taskId: 'task-1', commentId: 'comment-1', reactionId: 'reaction-1' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     assert(isReactionResult(result), 'Invalid result')
@@ -60,7 +60,7 @@ describe('Remove Comment Reaction Tool', () => {
     await expect(
       getToolExecutor(tool)(
         { taskId: 'task-1', commentId: 'comment-1', reactionId: 'reaction-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       ),
     ).rejects.toThrow('Remove reaction failed')
   })

@@ -77,10 +77,11 @@ function textResult(text: string, isError?: boolean): McpCallResult {
   return isError === true ? { content: [{ type: 'text', text }], isError: true } : { content: [{ type: 'text', text }] }
 }
 
-function buildExecutionOptions(args: CallPluginMcpToolArgs): ToolExecutionOptions {
+function buildExecutionOptions(args: CallPluginMcpToolArgs): ToolExecutionOptions<unknown> {
   return {
     toolCallId: `mcp-${args.pluginId}-${args.toolName}`,
     messages: [],
+    context: {},
     ...(args.abortSignal === undefined ? {} : { abortSignal: args.abortSignal }),
   }
 }

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
@@ -12,7 +12,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:add-comment-reaction' })
 
-export function makeAddCommentReactionTool(provider: TaskProvider): ToolSet[string] {
+export function makeAddCommentReactionTool(provider: TaskProvider): Tool {
   return tool({
     description: 'Add a reaction to a task comment.',
     inputSchema: z.object({

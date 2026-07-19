@@ -30,7 +30,7 @@ describe('makeDeleteStatusTool', () => {
     const execute = getToolExecutor(makeDeleteStatusTool(provider))
     const result: unknown = await execute(
       { projectId: 'proj-1', statusId: 'col-1', confidence: 0.9 },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({ id: 'col-1' })
@@ -41,7 +41,7 @@ describe('makeDeleteStatusTool', () => {
     const execute = getToolExecutor(makeDeleteStatusTool(provider))
     const result: unknown = await execute(
       { projectId: 'proj-1', statusId: 'col-1', label: 'In Progress', confidence: 0.6 },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
@@ -62,7 +62,7 @@ describe('makeDeleteStatusTool', () => {
     const execute = getToolExecutor(makeDeleteStatusTool(provider))
     await execute(
       { projectId: 'proj-1', statusId: 'col-1', confidence: 0.9, confirm: true },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(deleteStatus).toHaveBeenCalledWith('proj-1', 'col-1', true)
@@ -77,7 +77,7 @@ describe('makeDeleteStatusTool', () => {
     const execute = getToolExecutor(makeDeleteStatusTool(provider))
     const result: unknown = await execute(
       { projectId: 'proj-1', statusId: 'col-1', confidence: 0.9 },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
@@ -91,7 +91,7 @@ describe('makeDeleteStatusTool', () => {
     const tool = makeDeleteStatusTool(provider)
     const promise = getToolExecutor(tool)(
       { projectId: 'proj-1', statusId: 'invalid', confidence: 0.9 },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
     await expect(promise).rejects.toThrow('Status not found')
     try {

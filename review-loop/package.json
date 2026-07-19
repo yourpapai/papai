@@ -14,7 +14,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@typescript/native-preview": "^7.0.0-dev.20260409.1",
-    "typescript": "^6.0.0"
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "typescript": "^6.0.3"
   }
 }

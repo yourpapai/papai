@@ -102,7 +102,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { title: 'Test Task', projectId: 'proj-1' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isTask(result))
 
@@ -140,7 +140,7 @@ describe('Task Tools', () => {
           dueDate: { date: '2026-03-15' },
           status: 'in-progress',
         },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(createTask).toHaveBeenCalledTimes(1)
@@ -161,7 +161,10 @@ describe('Task Tools', () => {
       })
 
       const tool = makeCreateTaskTool(provider)
-      const promise = getToolExecutor(tool)({ title: 'Test', projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { title: 'Test', projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('API Error')
       try {
         await promise
@@ -189,7 +192,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       await tool.execute(
         { title: 'Test', projectId: 'p1', dueDate: { date: '2026-03-25', time: '17:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // 17:00 Karachi (UTC+5) = 12:00 UTC
@@ -207,7 +210,7 @@ describe('Task Tools', () => {
 
       const tool = makeCreateTaskTool(provider, 'user-1')
       assert(tool.execute)
-      await tool.execute({ title: 'No date', projectId: 'p1' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ title: 'No date', projectId: 'p1' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(capturedDueDate).toBeUndefined()
     })
@@ -231,7 +234,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { title: 'Test', projectId: 'p1', dueDate: { date: '2026-03-25' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(capturedDueDate).toBe('2026-03-25')
@@ -269,7 +272,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { title: 'Test', projectId: 'p1', dueDate: { date: '2026-03-25', time: '23:45' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(capturedDueDate).toBe('2026-03-25')
@@ -293,7 +296,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { title: 'Test', projectId: 'p1', dueDate: { date: '2026-03-25', time: '17:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // Provider echoed back UTC; tool should convert to Asia/Karachi local time (UTC+5)
@@ -324,7 +327,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', status: 'done' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isTask(result))
 
@@ -356,7 +359,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       await tool.execute(
         { taskId: 'task-1', title: 'New Title', priority: 'high', dueDate: { date: '2026-12-31' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(updateTask).toHaveBeenCalledTimes(1)
@@ -389,7 +392,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2026-03-25' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(capturedDueDate).toBe('2026-03-25')
@@ -424,7 +427,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2026-03-25', time: '23:45' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(capturedDueDate).toBe('2026-03-25')
@@ -440,7 +443,10 @@ describe('Task Tools', () => {
       })
 
       const tool = makeUpdateTaskTool(provider)
-      const promise = getToolExecutor(tool)({ taskId: 'invalid', status: 'done' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { taskId: 'invalid', status: 'done' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('Task not found')
       try {
         await promise
@@ -470,7 +476,7 @@ describe('Task Tools', () => {
 
       const tool = makeUpdateTaskTool(provider, hookSpy)
       assert(tool.execute)
-      await tool.execute({ taskId: 'task-1', status: 'done' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ taskId: 'task-1', status: 'done' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(hookSpy).toHaveBeenCalledTimes(1)
       expect(hookSpy).toHaveBeenCalledWith('task-1', 'done', provider)
@@ -490,7 +496,10 @@ describe('Task Tools', () => {
       const hookSpy = mock(() => Promise.reject(new Error('hook error')))
 
       const tool = makeUpdateTaskTool(provider, hookSpy)
-      const promise = getToolExecutor(tool)({ taskId: 'task-1', status: 'done' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { taskId: 'task-1', status: 'done' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('hook error')
     })
 
@@ -510,7 +519,7 @@ describe('Task Tools', () => {
       const tool = makeUpdateTaskTool(provider, hookSpy)
       assert(tool.execute)
       // Only changing title, not status — but task.status is always defined on the response
-      await tool.execute({ taskId: 'task-1', title: 'New Title' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ taskId: 'task-1', title: 'New Title' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(hookSpy).toHaveBeenCalledTimes(1)
       expect(hookSpy).toHaveBeenCalledWith('task-1', 'todo', provider)
@@ -532,7 +541,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', status: 'done' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isTask(result))
       expect(result.status).toBe('done')
@@ -551,7 +560,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2026-03-25', time: '17:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // 17:00 Karachi (UTC+5) = 12:00 UTC
@@ -575,7 +584,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2026-03-25', time: '17:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // Provider echoed back UTC; tool should convert to Asia/Karachi local time (UTC+5)
@@ -607,7 +616,7 @@ describe('Task Tools', () => {
 
       const tool = makeGetTaskTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
       assert(isTaskWithRelations(result))
 
       expect(result.id).toBe('task-1')
@@ -631,7 +640,7 @@ describe('Task Tools', () => {
 
       const tool = makeGetTaskTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
       assert(isTaskWithRelations(result))
 
       expect(result.relations).toEqual([])
@@ -643,7 +652,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeGetTaskTool(provider)
-      const promise = getToolExecutor(tool)({ taskId: 'invalid' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)({ taskId: 'invalid' }, { toolCallId: '1', messages: [], context: {} })
       await expect(promise).rejects.toThrow('Task not found')
       try {
         await promise
@@ -673,7 +682,7 @@ describe('Task Tools', () => {
 
       const tool = makeGetTaskTool(provider, 'user-1')
       assert(tool.execute)
-      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [], context: {} })
 
       // Asia/Karachi is UTC+5: 12:00 UTC → 17:00 local
       expect(result).toHaveProperty('dueDate', '2026-03-25T17:00:00')
@@ -714,7 +723,10 @@ describe('Task Tools', () => {
 
       const tool = makeListTasksTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isTaskArray(result))
 
       expect(result).toHaveLength(2)
@@ -729,7 +741,10 @@ describe('Task Tools', () => {
 
       const tool = makeListTasksTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ projectId: 'empty-proj' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { projectId: 'empty-proj' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(Array.isArray(result))
 
       expect(result).toHaveLength(0)
@@ -741,7 +756,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeListTasksTool(provider)
-      const promise = getToolExecutor(tool)({ projectId: 'invalid' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)({ projectId: 'invalid' }, { toolCallId: '1', messages: [], context: {} })
       await expect(promise).rejects.toThrow('Project not found')
       try {
         await promise
@@ -774,7 +789,7 @@ describe('Task Tools', () => {
 
       const tool = makeListTasksTool(provider, 'user-1')
       assert(tool.execute)
-      const result: unknown = await tool.execute({ projectId: 'p1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ projectId: 'p1' }, { toolCallId: '1', messages: [], context: {} })
 
       assert(Array.isArray(result))
       expect(result[0]).toHaveProperty('dueDate', '2026-03-25T17:00:00')
@@ -815,7 +830,7 @@ describe('Task Tools', () => {
 
       const tool = makeSearchTasksTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ query: 'bug' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({ query: 'bug' }, { toolCallId: '1', messages: [], context: {} })
       assert(Array.isArray(result))
 
       expect(result).toHaveLength(2)
@@ -827,7 +842,7 @@ describe('Task Tools', () => {
 
       const tool = makeSearchTasksTool(provider)
       assert(tool.execute)
-      await tool.execute({ query: 'test' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'test' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       const call = searchTasks.mock.calls[0]
@@ -842,7 +857,7 @@ describe('Task Tools', () => {
 
       const tool = makeSearchTasksTool(provider)
       assert(tool.execute)
-      await tool.execute({ query: 'test', projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ query: 'test', projectId: 'proj-1' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       const call = searchTasks.mock.calls[0]
@@ -859,7 +874,10 @@ describe('Task Tools', () => {
 
       const tool = makeSearchTasksTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ query: 'nonexistent' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { query: 'nonexistent' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(Array.isArray(result))
 
       expect(result).toEqual([])
@@ -879,7 +897,7 @@ describe('Task Tools', () => {
 
       const tool = makeDeleteTaskTool(provider)
       assert(tool.execute)
-      await tool.execute({ taskId: 'task-1', confidence: 0.9 }, { toolCallId: '1', messages: [] })
+      await tool.execute({ taskId: 'task-1', confidence: 0.9 }, { toolCallId: '1', messages: [], context: {} })
 
       expect(deleteTask).toHaveBeenCalledTimes(1)
       expect(deleteTask).toHaveBeenCalledWith('task-1')
@@ -891,7 +909,7 @@ describe('Task Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', confidence: 0.5 },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(result).toMatchObject({ status: 'confirmation_required' })
@@ -901,7 +919,10 @@ describe('Task Tools', () => {
       const provider = createMockProvider()
       const tool = makeDeleteTaskTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ taskId: 'task-1', confidence: 0 }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { taskId: 'task-1', confidence: 0 },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       expect(result).toMatchObject({ status: 'confirmation_required' })
     })
@@ -912,7 +933,10 @@ describe('Task Tools', () => {
       })
 
       const tool = makeDeleteTaskTool(provider)
-      const result = getToolExecutor(tool)({ taskId: 'invalid', confidence: 0.9 }, { toolCallId: '1', messages: [] })
+      const result = getToolExecutor(tool)(
+        { taskId: 'invalid', confidence: 0.9 },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(result).rejects.toThrow('Task not found')
     })
 

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getEmbeddingForContext } from '../embeddings.js'
@@ -13,7 +13,7 @@ import { saveMemo, updateMemoEmbedding } from '../memos.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
-export function makeSaveMemoTool(userId: string): ToolSet[string] {
+export function makeSaveMemoTool(userId: string): Tool {
   return tool({
     description:
       'Save a personal note or observation. Use when the user is recording information, a thought, a link, or a fact — not when tracking work to be done.',

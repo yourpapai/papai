@@ -54,7 +54,7 @@ type GenerateTextResult = {
   text: string
   toolCalls: unknown[]
   toolResults: unknown[]
-  response: { messages: ModelMessage[] }
+  finalStep: { response: { messages: ModelMessage[] } }
 }
 
 type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unknown }
@@ -82,7 +82,7 @@ describe('pollScheduledOnce', () => {
         text: 'Task completed.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
@@ -175,7 +175,12 @@ describe('pollScheduledOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(unroutedUser, 'Check my overdue tasks', { fireAt: pastTime })
@@ -196,7 +201,12 @@ describe('pollScheduledOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
@@ -216,7 +226,12 @@ describe('pollScheduledOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
@@ -288,7 +303,7 @@ describe('pollScheduledOnce', () => {
         text: 'All tasks handled.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 
@@ -336,7 +351,7 @@ describe('pollScheduledOnce', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 
@@ -408,7 +423,7 @@ describe('pollScheduledOnce — error handling', () => {
         text: 'Task completed.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
@@ -682,7 +697,7 @@ describe('pollAlertsOnce', () => {
         text: 'Alert triggered.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
@@ -809,7 +824,12 @@ describe('pollAlertsOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const created = createAlertPrompt(unroutedUser, 'Notify on done', {
       field: 'task.status',
@@ -839,7 +859,12 @@ describe('pollAlertsOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const created = createAlertPrompt(USER_ID, 'Notify on done', {
       field: 'task.status',
@@ -869,7 +894,12 @@ describe('pollAlertsOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
     }
     const created = createAlertPrompt(USER_ID, 'Notify on done', {
       field: 'task.status',
@@ -1032,7 +1062,7 @@ describe('pollScheduledOnce Race Condition', () => {
     })
 
     // Resolve LLM
-    resolveLlm({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    resolveLlm({ text: 'Done.', toolCalls: [], toolResults: [], finalStep: { response: { messages: [] } } })
 
     await Promise.all([poll1, poll2])
 
@@ -1053,7 +1083,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
@@ -1360,7 +1390,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 
@@ -1394,7 +1424,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 
@@ -1438,7 +1468,7 @@ describe('delivery target routing', () => {
         text: 'Done.',
         toolCalls: [],
         toolResults: [],
-        response: { messages: [] },
+        finalStep: { response: { messages: [] } },
       })
     }
 

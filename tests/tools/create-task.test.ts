@@ -104,7 +104,10 @@ describe('create_task identity resolution', () => {
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
     assert(tool.execute, 'Tool execute is undefined')
-    await tool.execute({ title: 'Test Task', projectId: 'proj-1', assignee: 'me' }, { toolCallId: '1', messages: [] })
+    await tool.execute(
+      { title: 'Test Task', projectId: 'proj-1', assignee: 'me' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(createTask).toHaveBeenCalledTimes(1)
     expect(capturedAssignee).toBe('resolved-user-789')
@@ -137,7 +140,10 @@ describe('create_task identity resolution', () => {
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
     assert(tool.execute, 'Tool execute is undefined')
-    await tool.execute({ title: 'Test Task', projectId: 'proj-1', assignee: 'ME' }, { toolCallId: '1', messages: [] })
+    await tool.execute(
+      { title: 'Test Task', projectId: 'proj-1', assignee: 'ME' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(capturedAssignee).toBe('resolved-user-789')
   })
@@ -149,7 +155,7 @@ describe('create_task identity resolution', () => {
     assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { title: 'Test Task', projectId: 'proj-1', assignee: 'me' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('status', 'identity_required')
@@ -174,7 +180,7 @@ describe('create_task identity resolution', () => {
     assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       { title: 'Test Task', projectId: 'proj-1', assignee: 'other-user' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(capturedAssignee).toBe('other-user')
@@ -196,7 +202,7 @@ describe('create_task identity resolution', () => {
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
     assert(tool.execute, 'Tool execute is undefined')
-    await tool.execute({ title: 'Test Task', projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+    await tool.execute({ title: 'Test Task', projectId: 'proj-1' }, { toolCallId: '1', messages: [], context: {} })
 
     expect(capturedAssignee).toBeUndefined()
   })
@@ -228,7 +234,10 @@ describe('create_task identity resolution', () => {
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
     assert(tool.execute, 'Tool execute is undefined')
-    await tool.execute({ title: 'Test Task', projectId: 'proj-1', assignee: 'me' }, { toolCallId: '1', messages: [] })
+    await tool.execute(
+      { title: 'Test Task', projectId: 'proj-1', assignee: 'me' },
+      { toolCallId: '1', messages: [], context: {} },
+    )
 
     expect(createTask).toHaveBeenCalledTimes(1)
     expect(capturedAssignee).toBe('jsmith')
@@ -244,7 +253,7 @@ describe('create_task identity resolution', () => {
 
     assert(tool.execute, 'Tool execute is undefined')
     await expect(
-      tool.execute({ title: 'Test Task', projectId: 'proj-1' }, { toolCallId: '1', messages: [] }),
+      tool.execute({ title: 'Test Task', projectId: 'proj-1' }, { toolCallId: '1', messages: [], context: {} }),
     ).rejects.toThrow('Database connection failed')
   })
 
@@ -290,7 +299,7 @@ describe('create_task identity resolution', () => {
           { name: 'Environment', value: 'production' },
         ],
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(createTask).toHaveBeenCalledTimes(1)
@@ -326,7 +335,7 @@ describe('create_task identity resolution', () => {
           projectId: 'proj-1',
           customFields: [{ name: 'Environment', value: 'staging' }],
         },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       ),
     ).rejects.toMatchObject({
       error: {
@@ -364,7 +373,7 @@ describe('create_task identity resolution', () => {
         projectId: 'proj-1',
         customFields: [{ name: 'Environment', value: 'staging' }],
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(createTask).toHaveBeenCalledTimes(1)
@@ -388,7 +397,7 @@ describe('create_task identity resolution', () => {
     assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2026-03-25', time: '17:00' } },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toHaveProperty('dueDate', '2026-03-25T17:00:00')
@@ -413,7 +422,7 @@ describe('create_task identity resolution', () => {
     assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2026-03-25' } },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(capturedDueDate).toBe('2026-03-25')
@@ -447,7 +456,7 @@ describe('create_task identity resolution', () => {
       assert(tool.execute, 'Tool execute is undefined')
       await tool.execute(
         { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2024-06-15', time: '14:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // 14:00 EDT (America/New_York in June) = 18:00 UTC
@@ -477,7 +486,7 @@ describe('create_task identity resolution', () => {
       assert(tool.execute, 'Tool execute is undefined')
       await tool.execute(
         { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2024-06-15', time: '14:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // With UTC fallback, 14:00 stays 14:00
@@ -507,7 +516,7 @@ describe('create_task identity resolution', () => {
       assert(tool.execute, 'Tool execute is undefined')
       await tool.execute(
         { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2024-06-15', time: '14:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // 14:00 PDT (America/Los_Angeles in June) = 21:00 UTC
@@ -543,7 +552,7 @@ describe('create_task identity resolution', () => {
       assert(tool.execute, 'Tool execute is undefined')
       await tool.execute(
         { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2024-06-15', time: '14:00' } },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       // 14:00 EDT = 18:00 UTC. A regression that used the thread-scoped id would miss the

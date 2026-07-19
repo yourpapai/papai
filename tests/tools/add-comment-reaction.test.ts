@@ -40,7 +40,7 @@ describe('Add Comment Reaction Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)(
       { taskId: 'task-1', commentId: 'comment-1', reaction: 'thumbs_up' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     assert(isReaction(result))
@@ -58,7 +58,7 @@ describe('Add Comment Reaction Tool', () => {
     await expect(
       getToolExecutor(tool)(
         { taskId: 'task-1', commentId: 'comment-1', reaction: 'thumbs_up' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       ),
     ).rejects.toThrow('Reaction failed')
   })

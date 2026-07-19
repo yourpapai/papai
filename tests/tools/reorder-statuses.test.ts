@@ -40,7 +40,7 @@ describe('makeReorderStatusesTool', () => {
           { id: 'col-3', position: 2 },
         ],
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(reorderStatuses).toHaveBeenCalledWith(
@@ -69,7 +69,7 @@ describe('makeReorderStatusesTool', () => {
         statuses: [{ id: 'col-1', position: 0 }],
         confirm: true,
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(reorderStatuses).toHaveBeenCalledWith('proj-1', [{ id: 'col-1', position: 0 }], true)
@@ -88,7 +88,7 @@ describe('makeReorderStatusesTool', () => {
         projectId: 'proj-1',
         statuses: [{ id: 'col-1', position: 0 }],
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
@@ -105,7 +105,7 @@ describe('makeReorderStatusesTool', () => {
         projectId: 'proj-1',
         statuses: [{ id: 'col-1', position: 0 }],
       },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
     await expect(promise).rejects.toThrow('API Error')
     try {

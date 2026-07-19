@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { resolveMeReference } from '../identity/resolver.js'
@@ -13,7 +13,7 @@ import type { TaskProvider } from '../providers/types.js'
 
 const log = logger.child({ scope: 'tool:search-tasks' })
 
-export function makeSearchTasksTool(provider: TaskProvider, userId?: string): ToolSet[string] {
+export function makeSearchTasksTool(provider: TaskProvider, userId?: string): Tool {
   return tool({
     description: 'Search for tasks by keyword. Use this when the user asks about existing tasks.',
     inputSchema: z.object({

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
@@ -74,7 +74,7 @@ async function resolveAssigneeFilter(
   }
 }
 
-export function makeListTasksTool(provider: TaskProvider, userId?: string, storageContextId?: string): ToolSet[string] {
+export function makeListTasksTool(provider: TaskProvider, userId?: string, storageContextId?: string): Tool {
   return tool({
     description:
       'List tasks in a project. Optional filters match the upstream @kaneo/mcp list_tasks tool (status, priority, assignee, pagination, sort, due-date range).',

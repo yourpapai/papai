@@ -14,6 +14,7 @@ import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
 import { createLiveStatusReporter, PREPARING_RESPONSE } from './live-status/reporter.js'
+import { hoistSystemMessages } from './llm-message-utils.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
 import { emitLlmError, logProcessMessage } from './llm-orchestrator-logging.js'
 import { sendLlmResponse } from './llm-orchestrator-send.js'
@@ -211,7 +212,7 @@ type InvokeWithLiveStatusArgs = {
 
 export const invokeWithLiveStatus = async (
   args: InvokeWithLiveStatusArgs,
-): Promise<{ response: { messages: ModelMessage[] }; finishReason?: string }> => {
+): Promise<{ finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string }> => {
   const { reply, invokeArgs, progressReporter, liveStatusEnabled } = args
   const liveStatus = createLiveStatusReporter(reply, { enabled: liveStatusEnabled })
   await liveStatus.start()
@@ -222,7 +223,7 @@ export const invokeWithLiveStatus = async (
       { contextId: invokeArgs.contextId, toolCalls: toolCallCount, usage: result.usage },
       'LLM response received',
     )
-    progressReporter.reasoning(result.reasoningText, result.reasoning)
+    progressReporter.reasoning(result.finalStep.reasoningText, result.finalStep.reasoning)
     persistFactsFromResults(invokeArgs.contextId, result)
     // Keep the status alive as a placeholder through any verification round-trip; sendLlmResponse dismisses
     // it right before the first reply posts, so there is no empty gap between the tool status and the answer.
@@ -233,8 +234,7 @@ export const invokeWithLiveStatus = async (
       invokeVerifier: async ({ system, messages }: VerifierPrompt) => {
         const res = await invokeArgs.deps.generateText({
           model: invokeArgs.model,
-          system,
-          messages,
+          ...hoistSystemMessages(system, messages),
           tools: readOnlyToolset ?? {},
           stopWhen: invokeArgs.deps.stepCountIs(VERIFIER_MAX_STEPS),
           timeout: 1_200_000,
@@ -242,7 +242,7 @@ export const invokeWithLiveStatus = async (
         return { text: res.text, finishReason: res.finishReason }
       },
     }
-    const history: ModelMessage[] = [...invokeArgs.messages, ...result.response.messages]
+    const history: ModelMessage[] = [...invokeArgs.messages, ...result.finalStep.response.messages]
     await sendLlmResponse(reply, invokeArgs.contextId, result, progressReporter, { verifier, history }, () =>
       liveStatus.dismiss(),
     )

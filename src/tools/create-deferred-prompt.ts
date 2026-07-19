@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { tool } from 'ai'
-import type { ToolSet } from 'ai'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import type { ContextType } from '../chat/types.js'
@@ -64,7 +64,7 @@ export function makeCreateDeferredPromptTool(
   username?: string | null,
   actorUserIdArg?: string,
   options: CreateDeferredPromptToolOptions = {},
-): ToolSet[string] {
+): Tool {
   const actorUserId = resolveActorUserId(userId, actorUserIdArg)
   const allowTaskConditions = options.allowTaskConditions ?? true
   const inputSchema = buildInputSchema(allowTaskConditions)

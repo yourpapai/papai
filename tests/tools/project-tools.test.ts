@@ -102,7 +102,7 @@ describe('Project Tools', () => {
 
       const tool = makeListProjectsTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
       assert(isProjectArray(result))
 
       expect(result).toHaveLength(2)
@@ -117,7 +117,7 @@ describe('Project Tools', () => {
 
       const tool = makeListProjectsTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
       assert(Array.isArray(result))
 
       expect(result).toHaveLength(0)
@@ -129,7 +129,7 @@ describe('Project Tools', () => {
 
       const tool = makeListProjectsTool(provider)
       assert(tool.execute)
-      await tool.execute({}, { toolCallId: '1', messages: [] })
+      await tool.execute({}, { toolCallId: '1', messages: [], context: {} })
 
       expect(listProjects).toHaveBeenCalledTimes(1)
     })
@@ -140,7 +140,7 @@ describe('Project Tools', () => {
       })
 
       const tool = makeListProjectsTool(provider)
-      const promise = getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)({}, { toolCallId: '1', messages: [], context: {} })
       await expect(promise).rejects.toThrow('API Error')
       try {
         await promise
@@ -166,7 +166,10 @@ describe('Project Tools', () => {
 
       const tool = makeGetProjectTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { projectId: 'proj-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isProject(result))
 
       expect(result.id).toBe('proj-1')
@@ -181,7 +184,7 @@ describe('Project Tools', () => {
 
       const tool = makeGetProjectTool(provider)
       assert(tool.execute)
-      await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(getProject).toHaveBeenCalledWith('proj-1')
     })
@@ -192,7 +195,10 @@ describe('Project Tools', () => {
       })
 
       const tool = makeGetProjectTool(provider)
-      const promise = getToolExecutor(tool)({ projectId: 'missing-project' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { projectId: 'missing-project' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('Project not found')
       try {
         await promise
@@ -228,7 +234,10 @@ describe('Project Tools', () => {
 
       const tool = makeCreateProjectTool(provider)
       assert(tool.execute)
-      const result: unknown = await tool.execute({ name: 'New Project' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { name: 'New Project' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       assert(isProject(result))
 
       expect(result.id).toBe('proj-1')
@@ -248,7 +257,10 @@ describe('Project Tools', () => {
 
       const tool = makeCreateProjectTool(provider)
       assert(tool.execute)
-      await tool.execute({ name: 'New Project', description: 'Project description' }, { toolCallId: '1', messages: [] })
+      await tool.execute(
+        { name: 'New Project', description: 'Project description' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       expect(createProject).toHaveBeenCalledWith({
         name: 'New Project',
@@ -268,7 +280,7 @@ describe('Project Tools', () => {
 
       const tool = makeCreateProjectTool(provider)
       assert(tool.execute)
-      await tool.execute({ name: 'Test' }, { toolCallId: '1', messages: [] })
+      await tool.execute({ name: 'Test' }, { toolCallId: '1', messages: [], context: {} })
 
       expect(createProject).toHaveBeenCalledWith({ name: 'Test', description: undefined })
     })
@@ -279,7 +291,7 @@ describe('Project Tools', () => {
       })
 
       const tool = makeCreateProjectTool(provider)
-      const promise = getToolExecutor(tool)({ name: 'Test' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)({ name: 'Test' }, { toolCallId: '1', messages: [], context: {} })
       await expect(promise).rejects.toThrow('API Error')
       try {
         await promise
@@ -317,7 +329,7 @@ describe('Project Tools', () => {
       assert(tool.execute)
       const result: unknown = await tool.execute(
         { projectId: 'proj-1', name: 'Updated Name' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
       assert(isProject(result))
 
@@ -338,7 +350,10 @@ describe('Project Tools', () => {
 
       const tool = makeUpdateProjectTool(provider)
       assert(tool.execute)
-      await tool.execute({ projectId: 'proj-1', description: 'New description' }, { toolCallId: '1', messages: [] })
+      await tool.execute(
+        { projectId: 'proj-1', description: 'New description' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
 
       expect(updateProject).toHaveBeenCalledWith('proj-1', {
         name: undefined,
@@ -361,7 +376,7 @@ describe('Project Tools', () => {
       assert(tool.execute)
       await tool.execute(
         { projectId: 'proj-1', name: 'New Name', description: 'New description' },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(updateProject).toHaveBeenCalledWith('proj-1', {
@@ -376,7 +391,10 @@ describe('Project Tools', () => {
       })
 
       const tool = makeUpdateProjectTool(provider)
-      const promise = getToolExecutor(tool)({ projectId: 'invalid', name: 'Test' }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { projectId: 'invalid', name: 'Test' },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('Project not found')
       try {
         await promise
@@ -402,7 +420,7 @@ describe('Project Tools', () => {
     test('returns tool with correct structure', () => {
       const provider = createMockProvider()
       const tool = makeDeleteProjectTool(provider)
-      assert(tool.description !== undefined)
+      assert(typeof tool.description === 'string')
       expect(tool.description).toContain('Delete')
       expect(tool.description.toLowerCase()).toContain('project')
     })
@@ -415,7 +433,7 @@ describe('Project Tools', () => {
 
       const result: unknown = await tool.execute(
         { projectId: 'proj-1', confidence: 0.9 },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(deleteProject).toHaveBeenCalledWith('proj-1')
@@ -431,7 +449,7 @@ describe('Project Tools', () => {
 
       const result: unknown = await tool.execute(
         { projectId: 'proj-1', confidence: 0.5 },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       expect(deleteProject).not.toHaveBeenCalled()
@@ -446,7 +464,7 @@ describe('Project Tools', () => {
 
       const result: unknown = await tool.execute(
         { projectId: 'proj-1', label: 'My Project', confidence: 0.5 },
-        { toolCallId: '1', messages: [] },
+        { toolCallId: '1', messages: [], context: {} },
       )
 
       assert(isConfirmationResultWithMessage(result))
@@ -459,7 +477,10 @@ describe('Project Tools', () => {
         deleteProject: mock(() => Promise.reject(new Error('Project not found'))),
       })
       const tool = makeDeleteProjectTool(provider)
-      const promise = getToolExecutor(tool)({ projectId: 'bad-id', confidence: 0.9 }, { toolCallId: '1', messages: [] })
+      const promise = getToolExecutor(tool)(
+        { projectId: 'bad-id', confidence: 0.9 },
+        { toolCallId: '1', messages: [], context: {} },
+      )
       await expect(promise).rejects.toThrow('Project not found')
       try {
         await promise

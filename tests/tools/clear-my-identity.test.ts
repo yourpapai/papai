@@ -36,7 +36,7 @@ describe('clear_my_identity tool', () => {
 
   test('should clear identity mapping', async () => {
     const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId)
-    const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [], context: {} })
 
     expect(result).toHaveProperty('status', 'success')
     const mapping = getIdentityMapping(testUserId, 'mock')
@@ -49,7 +49,7 @@ describe('clear_my_identity tool', () => {
     clearIdentityMapping(testUserId, 'mock')
 
     const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId)
-    const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [], context: {} })
 
     expect(result).toHaveProperty('status', 'info')
     expect(result).toHaveProperty('message', 'No identity mapping to clear.')
@@ -70,7 +70,7 @@ describe('clear_my_identity tool', () => {
 
     // Clear first user's identity
     const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId)
-    await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
+    await getToolExecutor(tool)({}, { toolCallId: '1', messages: [], context: {} })
 
     // First user's identity should be cleared
     const clearedMapping = getIdentityMapping(testUserId, 'mock')
@@ -106,7 +106,7 @@ describe('clear_my_identity tool', () => {
     }
 
     const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId, deps)
-    const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
+    const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [], context: {} })
 
     expect(result).toHaveProperty('status', 'success')
     expect(getDbCalled).toBe(true)

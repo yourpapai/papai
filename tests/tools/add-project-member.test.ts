@@ -38,7 +38,7 @@ describe('Add Project Member Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)(
       { projectId: 'project-1', userId: 'user-1' },
-      { toolCallId: '1', messages: [] },
+      { toolCallId: '1', messages: [], context: {} },
     )
 
     assert(isProjectUserResult(result), 'Invalid result')
@@ -54,7 +54,10 @@ describe('Add Project Member Tool', () => {
     )
 
     await expect(
-      getToolExecutor(tool)({ projectId: 'project-1', userId: 'user-1' }, { toolCallId: '1', messages: [] }),
+      getToolExecutor(tool)(
+        { projectId: 'project-1', userId: 'user-1' },
+        { toolCallId: '1', messages: [], context: {} },
+      ),
     ).rejects.toThrow('Add member failed')
   })
 

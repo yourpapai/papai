@@ -27,7 +27,7 @@ async function exec(
   input: Record<string, unknown>,
 ): Promise<unknown> {
   if (!toolInstance.execute) throw new Error('Tool execute is undefined')
-  const result: unknown = await toolInstance.execute(input, { toolCallId: '1', messages: [] })
+  const result: unknown = await toolInstance.execute(input, { toolCallId: '1', messages: [], context: {} })
   return result
 }
 
