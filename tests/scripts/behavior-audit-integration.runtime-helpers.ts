@@ -31,6 +31,7 @@ const behaviorAuditEnvKeys = [
   'BEHAVIOR_AUDIT_PHASE3_TIMEOUT_MS',
   'BEHAVIOR_AUDIT_MAX_RETRIES',
   'BEHAVIOR_AUDIT_MAX_STEPS',
+  'BEHAVIOR_AUDIT_CONCURRENCY',
   'BEHAVIOR_AUDIT_EXCLUDED_PREFIXES',
   'BEHAVIOR_AUDIT_EMBEDDING_MODEL',
   'BEHAVIOR_AUDIT_EMBEDDING_BASE_URL',
@@ -102,6 +103,9 @@ function clearBehaviorAuditEnvKey(key: (typeof behaviorAuditEnvKeys)[number]): v
       return
     case 'BEHAVIOR_AUDIT_MAX_STEPS':
       delete process.env['BEHAVIOR_AUDIT_MAX_STEPS']
+      return
+    case 'BEHAVIOR_AUDIT_CONCURRENCY':
+      delete process.env['BEHAVIOR_AUDIT_CONCURRENCY']
       return
     case 'BEHAVIOR_AUDIT_EXCLUDED_PREFIXES':
       delete process.env['BEHAVIOR_AUDIT_EXCLUDED_PREFIXES']
