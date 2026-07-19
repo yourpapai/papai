@@ -764,6 +764,17 @@ describe('collaboration', () => {
       visibility: { kind: 'public' },
     })
   })
+
+  test('stores visibility with group refs', async () => {
+    const provider = new MemoryTaskProvider()
+    const task = await provider.createTask({ projectId: 'proj-1', title: 'Hidden from group' })
+
+    await expect(provider.setVisibility(task.id, { kind: 'restricted', groupIds: ['g1'] })).resolves.toEqual({
+      taskId: task.id,
+      visibility: { kind: 'restricted', groups: [{ id: 'g1', name: 'g1' }] },
+    })
+    expect(provider.getTaskVisibility(task.id)).toEqual({ kind: 'restricted', groups: [{ id: 'g1', name: 'g1' }] })
+  })
 })
 
 describe('identity surface', () => {

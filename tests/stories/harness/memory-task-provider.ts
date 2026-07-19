@@ -1111,7 +1111,7 @@ export class MemoryTaskProvider implements TaskProvider {
           : {
               kind: 'restricted',
               ...(input.userIds === undefined ? {} : { users: input.userIds.map((id) => ({ id })) }),
-              ...(input.groupIds === undefined ? {} : { groups: input.groupIds.map((name) => ({ name })) }),
+              ...(input.groupIds === undefined ? {} : { groups: input.groupIds.map((id) => ({ id, name: id })) }),
             }
       this.taskVisibility.set(taskId, clone(visibility))
       this.events?.record('task.visibility.set', { taskId, kind: visibility.kind })
