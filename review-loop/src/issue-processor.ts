@@ -5,9 +5,10 @@
 
 import type { ShellExecFn } from './build-checker.js'
 import type { ReviewLoopConfig } from './config.js'
-import { saveIssueLedger, type IssueLedger, type LedgerIssueRecord } from './issue-ledger.js'
+import { recordNeedsHuman, saveIssueLedger, type IssueLedger, type LedgerIssueRecord } from './issue-ledger.js'
 import { processIssueAttempt, type IssueWorker, type RetryReason } from './issue-processor-attempts.js'
-import { truncate, type RoundCollector } from './loop-trace.js'
+import type { FixerResult } from './issue-schema.js'
+import { emitFixComplete, tallyDecision, truncate, type RoundCollector } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
 import type { RunState } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
@@ -34,6 +35,16 @@ export function sanitizeSubject(text: string): string {
 
 export function shortTitle(record: LedgerIssueRecord): string {
   return truncate(record.issue.title, 60)
+}
+
+function fallbackFixerResult(reasoning: string): FixerResult {
+  return {
+    verdict: 'needs_human',
+    fixability: 'manual',
+    reasoning,
+    targetFiles: [],
+    fixed: false,
+  }
 }
 
 async function processIssue(
@@ -65,13 +76,18 @@ export async function processPendingIssues(
     const record = pending[index]!
     index += 1
     const worker = await deps.pool.acquire(record.issue.file)
+    let result: { fixed: boolean } | null = null
     try {
-      const result = await processIssue(record, deps, worker, round, collector)
-      await saveIssueLedger(deps.ledger)
-      if (result.fixed) fixed += 1
-    } finally {
-      // processIssue already releases the worker; nothing to do here
+      result = await processIssue(record, deps, worker, round, collector)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      recordNeedsHuman(deps.ledger, deps.trace, round, record, `fixer crashed: ${msg}`, fallbackFixerResult(msg))
+      tallyDecision(collector, 'needs_human', false)
+      deps.log.log(`[fix] "${shortTitle(record)}" → needs_human (fixer crashed: ${msg})`)
+      emitFixComplete(deps.trace, round, record.id, false, null, 1)
     }
+    await saveIssueLedger(deps.ledger)
+    if (result !== null && result.fixed) fixed += 1
     await dispatchNext()
   }
 

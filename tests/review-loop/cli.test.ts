@@ -429,7 +429,7 @@ describe('runCli', () => {
     expect(existsSync(staleWorkerPath)).toBe(false)
   })
 
-  test('on fixer timeout (non-zero exit), worker worktrees are preserved for inspection', async () => {
+  test('on fixer timeout (non-zero exit), the crashing issue is marked needs_human and the run still completes', async () => {
     const fixture = await setupRunCliFixtures({ poolSize: 2 })
     // Reviewer reports one issue; fixer exits non-zero (simulating timeout/error).
     const scenario = {
@@ -458,16 +458,18 @@ describe('runCli', () => {
     }
     writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
 
-    await expect(
-      fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--pool-size', '2']),
-    ).rejects.toThrow()
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--pool-size', '2'])
 
-    // The worker worktree directories should still exist (not cleaned up).
+    // The crashing issue is recorded as needs_human and the run completes cleanly;
+    // worker worktrees are torn down on the success path (spec: in-flight crashes
+    // lose only the in-flight attempt, never the run).
     const runDir = fixture.getRunDir()
+    const summary = readFileSync(path.join(runDir, 'summary.txt'), 'utf8')
+    expect(summary).toContain('needs_human')
     const state = PersistedRunStateSchema.parse(JSON.parse(readFileSync(path.join(runDir, 'state.json'), 'utf8')))
     const worker1Path = path.join(fixture.workDir, 'worktrees', `${state.runId}-worker-1`)
     const worker2Path = path.join(fixture.workDir, 'worktrees', `${state.runId}-worker-2`)
-    expect(existsSync(worker1Path)).toBe(true)
-    expect(existsSync(worker2Path)).toBe(true)
+    expect(existsSync(worker1Path)).toBe(false)
+    expect(existsSync(worker2Path)).toBe(false)
   })
 })

@@ -393,6 +393,15 @@ function createFixerOnlySpawn(opts: { fixed?: boolean; writeFile?: boolean } = {
   return { spawn, calls }
 }
 
+function createCrashingSpawnForWorker(fallback: SpawnFn, crashingCwd: string): SpawnFn {
+  return (_cmd, args, opts) => {
+    if (opts.cwd === crashingCwd) {
+      return Promise.reject(new Error('fixer subprocess crashed'))
+    }
+    return fallback(_cmd, args, opts)
+  }
+}
+
 describe('processPendingIssues pool dispatch', () => {
   async function setupTwoIssues(): Promise<{
     runState: Awaited<ReturnType<typeof createRunState>>
@@ -463,6 +472,46 @@ describe('processPendingIssues pool dispatch', () => {
     expect(acquireLog).toHaveLength(2)
     expect(releaseLog).toHaveLength(2)
     expect(releaseLog[0]!).toBeGreaterThanOrEqual(acquireLog[1]!)
+  })
+
+  test('per-issue throw is isolated: crashing issue becomes needs_human, sibling still fixes', async () => {
+    const { runState, ledger, recordA, recordB } = await setupTwoIssues()
+    const workerRepo1 = makeTempDir('worker-')
+    const workerRepo2 = makeTempDir('worker-')
+    await setupRepo(workerRepo1)
+    await setupRepo(workerRepo2)
+    const { spawn: fixerSpawn } = createFixerOnlySpawn()
+    const crashingSpawn = createCrashingSpawnForWorker(fixerSpawn, workerRepo1)
+    const { pool, releaseLog } = fakePool({ size: 2, worktreePaths: [workerRepo1, workerRepo2] })
+    const collector = newCollector()
+    const { logger, events } = createCapturingTraceLogger()
+    const reporter: ProgressReporter = silentReporter()
+
+    const fixed = await processPendingIssues(
+      {
+        config: createReviewLoopConfigFixture(runState.repoRoot),
+        runState,
+        ledger,
+        spawn: crashingSpawn,
+        exec: passingExec,
+        log: reporter,
+        trace: logger,
+        pool,
+        inspect: false,
+      },
+      1,
+      collector,
+      [recordA, recordB],
+    )
+
+    expect(fixed).toBe(1)
+    expect(ledger.snapshot.issues['rec-a']!.status).toBe('needs_human')
+    expect(ledger.snapshot.issues['rec-b']!.status).toBe('fixed_pending_review')
+    expect(collector.decisions.needs_human).toBe(1)
+    expect(collector.decisions.fixed).toBe(1)
+    const fixCompleteForA = events.filter((e) => e.event === 'fix_complete').filter((e) => e.issueId === 'rec-a')
+    expect(fixCompleteForA).toHaveLength(1)
+    expect(releaseLog).toHaveLength(2)
   })
 
   test('K=1 pool serializes (equivalent to today)', async () => {
