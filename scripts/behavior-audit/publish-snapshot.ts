@@ -73,6 +73,15 @@ export async function runPublish(input: PublishDeps): Promise<PublishResult> {
   // `git checkout --orphan` keeps the inherited index populated; `git rm -rf .`
   // clears both the index and the working tree so the only thing we commit is
   // the freshly written `stories/` directory below.
+  //
+  // CI's fetch step (`git fetch ... audit-output:audit-output`) materialises
+  // `refs/heads/audit-output` locally before we run; `git checkout --orphan`
+  // refuses to overwrite an existing ref, so delete it first. The delete is
+  // best-effort: on a first run (or a worktree where the branch was never
+  // created) the call fails and we swallow it.
+  await input.gitOps.run(['branch', '-D', branch]).catch(() => {
+    // ignore — branch may not exist on first run
+  })
   await input.gitOps.checkoutOrphan(branch)
   await input.gitOps.run(['rm', '-rf', '.'])
 
@@ -91,7 +100,7 @@ export async function runPublish(input: PublishDeps): Promise<PublishResult> {
   return { exitCode: 0, commitMessage }
 }
 
-class RealGitOps implements GitOps {
+export class RealGitOps implements GitOps {
   constructor(
     private readonly worktree: string,
     private readonly branch: string,

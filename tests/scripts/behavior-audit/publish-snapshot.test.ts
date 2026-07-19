@@ -15,7 +15,47 @@ import {
   resolveTagName,
 } from '../../../scripts/behavior-audit/publish-snapshot.js'
 import type { GitOps, PublishResult } from '../../../scripts/behavior-audit/publish-snapshot.js'
-import { runPublish } from '../../../scripts/behavior-audit/publish-snapshot.js'
+import { RealGitOps, runPublish } from '../../../scripts/behavior-audit/publish-snapshot.js'
+
+const GIT_SPAWN_ENV: NodeJS.Dict<string> = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_CONFIG_SYSTEM: '/dev/null',
+  GIT_AUTHOR_NAME: 'Audit Test',
+  GIT_AUTHOR_EMAIL: 'audit-test@example.com',
+  GIT_COMMITTER_NAME: 'Audit Test',
+  GIT_COMMITTER_EMAIL: 'audit-test@example.com',
+}
+
+async function runRealGit(args: readonly string[], cwd: string): Promise<void> {
+  const proc = Bun.spawn(['git', ...args], {
+    cwd,
+    env: GIT_SPAWN_ENV,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const stderr = await new Response(proc.stderr).text()
+  const code = await proc.exited
+  if (code !== 0) {
+    throw new Error(`git ${args.join(' ')} exited ${code}: ${stderr.trim()}`)
+  }
+}
+
+async function runRealGitCapture(args: readonly string[], cwd: string): Promise<string> {
+  const proc = Bun.spawn(['git', ...args], {
+    cwd,
+    env: GIT_SPAWN_ENV,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const stdout = await new Response(proc.stdout).text()
+  const stderr = await new Response(proc.stderr).text()
+  const code = await proc.exited
+  if (code !== 0) {
+    throw new Error(`git ${args.join(' ')} exited ${code}: ${stderr.trim()}`)
+  }
+  return stdout
+}
 
 describe('publish-snapshot helpers', () => {
   afterEach(() => {
@@ -163,5 +203,74 @@ describe('publishSnapshot flow', () => {
       }),
     ).rejects.toThrow('git commit exited 1: identity missing')
     expect(run.mock.calls).toHaveLength(2)
+  })
+
+  test('drops the existing branch ref before the orphan checkout', async () => {
+    const ops = makeFakeGitOps()
+    await runPublish({
+      storiesPath: tempStories,
+      dateStamp: '2026-07-19',
+      gitOps: ops,
+      log: { log: () => {}, error: () => {} },
+    })
+    const deleteIdx = recordedCommands.findIndex((c) => c.join(' ') === 'branch -D audit-output')
+    const orphanIdx = recordedCommands.findIndex((c) => c.join(' ') === 'checkout --orphan audit-output')
+    expect(deleteIdx).toBeGreaterThanOrEqual(0)
+    expect(orphanIdx).toBeGreaterThan(deleteIdx)
+  })
+})
+
+describe('publishSnapshot real-git integration', () => {
+  let repo: string
+  let stories: string
+
+  beforeEach(async () => {
+    repo = mkdtempSync(join(tmpdir(), 'publish-real-'))
+    stories = mkdtempSync(join(tmpdir(), 'publish-stories-'))
+    await runRealGit(['init', '-q', '-b', 'main'], repo)
+    writeFileSync(join(repo, 'README.md'), 'init\n')
+    await runRealGit(['add', 'README.md'], repo)
+    await runRealGit(['commit', '-m', 'init', '-q'], repo)
+
+    writeFileSync(join(stories, 'index.md'), '# Audit v1\n')
+  })
+
+  afterEach(() => {
+    rmSync(repo, { recursive: true, force: true })
+    rmSync(stories, { recursive: true, force: true })
+  })
+
+  test('second runPublish succeeds when audit-output ref already exists locally', async () => {
+    const ops = new RealGitOps(repo, 'audit-output')
+
+    const first = await runPublish({
+      storiesPath: stories,
+      dateStamp: '2026-07-19',
+      gitOps: ops,
+      log: { log: () => {}, error: () => {} },
+    })
+    expect(first.exitCode).toBe(0)
+    expect(first.commitMessage).toBe('chore(audit): snapshot for 2026-07-19')
+
+    // Mirror CI: each nightly starts on the default branch with the previous
+    // audit-output ref fetched into refs/heads. After the first runPublish
+    // HEAD is on audit-output; flip back to main so `branch -D` is allowed
+    // and the orphan checkout can recreate the ref.
+    await runRealGit(['checkout', 'main'], repo)
+    await runRealGit(['rev-parse', '--verify', '--quiet', 'refs/heads/audit-output'], repo)
+
+    writeFileSync(join(stories, 'index.md'), '# Audit v2\n')
+    const second = await runPublish({
+      storiesPath: stories,
+      dateStamp: '2026-07-20',
+      gitOps: ops,
+      log: { log: () => {}, error: () => {} },
+    })
+    expect(second.exitCode).toBe(0)
+    expect(second.commitMessage).toBe('chore(audit): snapshot for 2026-07-20')
+
+    // The latest commit on audit-output must reflect the second snapshot.
+    const committed = await runRealGitCapture(['show', 'audit-output:stories/index.md'], repo)
+    expect(committed).toBe('# Audit v2\n')
   })
 })
