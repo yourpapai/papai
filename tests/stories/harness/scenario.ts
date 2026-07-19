@@ -5,6 +5,7 @@
 
 import { expect, test } from 'bun:test'
 
+import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { setMcpCatalog } from '../../../src/coding-credentials/mcp-catalog.js'
 import { serializeMcpSelections } from '../../../src/coding-credentials/mcp-selections.js'
@@ -198,6 +199,14 @@ const contextId = (context: ContextHandle): string =>
 const scopedConfigContextId = (context: ContextHandle): string =>
   toScopedContextId({ platformInstanceId: context.platformInstanceId, nativeContextId: contextId(context) })
 
+const scopedStorageContextId = (context: ContextHandle): string =>
+  getThreadScopedStorageContextId(
+    contextId(context),
+    context.kind === 'dm' ? 'dm' : 'group',
+    context.kind === 'thread' ? context.id : undefined,
+    context.platformInstanceId,
+  )
+
 const scopedGroupId = (group: GroupHandle): string =>
   toScopedContextId({ platformInstanceId: group.platformInstanceId, nativeContextId: group.id })
 
@@ -374,7 +383,7 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     thread: makeThreadHandle,
     attachment(context, file): Promise<AttachmentHandle> {
       prerequisite('given.attachment')
-      return world.fixtures.seedRelayAttachment({ contextId: contextId(context), ...file })
+      return world.fixtures.seedRelayAttachment({ contextId: scopedStorageContextId(context), ...file })
     },
     taskInstance(id = world.ids.next('task-instance'), providerType = 'kaneo'): TaskInstanceHandle {
       prerequisite('given.taskInstance')
