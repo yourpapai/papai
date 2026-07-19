@@ -28,6 +28,7 @@ safe_name() { echo "${1//:/_}"; }
 is_license_header_file() {
   local file="$1"
   case "$file" in
+    tests/scripts/behavior-audit/fixtures/grep-sample/*) return 1 ;;
     *.md)
       case "$file" in
         docs/*.md) return 0 ;;

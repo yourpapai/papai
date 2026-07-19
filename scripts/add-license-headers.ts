@@ -15,6 +15,10 @@ const COPYRIGHT_LINE_PATTERN = /^\/\/ Copyright \(c\) (\d{4})(?:-(\d{4}))? Dmitr
 const SOURCE_ROOTS = ['src', 'client', 'scripts', 'review-loop/src', 'tests'] as const
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx'])
 
+const SKIP_PATH_PREFIXES = ['tests/scripts/behavior-audit/fixtures/grep-sample/'] as const
+
+const shouldSkipFile = (relPath: string): boolean => SKIP_PATH_PREFIXES.some((prefix) => relPath.startsWith(prefix))
+
 const DOCS_ROOTS = ['docs'] as const
 const DOCS_EXTENSIONS = new Set(['.md'])
 
@@ -215,6 +219,7 @@ const addMdHeader = (content: string, currentYear: number): string => buildMdHea
 
 const processFile = async (filePath: string, repoRoot: string): Promise<StampResult> => {
   const rel = relative(repoRoot, filePath)
+  if (shouldSkipFile(rel)) return { kind: 'skipped', path: rel }
   const content = await readFile(filePath, 'utf-8')
   const currentYear = getCurrentHeaderYear()
 
