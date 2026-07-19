@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-// scripts/behavior-audit/index.ts
 import { runPhase2a } from './classify.js'
+import { runPhase2c } from './closure-verifier-pipeline.js'
 import { PROGRESS_RENDERER } from './config.js'
 import { runPhase1b } from './consolidate-keywords.js'
 import {
@@ -87,6 +87,18 @@ async function runPhase3IfNeeded(
   await runPhase3({ progress, selectedConsolidatedIds, selectedFeatureKeys, consolidatedManifest }, { reporter })
 }
 
+function defaultRunPhase2cIfNeeded(
+  manifest: import('./incremental.js').ConsolidatedManifest,
+  selectedFeatureKeys: ReadonlySet<string>,
+  _reporter: BehaviorAuditProgressReporter,
+): Promise<void> {
+  if (selectedFeatureKeys.size === 0) {
+    console.log('[Phase 2c] No selected feature keys, skipping.\n')
+    return Promise.resolve()
+  }
+  return runPhase2c(manifest, selectedFeatureKeys).then(() => undefined)
+}
+
 function defaultSelectIncrementalRunWork(input: {
   readonly previousManifest: IncrementalManifest
   readonly updatedManifest: IncrementalManifest
@@ -130,6 +142,11 @@ export interface BehaviorAuditDeps {
     reporter: BehaviorAuditProgressReporter,
   ) => Promise<import('./incremental.js').ConsolidatedManifest>
   readonly saveConsolidatedManifest: typeof saveConsolidatedManifest
+  readonly runPhase2cIfNeeded: (
+    manifest: import('./incremental.js').ConsolidatedManifest,
+    selectedFeatureKeys: ReadonlySet<string>,
+    reporter: BehaviorAuditProgressReporter,
+  ) => Promise<void>
   readonly runPhase3IfNeeded: (
     progress: Progress,
     selectedConsolidatedIds: ReadonlySet<string>,
@@ -154,29 +171,21 @@ const defaultBehaviorAuditDeps: BehaviorAuditDeps = {
   runPhase2aIfNeeded,
   runPhase2bIfNeeded: defaultRunPhase2bIfNeeded,
   saveConsolidatedManifest,
+  runPhase2cIfNeeded: defaultRunPhase2cIfNeeded,
   runPhase3IfNeeded,
   stdout: process.stdout,
   isTestEnvironment: isTestEnvironment(),
   log: console,
 }
 
-async function executeSelectedBehaviorAuditWork(input: {
+async function runAuditPhases(input: {
   readonly deps: BehaviorAuditDeps
   readonly parsedFiles: readonly ParsedTestFile[]
   readonly updatedManifest: IncrementalManifest
-  readonly previousConsolidatedManifest: import('./incremental.js').ConsolidatedManifest | null
   readonly selection: import('./incremental.js').IncrementalSelection
   readonly progress: Progress
   readonly reporter: BehaviorAuditProgressReporter
 }): Promise<void> {
-  if (input.selection.reportRebuildOnly) {
-    await input.deps.rebuildReportsFromStoredResults({
-      consolidatedManifest: input.previousConsolidatedManifest,
-    })
-    input.deps.log.log('\nBehavior audit complete.')
-    return
-  }
-
   await input.deps.runPhase1IfNeeded(
     input.parsedFiles,
     input.progress,
@@ -199,7 +208,7 @@ async function executeSelectedBehaviorAuditWork(input: {
     input.reporter,
   )
   await input.deps.saveConsolidatedManifest(consolidatedManifest)
-
+  await input.deps.runPhase2cIfNeeded(consolidatedManifest, phase2bSelectedKeys, input.reporter)
   await input.deps.runPhase3IfNeeded(
     input.progress,
     new Set(input.selection.phase3SelectedConsolidatedIds),
@@ -207,7 +216,26 @@ async function executeSelectedBehaviorAuditWork(input: {
     consolidatedManifest,
     input.reporter,
   )
+}
 
+async function executeSelectedBehaviorAuditWork(input: {
+  readonly deps: BehaviorAuditDeps
+  readonly parsedFiles: readonly ParsedTestFile[]
+  readonly updatedManifest: IncrementalManifest
+  readonly previousConsolidatedManifest: import('./incremental.js').ConsolidatedManifest | null
+  readonly selection: import('./incremental.js').IncrementalSelection
+  readonly progress: Progress
+  readonly reporter: BehaviorAuditProgressReporter
+}): Promise<void> {
+  if (input.selection.reportRebuildOnly) {
+    await input.deps.rebuildReportsFromStoredResults({
+      consolidatedManifest: input.previousConsolidatedManifest,
+    })
+    input.deps.log.log('\nBehavior audit complete.')
+    return
+  }
+
+  await runAuditPhases(input)
   input.deps.log.log('\nBehavior audit complete.')
 }
 

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, mock, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
@@ -156,5 +156,31 @@ describe('issue-matcher', () => {
     expect(prompt).toContain('Match newly found')
     expect(prompt).toContain('underlying problem')
     expect(prompt).toContain('"matches"')
+  })
+
+  test('matcher prompt contains absolute scratch path resolved against cwd (not a relative one)', async () => {
+    const dir = makeTempDir('matcher-')
+    const nestedCwd = path.join(dir, 'worktree')
+    const outputPath = path.join(dir, 'matches.json')
+    mkdirSync(nestedCwd, { recursive: true })
+    const { spawn, lastPrompt } = createCapturingSpawn(outputPath)
+
+    await matchIssues({
+      spawn,
+      newIssues: [newIssue],
+      existingRecords: [existingRecord],
+      outputPath,
+      logPath: path.join(dir, 'log.txt'),
+      cwd: nestedCwd,
+      model: 'test-model',
+      extraArgs: [],
+      reporter: silentReporter(),
+    })
+
+    const prompt = lastPrompt()
+    const expectedAbsolute = path.join(nestedCwd, '.review-loop', 'matches.json')
+    expect(prompt).toContain(expectedAbsolute)
+    expect(path.isAbsolute(expectedAbsolute)).toBe(true)
+    expect(prompt).not.toContain(`\n.review-loop/matches.json\n`)
   })
 })

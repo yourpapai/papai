@@ -52,8 +52,10 @@ function mockSpawnForFixer(): SpawnFn {
     const outputMatch = prompt.match(/(?:to|JSON to):\s*(\S+)/u)
     const outputPath = outputMatch?.[1] ?? null
     if (prompt.includes('Verify and fix') && outputPath !== null) {
+      const scratchPath = path.resolve(opts.cwd, outputPath)
+      mkdirSync(path.dirname(scratchPath), { recursive: true })
       writeFileSync(
-        path.join(opts.cwd, outputPath),
+        scratchPath,
         JSON.stringify({
           verdict: 'valid',
           fixability: 'auto',

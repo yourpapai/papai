@@ -142,6 +142,11 @@ function createHarness(
       readonly reporter: BehaviorAuditProgressReporter
     }>
     readonly saveConsolidatedManifest: ConsolidatedManifest[]
+    readonly runPhase2cIfNeeded: Array<{
+      readonly consolidatedManifest: ConsolidatedManifest
+      readonly selectedFeatureKeys: readonly string[]
+      readonly reporter: BehaviorAuditProgressReporter
+    }>
     readonly runPhase3IfNeeded: Array<{
       readonly progress: Progress
       readonly selectedConsolidatedIds: readonly string[]
@@ -213,6 +218,11 @@ function createHarness(
       readonly reporter: BehaviorAuditProgressReporter
     }>,
     saveConsolidatedManifest: [] as ConsolidatedManifest[],
+    runPhase2cIfNeeded: [] as Array<{
+      readonly consolidatedManifest: ConsolidatedManifest
+      readonly selectedFeatureKeys: readonly string[]
+      readonly reporter: BehaviorAuditProgressReporter
+    }>,
     runPhase3IfNeeded: [] as Array<{
       readonly progress: Progress
       readonly selectedConsolidatedIds: readonly string[]
@@ -285,6 +295,14 @@ function createHarness(
     },
     saveConsolidatedManifest: (manifest) => {
       calls.saveConsolidatedManifest.push(manifest)
+      return Promise.resolve()
+    },
+    runPhase2cIfNeeded: (phaseConsolidatedManifest, selectedFeatureKeys, phaseReporter) => {
+      calls.runPhase2cIfNeeded.push({
+        consolidatedManifest: phaseConsolidatedManifest,
+        selectedFeatureKeys: [...selectedFeatureKeys].toSorted(),
+        reporter: phaseReporter,
+      })
       return Promise.resolve()
     },
     runPhase3IfNeeded: (
@@ -434,10 +452,12 @@ describe('behavior-audit entrypoint incremental selection', () => {
     const phase1Call = calls.runPhase1IfNeeded[0]
     const phase2aCall = calls.runPhase2aIfNeeded[0]
     const phase2bCall = calls.runPhase2bIfNeeded[0]
+    const phase2cCall = calls.runPhase2cIfNeeded[0]
     const phase3Call = calls.runPhase3IfNeeded[0]
     assert(phase1Call !== undefined)
     assert(phase2aCall !== undefined)
     assert(phase2bCall !== undefined)
+    assert(phase2cCall !== undefined)
     assert(phase3Call !== undefined)
 
     expect(calls.loadOrCreateProgress).toEqual([1])
@@ -466,6 +486,13 @@ describe('behavior-audit entrypoint incremental selection', () => {
         reporter: phase2bCall.reporter,
       },
     ])
+    expect(calls.runPhase2cIfNeeded).toEqual([
+      {
+        consolidatedManifest: createConsolidatedManifest(),
+        selectedFeatureKeys: [],
+        reporter: phase2cCall.reporter,
+      },
+    ])
     expect(calls.runPhase3IfNeeded).toEqual([
       {
         progress: phase3Call.progress,
@@ -477,6 +504,38 @@ describe('behavior-audit entrypoint incremental selection', () => {
     ])
     expect(calls.saveConsolidatedManifest).toEqual([createConsolidatedManifest()])
     expect(calls.logs).toEqual(['Behavior Audit — discovering test files...\n', '\nBehavior audit complete.'])
+  })
+
+  test('invokes runPhase2cIfNeeded between saveConsolidatedManifest and runPhase3IfNeeded', async () => {
+    const consolidatedManifest: ConsolidatedManifest = {
+      version: 1,
+      entries: {
+        'tools::selected-case': {
+          consolidatedId: 'tools::selected-case',
+          domain: 'tools',
+          featureName: 'Selected Case',
+          sourceTestKeys: [],
+          sourceBehaviorIds: [],
+          supportingInternalBehaviorIds: [],
+          isUserFacing: true,
+          featureKey: 'candidate-from-selection',
+          keywords: [],
+          sourceDomains: ['tools'],
+          phase2Fingerprint: 'fp',
+          lastConsolidatedAt: '2026-04-22T10:00:00.000Z',
+        },
+      },
+    }
+    const { deps, calls } = createHarness({ consolidatedManifest })
+
+    await runBehaviorAudit(deps)
+
+    const phase2cCall = calls.runPhase2cIfNeeded[0]
+    assert(phase2cCall !== undefined)
+    expect(calls.runPhase2cIfNeeded).toHaveLength(1)
+    expect(phase2cCall.consolidatedManifest).toBe(consolidatedManifest)
+    expect(calls.saveConsolidatedManifest).toHaveLength(1)
+    expect(calls.runPhase3IfNeeded).toHaveLength(1)
   })
 
   test('fails fast when the API key requirement fails', async () => {

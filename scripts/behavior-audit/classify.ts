@@ -5,10 +5,11 @@
 
 import pLimit from 'p-limit'
 
+import { createAsyncMutex, type AsyncMutex } from './async-mutex.js'
 import type { ClassifiedBehavior } from './classified-store.js'
 import { readClassifiedFile, writeClassifiedFile } from './classified-store.js'
 import { classifyBehaviorWithRetry } from './classify-agent.js'
-import { updateManifestForClassification } from './classify-manifest-helpers.js'
+import { buildManifestEntry, mergeManifestDeltas, type ManifestDelta } from './classify-manifest-helpers.js'
 import {
   addDirtyFeatureKey,
   buildBehaviorId,
@@ -19,10 +20,9 @@ import {
   type SelectedBehaviorEntry,
 } from './classify-phase2a-helpers.js'
 import { reportClassificationResult, type ClassificationResultForReporting } from './classify-reporting.js'
-import { MAX_RETRIES } from './config.js'
+import { CONCURRENCY, MAX_RETRIES } from './config.js'
 import { readExtractedFile } from './extracted-store.js'
-import type { IncrementalManifest } from './incremental.js'
-import { saveManifest } from './incremental.js'
+import { saveManifest, type IncrementalManifest } from './incremental.js'
 import {
   type AgentUsage,
   type PhaseStats,
@@ -38,7 +38,7 @@ import type { Progress } from './progress.js'
 import { getFailedClassificationAttempts, markClassificationDone, setClassificationFailedAttempts } from './progress.js'
 
 type ClassificationProcessResult = {
-  readonly manifest: IncrementalManifest
+  readonly delta: ManifestDelta | null
 } & ClassificationResultForReporting
 
 export interface Phase2aDeps {
@@ -103,13 +103,12 @@ async function classifySelectedBehavior(
   return { classified, usage: agentResult.usage }
 }
 
+function splitTestFilePath(testKey: string): string {
+  return testKey.split('::')[0] ?? ''
+}
+
 async function writeSingleClassification(classified: ClassifiedBehavior, deps: Phase2aDeps): Promise<void> {
-  const splitTestKey = classified.testKey.split('::')
-  const firstPath = splitTestKey[0]
-  let testFilePath = ''
-  if (firstPath !== undefined) {
-    testFilePath = firstPath
-  }
+  const testFilePath = splitTestFilePath(classified.testKey)
   const existing = await deps.readClassifiedFile(testFilePath)
   let existingItems: readonly ClassifiedBehavior[] = []
   if (existing !== null) {
@@ -125,12 +124,13 @@ async function persistSuccessfulClassification(input: {
   readonly entry: SelectedBehaviorEntry
   readonly classified: ClassifiedBehavior
   readonly deps: Phase2aDeps
-}): Promise<IncrementalManifest> {
-  await writeSingleClassification(input.classified, input.deps)
-  const updatedManifest = updateManifestForClassification(input.manifest, input.classified, input.entry.behavior)
-  await input.deps.saveManifest(updatedManifest)
-  await input.deps.saveProgress(input.progress)
-  return updatedManifest
+  readonly mutex: AsyncMutex
+}): Promise<ManifestDelta> {
+  const testFilePath = splitTestFilePath(input.classified.testKey)
+  await input.mutex(`classified:${testFilePath}`, () => writeSingleClassification(input.classified, input.deps))
+  const delta = buildManifestEntry(input.manifest, input.classified, input.entry.behavior)
+  await input.mutex('progress', () => input.deps.saveProgress(input.progress))
+  return delta
 }
 
 async function processSelectedClassification(input: {
@@ -139,6 +139,7 @@ async function processSelectedClassification(input: {
   readonly manifest: IncrementalManifest
   readonly dirtyFeatureKeys: Set<string>
   readonly deps: Phase2aDeps
+  readonly mutex: AsyncMutex
 }): Promise<ClassificationProcessResult> {
   if (shouldReuseCompletedClassification(input.progress, input.manifest, input.entry)) {
     const existingManifestEntry = input.manifest.tests[input.entry.testKey]
@@ -147,24 +148,25 @@ async function processSelectedClassification(input: {
       featureKey = existingManifestEntry.featureKey
     }
     addDirtyFeatureKey(input.dirtyFeatureKeys, featureKey)
-    return { kind: 'reused', manifest: input.manifest, usage: null }
+    return { kind: 'reused', delta: null, usage: null }
   }
 
   const classifyResult = await classifySelectedBehavior(input.progress, input.entry, input.deps)
   if (classifyResult === null) {
-    await input.deps.saveProgress(input.progress)
-    return { kind: 'failed', manifest: input.manifest, usage: null }
+    await input.mutex('progress', () => input.deps.saveProgress(input.progress))
+    return { kind: 'failed', delta: null, usage: null }
   }
 
   addDirtyFeatureKey(input.dirtyFeatureKeys, classifyResult.classified.featureKey)
-  const updatedManifest = await persistSuccessfulClassification({
+  const delta = await persistSuccessfulClassification({
     progress: input.progress,
     manifest: input.manifest,
     entry: input.entry,
     classified: classifyResult.classified,
     deps: input.deps,
+    mutex: input.mutex,
   })
-  return { kind: 'classified', manifest: updatedManifest, usage: classifyResult.usage }
+  return { kind: 'classified', delta, usage: classifyResult.usage }
 }
 
 function emitClassificationStart(
@@ -216,6 +218,7 @@ async function processSelectedEntry(
   manifest: IncrementalManifest,
   dirtyFeatureKeys: Set<string>,
   deps: Phase2aDeps,
+  mutex: AsyncMutex,
 ): Promise<ClassificationProcessResult> {
   emitClassificationStart(deps, entry, displayIndex, displayTotal)
   const startMs = performance.now()
@@ -225,6 +228,7 @@ async function processSelectedEntry(
     manifest,
     dirtyFeatureKeys,
     deps,
+    mutex,
   })
   const elapsedMs = performance.now() - startMs
   reportClassificationResult({
@@ -255,8 +259,9 @@ export async function runPhase2a(
     args.length === 0 ? { ...defaultPhase2aDeps, stats } : { ...defaultPhase2aDeps, ...args[0], stats }
   progress.phase2a.status = 'in-progress'
   const dirtyFeatureKeys = new Set<string>()
-  const limit = pLimit(1)
-  let currentManifest = manifest
+  const mutex = createAsyncMutex()
+  const limit = pLimit(CONCURRENCY)
+  const collectedDeltas: ManifestDelta[] = []
 
   const selectedEntries = await loadSelectedBehaviors(manifest, selectedTestKeys, resolvedDeps.readExtractedFile)
   progress.phase2a.stats.behaviorsTotal = selectedEntries.length
@@ -270,14 +275,20 @@ export async function runPhase2a(
           index + 1,
           selectedEntries.length,
           progress,
-          currentManifest,
+          manifest,
           dirtyFeatureKeys,
           resolvedDeps,
+          mutex,
         )
-        currentManifest = result.manifest
+        if (result.delta !== null) {
+          collectedDeltas.push(result.delta)
+        }
       }),
     ),
   )
+
+  const mergedTests = mergeManifestDeltas(manifest, collectedDeltas)
+  await resolvedDeps.saveManifest(mergedTests)
 
   progress.phase2a.status = 'done'
   await resolvedDeps.saveProgress(progress)

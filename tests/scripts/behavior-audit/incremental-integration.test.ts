@@ -1149,6 +1149,7 @@ describe('behavior-audit incremental manifest', () => {
         return Promise.resolve({ version: 1, entries: {} })
       },
       saveConsolidatedManifest: () => Promise.resolve(),
+      runPhase2cIfNeeded: () => Promise.resolve(),
       runPhase3IfNeeded: () => Promise.resolve(),
       stdout: { isTTY: false },
       isTestEnvironment: true,

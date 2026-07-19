@@ -110,7 +110,10 @@ async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIss
     spawn: deps.spawn,
     model: deps.config.reviewer.model,
     cwd: deps.runState.worktreePath,
-    prompt: buildReviewPrompt(deps.runState.planPath, agentWritePath(deps.runState.issuesPath)),
+    prompt: buildReviewPrompt(
+      deps.runState.planPath,
+      agentWritePath(deps.runState.issuesPath, deps.runState.worktreePath),
+    ),
     outputPath: deps.runState.issuesPath,
     outputSchema: ReviewerIssuesSchema,
     label: 'reviewer',

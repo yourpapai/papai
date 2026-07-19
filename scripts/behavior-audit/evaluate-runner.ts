@@ -5,6 +5,8 @@
 
 import pLimit from 'p-limit'
 
+import { createAsyncMutex, type AsyncMutex } from './async-mutex.js'
+import { CONCURRENCY } from './config.js'
 import { resolveSelection, shouldSkip, type ParsedBehavior } from './evaluate-phase3-helpers.js'
 import { emitPhase3ItemStart, reportPhase3Failure, reportPhase3Success } from './evaluate-progress.js'
 import type { Phase3Deps } from './evaluate.ts'
@@ -45,6 +47,7 @@ async function handleFailedEvaluation(input: {
   readonly progress: Progress
   readonly deps: Phase3Deps
   readonly elapsedMs: number
+  readonly mutex: AsyncMutex
 }): Promise<{ readonly kind: 'failed' }> {
   const attempts = input.deps.getFailedBehaviorAttempts(input.progress, input.behavior.consolidatedId) + 1
   input.deps.markBehaviorFailed(
@@ -53,7 +56,7 @@ async function handleFailedEvaluation(input: {
     'evaluation failed after retries',
     attempts,
   )
-  await input.deps.saveProgress(input.progress)
+  await input.mutex('progress', () => input.deps.saveProgress(input.progress))
   reportPhase3Failure({
     deps: input.deps,
     behavior: input.behavior,
@@ -71,6 +74,7 @@ async function evaluateSingleBehavior(input: {
   readonly progress: Progress
   readonly deps: Phase3Deps
   readonly buildPrompt: (behavior: ParsedBehavior) => string
+  readonly mutex: AsyncMutex
 }): Promise<
   | { readonly kind: 'failed' }
   | {
@@ -98,6 +102,7 @@ async function evaluateSingleBehavior(input: {
       progress: input.progress,
       deps: input.deps,
       elapsedMs,
+      mutex: input.mutex,
     })
   }
 
@@ -144,6 +149,7 @@ async function collectOneEvaluation(input: {
   readonly selection: ReturnType<typeof resolveSelection>
   readonly deps: Phase3Deps
   readonly buildPrompt: (behavior: ParsedBehavior) => string
+  readonly mutex: AsyncMutex
 }): Promise<
   | {
       readonly kind: 'skipped'
@@ -171,6 +177,7 @@ async function collectOneEvaluation(input: {
     progress: input.progress,
     deps: input.deps,
     buildPrompt: input.buildPrompt,
+    mutex: input.mutex,
   })
   if (result.kind === 'failed') {
     return { kind: 'skipped' }
@@ -208,7 +215,8 @@ export async function collectNewEvaluations(input: {
     readonly index: number
     readonly total: number
   }> = []
-  const limit = pLimit(1)
+  const mutex = createAsyncMutex()
+  const limit = pLimit(CONCURRENCY)
   await Promise.all(
     input.behaviors.map((behavior, index) =>
       limit(async () => {
@@ -220,6 +228,7 @@ export async function collectNewEvaluations(input: {
           selection: input.selection,
           deps: input.deps,
           buildPrompt: input.buildPrompt,
+          mutex,
         })
         if (collectedItem.kind === 'succeeded') {
           collected.push(collectedItem.item)
