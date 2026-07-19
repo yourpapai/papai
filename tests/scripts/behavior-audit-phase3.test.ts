@@ -1837,6 +1837,7 @@ describe('behavior-audit entrypoint phase3 manifest passthrough', () => {
       runPhase2aIfNeeded: () => Promise.resolve(new Set(['group-targeting'])),
       runPhase2bIfNeeded: () => Promise.resolve(consolidatedManifest),
       saveConsolidatedManifest: () => Promise.resolve(),
+      runPhase2cIfNeeded: () => Promise.resolve(),
       runPhase3IfNeeded: (_progress, _selectedConsolidatedIds, _selectedFeatureKeys, manifest) => {
         phase3ManifestArg = manifest
         return Promise.resolve()
