@@ -10,6 +10,9 @@ import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.j
 import { getConfig } from '../config.js'
 import { buildMessagesWithMemory } from '../conversation.js'
 import type { TaskProvider } from '../providers/types.js'
+import { getToolRetriever } from '../tools/disclosure/embedding-tool-retriever.js'
+import type { DisclosureSession } from '../tools/disclosure/registry.js'
+import { maybeApplyDisclosure } from '../tools/disclosure/wire.js'
 import { applyToolPreferences, buildProviderlessToolDescriptors, makeTools } from '../tools/index.js'
 import { buildMetadataMessages, timezoneOrUtc } from './proactive-llm-helpers.js'
 import { buildProactiveTrigger } from './proactive-trigger.js'
@@ -21,7 +24,11 @@ export async function buildFullToolSet(
   storageContextId: string,
   contextType: 'dm' | 'group',
   _prompt: string,
-): Promise<{ tools: ToolSet; enabledToolNames: ReadonlySet<string> }> {
+): Promise<{
+  tools: ToolSet
+  enabledToolNames: ReadonlySet<string>
+  disclosure: DisclosureSession
+}> {
   const options = {
     storageContextId,
     chatUserId: createdByUserId,
@@ -32,7 +39,13 @@ export async function buildFullToolSet(
     provider === null
       ? applyToolPreferences(await buildProviderlessToolDescriptors(options), storageContextId, undefined)
       : await makeTools(provider, options)
-  return { tools: fullTools, enabledToolNames: new Set(Object.keys(fullTools)) }
+  const retriever = getToolRetriever(getConfigContextIdFromStorageContextId(storageContextId), {
+    storageContextId,
+    contextType,
+    chatUserId: createdByUserId,
+  })
+  const { tools, disclosure } = maybeApplyDisclosure(fullTools, storageContextId, retriever)
+  return { tools, enabledToolNames: new Set(Object.keys(tools)), disclosure }
 }
 
 export function buildFullMessages(

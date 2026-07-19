@@ -79,6 +79,17 @@ describe('buildFullToolSet async', () => {
   })
 })
 
+describe('buildFullToolSet disclosure wiring', () => {
+  test('injects search_tools and load_tool and returns a disclosure session', async () => {
+    const provider = createMockProvider()
+    const { tools, disclosure } = await buildFullToolSet(provider, 'user-1', 'ctx-1', 'dm', 'remind me')
+    expect(Object.keys(tools)).toContain('search_tools')
+    expect(Object.keys(tools)).toContain('load_tool')
+    expect(disclosure).toBeDefined()
+    expect(typeof disclosure.activeToolNames).toBe('function')
+  })
+})
+
 describe('buildFullMessages', () => {
   test('uses group long-term memory for group thread contexts', () => {
     saveMemoryProfile(

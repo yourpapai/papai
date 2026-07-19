@@ -8,9 +8,10 @@ import { generateText, stepCountIs, type LanguageModel, type ModelMessage } from
 import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { buildChatModel } from '../llm-model-builder.js'
-import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
+import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
+import { getLlmConfig, type LlmConfig } from './proactive-llm-config.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
 import {
   buildContextMessages,
@@ -55,38 +56,8 @@ const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   stepCountIs: (...args) => stepCountIs(...args),
   buildModel: (config, modelId) => buildChatModel(config.apiKey, config.baseURL, modelId),
 }
-type LlmConfig = { apiKey: string; baseURL: string; mainModel: string; smallModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
 export type { BuildProviderFn }
-
-function getLlmConfig(configContextId: string): LlmConfig | string {
-  const resolved = resolveLlmConfig(configContextId)
-  if (!resolved.ok) {
-    log.warn(
-      {
-        configContextId,
-        source: resolved.source,
-        type: resolved.type,
-        missing: resolved.type === 'missing' ? resolved.missing : undefined,
-        error: resolved.type === 'error' ? resolved.error : undefined,
-      },
-      'Missing LLM config for deferred prompt',
-    )
-    if (resolved.source === 'global') {
-      return 'Deferred prompt skipped: the bot is not fully configured. The administrator has been notified.'
-    }
-    if (resolved.type === 'missing') {
-      return 'Deferred prompt skipped: BYOK is enabled for this context, but required LLM settings are missing. Use /config to complete setup.'
-    }
-    return 'Deferred prompt skipped: BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.'
-  }
-  return {
-    apiKey: resolved.main.apiKey,
-    baseURL: resolved.main.baseUrl,
-    mainModel: resolved.main.model,
-    smallModel: resolved.small.model,
-  }
-}
 
 const resolveDeps = (deps: ProactiveLlmDeps | undefined): ProactiveLlmDeps => deps ?? defaultProactiveLlmDeps
 
@@ -187,7 +158,7 @@ async function prepareFullGenerationInput(
 ): Promise<FullGenerationInput> {
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
-  const { tools, enabledToolNames } = await buildFullToolSet(
+  const { tools, enabledToolNames, disclosure } = await buildFullToolSet(
     provider,
     createdByUserId,
     storageContextId,
@@ -204,7 +175,7 @@ async function prepareFullGenerationInput(
     metadata,
     deliveryTarget.contextType,
   )
-  return { storageContextId, tools, systemPrompt, messages }
+  return { storageContextId, tools, systemPrompt, messages, disclosure }
 }
 
 async function runFullGeneration(
@@ -221,8 +192,9 @@ async function runFullGeneration(
   const { createdByUserId } = execCtx
   const model = deps.buildModel(config, config.mainModel)
   const prepared = await prepareFullGenerationInput(execCtx, type, prompt, metadata, matchedTasksSummary, provider)
+  const turnId = `proactive:${prepared.storageContextId}:${String(Date.now())}`
   log.debug(
-    { userId: createdByUserId, mainModel: config.mainModel, historyLength: prepared.messages.length, mode: 'full' },
+    { userId: createdByUserId, mainModel: config.mainModel, historyLength: prepared.messages.length },
     'generateText',
   )
   const result = await deps.generateText({
@@ -232,6 +204,7 @@ async function runFullGeneration(
     tools: prepared.tools,
     stopWhen: deps.stepCountIs(25),
     timeout: 1_200_000,
+    prepareStep: createDisclosurePrepareStep(prepared.disclosure, prepared.storageContextId, turnId),
   })
   const previousHistory = getCachedHistory(prepared.storageContextId)
   persistProactiveResults(
