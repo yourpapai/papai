@@ -109,19 +109,21 @@ function filterActionable(records: readonly LedgerIssueRecord[]): readonly Ledge
 async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIssue[]> {
   deps.log.log(`[round ${deps.runState.currentRound}/${deps.config.maxRounds}] Reviewing...`)
 
-  const reviewResult = await runAgent({
-    spawn: deps.spawn,
-    model: deps.config.reviewer.model,
-    cwd: deps.runState.worktreePath,
-    prompt: buildReviewPrompt(deps.runState.planPath, agentWritePath(deps.runState.issuesPath)),
-    outputPath: deps.runState.issuesPath,
-    outputSchema: ReviewerIssuesSchema,
-    label: 'reviewer',
-    reporter: deps.log,
-    logPath: deps.runState.logPath,
-    extraArgs: deps.config.reviewer.extraArgs,
-    timeoutMs: deps.config.reviewer.timeoutMs ?? deps.config.agentTimeoutMs,
-  })
+  const reviewResult = (
+    await runAgent({
+      spawn: deps.spawn,
+      model: deps.config.reviewer.model,
+      cwd: deps.runState.worktreePath,
+      prompt: buildReviewPrompt(deps.runState.planPath, agentWritePath(deps.runState.issuesPath)),
+      outputPath: deps.runState.issuesPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      reporter: deps.log,
+      logPath: deps.runState.logPath,
+      extraArgs: deps.config.reviewer.extraArgs,
+      timeoutMs: deps.config.reviewer.timeoutMs ?? deps.config.agentTimeoutMs,
+    })
+  ).value
 
   return reviewResult.issues
 }

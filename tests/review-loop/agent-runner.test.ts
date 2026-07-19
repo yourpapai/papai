@@ -7,7 +7,9 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { runAgent } from '../../review-loop/src/agent-runner.js'
+import { z } from 'zod'
+
+import { runAgent, type SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { ReviewerIssuesSchema } from '../../review-loop/src/issue-schema.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
@@ -55,7 +57,7 @@ describe('agent-runner', () => {
       extraArgs: [],
     })
 
-    expect(result).toEqual({ issues: [] })
+    expect(result.value).toEqual({ issues: [] })
     expect(mock.calls[0]?.command).toBe('opencode')
     expect(mock.calls[0]?.args).toContain('run')
     expect(mock.calls[0]?.args).toContain('--auto')
@@ -115,7 +117,7 @@ describe('agent-runner', () => {
       },
     })
 
-    expect(result).toEqual({ issues: [] })
+    expect(result.value).toEqual({ issues: [] })
     expect(mock.calls).toHaveLength(2)
   })
 
@@ -147,7 +149,7 @@ describe('agent-runner', () => {
       },
     })
 
-    expect(result.fixed).toBe(true)
+    expect(result.value.fixed).toBe(true)
     expect(mock.calls).toHaveLength(2)
   })
 
@@ -287,5 +289,47 @@ describe('agent-runner', () => {
     expect(liveReviewerRead.length).toBeGreaterThan(0)
     expect(events.some((e) => e.includes('in 100 / out 5'))).toBe(true)
     expect(readFileSync(logPath, 'utf8')).toContain('step_start')
+  })
+})
+
+function mockSpawnWithStepFinish(outputPath: string): SpawnFn {
+  return (_cmd, _args, opts, onLine) => {
+    // Emit a step_finish event line, then write the result file.
+    const stepFinish = JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { input: 100, output: 50, reasoning: 10 }, cost: 0.01 },
+    })
+    // Two step_finish events to test accumulation:
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        writeFileSync(path.join(opts.cwd, outputPath), JSON.stringify({ ok: true }))
+        onLine?.(stepFinish)
+        onLine?.(stepFinish)
+        resolve({ exitCode: 0, stdout: `${stepFinish}\n${stepFinish}\n`, stderr: '' })
+      }, 10)
+    })
+  }
+}
+
+describe('runAgent return type', () => {
+  test('returns AgentRunResult with value and usage', async () => {
+    const cwd = makeTempDir('agent-result-')
+    const outputPath = path.join(cwd, 'result.json')
+    const result = await runAgent({
+      spawn: mockSpawnWithStepFinish('.review-loop/result.json'),
+      model: 'm',
+      cwd,
+      prompt: 'p',
+      outputPath,
+      outputSchema: z.object({ ok: z.boolean() }),
+      label: 'test',
+      logPath: path.join(cwd, 'agent.log'),
+      extraArgs: [],
+    })
+    expect(result.value.ok).toBe(true)
+    expect(result.usage.inputTokens).toBe(200)
+    expect(result.usage.outputTokens).toBe(100)
+    expect(result.usage.costUsd).toBeCloseTo(0.02)
+    expect(result.usage.wallMs).toBeGreaterThanOrEqual(0)
   })
 })

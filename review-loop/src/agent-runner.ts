@@ -28,6 +28,19 @@ export type SpawnFn = (
   onLine?: LineSink,
 ) => Promise<SpawnResult>
 
+export interface AgentUsage {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  costUsd: number
+  wallMs: number
+}
+
+export interface AgentRunResult<T> {
+  value: T
+  usage: AgentUsage
+}
+
 export interface RunAgentOptions<T> {
   spawn: SpawnFn
   model: string
@@ -57,6 +70,7 @@ interface AttemptError {
 type Attempt<T> = AttemptResult<T> | AttemptError
 
 export interface LineHandler {
+  readonly ctx: LiveCtx
   onLine: LineSink
   dispose: () => void
 }
@@ -71,6 +85,8 @@ interface LiveCtx {
   arg: string
   readonly seenCalls: Set<string>
   timer: ReturnType<typeof setInterval> | null
+  usage: AgentUsage
+  firstStepAt: number | null
 }
 
 function renderLive(ctx: LiveCtx): void {
@@ -84,14 +100,12 @@ function renderLive(ctx: LiveCtx): void {
 
 function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
   const reporter = ctx.reporter
-  if (reporter === undefined) {
-    return
-  }
   switch (evt.type) {
     case 'step_start':
+      ctx.firstStepAt ??= Date.now()
       if (ctx.startedAt === 0) {
         ctx.startedAt = Date.now()
-        if (reporter.dynamic) {
+        if (reporter?.dynamic === true) {
           ctx.timer = setInterval(() => {
             renderLive(ctx)
           }, 1000)
@@ -108,10 +122,16 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
       renderLive(ctx)
       break
     case 'step_finish':
-      reporter.clearLive()
-      reporter.event(
-        formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
-      )
+      ctx.usage.inputTokens += evt.tokens.input
+      ctx.usage.outputTokens += evt.tokens.output
+      ctx.usage.reasoningTokens += evt.tokens.reasoning
+      ctx.usage.costUsd += evt.cost
+      if (reporter !== undefined) {
+        reporter.clearLive()
+        reporter.event(
+          formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
+        )
+      }
       break
     case 'text':
       break
@@ -129,6 +149,8 @@ function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     arg: '',
     seenCalls: new Set<string>(),
     timer: null,
+    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    firstStepAt: null,
   }
   const onLine: LineSink = (line: string): void => {
     void appendFile(ctx.logPath, `${line}\n`)
@@ -146,7 +168,7 @@ function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
       reporter.clearLive()
     }
   }
-  return { onLine, dispose }
+  return { ctx, onLine, dispose }
 }
 
 export function agentWritePath(outputPath: string): string {
@@ -173,50 +195,46 @@ function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<
   )
 }
 
-async function runAttempt<T>(options: RunAgentOptions<T>): Promise<Attempt<T>> {
-  const handler = createLineHandler(options)
+async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler): Promise<Attempt<T>> {
+  await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
+  const result = await attemptRun(options, handler.onLine)
+  if (result.exitCode !== 0) {
+    await appendFile(options.logPath, `[${options.label}] stderr: ${result.stderr}\n`)
+    return {
+      ok: false,
+      error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
+      timedOut: result.timedOut === true,
+    }
+  }
   try {
-    await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
-    const result = await attemptRun(options, handler.onLine)
-    if (result.exitCode !== 0) {
-      await appendFile(options.logPath, `[${options.label}] stderr: ${result.stderr}\n`)
-      return {
-        ok: false,
-        error: new Error(`${options.label} exited with code ${result.exitCode}: ${result.stderr}`),
-        timedOut: result.timedOut === true,
-      }
-    }
-    try {
-      const agentFile = path.resolve(options.cwd, agentWritePath(options.outputPath))
-      await copyFile(agentFile, options.outputPath)
-      await unlink(agentFile)
-      const raw = await readFile(options.outputPath, 'utf8')
-      return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
-    }
-  } finally {
-    handler.dispose()
+    const agentFile = path.resolve(options.cwd, agentWritePath(options.outputPath))
+    await copyFile(agentFile, options.outputPath)
+    await unlink(agentFile)
+    const raw = await readFile(options.outputPath, 'utf8')
+    return { ok: true, value: options.outputSchema.parse(JSON.parse(raw)) }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error : new Error(String(error)), timedOut: false }
   }
 }
 
-export async function runAgent<T>(options: RunAgentOptions<T>): Promise<T> {
-  const first = await runAttempt(options)
-  if (first.ok) {
-    return first.value
+export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRunResult<T>> {
+  const handler = createLineHandler(options)
+  const finalize = (value: T): AgentRunResult<T> => ({
+    value,
+    usage: {
+      ...handler.ctx.usage,
+      wallMs: handler.ctx.firstStepAt === null ? 0 : Date.now() - handler.ctx.firstStepAt,
+    },
+  })
+  try {
+    const first = await runAttempt(options, handler)
+    if (first.ok) return finalize(first.value)
+    if (first.timedOut) throw first.error
+    options.onRetry?.()
+    const second = await runAttempt(options, handler)
+    if (second.ok) return finalize(second.value)
+    throw second.error
+  } finally {
+    handler.dispose()
   }
-
-  if (first.timedOut) {
-    throw first.error
-  }
-
-  if (options.onRetry !== undefined) {
-    options.onRetry()
-  }
-  const second = await runAttempt(options)
-  if (second.ok) {
-    return second.value
-  }
-
-  throw second.error
 }

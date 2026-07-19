@@ -68,7 +68,7 @@ function runFixer(deps: IssueProcessorDeps, prompt: string, label: string): Prom
     logPath: deps.runState.logPath,
     extraArgs: deps.config.fixer.extraArgs,
     timeoutMs: deps.config.fixer.timeoutMs ?? deps.config.agentTimeoutMs,
-  })
+  }).then((r) => r.value)
 }
 
 async function runBuildWithLogging(deps: IssueProcessorDeps): Promise<BuildCheckResult> {

@@ -62,19 +62,21 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<IssueMatch[]> 
 
   const prompt = buildMatcherPrompt(deps.newIssues, deps.existingRecords, agentWritePath(deps.outputPath))
 
-  const result = await runAgent({
-    spawn: deps.spawn,
-    model: deps.model,
-    cwd: deps.cwd,
-    prompt,
-    outputPath: deps.outputPath,
-    outputSchema: IssueMatchesSchema,
-    label: 'matcher',
-    reporter: deps.reporter,
-    logPath: deps.logPath,
-    extraArgs: deps.extraArgs,
-    timeoutMs: deps.timeoutMs,
-  })
+  const result = (
+    await runAgent({
+      spawn: deps.spawn,
+      model: deps.model,
+      cwd: deps.cwd,
+      prompt,
+      outputPath: deps.outputPath,
+      outputSchema: IssueMatchesSchema,
+      label: 'matcher',
+      reporter: deps.reporter,
+      logPath: deps.logPath,
+      extraArgs: deps.extraArgs,
+      timeoutMs: deps.timeoutMs,
+    })
+  ).value
 
   return result.matches
 }
