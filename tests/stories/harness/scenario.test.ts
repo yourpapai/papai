@@ -90,6 +90,25 @@ describe('scenario execution', () => {
     })
   })
 
+  test('given.toolPrefs gates the advertised toolset and then.task.absent passes for missing tasks', async () => {
+    await executeScenario('tool prefs fixture', async ({ given, when, then, world }) => {
+      const alice = given.user('alice')
+      const dm = given.dm(alice)
+      const instance = given.taskInstance()
+      given.assign(dm, instance)
+      given.toolPrefs(dm, { riskDefaults: {}, domainDefaults: {}, toolOverrides: { create_task: 'deny' } })
+      given.llm([callCapability('tasks.list', {}), answer('cannot create')])
+
+      await when.message(alice, dm, 'Create task Nope')
+
+      then.replyTo(alice).equals('cannot create')
+      const last = world.model.inspections().at(-1)
+      expect(last?.availableTools).not.toContain('create_task')
+      expect(last?.availableTools).toContain('list_tasks')
+      await then.task('Nope').absent()
+    })
+  })
+
   test('task capability prerequisite rejects unsupported provider operations before startup', async () => {
     const world = await createScenarioWorld('unsupported task capability')
 

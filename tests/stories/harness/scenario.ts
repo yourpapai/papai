@@ -19,6 +19,7 @@ import {
 import { kvList } from '../../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import type { TaskCapability } from '../../../src/providers/types.js'
+import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
 import { SCENARIO_PLATFORM_INSTANCE_ID, type SettingsSessionHandle } from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
@@ -97,6 +98,7 @@ type ScenarioGiven = Readonly<{
   taskInstance(id?: string, providerType?: string): TaskInstanceHandle
   taskCapabilities(capabilities: readonly TaskCapability[]): void
   assign(context: ContextHandle, taskInstance: TaskInstanceHandle): void
+  toolPrefs(context: ContextHandle, prefs: ToolPrefs): void
   settingsSession(user: UserHandle): Promise<SettingsSessionHandle>
   admin(user: UserHandle, options?: Readonly<{ superAdmin?: boolean }>): void
   settingsAdminSession(user: UserHandle, options?: Readonly<{ superAdmin?: boolean }>): Promise<SettingsSessionHandle>
@@ -155,7 +157,7 @@ type ScenarioWhen = Readonly<{
 
 type ReplyAssertion = Readonly<{ equals(expected: string): void; contains(expected: string): void }>
 type ReplyHistoryAssertion = Readonly<{ equal(expected: readonly string[]): void }>
-type TaskAssertion = Readonly<{ exists(): Promise<void> }>
+type TaskAssertion = Readonly<{ exists(): Promise<void>; absent(): Promise<void> }>
 type CodingSessionAssertion = Readonly<{
   matches(expected: Partial<SessionRecord>): void
   equals(expected: SessionRecord): void
@@ -385,6 +387,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.settingsSession')
       return createSettingsSession(world, user)
     },
+    toolPrefs(context, prefs): void {
+      prerequisite('given.toolPrefs')
+      setToolPrefs(scopedConfigContextId(context), prefs)
+    },
     admin(user, options): void {
       prerequisite('given.admin')
       seedAdminRole(user, options)
@@ -540,6 +546,10 @@ function createThen(world: ScenarioWorld): ScenarioThen {
       async exists(): Promise<void> {
         const matches = await world.tasks.searchTasks({ query: title })
         tracedAssertion(world, () => expect(matches.some((task) => task.title === title)).toBe(true))
+      },
+      async absent(): Promise<void> {
+        const matches = await world.tasks.searchTasks({ query: title })
+        tracedAssertion(world, () => expect(matches.some((task) => task.title === title)).toBe(false))
       },
     }),
     codingSessions: (context) => codingSessionsAssertion(world, context),
