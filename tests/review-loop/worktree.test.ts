@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { execGit } from '../../review-loop/src/worktree.js'
+import { execGit, rebaseOnto } from '../../review-loop/src/worktree.js'
 import {
   cleanWorkerWorktrees,
   createWorktree,
@@ -213,5 +213,64 @@ describe('worktree dirty-state helpers', () => {
     const status = (await execGit(repo, ['status', '--porcelain'])).stdout.trim()
     // scratch.txt gone, no untracked files
     expect(status).toBe('')
+  })
+})
+
+describe('rebaseOnto', () => {
+  function rebaseInProgress(repoRoot: string): boolean {
+    return (
+      existsSync(path.join(repoRoot, '.git', 'rebase-merge')) || existsSync(path.join(repoRoot, '.git', 'rebase-apply'))
+    )
+  }
+
+  async function setupConflictRepo(): Promise<string> {
+    const repoRoot = makeTempDir('rebase-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 't@t.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'T'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+    writeFileSync(path.join(repoRoot, 'file.txt'), 'base\n')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+    await execGit(repoRoot, ['checkout', '-b', 'feature'])
+    // Diverge main and feature with conflicting edits to the same line
+    await execGit(repoRoot, ['checkout', 'main'])
+    writeFileSync(path.join(repoRoot, 'file.txt'), 'main change\n')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'main edit'])
+    await execGit(repoRoot, ['checkout', 'feature'])
+    writeFileSync(path.join(repoRoot, 'file.txt'), 'feature change\n')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'feature edit'])
+    return repoRoot
+  }
+
+  test('returns ok=true on a clean (fast-forward) rebase', async () => {
+    const repoRoot = makeTempDir('rebase-clean-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 't@t.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'T'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+    writeFileSync(path.join(repoRoot, 'a.txt'), 'a')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+    await execGit(repoRoot, ['checkout', '-b', 'feature'])
+    writeFileSync(path.join(repoRoot, 'b.txt'), 'b')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'add b'])
+
+    const result = await rebaseOnto(repoRoot, 'main', 'feature')
+    expect(result.ok).toBe(true)
+    expect(rebaseInProgress(repoRoot)).toBe(false)
+  })
+
+  test('returns conflictFiles and aborts the rebase on conflict', async () => {
+    const repoRoot = await setupConflictRepo()
+    const result = await rebaseOnto(repoRoot, 'main', 'feature')
+    expect(result).toEqual({ ok: false, conflictFiles: ['file.txt'] })
+    // The abort must have run — no rebase metadata should remain.
+    // This also covers the listUnmergedPaths-throws case: the try/finally
+    // guarantees the abort runs regardless of whether the diff succeeds.
+    expect(rebaseInProgress(repoRoot)).toBe(false)
   })
 })

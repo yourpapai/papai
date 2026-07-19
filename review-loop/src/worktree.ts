@@ -87,9 +87,15 @@ export async function rebaseOnto(
   const combined = `${stdout}\n${stderr}`
   if (error !== null) {
     if (combined.includes('CONFLICT') || combined.includes('could not apply')) {
-      const conflictFiles = await listUnmergedPaths(repoRoot)
-      await runGit(repoRoot, ['rebase', '--abort'])
-      return { ok: false, conflictFiles }
+      // try/finally ensures `rebase --abort` runs even if listUnmergedPaths
+      // throws (e.g. corrupted index). Without this, a thrown diff leaves the
+      // worker stuck mid-rebase, poisoning every subsequent issue assignment.
+      try {
+        const conflictFiles = await listUnmergedPaths(repoRoot)
+        return { ok: false, conflictFiles }
+      } finally {
+        await runGit(repoRoot, ['rebase', '--abort'])
+      }
     }
     // Defensive cleanup: git may have started replaying commits before failing
     // for a non-conflict reason (e.g. transient FS error). Mirror the conflict
