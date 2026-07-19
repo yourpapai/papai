@@ -73,6 +73,9 @@ scenario('SCN-meta-expand-result: expands a compacted tool result by handle', as
   // generation observes the expand_result page before answering.
   const inspections = world.model.inspections()
   expect(inspections.length).toBe(7)
+  const afterList = inspections.at(5)
   const answerGeneration = inspections.at(-1)
   expect(answerGeneration?.hasToolResult).toBe(true)
+  expect(afterList?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('_compacted'))
+  expect(answerGeneration?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('payload'))
 })

@@ -454,6 +454,21 @@ describe('scripted language model', () => {
     })
   })
 
+  test('fingerprints tool-result content tokens separately from text parts', async () => {
+    const model = createScriptedModel({ resolveCapability: () => 'expand_result' })
+    model.enqueue([answer('done')])
+
+    await model.model.doGenerate(
+      promptWithToolResultPayload('call-1', 'list_tasks', { _compacted: true, handle: 'res_1' }),
+    )
+
+    const inspection = model.inspections().at(0)
+    expect(inspection?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('_compacted'))
+    expect(inspection?.promptToolResultTokenFingerprints).toContain(promptTextFingerprint('res_1'))
+    expect(inspection?.promptToolResultTokenFingerprints).not.toContain(promptTextFingerprint('create'))
+    expect(inspection?.promptToolResultTokenFingerprints).not.toContain(promptTextFingerprint('it'))
+  })
+
   test('fails when $compaction:latest has no compacted tool result to resolve', async () => {
     const model = createScriptedModel({ resolveCapability: () => 'expand_result' })
     model.enqueue([callCapability('meta.expand-result', { handle: '$compaction:latest' })])

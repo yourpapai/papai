@@ -23,6 +23,7 @@ export type ScriptedModelInspection = Readonly<{
   hasToolResult: boolean
   promptTextFingerprints: readonly string[]
   promptTokenFingerprints: readonly string[]
+  promptToolResultTokenFingerprints: readonly string[]
 }>
 
 export type ScriptedModel = Readonly<{
@@ -90,6 +91,16 @@ const promptTextFingerprints = (options: LanguageModelV3CallOptions): readonly s
 
 const promptTokenFingerprints = (options: LanguageModelV3CallOptions): readonly string[] =>
   promptTexts(options).flatMap((text) => (text.match(/[\p{L}\p{N}_]+/gu) ?? []).map(promptTextFingerprint))
+
+const promptToolResultTokenFingerprints = (options: LanguageModelV3CallOptions): readonly string[] =>
+  options.prompt.flatMap((message) => {
+    if (typeof message.content === 'string') return []
+    return message.content.flatMap((part) => {
+      if (part.type !== 'tool-result') return []
+      const serialized = JSON.stringify('output' in part ? part.output : part)
+      return (serialized.match(/[\p{L}\p{N}_]+/gu) ?? []).map(promptTextFingerprint)
+    })
+  })
 
 const summarizePrompt = (options: LanguageModelV3CallOptions): readonly PromptPartSummary[] =>
   options.prompt.map((message): PromptPartSummary => {
@@ -230,6 +241,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
       hasToolResult,
       promptTextFingerprints: promptTextFingerprints(callOptions),
       promptTokenFingerprints: promptTokenFingerprints(callOptions),
+      promptToolResultTokenFingerprints: promptToolResultTokenFingerprints(callOptions),
     } as const
     recordedInspections = [...recordedInspections, inspection]
     options.events?.record('llm.generate', {
@@ -345,6 +357,7 @@ export function createScriptedModel(options: ScriptedModelOptions): ScriptedMode
         availableTools: [...inspection.availableTools],
         promptTextFingerprints: [...inspection.promptTextFingerprints],
         promptTokenFingerprints: [...inspection.promptTokenFingerprints],
+        promptToolResultTokenFingerprints: [...inspection.promptToolResultTokenFingerprints],
       }))
     },
   }
