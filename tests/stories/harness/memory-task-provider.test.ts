@@ -44,8 +44,8 @@ describe('MemoryTaskProvider', () => {
     provider.setCapabilities(capabilities)
 
     expect([...provider.capabilities]).toEqual(capabilities)
-    expect(() => provider.setCapabilities(['projects.read'])).toThrow(
-      'MemoryTaskProvider does not support task capabilities: projects.read',
+    expect(() => provider.setCapabilities(['attachments.list'])).toThrow(
+      'MemoryTaskProvider does not support task capabilities: attachments.list',
     )
     expect([...provider.capabilities]).toEqual(capabilities)
   })
@@ -63,8 +63,8 @@ describe('MemoryTaskProvider', () => {
     provider.setCapabilities(capabilities)
 
     expect([...provider.capabilities]).toEqual(capabilities)
-    expect(() => provider.setCapabilities(['projects.read'])).toThrow(
-      'MemoryTaskProvider does not support task capabilities: projects.read',
+    expect(() => provider.setCapabilities(['attachments.list'])).toThrow(
+      'MemoryTaskProvider does not support task capabilities: attachments.list',
     )
     expect([...provider.capabilities]).toEqual(capabilities)
   })
@@ -566,5 +566,74 @@ describe('MemoryTaskProvider', () => {
 
       expect(() => provider.setCapabilities(['tasks.delete', 'tasks.count', 'activities.read'])).not.toThrow()
     })
+  })
+})
+
+describe('projects', () => {
+  test('creates, reads, updates, lists, and deletes projects with duplicate-name rejection', async () => {
+    const provider = new MemoryTaskProvider()
+    const project = await provider.createProject({ name: 'Core', description: 'core work' })
+    expect(project).toMatchObject({ id: 'project-1', name: 'Core', url: 'memory://projects/project-1' })
+    await expect(provider.createProject({ name: 'Core' })).rejects.toThrow('Project already exists: Core')
+
+    await expect(provider.getProject('project-1')).resolves.toMatchObject({ name: 'Core' })
+    await expect(provider.updateProject('project-1', { name: 'Core 2' })).resolves.toMatchObject({ name: 'Core 2' })
+    await expect(provider.listProjects()).resolves.toHaveLength(1)
+    await expect(provider.deleteProject('project-1')).resolves.toEqual({ id: 'project-1' })
+    await expect(provider.listProjects()).resolves.toHaveLength(0)
+    await expect(provider.getProject('project-1')).rejects.toThrow('Project not found: project-1')
+  })
+})
+
+describe('statuses', () => {
+  test('requires confirmation for mutations and orders by position', async () => {
+    const provider = new MemoryTaskProvider()
+    await provider.createProject({ name: 'Core' })
+
+    const refused = await provider.createStatus('project-1', { name: 'In Review' })
+    expect(refused).toMatchObject({ status: 'confirmation_required' })
+    await expect(provider.listStatuses('project-1')).resolves.toHaveLength(0)
+
+    const created = await provider.createStatus('project-1', { name: 'In Review' }, true)
+    expect(created).toMatchObject({ id: 'status-1', name: 'In Review', order: 0 })
+    await provider.createStatus('project-1', { name: 'Done', isFinal: true }, true)
+    await provider.reorderStatuses(
+      'project-1',
+      [
+        { id: 'status-2', position: 0 },
+        { id: 'status-1', position: 1 },
+      ],
+      true,
+    )
+    const ordered = await provider.listStatuses('project-1')
+    expect(ordered.map((column) => column.name)).toEqual(['Done', 'In Review'])
+
+    await expect(provider.deleteStatus('project-1', 'status-1')).resolves.toMatchObject({
+      status: 'confirmation_required',
+    })
+    await expect(provider.deleteStatus('project-1', 'status-1', true)).resolves.toEqual({ id: 'status-1' })
+    await expect(provider.listStatuses('project-1')).resolves.toHaveLength(1)
+  })
+})
+
+describe('project team', () => {
+  test('adds, lists, and removes members with duplicate and missing errors', async () => {
+    const provider = new MemoryTaskProvider()
+    await provider.createProject({ name: 'Core' })
+
+    await expect(provider.addProjectMember('project-1', 'alice')).resolves.toEqual({
+      projectId: 'project-1',
+      userId: 'alice',
+    })
+    await expect(provider.addProjectMember('project-1', 'alice')).rejects.toThrow(
+      'Project member already exists: alice',
+    )
+    await expect(provider.listProjectTeam('project-1')).resolves.toEqual([{ id: 'alice' }])
+    await expect(provider.removeProjectMember('project-1', 'alice')).resolves.toEqual({
+      projectId: 'project-1',
+      userId: 'alice',
+    })
+    await expect(provider.removeProjectMember('project-1', 'alice')).rejects.toThrow('Project member not found: alice')
+    await expect(provider.listProjectTeam('project-1')).resolves.toEqual([])
   })
 })

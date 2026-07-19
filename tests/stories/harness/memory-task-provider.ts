@@ -6,11 +6,13 @@
 import { systemError, type AppError } from '../../../src/errors.js'
 import type {
   Activity,
+  Column,
   ListTasksParams,
   Comment,
   CommentReaction,
   IdentityUser,
   Label,
+  Project,
   Task,
   TaskCapability,
   TaskLabel,
@@ -19,6 +21,7 @@ import type {
   TaskProviderTrait,
   TaskSearchResult,
   ToolDueDateInput,
+  UserRef,
 } from '../../../src/providers/types.js'
 import type { ScenarioEvents } from './events.js'
 
@@ -44,6 +47,28 @@ const supportedMemoryTaskCapabilities: readonly TaskCapability[] = [
   'tasks.delete',
   'tasks.count',
   'activities.read',
+  'tasks.relations',
+  'statuses.list',
+  'statuses.create',
+  'statuses.update',
+  'statuses.delete',
+  'statuses.reorder',
+  'projects.read',
+  'projects.list',
+  'projects.create',
+  'projects.update',
+  'projects.delete',
+  'projects.team',
+  'workItems.list',
+  'workItems.create',
+  'workItems.update',
+  'workItems.delete',
+  'agiles.list',
+  'sprints.list',
+  'sprints.create',
+  'sprints.update',
+  'sprints.assign',
+  'queries.saved',
 ]
 
 export type MemoryTaskProviderOptions = Readonly<{
@@ -125,6 +150,15 @@ const definedLabelUpdate = (params: UpdateLabelInput): UpdateLabelInput => ({
   ...(params.color === undefined ? {} : { color: params.color }),
 })
 
+const definedStatusUpdate = (
+  params: Readonly<{ name?: string; icon?: string; color?: string; isFinal?: boolean }>,
+): Readonly<{ name?: string; icon?: string; color?: string; isFinal?: boolean }> => ({
+  ...(params.name === undefined ? {} : { name: params.name }),
+  ...(params.icon === undefined ? {} : { icon: params.icon }),
+  ...(params.color === undefined ? {} : { color: params.color }),
+  ...(params.isFinal === undefined ? {} : { isFinal: params.isFinal }),
+})
+
 export class MemoryTaskProvider implements TaskProvider {
   readonly name = 'kaneo'
   readonly supportsCustomFields = true
@@ -157,6 +191,11 @@ export class MemoryTaskProvider implements TaskProvider {
   private reactionSequence = 0
   private labelSequence = 0
   private activitySequence = 0
+  private readonly projects = new Map<string, Project>()
+  private readonly statuses = new Map<string, Column[]>()
+  private readonly projectTeam = new Map<string, UserRef[]>()
+  private projectSequence = 0
+  private statusSequence = 0
 
   get capabilities(): ReadonlySet<TaskCapability> {
     return this.capabilitySet
@@ -504,6 +543,218 @@ export class MemoryTaskProvider implements TaskProvider {
     })
   }
 
+  listProjects(): Promise<Project[]> {
+    return Promise.resolve().then(() => {
+      const result = [...this.projects.values()]
+      this.events?.record('project.list', { count: result.length })
+      return clone(result)
+    })
+  }
+
+  getProject(projectId: string): Promise<Project> {
+    return Promise.resolve().then(() => {
+      const project = this.requireProject(projectId)
+      this.events?.record('project.get', { projectId })
+      return clone(project)
+    })
+  }
+
+  createProject(params: Readonly<{ name: string; description?: string }>): Promise<Project> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      if ([...this.projects.values()].some((project) => project.name === input.name)) {
+        throw new Error(`Project already exists: ${input.name}`)
+      }
+      const id = `project-${++this.projectSequence}`
+      const project: Project = {
+        id,
+        name: input.name,
+        url: this.buildProjectUrl(id),
+        ...(input.description === undefined ? {} : { description: input.description }),
+      }
+      this.projects.set(id, clone(project))
+      this.events?.record('project.create', { projectId: id })
+      return clone(project)
+    })
+  }
+
+  updateProject(projectId: string, params: Readonly<{ name?: string; description?: string }>): Promise<Project> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      const existing = this.requireProject(projectId)
+      if (
+        input.name !== undefined &&
+        input.name !== existing.name &&
+        [...this.projects.values()].some((project) => project.name === input.name)
+      ) {
+        throw new Error(`Project already exists: ${input.name}`)
+      }
+      const updated: Project = {
+        ...existing,
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.description === undefined ? {} : { description: input.description }),
+      }
+      this.projects.set(projectId, clone(updated))
+      this.events?.record('project.update', { projectId, fields: Object.keys(input).sort() })
+      return clone(updated)
+    })
+  }
+
+  deleteProject(projectId: string): Promise<{ id: string }> {
+    return Promise.resolve().then(() => {
+      this.requireProject(projectId)
+      this.projects.delete(projectId)
+      this.statuses.delete(projectId)
+      this.projectTeam.delete(projectId)
+      this.events?.record('project.delete', { projectId })
+      return { id: projectId }
+    })
+  }
+
+  listStatuses(projectId: string): Promise<Column[]> {
+    return Promise.resolve().then(() => {
+      this.requireProject(projectId)
+      const result = [...(this.statuses.get(projectId) ?? [])].sort(
+        (left, right) => (left.order ?? 0) - (right.order ?? 0),
+      )
+      this.events?.record('status.list', { projectId, count: result.length })
+      return clone(result)
+    })
+  }
+
+  createStatus(
+    projectId: string,
+    params: Readonly<{ name: string; icon?: string; color?: string; isFinal?: boolean }>,
+    confirm?: boolean,
+  ): Promise<Column | { status: 'confirmation_required'; message: string }> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      this.requireProject(projectId)
+      if (confirm !== true) {
+        return {
+          status: 'confirmation_required' as const,
+          message: `Creating status "${input.name}" changes the shared status set — confirm to proceed.`,
+        }
+      }
+      const columns = this.statuses.get(projectId) ?? []
+      const column: Column = {
+        id: `status-${++this.statusSequence}`,
+        name: input.name,
+        order: columns.length,
+        ...(input.isFinal === undefined ? {} : { isFinal: input.isFinal }),
+      }
+      this.statuses.set(projectId, [...columns, clone(column)])
+      this.events?.record('status.create', { projectId, statusId: column.id })
+      return clone(column)
+    })
+  }
+
+  updateStatus(
+    projectId: string,
+    statusId: string,
+    params: Readonly<{ name?: string; icon?: string; color?: string; isFinal?: boolean }>,
+    confirm?: boolean,
+  ): Promise<Column | { status: 'confirmation_required'; message: string }> {
+    const input = clone(params)
+    return Promise.resolve().then(() => {
+      const existing = this.requireColumn(projectId, statusId)
+      if (confirm !== true) {
+        return {
+          status: 'confirmation_required' as const,
+          message: `Updating status "${existing.name}" changes the shared status set — confirm to proceed.`,
+        }
+      }
+      const updated: Column = { ...existing, ...definedStatusUpdate(input), id: statusId }
+      this.statuses.set(
+        projectId,
+        (this.statuses.get(projectId) ?? []).map((entry) => (entry.id === statusId ? clone(updated) : entry)),
+      )
+      this.events?.record('status.update', { projectId, statusId })
+      return clone(updated)
+    })
+  }
+
+  deleteStatus(
+    projectId: string,
+    statusId: string,
+    confirm?: boolean,
+  ): Promise<{ id: string } | { status: 'confirmation_required'; message: string }> {
+    return Promise.resolve().then(() => {
+      const existing = this.requireColumn(projectId, statusId)
+      if (confirm !== true) {
+        return {
+          status: 'confirmation_required' as const,
+          message: `Deleting status "${existing.name}" changes the shared status set — confirm to proceed.`,
+        }
+      }
+      this.statuses.set(
+        projectId,
+        (this.statuses.get(projectId) ?? []).filter((entry) => entry.id !== statusId),
+      )
+      this.events?.record('status.delete', { projectId, statusId })
+      return { id: statusId }
+    })
+  }
+
+  reorderStatuses(
+    projectId: string,
+    statuses: ReadonlyArray<Readonly<{ id: string; position: number }>>,
+    confirm?: boolean,
+  ): Promise<undefined | { status: 'confirmation_required'; message: string }> {
+    const input = clone(statuses)
+    return Promise.resolve().then(() => {
+      this.requireProject(projectId)
+      if (confirm !== true) {
+        return {
+          status: 'confirmation_required' as const,
+          message: 'Reordering statuses changes the shared status set — confirm to proceed.',
+        }
+      }
+      const positions = new Map(input.map((entry) => [entry.id, entry.position]))
+      const reordered = (this.statuses.get(projectId) ?? []).map((entry) => {
+        const position = positions.get(entry.id)
+        return position === undefined ? entry : { ...entry, order: position }
+      })
+      this.statuses.set(projectId, reordered)
+      this.events?.record('status.reorder', { projectId, count: input.length })
+      return undefined
+    })
+  }
+
+  listProjectTeam(projectId: string): Promise<UserRef[]> {
+    return Promise.resolve().then(() => {
+      this.requireProject(projectId)
+      const result = this.projectTeam.get(projectId) ?? []
+      this.events?.record('project.team.list', { projectId, count: result.length })
+      return clone(result)
+    })
+  }
+
+  addProjectMember(projectId: string, userId: string): Promise<{ projectId: string; userId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireProject(projectId)
+      const members = this.projectTeam.get(projectId) ?? []
+      if (members.some((member) => member.id === userId)) throw new Error(`Project member already exists: ${userId}`)
+      this.projectTeam.set(projectId, [...members, { id: userId }])
+      this.events?.record('project.team.add', { projectId, userId })
+      return { projectId, userId }
+    })
+  }
+
+  removeProjectMember(projectId: string, userId: string): Promise<{ projectId: string; userId: string }> {
+    return Promise.resolve().then(() => {
+      this.requireProject(projectId)
+      const members = this.projectTeam.get(projectId) ?? []
+      if (!members.some((member) => member.id === userId)) throw new Error(`Project member not found: ${userId}`)
+      this.projectTeam.set(
+        projectId,
+        members.filter((member) => member.id !== userId),
+      )
+      this.events?.record('project.team.remove', { projectId, userId })
+      return { projectId, userId }
+    })
+  }
+
   buildTaskUrl(taskId: string): string {
     return `memory://tasks/${taskId}`
   }
@@ -565,5 +816,17 @@ export class MemoryTaskProvider implements TaskProvider {
     const label = this.labels.get(labelId)
     if (label === undefined) throw new Error(`Label not found: ${labelId}`)
     return label
+  }
+
+  private requireProject(projectId: string): Project {
+    const project = this.projects.get(projectId)
+    if (project === undefined) throw new Error(`Project not found: ${projectId}`)
+    return project
+  }
+
+  private requireColumn(projectId: string, statusId: string): Column {
+    const column = (this.statuses.get(projectId) ?? []).find((entry) => entry.id === statusId)
+    if (column === undefined) throw new Error(`Status not found: project ${projectId}, status ${statusId}`)
+    return column
   }
 }
