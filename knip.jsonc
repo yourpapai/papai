@@ -230,6 +230,9 @@
     // raise concurrency on Phases 2a/2b/3 without write races. No static
     // importer exists yet.
     "scripts/behavior-audit/async-mutex.ts": ["files", "exports"],
+    // resetGrepCache is a test-only seam (clears the grep tool's file-content
+    // cache between tests in tools-grep.test.ts).
+    "scripts/behavior-audit/tools.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
