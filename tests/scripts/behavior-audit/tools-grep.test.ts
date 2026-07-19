@@ -49,6 +49,11 @@ describe('grep tool (pure JS)', () => {
     expect(result).toContain('Error: invalid regex')
   })
 
+  test('returns "Error enumerating files" when directory does not exist', async () => {
+    const result = await callGrepTool('foo', 'this-directory-does-not-exist-xyz')
+    expect(result.startsWith('Error enumerating files:')).toBe(true)
+  })
+
   test('returns error string on directory outside project', async () => {
     const result = await callGrepTool('foo', '../outside')
     expect(result).toContain('resolves outside project')

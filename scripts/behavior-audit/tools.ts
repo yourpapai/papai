@@ -108,8 +108,14 @@ function makeGrepToolAt(rootAbs: string): AuditTool<GrepInput> {
       } catch (err) {
         return `Error: invalid regex: ${err instanceof Error ? err.message : String(err)}`
       }
-      const files = enumerateTsFiles(rootAbs, dirs)
-      const texts = await Promise.all(files.map((file) => readCached(file)))
+      let files: readonly string[]
+      let texts: readonly string[]
+      try {
+        files = enumerateTsFiles(rootAbs, dirs)
+        texts = await Promise.all(files.map((file) => readCached(file)))
+      } catch (err) {
+        return `Error enumerating files: ${err instanceof Error ? err.message : String(err)}`
+      }
       const matches: string[] = []
       for (let f = 0; f < files.length; f++) {
         const file = files[f]!
