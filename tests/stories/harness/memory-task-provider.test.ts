@@ -549,6 +549,15 @@ describe('MemoryTaskProvider', () => {
         'MemoryTaskProvider does not support start/end history filtering',
       )
     })
+
+    test('serializes non-string field values in update activities', async () => {
+      const provider = new MemoryTaskProvider()
+      const task = await provider.createTask({ projectId: 'proj-1', title: 'Dated' })
+      await provider.updateTask(task.id, { customFields: [{ name: 'team', value: 'core' }] })
+
+      const history = await provider.getTaskHistory(task.id, { categories: ['task.updated'] })
+      expect(history.at(0)?.added).toBe('[{"name":"team","value":"core"}]')
+    })
   })
 
   describe('capabilities', () => {
