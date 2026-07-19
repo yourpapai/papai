@@ -130,4 +130,41 @@ describe('runInspector', () => {
     expect(prompt).toContain('Fixer reasoning (what the fixer claims it did):')
     expect(prompt).toContain(expectedReasoning)
   })
+
+  test('inspector diff includes uncommitted fixer edits (HEAD === baseline)', async () => {
+    // Reproduces the empty-diff bug: the fixer is told not to commit, so at
+    // inspector time HEAD still equals baselineSha. A commit-to-commit diff
+    // would be empty; the diff must include the working-tree changes.
+    const repoRoot = makeTempDir('inspector-diff-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    // Simulate the fixer's uncommitted edit (no add, no commit).
+    writeFileSync(path.join(runState.worktreePath, 'README.md'), 'fix applied\n')
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, getPrompt } = createPromptCapturingSpawn()
+
+    await runInspector(
+      {
+        spawn,
+        cwd: runState.worktreePath,
+        issue,
+        baselineSha,
+        fixerReasoning: 'mock',
+        outputPath: runState.inspectPath,
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-w1',
+      },
+      1,
+      'rec-1',
+      logger,
+    )
+    const prompt = getPrompt()
+    expect(prompt).toContain('fix applied')
+    expect(prompt).toContain('-hi')
+  })
 })

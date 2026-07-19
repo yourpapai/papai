@@ -41,7 +41,12 @@ export async function runInspector(
   trace: TraceLogger,
   collector?: RoundCollector,
 ): Promise<InspectorResult & { kind: 'inspected'; usage: AgentUsage }> {
-  const { stdout: diff } = await execGit(deps.cwd, ['diff', `${deps.baselineSha}..HEAD`])
+  // The fixer is instructed not to commit; the orchestrator commits only in
+  // runCommitAttempt, which runs AFTER this step. At inspector time HEAD still
+  // equals baselineSha, so `diff baselineSha..HEAD` would always be empty.
+  // Diffing the working tree against baseline captures the fixer's uncommitted
+  // edits (and also handles the retry case, where the worker was reset).
+  const { stdout: diff } = await execGit(deps.cwd, ['diff', deps.baselineSha])
   const result = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
