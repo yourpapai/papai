@@ -246,11 +246,15 @@ export async function runCli(argv: readonly string[]): Promise<void> {
 
   try {
     await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect)
-  } catch (error) {
-    console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
-    throw error
-  } finally {
     await pool.close()
+  } catch (error) {
+    const workerPaths = pool.workerPaths()
+    console.error(`Worktrees preserved for inspection (cleaned on next run start):`)
+    console.error(`  primary: ${runState.worktreePath}`)
+    for (const p of workerPaths) {
+      console.error(`  worker:  ${p}`)
+    }
+    throw error
   }
 }
 

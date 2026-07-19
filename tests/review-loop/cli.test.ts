@@ -11,7 +11,7 @@ import { runBuildCheck } from '../../review-loop/src/build-checker.js'
 import { finalizeRun, parseCliArgs, resolvePlanPath, runCli, type FinalizeDeps } from '../../review-loop/src/cli.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import { createIssueLedger, saveIssueLedger, type IssueLedger } from '../../review-loop/src/issue-ledger.js'
-import { createRunState, type RunState } from '../../review-loop/src/run-state.js'
+import { createRunState, PersistedRunStateSchema, type RunState } from '../../review-loop/src/run-state.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
@@ -220,6 +220,10 @@ if (prompt.includes('Review the current implementation')) {
 } else if (prompt.includes('You are an inspector')) {
   if (outputPath) writeFileSync(outputPath, JSON.stringify({ addresses: true, reasoning: 'mock', confidence: 0.9 }))
 } else if (prompt.includes('Verify and fix') || prompt.includes('build error')) {
+  if (scenario.fixerExitsNonZero === true) {
+    console.error('simulated fixer failure')
+    process.exit(1)
+  }
   const result = scenario.fixerResults[scenario._fixerCall ?? 0] ?? '{}'
   scenario._fixerCall = (scenario._fixerCall ?? 0) + 1
   writeFileSync(${JSON.stringify(scenarioPath)}, JSON.stringify(scenario))
@@ -423,5 +427,47 @@ describe('runCli', () => {
     await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--resume-run', runId])
 
     expect(existsSync(staleWorkerPath)).toBe(false)
+  })
+
+  test('on fixer timeout (non-zero exit), worker worktrees are preserved for inspection', async () => {
+    const fixture = await setupRunCliFixtures({ poolSize: 2 })
+    // Reviewer reports one issue; fixer exits non-zero (simulating timeout/error).
+    const scenario = {
+      reviewerIssues: [
+        JSON.stringify({
+          issues: [
+            {
+              title: 'Bug',
+              severity: 'high',
+              summary: 's',
+              whyItMatters: 'w',
+              evidence: 'queue.ts:1',
+              file: 'src/queue.ts',
+              lineStart: 1,
+              lineEnd: 2,
+              suggestedFix: 'fix',
+              confidence: 0.9,
+            },
+          ],
+        }),
+      ],
+      matches: [],
+      // No fixer result; fixer spawn exits non-zero (simulates timeout / crash).
+      fixerResults: [],
+      fixerExitsNonZero: true,
+    }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    await expect(
+      fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--pool-size', '2']),
+    ).rejects.toThrow()
+
+    // The worker worktree directories should still exist (not cleaned up).
+    const runDir = fixture.getRunDir()
+    const state = PersistedRunStateSchema.parse(JSON.parse(readFileSync(path.join(runDir, 'state.json'), 'utf8')))
+    const worker1Path = path.join(fixture.workDir, 'worktrees', `${state.runId}-worker-1`)
+    const worker2Path = path.join(fixture.workDir, 'worktrees', `${state.runId}-worker-2`)
+    expect(existsSync(worker1Path)).toBe(true)
+    expect(existsSync(worker2Path)).toBe(true)
   })
 })

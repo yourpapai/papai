@@ -148,6 +148,9 @@ export function fakePool(opts: {
       primaryHead() {
         return Promise.resolve('primary-sha')
       },
+      workerPaths() {
+        return workers.map((w) => w.worktreePath)
+      },
       close() {
         return Promise.resolve()
       },

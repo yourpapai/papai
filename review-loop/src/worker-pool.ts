@@ -26,6 +26,8 @@ export interface WorkerPool {
   primaryHead(): Promise<string>
   primaryWorktreePath: string
   primaryBranch: string
+  /** Returns the worktree paths of all pool workers (for diagnostics and cleanup-on-error). */
+  workerPaths(): readonly string[]
   close(): Promise<void>
 }
 
@@ -170,6 +172,8 @@ export async function createWorkerPool(config: ReviewLoopConfig, runState: RunSt
       mergeWorkerIntoPrimary(internals, primaryWorktreePath, primaryBranch, worker),
 
     primaryHead: () => primaryHead(internals, primaryWorktreePath),
+
+    workerPaths: () => internals.workers.map((w) => w.worktreePath),
 
     close: () => closePool(repoRoot, internals),
   }
