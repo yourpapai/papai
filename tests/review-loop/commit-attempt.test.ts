@@ -75,7 +75,7 @@ describe('ensureFixerChangesCommitted', () => {
       runState,
       ledger,
       spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
-      exec: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      exec: (_cwd?: string) => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
       log: silentReporter(),
       trace,
       pool,

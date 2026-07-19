@@ -53,7 +53,7 @@ function buildRecord(): LedgerIssueRecord {
   }
 }
 
-const passingExec: ShellExecFn = (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+const passingExec: ShellExecFn = (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
   Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
 
 async function setupRepo(repoPath: string): Promise<void> {
@@ -109,7 +109,7 @@ function recordOf(ledger: IssueLedger): LedgerIssueRecord {
 
 function createFailingThenPassingExec(): ShellExecFn {
   let calls = 0
-  return () => {
+  return (_cwd?: string) => {
     calls += 1
     if (calls === 1) return Promise.resolve({ exitCode: 1, stdout: '', stderr: 'build failed' })
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
@@ -117,7 +117,7 @@ function createFailingThenPassingExec(): ShellExecFn {
 }
 
 function createAlwaysFailingExec(): ShellExecFn {
-  return () => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'build failed' })
+  return (_cwd?: string) => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'build failed' })
 }
 
 function writeFixerResult(opts: { cwd: string; outputPath: string; verdict: Verdict; fixed: boolean }): void {
@@ -519,6 +519,40 @@ describe('processPendingIssues pool dispatch', () => {
     expect(ledger.snapshot.issues['rec-1'].fixAttempts).toBe(0)
     expect(calls.current).toBe(1)
     expect(collector.decisions.needs_human).toBe(1)
+  })
+
+  test('build check runs against the worker worktree, not the primary', async () => {
+    const repoRoot = makeTempDir('issue-proc-build-cwd-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+    const workerRepo = makeTempDir('worker-')
+    await setupRepo(workerRepo)
+    ledger.snapshot.issues['rec-1'] = buildRecord()
+    const { spawn } = createFixerOnlySpawn()
+    const { pool } = fakePool({ size: 1, worktreePaths: [workerRepo] })
+    const collector = newCollector()
+    const { logger } = createCapturingTraceLogger()
+    const reporter: ProgressReporter = silentReporter()
+
+    const execCwdLog: (string | undefined)[] = []
+    const recordingExec: ShellExecFn = (cwd?: string) => {
+      execCwdLog.push(cwd)
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+    }
+
+    const fixed = await processPendingIssues(
+      { config, runState, ledger, spawn, exec: recordingExec, log: reporter, trace: logger, pool, inspect: false },
+      1,
+      collector,
+      [ledger.snapshot.issues['rec-1']],
+    )
+
+    expect(fixed).toBe(1)
+    expect(execCwdLog).toEqual([workerRepo])
   })
 })
 

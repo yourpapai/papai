@@ -158,7 +158,7 @@ function createMockSpawn(handlers: {
 }
 
 function createMockExec(passed: boolean): ShellExecFn {
-  return (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+  return (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
     Promise.resolve({
       exitCode: passed ? 0 : 1,
       stdout: '',
@@ -250,6 +250,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -285,6 +286,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -317,6 +319,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -345,6 +348,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -381,7 +385,7 @@ describe('runReviewLoop', () => {
           return Promise.resolve()
         },
       }),
-      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      exec: (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
         execIndex += 1
         return Promise.resolve(r)
@@ -389,6 +393,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -435,7 +440,7 @@ describe('runReviewLoop', () => {
         ],
         onFixer: (cwd, callIndex) => fixerActions[callIndex]!(cwd),
       }),
-      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      exec: (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
         execIndex += 1
         return Promise.resolve(r)
@@ -443,6 +448,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -486,6 +492,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -520,7 +527,7 @@ describe('runReviewLoop', () => {
           { verdict: 'needs_human', fixability: 'manual', fixed: false },
         ],
       }),
-      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      exec: (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
         execIndex += 1
         return Promise.resolve(r)
@@ -528,6 +535,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -562,6 +570,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -598,6 +607,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -634,6 +644,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const committedFiles = (
@@ -677,6 +688,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -724,6 +736,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(matcherPrompts).toHaveLength(3)
@@ -784,6 +797,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const onDisk = IssueLedgerSnapshotSchema.parse(JSON.parse(ledgerOnDiskAtSecondIssue))
@@ -822,6 +836,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: logger,
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const types = events.map((e) => e.event)
@@ -859,6 +874,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: logger,
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const records = Object.values(ledger.snapshot.issues)
@@ -897,6 +913,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
@@ -928,6 +945,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const subject = (await execGit(runState.worktreePath, ['log', '-1', '--format=%s'])).stdout.trim()
@@ -960,6 +978,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const headAfter = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -994,6 +1013,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const status = (await execGit(runState.worktreePath, ['status', '--porcelain'])).stdout.trim()
@@ -1031,7 +1051,7 @@ describe('runReviewLoop', () => {
           return Promise.resolve()
         },
       }),
-      exec: (): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      exec: (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
         const r = execResults[execIndex]!
         execIndex += 1
         return Promise.resolve(r)
@@ -1039,6 +1059,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const decisions = result.metrics![0]!.decisions
@@ -1074,6 +1095,7 @@ describe('runReviewLoop', () => {
       log: silentReporter(),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const decisions = result.metrics![0]!.decisions

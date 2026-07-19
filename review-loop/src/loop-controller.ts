@@ -46,6 +46,7 @@ export interface ReviewLoopDeps {
   log: ProgressReporter
   trace: TraceLogger
   pool: WorkerPool
+  inspect: boolean
 }
 
 export interface ReviewLoopResult {
@@ -182,7 +183,7 @@ function runProcessPendingIssues(
       log: deps.log,
       trace: deps.trace,
       pool: deps.pool,
-      inspect: true,
+      inspect: deps.inspect,
     },
     round,
     collector,

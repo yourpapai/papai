@@ -11,11 +11,12 @@ import { loadReviewLoopConfig, type ReviewLoopConfig } from './config.js'
 import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-ledger.js'
 import { LiveRenderer } from './live-renderer.js'
 import { runReviewLoop, type ReviewLoopResult } from './loop-controller.js'
+import type { ProgressReporter } from './progress-log.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { realSpawn } from './spawn.js'
 import { buildMetricsJson, formatSummary } from './summary.js'
-import { createFileTraceLogger } from './trace-log.js'
-import { createWorkerPool } from './worker-pool.js'
+import { createFileTraceLogger, type TraceLogger } from './trace-log.js'
+import { createWorkerPool, type WorkerPool } from './worker-pool.js'
 import {
   createWorktree,
   mergeWorktree,
@@ -160,6 +161,34 @@ export async function writeRunArtifacts(runDir: string, result: ReviewLoopResult
   console.log(summary)
 }
 
+async function runReviewLoopWithCleanup(
+  config: ReviewLoopConfig,
+  runState: RunState,
+  ledger: IssueLedger,
+  exec: ShellExecFn,
+  log: ProgressReporter,
+  trace: TraceLogger,
+  pool: WorkerPool,
+): Promise<ReviewLoopResult> {
+  try {
+    return await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: realSpawn,
+      exec,
+      log,
+      trace,
+      pool,
+      inspect: true,
+    })
+  } catch (error) {
+    await pool.close()
+    console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
+    throw error
+  }
+}
+
 export async function runCli(argv: readonly string[]): Promise<void> {
   const args = parseCliArgs(argv)
   const config = await loadReviewLoopConfig({
@@ -182,23 +211,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   const trace = createFileTraceLogger(runState.tracePath)
   const pool = await createWorkerPool(config, runState)
 
-  let result: ReviewLoopResult
-  try {
-    result = await runReviewLoop({
-      config,
-      runState,
-      ledger,
-      spawn: realSpawn,
-      exec,
-      log,
-      trace,
-      pool,
-    })
-  } catch (error) {
-    await pool.close()
-    console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
-    throw error
-  }
+  const result = await runReviewLoopWithCleanup(config, runState, ledger, exec, log, trace, pool)
   await pool.close()
 
   await finalizeRun(config, runState, {

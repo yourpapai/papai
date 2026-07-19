@@ -116,7 +116,7 @@ function createMockSpawn(handlers: {
   }
 }
 
-const passingExec: ShellExecFn = (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+const passingExec: ShellExecFn = (_cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
   Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
 
 function makeReporter(messages: string[]): ProgressReporter {
@@ -171,6 +171,7 @@ describe('progress logging', () => {
       log: makeReporter(messages),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('clean')
@@ -211,6 +212,7 @@ describe('progress logging', () => {
       log: makeReporter(messages),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(result.doneReason).toBe('no_progress')
@@ -243,6 +245,7 @@ describe('progress logging', () => {
       log: makeReporter(messages),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     const fixMessage = messages.find((m) => m.startsWith('[fix]'))
@@ -284,6 +287,7 @@ describe('progress logging', () => {
       log: makeReporter(messages),
       trace: silentTrace(),
       pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
     })
 
     expect(messages).toContain('[round 2] Fixed 1/1 issues')

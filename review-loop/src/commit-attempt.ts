@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { recordFixAttempt, recordNeedsHuman, type LedgerIssueRecord } from './issue-ledger.js'
-import { sanitizeSubject } from './issue-processor.js'
+import { sanitizeSubject, shortTitle } from './issue-processor.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
 import type { FixerResult } from './issue-schema.js'
 import { emitFixComplete, tallyDecision, tallyFixerSeverity, tallyPhaseMs, type RoundCollector } from './loop-trace.js'
@@ -30,10 +30,6 @@ export async function ensureFixerChangesCommitted(
   await execGit(worktreePath, ['commit', '-m', subject])
   deps.log.log(`[fix] "${shortTitle(record)}" → auto-committed uncommitted changes`)
   return (await execGit(worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
-}
-
-function shortTitle(record: LedgerIssueRecord): string {
-  return record.issue.title.length > 60 ? `${record.issue.title.slice(0, 59)}\u2026` : record.issue.title
 }
 
 export async function runCommitAttempt(

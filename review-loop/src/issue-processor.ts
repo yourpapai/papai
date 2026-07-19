@@ -7,7 +7,7 @@ import type { ShellExecFn } from './build-checker.js'
 import type { ReviewLoopConfig } from './config.js'
 import { saveIssueLedger, type IssueLedger, type LedgerIssueRecord } from './issue-ledger.js'
 import { processIssueAttempt, type IssueWorker, type RetryReason } from './issue-processor-attempts.js'
-import type { RoundCollector } from './loop-trace.js'
+import { truncate, type RoundCollector } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
 import type { RunState } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
@@ -30,6 +30,10 @@ export interface IssueProcessorDeps {
 export function sanitizeSubject(text: string): string {
   const oneLine = text.split(/\r?\n/u)[0] ?? ''
   return oneLine.replace(/[`"']/gu, '').trim().slice(0, 100)
+}
+
+export function shortTitle(record: LedgerIssueRecord): string {
+  return truncate(record.issue.title, 60)
 }
 
 async function processIssue(

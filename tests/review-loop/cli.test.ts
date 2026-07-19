@@ -101,7 +101,7 @@ describe('finalizeRun', () => {
     let merged = 0
     let removed = 0
     const deps: FinalizeDeps = {
-      exec: () => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'TypeError: broken' }),
+      exec: (_cwd?: string) => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'TypeError: broken' }),
       runBuildCheck,
       mergeWorktree: () => {
         merged += 1
@@ -125,7 +125,7 @@ describe('finalizeRun', () => {
     const firstLine = 'LINE-ZERO-SHOULD-BE-TRUNCATED-FROM-TAIL'
     const stdout = [firstLine, ...Array.from({ length: 60 }, (_, i) => `output-line-${i + 1}`)].join('\n')
     const deps: FinalizeDeps = {
-      exec: () => Promise.resolve({ exitCode: 1, stdout, stderr: '' }),
+      exec: (_cwd?: string) => Promise.resolve({ exitCode: 1, stdout, stderr: '' }),
       runBuildCheck,
       mergeWorktree: () => Promise.resolve(),
       removeWorktree: () => Promise.resolve(),
@@ -151,7 +151,7 @@ describe('finalizeRun', () => {
     let merged = 0
     let removed = 0
     const deps: FinalizeDeps = {
-      exec: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      exec: (_cwd?: string) => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
       runBuildCheck,
       mergeWorktree: () => {
         merged += 1

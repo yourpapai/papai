@@ -8,7 +8,7 @@ import { runBuildWithLogging } from './build-checker.js'
 import { runCommitAttempt } from './commit-attempt.js'
 import { runInspectorOrTreatAsRejection } from './issue-inspector.js'
 import { recordNeedsHuman, recordVerify, type LedgerIssueRecord } from './issue-ledger.js'
-import type { IssueProcessorDeps } from './issue-processor.js'
+import { shortTitle, type IssueProcessorDeps } from './issue-processor.js'
 import { FixerResultSchema, type FixerResult } from './issue-schema.js'
 import {
   emitBuildComplete,
@@ -17,7 +17,6 @@ import {
   tallyFixerSeverity,
   tallyPhaseMs,
   tallyUsage,
-  truncate,
   type RoundCollector,
 } from './loop-trace.js'
 import { buildFixPrompt, buildRetryFixPrompt, buildRetryFixWithInspectorFeedbackPrompt } from './prompt-templates.js'
@@ -39,10 +38,6 @@ export type RetryReason =
   | { kind: 'inspector_rejection'; inspectorReasoning: string }
 
 const MAX_ATTEMPTS = 2
-
-export function shortTitle(record: LedgerIssueRecord): string {
-  return truncate(record.issue.title, 60)
-}
 
 export function runFixerRaw(
   deps: IssueProcessorDeps,
@@ -126,6 +121,7 @@ type BuildStepResult =
 
 export async function runBuildAttempt(
   deps: IssueProcessorDeps,
+  worker: Worker,
   record: LedgerIssueRecord,
   fixerResult: FixerResult,
   attempt: number,
@@ -133,7 +129,7 @@ export async function runBuildAttempt(
   collector: RoundCollector,
 ): Promise<BuildStepResult> {
   const buildStart = Date.now()
-  const buildResult = await runBuildWithLogging(deps.exec, deps.log)
+  const buildResult = await runBuildWithLogging(deps.exec, deps.log, worker.worktreePath)
   tallyPhaseMs(collector, 'build', Date.now() - buildStart)
   emitBuildComplete(deps.trace, round, record.id, buildResult.passed, attempt, Date.now() - buildStart)
 
@@ -214,7 +210,7 @@ export async function processIssueAttempt(
   const fixerStep = await runFixerAttempt(deps, worker, record, prompt, baselineSha, attempt, round, collector)
   if (fixerStep.kind === 'terminal') return fixerStep.outcome
 
-  const buildStep = await runBuildAttempt(deps, record, fixerStep.result, attempt, round, collector)
+  const buildStep = await runBuildAttempt(deps, worker, record, fixerStep.result, attempt, round, collector)
   if (buildStep.kind === 'terminal') {
     await worker.resetToBaseline(baselineSha)
     return buildStep.outcome
