@@ -53,9 +53,7 @@ export type CreateInput = {
   }>
 >
 
-type ExecutionInput = { mode: 'lightweight' | 'context' | 'full'; delivery_brief: string } & Partial<
-  Readonly<{ context_snapshot: string }>
->
+type ExecutionInput = { delivery_brief: string } & Partial<Readonly<{ context_snapshot: string }>>
 
 export type UpdateInput = {
   id: string

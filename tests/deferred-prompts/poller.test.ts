@@ -147,7 +147,7 @@ describe('pollScheduledOnce', () => {
       scopedUserId,
       'Scoped thread reminder',
       { fireAt: pastTime },
-      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      { delivery_brief: '', context_snapshot: null },
       {
         contextId: '-1001',
         storageContextId: scopedThreadContextId,
@@ -536,7 +536,7 @@ describe('pollScheduledOnce — error notice history recording', () => {
       scopedUserId,
       'Scoped thread reminder',
       { fireAt: pastTime },
-      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      { delivery_brief: '', context_snapshot: null },
       {
         contextId: '-1001',
         storageContextId: scopedThreadContextId,
@@ -775,7 +775,7 @@ describe('pollAlertsOnce', () => {
       'Notify on done',
       { field: 'task.status', op: 'eq', value: 'done' },
       60,
-      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      { delivery_brief: '', context_snapshot: null },
       {
         contextId: '-1001',
         storageContextId: scopedThreadContextId,
@@ -1301,7 +1301,7 @@ describe('delivery target routing', () => {
       'Notify first creator',
       { field: 'task.status', op: 'changed_to', value: 'done' },
       60,
-      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      { delivery_brief: '', context_snapshot: null },
       {
         contextId: 'chan-1',
         contextType: 'group',
@@ -1317,7 +1317,7 @@ describe('delivery target routing', () => {
       'Notify second creator',
       { field: 'task.status', op: 'changed_to', value: 'done' },
       60,
-      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      { delivery_brief: '', context_snapshot: null },
       {
         contextId: 'chan-1',
         contextType: 'group',

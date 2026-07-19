@@ -6,27 +6,21 @@
 import { logger } from '../logger.js'
 import { nextOccurrence } from '../recurrence.js'
 import { advanceScheduledPrompt, completeScheduledPrompt } from './scheduled.js'
-import type { ExecutionMetadata, ExecutionMode, ScheduledPrompt } from './types.js'
+import type { ExecutionMetadata, ScheduledPrompt } from './types.js'
 
 const log = logger.child({ scope: 'deferred:poller:scheduled' })
 
-const MODE_PRIORITY: Record<ExecutionMode, number> = { lightweight: 0, context: 1, full: 2 }
-const MODE_BY_PRIORITY: ExecutionMode[] = ['lightweight', 'context', 'full']
-
 export function mergeExecutionMetadata(prompts: ScheduledPrompt[]): ExecutionMetadata {
-  let maxPriority = 0
   const briefs: string[] = []
   const snapshots: string[] = []
 
   for (const prompt of prompts) {
     const metadata = prompt.executionMetadata
-    maxPriority = Math.max(maxPriority, MODE_PRIORITY[metadata.mode])
     if (metadata.delivery_brief !== '') briefs.push(metadata.delivery_brief)
     if (metadata.context_snapshot !== null) snapshots.push(metadata.context_snapshot)
   }
 
   return {
-    mode: MODE_BY_PRIORITY[maxPriority]!,
     delivery_brief: briefs.join('\n---\n'),
     context_snapshot: snapshots.length > 0 ? snapshots.join('\n---\n') : null,
   }

@@ -109,11 +109,10 @@ export const finalizeDeliveryText = (result: DeliveryResultLike): string => {
 export const finalizeAndLog = async (
   result: DeliveryResultLike & { response?: { messages: readonly ModelMessage[] } },
   userId: string,
-  mode: ExecutionMetadata['mode'],
   verification?: { verifier: VerifierDeps; history: readonly ModelMessage[] },
 ): Promise<string> => {
   const stepCount = Array.isArray(result.steps) ? result.steps.length : undefined
-  const meta = { userId, mode, finishReason: result.finishReason, stepCount }
+  const meta = { userId, finishReason: result.finishReason, stepCount }
   if (result.finishReason === 'tool-calls') {
     log.warn(meta, 'Proactive delivery ended on a pending tool call (step cap reached); verifying before delivery')
   } else {

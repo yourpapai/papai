@@ -34,7 +34,7 @@ function makePrompt(overrides: Partial<ScheduledPrompt> = {}): ScheduledPrompt {
     status: 'active',
     createdAt: new Date().toISOString(),
     lastExecutedAt: null,
-    executionMetadata: { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+    executionMetadata: { delivery_brief: '', context_snapshot: null },
     ...overrides,
   }
 }
@@ -44,32 +44,32 @@ beforeEach(() => {
 })
 
 describe('mergeExecutionMetadata', () => {
-  test('uses highest-priority mode across prompts', () => {
-    const prompts = [
+  test('mergeExecutionMetadata concatenates briefs and snapshots without a mode', () => {
+    const merged = mergeExecutionMetadata([
       makePrompt({
-        executionMetadata: { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+        executionMetadata: { delivery_brief: 'a', context_snapshot: null },
       }),
       makePrompt({
-        executionMetadata: { mode: 'full', delivery_brief: '', context_snapshot: null },
+        executionMetadata: { delivery_brief: 'b', context_snapshot: 's' },
       }),
-      makePrompt({
-        executionMetadata: { mode: 'context', delivery_brief: '', context_snapshot: null },
-      }),
-    ]
-    const result = mergeExecutionMetadata(prompts)
-    expect(result.mode).toBe('full')
+    ])
+    expect(merged).toEqual({
+      delivery_brief: 'a\n---\nb',
+      context_snapshot: 's',
+    })
+    expect('mode' in merged).toBe(false)
   })
 
   test('concatenates non-empty delivery briefs', () => {
     const prompts = [
       makePrompt({
-        executionMetadata: { mode: 'lightweight', delivery_brief: 'alpha', context_snapshot: null },
+        executionMetadata: { delivery_brief: 'alpha', context_snapshot: null },
       }),
       makePrompt({
-        executionMetadata: { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+        executionMetadata: { delivery_brief: '', context_snapshot: null },
       }),
       makePrompt({
-        executionMetadata: { mode: 'lightweight', delivery_brief: 'beta', context_snapshot: null },
+        executionMetadata: { delivery_brief: 'beta', context_snapshot: null },
       }),
     ]
     const result = mergeExecutionMetadata(prompts)
@@ -84,7 +84,6 @@ describe('mergeExecutionMetadata', () => {
 
   test('single prompt returns its own metadata unchanged', () => {
     const meta: ExecutionMetadata = {
-      mode: 'context',
       delivery_brief: 'brief',
       context_snapshot: 'snap',
     }

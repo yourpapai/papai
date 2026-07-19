@@ -113,7 +113,7 @@ describe('executeCreate — group thread ownership', () => {
       {
         prompt: 'post status',
         schedule: { fire_at: { date: '2099-01-01', time: '09:00' } },
-        execution: { mode: 'lightweight', delivery_brief: 'status' },
+        execution: { delivery_brief: 'status' },
       },
       deliveryContext,
     )
@@ -138,7 +138,7 @@ describe('executeCreate — group thread ownership', () => {
       {
         prompt: 'watch task status',
         condition: { field: 'task.status', op: 'changed_to', value: 'done' },
-        execution: { mode: 'context', delivery_brief: 'status changed' },
+        execution: { delivery_brief: 'status changed' },
       },
       deliveryContext,
     )

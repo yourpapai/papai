@@ -120,7 +120,6 @@ async function runFullGeneration(
   return finalizeAndLog(
     result,
     createdByUserId,
-    'full',
     buildProactiveVerification(deps, model, prepared.tools, [...prepared.messages, ...result.response.messages]),
   )
 }

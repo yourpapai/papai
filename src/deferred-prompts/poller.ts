@@ -66,10 +66,7 @@ async function executeScheduledPromptsForGroup(
     prompts.length === 1 ? prompts[0]!.prompt : prompts.map((p, i) => `${String(i + 1)}. "${p.prompt}"`).join('\n')
   const promptIds = prompts.map((p) => p.id)
 
-  log.debug(
-    { userId: createdByUserId, promptCount: prompts.length, promptIds, mode: metadata.mode },
-    'Executing scheduled prompts',
-  )
+  log.debug({ userId: createdByUserId, promptCount: prompts.length, promptIds }, 'Executing scheduled prompts')
   if (resolveProactivePlatformInstanceId(chat, execCtx.deliveryTarget) === null) return
   let response: string
   try {

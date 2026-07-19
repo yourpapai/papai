@@ -109,7 +109,7 @@ describe('buildFullMessages', () => {
       'scheduled',
       'Summarize releases',
       undefined,
-      { mode: 'full', delivery_brief: 'Release digest', context_snapshot: null },
+      { delivery_brief: 'Release digest', context_snapshot: null },
       'group',
     )
 
@@ -134,7 +134,7 @@ describe('buildFullMessages', () => {
       'scheduled',
       'Summarize releases',
       undefined,
-      { mode: 'full', delivery_brief: 'Release digest', context_snapshot: null },
+      { delivery_brief: 'Release digest', context_snapshot: null },
       'group',
     )
 

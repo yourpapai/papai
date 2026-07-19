@@ -165,7 +165,6 @@ describe('dispatchExecution', () => {
     test('dispatchExecution always builds the full toolset regardless of stored metadata', async () => {
       // metadata that used to select the "lightweight" branch must now still expose task tools
       const metadata: ExecutionMetadata = {
-        mode: 'lightweight',
         delivery_brief: 'be brief',
         context_snapshot: null,
       }
@@ -181,7 +180,6 @@ describe('dispatchExecution', () => {
 
   describe('full mode', () => {
     const metadata: ExecutionMetadata = {
-      mode: 'full',
       delivery_brief: 'Check overdue tasks grouped by project',
       context_snapshot: null,
     }
@@ -498,7 +496,6 @@ describe('dispatchExecution', () => {
     test('treats empty metadata as full mode', async () => {
       setupUserConfig()
       const emptyMetadata: ExecutionMetadata = {
-        mode: 'full',
         delivery_brief: '',
         context_snapshot: null,
       }
@@ -510,7 +507,6 @@ describe('dispatchExecution', () => {
 
   describe('stored delivery context', () => {
     const metadata: ExecutionMetadata = {
-      mode: 'full',
       delivery_brief: 'Check overdue tasks grouped by project',
       context_snapshot: null,
     }
@@ -546,7 +542,6 @@ describe('dispatchExecution', () => {
 
   describe('system prompt context scoping', () => {
     const fullMetadata: ExecutionMetadata = {
-      mode: 'full',
       delivery_brief: 'Check overdue tasks',
       context_snapshot: null,
     }

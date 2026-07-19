@@ -48,7 +48,7 @@ function buildInputSchema(allowTaskConditions: boolean): z.ZodType<CreateInput> 
 
 function buildToolDescription(allowTaskConditions: boolean): string {
   return allowTaskConditions
-    ? 'Create a scheduled task or monitoring alert. Provide either a schedule (for time-based) or a condition (for event-based), not both. Always classify the execution mode based on what the prompt needs at fire time.'
+    ? 'Create a scheduled task or monitoring alert. Provide either a schedule (for time-based) or a condition (for event-based), not both.'
     : 'Create a scheduled prompt. Use this only for time-based reminders or recurring scheduled follow-ups.'
 }
 

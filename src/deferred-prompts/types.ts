@@ -108,11 +108,7 @@ export const alertConditionSchema: z.ZodType<AlertCondition> = z.union([
 
 // --- Execution metadata ---
 
-export const EXECUTION_MODES = ['lightweight', 'context', 'full'] as const
-export type ExecutionMode = (typeof EXECUTION_MODES)[number]
-
 export const executionMetadataSchema = z.object({
-  mode: z.enum(EXECUTION_MODES),
   delivery_brief: z.string(),
   context_snapshot: z.string().nullable().default(null),
 })
@@ -120,7 +116,6 @@ export const executionMetadataSchema = z.object({
 export type ExecutionMetadata = z.infer<typeof executionMetadataSchema>
 
 export const DEFAULT_EXECUTION_METADATA: ExecutionMetadata = {
-  mode: 'full',
   delivery_brief: '',
   context_snapshot: null,
 }
@@ -210,11 +205,6 @@ export const cooldownSchema = z
 
 export const executionInputSchema = z
   .object({
-    mode: z
-      .enum(EXECUTION_MODES)
-      .describe(
-        'lightweight: simple reminders/nudges needing no tools or history. context: needs conversation history but no tools. full: needs live task tracker operations.',
-      ),
     delivery_brief: z
       .string()
       .describe('Freeform instructions for the executing LLM: intent, tone, key details, entities to reference.'),
@@ -226,7 +216,7 @@ export const executionInputSchema = z
       ),
   })
   .optional()
-  .describe('Execution mode classification and delivery instructions for the firing LLM.')
+  .describe('Delivery instructions for the firing LLM.')
 
 // --- Domain types ---
 

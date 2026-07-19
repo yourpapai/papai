@@ -64,7 +64,6 @@ describe('proactive-llm-helpers', () => {
 
   test('builds metadata messages', () => {
     const metadata: ExecutionMetadata = {
-      mode: 'full',
       delivery_brief: 'Brief',
       context_snapshot: 'Snapshot',
     }
@@ -79,24 +78,19 @@ describe('proactive-llm-helpers', () => {
 describe('finalizeAndLog verification', () => {
   test('empty text + verification → verified text', async () => {
     mockLogger()
-    const text = await finalizeAndLog(
-      { text: '', finishReason: 'stop', response: { messages: [] } },
-      'user-1',
-      'full',
-      {
-        history: [],
-        verifier: {
-          readOnlyToolset: undefined,
-          invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: 'Reminder delivered.' }),
-        },
+    const text = await finalizeAndLog({ text: '', finishReason: 'stop', response: { messages: [] } }, 'user-1', {
+      history: [],
+      verifier: {
+        readOnlyToolset: undefined,
+        invokeVerifier: (): Promise<{ text: string | undefined }> => Promise.resolve({ text: 'Reminder delivered.' }),
       },
-    )
+    })
     expect(text).toBe('Reminder delivered.')
   })
 
   test('no verification arg → legacy Done. fallback preserved', async () => {
     mockLogger()
-    const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1', 'lightweight')
+    const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1')
     expect(text).toBe('Done.')
   })
 })
