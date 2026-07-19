@@ -3,18 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { LedgerIssueRecord, LedgerIssueStatus } from './issue-ledger.js'
 import type { ReviewLoopResult } from './loop-controller.js'
-import type { RoundMetric, Severity, SeverityCounts } from './trace-log.js'
-
-const RESOLVED_STATUSES: ReadonlySet<LedgerIssueStatus> = new Set([
-  'closed',
-  'rejected',
-  'already_fixed',
-  'needs_human',
-])
+import type { PhaseMs, RoundMetric, Severity, SeverityCounts, UsageTotals } from './trace-log.js'
 
 const SEV_WEIGHT: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1 }
+
+const PHASE_KEYS: (keyof PhaseMs)[] = ['review', 'match', 'verify', 'build', 'inspect', 'fix']
 
 interface StatusCounts {
   open: number
@@ -28,19 +22,20 @@ interface StatusCounts {
 export interface MetricsJson {
   doneReason: ReviewLoopResult['doneReason']
   rounds: number
+  poolSize: number
   burndown: RoundMetric[]
-  totals: StatusCounts
+  usage: UsageTotals
+  phaseMs: PhaseMs
+  totals: StatusCounts & { inspectorRejected: number }
 }
 
-function countStatuses(records: LedgerIssueRecord[]): StatusCounts {
-  return {
-    open: records.filter((r) => !RESOLVED_STATUSES.has(r.status)).length,
-    closed: records.filter((r) => r.status === 'closed').length,
-    rejected: records.filter((r) => r.status === 'rejected').length,
-    alreadyFixed: records.filter((r) => r.status === 'already_fixed').length,
-    needsHuman: records.filter((r) => r.status === 'needs_human').length,
-    reopened: records.filter((r) => r.status === 'reopened').length,
-  }
+export interface SummaryOptions {
+  poolSize: number
+  inspect: boolean
+}
+
+function sumDecisions(metrics: readonly RoundMetric[], key: keyof RoundMetric['decisions']): number {
+  return metrics.reduce((s, m) => s + m.decisions[key], 0)
 }
 
 function avgSeverity(counts: SeverityCounts, total: number): string {
@@ -53,8 +48,8 @@ function avgSeverity(counts: SeverityCounts, total: number): string {
   return (sum / total).toFixed(1)
 }
 
-function burndownBlock(metrics: RoundMetric[]): string {
-  const header = 'round  new  open  fixed  rejected  needs_human  plan_drift  avgRev  avgFix'
+function burndownBlock(metrics: readonly RoundMetric[]): string {
+  const header = 'round  new  open  fixed  rejected  needs_human  plan_drift  insp_rej  avgRev  avgFix'
   const rows = metrics.map((m) => {
     const decided =
       m.decisions.fixed +
@@ -71,6 +66,7 @@ function burndownBlock(metrics: RoundMetric[]): string {
       String(m.decisions.invalid).padEnd(9),
       String(m.decisions.needs_human).padEnd(12),
       String(m.decisions.plan_drift).padEnd(11),
+      String(m.decisions.inspector_rejected).padEnd(9),
       avgSeverity(m.reviewerSeverity, m.newIssues).padEnd(7),
       avgSeverity(m.fixerSeverity, decided),
     ].join('')
@@ -78,35 +74,117 @@ function burndownBlock(metrics: RoundMetric[]): string {
   return ['Burndown:', header, ...rows].join('\n')
 }
 
-export function formatSummary(result: ReviewLoopResult): string {
-  const records = Object.values(result.ledger.issues)
-  const counts = countStatuses(records)
-
-  const lines = [
-    `Done reason: ${result.doneReason}`,
-    `Rounds executed: ${result.rounds}`,
-    `Open issues: ${counts.open}`,
-    `Closed issues: ${counts.closed}`,
-    `Rejected issues: ${counts.rejected}`,
-    `Already fixed: ${counts.alreadyFixed}`,
-    `Needs human: ${counts.needsHuman}`,
-    `Reopened issues: ${counts.reopened}`,
-  ]
-
-  if (result.metrics !== undefined && result.metrics.length > 0) {
-    lines.push('')
-    lines.push(burndownBlock(result.metrics))
+function aggregatePhaseMs(metrics: readonly RoundMetric[]): PhaseMs {
+  const phaseMs: PhaseMs = { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 }
+  for (const m of metrics) {
+    for (const k of PHASE_KEYS) {
+      phaseMs[k] += m.phaseMs[k]
+    }
   }
-
-  return lines.join('\n')
+  return phaseMs
 }
 
-export function buildMetricsJson(result: ReviewLoopResult): MetricsJson {
-  const records = Object.values(result.ledger.issues)
+function aggregateUsage(metrics: readonly RoundMetric[]): UsageTotals {
+  return metrics.reduce(
+    (acc, m) => ({
+      inputTokens: acc.inputTokens + m.usage.inputTokens,
+      outputTokens: acc.outputTokens + m.usage.outputTokens,
+      reasoningTokens: acc.reasoningTokens + m.usage.reasoningTokens,
+      costUsd: acc.costUsd + m.usage.costUsd,
+    }),
+    { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
+  )
+}
+
+function msToSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function computeStatusLines(metrics: readonly RoundMetric[], closed: number): string[] {
+  const lastMetric = metrics.length > 0 ? metrics[metrics.length - 1] : undefined
+  const openIssues = lastMetric === undefined ? 0 : lastMetric.cumulativeOpen
+  return [
+    `Closed issues: ${closed}`,
+    `Open issues: ${openIssues}`,
+    `Rejected issues: ${sumDecisions(metrics, 'invalid')}`,
+    `Already fixed: ${sumDecisions(metrics, 'already_fixed')}`,
+    `Needs human: ${sumDecisions(metrics, 'needs_human')}`,
+    `Reopened issues: 0`,
+  ]
+}
+
+function computeObservabilityLines(metrics: readonly RoundMetric[], options: SummaryOptions): string[] {
+  const totalInspectorRuns = metrics.reduce((s, m) => s + m.inspector.runs, 0)
+  const totalInspectorRejected = metrics.reduce((s, m) => s + m.inspector.rejected, 0)
+  const usage = aggregateUsage(metrics)
+  const phaseMs = aggregatePhaseMs(metrics)
+  const rejectRate =
+    totalInspectorRuns === 0 ? 'n/a' : `${((100 * totalInspectorRejected) / totalInspectorRuns).toFixed(1)}%`
+
+  const lines: string[] = []
+  if (options.inspect) {
+    lines.push(`Inspector: ${totalInspectorRuns} runs, ${totalInspectorRejected} rejected (${rejectRate} reject rate)`)
+  }
+
+  lines.push(
+    '',
+    `Total cost: $${usage.costUsd.toFixed(3)} (in ${usage.inputTokens} / out ${usage.outputTokens} / reasoning ${usage.reasoningTokens} tokens)`,
+    'Wall clock:',
+    `  review:  ${msToSeconds(phaseMs.review)}`,
+    `  match:   ${msToSeconds(phaseMs.match)}`,
+    `  verify:  ${msToSeconds(phaseMs.verify)}`,
+    `  build:   ${msToSeconds(phaseMs.build)}`,
+    `  inspect: ${msToSeconds(phaseMs.inspect)}`,
+    `  fix:     ${msToSeconds(phaseMs.fix)}`,
+  )
+  return lines
+}
+
+export function buildSummary(
+  doneReason: string,
+  rounds: number,
+  closed: number,
+  metrics: readonly RoundMetric[],
+  options: SummaryOptions,
+): string {
+  const lines = [
+    `Done reason: ${doneReason}`,
+    `Rounds executed: ${rounds}`,
+    options.poolSize > 1 ? `Pool size: ${options.poolSize}` : '',
+    ...computeStatusLines(metrics, closed),
+    ...computeObservabilityLines(metrics, options),
+  ]
+
+  if (metrics.length > 0) {
+    lines.push('', burndownBlock(metrics))
+  }
+
+  return lines.filter(Boolean).join('\n')
+}
+
+export function buildMetricsJson(
+  doneReason: ReviewLoopResult['doneReason'],
+  rounds: number,
+  closed: number,
+  metrics: readonly RoundMetric[],
+  options: SummaryOptions,
+): MetricsJson {
+  const lastMetric = metrics.length > 0 ? metrics[metrics.length - 1] : undefined
   return {
-    doneReason: result.doneReason,
-    rounds: result.rounds,
-    burndown: result.metrics ?? [],
-    totals: countStatuses(records),
+    doneReason,
+    rounds,
+    poolSize: options.poolSize,
+    burndown: [...metrics],
+    usage: aggregateUsage(metrics),
+    phaseMs: aggregatePhaseMs(metrics),
+    totals: {
+      open: lastMetric === undefined ? 0 : lastMetric.cumulativeOpen,
+      closed,
+      rejected: sumDecisions(metrics, 'invalid'),
+      alreadyFixed: sumDecisions(metrics, 'already_fixed'),
+      needsHuman: sumDecisions(metrics, 'needs_human'),
+      reopened: 0,
+      inspectorRejected: metrics.reduce((s, m) => s + m.inspector.rejected, 0),
+    },
   }
 }

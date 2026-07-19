@@ -244,7 +244,7 @@ describe('agent-runner', () => {
         part: { type: 'step-finish', reason: 'stop', tokens: { input: 100, output: 5, reasoning: 0 }, cost: 0 },
       }),
     ]
-    const live: string[] = []
+    const live: string[][] = []
     const events: string[] = []
     const reporter: ProgressReporter = {
       dynamic: false,
@@ -252,7 +252,7 @@ describe('agent-runner', () => {
         events.push(m)
       },
       live: (m) => {
-        live.push(m)
+        live.push([...m])
       },
       clearLive() {},
       log: (m) => {
@@ -285,8 +285,9 @@ describe('agent-runner', () => {
       reporter,
     })
 
-    const liveReviewerRead = live.filter((l) => l.includes('reviewer')).filter((l) => l.includes('read'))
-    expect(liveReviewerRead.length).toBeGreaterThan(0)
+    const liveOutput = live.map((batch) => batch.join('\n')).join('\n')
+    expect(liveOutput).toContain('reviewer')
+    expect(liveOutput).toContain('read')
     expect(events.some((e) => e.includes('in 100 / out 5'))).toBe(true)
     expect(readFileSync(logPath, 'utf8')).toContain('step_start')
   })

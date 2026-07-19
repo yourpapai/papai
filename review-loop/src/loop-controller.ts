@@ -24,7 +24,9 @@ import {
   emitRoundStart,
   emitRoundSummary,
   newCollector,
+  tallyPhaseMs,
   tallyReviewerIssues,
+  tallyUsage,
   type RoundCollector,
 } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
@@ -109,39 +111,42 @@ function filterActionable(records: readonly LedgerIssueRecord[]): readonly Ledge
   return records.filter((r) => !TERMINAL_STATUSES.has(r.status))
 }
 
-async function runReviewStep(deps: ReviewLoopDeps): Promise<readonly ReviewerIssue[]> {
+async function runReviewStep(deps: ReviewLoopDeps, collector: RoundCollector): Promise<readonly ReviewerIssue[]> {
   deps.log.log(`[round ${deps.runState.currentRound}/${deps.config.maxRounds}] Reviewing...`)
 
-  const reviewResult = (
-    await runAgent({
-      spawn: deps.spawn,
-      model: deps.config.reviewer.model,
-      cwd: deps.runState.worktreePath,
-      prompt: buildReviewPrompt(deps.runState.planPath, agentWritePath(deps.runState.issuesPath)),
-      outputPath: deps.runState.issuesPath,
-      outputSchema: ReviewerIssuesSchema,
-      label: 'reviewer',
-      reporter: deps.log,
-      logPath: deps.runState.logPath,
-      extraArgs: deps.config.reviewer.extraArgs,
-      timeoutMs: deps.config.reviewer.timeoutMs ?? deps.config.agentTimeoutMs,
-    })
-  ).value
+  const reviewStart = Date.now()
+  const reviewResult = await runAgent({
+    spawn: deps.spawn,
+    model: deps.config.reviewer.model,
+    cwd: deps.runState.worktreePath,
+    prompt: buildReviewPrompt(deps.runState.planPath, agentWritePath(deps.runState.issuesPath)),
+    outputPath: deps.runState.issuesPath,
+    outputSchema: ReviewerIssuesSchema,
+    label: 'reviewer',
+    reporter: deps.log,
+    logPath: deps.runState.logPath,
+    extraArgs: deps.config.reviewer.extraArgs,
+    timeoutMs: deps.config.reviewer.timeoutMs ?? deps.config.agentTimeoutMs,
+  })
+  tallyPhaseMs(collector, 'review', Date.now() - reviewStart)
+  tallyUsage(collector, reviewResult.usage)
 
-  return reviewResult.issues
+  return reviewResult.value.issues
 }
 
 async function runMatchAndRecord(
   deps: ReviewLoopDeps,
   round: number,
   newIssues: readonly ReviewerIssue[],
+  collector: RoundCollector,
 ): Promise<{ records: readonly LedgerIssueRecord[]; newCount: number; matchedCount: number }> {
   const existingRecords = Object.values(deps.ledger.snapshot.issues).filter((r) => {
     if (!TERMINAL_STATUSES.has(r.status)) return true
     return round - r.latestSeenRound <= MATCHER_RECENT_ROUNDS
   })
 
-  const matches = await matchIssues({
+  const matchStart = Date.now()
+  const { matches, usage } = await matchIssues({
     spawn: deps.spawn,
     newIssues,
     existingRecords,
@@ -153,6 +158,8 @@ async function runMatchAndRecord(
     reporter: deps.log,
     timeoutMs: deps.config.matcher.timeoutMs ?? deps.config.agentTimeoutMs,
   })
+  tallyPhaseMs(collector, 'match', Date.now() - matchStart)
+  tallyUsage(collector, usage)
 
   const newCount = matches.filter((m) => m.existingId === null).length
   const matchedCount = matches.length - newCount
@@ -196,7 +203,7 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
   emitRoundStart(deps.trace, round, deps.config.maxRounds, deps.config.maxNoProgressRounds, deps.config.checkCommand)
   const collector = newCollector()
 
-  const newIssues = await runReviewStep(deps)
+  const newIssues = await runReviewStep(deps, collector)
   tallyReviewerIssues(collector, newIssues)
   emitReviewComplete(deps.trace, round, newIssues)
 
@@ -206,7 +213,7 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
     return finishRound(deps, metrics, round, 0, collector, 'clean')
   }
 
-  const matched = await runMatchAndRecord(deps, round, newIssues)
+  const matched = await runMatchAndRecord(deps, round, newIssues, collector)
   emitMatchComplete(deps.trace, round, matched.newCount, matched.matchedCount)
 
   if (newIssues.length === 0) {

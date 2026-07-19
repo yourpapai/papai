@@ -6,7 +6,7 @@
 export interface ProgressReporter {
   readonly dynamic: boolean
   event(message: string): void
-  live(line: string): void
+  live(lines: readonly string[]): void
   clearLive(): void
   log(message: string): void
 }

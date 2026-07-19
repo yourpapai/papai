@@ -125,7 +125,11 @@ function makeReporter(messages: string[]): ProgressReporter {
     event: (message: string): void => {
       messages.push(message)
     },
-    live() {},
+    live: (lines: readonly string[]): void => {
+      for (const line of lines) {
+        messages.push(line)
+      }
+    },
     clearLive() {},
     log: (message: string): void => {
       messages.push(message)

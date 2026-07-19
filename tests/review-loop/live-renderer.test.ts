@@ -119,20 +119,20 @@ describe('LiveRenderer', () => {
 
   test('non-TTY live scrolls with newline', () => {
     const { output, stream } = makeStream()
-    new LiveRenderer(stream).live('x')
+    new LiveRenderer(stream).live(['x'])
     expect(output).toEqual(['x\n'])
   })
 
   test('TTY live writes clear-line + content with no newline', () => {
     const { output, stream } = makeStream({ isTTY: true, columns: 80 })
-    new LiveRenderer(stream).live('working')
+    new LiveRenderer(stream).live(['working'])
     expect(output).toEqual(['\r\u001b[2Kworking'])
   })
 
   test('event after a live line clears it first (TTY)', () => {
     const { output, stream } = makeStream({ isTTY: true, columns: 80 })
     const r = new LiveRenderer(stream)
-    r.live('working')
+    r.live(['working'])
     r.event('done')
     expect(output).toEqual(['\r\u001b[2Kworking', '\r\u001b[2K', 'done\n'])
   })
@@ -145,7 +145,22 @@ describe('LiveRenderer', () => {
 
   test('TTY live truncates to columns with ellipsis', () => {
     const { output, stream } = makeStream({ isTTY: true, columns: 10 })
-    new LiveRenderer(stream).live('abcdefghijklmnopqrstuvwxyz')
+    new LiveRenderer(stream).live(['abcdefghijklmnopqrstuvwxyz'])
     expect(output[0]).toBe('\r\u001b[2Kabcdefghi\u2026')
+  })
+
+  test('ProgressReporter.live accepts an array of lines (one per active worker)', () => {
+    const captured: string[] = []
+    const stream = {
+      write: (s: string): boolean => {
+        captured.push(s)
+        return true
+      },
+      isTTY: false,
+    }
+    const r = new LiveRenderer(stream)
+    r.live(['line 1', 'line 2'])
+    expect(captured.join('')).toContain('line 1')
+    expect(captured.join('')).toContain('line 2')
   })
 })

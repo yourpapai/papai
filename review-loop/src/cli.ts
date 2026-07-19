@@ -14,7 +14,7 @@ import { runReviewLoop, type ReviewLoopResult } from './loop-controller.js'
 import type { ProgressReporter } from './progress-log.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { realSpawn } from './spawn.js'
-import { buildMetricsJson, formatSummary } from './summary.js'
+import { buildMetricsJson, buildSummary } from './summary.js'
 import { createFileTraceLogger, type TraceLogger } from './trace-log.js'
 import { createWorkerPool, type WorkerPool } from './worker-pool.js'
 import {
@@ -150,11 +150,19 @@ export async function prepareWorktree(config: ReviewLoopConfig, runState: RunSta
   }
 }
 
-export async function writeRunArtifacts(runDir: string, result: ReviewLoopResult): Promise<void> {
-  const summary = formatSummary(result)
+export async function writeRunArtifacts(
+  runDir: string,
+  result: ReviewLoopResult,
+  options: { poolSize: number; inspect: boolean },
+): Promise<void> {
+  const closed = Object.values(result.ledger.issues).filter((r) => r.status === 'closed').length
+  const summary = buildSummary(result.doneReason, result.rounds, closed, result.metrics ?? [], options)
   await writeFile(path.join(runDir, 'summary.txt'), `${summary}\n`)
   try {
-    await writeFile(path.join(runDir, 'metrics.json'), `${JSON.stringify(buildMetricsJson(result), null, 2)}\n`)
+    await writeFile(
+      path.join(runDir, 'metrics.json'),
+      `${JSON.stringify(buildMetricsJson(result.doneReason, result.rounds, closed, result.metrics ?? [], options), null, 2)}\n`,
+    )
   } catch (error) {
     console.warn(`[review-loop] metrics.json write failed: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -221,7 +229,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     removeWorktree,
   })
 
-  await writeRunArtifacts(runState.runDir, result)
+  await writeRunArtifacts(runState.runDir, result, { poolSize: config.poolSize, inspect: true })
 }
 
 if (import.meta.main) {
