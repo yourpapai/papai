@@ -102,11 +102,9 @@ function primaryHead(internals: PoolInternals, primaryWorktreePath: string): Pro
   )
 }
 
-async function closePool(internals: PoolInternals, primaryWorktreePath: string): Promise<void> {
+async function closePool(repoRoot: string, internals: PoolInternals): Promise<void> {
   await Promise.all(
-    internals.workers.map((w) =>
-      removeWorktree(primaryWorktreePath, w.worktreePath, w.branch.replace('review-loop/', '')),
-    ),
+    internals.workers.map((w) => removeWorktree(repoRoot, w.worktreePath, w.branch.replace('review-loop/', ''))),
   )
   internals.workers.length = 0
 }
@@ -134,22 +132,20 @@ async function buildWorkers(
   primarySha: string,
 ): Promise<Worker[]> {
   const workers: Worker[] = []
-  const createTasks: Array<() => Promise<void>> = []
+  let chain: Promise<unknown> = Promise.resolve()
   for (let i = 1; i <= config.poolSize; i++) {
     const id = i
     const worktreePath = path.join(config.workDir, 'worktrees', `${runState.runId}-worker-${id}`)
     const branch = `${primaryBranch}-worker-${id}`
-    const worker = createWorker(id, worktreePath, branch)
-    workers.push(worker)
-    createTasks.push(async () => {
-      await execGit(primaryWorktreePath, ['worktree', 'add', worktreePath, '-b', branch, primarySha])
-    })
+    workers.push(createWorker(id, worktreePath, branch))
+    chain = chain.then(() => execGit(primaryWorktreePath, ['worktree', 'add', worktreePath, '-b', branch, primarySha]))
   }
-  await Promise.all(createTasks.map((task) => task()))
+  await chain
   return workers
 }
 
 export async function createWorkerPool(config: ReviewLoopConfig, runState: RunState): Promise<WorkerPool> {
+  const repoRoot = config.repoRoot
   const primaryBranch = `review-loop/${runState.runId}`
   const primaryWorktreePath = runState.worktreePath
   const primarySha = (await execGit(primaryWorktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -175,6 +171,6 @@ export async function createWorkerPool(config: ReviewLoopConfig, runState: RunSt
 
     primaryHead: () => primaryHead(internals, primaryWorktreePath),
 
-    close: () => closePool(internals, primaryWorktreePath),
+    close: () => closePool(repoRoot, internals),
   }
 }

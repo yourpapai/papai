@@ -4,13 +4,15 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { runBuildCheck } from '../../review-loop/src/build-checker.js'
-import { finalizeRun, parseCliArgs, resolvePlanPath, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import { finalizeRun, parseCliArgs, resolvePlanPath, runCli, type FinalizeDeps } from '../../review-loop/src/cli.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
+import { createIssueLedger, saveIssueLedger, type IssueLedger } from '../../review-loop/src/issue-ledger.js'
 import { createRunState, type RunState } from '../../review-loop/src/run-state.js'
+import { execGit } from '../../review-loop/src/worktree.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -56,6 +58,30 @@ describe('parseCliArgs', () => {
 
   test('throws on missing --plan', () => {
     expect(() => parseCliArgs(['--config', '/path/to/config.json'])).toThrow('Missing required --plan')
+  })
+
+  test('parses --pool-size as a positive integer', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md', '--pool-size', '5'])
+    expect(args.poolSize).toBe(5)
+  })
+
+  test('throws when --pool-size is not a positive integer', () => {
+    expect(() => parseCliArgs(['--plan', '/path/to/plan.md', '--pool-size', '0'])).toThrow(
+      '--pool-size must be a positive integer',
+    )
+    expect(() => parseCliArgs(['--plan', '/path/to/plan.md', '--pool-size', 'abc'])).toThrow(
+      '--pool-size must be a positive integer',
+    )
+  })
+
+  test('parses --no-inspect as a boolean flag', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md', '--no-inspect'])
+    expect(args.noInspect).toBe(true)
+  })
+
+  test('noInspect defaults to false', () => {
+    const args = parseCliArgs(['--plan', '/path/to/plan.md'])
+    expect(args.noInspect).toBe(false)
   })
 })
 
@@ -167,5 +193,235 @@ describe('finalizeRun', () => {
 
     expect(merged).toBe(1)
     expect(removed).toBe(1)
+  })
+})
+
+function createFakeOpencodeScript(scenarioPath: string): string {
+  return `#!/usr/bin/env bun
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+
+const args = process.argv.slice(2)
+const prompt = args[args.length - 1] ?? ''
+
+function extractOutputPath(text) {
+  const match = text.match(/(?:to|JSON to):\\s*(\\S+)/)
+  return match?.[1] ?? null
+}
+
+const scenario = JSON.parse(readFileSync(${JSON.stringify(scenarioPath)}, 'utf8'))
+const outputPath = extractOutputPath(prompt)
+
+if (prompt.includes('Review the current implementation')) {
+  const issues = scenario.reviewerIssues[scenario._reviewerCall ?? 0] ?? '{"issues":[]}'
+  scenario._reviewerCall = (scenario._reviewerCall ?? 0) + 1
+  writeFileSync(${JSON.stringify(scenarioPath)}, JSON.stringify(scenario))
+  if (outputPath) writeFileSync(outputPath, issues)
+} else if (prompt.includes('You are an inspector')) {
+  if (outputPath) writeFileSync(outputPath, JSON.stringify({ addresses: true, reasoning: 'mock', confidence: 0.9 }))
+} else if (prompt.includes('Verify and fix') || prompt.includes('build error')) {
+  const result = scenario.fixerResults[scenario._fixerCall ?? 0] ?? '{}'
+  scenario._fixerCall = (scenario._fixerCall ?? 0) + 1
+  writeFileSync(${JSON.stringify(scenarioPath)}, JSON.stringify(scenario))
+  if (outputPath) writeFileSync(outputPath, result)
+  if (scenario.fixerCreatesFile) {
+    const targetDir = path.dirname(scenario.fixerCreatesFile)
+    if (targetDir !== '.') {
+      try { mkdirSync(targetDir, { recursive: true }) } catch {}
+    }
+    writeFileSync(scenario.fixerCreatesFile, 'fixed\\n')
+  }
+} else if (prompt.includes('Match newly found')) {
+  if (outputPath) writeFileSync(outputPath, JSON.stringify({ matches: scenario.matches ?? [] }))
+}
+process.exit(0)
+`
+}
+
+interface RunCliFixture {
+  dir: string
+  configPath: string
+  planPath: string
+  repoPath: string
+  workDir: string
+  runCliWithPath: (args: string[]) => Promise<void>
+  getRunDir: () => string
+}
+
+async function setupRunCliFixtures(opts: { poolSize?: number; inspector?: boolean } = {}): Promise<RunCliFixture> {
+  const dir = makeTempDir('cli-integration-')
+  const binDir = path.join(dir, 'bin')
+  const scenarioPath = path.join(dir, 'scenario.json')
+  const configPath = path.join(dir, 'config.json')
+  const planPath = path.join(dir, 'plan.md')
+  const repoPath = path.join(dir, 'repo')
+  const workDir = path.join(dir, '.review-loop')
+
+  writeFileSync(planPath, '# Implementation plan\n')
+
+  const config: Record<string, unknown> = {
+    repoRoot: repoPath,
+    workDir,
+    maxRounds: 5,
+    maxNoProgressRounds: 2,
+    checkCommand: 'true',
+    poolSize: opts.poolSize ?? 3,
+    reviewer: { model: 'test-reviewer', extraArgs: [] },
+    fixer: { model: 'test-fixer', extraArgs: [] },
+    matcher: { model: 'test-matcher', extraArgs: [] },
+  }
+  if (opts.inspector === true) {
+    config['inspector'] = { model: 'test-inspector', extraArgs: [] }
+  }
+  writeFileSync(configPath, JSON.stringify(config))
+
+  const { execFileSync } = await import('node:child_process')
+  execFileSync('git', ['init', repoPath])
+  execFileSync('git', ['-C', repoPath, 'config', 'user.email', 'test@test.com'])
+  execFileSync('git', ['-C', repoPath, 'config', 'user.name', 'Test'])
+  execFileSync('git', ['-C', repoPath, 'checkout', '-b', 'main'])
+  writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
+  writeFileSync(path.join(repoPath, 'README.md'), 'hello')
+  execFileSync('git', ['-C', repoPath, 'add', '.'])
+  execFileSync('git', ['-C', repoPath, 'commit', '-m', 'init'])
+
+  mkdirSync(binDir, { recursive: true })
+  const scriptPath = path.join(binDir, 'opencode')
+  writeFileSync(scriptPath, createFakeOpencodeScript(scenarioPath))
+  chmodSync(scriptPath, 0o755)
+
+  const runCliWithPath = async (args: string[]): Promise<void> => {
+    const oldPath = process.env['PATH']
+    process.env['PATH'] = `${binDir}:${oldPath}`
+    process.env['FAKE_OPENCODE_SCENARIO'] = scenarioPath
+    try {
+      await runCli(args)
+    } finally {
+      process.env['PATH'] = oldPath
+      delete process.env['FAKE_OPENCODE_SCENARIO']
+    }
+  }
+
+  const getRunDir = (): string => {
+    const runRoot = path.join(workDir, 'runs')
+    const entries = readdirSync(runRoot)
+    expect(entries.length).toBe(1)
+    return path.join(runRoot, entries[0]!)
+  }
+
+  return { dir, configPath, planPath, repoPath, workDir, runCliWithPath, getRunDir }
+}
+
+async function createResumableRunState(
+  repoPath: string,
+  workDir: string,
+  planPath: string,
+  runId: string,
+): Promise<{ runDir: string; ledger: IssueLedger }> {
+  const runDir = path.join(workDir, 'runs', runId)
+  mkdirSync(runDir, { recursive: true })
+  writeFileSync(
+    path.join(runDir, 'state.json'),
+    JSON.stringify({
+      runId,
+      repoRoot: repoPath,
+      planPath,
+      currentRound: 0,
+      noProgressRounds: 0,
+    }),
+  )
+  const ledger = await createIssueLedger(runDir)
+  await saveIssueLedger(ledger)
+  return { runDir, ledger }
+}
+
+describe('runCli', () => {
+  test('--pool-size overrides config.poolSize', async () => {
+    const fixture = await setupRunCliFixtures({ poolSize: 3 })
+    const scenario = {
+      reviewerIssues: [JSON.stringify({ issues: [] })],
+      fixerResults: [],
+    }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--pool-size', '5'])
+
+    const summary = readFileSync(path.join(fixture.getRunDir(), 'summary.txt'), 'utf8')
+    expect(summary).toContain('Pool size: 5')
+  })
+
+  test('--no-inspect skips inspector calls', async () => {
+    const fixture = await setupRunCliFixtures({ poolSize: 1, inspector: true })
+    const scenario = {
+      reviewerIssues: [
+        JSON.stringify({
+          issues: [
+            {
+              title: 'Race condition',
+              severity: 'high',
+              summary: 'Concurrent messages bypass lock.',
+              whyItMatters: 'Stale replies.',
+              evidence: 'queue.ts:84',
+              file: 'src/queue.ts',
+              lineStart: 84,
+              lineEnd: 107,
+              suggestedFix: 'Lock earlier.',
+              confidence: 0.9,
+            },
+          ],
+        }),
+        JSON.stringify({ issues: [] }),
+      ],
+      matches: [],
+      fixerResults: [
+        JSON.stringify({
+          verdict: 'valid',
+          fixability: 'auto',
+          reasoning: 'Unsafe.',
+          targetFiles: ['src/queue.ts'],
+          fixed: true,
+          commitSha: 'abc123',
+          commitMessage: 'fix: race',
+        }),
+      ],
+      fixerCreatesFile: 'src/queue.ts',
+    }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    await fixture.runCliWithPath([
+      '--config',
+      fixture.configPath,
+      '--plan',
+      fixture.planPath,
+      '--no-inspect',
+      '--pool-size',
+      '1',
+    ])
+
+    const runDir = fixture.getRunDir()
+    expect(existsSync(path.join(runDir, 'inspect.json'))).toBe(false)
+    const summary = readFileSync(path.join(runDir, 'summary.txt'), 'utf8')
+    expect(summary).not.toContain('Inspector:')
+  })
+
+  test('stale worker worktrees from a prior run are cleaned at startup', async () => {
+    const fixture = await setupRunCliFixtures({ poolSize: 1 })
+    const runId = '2026-07-15T10-30-00-000Z-stale'
+    const primaryWorktreePath = path.join(fixture.workDir, 'worktrees', runId)
+    const staleWorkerPath = path.join(fixture.workDir, 'worktrees', `${runId}-worker-1`)
+
+    await createResumableRunState(fixture.repoPath, fixture.workDir, fixture.planPath, runId)
+    await execGit(fixture.repoPath, ['worktree', 'add', primaryWorktreePath, '-b', `review-loop/${runId}`])
+    await execGit(fixture.repoPath, ['worktree', 'add', staleWorkerPath, '-b', `review-loop/${runId}-worker-1`])
+
+    const scenario = {
+      reviewerIssues: [JSON.stringify({ issues: [] })],
+      fixerResults: [],
+    }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--resume-run', runId])
+
+    expect(existsSync(staleWorkerPath)).toBe(false)
   })
 })

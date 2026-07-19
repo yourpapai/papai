@@ -18,6 +18,7 @@ import { buildMetricsJson, buildSummary } from './summary.js'
 import { createFileTraceLogger, type TraceLogger } from './trace-log.js'
 import { createWorkerPool, type WorkerPool } from './worker-pool.js'
 import {
+  cleanWorkerWorktrees,
   createWorktree,
   mergeWorktree,
   removeWorktree,
@@ -32,6 +33,8 @@ export interface CliArgs {
   repoRoot?: string
   resumeRunId?: string
   resetWorktree: boolean
+  poolSize?: number
+  noInspect: boolean
 }
 
 const DEFAULT_CONFIG_PATH = path.join(import.meta.dir, '..', 'config.json')
@@ -44,46 +47,72 @@ function readValueArg(argv: readonly string[], index: number, name: string): str
   return value
 }
 
-export function parseCliArgs(argv: readonly string[]): CliArgs {
-  let configPath = DEFAULT_CONFIG_PATH
-  let planPath: string | undefined
-  let repoRoot: string | undefined
-  let resumeRunId: string | undefined
-  let shouldResetWorktree = false
+interface ParsedFlags {
+  configPath: string
+  planPath?: string
+  repoRoot?: string
+  resumeRunId?: string
+  resetWorktree: boolean
+  poolSize?: number
+  noInspect: boolean
+}
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index]
-    if (arg === '--config') {
-      configPath = readValueArg(argv, index, '--config')
-      index += 1
-      continue
+function parseFlag(argv: readonly string[], index: number, flags: ParsedFlags): number {
+  const arg = argv[index]
+  if (arg === undefined) return index
+  switch (arg) {
+    case '--config':
+      flags.configPath = readValueArg(argv, index, '--config')
+      return index + 1
+    case '--plan':
+      flags.planPath = readValueArg(argv, index, '--plan')
+      return index + 1
+    case '--repo':
+      flags.repoRoot = readValueArg(argv, index, '--repo')
+      return index + 1
+    case '--resume-run':
+      flags.resumeRunId = readValueArg(argv, index, '--resume-run')
+      return index + 1
+    case '--reset-worktree':
+      flags.resetWorktree = true
+      return index
+    case '--pool-size': {
+      const value = Number(readValueArg(argv, index, '--pool-size'))
+      if (!Number.isInteger(value) || value < 1) {
+        throw new Error('--pool-size must be a positive integer')
+      }
+      flags.poolSize = value
+      return index + 1
     }
-    if (arg === '--plan') {
-      planPath = readValueArg(argv, index, '--plan')
-      index += 1
-      continue
-    }
-    if (arg === '--repo') {
-      repoRoot = readValueArg(argv, index, '--repo')
-      index += 1
-      continue
-    }
-    if (arg === '--resume-run') {
-      resumeRunId = readValueArg(argv, index, '--resume-run')
-      index += 1
-      continue
-    }
-    if (arg === '--reset-worktree') {
-      shouldResetWorktree = true
-      continue
-    }
+    case '--no-inspect':
+      flags.noInspect = true
+      return index
+    default:
+      return index
   }
+}
 
-  if (planPath === undefined) {
+export function parseCliArgs(argv: readonly string[]): CliArgs {
+  const flags: ParsedFlags = {
+    configPath: DEFAULT_CONFIG_PATH,
+    resetWorktree: false,
+    noInspect: false,
+  }
+  for (let index = 0; index < argv.length; index += 1) {
+    index = parseFlag(argv, index, flags)
+  }
+  if (flags.planPath === undefined) {
     throw new Error('Missing required --plan')
   }
-
-  return { configPath, planPath, repoRoot, resumeRunId, resetWorktree: shouldResetWorktree }
+  return {
+    configPath: flags.configPath,
+    planPath: flags.planPath,
+    repoRoot: flags.repoRoot,
+    resumeRunId: flags.resumeRunId,
+    resetWorktree: flags.resetWorktree,
+    poolSize: flags.poolSize,
+    noInspect: flags.noInspect,
+  }
 }
 
 export interface FinalizeDeps {
@@ -169,7 +198,7 @@ export async function writeRunArtifacts(
   console.log(summary)
 }
 
-async function runReviewLoopWithCleanup(
+async function executeReviewLoop(
   config: ReviewLoopConfig,
   runState: RunState,
   ledger: IssueLedger,
@@ -177,32 +206,27 @@ async function runReviewLoopWithCleanup(
   log: ProgressReporter,
   trace: TraceLogger,
   pool: WorkerPool,
-): Promise<ReviewLoopResult> {
-  try {
-    return await runReviewLoop({
-      config,
-      runState,
-      ledger,
-      spawn: realSpawn,
-      exec,
-      log,
-      trace,
-      pool,
-      inspect: true,
-    })
-  } catch (error) {
-    await pool.close()
-    console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
-    throw error
-  }
+  inspect: boolean,
+): Promise<void> {
+  const result = await runReviewLoop({
+    config,
+    runState,
+    ledger,
+    spawn: realSpawn,
+    exec,
+    log,
+    trace,
+    pool,
+    inspect,
+  })
+  await finalizeRun(config, runState, { exec, runBuildCheck, mergeWorktree, removeWorktree })
+  await writeRunArtifacts(runState.runDir, result, { poolSize: config.poolSize, inspect })
 }
 
 export async function runCli(argv: readonly string[]): Promise<void> {
   const args = parseCliArgs(argv)
-  const config = await loadReviewLoopConfig({
-    configPath: args.configPath,
-    repoRoot: args.repoRoot,
-  })
+  const config = await loadReviewLoopConfig({ configPath: args.configPath, repoRoot: args.repoRoot })
+  if (args.poolSize !== undefined) config.poolSize = args.poolSize
 
   const runState: RunState =
     args.resumeRunId === undefined
@@ -217,19 +241,17 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   const log = new LiveRenderer(process.stdout)
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
   const trace = createFileTraceLogger(runState.tracePath)
+  await cleanWorkerWorktrees(runState.worktreePath, runState.runId)
   const pool = await createWorkerPool(config, runState)
 
-  const result = await runReviewLoopWithCleanup(config, runState, ledger, exec, log, trace, pool)
-  await pool.close()
-
-  await finalizeRun(config, runState, {
-    exec,
-    runBuildCheck,
-    mergeWorktree,
-    removeWorktree,
-  })
-
-  await writeRunArtifacts(runState.runDir, result, { poolSize: config.poolSize, inspect: true })
+  try {
+    await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect)
+  } catch (error) {
+    console.error(`Worktree preserved at ${runState.worktreePath} for inspection.`)
+    throw error
+  } finally {
+    await pool.close()
+  }
 }
 
 if (import.meta.main) {

@@ -112,7 +112,7 @@ export async function mergeFastForward(repoRoot: string, branch: string): Promis
 }
 
 export async function cleanWorkerWorktrees(repoRoot: string, runId: string): Promise<void> {
-  // Remove stale worker worktrees from a crashed prior run.
+  // Remove stale worker worktrees (and their branches) from a crashed prior run.
   const { stdout } = await execGit(repoRoot, ['worktree', 'list', '--porcelain'])
   const lines = stdout.split('\n')
   const removals: Array<Promise<unknown>> = []
@@ -120,7 +120,8 @@ export async function cleanWorkerWorktrees(repoRoot: string, runId: string): Pro
     if (line.startsWith('worktree ')) {
       const wtPath = line.slice('worktree '.length)
       if (wtPath.includes(`${runId}-worker-`)) {
-        removals.push(execGit(repoRoot, ['worktree', 'remove', wtPath, '--force']).catch(() => undefined))
+        const workerName = path.basename(wtPath)
+        removals.push(removeWorktree(repoRoot, wtPath, workerName).catch(() => undefined))
       }
     }
   }
