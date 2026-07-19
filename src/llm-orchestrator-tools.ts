@@ -228,6 +228,7 @@ const buildFullToolSet = async (
     userText,
     deps,
   )
+  toolCapabilityCatalog.register('meta.search-tools', 'search_tools')
   log.debug(
     { contextId, toolCount: Object.keys(disclosedTools).length, gated: gatedTools !== prefTools },
     'Prepared tool set for LLM invocation',
