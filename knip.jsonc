@@ -244,6 +244,9 @@
     // Entry-point map builders + loaders are consumed by the downstream Tier 3
     // closure verifier (Task 5) via dynamic import; no static importer exists yet.
     "scripts/behavior-audit/entry-point-maps.ts": ["files", "exports"],
+    // Closure verifier is wired into the Tier 3 pipeline (Task 6) via dynamic
+    // import; no static importer exists yet.
+    "scripts/behavior-audit/closure-verifier.ts": ["files", "exports"],
     // listToolNames is a forward-compat export consumed by the behavior-audit
     // closure verifier (Tier 3 Task 5) via dynamic import from
     // scripts/behavior-audit/entry-point-maps.ts. Tool surface is built per
