@@ -1085,3 +1085,11 @@ Expected: clean.
 Run: `bun test:stories:manifest 2>&1 | grep "story catalog"` — expect `story catalog: 49/128 executable; pending 79 (5 executable-as-is, 52 needs-seam, 22 blocked)`; manifest scenario count is 58 (41 + 17).
 Run: `git status --short` (clean), then `bun scripts/story/test-stories.ts --compat --baseline-ref HEAD --manifest-only`
 Expected: exit 0.
+
+## Execution learnings (2026-07-19)
+
+- `clear-all` count shipped as `2`, not `1`: `given.admin(bob)` also creates bob's user row.
+- `cmd-context` pins structural snapshot fragments (`modelName`, `label`, `detail`); seeded identities never surface in the collector's snapshot.
+- Group replies are context-keyed: use `then.replyIn(group)`, never `then.replyTo(user)`, in group scenarios.
+- `promptTokenFingerprints` see text parts only; tool-result content needs `promptToolResultTokenFingerprints` (added post-review).
+- Stop scenarios need the disclosure walk (`load_tool` first) scripted before the gate; summaries include `load_tool` in completed effects.

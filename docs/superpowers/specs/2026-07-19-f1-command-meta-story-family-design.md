@@ -177,3 +177,23 @@ Seventeen `AUDIT_RECORDS` entries move from pending to `EXECUTABLE_STORY_MAPPING
   meta-search-tools and expand-result stories.
 - `bun test:stories:contracts`, typecheck, and lint stay green; the compat baseline is
   re-recorded after landing.
+
+## Post-implementation deviations (2026-07-19)
+
+- The `meta.search-tools` registration landed as one unconditional
+  `catalog.register(...)` in `buildFullToolSet` (`src/llm-orchestrator-tools.ts`)
+  rather than conditionally inside the disclosure injection path:
+  `maybeApplyDisclosure` injects `search_tools` unconditionally, so the conditions
+  are equivalent, and re-registration of the same mapping is idempotent per turn.
+- The oversized-payload trigger for `meta-expand-result` is a >8 000-byte
+  `create_task` description through the real tool path; the `MemoryTaskProvider`
+  knob idea was dropped.
+- Stop-story summaries truthfully include disclosure's `load_tool` in completed
+  effects — production behavior, pinned deliberately.
+- The gated decision's handle is a `nextGate(): Promise<{ release }>` promise
+  rather than `{ reached, release }` — equivalent and simpler.
+- `/config`-link stories use a transient set/restore of
+  `SETTINGS_PUBLIC_BASE_URL` inside the scenario: the sandbox child env lacks it,
+  there is no fixture seam yet, and the I/O guard only fails _net_ env mutation at
+  teardown. F4's dashboard-auth fixture should introduce a proper
+  `given.*`-level seam instead of repeating this pattern.
