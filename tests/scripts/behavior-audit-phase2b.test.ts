@@ -19,7 +19,7 @@ import {
   mockAuditBehaviorConfig,
 } from './behavior-audit-integration.helpers.js'
 import { cleanupTempDirs, makeTempDir, restoreBehaviorAuditEnv } from './behavior-audit-integration.runtime-helpers.js'
-import { getArrayItem, loadConsolidateModule } from './behavior-audit-integration.support.js'
+import { getArrayItem, loadConsolidateModule, loadReportWriterModule } from './behavior-audit-integration.support.js'
 import { makeExtractedRecord } from './behavior-audit/test-fixtures.js'
 
 type LoadedConsolidateModule = {
@@ -603,4 +603,113 @@ test('runPhase2b at CONCURRENCY=4 preserves every feature key delta when consoli
   for (const spec of featureSpecs) {
     expect(progress.phase2b.completedFeatureKeys[spec.featureKey]).toBe('done')
   }
+})
+
+test('runPhase2b persists LLM-generated entryPointHints to consolidated artifacts on disk', async () => {
+  const root = makeTempDir()
+  mockAuditBehaviorConfig(root, null)
+
+  const consolidate = await loadConsolidateModule(crypto.randomUUID())
+  const progress = createEmptyProgressFixture(1)
+  const testFilePath = 'tests/tools/create-task.test.ts'
+  const testKey = 'tests/tools/create-task.test.ts::suite > create task'
+
+  const manifest: IncrementalManifest = {
+    version: 1,
+    lastStartCommit: null,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    phaseVersions: { phase1: 'phase1-v1', phase2: 'phase2-v2', reports: 'reports-v1' },
+    tests: {
+      [testKey]: createManifestTestEntry({
+        testFile: testFilePath,
+        testName: 'suite > create task',
+        dependencyPaths: [testFilePath],
+        phase1Fingerprint: 'phase1-fp-a',
+        phase2aFingerprint: 'phase2a-fp-a',
+        phase2Fingerprint: null,
+        behaviorId: testKey,
+        featureKey: 'task-creation',
+        extractedArtifactPath: buildRelativeArtifactPath('extracted', testFilePath),
+        classifiedArtifactPath: buildRelativeArtifactPath('classified', testFilePath),
+        domain: 'tools',
+        lastPhase1CompletedAt: '2026-04-21T12:00:00.000Z',
+        lastPhase2aCompletedAt: '2026-04-21T12:05:00.000Z',
+        lastPhase2CompletedAt: null,
+      }),
+    },
+  }
+
+  await writeJsonArtifact(path.join(root, buildRelativeArtifactPath('extracted', testFilePath)), [
+    createExtractedRecord({
+      testKey,
+      testFile: testFilePath,
+      testName: 'create task',
+      fullPath: 'suite > create task',
+      behavior: 'When a user asks to create a task, the bot saves it.',
+      context: 'Calls create_task.',
+      keywords: ['task-create'],
+    }),
+  ])
+  await writeJsonArtifact(path.join(root, buildRelativeArtifactPath('classified', testFilePath)), [
+    createClassifiedRecord({
+      behaviorId: testKey,
+      testKey,
+      domain: 'tools',
+      visibility: 'user-facing',
+      featureKey: null,
+      featureLabel: 'Task creation',
+      classificationNotes: 'User-facing task creation.',
+    }),
+  ])
+
+  const expectedEntryPointHints: { kind: 'command' | 'tool'; identifier: string }[] = [
+    { kind: 'command', identifier: '/task' },
+    { kind: 'tool', identifier: 'createTask' },
+  ]
+
+  await consolidate.runPhase2b(
+    progress,
+    { version: 1, entries: {} },
+    'phase2-v2',
+    new Set(['task-creation']),
+    manifest,
+    {
+      consolidateWithRetry: (): Promise<AgentResult<typeof consolidationItems>> => {
+        const consolidationItems = [
+          {
+            id: 'task-creation::task-creation',
+            item: {
+              featureName: 'Task creation',
+              isUserFacing: true,
+              behavior: 'When a user asks to create a task, the bot saves it and confirms success.',
+              userStory: 'As a user, I want to create a task in chat so I can track work quickly.',
+              context: 'Calls create_task and formats the confirmation.',
+              sourceBehaviorIds: [testKey],
+              sourceTestKeys: [testKey],
+              supportingInternalRefs: [],
+              entryPointHints: expectedEntryPointHints,
+            },
+          },
+        ]
+        return Promise.resolve({
+          result: consolidationItems,
+          usage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
+        })
+      },
+    },
+  )
+
+  const consolidatedPath = path.join(root, buildRelativeArtifactPath('consolidated', 'task-creation'))
+  expect(await Bun.file(consolidatedPath).exists()).toBe(true)
+  const reportWriter = await loadReportWriterModule(crypto.randomUUID())
+  const persisted = await reportWriter.readConsolidatedFile('task-creation')
+  assert(persisted !== null, 'Expected consolidated file to be persisted on disk')
+  expect(persisted).toHaveLength(1)
+  expect(persisted[0]!.entryPointHints).toEqual(expectedEntryPointHints)
 })

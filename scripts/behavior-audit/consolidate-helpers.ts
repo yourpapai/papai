@@ -149,7 +149,7 @@ export function toConsolidations(
     sourceTestKeys: item.sourceTestKeys,
     sourceBehaviorIds: item.sourceBehaviorIds,
     supportingInternalRefs: item.supportingInternalRefs,
-    entryPointHints: [],
+    entryPointHints: item.entryPointHints,
     closure: null,
   }))
 }
